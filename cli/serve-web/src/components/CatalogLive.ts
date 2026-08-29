@@ -18,8 +18,7 @@
 // `live/pointerMap.ts` (where a press landed on the composition) and `live/session.ts` (which
 // preview, which socket, and what to say when the lane refuses).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { sameOriginNavigation } from "../dom/sameOrigin.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import {
@@ -80,7 +79,7 @@ declare global {
 }
 
 @customElement("cp-catalog-live")
-export class CatalogLive extends LitElement {
+export class CatalogLive extends ControllerElement {
     private installed = false;
     private config: LiveConfig = {};
     private holdMs = 500;
@@ -92,10 +91,6 @@ export class CatalogLive extends LitElement {
     private press: Press | null = null;
     private suppressNextClick = false;
     private cleanups: Array<() => void> = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

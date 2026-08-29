@@ -30,8 +30,9 @@
 // apply to the host unchanged, with no `display: contents` wrapper to reason
 // about.
 
-import { LitElement, html, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { createTextVNode, type VNode } from "vue";
+import { customElement } from "../controllerElement.js";
+import { VueElement } from "../vueElement.js";
 
 /** Lanes that are interactive rather than a still image. */
 function isLive(mode: string | null): boolean {
@@ -39,19 +40,15 @@ function isLive(mode: string | null): boolean {
 }
 
 @customElement("cp-backend-badge")
-export class BackendBadge extends LitElement {
+export class BackendBadge extends VueElement {
     /** `.cp-viewer`'s `data-mode` — which lane owns the stage. */
-    @state() private mode: string | null = null;
+    private mode: string | null = null;
 
     /** `.cp-viewer`'s `data-pending` — a lane activating, carrying its own copy. */
-    @state() private pending: string | null = null;
+    private pending: string | null = null;
 
     private root: HTMLElement | null = null;
     private observer?: MutationObserver;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -66,6 +63,11 @@ export class BackendBadge extends LitElement {
             attributeFilter: ["data-mode", "data-pending"],
         });
         this.readRoot();
+        // The server can place lane metadata after the stage. Lit's old update
+        // cycle saw it after parsing; keep that contract with one deferred patch.
+        queueMicrotask(() => {
+            if (this.isConnected) this.requestUpdate();
+        });
     }
 
     disconnectedCallback(): void {
@@ -78,6 +80,7 @@ export class BackendBadge extends LitElement {
     private readRoot(): void {
         this.mode = this.root?.getAttribute("data-mode") ?? null;
         this.pending = this.root?.getAttribute("data-pending") ?? null;
+        this.requestUpdate();
     }
 
     private label(): string {
@@ -100,18 +103,14 @@ export class BackendBadge extends LitElement {
         return `▪ ${this.root?.getAttribute("data-snapshot-backend") || "Snapshot"}`;
     }
 
-    protected render(): TemplateResult {
+    protected renderVue(): VNode {
         // Nothing to report without a viewer to report on. The badge would
         // otherwise claim "▪ Snapshot" from its own fallback on any page that
         // happened to carry the tag outside a stage.
-        if (!this.root) return html``;
+        if (!this.root) return createTextVNode("");
         // ◌ (an open circle) reads as "not yet painting", distinct from the ▶/▪
         // lane icons — the wait belongs on the preview, not in a footer.
-        return html`${this.pending ? `◌ ${this.pending}` : this.label()}`;
-    }
-
-    protected updated(): void {
-        if (!this.root) return;
+        const text = this.pending ? `◌ ${this.pending}` : this.label();
         // Written to the host rather than reflected off a property: `data-live` is
         // derived from the mode, and `data-pending` has to be ABSENT (not "false")
         // when idle because `serve.css` keys the amber accent off the attribute's
@@ -119,6 +118,7 @@ export class BackendBadge extends LitElement {
         this.setAttribute("data-live", isLive(this.mode) ? "true" : "false");
         if (this.pending) this.setAttribute("data-pending", "true");
         else this.removeAttribute("data-pending");
+        return createTextVNode(text);
     }
 }
 

@@ -30,8 +30,9 @@
 // selected (so Escape unwinds the selection before the zoom) and writes
 // `--cp-page-zoom` on the stage for the stylesheet to counter-scale the marks by.
 
-import { LitElement, html, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { Fragment, h, type VNode } from "vue";
+import { customElement } from "../controllerElement.js";
+import { VueElement } from "../vueElement.js";
 import {
     MIN_SCALE,
     STEP,
@@ -52,9 +53,9 @@ import {
 const DRAG_SLOP = 5;
 
 @customElement("cp-page-zoom")
-export class PageZoom extends LitElement {
+export class PageZoom extends VueElement {
     /** The readout, and the only reactive state — the view itself is not rendered. */
-    @state() private percent = 100;
+    private percent = 100;
 
     private stage: HTMLElement | null = null;
     private canvas: HTMLElement | null = null;
@@ -148,12 +149,6 @@ export class PageZoom extends LitElement {
         );
     };
 
-    protected createRenderRoot(): HTMLElement {
-        // Light DOM: `serve.css` styles this bar, and it is one pill of chrome with
-        // nothing to encapsulate.
-        return this;
-    }
-
     connectedCallback(): void {
         super.connectedCallback();
         this.stage = this.closest<HTMLElement>(".cp-page-stage");
@@ -231,37 +226,48 @@ export class PageZoom extends LitElement {
         super.disconnectedCallback();
     }
 
-    protected render(): TemplateResult {
-        return html`
-            <button
-                type="button"
-                class="cp-page-zoom-step"
-                aria-label="Zoom out"
-                @click=${() => this.step(1 / STEP)}
-            >
-                &#8722;
-            </button>
-            <span class="cp-page-zoom-level" data-cp-page-zoom-level
-                >${this.percent}%</span
-            >
-            <button
-                type="button"
-                class="cp-page-zoom-step"
-                aria-label="Zoom in"
-                @click=${() => this.step(STEP)}
-            >
-                +
-            </button>
-            <button
-                type="button"
-                class="cp-page-zoom-reset"
-                data-cp-page-zoom-reset
-                aria-label="Reset zoom"
-                @click=${() => this.reset(true)}
-            >
-                Reset
-            </button>
-        `;
+    protected renderVue(): VNode {
+        return h(Fragment, null, [
+            h(
+                "button",
+                {
+                    type: "button",
+                    class: "cp-page-zoom-step",
+                    "aria-label": "Zoom out",
+                    onClick: () => this.step(1 / STEP),
+                },
+                "−",
+            ),
+            h(
+                "span",
+                {
+                    class: "cp-page-zoom-level",
+                    "data-cp-page-zoom-level": "",
+                },
+                `${this.percent}%`,
+            ),
+            h(
+                "button",
+                {
+                    type: "button",
+                    class: "cp-page-zoom-step",
+                    "aria-label": "Zoom in",
+                    onClick: () => this.step(STEP),
+                },
+                "+",
+            ),
+            h(
+                "button",
+                {
+                    type: "button",
+                    class: "cp-page-zoom-reset",
+                    "data-cp-page-zoom-reset": "",
+                    "aria-label": "Reset zoom",
+                    onClick: () => this.reset(true),
+                },
+                "Reset",
+            ),
+        ]);
     }
 
     /**
@@ -351,6 +357,7 @@ export class PageZoom extends LitElement {
         this.hidden =
             !zoomed(this.view) && !this.contains(document.activeElement);
         this.percent = Math.round(scale * 100);
+        this.requestUpdate();
     }
 
     private step(factor: number, eased = true): void {

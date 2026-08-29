@@ -21,8 +21,7 @@
 // with storage blocked gets the server's default open/closed state and drawers
 // that still work, never a page that fails to wire up.
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 
 const PREFIX = "cp-grp.";
 
@@ -31,13 +30,9 @@ function storageKey(group: HTMLDetailsElement): string {
 }
 
 @customElement("cp-group-memory")
-export class GroupMemory extends LitElement {
+export class GroupMemory extends ControllerElement {
     private wired: Array<{ group: HTMLDetailsElement; onToggle: () => void }> =
         [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

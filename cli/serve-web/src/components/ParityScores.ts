@@ -9,15 +9,16 @@
 // the two things the shell cost: `parity.js` built the issues table by hand-escaping strings into
 // `innerHTML` — with an `esc()` that neutralised `<`, `>` and `&` but NOT `"`, while its output was
 // interpolated straight into `href="…"` — and a page with JavaScript off was left showing
-// "Checking 40 mapped comparison(s)…" forever, which is a lie rather than an absence. A Lit
+// "Checking 40 mapped comparison(s)…" forever, which is a lie rather than an absence. A Vue
 // template escapes by construction, and an element that renders nothing until it has something to
 // say leaves no false promise behind.
 //
 // The judgements — what counts as a finding, how a cell reads, what order the table is in, what
 // the summary sentence says — live in `parity/findings.ts` as a table of cases.
 
-import { LitElement, html, nothing, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { h, type VNode } from "vue";
+import { customElement } from "../controllerElement.js";
+import { VueElement } from "../vueElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { compareApi, type CompareApi } from "../compare/api.js";
 import {
@@ -39,15 +40,11 @@ import {
 const LANES = 4;
 
 @customElement("cp-parity-scores")
-export class ParityScores extends LitElement {
-    @state() private status = "";
-    @state() private findings: Finding[] | null = null;
+export class ParityScores extends VueElement {
+    private status = "";
+    private findings: Finding[] | null = null;
 
     private rows: HTMLElement[] = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     // The rows this scores live in the "All comparisons" table further down the page, so connect
     // time is too early to find them. See `dom/whenParsed.ts`.
@@ -66,6 +63,7 @@ export class ParityScores extends LitElement {
         if (!compare || !this.rows.length) return;
 
         this.status = checkingOf(this.rows.length);
+        this.requestUpdate();
         const found: Finding[] = [];
         let next = 0;
         let completed = 0;
@@ -74,12 +72,14 @@ export class ParityScores extends LitElement {
                 const finding = await this.score(compare, this.rows[i]);
                 if (finding) found.push(finding);
                 this.status = progressOf(++completed, this.rows.length);
+                this.requestUpdate();
             }
         };
         await Promise.all(Array.from({ length: LANES }, worker));
 
         this.findings = sortFindings(found);
         this.status = summaryOf(this.rows.length, found);
+        this.requestUpdate();
     }
 
     /** Score one pair, writing its cell, and return a finding when it is worth reporting. */
@@ -134,45 +134,56 @@ export class ParityScores extends LitElement {
         else target.removeAttribute("title");
     }
 
-    protected render(): TemplateResult | typeof nothing {
-        if (!this.status) return nothing;
+    protected renderVue(): VNode | null {
+        if (!this.status) return null;
         const findings = this.findings;
-        return html`<section
-            class="cp-parity-visual-issues"
-            id="cp-parity-visual-issues"
-        >
-            <h3 class="cp-parity-sub">Visual differences</h3>
-            <p class="cp-muted" id="cp-parity-score-status">${this.status}</p>
-            ${
-                findings?.length
-                    ? html`<div
-                          class="cp-status-scroll"
-                          id="cp-parity-score-results"
-                      >
-                          <table class="cp-table">
-                              <thead>
-                                  <tr>
-                                      <th>Component</th>
-                                      <th>Structural match</th>
-                                      <th>Review</th>
-                                  </tr>
-                              </thead>
-                              <tbody id="cp-parity-score-issues">
-                                  ${findings.map((finding) => this.issue(finding))}
-                              </tbody>
-                          </table>
-                      </div>`
-                    : nothing
-            }
-        </section>`;
+        const results = findings?.length
+            ? h(
+                  "div",
+                  {
+                      class: "cp-status-scroll",
+                      id: "cp-parity-score-results",
+                  },
+                  h("table", { class: "cp-table" }, [
+                      h("thead", null, [
+                          h("tr", null, [
+                              h("th", null, "Component"),
+                              h("th", null, "Structural match"),
+                              h("th", null, "Review"),
+                          ]),
+                      ]),
+                      h(
+                          "tbody",
+                          { id: "cp-parity-score-issues" },
+                          findings.map((finding) => this.issue(finding)),
+                      ),
+                  ]),
+              )
+            : null;
+        return h(
+            "section",
+            {
+                class: "cp-parity-visual-issues",
+                id: "cp-parity-visual-issues",
+            },
+            [
+                h("h3", { class: "cp-parity-sub" }, "Visual differences"),
+                h(
+                    "p",
+                    { class: "cp-muted", id: "cp-parity-score-status" },
+                    this.status,
+                ),
+                results,
+            ],
+        );
     }
 
-    private issue(finding: Finding): TemplateResult {
-        return html`<tr>
-            <td>${finding.name}</td>
-            <td class="cp-parity-missing">${findingResult(finding)}</td>
-            <td><a href=${finding.review}>Compare</a></td>
-        </tr>`;
+    private issue(finding: Finding): VNode {
+        return h("tr", null, [
+            h("td", null, finding.name),
+            h("td", { class: "cp-parity-missing" }, findingResult(finding)),
+            h("td", null, h("a", { href: finding.review }, "Compare")),
+        ]);
     }
 }
 

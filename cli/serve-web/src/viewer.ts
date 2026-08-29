@@ -1,7 +1,7 @@
 // The preview viewer: the stage, its lanes, and every control that changes what is on it.
 //
 // Ported from the last hand-written `assets/*.js`. It is still one long imperative module rather
-// than a Lit element, and deliberately so: the viewer renders NO markup of its own. Every control
+// than a Vue element, and deliberately so: the viewer renders NO markup of its own. Every control
 // on the page is server-rendered by `ServeWeb.viewerPage`, and this file is behaviour over that
 // markup — the same shape `format-compare.js` kept when it became generated. A `render()` that
 // returned nothing would be ceremony, and moving the markup into a template would be a rewrite of

@@ -18,8 +18,9 @@
 // Nothing is fetched until the disclosure is opened, and the result is kept for the life of the
 // page.
 
-import { LitElement, html, nothing, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { h, type VNode } from "vue";
+import { customElement } from "../controllerElement.js";
+import { VueElement } from "../vueElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import {
     renderTemplateOf,
@@ -30,15 +31,11 @@ import {
 } from "../viewer/renderRuns.js";
 
 @customElement("cp-revision-runs")
-export class RevisionRuns extends LitElement {
+export class RevisionRuns extends VueElement {
     /** The one-line answer above the list; the thumbnails go on the rows themselves. */
-    @state() private summary = "";
+    private summary = "";
 
     private asked = false;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -78,6 +75,7 @@ export class RevisionRuns extends LitElement {
         if (view) {
             this.decorate(view);
             this.summary = view.summary;
+            this.requestUpdate();
             return;
         }
         // No runs worth marking, but the count itself still answers "do they all differ?" — so say
@@ -86,6 +84,7 @@ export class RevisionRuns extends LitElement {
             payload.runs?.length ?? 0,
             payload.revisions ?? 0,
         );
+        this.requestUpdate();
     }
 
     /** The revision rows this menu is drawn over, in the order the server listed them. */
@@ -200,9 +199,9 @@ export class RevisionRuns extends LitElement {
         }
     }
 
-    protected render(): TemplateResult | typeof nothing {
-        if (!this.summary) return nothing;
-        return html`<p class="cp-revision-runs-summary">${this.summary}</p>`;
+    protected renderVue(): VNode | null {
+        if (!this.summary) return null;
+        return h("p", { class: "cp-revision-runs-summary" }, this.summary);
     }
 }
 

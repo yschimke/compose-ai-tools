@@ -20,8 +20,7 @@
 // diff badge says), `design/geometry.ts` (slots, crops, the tip) and `design/lanes.ts` (the three
 // lanes and the two filters).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { compareApi, type CompareApi } from "../compare/api.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { domGeometry, paintedRect } from "../design/clip.js";
@@ -85,7 +84,7 @@ const nodeBoxOf = (element: SVGElement): Box =>
     paintedRect(element, domGeometry) ?? EMPTY_BOX;
 
 @customElement("cp-design-page")
-export class DesignPage extends LitElement {
+export class DesignPage extends ControllerElement {
     private installed = false;
     private root!: HTMLElement;
     private stage!: HTMLElement;
@@ -125,10 +124,6 @@ export class DesignPage extends LitElement {
     private described: string | null = null;
     private cleanups: Array<() => void> = [];
     private resizes: ResizeObserver | null = null;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

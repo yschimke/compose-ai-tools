@@ -31,8 +31,7 @@
 // positions, and the menus still open — they are bare `<details>`, styled by a
 // sibling selector, with no script behind them at all.
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 
 const PHONE = "(max-width: 640px)";
 
@@ -47,7 +46,7 @@ interface Home {
 }
 
 @customElement("cp-catalog-toolbar")
-export class CatalogToolbar extends LitElement {
+export class CatalogToolbar extends ControllerElement {
     private phone: MediaQueryList | null = null;
     private bar: Element | null = null;
     /** Whether [bar] is one this element built, and so one it has to clear away. */
@@ -107,10 +106,6 @@ export class CatalogToolbar extends LitElement {
         for (const peer of document.querySelectorAll<HTMLDetailsElement>(MENUS))
             if (peer !== opened) peer.open = false;
     };
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

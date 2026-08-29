@@ -21,8 +21,8 @@
 // it is a known difference that has stopped matching what was recorded, which is the whole
 // lifecycle signal this workflow exists to produce.
 
-import { LitElement, html, nothing, render, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
+import { Fragment, h, render, type VNode, type VNodeChild } from "vue";
 import {
     evaluateComparison,
     type AcceptanceReport,
@@ -72,16 +72,12 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 @customElement("cp-acceptance")
-export class Acceptance extends LitElement {
-    @state() private report: AcceptanceReport | null = null;
-    @state() private failed = false;
+export class Acceptance extends ControllerElement {
+    private report: AcceptanceReport | null = null;
+    private failed = false;
 
     private band: HTMLElement | null = null;
     private installed = false;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -145,33 +141,36 @@ export class Acceptance extends LitElement {
     private paint(): void {
         if (!this.band) return;
         const content = this.content();
-        if (content === nothing) {
+        if (content === null) {
             this.band.hidden = true;
+            render(null, this.band);
             return;
         }
         this.band.hidden = false;
         render(content, this.band);
     }
 
-    private content(): TemplateResult | typeof nothing {
+    private content(): VNode | null {
         if (this.failed) {
-            return html`<span class="cp-acceptance-note"
-                >Known differences could not be evaluated.</span
-            >`;
+            return h(
+                "span",
+                { class: "cp-acceptance-note" },
+                "Known differences could not be evaluated.",
+            );
         }
         const report = this.report;
-        if (!report) return nothing;
+        if (!report) return null;
         // **`unavailable` is not `absent`.** A document the page could not fetch is a page that
         // measured nothing, and hiding the band there would read as "nothing is accepted here" — a
         // clean bill of health for a comparison nobody evaluated.
         if (report.state === "unavailable") {
-            return html`<span class="cp-acceptance-note"
-                >This catalog publishes known differences, and they could not be
-                fetched — nothing on this comparison has been evaluated against
-                them.</span
-            >`;
+            return h(
+                "span",
+                { class: "cp-acceptance-note" },
+                "This catalog publishes known differences, and they could not be fetched — nothing on this comparison has been evaluated against them.",
+            );
         }
-        if (report.state === "absent") return nothing;
+        if (report.state === "absent") return null;
 
         const rows = Object.entries(report.statuses).filter(
             ([, entry]) => entry.status !== "out-of-scope",
@@ -192,15 +191,18 @@ export class Acceptance extends LitElement {
             report.validationFailures.length === 0 &&
             !stalled
         ) {
-            return nothing;
+            return null;
         }
 
-        return html`
-            ${this.scores(report)} ${this.documentFailures(report)}
-            <ul class="cp-acceptance-list">
-                ${rows.map(([id, entry]) => this.row(id, entry))}
-            </ul>
-        `;
+        return h(Fragment, null, [
+            this.scores(report),
+            this.documentFailures(report),
+            h(
+                "ul",
+                { class: "cp-acceptance-list" },
+                rows.map(([id, entry]) => this.row(id, entry)),
+            ),
+        ]);
     }
 
     /**
@@ -219,10 +221,8 @@ export class Acceptance extends LitElement {
      * then showed scores over an empty list with nothing explaining that none of it had been
      * applied.
      */
-    private documentFailures(
-        report: AcceptanceReport,
-    ): TemplateResult | typeof nothing {
-        if (!report.documentRejected) return nothing;
+    private documentFailures(report: AcceptanceReport): VNode | null {
+        if (!report.documentRejected) return null;
         // Attributed where the engine attributed it: `duplicate-id (glyph)` names the spelling to go
         // and look at, and `id-missing (#2)` the record that has no name to be called by.
         const reasons = report.validationFailures.map((failure) => {
@@ -232,30 +232,27 @@ export class Acceptance extends LitElement {
                 return `${failure.reason} (#${failure.index})`;
             return failure.reason;
         });
-        if (reasons.length === 0) return nothing;
-        return html`<span class="cp-acceptance-row" data-status="refused"
-            >This catalog's known-difference document was refused
-            (${reasons.join(", ")}), so nothing in it is being applied.</span
-        >`;
+        if (reasons.length === 0) return null;
+        return h(
+            "span",
+            { class: "cp-acceptance-row", "data-status": "refused" },
+            `This catalog's known-difference document was refused (${reasons.join(", ")}), so nothing in it is being applied.`,
+        );
     }
 
-    private scores(report: AcceptanceReport): TemplateResult | typeof nothing {
+    private scores(report: AcceptanceReport): VNode | null {
         const scores = report.scores;
         if (!scores) {
             // Said plainly, because the alternative reading is the dangerous one: no scores here
             // means nothing on this comparison was measured against the catalog's known differences,
             // not that there was nothing to measure.
-            return html`<span class="cp-acceptance-note"
-                >${
-                    report.pair === "unavailable"
-                        ? html`The rendered pair could not be read as this page
-                          describes it, so nothing on this comparison has been
-                          evaluated against this catalog's known differences.
-                          Reloading usually resolves it.`
-                        : html`This pair could not be scored, so only the
-                          acceptance verdicts are shown.`
-                }</span
-            >`;
+            return h(
+                "span",
+                { class: "cp-acceptance-note" },
+                report.pair === "unavailable"
+                    ? "The rendered pair could not be read as this page describes it, so nothing on this comparison has been evaluated against this catalog's known differences. Reloading usually resolves it."
+                    : "This pair could not be scored, so only the acceptance verdicts are shown.",
+            );
         }
         // `raw` first and always, because it is the number that must never be hidden.
         //
@@ -267,17 +264,17 @@ export class Acceptance extends LitElement {
         // live scorer, so both numbers are now one pixel path: measured over the eleven committed
         // `renders/lane-parity` pairs the two agree to 0.007pp, which is well inside the one decimal
         // either of them prints.
-        return html`
-            <span class="cp-acceptance-scores">
-                <strong>${scores.raw.toFixed(1)}%</strong> raw ·
-                <strong>${scores.unaccepted.toFixed(1)}%</strong> unaccepted ·
-                <strong>${scores.accepted.toFixed(1)}%</strong> over the
-                accepted region
-            </span>
-        `;
+        return h("span", { class: "cp-acceptance-scores" }, [
+            h("strong", null, `${scores.raw.toFixed(1)}%`),
+            " raw · ",
+            h("strong", null, `${scores.unaccepted.toFixed(1)}%`),
+            " unaccepted · ",
+            h("strong", null, `${scores.accepted.toFixed(1)}%`),
+            " over the accepted region",
+        ]);
     }
 
-    private row(id: string, entry: AcceptanceStatus): TemplateResult {
+    private row(id: string, entry: AcceptanceStatus): VNode {
         const label = STATUS_LABELS[entry.status] ?? entry.status;
         // The causes and reasons are the engine's own tokens, shown rather than translated: they are
         // what an author greps for, and a friendlier paraphrase would be a second vocabulary for the
@@ -293,22 +290,18 @@ export class Acceptance extends LitElement {
                 : lifecycle?.lifecycle === "open"
                   ? "issue open"
                   : "issue state unknown";
-        return html`<li
-            class="cp-acceptance-row"
-            data-status=${entry.status}
-            data-lifecycle=${lifecycle?.lifecycle ?? "unknown"}
-            ?data-stale=${lifecycle?.stale ?? false}
-        >
-            <code>${id}</code> —
-            ${label}${
-                detail.length > 0 ? html` (${detail.join(", ")})` : nothing
-            }
-            · ${lifecycleLabel}
-        </li>`;
-    }
-
-    protected render(): typeof nothing {
-        // Nothing of its own; the band is the surface. See `paint`.
-        return nothing;
+        const children: VNodeChild[] = [h("code", null, id), ` — ${label}`];
+        if (detail.length > 0) children.push(` (${detail.join(", ")})`);
+        children.push(` · ${lifecycleLabel}`);
+        return h(
+            "li",
+            {
+                class: "cp-acceptance-row",
+                "data-status": entry.status,
+                "data-lifecycle": lifecycle?.lifecycle ?? "unknown",
+                "data-stale": lifecycle?.stale ? "" : undefined,
+            },
+            children,
+        );
     }
 }

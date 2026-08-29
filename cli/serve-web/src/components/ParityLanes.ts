@@ -8,18 +8,13 @@
 // The rule itself lives in `parity/laneFilter.ts`, where its one exception (`all` means "no
 // filter", not "entries whose lane is `all`") is a test rather than a screenshot of a feed.
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { filterLanes } from "../parity/laneFilter.js";
 
 @customElement("cp-parity-lanes")
-export class ParityLanes extends LitElement {
+export class ParityLanes extends ControllerElement {
     private cleanups: Array<() => void> = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     // The buttons and the feed are both siblings further down the page, so connect time is too
     // early to find either. See `dom/whenParsed.ts`.

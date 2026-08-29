@@ -12,7 +12,7 @@
 // pair spent twice the toolbar width to say the same thing, and half of it was
 // always a button that did nothing when clicked.
 //
-// Light DOM (`createRenderRoot` returns `this`), so the existing `serve.css`
+// Light DOM (provided by `VueElement`), so the existing `serve.css`
 // `.cp-bg-btn` rules apply unchanged and the button keeps sitting in the toolbar's
 // flex flow. Shadow DOM would need every one of those rules restated or piped
 // through custom properties, for a control that has no encapsulation problem.
@@ -25,8 +25,9 @@
 // toolbar's flex item and the upgraded control lays out exactly as the bare
 // button did.
 
-import { LitElement, html, type TemplateResult } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { h, type VNode } from "vue";
+import { customElement } from "../controllerElement.js";
+import { VueElement } from "../vueElement.js";
 import {
     isTransparent,
     subscribe,
@@ -35,17 +36,15 @@ import {
 } from "../backgroundChoice.js";
 
 @customElement("cp-bg-toggle")
-export class BgToggle extends LitElement {
+export class BgToggle extends VueElement {
     /** Tooltip text; the server varies it per surface. */
-    @property({ type: String }) label = "";
+    private get label(): string {
+        return this.getAttribute("label") ?? "";
+    }
 
-    @state() private pressed = isTransparent();
+    private pressed = isTransparent();
 
     private unsubscribe?: () => void;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -53,7 +52,9 @@ export class BgToggle extends LitElement {
         this.pressed = isTransparent();
         this.unsubscribe = subscribe(() => {
             this.pressed = isTransparent();
+            this.requestUpdate();
         });
+        this.requestUpdate();
     }
 
     disconnectedCallback(): void {
@@ -62,16 +63,18 @@ export class BgToggle extends LitElement {
         super.disconnectedCallback();
     }
 
-    protected render(): TemplateResult {
-        return html`<button
-            type="button"
-            class="cp-bg-btn"
-            aria-pressed=${this.pressed ? "true" : "false"}
-            title=${this.label}
-            @click=${() => toggle()}
-        >
-            Transparent
-        </button>`;
+    protected renderVue(): VNode {
+        return h(
+            "button",
+            {
+                type: "button",
+                class: "cp-bg-btn",
+                "aria-pressed": this.pressed ? "true" : "false",
+                title: this.label,
+                onClick: () => toggle(),
+            },
+            "Transparent",
+        );
     }
 }
 

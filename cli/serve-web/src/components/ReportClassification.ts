@@ -15,20 +15,15 @@
 //
 // Light DOM, so `serve.css`'s `.cp-report-class` rules apply to the markup the server wrote.
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { reportBody } from "../report/body.js";
 import { withClassification } from "../report/classification.js";
 import { whenParsed } from "../dom/whenParsed.js";
 
 @customElement("cp-report-classification")
-export class ReportClassification extends LitElement {
+export class ReportClassification extends ControllerElement {
     private select: HTMLSelectElement | null = null;
     private field: HTMLInputElement | null = null;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

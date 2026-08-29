@@ -19,8 +19,8 @@
 //   - and **never a verdict**: whether an acceptance still matches its recorded difference is a
 //     per-comparison answer, and it stays on the comparison page where the pixels are.
 
-import { LitElement, html, nothing, render, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
+import { Fragment, h, render, type VNode, type VNodeChild } from "vue";
 import { walkCatalog, type AcceptanceReport } from "../parity/acceptance.js";
 import type { Catalog } from "../parity/engine.js";
 import { whenParsed } from "../dom/whenParsed.js";
@@ -63,17 +63,13 @@ const STATUS_LABELS: Record<string, string> = {
 const ORPHANED = "orphaned-target";
 
 @customElement("cp-acceptance-audit")
-export class AcceptanceAudit extends LitElement {
-    @state() private report: AcceptanceReport | null = null;
-    @state() private failed = false;
+export class AcceptanceAudit extends ControllerElement {
+    private report: AcceptanceReport | null = null;
+    private failed = false;
 
     private band: HTMLElement | null = null;
     private issueHref: Record<string, string> = {};
     private installed = false;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -124,34 +120,42 @@ export class AcceptanceAudit extends LitElement {
     private paint(): void {
         if (!this.band) return;
         const content = this.content();
-        if (content === nothing) {
+        if (content === null) {
             this.band.hidden = true;
+            render(null, this.band);
             return;
         }
         this.band.hidden = false;
         render(content, this.band);
     }
 
-    private content(): TemplateResult | typeof nothing {
+    private content(): VNode | null {
         if (this.failed) {
-            return html`<h2 class="cp-status-sec">Known differences</h2>
-                <p class="cp-muted">
-                    This catalog's known differences could not be audited.
-                </p>`;
+            return h(Fragment, null, [
+                h("h2", { class: "cp-status-sec" }, "Known differences"),
+                h(
+                    "p",
+                    { class: "cp-muted" },
+                    "This catalog's known differences could not be audited.",
+                ),
+            ]);
         }
         const report = this.report;
-        if (!report) return nothing;
+        if (!report) return null;
         // `unavailable` is not `absent`, for the reason the comparison band draws the same line: the
         // server only mounts this panel for a catalog that publishes a document, so "could not
         // fetch" must not render as "accepts nothing".
         if (report.state === "unavailable") {
-            return html`<h2 class="cp-status-sec">Known differences</h2>
-                <p class="cp-muted">
-                    This catalog publishes known differences, and they could not
-                    be fetched — nothing here has been audited against them.
-                </p>`;
+            return h(Fragment, null, [
+                h("h2", { class: "cp-status-sec" }, "Known differences"),
+                h(
+                    "p",
+                    { class: "cp-muted" },
+                    "This catalog publishes known differences, and they could not be fetched — nothing here has been audited against them.",
+                ),
+            ]);
         }
-        if (report.state === "absent") return nothing;
+        if (report.state === "absent") return null;
         if (report.documentRejected) {
             const reasons = report.validationFailures.map((failure) =>
                 failure.id !== undefined
@@ -160,20 +164,22 @@ export class AcceptanceAudit extends LitElement {
                       ? `${failure.reason} (#${failure.index})`
                       : failure.reason,
             );
-            return html`<h2 class="cp-status-sec">Known differences</h2>
-                <p class="cp-acceptance-row" data-status="refused">
-                    This catalog's known-difference document was
-                    refused${
-                        reasons.length > 0
-                            ? html` (${reasons.join(", ")})`
-                            : nothing
+            const reason = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
+            return h(Fragment, null, [
+                h("h2", { class: "cp-status-sec" }, "Known differences"),
+                h(
+                    "p",
+                    {
+                        class: "cp-acceptance-row",
+                        "data-status": "refused",
                     },
-                    so nothing in it is being applied on any comparison.
-                </p>`;
+                    `This catalog's known-difference document was refused${reason}, so nothing in it is being applied on any comparison.`,
+                ),
+            ]);
         }
 
         const entries = Object.entries(report.statuses);
-        if (entries.length === 0) return nothing;
+        if (entries.length === 0) return null;
         // Two axes, joined here and nowhere else: `status` is what the walk concluded, `lifecycle`
         // is what the published issue index says. A record can be in both lists — an orphan whose
         // issue also closed is two separate pieces of cleanup — and neither is derived from the
@@ -184,20 +190,23 @@ export class AcceptanceAudit extends LitElement {
         const closed = entries.filter(
             ([id]) => report.lifecycles[id]?.lifecycle === "closed",
         );
-        return html`
-            <h2 class="cp-status-sec">Known differences (${entries.length})</h2>
-            <p class="cp-muted">
-                Differences this catalog has accepted against a tracking issue.
-                Each one is still measured on its own comparison — this panel is
-                the document, not the verdict.
-            </p>
-            ${this.problems(problems)} ${this.closed(closed, report)}
-            ${
-                problems.length === 0 && closed.length === 0
-                    ? this.allClear(entries, report)
-                    : nothing
-            }
-        `;
+        return h(Fragment, null, [
+            h(
+                "h2",
+                { class: "cp-status-sec" },
+                `Known differences (${entries.length})`,
+            ),
+            h(
+                "p",
+                { class: "cp-muted" },
+                "Differences this catalog has accepted against a tracking issue. Each one is still measured on its own comparison — this panel is the document, not the verdict.",
+            ),
+            this.problems(problems),
+            this.closed(closed, report),
+            problems.length === 0 && closed.length === 0
+                ? this.allClear(entries, report)
+                : null,
+        ]);
     }
 
     /**
@@ -212,21 +221,20 @@ export class AcceptanceAudit extends LitElement {
     private allClear(
         entries: Array<[string, AcceptanceReport["statuses"][string]]>,
         report: AcceptanceReport,
-    ): TemplateResult {
+    ): VNode {
         const unknown = entries.filter(
             ([id]) =>
                 (report.lifecycles[id]?.lifecycle ?? "unknown") !== "open",
         ).length;
-        return html`<p class="cp-muted">
-            Every accepted difference names a component this catalog still has,
-            and no tracking issue is reported
-            closed.${
-                unknown > 0
-                    ? html` The issue index says nothing about ${unknown} of
-                      them, so their issues are unknown rather than open.`
-                    : nothing
-            }
-        </p>`;
+        const suffix =
+            unknown > 0
+                ? ` The issue index says nothing about ${unknown} of them, so their issues are unknown rather than open.`
+                : "";
+        return h(
+            "p",
+            { class: "cp-muted" },
+            `Every accepted difference names a component this catalog still has, and no tracking issue is reported closed.${suffix}`,
+        );
     }
 
     /**
@@ -237,33 +245,35 @@ export class AcceptanceAudit extends LitElement {
      */
     private problems(
         rows: Array<[string, AcceptanceReport["statuses"][string]]>,
-    ): TemplateResult | typeof nothing {
-        if (rows.length === 0) return nothing;
-        return html`
-            <h3 class="cp-parity-sub">Needs attention (${rows.length})</h3>
-            <ul class="cp-acceptance-list">
-                ${rows.map(([id, entry]) => {
-                    const detail = [
-                        ...(entry.causes ?? []),
-                        ...(entry.reasons ?? []),
-                    ];
-                    const orphaned = detail.includes(ORPHANED);
-                    const rest = detail.filter((token) => token !== ORPHANED);
-                    return html`<li
-                        class="cp-acceptance-row"
-                        data-status=${entry.status}
-                        ?data-orphaned=${orphaned}
-                    >
-                        <code>${id}</code> —
-                        ${
-                            orphaned
-                                ? "names a preview, reference, component or variant this catalog no longer has"
-                                : (STATUS_LABELS[entry.status] ?? entry.status)
-                        }${rest.length > 0 ? html` (${rest.join(", ")})` : nothing}
-                    </li>`;
-                })}
-            </ul>
-        `;
+    ): VNode | null {
+        if (rows.length === 0) return null;
+        const items = rows.map(([id, entry]) => {
+            const detail = [...(entry.causes ?? []), ...(entry.reasons ?? [])];
+            const orphaned = detail.includes(ORPHANED);
+            const rest = detail.filter((token) => token !== ORPHANED);
+            const label = orphaned
+                ? "names a preview, reference, component or variant this catalog no longer has"
+                : (STATUS_LABELS[entry.status] ?? entry.status);
+            const children: VNodeChild[] = [h("code", null, id), ` — ${label}`];
+            if (rest.length > 0) children.push(` (${rest.join(", ")})`);
+            return h(
+                "li",
+                {
+                    class: "cp-acceptance-row",
+                    "data-status": entry.status,
+                    "data-orphaned": orphaned ? "" : undefined,
+                },
+                children,
+            );
+        });
+        return h(Fragment, null, [
+            h(
+                "h3",
+                { class: "cp-parity-sub" },
+                `Needs attention (${rows.length})`,
+            ),
+            h("ul", { class: "cp-acceptance-list" }, items),
+        ]);
     }
 
     /**
@@ -276,44 +286,38 @@ export class AcceptanceAudit extends LitElement {
     private closed(
         rows: Array<[string, AcceptanceReport["statuses"][string]]>,
         report: AcceptanceReport,
-    ): TemplateResult | typeof nothing {
-        if (rows.length === 0) return nothing;
-        return html`
-            <h3 class="cp-parity-sub">
-                Closed issue, acceptance still committed (${rows.length})
-            </h3>
-            <p class="cp-muted">
-                The loop finishes by deleting the acceptance in the same change
-                that closes its issue. These are the halves left behind.
-            </p>
-            <ul class="cp-acceptance-list">
-                ${rows.map(([id]) => {
-                    const issue = report.lifecycles[id]?.issue ?? null;
-                    const href = issue ? this.issueHref[issue] : undefined;
-                    return html`<li
-                        class="cp-acceptance-row"
-                        data-status="stale"
-                        data-lifecycle="closed"
-                    >
-                        <code>${id}</code> —
-                        ${
-                            href
-                                ? html`<a href=${href} rel="noopener"
-                                      >${issue}</a
-                                  >`
-                                : issue
-                                  ? html`<code>${issue}</code>`
-                                  : "its tracking issue"
-                        }
-                        is closed
-                    </li>`;
-                })}
-            </ul>
-        `;
-    }
-
-    protected render(): typeof nothing {
-        // Nothing of its own; the server's band is the surface. See `paint`.
-        return nothing;
+    ): VNode | null {
+        if (rows.length === 0) return null;
+        const items = rows.map(([id]) => {
+            const issue = report.lifecycles[id]?.issue ?? null;
+            const href = issue ? this.issueHref[issue] : undefined;
+            const issueNode = href
+                ? h("a", { href, rel: "noopener" }, issue ?? "")
+                : issue
+                  ? h("code", null, issue)
+                  : "its tracking issue";
+            return h(
+                "li",
+                {
+                    class: "cp-acceptance-row",
+                    "data-status": "stale",
+                    "data-lifecycle": "closed",
+                },
+                [h("code", null, id), " — ", issueNode, " is closed"],
+            );
+        });
+        return h(Fragment, null, [
+            h(
+                "h3",
+                { class: "cp-parity-sub" },
+                `Closed issue, acceptance still committed (${rows.length})`,
+            ),
+            h(
+                "p",
+                { class: "cp-muted" },
+                "The loop finishes by deleting the acceptance in the same change that closes its issue. These are the halves left behind.",
+            ),
+            h("ul", { class: "cp-acceptance-list" }, items),
+        ]);
     }
 }

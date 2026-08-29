@@ -25,8 +25,7 @@
 // and what each says), `inspect/layers.ts` (which endpoint a layer reads, and how a deep link names
 // it) and `inspect/host.ts` (which DOM it draws into).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import {
     a11yEntries,
@@ -52,7 +51,7 @@ interface Box {
 }
 
 @customElement("cp-inspect-layers")
-export class InspectLayers extends LitElement {
+export class InspectLayers extends ControllerElement {
     private installed = false;
     private host: InspectHost | null = null;
     private img: HTMLImageElement | null = null;
@@ -69,10 +68,6 @@ export class InspectLayers extends LitElement {
     private cleanups: Array<() => void> = [];
     private observer: MutationObserver | null = null;
     private resizes: ResizeObserver | null = null;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

@@ -13,11 +13,13 @@
 // Run after `npm run build`, from anywhere — paths resolve off this file.
 
 import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, relative, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
+const packageRoot = resolve(here, "..");
 const assets = resolve(
     here,
     "..",
@@ -33,6 +35,43 @@ const tracked = [
     "known-differences.js",
     "viewer.js",
 ].map((name) => relative(repoRoot, resolve(assets, name)));
+
+// The migration is atomic. Keep that property explicit so a future component
+// cannot quietly restore the old runtime and make production pay for both.
+const packageJson = JSON.parse(
+    readFileSync(resolve(packageRoot, "package.json"), "utf8"),
+);
+const dependencySections = [
+    packageJson.dependencies ?? {},
+    packageJson.devDependencies ?? {},
+];
+if (dependencySections.some((section) => Object.hasOwn(section, "lit"))) {
+    console.error("Lit must not be present in serve-web dependencies.");
+    process.exit(1);
+}
+
+const sourceRoot = resolve(packageRoot, "src");
+const sourceFiles = [];
+const collectSources = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) collectSources(path);
+        else if (entry.name.endsWith(".ts")) sourceFiles.push(path);
+    }
+};
+collectSources(sourceRoot);
+const litSources = sourceFiles.filter((path) => {
+    const source = readFileSync(path, "utf8");
+    return /(?:from|import)\s*["']lit(?:\/|["'])|\bLitElement\b/.test(source);
+});
+if (litSources.length) {
+    console.error(
+        `Lit must not be imported by serve-web source:\n${litSources
+            .map((path) => relative(packageRoot, path))
+            .join("\n")}`,
+    );
+    process.exit(1);
+}
 
 const status = execFileSync(
     "git",

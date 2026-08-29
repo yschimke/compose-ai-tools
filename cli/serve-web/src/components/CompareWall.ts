@@ -15,8 +15,7 @@
 // Renders nothing of its own; `serve.css` hides the tag. The decisions live next door:
 // `compare/pairing.ts`, `compare/state.ts`, `compare/wallRows.ts` and `compare/grade.ts`.
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { compareApi } from "../compare/api.js";
 import { compareImageUrls } from "../compare/detail.js";
 import { grade } from "../compare/grade.js";
@@ -62,7 +61,7 @@ import type { RcPlayer } from "../rc/player.js";
 const MAP_MAX_SIDE = 440;
 
 @customElement("cp-compare-wall")
-export class CompareWall extends LitElement {
+export class CompareWall extends ControllerElement {
     private installed = false;
     private root!: HTMLElement;
     private rows: HTMLElement[] = [];
@@ -96,10 +95,6 @@ export class CompareWall extends LitElement {
     /** Bumped per run, so a slow lane cannot write its scores over a newer one's. */
     private sequence = 0;
     private cleanups: Array<() => void> = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();
