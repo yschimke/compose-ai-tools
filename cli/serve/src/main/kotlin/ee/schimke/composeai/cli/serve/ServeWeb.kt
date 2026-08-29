@@ -3625,7 +3625,7 @@ ${captureControlsHtml().prependIndent("          ")}
    * pre-paint script in [document] already restores the choice on every page, so the viewer was
    * simply missing the control rather than the behaviour.
    *
-   * The button itself is rendered by the `<cp-bg-toggle>` Lit element in `serve-components.js`
+   * The button itself is rendered by the `<cp-bg-toggle>` Vue element in `serve-components.js`
    * (source: `cli/serve-web/src/components/BgToggle.ts`), not here — one source of truth for markup
    * a JS-only control owns. `serve.css` gives the element `display: contents`, so the button stays
    * the toolbar's own flex item and lays out exactly as the bare button did.
@@ -11102,7 +11102,7 @@ $cards
    *
    * The sheet is drawn at the size the design file drew it — m3-catalog's Styles page is 6263 px
    * across — and it lands in a content column a sixth of that, so every type specimen and swatch
-   * number on it is sub-pixel. The `<cp-page-zoom>` element this page declares — a Lit component in
+   * number on it is sub-pixel. The `<cp-page-zoom>` element this page declares — a Vue component in
    * `cli/serve-web`, alongside `<cp-design-page>` — therefore makes the stage zoomable:
    * double-click drills one addressable level in (Figma's own gesture, and free here because a
    * Figma export is a tree of `<g data-node-id>`, so "one level in" is the next element down the
@@ -11375,7 +11375,7 @@ $cards
           </div>
         </div>
         <!-- The sheet's overlays, lanes and per-node scoring, alongside the zoom
-             (`<cp-page-zoom>`) — both in the Lit bundle. `<cp-design-page>` reads
+             (`<cp-page-zoom>`) — both in the Vue bundle. `<cp-design-page>` reads
              `window.ComposePreviewCompare` when the diff lane is entered rather than when it
              upgrades, so it does not depend on following the script below. -->
         ${scriptTag("serve-components.js")}
@@ -14458,7 +14458,7 @@ ${scriptTag("known-differences.js")}
     // toggle wires Back through the URL-state global as it upgrades, and three of the legacy
     // enhancement scripts read it at their own IIFE time. It is unconditional because it also
     // carries the Page theme setting, which every page has — and it can afford to be, at ~1 kB
-    // gzipped with no Lit in it. Deliberately NOT commented in the emitted HTML: a note naming
+    // gzipped with no Vue in it. Deliberately NOT commented in the emitted HTML: a note naming
     // those script files would ship to every visitor, and `html.contains("format-compare.js")` is
     // exactly how several tests ask whether a lane is loaded.
     return """

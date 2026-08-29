@@ -24,8 +24,7 @@
 // converted), `report/locator.ts` (how the two fields are written) and `report/body.ts` (which
 // composes them with everything else the report carries).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { reportBody } from "../report/body.js";
 import type { Selection } from "../report/locator.js";
@@ -37,7 +36,7 @@ import {
 } from "../report/elementTargets.js";
 
 @customElement("cp-element-selection")
-export class ElementSelection extends LitElement {
+export class ElementSelection extends ControllerElement {
     private installed = false;
     private root: HTMLElement | null = null;
     private frame: HTMLImageElement | null = null;
@@ -49,10 +48,6 @@ export class ElementSelection extends LitElement {
     private targets: TagTarget[] = [];
     private selection: Selection = {};
     private cleanups: Array<() => void> = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

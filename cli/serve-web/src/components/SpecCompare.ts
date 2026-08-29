@@ -19,8 +19,7 @@
 // and they are not equal), `spec/verdict.ts` (what the chip and the readout say), `spec/wipe.ts`
 // (where the seam sits), `dom/sameOrigin.ts` (what may reach a canvas at all).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { compareApi, type NormalisedPair } from "../compare/api.js";
 import { urlState } from "../urlState.js";
@@ -80,7 +79,7 @@ declare global {
 }
 
 @customElement("cp-spec-compare")
-export class SpecCompare extends LitElement {
+export class SpecCompare extends ControllerElement {
     private installed = false;
     private root: HTMLElement | null = null;
     private compare: HTMLElement | null = null;
@@ -144,10 +143,6 @@ export class SpecCompare extends LitElement {
     private framesAnnotationUrl = "";
     private typographyLegend: HTMLElement | null = null;
     private typographyLayers: HTMLElement[] = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     // `viewer.js` calls `window.cpSpecCompare` as it enters the lane, so the global has to be up as
     // soon as the markup exists rather than a parse later. Same shape as `<cp-rc-lanes>`.

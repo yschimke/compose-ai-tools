@@ -164,4 +164,15 @@ describe("<cp-history-menu>", () => {
             0,
         );
     });
+
+    it("does not duplicate its control when moved", async () => {
+        const menu = await mount();
+        assert.equal(menu.querySelectorAll(".cp-history-menu").length, 1);
+
+        menu.remove();
+        document.body.appendChild(menu);
+        await flush();
+
+        assert.equal(menu.querySelectorAll(".cp-history-menu").length, 1);
+    });
 });

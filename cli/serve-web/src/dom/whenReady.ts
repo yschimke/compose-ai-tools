@@ -9,7 +9,7 @@
 // report page never added its browser section, and the launcher never offered its catalog half.
 // The affordance still looked right in all three cases.
 //
-// Callback rather than a promise — the shape `dom/whenParsed.ts` gives the Lit components — for one
+// Callback rather than a promise — unlike `dom/whenParsed.ts`, which controllers await — for one
 // reason: on an already-parsed document this runs the work in the SAME task, which is what lets the
 // installers be driven straight through in a test without a flush between arranging the DOM and
 // asserting on it. A promise would defer even the already-ready case by a microtask.

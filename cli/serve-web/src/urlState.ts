@@ -6,7 +6,7 @@
 // them. Moving ownership into this bundle would make that load order a property
 // of two build systems instead of one line in `ServeWeb.document`, and would do
 // it in the same change that introduces the toolchain. `url-state.js` keeps
-// owning the global; this wrapper just gives the Lit side types and a null-safe
+// owning the global; this wrapper just gives the component side types and a null-safe
 // handle for the window where the global is genuinely absent (a page that
 // declares no URL-owned state does not load it).
 //

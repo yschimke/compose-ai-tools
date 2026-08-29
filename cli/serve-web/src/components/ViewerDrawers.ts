@@ -12,8 +12,7 @@
 // would have carried dead code across, and the harness states that clicked it were failing on
 // `main` for the same reason.
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import {
     drawerToClose,
     foldKey,
@@ -41,17 +40,13 @@ interface RowHome {
 }
 
 @customElement("cp-viewer-drawers")
-export class ViewerDrawers extends LitElement {
+export class ViewerDrawers extends ControllerElement {
     private viewer: HTMLElement | null = null;
     private scrim: HTMLElement | null = null;
     private foldScope = "default";
     private rowHomes: RowHome[] = [];
     private cleanups: Array<() => void> = [];
     private themeObserver?: MutationObserver;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

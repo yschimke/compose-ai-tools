@@ -2,7 +2,7 @@
 //
 // What EVERY serve page needs, and nothing else: the URL-state global and the Page theme setting.
 // `ServeWeb.document` emits this unconditionally — the front door and `/status` included — so it
-// must stay small and must carry no Lit. Neither module here is a custom element, which is the
+// must stay small and must carry no Vue. Neither module here is a custom element, which is the
 // whole reason this is a second bundle rather than more of `main.ts`.
 //
 // Order matters, and this file is where it is stated: `installUrlState` publishes

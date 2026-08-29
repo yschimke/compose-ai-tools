@@ -1,6 +1,6 @@
 // happy-dom global registration, imported first by every test file.
 //
-// Lit needs `window`/`document`/`customElements` at *module evaluation* time —
+// Custom-element registration needs `window`/`document`/`customElements` at *module evaluation* time —
 // `@customElement` calls `customElements.define` as a side effect of importing
 // the component — so the DOM has to exist before the component module is
 // imported, not merely before the test runs. Each test file therefore does
@@ -41,7 +41,7 @@ export function stubStorage(throwOnWrite = false): {
     return { get: (key) => store.get(key) ?? null };
 }
 
-/** Wait for Lit to flush pending reactive updates. */
+/** Wait for Vue updates and queued browser work to flush. */
 export async function flush(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }

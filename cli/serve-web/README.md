@@ -1,6 +1,6 @@
-# `serve-web` — Lit components for the preview server
+# `serve-web` — Vue components for the preview server
 
-The browser side of `compose-preview serve`, as typed, tested Lit components
+The browser side of `compose-preview serve`, as typed, tested Vue components
 instead of hand-rolled IIFEs in `assets/*.js`.
 
 Built to a single committed bundle at
@@ -15,17 +15,21 @@ npm test            # mocha + happy-dom
 npm run verify      # typecheck + test + build + assert the bundle is committed
 ```
 
-## Why Lit, and why the same setup as the VS Code extension
+## Why Vue, without a client-side application shell
 
-[`src/webview`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview) is already Lit 3 + esbuild + TypeScript, with
-mocha + happy-dom for unit tests and Playwright for visual capture. Reusing that
-stack here means one set of idioms, one decorator mode, one test runner, and
-the serve `preview-harness` (now at `preview-server/preview-harness`, split
-out of the extension's) already screenshots these pages — so the capture
-pipeline needed no new machinery at all.
+The server still owns page structure and useful no-JavaScript content. Vue patches the small
+reactive controls and data-driven bands in light DOM through `VueElement`; behavior-only custom
+elements extend `ControllerElement` and enhance the server's markup directly. This keeps one
+Kotlin/TypeScript boundary without mounting an empty Vue app around every page controller.
 
-The pinned versions deliberately match the extension's. Two Lit majors in one
-repo would be two component models to hold in your head for no benefit.
+The migration is atomic: the production bundle contains Vue and no Lit runtime. Vue's compile-time
+feature flags in `esbuild.mjs` remove unused Options API, devtools, and verbose hydration code.
+
+## Tooling
+
+The package keeps the existing TypeScript, esbuild, mocha + happy-dom, and preview-harness capture
+pipeline. Vue is integrated at the renderer boundary, so the Gradle build remains Node-free and
+the committed browser assets retain the same delivery model.
 
 ## The constraint that shapes everything here: this is a *server-rendered* surface
 
@@ -54,8 +58,8 @@ declares**, not a client-side app:
 
 ```ts
 // BgToggle.ts
-protected createRenderRoot(): HTMLElement {
-    return this;                       // light DOM: serve.css reaches the button
+export class BgToggle extends VueElement {
+    protected renderVue(): VNode { /* serve.css reaches the light DOM */ }
 }
 ```
 
@@ -88,10 +92,9 @@ verify` rebuilds and fails if the committed bytes differ from a fresh build of
 playground, `catalog-live.js` only where a session can stream. That exists for
 the heavy ones, and they keep their own tags.
 
-This bundle is loaded whole. Lit is ~6 kB gzipped, an element whose tag is not
-on the page costs only its bytes, and every serve page already loads
-`url-state.js` — so splitting would buy less than the complexity costs, and it
-lets components import each other.
+This bundle is loaded whole. Vue's renderer is shared by every markup-owning
+element, an element whose tag is not on the page costs only its bytes, and the
+single bundle lets components import each other without a second runtime.
 
 Revisit if the bundle grows past roughly the size of the pages that load it.
 
@@ -307,7 +310,7 @@ downscale, sample and hand off.
 
 `viewer.js` (3,151) was last, and went the way `format-compare.js` went in step
 4: same path, same script tag, generated from `src/viewer.ts` rather than
-hand-written. It is **not** a Lit element and deliberately so — the viewer
+hand-written. It is **not** a Vue element and deliberately so — the viewer
 renders no markup of its own. Every control on the page is server-rendered by
 `ServeWeb.viewerPage`, so a `render()` returning nothing would be ceremony, and
 moving the markup into a template would be a rewrite of the server page rather
@@ -337,7 +340,7 @@ questions about the same number.
 
 ## The bundles, and which one a thing belongs in
 
-`serve-components.js` carries the Lit elements and is emitted by the surfaces
+`serve-components.js` carries the Vue elements and DOM controllers and is emitted by the surfaces
 whose markup contains their tags. `serve-chrome.js` carries what *every* page
 needs — `window.cpUrlState` and the Page theme setting — and the shell
 (`ServeWeb.document`) emits it unconditionally, as the first thing in `<body>`.
@@ -350,20 +353,21 @@ lopsided enough that one bundle could not serve all three:
 
 | | raw | gzip |
 | --- | --- | --- |
-| `serve-components.js` | 116 kB | 35 kB |
-| `viewer.js` | 45 kB | 13 kB |
-| `format-compare.js` | 5 kB | 2 kB |
-| `serve-chrome.js` | 2 kB | 1 kB |
+| `serve-components.js` | 189 kB | 61 kB |
+| `viewer.js` | 57 kB | 18 kB |
+| `known-differences.js` | 104 kB | 39 kB |
+| `format-compare.js` | 9 kB | 4 kB |
+| `serve-chrome.js` | 8 kB | 3 kB |
 
 Putting the component bundle on the front door would undo the reason its imagery
 is prebaked — a visit should cost the HTML and nothing else. Neither chrome
-module is a custom element, so that bundle carries no Lit at all and is *smaller*
+module is a custom element, so that bundle carries no Vue at all and is *smaller*
 than the two files it replaced (`url-state.js` + `page-theme.js` were 3.6 kB
 gzipped between them). Every page got cheaper.
 
 The scorer is its own bundle for the opposite reason: it is small, but only the
 handful of surfaces that measure something need it, and folding it in would put
-it on every page carrying a Lit element. Keeping the filename is what lets the
+it on every page carrying a Vue element. Keeping the filename is what lets the
 two out-of-browser consumers go on loading it by path.
 
 It also settles load order in one place. `window.cpUrlState` has to exist before
@@ -374,7 +378,7 @@ four per-surface `url-state.js` tags that each had to be kept in the right
 place.
 
 **So: a custom element goes in `main.ts`. A global, or anything the page shell
-needs on every surface, goes in `chrome.ts` — and stays free of Lit, or the
+needs on every surface, goes in `chrome.ts` — and stays free of Vue, or the
 front door pays for it.** If a chrome module ever does need an element, that is
 the moment to ask whether it is really chrome.
 

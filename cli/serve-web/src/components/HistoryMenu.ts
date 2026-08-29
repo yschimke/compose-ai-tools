@@ -16,8 +16,9 @@
 // `viewer/historyModel.ts` (which of them are worth showing). What is left here is fetching and
 // rendering.
 
-import { LitElement, html, nothing, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { h, type VNode } from "vue";
+import { customElement } from "../controllerElement.js";
+import { VueElement } from "../vueElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { historySourceOf } from "../viewer/historyUrls.js";
 import {
@@ -32,12 +33,8 @@ interface Manifest {
 }
 
 @customElement("cp-history-menu")
-export class HistoryMenu extends LitElement {
-    @state() private menu: Menu | null = null;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
+export class HistoryMenu extends VueElement {
+    private menu: Menu | null = null;
 
     // Everything the menu reads lives on `.cp-viewer`, which sits BELOW the toggle row that
     // declares this tag — so connect time is too early to look for it. See `dom/whenParsed.ts`.
@@ -60,6 +57,7 @@ export class HistoryMenu extends LitElement {
 
         const entry = await this.entryFor(root, previewId);
         this.menu = historyMenuOf(source, entry);
+        this.requestUpdate();
     }
 
     /**
@@ -97,58 +95,72 @@ export class HistoryMenu extends LitElement {
         }
     }
 
-    protected render(): TemplateResult | typeof nothing {
+    protected renderVue(): VNode | null {
         const menu = this.menu;
-        if (!menu) return nothing;
+        if (!menu) return null;
         // The instability warning rides on the TRIGGER, not inside the panel: it is a warning about
         // the whole list — the entries are a trimmed view and would otherwise not add up to the
         // publish count — and a closed menu must not hide it.
         const warning = menu.unstable
-            ? html`<span class="cp-history-unstable" title=${menu.unstableTitle}
-                  >unstable</span
-              >`
-            : nothing;
-        return html`<details class="cp-history-menu">
-            <summary class="cp-history-btn">
-                <span class="cp-history-key">History</span>
-                <!-- The closed control still names what it holds, the same rule the other
-                     disclosures in this row follow, so putting the list away never costs the fact
-                     it carried. -->
-                <span class="cp-history-value">${menu.label}</span>
-                ${warning}
-                <span class="cp-history-caret" aria-hidden="true">▾</span>
-            </summary>
-            <div class="cp-history-panel">
-                <nav class="cp-history-list" aria-label="Render history">
-                    ${menu.rows.map((row) => this.item(row))}
-                </nav>
-                <!-- Where the list came from, when that is not what is on the stage. Without it the
-                     newest entry reads as "the render on screen", which in project mode it is
-                     not. -->
-                <p class="cp-history-note">${menu.note}</p>
-            </div>
-        </details>`;
+            ? h(
+                  "span",
+                  {
+                      class: "cp-history-unstable",
+                      title: menu.unstableTitle,
+                  },
+                  "unstable",
+              )
+            : null;
+        return h("details", { class: "cp-history-menu" }, [
+            h("summary", { class: "cp-history-btn" }, [
+                h("span", { class: "cp-history-key" }, "History"),
+                h("span", { class: "cp-history-value" }, menu.label),
+                warning,
+                h(
+                    "span",
+                    { class: "cp-history-caret", "aria-hidden": "true" },
+                    "▾",
+                ),
+            ]),
+            h("div", { class: "cp-history-panel" }, [
+                h(
+                    "nav",
+                    {
+                        class: "cp-history-list",
+                        "aria-label": "Render history",
+                    },
+                    menu.rows.map((row) => this.item(row)),
+                ),
+                h("p", { class: "cp-history-note" }, menu.note),
+            ]),
+        ]);
     }
 
     /** One version, as a link out — the stage is never touched, so nothing can disagree with it. */
-    private item(row: HistoryRow): TemplateResult {
+    private item(row: HistoryRow): VNode {
         const span = row.span
-            ? html`<span class="cp-history-span" title=${row.spanTitle ?? ""}
-                  >${row.span}</span
-              >`
-            : nothing;
-        return html`<a
-            class="cp-history-item"
-            href=${row.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            title=${row.title}
-            data-current=${row.current ? "1" : nothing}
-        >
-            <span class="cp-history-date">${row.date}</span>
-            <span class="cp-history-meta">${row.meta}</span>
-            ${span}
-        </a>`;
+            ? h(
+                  "span",
+                  { class: "cp-history-span", title: row.spanTitle ?? "" },
+                  row.span,
+              )
+            : null;
+        return h(
+            "a",
+            {
+                class: "cp-history-item",
+                href: row.href,
+                target: "_blank",
+                rel: "noopener noreferrer",
+                title: row.title,
+                "data-current": row.current ? "1" : undefined,
+            },
+            [
+                h("span", { class: "cp-history-date" }, row.date),
+                h("span", { class: "cp-history-meta" }, row.meta),
+                span,
+            ],
+        );
     }
 }
 

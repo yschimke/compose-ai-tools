@@ -17,7 +17,7 @@ internal object ServeWebAssets {
       // code-running surface and leak visitors to it.
       "codemirror.css" to "text/css; charset=utf-8",
       "codemirror.js" to "text/javascript; charset=utf-8",
-      // The Lit component bundle, built from `cli/serve-web/` and committed here so the Gradle
+      // The Vue component bundle, built from `cli/serve-web/` and committed here so the Gradle
       // build and the release chain stay node-free (`npm run verify` in that directory, wired into
       // CI, fails if the committed bytes drift from the source). Carries every ported component:
       // `<cp-bg-toggle>` (the Transparent toggle shared by the catalog grid and the viewer),
@@ -26,7 +26,7 @@ internal object ServeWebAssets {
       // `viewer-groups.js`), `<cp-viewer-drawers>` (the viewer's drawers, phone row order, theme
       // toggle value and component filter, formerly `viewer-drawers.js`), plus `window.cpRcFonts`,
       // the Remote Compose font preloader that was `rc-fonts.js`. Loaded whole rather than
-      // per-page: Lit is ~6 kB gzipped and an element
+      // per-page: Vue's renderer is shared across the markup-owning elements, and an element
       // whose tag isn't on the page costs nothing but its bytes, so splitting would buy less than
       // it costs. The heavy per-page scripts selective loading exists for (`codemirror.js`,
       // `viewer.js`, `format-compare.js`) are untouched and keep their own tags.
@@ -35,12 +35,12 @@ internal object ServeWebAssets {
       // `window.cpUrlState` (formerly `url-state.js`) and the Page theme setting (formerly
       // `page-theme.js`) — so `ServeWeb.document` emits it unconditionally, ahead of the surface's
       // own scripts, because they read those globals. Neither module is a custom element, so this
-      // bundle carries no Lit and lands around 1 kB gzipped; folding it into the component bundle
-      // would put Lit's 12 kB on the front door, whose imagery is prebaked precisely so a visit
+      // bundle carries no Vue and lands around 3 kB gzipped; folding it into the component bundle
+      // would put Vue on the front door, whose imagery is prebaked precisely so a visit
       // costs the HTML and nothing else.
       "serve-chrome.js" to "text/javascript; charset=utf-8",
-      // Opt-in site-wide power-user navigation. Separate from the Lit bundle because Settings is
-      // on every page while only pages with Lit controls currently load serve-components.js.
+      // Opt-in site-wide power-user navigation. Separate from the Vue bundle because Settings is
+      // on every page while only pages with Vue controls currently load serve-components.js.
       "keyboard-navigation.js" to "text/javascript; charset=utf-8",
       // The report capture tool: grab a frame of the current tab, crop it to a dragged region or a
       // pointed-at element, and hand the PNG to the clipboard. Its own bundle, and fetched only

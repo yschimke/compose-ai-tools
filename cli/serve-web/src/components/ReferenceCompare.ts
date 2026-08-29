@@ -13,8 +13,7 @@
 // (what counts as the same style), `annotate/clusters.ts` (what counts as nearby) and
 // `annotate/fieldState.ts` (whether a field is a fidelity finding or a local override).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import {
     fieldState,
     showsOptional,
@@ -56,7 +55,7 @@ interface Panel {
 }
 
 @customElement("cp-reference-compare")
-export class ReferenceCompare extends LitElement {
+export class ReferenceCompare extends ControllerElement {
     private installed = false;
     private root!: HTMLElement;
     private panels: Panel[] = [];
@@ -64,10 +63,6 @@ export class ReferenceCompare extends LitElement {
     private cleanups: Array<() => void> = [];
     private generated: HTMLElement[] = [];
     private resizes: ResizeObserver | null = null;
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     connectedCallback(): void {
         super.connectedCallback();

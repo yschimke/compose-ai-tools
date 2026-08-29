@@ -43,7 +43,7 @@ class ServeWebAssetsTest {
       html.contains("""<script src="${ServeWebAssets.href("serve-chrome.js")}"></script>"""),
       html,
     )
-    // The provenance badge is a Lit element in `serve-components.js` now, so what the page owes it
+    // The provenance badge is a Vue element in `serve-components.js` now, so what the page owes it
     // is the bundle plus the tag — its behaviour is covered by
     // `cli/serve-web/test/backendBadge.test.ts`.
     assertTrue(

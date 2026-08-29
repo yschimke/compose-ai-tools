@@ -15,8 +15,7 @@
 // constants), `rc/rowFilter.ts` (the shared search box, and what the status line admits about where
 // a number came from).
 
-import { LitElement } from "lit";
-import { customElement } from "lit/decorators.js";
+import { ControllerElement, customElement } from "../controllerElement.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { urlState } from "../urlState.js";
 import {
@@ -54,7 +53,7 @@ declare global {
 }
 
 @customElement("cp-rc-lanes")
-export class RcLanes extends LitElement {
+export class RcLanes extends ControllerElement {
     private model: RcModel | null = null;
     private laneIds: string[] = [];
     private threshold = DEFAULT_THRESHOLD;
@@ -72,10 +71,6 @@ export class RcLanes extends LitElement {
     private scored = new WeakMap<HTMLElement, number>();
     private images = new Map<string, Promise<HTMLImageElement>>();
     private cleanups: Array<() => void> = [];
-
-    protected createRenderRoot(): HTMLElement {
-        return this;
-    }
 
     /**
      * Set up NOW if the markup is already there, and only wait for the parse if it is not.
