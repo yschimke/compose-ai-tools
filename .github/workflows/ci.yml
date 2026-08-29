@@ -909,9 +909,27 @@ jobs:
           persist-credentials: false
           path: .compose-preview-vscode
           fetch-depth: 1
+      # Pinned to the RELEASE this build compiles against, not the contracts repo's default
+      # branch. The gate compares a source file there against bytecode resolved from
+      # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
+      # those diverge, which passes a writer change matching newer source but incompatible with
+      # the reader actually on the classpath, and fails unrelated pull requests when external
+      # `main` moves. The extension checkout above is deliberately not pinned the same way:
+      # nothing here resolves it as an artifact, so there is no version to agree with.
+      - id: contracts-ref
+        name: Resolve the pinned contracts release
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^composeai-contracts = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::could not read composeai-contracts from gradle/libs.versions.toml"
+            exit 1
+          fi
+          echo "ref=v$version" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-preview-contracts
+          ref: ${{ steps.contracts-ref.outputs.ref }}
           persist-credentials: false
           path: .compose-preview-contracts
           fetch-depth: 1
@@ -1256,9 +1274,27 @@ jobs:
           persist-credentials: false
           path: .compose-preview-vscode
           fetch-depth: 1
+      # Pinned to the RELEASE this build compiles against, not the contracts repo's default
+      # branch. The gate compares a source file there against bytecode resolved from
+      # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
+      # those diverge, which passes a writer change matching newer source but incompatible with
+      # the reader actually on the classpath, and fails unrelated pull requests when external
+      # `main` moves. The extension checkout above is deliberately not pinned the same way:
+      # nothing here resolves it as an artifact, so there is no version to agree with.
+      - id: contracts-ref
+        name: Resolve the pinned contracts release
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^composeai-contracts = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::could not read composeai-contracts from gradle/libs.versions.toml"
+            exit 1
+          fi
+          echo "ref=v$version" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-preview-contracts
+          ref: ${{ steps.contracts-ref.outputs.ref }}
           persist-credentials: false
           path: .compose-preview-contracts
           fetch-depth: 1
