@@ -3,18 +3,22 @@
 An isolated Compose/Wasm prototype over the preview server's existing public client contracts. It
 does not share source or build output with `cli/serve-web`.
 
-Build the static app and the CLI:
+Build the CLI distribution. It carries the static app under `preview-ui/`:
 
 ```shell
-./gradlew :cli:serve-wasm:wasmFrontendDist :cli:installDist
+./gradlew :cli:installDist
 ```
 
 Start a normal local preview server and add this distribution to its existing Wasm asset lane:
 
 ```shell
 cli/build/install/compose-preview/bin/compose-preview browse \
-  --wasm-dir preview-ui=cli/serve-wasm/build/wasmDist
+  --wasm-dir preview-ui=cli/build/install/compose-preview/preview-ui
 ```
+
+The prebuilt preview-host image registers that packaged directory automatically, so deployed hosts
+serve `/wasm/preview-ui/` without a volume mount or `SERVE_WASM_DIR` setting. That environment
+variable remains available for additional applications or an explicit replacement.
 
 The command prints the server URL and token. Open the normal UI as usual, then open the prototype
 side by side at:

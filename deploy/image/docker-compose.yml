@@ -95,9 +95,9 @@ services:
       # Per-render/build budget handed to `serve --timeout`. Empty ⇒ the image's baked 1800s,
       # generous enough that a cold first render on a slow box doesn't trip the CLI's 300s default.
       SERVE_TIMEOUT: "${SERVE_TIMEOUT:-}"
-      # Local Wasm build for the in-browser tier. The prebuilt image has no catalog modules to
-      # build one from, so this stays empty here and the tier rides --catalogs instead (serve
-      # fetches each system's web/wasm/ from its trusted design-artifacts branch).
+      # Optional extra/override Wasm apps (`system=/path[,system=/path…]`). The image's own
+      # `/wasm/preview-ui/` app is packaged and enabled automatically; published catalog apps still
+      # ride --catalogs. Most deployments should leave this empty.
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-}"
       # Live (daemon-backed) preview tier — ON by default and build-free. For a Trusted catalog that
       # carries an executable `liveBundle` (the desktop CMP `compose-m3`), serve fetches that bundle
