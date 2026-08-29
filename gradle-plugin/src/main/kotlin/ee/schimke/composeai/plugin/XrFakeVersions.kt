@@ -37,4 +37,16 @@ internal object XrFakeVersions {
 
   val arcoreTesting: String
     get() = get("arcoreTesting")
+
+  /**
+   * Pinned release of the native `xr-composite` compositor — the `<version>` segment of the shared
+   * cache the CLI populates and [AndroidPreviewSupport.xrCompositeCacheBinaryPath] reads.
+   *
+   * Deliberately NOT [PluginVersion]. Keying the cache by each side's own version forced an
+   * `xr-composite-*.tar.gz` asset onto every release (226 of them, for 13 source changes) and made
+   * every upgrade re-download an unchanged binary. Both sides bake the single `xr-composite`
+   * catalog entry, so writer and reader cannot drift.
+   */
+  val composite: String
+    get() = get("composite")
 }

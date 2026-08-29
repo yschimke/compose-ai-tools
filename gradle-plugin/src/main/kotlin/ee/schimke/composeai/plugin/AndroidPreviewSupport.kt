@@ -110,8 +110,10 @@ internal object AndroidPreviewSupport {
    * (`xr-composite.exe` on Windows). This is the WELL-KNOWN PATH CONVENTION shared with the CLI
    * writer ([XrCompositeProvision.cacheBinary] in `:cli`) — the two derive the identical path from
    * the same release [version] + host platform, which is how the CLI's fetch and the plugin's read
-   * meet without a runtime handshake. Built entirely from injected providers so it stays IP- and
-   * configuration-cache-safe (no `project.*` / `System.getProperty` at task-action time).
+   * meet without a runtime handshake. [version] is the pinned `xr-composite` release
+   * ([XrFakeVersions.composite]) on both sides, NOT each side's own version. Built entirely from
+   * injected providers so it stays IP- and configuration-cache-safe (no `project.*` /
+   * `System.getProperty` at task-action time).
    *
    * Returns an absent provider when the host platform has no published asset, when `user.home`
    * resolves empty and no `XDG_CACHE_HOME` is set — anything that would make the path meaningless —
@@ -2328,7 +2330,7 @@ internal object AndroidPreviewSupport {
     // task action's `isFile` check), so an empty cache falls through to the same skip.
     val xrCompositeCachePath =
       xrCompositeCacheBinaryPath(
-        version = PluginVersion.value,
+        version = XrFakeVersions.composite,
         xdgCacheHome = project.providers.environmentVariable("XDG_CACHE_HOME"),
         userHome = project.providers.systemProperty("user.home"),
         osName = project.providers.systemProperty("os.name"),

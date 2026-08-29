@@ -24,7 +24,8 @@ import kotlinx.coroutines.runBlocking
  * 1. Gate on XR work — only fetch when a discovered preview is `kind == "XR_SUBSPACE"` (the CLI
  *    learns this from `previews.json` after discovery). A non-XR render never touches the network.
  * 2. If the version+platform binary is already cached, do nothing (idempotent — the common case
- *    after the first run).
+ *    after the first run). The version here is the `xr-composite` PIN, not the CLI's, so upgrading
+ *    the CLI no longer orphans a cached copy of an unchanged binary.
  * 3. Otherwise download the per-OS Release tarball, unpack it into the cache (binary +
  *    `materials/`) and continue.
  *
@@ -42,7 +43,7 @@ object XrCompositeProvision {
 
   /**
    * Pure platform token derivation from JVM `os.name` / `os.arch`, matching the Release asset
-   * matrix in `.github/workflows/release.yml` (`build-xr-composite`):
+   * matrix in `.github/workflows/xr-composite-release.yml`:
    * - linux + x86_64/amd64 → `linux-x86_64`
    * - mac + aarch64/arm64 → `macos-arm64`
    * - windows + amd64/x86_64 → `windows-x86_64`
@@ -69,14 +70,17 @@ object XrCompositeProvision {
 
   /**
    * Release asset filename for a version + platform — `xr-composite-<platform>-<version>.tar.gz`.
-   * Exactly the name `release.yml` packs (`xr-composite-${asset}-${PLUGIN_VERSION}.tar.gz`).
+   * Exactly the name `xr-composite-release.yml` packs
+   * (`xr-composite-${asset}-${XR_COMPOSITE_VERSION}.tar.gz`).
    */
   internal fun assetName(version: String, platform: String): String =
     "xr-composite-$platform-$version.tar.gz"
 
   /**
-   * Download URL on the GitHub Release tagged `v<version>`. SNAPSHOT versions have no published
-   * release, so this 404s and the caller falls through to a graceful skip.
+   * Download URL on the GitHub Release tagged `v<version>`, where `version` is the pinned
+   * `xr-composite` release rather than the CLI's own — so a CLI release that did not rebuild the
+   * compositor still resolves the last one that did. A pin naming a release with no published asset
+   * 404s and the caller falls through to a graceful skip.
    */
   internal fun assetUrl(version: String, platform: String): String =
     "https://github.com/$REPO/releases/download/v$version/${assetName(version, platform)}"
@@ -160,8 +164,8 @@ object XrCompositeProvision {
    * absent. Best-effort: returns the cached binary [File] on success, or `null` on any skip/failure
    * (and logs a one-line note). Never throws — the render proceeds regardless.
    *
-   * @param version the CLI's own released version ([BUNDLE_VERSION]); the binary ships from the
-   *   same tag.
+   * @param version the pinned `xr-composite` release ([XR_COMPOSITE_VERSION]), NOT the CLI's own
+   *   version — see that property for why they are separate.
    * @param log sink for the concise status/skip note (stderr by default).
    */
   fun ensureCached(
