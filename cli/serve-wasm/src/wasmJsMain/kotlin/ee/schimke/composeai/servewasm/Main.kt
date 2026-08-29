@@ -114,7 +114,7 @@ class BrowserPreviewClient(private val config: ClientConfig) {
           views = item["views"]?.jsonPrimitive?.longOrNull ?: 0,
           nativeTarget =
             nativeCatalogTarget(
-              system = config.session ?: module,
+              system = config.session,
               previewId = id,
               knobSeeds = item.overrideSeeds(),
             ),

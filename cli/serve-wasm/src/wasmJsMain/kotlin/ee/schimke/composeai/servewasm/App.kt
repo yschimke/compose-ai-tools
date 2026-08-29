@@ -558,7 +558,7 @@ private fun ControlsPanel(
     Row(verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
         Text(
-          if (native) "Native CMP" else "Live preview",
+          if (native) "Native CMP" else "Server-rendered preview",
           style = MaterialTheme.typography.titleMedium,
         )
         Text(
@@ -597,7 +597,9 @@ private fun ControlsPanel(
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
     Text(
       if (native) "Native CMP · snapshot fallback available"
-      else preview.modes.joinToString(" · ").ifEmpty { "Default render mode" },
+      else
+        "Not bundled in this Wasm frontend · " +
+          preview.modes.joinToString(" · ").ifEmpty { "default render mode" },
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.secondary,
     )
@@ -628,7 +630,7 @@ private fun PreviewStage(
   Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
       StatusPill(
-        if (native) "NATIVE" else if (live) "LIVE" else "SNAPSHOT",
+        if (native) "NATIVE" else if (live) "SERVER LIVE" else "SERVER SNAPSHOT",
         if (live) Color(0xFF65D6A3) else MaterialTheme.colorScheme.primary,
       )
       Spacer(Modifier.width(10.dp))

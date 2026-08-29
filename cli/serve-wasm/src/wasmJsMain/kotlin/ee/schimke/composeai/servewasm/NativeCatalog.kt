@@ -27,7 +27,12 @@ internal fun nativeCatalogTarget(
   previewId: String,
   knobSeeds: Map<String, String> = emptyMap(),
 ): NativeCatalogTarget? {
-  if (system != COMPOSE_M3_SYSTEM) return null
+  // An explicit session is authoritative: never reinterpret another catalog's similarly named
+  // route. The default server feed is different. It can mix application previews with injected
+  // catalog previews while reporting only the application's module name, and the v2 API carries
+  // no per-preview provenance. In that feed, exact membership in the catalog compiled into this
+  // frontend is the provenance signal.
+  if (system != null && system != COMPOSE_M3_SYSTEM) return null
   val axes = previewId.split("__")
   val base = axes.firstOrNull()?.takeIf { it.isNotBlank() } ?: return null
   val componentId =

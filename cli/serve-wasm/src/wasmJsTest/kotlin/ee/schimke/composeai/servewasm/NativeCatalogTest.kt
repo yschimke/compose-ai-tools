@@ -44,8 +44,17 @@ class NativeCatalogTest {
   }
 
   @Test
-  fun `unsupported catalogs and components keep their server fallback`() {
+  fun `default mixed feed recognizes an injected catalog preview by its compiled route`() {
+    assertEquals(
+      "checkbox-checked",
+      nativeCatalogTarget(null, "checkbox-checked__ideal__default__light")?.componentId,
+    )
+  }
+
+  @Test
+  fun `explicit unsupported catalogs and unknown components keep their server fallback`() {
     assertNull(nativeCatalogTarget("wear-m3", "button-filled__ideal__default__light"))
     assertNull(nativeCatalogTarget("compose-m3", "template-appscaffold__compact__light"))
+    assertNull(nativeCatalogTarget(null, "com.example.ProfileScreenPreview"))
   }
 }
