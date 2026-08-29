@@ -35,6 +35,9 @@ plugins {
   id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val useReleasedRuntimes =
+  providers.gradleProperty("composeaiUseReleasedRuntimes").orNull.toBoolean()
+
 kotlin {
   // JVM target so `commonMain` compiles against the Desktop flavor of
   // compose-runtime — that's what the desktop renderer / daemon
@@ -57,26 +60,37 @@ kotlin {
   }
 
   sourceSets {
-    commonMain.dependencies {
-      // String-typed `compose.*` accessors are deprecated in CMP 1.10 in favour
-      // of explicit coords, but the renamed coords aren't reliably published to
-      // every mirror yet — mirror the sibling CMP samples and accept the warning.
-      @Suppress("DEPRECATION") implementation(compose.runtime)
-      @Suppress("DEPRECATION") implementation(compose.foundation)
-      @Suppress("DEPRECATION") implementation(compose.material3)
-      @Suppress("DEPRECATION") implementation(compose.ui)
-      implementation(libs.graphics.shapes)
-      // Compose Multiplatform string resources: the catalog's component labels resolve from
-      // `commonMain/composeResources/values*/strings.xml`, so a `localeTag` override (or the
-      // `en-XA`/`ar-XB` pseudolocale) renders translated / pseudolocalised copy through the
-      // daemon's `LocaleList` provider. `api` so the desktop `@Preview` sticker sheet
-      // (`:samples:design-catalog-m3`) can reference the same generated `Res` for its
-      // scaffold-template strings without re-declaring its own resource set.
-      @Suppress("DEPRECATION") api(compose.components.resources)
-      // `PreviewSlot` / `LocalSlotMode` for the slotted-card component. `api` so the desktop
-      // sticker
-      // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode sticker.
-      api(project(":slot-preview-runtime"))
+    commonMain {
+      // Slot constraints are new on HEAD and intentionally absent from the released runtime that
+      // published preview bundles compile against. Select the matching adapter at configuration
+      // time so the release guard keeps catching accidental direct use of unreleased APIs while
+      // normal builds still exercise the richer contract.
+      kotlin.srcDir(
+        if (useReleasedRuntimes) "src/releasedRuntimeMain/kotlin"
+        else "src/currentRuntimeMain/kotlin"
+      )
+      dependencies {
+        // String-typed `compose.*` accessors are deprecated in CMP 1.10 in favour
+        // of explicit coords, but the renamed coords aren't reliably published to
+        // every mirror yet — mirror the sibling CMP samples and accept the warning.
+        @Suppress("DEPRECATION") implementation(compose.runtime)
+        @Suppress("DEPRECATION") implementation(compose.foundation)
+        @Suppress("DEPRECATION") implementation(compose.material3)
+        @Suppress("DEPRECATION") implementation(compose.ui)
+        implementation(libs.graphics.shapes)
+        // Compose Multiplatform string resources: the catalog's component labels resolve from
+        // `commonMain/composeResources/values*/strings.xml`, so a `localeTag` override (or the
+        // `en-XA`/`ar-XB` pseudolocale) renders translated / pseudolocalised copy through the
+        // daemon's `LocaleList` provider. `api` so the desktop `@Preview` sticker sheet
+        // (`:samples:design-catalog-m3`) can reference the same generated `Res` for its
+        // scaffold-template strings without re-declaring its own resource set.
+        @Suppress("DEPRECATION") api(compose.components.resources)
+        // `PreviewSlot` / `LocalSlotMode` for the slotted-card component. `api` so the desktop
+        // sticker
+        // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode
+        // sticker.
+        api(project(":slot-preview-runtime"))
+      }
     }
 
     // The named-override runtime (`previewOverride*`) is a plain JVM artifact with no wasm klib, so
@@ -123,7 +137,7 @@ compose.resources {
 // through the guard and only surface later as a linkage / render error, not a compile failure. Same
 // gate + release-please-managed version as the consumer (kept in lockstep by hand — a shared
 // convention over both modules is the DRY follow-up).
-if (providers.gradleProperty("composeaiUseReleasedRuntimes").orNull.toBoolean()) {
+if (useReleasedRuntimes) {
   val version =
     providers.gradleProperty("composeaiReleasedRuntimeVersion").orNull
       ?: error(
