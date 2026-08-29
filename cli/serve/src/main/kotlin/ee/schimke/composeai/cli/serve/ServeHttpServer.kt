@@ -3494,7 +3494,9 @@ class ServeHttpServer(
    * preview existed. Offering those as this preview's versions only manufactures links to honest
    * 404s. The publisher rolls a compact preview index forward with every catalog generation, so
    * this is an in-memory lookup rather than one historical `catalog.json` fetch per row. A missing
-   * index or entry fails open, keeping older publishers backward-compatible.
+   * index fails open, keeping older publishers backward-compatible. Once a valid index exists, an
+   * unindexed commit is not a catalog generation (for example a parity-issue refresh on the same
+   * delivery branch), so it is omitted rather than offered as another copy of the same image.
    */
   private fun availableRevisions(
     host: ServeBundleHost,

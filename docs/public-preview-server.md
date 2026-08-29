@@ -454,9 +454,11 @@ line:
 
 The rows are preview-specific even though the commit feed is catalog-wide. Each generated delivery
 branch carries a rolling `preview-index.json`; the server uses it to omit revisions that did not
-publish the preview on the page. Branches produced before this index existed fail open and retain
-their rows, while a direct link to a genuinely absent preview still returns a contextual `404` with
-a route back to the current preview.
+publish the preview on the page. A valid index also distinguishes catalog generations from
+metadata-only commits (such as parity-issue refreshes) made on the same delivery branch, so those
+commits do not appear as duplicate image revisions. Branches produced before this index existed
+fail open and retain their rows, while a direct link to a genuinely absent preview still returns a
+contextual `404` with a route back to the current preview.
 
 ![The viewer's folded Revisions disclosure](images/serve-revision-viewer.png)
 

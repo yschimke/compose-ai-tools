@@ -677,6 +677,38 @@ class ServePinnedRevisionTest {
   }
 
   @Test
+  fun `metadata-only branch commits are not image revisions`() {
+    val metadataCommit = "3333333333333333333333333333333333333333"
+    val oldEntry = "<entry>\n        <id>tag:github.com,2008:Grit::Commit/$oldCommit"
+    val metadataEntry =
+      """
+      <entry>
+        <id>tag:github.com,2008:Grit::Commit/$metadataCommit</id>
+        <updated>2026-08-07T10:00:00Z</updated>
+        <content type="html">refresh parity issue index</content>
+      </entry>
+      """
+        .trimIndent()
+    val feedWithMetadata = feed.replace(oldEntry, "$metadataEntry\n      $oldEntry")
+    val port = startServer { url ->
+      when (url) {
+        ServeCatalogRevision.commitsFeedUrl(repo, branch) -> feedWithMetadata.encodeToByteArray()
+        renderFeedUrl ->
+          "<feed><entry><id>tag:github.com,2008:Grit::Commit/$oldCommit</id></entry></feed>"
+            .encodeToByteArray()
+        else -> fetch(url)
+      }
+    }
+      .port
+
+    val page = text("http://127.0.0.1:$port/$system/p/$previewId")
+    val runs = text("http://127.0.0.1:$port/$system/api/render-runs/$previewId")
+
+    assertFalse(page.contains(metadataCommit), page)
+    assertTrue(runs.contains("\"revisions\":2"), runs)
+  }
+
+  @Test
   fun `a run the window cuts off says so instead of claiming a count`() {
     // The only publish that touched this render predates both rows in the window, so the run's
     // length is a floor. Reporting it as an exact two would be a claim the branch never supported.

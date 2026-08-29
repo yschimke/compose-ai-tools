@@ -18,7 +18,10 @@ class ServeRevisionPreviewIndexTest {
           .encodeToByteArray()
       )
 
-    assertEquals(mapOf("1111111" to setOf("old", "shared")), index?.previewsByCommit())
+    assertEquals(
+      mapOf("2222222" to setOf("today"), "1111111" to setOf("old", "shared")),
+      index?.previewsByCommit("2222222"),
+    )
   }
 
   @Test
@@ -27,7 +30,17 @@ class ServeRevisionPreviewIndexTest {
     assertNull(ServeRevisionPreviewIndex.parse("nope".encodeToByteArray()))
     assertNull(
       ServeRevisionPreviewIndex.parse("""{"schema":"future","revisions":[]}""".encodeToByteArray())
-        ?.previewsByCommit()
+        ?.previewsByCommit("2222222")
     )
+  }
+
+  @Test
+  fun `invalid current commit fails open instead of dropping every revision`() {
+    val index =
+      ServeRevisionPreviewIndex.parse(
+        """{"schema":"compose-preview-revision-index/v1","current":["today"]}""".encodeToByteArray()
+      )
+
+    assertNull(index?.previewsByCommit("not-a-sha"))
   }
 }
