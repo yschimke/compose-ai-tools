@@ -43,8 +43,10 @@ Implemented in the prototype:
 - native interaction plus dark mode, font scale, RTL locale, transparent background, and published
   override-variant seeds for those `compose-m3` components;
 - a native UI Composer workspace: drag or add compiled catalog components onto a phone canvas,
-  reorder/duplicate/remove them, tune spacing and padding, switch themes, then hide the editing
-  chrome and interact with the assembled screen in preview mode;
+  reorder/duplicate/remove them, and drop components into regions declared by `PreviewSlot`;
+  nested content is composed in-process and remains interactive in preview mode. Slot authors can
+  declare fixed, fill, or hug sizing independently per axis plus content padding, so a measured
+  slot rectangle is not mistaken for its layout contract;
 - baked PNG previews through `/render/{id}.png`;
 - persistent live preview frames through `/ws/{id}` with connection/error state;
 - light/dark, font-scale, locale, and transparent-background render overrides;
@@ -54,3 +56,24 @@ Implemented in the prototype:
 Native rendering is an additive catalog registry. A catalog/component without a compiled-in CMP
 implementation automatically keeps the snapshot and server-live behaviour; currently that includes
 Wear (whose Compose artifacts have no Wasm target) and the `compose-m3` full-app template.
+
+Slot targets come from the preview code rather than a composer-only manifest. A compiled component
+opts in with `PreviewSlot`; the builder observes and fills that same region directly:
+
+```kotlin
+PreviewSlot(
+  name = "content",
+  modifier = Modifier.fillMaxWidth(),
+  constraints = PreviewSlotConstraints(
+    horizontal = PreviewSlotSizing.Fill,
+    vertical = PreviewSlotSizing.Hug,
+    padding = PreviewSlotPadding(startDp = 16f, endDp = 16f),
+  ),
+) {
+  DefaultContent()
+}
+```
+
+The ordinary render remains unchanged. Outside the native builder, the marker still emits its
+`dp-slot:` semantics tag for `/render/<id>.slots`, so a Figma-derived manifest and the composable
+marker can be normalized into the same slot model without making Figma annotation mandatory.

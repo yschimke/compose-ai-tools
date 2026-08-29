@@ -14,7 +14,10 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -45,6 +48,48 @@ enum class PreviewSlotScope(internal val wire: String?) {
   Box("box"),
   Lazy("lazy"),
 }
+
+/** How a builder should size one axis when replacing a slot's authored content. */
+enum class PreviewSlotSizing {
+  Unspecified,
+  Fixed,
+  Fill,
+  Hug,
+}
+
+/** Content padding declared by a slot host, independent on each edge. */
+data class PreviewSlotPadding(
+  val startDp: Float = 0f,
+  val topDp: Float = 0f,
+  val endDp: Float = 0f,
+  val bottomDp: Float = 0f,
+)
+
+/** The authored sizing contract for a slot; measured bounds remain only its current instance. */
+data class PreviewSlotConstraints(
+  val horizontal: PreviewSlotSizing = PreviewSlotSizing.Unspecified,
+  val vertical: PreviewSlotSizing = PreviewSlotSizing.Unspecified,
+  val padding: PreviewSlotPadding = PreviewSlotPadding(),
+)
+
+data class PreviewSlotInfo(
+  val name: String,
+  val scope: PreviewSlotScope,
+  val scrolling: Boolean,
+  val constraints: PreviewSlotConstraints,
+)
+
+/**
+ * Optional native builder bridge. A host compiled into the same Compose runtime can observe slot
+ * geometry and replace its content without a server render or a component-specific callback.
+ */
+interface PreviewSlotHost {
+  fun onPositioned(slot: PreviewSlotInfo, bounds: Rect) = Unit
+
+  @Composable fun Content(slot: PreviewSlotInfo, defaultContent: @Composable () -> Unit)
+}
+
+val LocalPreviewSlotHost: ProvidableCompositionLocal<PreviewSlotHost?> = compositionLocalOf { null }
 
 /** The `testTag` a bare `PreviewSlot(name)` applies: `dp-slot:<name>`. */
 fun slotTag(name: String): String = slotTag(name, PreviewSlotScope.Unknown, scrolling = false)
@@ -98,8 +143,35 @@ val LocalSlotMode: ProvidableCompositionLocal<Boolean> = compositionLocalOf { fa
  * @param name the slot's author-declared name (the `dp-slot:` suffix); should be non-blank.
  */
 @Composable
-fun PreviewSlot(name: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) =
-  SlotBox(name, PreviewSlotScope.Unknown, scrolling = false, modifier = modifier, content = content)
+fun PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  content: @Composable () -> Unit,
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Unknown,
+    scrolling = false,
+    PreviewSlotConstraints(),
+    modifier,
+    content,
+  )
+
+@Composable
+fun PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  constraints: PreviewSlotConstraints,
+  content: @Composable () -> Unit,
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Unknown,
+    scrolling = false,
+    constraints,
+    modifier,
+    content,
+  )
 
 /**
  * [PreviewSlot] for a slot in a lambda with **no layout scope** — a `Scaffold` `topBar` /
@@ -118,7 +190,17 @@ fun PreviewSlot(
   modifier: Modifier = Modifier,
   scrolling: Boolean = false,
   content: @Composable () -> Unit,
-) = SlotBox(name, scope, scrolling, modifier, content)
+) = SlotBox(name, scope, scrolling, PreviewSlotConstraints(), modifier, content)
+
+@Composable
+fun PreviewSlot(
+  name: String,
+  scope: PreviewSlotScope,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  constraints: PreviewSlotConstraints,
+  content: @Composable () -> Unit,
+) = SlotBox(name, scope, scrolling, constraints, modifier, content)
 
 /** `RowScope` slot — records [PreviewSlotScope.Row]; children are placed horizontally. */
 @Composable
@@ -127,7 +209,24 @@ fun RowScope.PreviewSlot(
   modifier: Modifier = Modifier,
   scrolling: Boolean = false,
   content: @Composable () -> Unit,
-) = SlotBox(name, PreviewSlotScope.Row, scrolling, modifier, content)
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Row,
+    scrolling,
+    PreviewSlotConstraints(),
+    modifier,
+    content,
+  )
+
+@Composable
+fun RowScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  constraints: PreviewSlotConstraints,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Row, scrolling, constraints, modifier, content)
 
 /** `ColumnScope` slot — records [PreviewSlotScope.Column]; children stack vertically. */
 @Composable
@@ -136,7 +235,24 @@ fun ColumnScope.PreviewSlot(
   modifier: Modifier = Modifier,
   scrolling: Boolean = false,
   content: @Composable () -> Unit,
-) = SlotBox(name, PreviewSlotScope.Column, scrolling, modifier, content)
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Column,
+    scrolling,
+    PreviewSlotConstraints(),
+    modifier,
+    content,
+  )
+
+@Composable
+fun ColumnScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  constraints: PreviewSlotConstraints,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Column, scrolling, constraints, modifier, content)
 
 /** `BoxScope` slot — records [PreviewSlotScope.Box]; a single child fills / aligns in the box. */
 @Composable
@@ -145,7 +261,24 @@ fun BoxScope.PreviewSlot(
   modifier: Modifier = Modifier,
   scrolling: Boolean = false,
   content: @Composable () -> Unit,
-) = SlotBox(name, PreviewSlotScope.Box, scrolling, modifier, content)
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Box,
+    scrolling,
+    PreviewSlotConstraints(),
+    modifier,
+    content,
+  )
+
+@Composable
+fun BoxScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  scrolling: Boolean = false,
+  constraints: PreviewSlotConstraints,
+  content: @Composable () -> Unit,
+) = SlotBox(name, PreviewSlotScope.Box, scrolling, constraints, modifier, content)
 
 /**
  * `LazyItemScope` slot — records [PreviewSlotScope.Lazy], always scrolling: the slot is one item of
@@ -156,7 +289,31 @@ fun LazyItemScope.PreviewSlot(
   name: String,
   modifier: Modifier = Modifier,
   content: @Composable () -> Unit,
-) = SlotBox(name, PreviewSlotScope.Lazy, scrolling = true, modifier = modifier, content = content)
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Lazy,
+    scrolling = true,
+    PreviewSlotConstraints(),
+    modifier,
+    content,
+  )
+
+@Composable
+fun LazyItemScope.PreviewSlot(
+  name: String,
+  modifier: Modifier = Modifier,
+  constraints: PreviewSlotConstraints,
+  content: @Composable () -> Unit,
+) =
+  SlotBox(
+    name,
+    PreviewSlotScope.Lazy,
+    scrolling = true,
+    constraints,
+    modifier,
+    content,
+  )
 
 /** Shared body of every [PreviewSlot] overload: the tagged [Box] + slot-mode placeholder swap. */
 @Composable
@@ -164,11 +321,21 @@ private fun SlotBox(
   name: String,
   scope: PreviewSlotScope,
   scrolling: Boolean,
+  constraints: PreviewSlotConstraints,
   modifier: Modifier,
   content: @Composable () -> Unit,
 ) {
-  Box(modifier.testTag(slotTag(name, scope, scrolling || scope == PreviewSlotScope.Lazy))) {
-    if (LocalSlotMode.current) SlotPlaceholder(name) else content()
+  val slot = PreviewSlotInfo(name, scope, scrolling || scope == PreviewSlotScope.Lazy, constraints)
+  val host = LocalPreviewSlotHost.current
+  val observedModifier =
+    if (host == null) modifier
+    else modifier.onGloballyPositioned { host.onPositioned(slot, it.boundsInRoot()) }
+  Box(observedModifier.testTag(slotTag(name, scope, slot.scrolling))) {
+    when {
+      host != null -> host.Content(slot, content)
+      LocalSlotMode.current -> SlotPlaceholder(name)
+      else -> content()
+    }
   }
 }
 
