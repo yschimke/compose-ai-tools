@@ -3,6 +3,8 @@ package ee.schimke.composeai.renderer.xr.client
 import kotlin.test.assertFailsWith
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -139,6 +141,10 @@ class XrServerHandshakeTest {
     assertTrue(h.has(XrRenderService.Capability.UPDATE_PANELS))
     assertTrue(h.has(XrRenderService.Capability.STREAM_FRAME))
     assertTrue(h.has(XrRenderService.Capability.MULTI_SESSION))
+    // `dataProducts` is an ARRAY in the real handshake. Asking about it must answer false, not
+    // throw — `jsonPrimitive` raises on a structured value, so this went unnoticed until a review
+    // pointed at the one capability whose real value is not a scalar.
+    assertFalse(h.has(XrRenderService.Capability.DATA_PRODUCTS))
   }
 
   @Test
@@ -157,8 +163,20 @@ class XrServerHandshakeTest {
     assertTrue(h.has(XrRenderService.Capability.RENDER))
     assertFalse(h.has(XrRenderService.Capability.MULTI_SESSION))
     assertFalse("absent capability must not read as advertised", h.has("updatePanels"))
-    // A non-boolean value is not an advertisement of support.
+    // A non-boolean value is not an advertisement of support — scalar or structured.
     assertFalse(h.has(XrRenderService.Capability.SPATIAL_SCENE_VERSION))
+    assertFalse(
+      XrServerHandshake.parse(
+          result(
+            capabilities =
+              buildJsonObject {
+                put("render", true)
+                put("dataProducts", buildJsonArray { add("xr/composite") })
+              }
+          )
+        )
+        .has(XrRenderService.Capability.DATA_PRODUCTS)
+    )
     assertEquals(1, h.spatialSceneVersion)
   }
 }

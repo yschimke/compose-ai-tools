@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -59,8 +60,15 @@ public data class XrServerHandshake(
   /** The raw `capabilities` object, for callers that want to inspect beyond the typed fields. */
   val capabilities: JsonObject,
 ) {
-  /** Whether the server advertised [name] as a boolean-true capability. */
-  public fun has(name: String): Boolean = capabilities[name]?.jsonPrimitive?.booleanOrNull == true
+  /**
+   * Whether the server advertised [name] as a boolean-true capability.
+   *
+   * Casts rather than using `jsonPrimitive`, which THROWS on an array or object. That is not
+   * hypothetical: the real handshake advertises `dataProducts` as an array, so asking about it
+   * would have thrown instead of answering false. Any non-boolean shape is "not advertised".
+   */
+  public fun has(name: String): Boolean =
+    (capabilities[name] as? JsonPrimitive)?.booleanOrNull == true
 
   public companion object {
     /**
@@ -143,6 +151,8 @@ internal constructor(
   // gate. A single-session server silently reuses one scene for a second id, so opening one
   // without the capability corrupts both sessions rather than failing.
   private val openSessions = ConcurrentHashMap.newKeySet<String>()
+  // Guards check-and-reserve on [openSessions] only — never held across a request.
+  private val sessionLock = Any()
   private val reader =
     Thread({ runReader(input) }, "xr-server-client-reader").apply {
       isDaemon = true
@@ -191,13 +201,17 @@ internal constructor(
     timeout: Duration = 60.seconds,
   ): StreamFrame {
     requireCapability(XrRenderService.Capability.RENDER, "render")
+    // Both frame-returning calls also need `streamFrame`: without it the request is accepted and
+    // then we block for the full timeout waiting for a notification the handshake said would never
+    // come. Fail immediately with the named capability error instead.
+    requireCapability(XrRenderService.Capability.STREAM_FRAME, "render")
     checkSceneVersion(scene)
-    if (!openSessions.contains(sessionId) && openSessions.isNotEmpty()) {
-      requireCapability(
-        XrRenderService.Capability.MULTI_SESSION,
-        "render into a second session ($sessionId, alongside ${openSessions.joinToString()})",
-      )
-    }
+    // Reserve the session BEFORE sending. Checking and then adding after the request returned let
+    // two concurrent renders with distinct ids both observe an empty set and both pass — exactly
+    // the case the gate exists to stop, since the daemon may open distinct sessions concurrently.
+    // Only the check-and-reserve is locked; the request itself stays outside so renders still run
+    // concurrently.
+    val reserved = reserveSession(sessionId)
     val params = buildJsonObject {
       put(XrRenderService.Param.SESSION_ID, sessionId)
       put(XrRenderService.Param.SCENE, scene)
@@ -206,8 +220,14 @@ internal constructor(
       width?.let { put(XrRenderService.Param.WIDTH, it) }
       height?.let { put(XrRenderService.Param.HEIGHT, it) }
     }
-    request(XrRenderService.Method.RENDER, params, timeout)
-    openSessions.add(sessionId)
+    try {
+      request(XrRenderService.Method.RENDER, params, timeout)
+    } catch (t: Throwable) {
+      // The session never opened server-side, so release the reservation rather than letting a
+      // failed render permanently consume the single-session slot.
+      if (reserved) synchronized(sessionLock) { openSessions.remove(sessionId) }
+      throw t
+    }
     return awaitFrame(sessionId, timeout)
   }
 
@@ -222,6 +242,7 @@ internal constructor(
     timeout: Duration = 60.seconds,
   ): StreamFrame {
     requireCapability(XrRenderService.Capability.UPDATE_PANELS, "updatePanels")
+    requireCapability(XrRenderService.Capability.STREAM_FRAME, "updatePanels")
     val params = buildJsonObject {
       put(XrRenderService.Param.SESSION_ID, sessionId)
       put(XrRenderService.Param.PANELS, panels)
@@ -240,7 +261,7 @@ internal constructor(
       }
     )
     frames.remove(sessionId)
-    openSessions.remove(sessionId)
+    synchronized(sessionLock) { openSessions.remove(sessionId) }
   }
 
   /** Whether the spawned child is still alive (always true for the stream-backed test client). */
@@ -276,6 +297,24 @@ internal constructor(
     }
     reader.join(2_000)
   }
+
+  /**
+   * Atomically claim [sessionId], failing when opening it would be a second concurrent session on a
+   * server that never advertised `multiSession`. Returns whether this call made the reservation, so
+   * a failed request can release it.
+   */
+  private fun reserveSession(sessionId: String): Boolean =
+    synchronized(sessionLock) {
+      if (openSessions.contains(sessionId)) return@synchronized false
+      if (openSessions.isNotEmpty()) {
+        requireCapability(
+          XrRenderService.Capability.MULTI_SESSION,
+          "render into a second session ($sessionId, alongside ${openSessions.joinToString()})",
+        )
+      }
+      openSessions.add(sessionId)
+      true
+    }
 
   /**
    * Fail when the scene we are about to send declares a `version` the server said it cannot parse.

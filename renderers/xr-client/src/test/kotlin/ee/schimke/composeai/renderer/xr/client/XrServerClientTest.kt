@@ -356,6 +356,43 @@ class XrServerClientTest {
   }
 
   @Test
+  fun `render is refused when the server does not advertise streamFrame`() {
+    // Both render and updatePanels RETURN a frame. Without `streamFrame` the request would be
+    // accepted and then block for the full 60s timeout waiting for a notification the handshake
+    // already said would never arrive.
+    val client =
+      connect(
+        buildJsonObject {
+          put("render", true)
+          put("updatePanels", true)
+          put("streamFrame", false)
+          put("multiSession", true)
+          put("spatialSceneVersion", 1)
+        }
+      )
+    client.initialize()
+    val e = assertFailsWith<XrServerException> { client.render("s1", scene(), sceneDir = ".") }
+    assertTrue(e.message!!.contains("streamFrame"), e.message)
+  }
+
+  @Test
+  fun `updatePanels is refused when the server does not advertise streamFrame`() {
+    val client =
+      connect(
+        buildJsonObject {
+          put("render", true)
+          put("updatePanels", true)
+          put("streamFrame", false)
+          put("multiSession", true)
+          put("spatialSceneVersion", 1)
+        }
+      )
+    client.initialize()
+    val e = assertFailsWith<XrServerException> { client.updatePanels("s1", buildJsonArray {}) }
+    assertTrue(e.message!!.contains("streamFrame"), e.message)
+  }
+
+  @Test
   fun `calling render before initialize is a named error`() {
     val client = connect()
     val e = assertFailsWith<XrServerException> { client.render("s1", scene(), sceneDir = ".") }
