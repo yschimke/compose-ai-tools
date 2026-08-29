@@ -601,4 +601,16 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `NowPlayingPanelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/NowPlayingPanelPreview_Panel_Content-bbdf56ea.png" width="150" /> |
 | `OrbiterControlsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/OrbiterControlsPreview_Orbiter_TopControls-a7f9ee4b.png" width="150" /> |
 | `SpatialElevationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.png" width="150" /> |
+| `MasterDetailPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `NestedColumnInRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `OrbiterPanelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `SpatialCurvedRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `SpatialDepthPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `SpatialRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `OffsetModifiersPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `RotateToLookAtUserPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `RotatedYawRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `RotationFormsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `SpatialPanelGridPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
+| `NowPlayingSpatialPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/composite.png" width="150" /> |
 
