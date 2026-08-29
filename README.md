@@ -697,6 +697,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-report-bug/dark](renders/serve-report-bug.dark.png) |
 | `light` | ![serve-report-bug/light](renders/serve-report-bug.light.png) |
 
+## serve-report-bug-capture-markup
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-report-bug-capture-markup/dark](renders/serve-report-bug-capture-markup.dark.png) |
+| `light` | ![serve-report-bug-capture-markup/light](renders/serve-report-bug-capture-markup.light.png) |
+
 ## serve-report-bug-compare
 
 | Theme | Capture |

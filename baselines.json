@@ -1177,41 +1177,53 @@
       "sha256": "037beafb9f1b66fdbe0445c4c625ae90e35e5d46c3dd6f84198f1e20554fc72d",
       "size": 146945
     },
+    "serve-report-bug-capture-markup.dark.png": {
+      "fixture": "serve-report-bug-capture-markup",
+      "theme": "dark",
+      "sha256": "9bdfce072b47cae87ffb0e7176c28317bd27d0c61cdf6f9cac5ea2de8cc9aa45",
+      "size": 254560
+    },
+    "serve-report-bug-capture-markup.light.png": {
+      "fixture": "serve-report-bug-capture-markup",
+      "theme": "light",
+      "sha256": "d4d607fcfa135c80a9cc4c00d3c5cf50edf7c0149a0e2a930bd1497a73430ff6",
+      "size": 249417
+    },
     "serve-report-bug-compare.dark.png": {
       "fixture": "serve-report-bug-compare",
       "theme": "dark",
-      "sha256": "935fa9a1fe39e9b04914a3c7d71935736b82bbaa3d941a10ee7e0aa17dbb38b2",
-      "size": 230200
+      "sha256": "0f2449186b6e50db5c8cebf01ece5d8e841caab0f1682f9ad035d5b65a8b3357",
+      "size": 220996
     },
     "serve-report-bug-compare.light.png": {
       "fixture": "serve-report-bug-compare",
       "theme": "light",
-      "sha256": "575d4ea87042bafd279949f2118698ec4bd83a499f49123867e265ba373ec688",
-      "size": 225292
+      "sha256": "7c832b020d387c3dbeb99b124eea331a28d1c080266c68afb9f13fff16e7443b",
+      "size": 215981
     },
     "serve-report-bug-site.dark.png": {
       "fixture": "serve-report-bug-site",
       "theme": "dark",
-      "sha256": "e8779313138c5db2ede0638d4108ff983793be92204eb57d2d7afa674715b079",
-      "size": 206425
+      "sha256": "0f5d983678ef7a6c6ff7e93ad7143945bc67408958dacd715214c9df4f4f5639",
+      "size": 197702
     },
     "serve-report-bug-site.light.png": {
       "fixture": "serve-report-bug-site",
       "theme": "light",
-      "sha256": "30c03f822a6b5ddc6698fc19676f354ee3bb05476bb344c886fcad1b98896231",
-      "size": 202391
+      "sha256": "4140aefc0b90bc62134eacf0d6d10c475eb2704d6cc2059625d91d4c8f0ccf19",
+      "size": 193698
     },
     "serve-report-bug.dark.png": {
       "fixture": "serve-report-bug",
       "theme": "dark",
-      "sha256": "7faadcc904b4083041dead4d00d6fbedab1d596669679923cad9d011e55b94d7",
-      "size": 246688
+      "sha256": "b053eab84e2cce77ba3478b9e120549a27115e2ee8335d91e26fd5dcdd3d5078",
+      "size": 237714
     },
     "serve-report-bug.light.png": {
       "fixture": "serve-report-bug",
       "theme": "light",
-      "sha256": "0ecb69f4da324919854ef23095c0ad3aa3f7691b015eb9b01b39d512e8d64cc6",
-      "size": 241548
+      "sha256": "1fb9678ce81a60fdc5ed3268a4d8c291d6dfe0d11687e64cae61eab089bd6016",
+      "size": 232676
     },
     "serve-social-card.dark.png": {
       "fixture": "serve-social-card",
@@ -1420,8 +1432,8 @@
     "serve-viewer-history-menu-open.dark.png": {
       "fixture": "serve-viewer-history-menu-open",
       "theme": "dark",
-      "sha256": "a55fd36ea0b4d38b99f9418c0735f17d76177e79636a725559dbcd7a95901187",
-      "size": 88576
+      "sha256": "40ec466154a2054f14c098f389b124e0a1ac424abd5521721902fb38c739c030",
+      "size": 67761
     },
     "serve-viewer-history-menu-open.light.png": {
       "fixture": "serve-viewer-history-menu-open",
