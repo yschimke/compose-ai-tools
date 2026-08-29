@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.53.0](https://github.com/yschimke/compose-ai-tools/compare/v1.52.0...v1.53.0) (2026-08-29)
+
+
+### Features
+
+* **figma:** extract native slot manifests ([#4808](https://github.com/yschimke/compose-ai-tools/issues/4808)) ([be7e125](https://github.com/yschimke/compose-ai-tools/commit/be7e1250b59479c41707954b2bd1501dba884044))
+* **serve:** compose native preview slots in UI builder ([#4811](https://github.com/yschimke/compose-ai-tools/issues/4811)) ([ba1609e](https://github.com/yschimke/compose-ai-tools/commit/ba1609e05ab5f618292e410b3bf2c06581db9ee9))
+* **serve:** upload and mark up bug report captures ([#4815](https://github.com/yschimke/compose-ai-tools/issues/4815)) ([f373cf3](https://github.com/yschimke/compose-ai-tools/commit/f373cf30a4c33976afbf1d091746ac5712c817c2))
+
+
+### Bug Fixes
+
+* **catalog:** support released slot runtime ([#4813](https://github.com/yschimke/compose-ai-tools/issues/4813)) ([eb20730](https://github.com/yschimke/compose-ai-tools/commit/eb2073098a569661fdd95ca22566bcdc92bb5ba8))
+* **serve:** align preview card heights ([#4814](https://github.com/yschimke/compose-ai-tools/issues/4814)) ([1d18c67](https://github.com/yschimke/compose-ai-tools/commit/1d18c679340beb740811cfccf288f2ff0b43b92e))
+* **serve:** restore revision menu images ([#4812](https://github.com/yschimke/compose-ai-tools/issues/4812)) ([6a6058a](https://github.com/yschimke/compose-ai-tools/commit/6a6058ad3b2f635a7fb175bf0b17235720dbfb5b))
+
 ## [1.52.0](https://github.com/yschimke/compose-ai-tools/compare/v1.51.0...v1.52.0) (2026-08-29)
 
 
