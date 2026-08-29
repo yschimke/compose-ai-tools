@@ -66,6 +66,12 @@ DOMAIN=preview.example.com ./setup.sh
 Pin a version with `IMAGE_TAG=0.16.33` in `.env` (a bare tag; defaults to the
 `latest` tag when unset).
 
+The image also serves its release-matched Compose/Wasm preview browser at
+`/wasm/preview-ui/`. It is packaged inside the CLI distribution and enabled automatically: no
+`.env` entry or host directory is required. `SERVE_WASM_DIR` is only for adding another static Wasm
+application (`system=/path`) or deliberately replacing the built-in `preview-ui` mapping; every
+path named there must exist inside the container.
+
 ### Serving a catalog on its own hostname
 
 A published catalog can additionally be served on a hostname of its own, where it presents as the

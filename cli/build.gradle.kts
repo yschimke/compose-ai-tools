@@ -491,6 +491,10 @@ val rcPlayerWasmDist =
   files(project(":rc-player-wasm").layout.buildDirectory.dir("wasmDist"))
     .builtBy(":rc-player-wasm:wasmPlayerDist")
 
+val previewUiWasmDist =
+  files(project(":cli:serve-wasm").layout.buildDirectory.dir("wasmDist"))
+    .builtBy(":cli:serve-wasm:wasmFrontendDist")
+
 distributions {
   named("main") {
     contents {
@@ -501,6 +505,9 @@ distributions {
       into("lib-usage-psi") { from(composePreviewUsagePsi) }
       // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
       into("rc-player-wasm") { from(rcPlayerWasmDist) }
+      // The experimental Compose/Wasm preview browser is a release-matched static sidecar too.
+      // Shipping it here lets every CLI/image expose it without a source checkout or local build.
+      into("preview-ui") { from(previewUiWasmDist) }
     }
   }
 }

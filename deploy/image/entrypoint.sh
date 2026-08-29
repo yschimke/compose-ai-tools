@@ -210,7 +210,19 @@ if [[ "${SERVE_TRUST_STORE}" != "none" ]]; then
   fi
   args+=(--trust-store "${SERVE_TRUST_STORE}")
 fi
-[[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
+# The release tarball carries the matching Compose/Wasm preview browser. Register it by default so
+# a stock preview-host image serves `/wasm/preview-ui/` with no deployment-specific volume or .env
+# entry. SERVE_WASM_DIR remains additive, and comes last so an operator can deliberately replace
+# the built-in `preview-ui` mapping as well as register other apps.
+wasm_dirs=()
+if [[ -f /opt/compose-preview/preview-ui/index.html ]]; then
+  wasm_dirs+=("preview-ui=/opt/compose-preview/preview-ui")
+fi
+[[ -n "${SERVE_WASM_DIR:-}" ]] && wasm_dirs+=("${SERVE_WASM_DIR}")
+if ((${#wasm_dirs[@]})); then
+  wasm_dir_arg="$(IFS=,; echo "${wasm_dirs[*]}")"
+  args+=(--wasm-dir "${wasm_dir_arg}")
+fi
 # Trusted server-side re-render — ON by default, and cheap: for a Trusted catalog
 # that carries an executable `liveBundle` (the desktop CMP `compose-m3` does), serve
 # fetches that bundle from the trusted branch and launches a render daemon straight

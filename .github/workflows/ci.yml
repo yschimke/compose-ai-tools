@@ -1469,6 +1469,11 @@ jobs:
       # upload lane gated by our collaborators rather than theirs.
       - name: Run deploy image-lane default tests
         run: ./deploy/image/test-image-lane-default.sh
+      # The release-matched Compose/Wasm browser is part of the CLI distribution and therefore
+      # should appear on every preview-host without a volume or .env entry. Keep the optional
+      # SERVE_WASM_DIR additive and last-wins for operators that carry extra or replacement apps.
+      - name: Run built-in Wasm preview UI tests
+        run: ./deploy/image/test-preview-ui-default.sh
       # The version-control config overlay is opt-in, so nothing exercises it on the way to a
       # release — a wrong source path or mount target is found on a box, after a restart, serving a
       # stale catalog set. Every failure mode is silent: a missing source makes Docker create an
