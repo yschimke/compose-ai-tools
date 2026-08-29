@@ -101,22 +101,34 @@ internal object ServeBugReport {
      * Which of the viewer's lanes and views the page was actually showing, as [viewLabel] reads it
      * out of the reporter's own query — `design spec — triptych`, `motion`, `exploded layers`.
      *
-     * Load-bearing for issue #4261. The [renderUrl] this report embeds is always the plain
-     * `/render` PNG, because that is the only image of a preview the server can *produce*: the spec
-     * lane's triptych, the wipe, the exploded stack and the Remote Compose canvas are all composed
-     * in the browser out of several artefacts, and none of them has a URL. So a report filed from
-     * the triptych used to arrive showing a single ordinary render, with nothing anywhere in it
-     * admitting that the reporter had been looking at something else — the triager saw a picture
-     * that contradicted the complaint. This row is the honest half of the fix: it names the view,
-     * so the embedded PNG reads as "the base render at these settings" rather than as "what they
-     * saw". The other half is the browser-side capture the report page offers, which is the only
-     * way to get the actual pixels.
+     * Load-bearing for issue #4261. What this report can embed is what the server can *serve*: the
+     * plain `/render` PNG, and — where the page says which one was on the stage beside it — the
+     * `/reference` PNG ([referenceUrl]). The views themselves are composed in the browser out of
+     * several artefacts, so the spec lane's triptych, the wipe, the exploded stack and the Remote
+     * Compose canvas have no URL at all. A report filed from the triptych used to arrive showing a
+     * single ordinary render, with nothing anywhere in it admitting that the reporter had been
+     * looking at something else — the triager saw a picture that contradicted the complaint. This
+     * row is the honest half of the fix: it names the view, so the images below it read as the
+     * lanes they are rather than as "what they saw". The other half is the browser-side capture the
+     * report page offers, which is the only way to get the composed pixels.
      */
     val view: String? = null,
     /** Why the session is degraded, when it is — `<code> — <detail>` lines. */
     val degradations: List<String> = emptyList(),
     /** `/render/<id>.png` at the overrides in force, token-stripped. */
     val renderUrl: String? = null,
+    /**
+     * `/reference/<id>.png` of the design reference that was **on the stage beside** the render,
+     * token-stripped — the other outer panel of a comparison.
+     *
+     * Set only where the reporter's own path and query settle which image that was: the focused
+     * comparison names its reference in the URL, and the viewer's spec lane is resolved by the
+     * caller only where the catalog offers a single source. Everywhere else this stays null and the
+     * report keeps the base render alone, because a reference the server *picked* would be the
+     * report asserting what the reporter saw — the failure [view] exists to avoid, arriving as a
+     * picture instead of a row (#4765).
+     */
+    val referenceUrl: String? = null,
     /**
      * Whether the render lane answers **without a token** — i.e. the server is `--public`. Same
      * rule as [ServeIssueReport.Context.publicRender]: a token-gated lane 404s the tokenless URL
@@ -140,6 +152,16 @@ internal object ServeBugReport {
     // Same two independent conditions the per-preview report checks: GitHub's camo proxy has to
     // reach the URL, and the lane has to answer it without the token this body strips.
     val embed = render != null && page.publicRender && ServeIssueReport.isEmbeddable(page.renderUrl)
+    val reference = ServeIssueReport.withoutToken(page.referenceUrl)?.takeIf { it.isNotBlank() }
+    // Both halves or neither, and for the reason the per-preview report gives: one panel of a
+    // comparison read as "the render" is worse evidence than the render admitting it is one.
+    val embedPair =
+      embed &&
+        reference != null &&
+        ServeIssueReport.isEmbeddable(page.referenceUrl) &&
+        // A `|` in either URL would shear the two-cell table it goes in; see the same guard on
+        // `ServeIssueReport.body`.
+        listOfNotNull(page.renderUrl, page.referenceUrl).none { it.contains('|') }
     return buildString {
       append("### What went wrong\n\n")
       append("<!-- What were you doing, what did you expect, and what happened instead? -->\n\n\n")
@@ -152,9 +174,28 @@ internal object ServeBugReport {
       // for a browser-composed view, so the only honest thing it can do is label what it does have
       // and let the reporter paste the rest.
       val onView = view(page)
-      if (embed) {
+      if (embedPair) {
+        // The two panels the reporter had on screen, where the page's own URL says which pair that
+        // was (#4765). Still below the paste slot and still labelled for what it is: the diff
+        // between them is composed in the browser, so the capture is what carries it.
+        append("### Reference and render").append(onView).append("\n\n")
+        append("| Design reference | Render |\n| --- | --- |\n")
+        append("| ![reference](").append(reference).append(") | ")
+        append("![render](").append(render).append(") |\n\n")
+        append(
+          "<!-- Those are the comparison's two outer panels, fetched live: they re-render if " +
+            "the catalog changes, so they may stop showing what you saw. The diff between them " +
+            "is drawn in your browser and has no URL — a pasted capture is the only way it " +
+            "reaches this issue, and it stays put because GitHub hosts those pixels itself. " +
+            "-->\n\n\n"
+        )
+      } else if (embed) {
         append("### Base render").append(onView).append("\n\n")
         append("![render](").append(render).append(")\n\n")
+        // A reference the pair form refused (an unreachable half, a `|` in a URL) is still named,
+        // for the same reason the link form below names it: half a comparison embedded is not a
+        // reason to drop the other half entirely.
+        reference?.let { append("[Design reference PNG](").append(it).append(")\n\n") }
         append(
           "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
             "stop showing what you saw. GitHub displays it through Camo, but Camo proxies the " +
@@ -163,7 +204,11 @@ internal object ServeBugReport {
         )
       } else if (render != null) {
         append("### Base render").append(onView).append("\n\n")
-        append("[PNG at these settings](").append(render).append(")\n\n\n")
+        append("[PNG at these settings](").append(render).append(")")
+        // A comparison on a box GitHub cannot reach still says where both panels live, so a
+        // triager who *can* reach it opens the pair rather than half of it.
+        reference?.let { append(" · [Design reference PNG](").append(it).append(")") }
+        append("\n\n\n")
       }
       append("### Server\n\n")
       append(table(serverRows(server)))
@@ -326,7 +371,20 @@ internal object ServeBugReport {
    * page perfectly stops resolving. The caller matches it against the session's own preview ids
    * re-encoded the same way, which needs no decoder and cannot round-trip wrong.
    */
-  data class PageRef(val system: String? = null, val previewSegment: String? = null)
+  data class PageRef(
+    val system: String? = null,
+    val previewSegment: String? = null,
+    /**
+     * Which of the two preview-shaped routes the path was — `p` or `compare`, null when it named no
+     * preview at all.
+     *
+     * The two draw different things from the same preview id: the viewer puts one render on a
+     * stage, the focused comparison puts a design reference beside it. A report from the second one
+     * embeds both panels ([Page.referenceUrl]), and only the route can say which page it was — the
+     * preview id alone is the same on both (#4765).
+     */
+    val previewRoute: String? = null,
+  )
 
   /**
    * Split a sanitised in-server path ([sanitizeFrom]) into its system and preview.
@@ -342,10 +400,11 @@ internal object ServeBugReport {
     return when {
       segments.isEmpty() -> PageRef()
       // `/p/<preview>` · `/compare/<preview>` — the rooted single-session form.
-      segments.size == 2 && segments[0] in PREVIEW_SEGMENTS -> PageRef(previewSegment = segments[1])
+      segments.size == 2 && segments[0] in PREVIEW_SEGMENTS ->
+        PageRef(previewSegment = segments[1], previewRoute = segments[0])
       // `/<system>/p/<preview>` · `/<system>/compare/<preview>`.
       segments.size == 3 && segments[1] in PREVIEW_SEGMENTS ->
-        PageRef(system = segments[0], previewSegment = segments[2])
+        PageRef(system = segments[0], previewSegment = segments[2], previewRoute = segments[1])
       // A catalog landing. Only when the single segment isn't one of the server's own top-level
       // routes, which are pages of the box rather than of a system.
       segments.size == 1 && segments[0] !in SERVER_SEGMENTS -> PageRef(system = segments[0])
@@ -404,6 +463,26 @@ internal object ServeBugReport {
   }
 
   /**
+   * The design reference the reporter's own comparison URL named (`?reference=`), or null when it
+   * named none and the page therefore showed the preview's first.
+   *
+   * Left **percent-encoded**, like [PageRef.previewSegment] and for the same reason: the caller
+   * matches it against the session's own reference ids re-encoded the same way, which needs no
+   * decoder and cannot round-trip a `+` into a space.
+   */
+  fun referenceSegment(from: String?): String? =
+    queryParams(from)["reference"]?.takeIf { it.isNotEmpty() }
+
+  /**
+   * Whether the reporter's query says the viewer's **design-spec lane** was on the stage — the one
+   * viewer lane that puts a design reference beside the render.
+   *
+   * Read from `?mode=` exactly as [viewLabel] reads it, so the "View" row and the images below it
+   * cannot disagree about which lane was up.
+   */
+  fun onSpecLane(from: String?): Boolean = queryParams(from)["mode"]?.lowercase() == "spec"
+
+  /**
    * The reporter's query as a map, last value winning — which is what a browser's own
    * `URLSearchParams.get` returns, and this string was written by one.
    *
@@ -452,8 +531,14 @@ internal object ServeBugReport {
   /** Truthy `?exploded=` spellings — mirrors `explodeParamOn` in `viewer/renderQuery.ts`. */
   private val EXPLODE_ON = setOf("", "1", "true", "on", "yes")
 
+  /** The viewer's route segment, as [PageRef.previewRoute] reports it. */
+  const val VIEWER_ROUTE: String = "p"
+
+  /** The focused comparison's route segment, as [PageRef.previewRoute] reports it. */
+  const val COMPARE_ROUTE: String = "compare"
+
   /** Route prefixes whose next segment is a preview id. */
-  private val PREVIEW_SEGMENTS = setOf("p", "compare")
+  private val PREVIEW_SEGMENTS = setOf(VIEWER_ROUTE, COMPARE_ROUTE)
 
   /**
    * Top-level paths that belong to the **server**, not to a design system, so a leading segment

@@ -494,6 +494,11 @@ const STYLED_FIXTURES = new Set([
   // across from the reported page. Captured bare, the panel is an ordinary paragraph and the
   // capture list does not exist at all, so neither would move a baseline.
   "serve-report-bug",
+  // The same page as reached from the focused comparison (issue #4765), where the evidence half is
+  // a PAIR: the report carries the two panels that page drew, so the preview shows them side by
+  // side. That arrangement is entirely `.cp-report-pair` — captured bare the two thumbnails stack
+  // into an ordinary column and the layout that IS the change would move no baseline.
+  "serve-report-bug-compare",
   // The same page on a top-level site (issue #4319), where that routing panel is the part that
   // changed: one catalog per hostname means the tracker can be named and linked rather than
   // described, and the panel is the only thing on the page carrying it.

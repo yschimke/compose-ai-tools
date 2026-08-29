@@ -40,6 +40,20 @@ class ServeViewerIssueReportRouteTest {
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     previewIds.forEach { File(dir, "previews/$it.png").writeBytes(png()) }
+    // A design reference for the first preview, so the focused comparison this catalog can serve
+    // is a real pair rather than a 404 — which is what the report filed from it is about (#4765).
+    File(dir, "references").apply { mkdirs() }
+    File(dir, "references/button.png").writeBytes(png())
+    File(dir, "references/index.json")
+      .writeText(
+        """
+        {"schema":"compose-preview-references/v1","references":[{
+           "id":"button-figma","previewId":"${previewIds.first()}","label":"Figma button",
+           "raster":{"path":"references/button.png","width":2,"height":2},
+           "source":{"provider":"figma"}}]}
+        """
+          .trimIndent()
+      )
     return ServeBundleHost(
       dir,
       label = label,
@@ -99,6 +113,20 @@ class ServeViewerIssueReportRouteTest {
     registry.close()
   }
 
+  /**
+   * The prefilled issue body out of the page's hidden input, unescaped.
+   *
+   * Asserted against rather than against the whole document, because these pages *draw* the same
+   * URLs the report quotes: a comparison shows its reference in a panel, so "the page mentions that
+   * URL" would pass whether or not the report carries it.
+   */
+  private fun reportBody(html: String): String =
+    html
+      .substringAfter("id=\"cp-report-body\"")
+      .substringAfter("value=\"")
+      .substringBefore("\"")
+      .replace("&amp;", "&")
+
   @Test
   fun `the viewer offers a report filed against the repo that owns the preview`() {
     server = newServer()
@@ -148,6 +176,42 @@ class ServeViewerIssueReportRouteTest {
     server = newServer()
     val (_, body) = get("/compose-m3/p/button-filled?uiMode=dark")
     assertTrue(body.contains("/compose-m3/render/button-filled.png?uiMode=dark"), body)
+  }
+
+  @Test
+  fun `a report filed from the comparison names both panels, not just the render`() {
+    // #4765. The comparison's subject is a design reference and a render disagreeing, so a report
+    // from it carries both — here in the link form, because a loopback host is not reachable by
+    // GitHub's camo proxy ([ServeIssueReport.isEmbeddable]); the embedded form is
+    // [ServeIssueReportTest]'s.
+    server = newServer()
+    val (code, html) = get("/compose-m3/compare/button-filled")
+    assertEquals(200, code)
+    val body = reportBody(html)
+    assertTrue(body.contains("[PNG at these settings](http://127.0.0.1:"), body)
+    assertTrue(body.contains("/compose-m3/render/button-filled.png"), body)
+    assertTrue(body.contains("[Design reference PNG](http://127.0.0.1:"), body)
+    assertTrue(body.contains("/compose-m3/reference/button-figma.png"), body)
+  }
+
+  @Test
+  fun `the comparison's two panels are scoped to one publish, as the page's own frames are`() {
+    // Both halves take the same suffix or the report is a comparison across two states of the
+    // catalog — the coupling `assetQuery` gives the panels on screen, kept for the report.
+    server = newServer()
+    val body = reportBody(get("/compose-m3/compare/button-filled?uiMode=dark").second)
+    assertTrue(body.contains("/compose-m3/render/button-filled.png?uiMode=dark"), body)
+    assertTrue(body.contains("/compose-m3/reference/button-figma.png?uiMode=dark"), body)
+  }
+
+  @Test
+  fun `the viewer's report stays a single render even where the catalog has a reference`() {
+    // The viewer's plain lane has nothing beside the render, and its spec lane keeps the picked
+    // source in the DOM rather than the URL — so this page's report must not assert a pair.
+    server = newServer()
+    val body = reportBody(get("/compose-m3/p/button-filled").second)
+    assertFalse(body.contains("Design reference PNG"), body)
+    assertFalse(body.contains("| Design reference | Render |"), body)
   }
 
   @Test

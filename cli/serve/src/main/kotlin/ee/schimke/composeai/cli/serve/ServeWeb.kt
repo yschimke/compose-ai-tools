@@ -7880,6 +7880,15 @@ ${captureControlsHtml().prependIndent("          ")}
     val bodyTemplate: String,
     val repo: String,
     val renderUrl: String? = null,
+    /**
+     * The design reference [renderUrl] was compared against, when the reported page had one on the
+     * stage beside it — see [ServeBugReport.Page.referenceUrl].
+     *
+     * The page shows what the body carries and nothing else, so this is here for the same reason it
+     * is there: a report from the focused comparison embeds both outer panels, and a preview that
+     * showed one of them would have the page under-state its own report (#4765).
+     */
+    val referenceUrl: String? = null,
     /** Present only when the visitor has a GitHub session on this server. */
     val login: String? = null,
     /**
@@ -7982,18 +7991,35 @@ ${captureControlsHtml().prependIndent("          ")}
       </div>
       """
         .trimIndent()
+    val render = report.renderUrl?.takeIf { it.isNotBlank() }
+    val reference = report.referenceUrl?.takeIf { it.isNotBlank() }
     val shot =
-      report.renderUrl
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
+      when {
+        // A comparison's two outer panels, in the order that page draws them. The prose changes
+        // with them: what is missing here is no longer "everything the browser composes" but one
+        // specific panel — the diff — and saying which is what tells the reporter whether a
+        // capture is still worth taking (#4765).
+        render != null && reference != null ->
+          "\n      <p class=\"cp-status-sec\">The pair you were comparing</p>\n" +
+            "      <p class=\"cp-sub\">Both are included in the report, live, so they follow the " +
+            "catalog. The diff between them is drawn in your browser and has no address of its " +
+            "own — capture the page if that is the panel that is wrong.</p>\n" +
+            "      <div class=\"cp-report-pair\">\n" +
+            "        <img class=\"cp-report-shot\" src=\"${esc(reference)}\" alt=\"the design " +
+            "reference this report is about\" loading=\"lazy\">\n" +
+            "        <img class=\"cp-report-shot\" src=\"${esc(render)}\" alt=\"the render this " +
+            "report is about\" loading=\"lazy\">\n" +
+            "      </div>"
+        render != null ->
           "\n      <p class=\"cp-status-sec\">The base render of that preview</p>\n" +
             "      <p class=\"cp-sub\">Included in the report. It is the plain render at your " +
             "settings — not the spec triptych, the wipe, or any other view the browser " +
             "composes — and it is live, so it follows the catalog. Capture the page as well " +
             "if the exact pixels matter.</p>\n" +
-            "      <img class=\"cp-report-shot\" src=\"${esc(it)}\" alt=\"the render this " +
+            "      <img class=\"cp-report-shot\" src=\"${esc(render)}\" alt=\"the render this " +
             "report is about\" loading=\"lazy\">"
-        } ?: ""
+        else -> ""
+      }
     // Where a *catalog* bug belongs. Named and linked when the server knows the catalog — always,
     // on a top-level site — and left as the generic "go back to the preview" advice when it does
     // not. See [BugReportCatalog] for why the generic wording is wrong on a one-catalog hostname.

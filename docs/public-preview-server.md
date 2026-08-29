@@ -1486,7 +1486,8 @@ reporter came from a viewer the page shows that preview's render and the body ca
 when the host is publicly reachable, linked otherwise — the same two conditions as above). That
 covers "the render is wrong". It does not cover "the page is wrong", which is most server bugs, so
 the body's **Screenshot** section is a paste slot, first, and the render sits under it as **Base
-render** — never as "the screenshot". See [Reporting what you can actually
+render** — never as "the screenshot". A report from the focused comparison carries **both**
+panels that page drew, under *Reference and render*. See [Reporting what you can actually
 see](#reporting-what-you-can-actually-see) for why that distinction is load-bearing.
 
 **Gating and safety.** `/report-bug` is gated exactly like `/status` (open in `--public`, else
@@ -1692,6 +1693,35 @@ ordinary single render: a picture that contradicted its own complaint. Two chang
   `?specView=`, `?exploded=`) rather than from what the server rendered, because the viewer rewrites
   those as the visitor moves between lanes. Only values this server's own viewer writes are
   accepted; anything else is dropped rather than echoed into a public issue.
+
+**…but one of those views is two images the server *does* serve**
+([#4765](https://github.com/yschimke/compose-ai-tools/issues/4765)). The focused
+Reference / Diff / Actual page draws a design reference, a browser-composed diff, and a render — and
+two of those three are ordinary URLs on this box (`/reference/<id>.png`, `/render/<id>.png`). A
+report filed from it nevertheless carried the render alone, so an issue whose whole complaint was
+"these two disagree" opened showing one of them: `yschimke/wear-m3-catalog#144`, a picture that
+answered a question nobody had asked. Both reports now carry the **pair** from the pages that have
+one — a two-cell markdown table in the issue body, which GitHub lays side by side, and the same two
+panels in the report page's own preview:
+
+| Filed from a viewer | Filed from the comparison |
+| --- | --- |
+| ![Base render alone](design/evidence/report-comparison-pair/before-base-render.png) | ![The reference and the render, side by side](design/evidence/report-comparison-pair/after-pair.png) |
+
+The **diff** panel is the one that still cannot come along: the browser composes it out of those two
+images, so it has no URL, and the prose under the pair says so rather than repeating the general
+"anything the browser composes" caveat — knowing *which* panel is missing is what tells a reporter
+whether a capture is still worth taking.
+
+Which reference goes in is settled by the reporter's own URL, never picked by the server. The
+comparison names its pair in the path and query (`?reference=`, else the preview's first), and a
+`?reference=` naming one the preview does not have is that page's own 404 — so the report shows no
+pair rather than one the page never drew. The viewer's spec lane is offered the same treatment,
+because its default source *is* that first reference, but only where the catalog declares no second
+source to switch to: the picker's choice lives in the DOM rather than the address bar, and a server
+that guessed it would be making exactly the claim the **View** row exists to avoid. Every other page
+keeps the base render alone. Captures and the reasoning:
+[`docs/design/evidence/report-comparison-pair`](design/evidence/report-comparison-pair/README.md).
 
 **And a capture tool, because the pixels have to come from the browser.** GitHub's new-issue form
 takes a prefilled body and nothing else — there is no way to prefill an attachment — so the only

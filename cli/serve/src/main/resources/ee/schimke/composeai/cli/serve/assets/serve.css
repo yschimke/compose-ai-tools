@@ -3217,6 +3217,9 @@ html:not(.cp-bg-transparent) #cp-reference-compare[data-cp-stage-clip] .cp-refer
 .cp-report-shot { display: block; max-width: min(100%, 320px); height: auto; margin: 4px 0 0;
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low); }
+/* A comparison's two panels, side by side and wrapping on a narrow window — the same arrangement
+   the issue body's two-cell table gets on GitHub, so the preview shows the report's own shape. */
+.cp-report-pair { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 .cp-report-preview { margin: 0; padding: 14px 16px; overflow-x: auto; white-space: pre-wrap;
   word-break: break-word; border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low);

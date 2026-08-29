@@ -38,6 +38,20 @@ class ServeBugReportRouteTest {
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     previewIds.forEach { File(dir, "previews/$it.png").writeBytes(png()) }
+    // A design reference for the first preview, so this catalog has a focused comparison and a
+    // spec lane — the two pages that put a second image on the stage (#4765).
+    File(dir, "references").apply { mkdirs() }
+    File(dir, "references/button.png").writeBytes(png())
+    File(dir, "references/index.json")
+      .writeText(
+        """
+        {"schema":"compose-preview-references/v1","references":[{
+           "id":"button-figma","previewId":"${previewIds.first()}","label":"Figma button",
+           "raster":{"path":"references/button.png","width":2,"height":2},
+           "source":{"provider":"figma"}}]}
+        """
+          .trimIndent()
+      )
     return ServeBundleHost(
       dir,
       label = label,
@@ -319,12 +333,60 @@ class ServeBugReportRouteTest {
   @Test
   fun `a report from a browser-composed view says which view, and labels the render as the base one`() {
     // Issue #4261: the embedded PNG is the only picture of a preview this server can make, and on
-    // the spec lane it is not what the reporter was looking at.
+    // a lane that composes its own view it is not what the reporter was looking at. The motion
+    // lane is that case in full — it plays a frame sequence with nothing beside it, so there is no
+    // second image to offer and the render is labelled as the base one.
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton-filled%3Fmode%3Dmotion")
+    assertTrue(body.contains("<th scope=\"row\">View</th>"), body)
+    assertTrue(body.contains("motion playback"), body)
+    assertTrue(body.contains("The base render of that preview"), body)
+    assertFalse(body.contains("/compose-m3/reference/"), body)
+  }
+
+  @Test
+  fun `a report from the focused comparison carries the pair that page draws`() {
+    // #4765. The path says which page it was and the query says which reference, so the report can
+    // show both panels instead of one that reads as "the render".
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fcompose-m3%2Fcompare%2Fbutton-filled")
+    // The page previews both panels…
+    assertTrue(body.contains("The pair you were comparing"), body)
+    assertTrue(body.contains("/compose-m3/render/button-filled.png"), body)
+    assertTrue(body.contains("/compose-m3/reference/button-figma.png"), body)
+    // …and so does the markdown it will file. A loopback host is not reachable by GitHub's camo
+    // proxy, so both arrive as links rather than images — the pair, either way.
+    assertTrue(body.contains("[PNG at these settings]"), body)
+    assertTrue(body.contains("[Design reference PNG]"), body)
+  }
+
+  @Test
+  fun `the spec lane's pair is offered too, since that lane puts the reference on the stage`() {
     server = newServer(public = true, token = "unused")
     val (_, body) =
       get("/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton-filled%3Fmode%3Dspec%26specView%3Dtriptych")
-    assertTrue(body.contains("<th scope=\"row\">View</th>"), body)
     assertTrue(body.contains("design spec (triptych)"), body)
+    assertTrue(body.contains("The pair you were comparing"), body)
+    assertTrue(body.contains("/compose-m3/reference/button-figma.png"), body)
+  }
+
+  @Test
+  fun `a reference the comparison never drew is not invented for the report`() {
+    // `?reference=` naming one this preview does not have is the comparison's own 404, so falling
+    // back to the first here would embed a pair that page never showed. Same rule as the preview
+    // segment beside it: match, don't trust.
+    server = newServer(public = true, token = "unused")
+    val (_, body) =
+      get("/report-bug?from=%2Fcompose-m3%2Fcompare%2Fbutton-filled%3Freference%3Dno-such-ref")
     assertTrue(body.contains("The base render of that preview"), body)
+    assertFalse(body.contains("/compose-m3/reference/"), body)
+  }
+
+  @Test
+  fun `a plain viewer keeps the single render even where the catalog has a reference`() {
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton-filled")
+    assertTrue(body.contains("The base render of that preview"), body)
+    assertFalse(body.contains("/compose-m3/reference/"), body)
   }
 }

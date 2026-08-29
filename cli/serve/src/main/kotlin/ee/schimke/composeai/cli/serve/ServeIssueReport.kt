@@ -27,6 +27,12 @@ import kotlinx.serialization.json.jsonPrimitive
  * settings (handy, but it re-renders against whatever the catalog is when someone reads the issue),
  * and asks for a paste — the viewer's "Copy PNG" puts real `image/png` bytes on the clipboard, so
  * one keystroke in the issue box uploads the exact pixels to GitHub's own CDN, where they stay put.
+ *
+ * **A report from the comparison carries the pair, not one panel.** The focused comparison's whole
+ * subject is a design reference and a render disagreeing, and both are ordinary URLs on this
+ * server, so [Context.referenceUrl] puts them side by side in the body. The diff between them is
+ * the one panel with no URL — the browser composes it out of the two — and stays a paste, which is
+ * the same split the server's own report draws in [ServeBugReport].
  */
 internal object ServeIssueReport {
 
@@ -119,6 +125,22 @@ internal object ServeIssueReport {
     val pageUrl: String? = null,
     /** Absolute `/render/<id>.png` URL at the overrides in force when the page was served. */
     val renderUrl: String? = null,
+    /**
+     * Absolute `/reference/<id>.png` URL of the design reference the render was **on screen
+     * beside**, at the same pin and generation as [renderUrl].
+     *
+     * Set only by a page whose subject is the pair — the focused comparison. A report from there
+     * used to embed the render alone, so an issue about the two sides disagreeing arrived showing
+     * one of them and a triager had to open the comparison to see what the complaint was about
+     * ([#4765](https://github.com/yschimke/compose-ai-tools/issues/4765)). With both, the body
+     * carries the comparison's two outer panels; the diff between them is composed in the browser
+     * out of these very pixels and has no URL of its own, so it stays a paste.
+     *
+     * Null everywhere else, deliberately. The viewer's plain lane has no reference on the stage,
+     * and its spec lane keeps the picked source out of the URL — a body that embedded "the"
+     * reference there would be asserting what the reporter was looking at rather than reporting it.
+     */
+    val referenceUrl: String? = null,
     /**
      * Whether the render lane answers **without a session token** — i.e. the server is `--public`.
      *
@@ -260,6 +282,23 @@ internal object ServeIssueReport {
     // proxy must be able to *reach* the URL, and the lane must *answer* it without the token this
     // body strips.
     val embed = render != null && ctx.publicRender && isEmbeddable(ctx.renderUrl)
+    val reference = withoutToken(ctx.referenceUrl)?.takeIf { it.isNotBlank() }
+    // The pair is embedded only when BOTH halves can be, and never on its own. Half a comparison
+    // is worse evidence than the render alone: a reader would take the one panel that made it as
+    // the side being complained about, and the two are only meaningful against each other. In
+    // practice they stand or fall together — the reference lane is this same origin, gated by the
+    // same token — so this is a guard rather than a branch anyone reaches.
+    val embedPair =
+      embed &&
+        reference != null &&
+        ctx.publicRender &&
+        isEmbeddable(ctx.referenceUrl) &&
+        // The pair is laid out as a two-cell table, and a `|` anywhere in either URL shears the
+        // row into extra columns — so a URL carrying one keeps the single-image form rather than
+        // arriving as visibly broken markdown. Both are built by our own encoders and the client's
+        // swap goes through `new URL()`, so this is the guard for a shape none of them produce
+        // rather than a case anyone has seen.
+        listOfNotNull(ctx.renderUrl, ctx.referenceUrl).none { it.contains('|') }
     val links = buildList {
       withoutToken(ctx.pageUrl)?.takeIf { it.isNotBlank() }?.let { add("[Open this page]($it)") }
       withoutToken(ctx.viewerUrl)
@@ -270,12 +309,36 @@ internal object ServeIssueReport {
         ?.let { add("[Open comparison]($it)") }
       // Only worth its own line when the image isn't already showing it.
       if (!embed) render?.let { add("[PNG at these settings]($it)") }
+      // Same rule for the other panel: a comparison filed from a box GitHub cannot reach still
+      // says where both sides live, so a triager who can reach it sees the pair rather than
+      // half of it.
+      if (!embedPair) reference?.let { add("[Design reference PNG]($it)") }
     }
     return buildString {
       append("### What's wrong\n\n")
       append("<!-- What did you expect to see, and what did you get? -->\n\n\n")
       append("### Screenshot\n\n")
-      if (embed) {
+      if (embedPair) {
+        // Both outer panels of the comparison, in the order the page draws them, so an issue about
+        // the two sides disagreeing opens showing the disagreement (#4765). A two-cell table
+        // rather than two stacked images: GitHub lays the cells side by side, which is the whole
+        // point — a reference above a render reads as two unrelated pictures.
+        append("| Design reference | Render |\n| --- | --- |\n")
+        append("| ![reference](").append(reference).append(") | ")
+        append("![${altText(ctx)}]($render) |\n\n")
+        append(
+          "<!-- The DIFF between those two panels is composed in your browser out of these very " +
+            "pixels, so it has no URL to embed. Paste it here: the \"Report a problem\" launcher " +
+            "on the comparison has a capture control that copies the whole view, a region, or " +
+            "one element to your clipboard. -->\n\n\n"
+        )
+        append(
+          "<!-- Both images above are LIVE lanes: they re-render if the catalog changes, so " +
+            "they may stop showing what you saw. GitHub displays them through Camo, but Camo " +
+            "proxies the source URL; it does not make a versioned snapshot. A pasted capture " +
+            "stays put because GitHub hosts those pixels itself. -->\n\n\n"
+        )
+      } else if (embed) {
         append("![${altText(ctx)}]($render)\n\n")
         append(
           "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
@@ -520,13 +583,20 @@ internal object ServeIssueReport {
     return (a.length - ai).compareTo(b.length - bi)
   }
 
-  /** Markdown-safe alt text: the preview's label or id, with `]` and `[` stripped. */
+  /**
+   * Markdown-safe alt text: the preview's label or id, with `]`, `[` and `|` stripped.
+   *
+   * The brackets would close the image's own alt span; the pipe is there because the comparison
+   * form of the body puts this text inside a two-cell table, where one would shear the row into a
+   * third column. Catalog-authored labels are arbitrary text, so both are the producer's to
+   * neutralise rather than the reader's to survive.
+   */
   private fun altText(ctx: Context): String {
     val what =
       ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() }
         ?: ctx.previewId?.trim()?.takeIf { it.isNotEmpty() }
         ?: "render"
-    return what.replace('[', ' ').replace(']', ' ').trim()
+    return what.replace('[', ' ').replace(']', ' ').replace('|', ' ').trim()
   }
 
   /**
