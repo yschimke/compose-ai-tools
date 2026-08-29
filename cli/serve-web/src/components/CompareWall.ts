@@ -45,7 +45,6 @@ import {
 import "../chrome/pageTheme.js";
 import { whenParsed } from "../dom/whenParsed.js";
 // Types only: the player bundle is script-injected at runtime, never imported.
-import type { RcPlayer } from "../rc/player.js";
 
 /**
  * Longest side the wall keeps a delta map at.

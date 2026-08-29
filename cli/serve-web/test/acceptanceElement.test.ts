@@ -96,6 +96,23 @@ describe("<cp-acceptance>", () => {
         assert.match(text(band), /issue state unknown/);
     });
 
+    it("unmounts its external Vue tree while detached and repaints on reconnect", async () => {
+        const scene = world();
+        const band = await mount(
+            catalogRoutes(scene, knownDifferencesJson(scene)),
+            scope(scene),
+        );
+        const element = document.querySelector("cp-acceptance")!;
+        element.remove();
+        assert.equal(band.hidden, true);
+        assert.equal(text(band), "");
+
+        document.body.appendChild(element);
+        for (let turn = 0; turn < 40 && band.hidden; turn++) await flush();
+        assert.equal(band.hidden, false);
+        assert.match(text(band), /glyph — accepted/);
+    });
+
     it("marks closed issue plus a live acceptance as stale using canonical identity", async () => {
         const scene = world();
         const document_ = knownDifferencesJson(scene, {

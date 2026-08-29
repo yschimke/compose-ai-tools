@@ -2299,7 +2299,7 @@ are all sheet, which is where a reader zooming into *Typography* clicks.
 Tabbing the sheet while zoomed pans the focused node into view before parking its tooltip there;
 without that, keyboard focus would light up an outline somewhere off-screen.
 
-All of it is `<cp-page-zoom>`, a Lit component in [`cli/serve-web`](../cli/serve-web/README.md)
+All of it is `<cp-page-zoom>`, a Vue light-DOM component in [`cli/serve-web`](../cli/serve-web/README.md)
 rather than a block inside the page's legacy `design-page.js` — the first component of that migration
 with no legacy file behind it. The framing arithmetic (what to fit, when to fill the width instead,
 which level of the tree is "one level in") lives in a DOM-free module beside it, so the cases that

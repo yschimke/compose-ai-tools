@@ -3,9 +3,11 @@
 The browser side of `compose-preview serve`, as typed, tested Vue components
 instead of hand-rolled IIFEs in `assets/*.js`.
 
-Built to a single committed bundle at
-`cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve-components.js`,
-which `ServeWebAssets` then serves like any other static asset.
+Built to committed bundles under
+`cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/`, which
+`ServeWebAssets` serves like the other static assets. `serve-components.js` is
+the shared custom-element bundle; page-sized and optional surfaces retain
+separate entry points.
 
 ```
 npm install
@@ -86,34 +88,33 @@ The cost of a committed artifact is that it can go stale silently. `npm run
 verify` rebuilds and fails if the committed bytes differ from a fresh build of
 `src/`; CI runs it, so "committed" cannot quietly become "stale".
 
-## One bundle, where the legacy assets are per-page
+## Current bundle trade-off
 
-`ServeWebAssets` loads most scripts selectively — `codemirror.js` only on the
-playground, `catalog-live.js` only where a session can stream. That exists for
-the heavy ones, and they keep their own tags.
+`ServeWebAssets` loads page-sized scripts selectively — `viewer.js` only on the
+viewer and `known-differences.js` only where acceptance data is evaluated.
 
-This bundle is loaded whole. Vue's renderer is shared by every markup-owning
-element, an element whose tag is not on the page costs only its bytes, and the
-single bundle lets components import each other without a second runtime.
+`serve-components.js` is still loaded whole. Vue's renderer is shared by every
+markup-owning element in that entry point, but an absent custom element still
+costs download and parse bytes. `known-differences.js` is a separate entry point
+and currently contains its own Vue runtime, so a page using both pays for that
+runtime twice.
 
-Revisit if the bundle grows past roughly the size of the pages that load it.
+Keep new page-sized controllers out of `main.ts`. The next bundle change should
+introduce measured, surface-specific entries with a shared Vue runtime rather
+than adding another independently bundled Vue entry.
 
-## Porting the next component
+## Changing a component
 
-One legacy `assets/*.js` file per change, so each step is a reviewable diff
-against a moving fixture baseline:
+Keep the Kotlin/custom-element boundary reviewable and preserve the fixture net:
 
-1. Write the component under `src/components/`, light DOM, and add its import to
-   `src/main.ts`.
-2. Write its behavioural test under `test/`. **Port the contract, not the
-   source.** The Kotlin tests that assert on an asset's *source text* (e.g.
-   `ServeUrlStateTest` matching `urlState.push({ bg: choice });`) cannot survive
-   minification and never proved the behaviour anyway — re-express them here
-   against the real element, and delete the Kotlin assertion with a pointer to
-   its replacement. Check the new test actually fails when you reintroduce the
-   bug it names; the `bg-toggle` port did.
-3. Change `ServeWeb.kt` to emit the element, drop the old `scriptTag(...)`, and
-   remove the file from `ServeWebAssets.contentTypes`.
+1. Put component-owned markup in a light-DOM `VueElement`; put behaviour over
+   useful server-rendered markup in a `ControllerElement`. Keep canvas and
+   geometry work imperative.
+2. Add a behavioural test under `test/`, including disconnect/reconnect coverage
+   when the component owns listeners, observers, requests, or an external Vue
+   render target.
+3. Update `ServeWeb.kt` and the relevant entry point together. Avoid adding a
+   page-sized controller to the shared component bundle.
 4. `npm run verify`, then regenerate the page fixtures:
    ```
    UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
@@ -130,10 +131,10 @@ against a moving fixture baseline:
    byte-identical PNGs for all 196. So a capture that moves is a real change —
    take it seriously rather than re-running until it agrees.
 
-Ported so far: `bg-toggle.js` → `<cp-bg-toggle>`, `backend-badge.js` →
-`<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`, `rc-fonts.js` →
-`window.cpRcFonts`, `viewer-drawers.js` → `<cp-viewer-drawers>`,
-`url-state.js` + `page-theme.js` → `serve-chrome.js`.
+## Migration record
+
+The notes below preserve the decisions made during the Lit/IIFE-to-Vue migration.
+They are historical context, not a list of work still waiting to be ported.
 
 **Port the file whose bugs you keep paying for, not the smallest one left.**
 `viewer-drawers.js` was fifth by the cheapest-seam ordering and first by every
@@ -143,15 +144,13 @@ single test noticing until page captures started timing out weeks later. Three
 suites were red by then. A file that can only be exercised through a browser is
 a file whose defaults drift, so the ones with defaults are worth taking early.
 
-**New behaviour on a page that has not been ported yet starts here anyway.**
+**New behaviour was kept out of the remaining IIFEs during migration.**
 `<cp-page-zoom>` (the design page's zoom: double-click to drill into a section,
-⌘/Ctrl + wheel, drag to pan) is the first component with no legacy file behind it.
-`assets/design-page.js` is still an IIFE — it measures an overlay onto every node,
-flips the lanes, scores the per-node diff — and adding three hundred lines of
-gesture handling to it would have made that port harder and left the feature
-testable only through a browser. So the rule is *port a file when you touch it,
-and write anything new in here regardless*, with the coupling one-way and through
-the DOM: `<cp-page-zoom>` reads `.cp-page-selected` to know the page has a
+⌘/Ctrl + wheel, drag to pan) was the first component with no legacy file behind
+it. The then-unported `design-page.js` measured overlays, flipped lanes and
+scored per-node diffs; adding gesture handling there would have made its later
+port harder. The coupling stayed one-way and through the DOM:
+`<cp-page-zoom>` reads `.cp-page-selected` to know the page has a
 selection (so Escape unwinds that before the zoom) and writes `--cp-page-zoom` on
 the stage for `serve.css` to counter-scale the marks by. The legacy file knows
 nothing about the element.
@@ -388,14 +387,12 @@ wiring to `DOMContentLoaded`, as `pageTheme.ts` does. It used to get a parsed
 document for free by sitting last in `<body>`; that was never stated, and it is
 the only thing that had to change to move it.
 
-## New behaviour lands here too, not just ports
+## Choosing an implementation shape
 
 `<cp-catalog-toolbar>` was not ported from anything: the catalog landing's phone
-toolbar needed a DOM reflow, and a new `assets/*.js` IIFE would have been one
-more file for this migration to port later. A component that would have been
-written as a legacy script is written here instead — same rules as a port (light
-DOM, server-declared tag, a behavioural test, regenerate the fixtures, check the
-pixels), so the legacy pile only ever shrinks.
+toolbar needed a DOM reflow and was implemented directly as a typed controller.
+New behaviour follows the same rules: light DOM, a server-declared tag, a
+behavioural test, regenerated fixtures, and a pixel check when rendering changes.
 
 Its test is worth reading before writing another controller like it. The
 component's first version "restored" elements to where they already were on every
@@ -407,7 +404,7 @@ missing, and the only thing that noticed was a page capture of a state two steps
 later. The test now asserts *no element is moved at all* above the breakpoint,
 because "ends up in the right place" was true the whole time it was broken.
 
-Three shapes have shown up, and it is worth naming which one a script is before
+Four shapes have shown up, and it is worth naming which one a script is before
 porting it:
 
 - **A control the server declares** (`<cp-bg-toggle>`): the element renders its

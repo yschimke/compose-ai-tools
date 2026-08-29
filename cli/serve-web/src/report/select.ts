@@ -123,7 +123,7 @@ export function pickRegion(): Promise<Picked | null> {
  */
 export function pickElement(): Promise<Picked | null> {
     return new Promise((resolve) => {
-        const { root, box, done } = overlay(
+        const { box, done } = overlay(
             "Click the element to capture — a render, a table, a single cell · Esc to cancel",
         );
         let current: Element | null = null;

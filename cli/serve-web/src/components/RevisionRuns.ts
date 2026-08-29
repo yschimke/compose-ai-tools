@@ -36,6 +36,7 @@ export class RevisionRuns extends VueElement {
     private summary = "";
 
     private asked = false;
+    private details: HTMLDetailsElement | null = null;
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -50,12 +51,19 @@ export class RevisionRuns extends VueElement {
      * event covers all of them.
      */
     private install(): void {
+        if (!this.isConnected) return;
         const details = this.closest("details");
-        if (!details) return;
+        if (!details || this.details === details) return;
+        this.details = details;
         if (details.open) void this.load();
-        details.addEventListener("toggle", () => {
+        this.listen(details, "toggle", () => {
             if (details.open) void this.load();
         });
+    }
+
+    override disconnectedCallback(): void {
+        this.details = null;
+        super.disconnectedCallback();
     }
 
     private async load(): Promise<void> {

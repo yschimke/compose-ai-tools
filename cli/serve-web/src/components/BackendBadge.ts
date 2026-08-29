@@ -63,8 +63,8 @@ export class BackendBadge extends VueElement {
             attributeFilter: ["data-mode", "data-pending"],
         });
         this.readRoot();
-        // The server can place lane metadata after the stage. Lit's old update
-        // cycle saw it after parsing; keep that contract with one deferred patch.
+        // The server can place lane metadata after the stage. Read it once more
+        // after parsing so source order cannot leave the initial badge stale.
         queueMicrotask(() => {
             if (this.isConnected) this.requestUpdate();
         });

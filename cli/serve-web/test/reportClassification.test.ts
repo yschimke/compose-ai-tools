@@ -118,4 +118,21 @@ describe("<cp-report-classification>", () => {
             field.value,
         );
     });
+
+    it("listens only while connected and reinstalls after a move", async () => {
+        const field = form();
+        await flush();
+        const element = document.querySelector("cp-report-classification")!;
+        const select = element.querySelector("select")!;
+        element.remove();
+
+        field.value = body();
+        select.value = "parity:upstream";
+        select.dispatchEvent(new Event("change"));
+        assert.ok(!field.value.includes(UPSTREAM), field.value);
+
+        field.before(element);
+        await flush();
+        assert.ok(field.value.includes(UPSTREAM), field.value);
+    });
 });
