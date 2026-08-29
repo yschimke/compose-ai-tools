@@ -163,26 +163,7 @@ republishing the release.
 4. Publishes **`@yschimke/compose-design-map`** (the `design-map/` package — the annotations→`design-map.json` projection) to **npm**, at the tag's version. Uses npm Trusted Publishing (OIDC), so there is no npm token to rotate; provenance is attached automatically. Like the marketplace publishes it is tolerated rather than blocking, and it skips a version already on npm, so re-running it is safe. Unlike the other steps, its recovery is **re-running the failed job in the original release run**, not a `workflow_dispatch` of `release.yml` — see the trusted-publisher note below.
 5. Publishes **`@yschimke/remote-compose-player-cmp`** (the CMP/Wasm Remote Compose player bundle, staged by `:rc-player-wasm:rcPlayerNpmPackage`) to **npm**, at the tag's version, and attaches the same bundle to the Release as `rc-player-wasm.zip` for consumers who do not want npm. Same OIDC trusted-publishing arrangement, same tolerated-not-blocking posture, same re-run-the-job recovery as the design map. Its **embed contract** — `?src=`, `window.rcPlayerLoad`, the readiness marker — is versioned separately from the release; see [docs/design/RC_PLAYER_EMBED.md](design/RC_PLAYER_EMBED.md).
 6. ~~Publishes the **iOS XCFramework**~~ — **disabled, see [#4222](https://github.com/yschimke/compose-ai-tools/issues/4222).** The Kotlin/Native release link runs out of heap on `macos-15`, and because `finalize-release` gates on the whole of `release.yml` succeeding, a failure here would leave the Release a draft *after* Maven Central had already been published to. The job is skipped rather than deleted; re-enable it by dropping the `if: ${{ false }}` on `publish-xcframework` once the link completes in CI. Nothing regressed by disabling it — the job landed after `v1.15.0` and never completed a release, so no version has ever carried the asset. What it does when enabled: uploads `RcComposePlayer.xcframework.zip` to the Release, rewrites `Package.swift` to point at it, and tags that commit with a bare `<version>` (e.g. `1.16.0`) — deliberately *not* `v<version>`, and deliberately not prefixed. The Swift tag exists because SPM verifies a checksum that can only be written *after* the asset is uploaded, and it is bare because SwiftPM only resolves `X.Y.Z`/`vX.Y.Z` refs as versions; see [docs/design/RC_PLAYER_SWIFT.md](design/RC_PLAYER_SWIFT.md).
-7. Uploads the CLI and MCP artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
-8. ~~Builds the **XR compositor** binaries~~ — **moved to its own cadence.** See below.
-
-### The `xr-composite` native binaries
-
-The per-OS `xr-composite-<platform>-<version>.tar.gz` assets are **not** part of a normal release. They ship from [`xr-composite-release.yml`](../.github/workflows/xr-composite-release.yml), by hand, when the compositor changes.
-
-They used to be a job in `release.yml` that every release waited on. That was not a workflow mistake — it was forced by how the binary was addressed. The CLI asked GitHub for `xr-composite-<platform>-$BUNDLE_VERSION.tar.gz` and the Gradle plugin read the cache directory `…/xr-composite/$PluginVersion/…`, so an asset had to exist at **every version either side could be**. The result: 226 releases carried the binaries for 13 changes to the C++ (1.23 GB republished, 108 downloads in total), every CLI upgrade re-downloaded an unchanged binary because the cache was keyed by the CLI's version, and a transient Filament SDK fetch failure on the macOS or Windows leg skipped the `release` job entirely — so the CLI, MCP and wasm-player assets missed the Release over a component that release had not touched.
-
-Both consumers now resolve the binary by the **`xr-composite` pin** in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml). The CLI bakes it into `cli-version.properties` next to its own version and the plugin bakes it into `xr-fake-versions.properties`; one catalog entry feeds both, so the cache writer and the cache reader cannot drift.
-
-To cut one:
-
-1. **Land the compositor change with the pin bumped in the same PR.** The `XR Composite Pin` CI job fails a diff that touches `renderers/xr-composite/` without moving the pin — docs and `test/` are exempt. That gate is load-bearing: an unpublished compositor fails *silently*, because a missing asset is a graceful skip and the render still succeeds without a composite.
-2. **Run the `xr-composite release` workflow** (Actions → Run workflow), naming the version the pin now holds. It refuses to publish a version the pin does not name, builds the three platforms, and uploads onto the existing `v<version>` Release.
-3. **Confirm the three assets are on that Release.**
-
-Assets attach to an ordinary `v<version>` Release rather than a tag namespace of their own. That kept `XrCompositeProvision.assetUrl` unchanged and, more usefully, meant the pin's initial value resolved to assets already published — no window in which the compositor quietly stopped provisioning at cutover. A dedicated `xr-composite-v*` namespace is a reasonable follow-up; it only changes how `assetUrl` derives the tag.
-
-`xr-composite-build.yml` still builds all three platforms on every PR touching the compositor, so a broken build is caught at review time rather than at publish time.
+7. Uploads the CLI, MCP and XR compositor artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Alongside `release.yml`, the automatic release chain starts
 `preview-host-image.yml` immediately after tag creation. That job builds only
@@ -286,7 +267,7 @@ live there), just apply the plugin:
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "1.47.0"
+    id("ee.schimke.composeai.preview") version "1.48.0"
 }
 ```
 <!-- x-release-please-end -->
@@ -342,9 +323,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-1.47.0.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-1.48.0.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-1.47.0/bin/compose-preview list
+./compose-preview-1.48.0/bin/compose-preview list
 ```
 <!-- x-release-please-end -->
 
@@ -357,9 +338,9 @@ want the server binary:
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview-mcp.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-1.47.0.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-1.48.0.tar.gz
 tar xzf compose-preview-mcp.tar.gz
-./compose-preview-mcp-1.47.0/bin/compose-preview-mcp
+./compose-preview-mcp-1.48.0/bin/compose-preview-mcp
 ```
 <!-- x-release-please-end -->
 
