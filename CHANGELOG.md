@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.48.0](https://github.com/yschimke/compose-ai-tools/compare/v1.47.0...v1.48.0) (2026-08-29)
+
+
+### Features
+
+* consume the wire contracts instead of building them ([#4771](https://github.com/yschimke/compose-ai-tools/issues/4771)) ([826008e](https://github.com/yschimke/compose-ai-tools/commit/826008e28240fba2e226abf7492b5bef37673d4c))
+* name what is filed on the compare wall, and ask where a report belongs ([#4769](https://github.com/yschimke/compose-ai-tools/issues/4769)) ([40175a1](https://github.com/yschimke/compose-ai-tools/commit/40175a14d143434eefd290916a7b8b8f95d76091))
+
 ## [1.47.0](https://github.com/yschimke/compose-ai-tools/compare/v1.46.2...v1.47.0) (2026-08-29)
 
 
