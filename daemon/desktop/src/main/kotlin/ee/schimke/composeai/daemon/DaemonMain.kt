@@ -7,8 +7,8 @@ import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.RenderPreviewExtension
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.renderer.xr.client.XrCompositeBinary
 import ee.schimke.composeai.renderer.xr.client.XrRenderServer

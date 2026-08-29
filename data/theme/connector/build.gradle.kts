@@ -12,7 +12,7 @@ plugins {
 dependencies {
   api(project(":daemon:core"))
   api(project(":data-render-compose"))
-  api(libs.composeai.data.theme.core)
+  api(project(":data-theme-core"))
   implementation(libs.jetbrains.compose.runtime)
   implementation(libs.jetbrains.compose.ui)
   implementation(libs.jetbrains.compose.material3)

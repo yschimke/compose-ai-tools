@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test

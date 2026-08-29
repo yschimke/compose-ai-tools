@@ -1,10 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.OverrideSeed
 import ee.schimke.composeai.data.overrides.OverrideSeedKind
 import ee.schimke.composeai.data.overrides.OverrideVariantSpec
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.util.Base64
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals

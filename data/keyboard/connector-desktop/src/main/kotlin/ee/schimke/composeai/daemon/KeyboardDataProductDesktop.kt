@@ -16,13 +16,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.KeyboardOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.keyboard.Material3KeyboardProduct
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension

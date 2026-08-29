@@ -15,7 +15,7 @@ content padding is a fraction of screen height and balloons into a top gap when 
 The `compose/figma-svg` export (and its sibling `compose/semantics-wireframe`) is built from the
 layout-inspector + semantics tree captured for **one rendered frame** at the preview's viewport size
 (see [`ComposeFigmaSvgDataProduct`](../../data/layoutinspector/connector/src/main/kotlin/ee/schimke/composeai/daemon/ComposeFigmaSvgDataProduct.kt)
-and [`FigmaSvgModel`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/FigmaSvgModel.kt)).
+and [`FigmaSvgModel`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/FigmaSvgModel.kt)).
 
 A `LazyColumn` / `LazyRow` / Wear `TransformingLazyColumn` is **virtualised**: only the items in (or
 just adjacent to) the visible viewport are composed, so only those have a `LayoutNode`. The capture
@@ -134,7 +134,7 @@ scroll-and-split scheme:
 1. **Capsule clip instead of the circle.** The grown frame is masked to a vertical **stadium**
    (top half-circle of radius `width/2`, straight sides, bottom half-circle) — the vector analogue
    of the raster `applyWearPillClip`, emitted as a single `<rect rx=width/2>`. Implemented as
-   [`FigmaSvgCapsuleClip`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/FigmaSvgModel.kt);
+   [`FigmaSvgCapsuleClip`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/FigmaSvgModel.kt);
    a `roundClip` request on a frame that's taller than it is wide (the grown scroll frame)
    auto-selects it, so the always-on `ComposeFigmaSvgExtension` keeps passing `roundClip = isRound`
    and the tall render gets the stadium with no extra plumbing.
@@ -239,7 +239,7 @@ lands on the rect the render actually painted.)*
   unscaled list slices, and stitch them into the capsule — the tree-level analogue of what the raster
   LONG path does with `ScrollSliceStitcher`. It needs no preview edits and sidesteps the
   height-relative padding entirely.
-  - **Pure assembler:** [`WearScrollSliceStitcher`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/WearScrollSliceStitcher.kt)
+  - **Pure assembler:** [`WearScrollSliceStitcher`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/WearScrollSliceStitcher.kt)
     (`data-layoutinspector-core`) — chains slices by shared once-occurring text movement (not the
     drifting scroll offset), places each item at its true content position de-duplicated across
     overlaps, pins `TimeText`, and emits the Canvas-drawn `EdgeButton` crescent as one raster layer.

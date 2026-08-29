@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

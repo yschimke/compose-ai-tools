@@ -24,7 +24,7 @@ dependencies {
   // exposes it with `api(libs.okio)` for exactly this reason, but an `implementation` edge keeps it
   // off the consumer's COMPILE classpath — Gradle publishes it as a runtime dependency — so an
   // external caller could not name the parameter without depending on Okio itself.
-  api(libs.composeai.common.io)
+  api(project(":common-io"))
 
   // JSON-RPC client + subprocess spawn infrastructure. Public surface here is the `RenderSession`
   // contract; the client types stay internal to this module.

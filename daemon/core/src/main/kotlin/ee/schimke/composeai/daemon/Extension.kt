@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionDescriptor
 
 /**
  * A daemon extension. Bundles every contribution one feature makes to the daemon's wire surface so

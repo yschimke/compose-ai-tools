@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   api(libs.kotlinx.serialization.json)
   testImplementation(libs.junit)
 }

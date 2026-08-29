@@ -48,7 +48,7 @@ dependencies {
   // `implementation`: a consumer resolving from POM metadata must see them to compile.
   api(project(":daemon:core"))
   // `classpathArgFile` — writes the daemon's @argfile so the argv survives Windows length limits.
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)

@@ -35,9 +35,9 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewBackground

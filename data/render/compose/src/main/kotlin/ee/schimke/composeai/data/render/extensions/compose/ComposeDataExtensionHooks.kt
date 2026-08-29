@@ -4,10 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.tooling.CompositionData
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataProductSink

@@ -116,6 +116,17 @@ jobs:
           # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
           # includeBuild and needs an explicit address.
           #
+          # The five re-absorbed modules — `:common-io` and the four `data-*-core` — are EXCLUDED
+          # and published by NOBODY. They came back from yschimke/compose-preview-contracts at its
+          # 2.1.0 narrowing (they were never wire contracts; see that repo's docs/VERSIONING.md),
+          # and their `ee.schimke.composeai:*` coordinates stay FROZEN at the 2.0.0 published from
+          # there. Publishing them from here would stamp this repository's version — 1.49.0 and up —
+          # onto coordinates that already carry 2.0.0, so Gradle and Renovate would rank the new
+          # artifact BELOW the old one and `latest` would resolve backwards to the stale contracts
+          # build. That is the same ranking trap that forced the contracts re-base UP rather than
+          # down. They keep `composeai.maven-publishing` because the contract probe publishes them
+          # to Maven Local at the probe version; only the Central fan-out skips them.
+          #
           # The four `:rc-player-*` modules are EXCLUDED here and published by `publish-player-stack`
           # on macOS instead. They declare `iosArm64`/`iosSimulatorArm64`, and Kotlin/Native cannot
           # build an Apple klib on Linux — leaving them in this fan-out either fails the release
@@ -127,7 +138,12 @@ jobs:
             -x :rc-player-trace:publishAndReleaseToMavenCentral \
             -x :rc-player-protocol:publishAndReleaseToMavenCentral \
             -x :rc-player-runtime:publishAndReleaseToMavenCentral \
-            -x :rc-player-compose:publishAndReleaseToMavenCentral
+            -x :rc-player-compose:publishAndReleaseToMavenCentral \
+            -x :common-io:publishAndReleaseToMavenCentral \
+            -x :data-render-core:publishAndReleaseToMavenCentral \
+            -x :data-layoutinspector-core:publishAndReleaseToMavenCentral \
+            -x :data-theme-core:publishAndReleaseToMavenCentral \
+            -x :data-preview-overrides-core:publishAndReleaseToMavenCentral
 
   # The `:rc-player-*` stack, published from macOS because its Apple targets can only be built there.
   #

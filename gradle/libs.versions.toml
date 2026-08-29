@@ -340,7 +340,7 @@ coil3 = "3.5.0"
 # here. This repository consumes them; it no longer owns these coordinates. A change to a contract
 # reaches this build only through a release there — see that repository's docs/VERSIONING.md.
 # A point pin, deliberately: a range would let a contract change arrive without a pull request.
-composeai-contracts = "2.0.0"
+composeai-contracts = "2.1.0"
 
 [libraries]
 
@@ -349,11 +349,6 @@ composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol", v
 composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices", version.ref = "composeai-contracts" }
 composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta", version.ref = "composeai-contracts" }
 composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol", version.ref = "composeai-contracts" }
-composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core", version.ref = "composeai-contracts" }
-composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core", version.ref = "composeai-contracts" }
-composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core", version.ref = "composeai-contracts" }
-composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core", version.ref = "composeai-contracts" }
-composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref = "composeai-contracts" }
 # `@com.android.tools.screenshot.PreviewTest` — the marker Google's screenshot plugin requires on a
 # `@Preview` before it will render it (alpha15+ discovers nothing without it). Only the Studio-parity
 # fixtures in `:samples:android-screenshot-test` need it, on the `screenshotTest` classpath; version

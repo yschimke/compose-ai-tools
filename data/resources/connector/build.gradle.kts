@@ -8,7 +8,7 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.resources.connector" }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   api(project(":data-resources-core"))
   api(project(":daemon:core"))
   testImplementation(libs.junit)

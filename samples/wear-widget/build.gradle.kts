@@ -78,7 +78,7 @@ dependencies {
   implementation(project(":wear-preview-runtime"))
   // `IrSidecarChannel` itself — `:wear-preview-runtime` keeps it `implementation`-scoped, and this
   // module's `WearWidgetDocCaptureTest` asserts on the sidecar it produces.
-  implementation(libs.composeai.data.render.core)
+  implementation(project(":data-render-core"))
   debugImplementation(libs.compose.ui.tooling.prerelease)
 
   testImplementation(libs.junit)

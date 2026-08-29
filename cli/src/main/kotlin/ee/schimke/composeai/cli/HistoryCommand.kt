@@ -9,8 +9,8 @@ import ee.schimke.composeai.daemon.history.HistoryImageDiff
 import ee.schimke.composeai.daemon.history.HistorySource
 import ee.schimke.composeai.daemon.history.LocalFsHistorySource
 import ee.schimke.composeai.daemon.protocol.HistoryDataDelta
+import ee.schimke.composeai.daemon.protocol.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
-import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.io.LEGACY_HISTORY_DIRNAME
 import ee.schimke.composeai.io.composeAiHistoryDir

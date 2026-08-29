@@ -39,7 +39,7 @@ android {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // Google Fonts CSS-API + TTF cache, shared with the Remote Compose typeface resolver so both
   // lanes resolve a family to the same file rather than to two drifting copies of the downloader.
   api(project(":data-fonts-google"))
@@ -61,7 +61,7 @@ dependencies {
   // are produced exclusively by `:daemon:android`'s `RenderEngine`; consumers (VS Code chip,
   // `compose-preview a11y`, MCP) drive a11y through the daemon, never through this Test task.
   api(project(":data-a11y-core"))
-  implementation(libs.composeai.data.render.core)
+  implementation(project(":data-render-core"))
   // Backend-agnostic motion-capture primitives: the `@InteractionPreview` script expansion the
   // desktop renderer also derives its recording window from, plus the APNG encoder and frame-delay
   // rationals `handleInteractionCapture` stitches its frames with.
@@ -76,7 +76,7 @@ dependencies {
   // Layout-inspector models + the pure Wear scroll-slice stitcher (`WearScrollSliceStitcher`) that
   // `WearScrollSvgAssembler` drives; the connector's SVG producers stay a `testImplementation` /
   // daemon-side dependency, so main only pulls the backend-agnostic core.
-  implementation(libs.composeai.data.layoutinspector.core)
+  implementation(project(":data-layoutinspector-core"))
   // Focus / keyboard-traversal connector. Owns `KeyboardInputModeManager`, the
   // `LaunchedEffect`-driven focus walk via `FocusOverrideExtension`, the per-capture state
   // holder `FocusController`, and the post-capture `FocusOverlay`. The renderer's per-capture

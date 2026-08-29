@@ -50,6 +50,7 @@ import ee.schimke.composeai.daemon.LauncherWidgetExtension
 import ee.schimke.composeai.daemon.PermissionsOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
@@ -61,7 +62,6 @@ import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewAnimationContext
 import ee.schimke.composeai.data.render.PreviewFilter
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass

@@ -1,12 +1,12 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.GestureOverride
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

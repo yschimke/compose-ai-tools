@@ -25,7 +25,7 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.focus.connector" }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // Wire-shape — re-exported via `api` so consumers (`:daemon:android`, `:renderer-android`) can
   // refer to `FocusOverride` / `FocusDirection` without adding a second `project` dependency.
   api(project(":data-focus-core"))
@@ -34,7 +34,7 @@ dependencies {
   // connector's planner / extension classes can be referenced from `RobolectricHost`'s
   // `previewOverrideExtensions` list without a second project dep on the consumer.
   api(project(":daemon:core"))
-  api(libs.composeai.data.render.core)
+  api(project(":data-render-core"))
   api(project(":data-render-compose"))
 
   // Compose runtime / UI types (`@Composable`, `DisposableEffect`, `LocalInputModeManager`,

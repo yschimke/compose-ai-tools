@@ -34,7 +34,7 @@ plugins {
 
 dependencies {
   api(project(":render-session-api"))
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
 
   // The actual daemon entry point we run on a background thread, plus the JSON-RPC client we
   // wrap the calling end of the pipes with. `:render-session-subprocess` is depended on for

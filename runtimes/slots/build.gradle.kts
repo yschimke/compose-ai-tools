@@ -63,7 +63,7 @@ kotlin {
     val jvmTest =
       getByName("jvmTest") {
         dependencies {
-          implementation(libs.composeai.data.layoutinspector.core)
+          implementation(project(":data-layoutinspector-core"))
           implementation(libs.junit)
         }
       }

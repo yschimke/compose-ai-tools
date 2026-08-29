@@ -67,7 +67,7 @@ dependencies {
   // `IrSidecarChannel`
   // is the render-harness hand-off it offers the bytes into, so it's a real (published) dependency
   // rather than `compileOnly` — the helper calls it at render time.
-  implementation(libs.composeai.data.render.core)
+  implementation(project(":data-render-core"))
   // `runBlocking` for the one-shot document capture. Deliberately NOT `compileOnly`: consumers do
   // have coroutines transitively, but at whatever version their own graph resolves — the alpha
   // Compose/glance-wear artifacts drag in 1.9.0, while this module compiles against the repo's

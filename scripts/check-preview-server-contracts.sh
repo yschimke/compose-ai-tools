@@ -28,12 +28,18 @@ PROBE_VERSION="0.0.0-contract-probe-SNAPSHOT"
 
 # The contracts this repository still BUILDS, and so can publish under the probe version.
 #
-# Nine others — daemon-protocol, daemon-devices, daemon-bta, agent-grant-protocol, the four
-# data-*-core modules and common-io — are not here any more: they moved to
-# yschimke/compose-preview-contracts and resolve from Maven Central. They are still contracts, and
+# Four others — daemon-protocol, daemon-devices, daemon-bta and agent-grant-protocol — are not here
+# any more: they moved to yschimke/compose-preview-contracts and resolve from Maven Central. The
+# four data-*-core modules and common-io went there too and came BACK at that repo's 2.1.0
+# narrowing; they are built here again, so they belong in this list. They are still contracts, and
 # `contracts` in preview-server/contract-probe/build.gradle.kts still lists them; they just are not
 # ours to publish. `checkContractSurface` fails if the two lists disagree.
 CONTRACT_PROJECTS=(
+  ":common-io"
+  ":data-render-core"
+  ":data-layoutinspector-core"
+  ":data-theme-core"
+  ":data-preview-overrides-core"
   ":daemon:core"
   ":daemon-client"
   ":preview-data-api"

@@ -18,7 +18,7 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // FontBox (from PDFBox) — pure-JVM TrueType/OpenType parsing + subsetting for the figma-svg font
   // embed path: subset an embedded face to the glyphs the SVG actually draws so the exact typeface
   // rides along at a few KB instead of the full multi-hundred-KB font file.
@@ -27,7 +27,7 @@ dependencies {
   // renderer that seeds those faces so a `DeviceFontFamilyName` node is *reported* as the family
   // the render actually drew.
   implementation(project(":data-fonts-core"))
-  api(libs.composeai.data.layoutinspector.core)
+  api(project(":data-layoutinspector-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))
   // The `compose/spatial-semantics` producer emits the `SpatialSemanticsTree` wire DTO.

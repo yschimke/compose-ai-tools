@@ -50,7 +50,7 @@ dependencies {
   // `api` so the connector's planner / extension classes can be referenced from
   // `RobolectricHost`'s `previewOverrideExtensions` list.
   api(project(":daemon:core"))
-  api(libs.composeai.data.render.core)
+  api(project(":data-render-core"))
   api(project(":data-render-compose"))
 
   // `androidx.wear.ambient.AmbientLifecycleObserver` + `AmbientLifecycleCallback` —

@@ -86,13 +86,13 @@ dependencies {
   api(project(":render-session-api"))
   api(project(":render-session-subprocess"))
 
-  implementation(libs.composeai.common.io)
-  implementation(libs.composeai.data.layoutinspector.core)
-  implementation(libs.composeai.data.theme.core)
+  implementation(project(":common-io"))
+  implementation(project(":data-layoutinspector-core"))
+  implementation(project(":data-theme-core"))
   implementation(project(":data-pseudolocale-core"))
-  implementation(libs.composeai.data.preview.overrides.core)
+  implementation(project(":data-preview-overrides-core"))
   implementation(project(":data-remotecompose-core"))
-  implementation(libs.composeai.data.render.core)
+  implementation(project(":data-render-core"))
 
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.ktor.client.core)

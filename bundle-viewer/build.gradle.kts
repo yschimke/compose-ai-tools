@@ -98,7 +98,7 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
 
   // Okio-based file/IO foundation (synchronous): bundle reads/extraction/coordinate resolution.
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
 
   // Ktor client (OkHttp engine) for opening a bundle from a URL. Explicit okhttp dep pins the
   // engine to OkHttp 5.x over ktor-client-okhttp's transitive 4.12.0.

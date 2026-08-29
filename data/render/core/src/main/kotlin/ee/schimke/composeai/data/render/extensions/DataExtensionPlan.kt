@@ -1,0 +1,768 @@
+package ee.schimke.composeai.data.render.extensions
+
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventDescriptor
+import kotlinx.serialization.Serializable
+
+/**
+ * Stable, typed identity for one data product emitted by the extension graph.
+ *
+ * [kind] is the protocol/on-disk name clients already know (`"a11y/hierarchy"`). [type] is the
+ * in-process payload shape extension authors consume from [DataProductStore]. Keeping both on the
+ * same key lets planner code stay protocol-compatible while extension implementations depend on
+ * compile-time payload types instead of string joins.
+ */
+public data class DataProductKey<T : Any>(
+  val kind: String,
+  val schemaVersion: Int,
+  val type: Class<T>,
+) : Comparable<DataProductKey<*>> {
+  init {
+    require(kind.isNotBlank()) { "Data product kind must not be blank." }
+    require(schemaVersion > 0) { "Data product schema version must be positive." }
+  }
+
+  override fun compareTo(other: DataProductKey<*>): Int =
+    compareValuesBy(this, other, DataProductKey<*>::kind, DataProductKey<*>::schemaVersion)
+
+  override fun toString(): String = "$kind@v$schemaVersion"
+}
+
+/** Read-only view of declared inputs for an extension. */
+public interface DataProductSource {
+  public fun <T : Any> get(key: DataProductKey<T>): T?
+
+  public fun <T : Any> require(key: DataProductKey<T>): T =
+    get(key) ?: error("Data product '$key' is not available.")
+}
+
+/** Write-only view for emitting an extension's declared outputs. */
+public interface DataProductSink {
+  public fun <T : Any> put(key: DataProductKey<T>, value: T)
+}
+
+/** A small in-process product store used by downstream extensions to consume declared inputs. */
+public interface DataProductStore : DataProductSource, DataProductSink {
+  /**
+   * Returns a per-extension view that enforces the declared `inputs`/`outputs` contract: `get` only
+   * succeeds for keys in [PlannedDataExtension.inputs] (or already produced), `put` only for keys
+   * in [PlannedDataExtension.outputs]. Use this to wrap the shared store before handing it to a
+   * hook so contract drift is caught at runtime, not days later in a downstream consumer.
+   */
+  public fun scopedFor(extension: PlannedDataExtension): DataProductStore =
+    ScopedDataProductStore(this, extension)
+}
+
+public class RecordingDataProductStore : DataProductStore {
+  private val values: MutableMap<DataProductKey<*>, Any> = linkedMapOf()
+
+  override fun <T : Any> get(key: DataProductKey<T>): T? {
+    val value = values[key] ?: return null
+    return key.type.cast(value)
+  }
+
+  override fun <T : Any> put(key: DataProductKey<T>, value: T) {
+    values[key] = key.type.cast(value)
+  }
+}
+
+private class ScopedDataProductStore(
+  private val delegate: DataProductStore,
+  private val extension: PlannedDataExtension,
+) : DataProductStore {
+  override fun <T : Any> get(key: DataProductKey<T>): T? {
+    require(key in extension.inputs) {
+      "Data extension '${extension.id}' read undeclared product '$key'; " + "declare it in inputs."
+    }
+    return delegate.get(key)
+  }
+
+  override fun <T : Any> put(key: DataProductKey<T>, value: T) {
+    require(key in extension.outputs) {
+      "Data extension '${extension.id}' wrote undeclared product '$key'; " +
+        "declare it in outputs."
+    }
+    delegate.put(key, value)
+  }
+}
+
+public data class RenderImageArtifact(val path: String, val mediaType: String = "image/png")
+
+public data class RenderSemanticsSnapshot(val handle: String)
+
+public data class RenderDensity(val density: Float)
+
+public object CommonDataProducts {
+  public val ImageArtifact: DataProductKey<RenderImageArtifact> =
+    DataProductKey("render/image", schemaVersion = 1, RenderImageArtifact::class.java)
+
+  public val SemanticsSnapshot: DataProductKey<RenderSemanticsSnapshot> =
+    DataProductKey(
+      "render/semanticsSnapshot",
+      schemaVersion = 1,
+      RenderSemanticsSnapshot::class.java,
+    )
+
+  public val Density: DataProductKey<RenderDensity> =
+    DataProductKey("render/density", schemaVersion = 1, RenderDensity::class.java)
+}
+
+public enum class DataExtensionTarget {
+  Android,
+  Desktop,
+}
+
+/**
+ * Named capability in the render/data-extension pipeline.
+ *
+ * Keep these stringly-typed for now so product modules can add capabilities without changing a
+ * central enum on every extension migration.
+ */
+@Serializable
+@JvmInline
+public value class DataExtensionCapability(public val value: String) :
+  Comparable<DataExtensionCapability> {
+  init {
+    require(value.isNotBlank()) { "Data extension capability must not be blank." }
+  }
+
+  override fun compareTo(other: DataExtensionCapability): Int = value.compareTo(other.value)
+
+  override fun toString(): String = value
+}
+
+@Serializable
+public enum class DataExtensionPhase {
+  OuterEnvironment,
+  UserEnvironment,
+  Instrumentation,
+  Scenario,
+  Capture,
+  PostProcess,
+  Publish,
+}
+
+@Serializable
+public enum class DataExtensionLifecycle {
+  OneShot,
+  Subscribed,
+  AttachOnRender,
+  ExplicitRerender,
+  MultiFrame,
+}
+
+@Serializable
+public enum class DataExtensionHookKind {
+  AroundComposable,
+  ComposableExtractor,
+  CompositionObserver,
+  BeforeRender,
+  AfterCapture,
+  AfterRender,
+  RenderFailure,
+  Fetch,
+  Subscription,
+  ScenarioDriver,
+}
+
+@Serializable
+public data class DataExtensionConstraints(
+  val phase: DataExtensionPhase = DataExtensionPhase.Instrumentation,
+  val before: Set<DataExtensionId> = emptySet(),
+  val after: Set<DataExtensionId> = emptySet(),
+  val requires: Set<DataExtensionCapability> = emptySet(),
+  val provides: Set<DataExtensionCapability> = emptySet(),
+  val conflictsWith: Set<DataExtensionCapability> = emptySet(),
+  val lifecycle: DataExtensionLifecycle = DataExtensionLifecycle.OneShot,
+)
+
+public interface PlannedDataExtension {
+  public val id: DataExtensionId
+  public val hooks: Set<DataExtensionHookKind>
+  public val constraints: DataExtensionConstraints
+  public val inputs: Set<DataProductKey<*>>
+    get() = emptySet()
+
+  public val outputs: Set<DataProductKey<*>>
+    get() = emptySet()
+
+  public val targets: Set<DataExtensionTarget>
+    get() = emptySet()
+}
+
+public interface DataExtension<in Request> {
+  public val id: DataExtensionId
+  public val defaultConstraints: DataExtensionConstraints
+    get() = DataExtensionConstraints()
+
+  public fun plan(request: Request): PlannedDataExtension?
+}
+
+/**
+ * Built-in recording-script descriptor namespace. Splits cleanly between two halves:
+ *
+ * - [recordingDescriptor] — the `recording` extension, advertising `recording.probe` as `supported
+ *   = true`. Each [ee.schimke.composeai.daemon.RenderHost] returns this from its
+ *   `recordingScriptEventDescriptors()` override, alongside any host-specific extensions, so the
+ *   daemon's `dataExtensions` capability set tracks what the host actually dispatches.
+ * - [roadmapDescriptors] — `state` / `lifecycle` / `preview`, all `supported = false`. Advertised
+ *   by `DaemonMain` regardless of host so agents can see what's planned via `list_data_products`.
+ *   `record_preview` rejects them up front (see compose-ai-tools#714); the descriptors flip to
+ *   `supported = true` only when a real handler lands in the host's session registry, at which
+ *   point the descriptor moves out of `roadmapDescriptors` and into the host's own contribution.
+ *
+ * The legacy aggregate [descriptors] (probe + roadmap) is retained for callers that haven't
+ * migrated yet — see the deprecation note.
+ */
+public object RecordingScriptDataExtensions {
+  public const val PROBE_EVENT: String = "recording.probe"
+  public const val STATE_SAVE_EVENT: String = "state.save"
+  public const val STATE_RESTORE_EVENT: String = "state.restore"
+  public const val PREVIEW_RELOAD_EVENT: String = "preview.reload"
+
+  /**
+   * Assertion script events (Maestro-style `assertVisible` / `assertNotVisible`). Each resolves the
+   * event's `target` (ref / testTag / role+text) against the held scene's live semantics tree and
+   * records [ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.FAILED] evidence when
+   * the condition isn't met — turning a recording into a check the `record` command can gate on.
+   */
+  public const val ASSERT_VISIBLE_EVENT: String = "assert.visible"
+  public const val ASSERT_NOT_VISIBLE_EVENT: String = "assert.notVisible"
+
+  /**
+   * `assert.textEquals` — resolves the event's `target` and fails unless the resolved node's text
+   * equals the expected string carried in the event's existing `inputText` field (no new wire
+   * field). The Maestro `assertVisible: "text"` / Espresso `withText` equivalent.
+   */
+  public const val ASSERT_TEXT_EQUALS_EVENT: String = "assert.textEquals"
+
+  /**
+   * `assert.a11y` — runs the Android Accessibility Test Framework (ATF) against the **held
+   * recording scene** at the script point and fails the recording when findings exceed the
+   * threshold (issue #1966). Android-only: ATF runs against a `View` hierarchy, which desktop's
+   * `ImageComposeScene` doesn't have. The threshold rides the event's `inputText` field (`errors`
+   * default / `warnings`).
+   */
+  public const val ASSERT_A11Y_EVENT: String = "assert.a11y"
+
+  /**
+   * `assert.pixels` — golden-image assertion (issue #1967). Diffs the recorded frame at the event's
+   * `tMs` against a committed baseline PNG and fails the recording when the diff exceeds tolerance,
+   * reusing the `PixelDiff` comparator from `:daemon:harness`. The baseline path rides the event's
+   * existing `inputText` field (no new wire field), resolved by the CLI against `--baseline-dir`.
+   * Desktop-only today (it reads the frames the desktop session wrote); Android is a follow-up.
+   */
+  public const val ASSERT_PIXELS_EVENT: String = "assert.pixels"
+
+  /**
+   * `recording.probe` descriptor with `supported = true`. Returned from each
+   * `RenderHost.recordingScriptEventDescriptors()` that wires a real probe handler in its
+   * recording-session registry (today: both desktop and android backends).
+   */
+  public val recordingDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("recording"),
+      displayName = "Recording script markers",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = PROBE_EVENT,
+            displayName = "Probe marker",
+            summary = "Records a named point in the recording timeline.",
+            supported = true,
+          )
+        ),
+    )
+
+  /**
+   * `assert.*` descriptor. Advertised (`supported = true`) only by hosts that wire the assertion
+   * handlers in their recording-session registry — desktop today; Android is a follow-up (its
+   * semantics snapshot doesn't yet carry the refs the resolver needs). Hosts that don't wire them
+   * simply omit this descriptor, so the MCP layer rejects `assert.*` up front for those daemons.
+   */
+  public val assertionDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("assertion"),
+      displayName = "Recording assertions",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = ASSERT_VISIBLE_EVENT,
+            displayName = "Assert visible",
+            summary =
+              "Fails the recording unless the target (ref/testTag/role+text) matches a node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_NOT_VISIBLE_EVENT,
+            displayName = "Assert not visible",
+            summary = "Fails the recording if the target matches any node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_TEXT_EQUALS_EVENT,
+            displayName = "Assert text equals",
+            summary =
+              "Fails the recording unless the target node's text equals the expected " +
+                "string (carried in the event's inputText field).",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_PIXELS_EVENT,
+            displayName = "Assert pixels",
+            summary =
+              "Fails the recording unless the recorded frame at this tMs matches the baseline " +
+                "PNG (path in the event's inputText field) within PixelDiff tolerance.",
+            supported = true,
+          ),
+        ),
+    )
+
+  /**
+   * Assertion descriptor for the Android backend (issue #2519). It resolves against the flat
+   * probe-semantics snapshot, which now carries each node's **merged descendant text**, so it
+   * advertises `assert.visible` / `assert.notVisible` / `assert.textEquals` — resolvable by
+   * `testTag`, `role`+`text` (a `Button { Text(...) }` matches via the button's merged text), or
+   * `text` alone — plus `assert.pixels`, which diffs the recorded frame the same way desktop does.
+   * The one shape it can't resolve is a `ref` target (no refs survive into the flat snapshot),
+   * which the handler fails with a clear message rather than risk a false pass. `assert.a11y` rides
+   * its own [assertionA11yDescriptor]. (This is the descriptor formerly known as
+   * `assertionVisibilityDescriptor`, back when Android was `testTag`-only and text/pixels weren't
+   * wired.)
+   */
+  public val assertionAndroidDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("assertion"),
+      displayName = "Recording assertions",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = ASSERT_VISIBLE_EVENT,
+            displayName = "Assert visible",
+            summary =
+              "Fails the recording unless the target (testTag / role+text / text) matches a node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_NOT_VISIBLE_EVENT,
+            displayName = "Assert not visible",
+            summary =
+              "Fails the recording if the target (testTag / role+text / text) matches any node.",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_TEXT_EQUALS_EVENT,
+            displayName = "Assert text equals",
+            summary =
+              "Fails the recording unless the target node's (merged) text equals the expected " +
+                "string (carried in the event's inputText field).",
+            supported = true,
+          ),
+          RecordingScriptEventDescriptor(
+            id = ASSERT_PIXELS_EVENT,
+            displayName = "Assert pixels",
+            summary =
+              "Fails the recording unless the recorded frame at this tMs matches the baseline " +
+                "PNG (path in the event's inputText field) within PixelDiff tolerance.",
+            supported = true,
+          ),
+        ),
+    )
+
+  /**
+   * `assert.a11y` descriptor. Advertised only by the Android backend ([RobolectricHost]), which can
+   * run ATF against the held composition's `View` hierarchy; desktop omits it so `record_preview`
+   * rejects `assert.a11y` up front for desktop daemons rather than letting it silently no-op.
+   */
+  public val assertionA11yDescriptor: DataExtensionDescriptor =
+    DataExtensionDescriptor(
+      id = DataExtensionId("assertion-a11y"),
+      displayName = "Recording accessibility assertions",
+      recordingScriptEvents =
+        listOf(
+          RecordingScriptEventDescriptor(
+            id = ASSERT_A11Y_EVENT,
+            displayName = "Assert accessibility",
+            summary =
+              "Runs ATF against the held scene and fails the recording when findings exceed the " +
+                "threshold (inputText: errors | warnings).",
+            supported = true,
+          )
+        ),
+    )
+
+  /**
+   * Renderer-agnostic roadmap descriptors. New entries land here when an event has a
+   * renderer-agnostic dispatch story but no host has wired it yet. Advertised by every daemon so
+   * `list_data_products` surfaces the planned surface area, but `supported = false` everywhere —
+   * `record_preview` rejects up front. When a host wires real dispatch, advertise the upgraded
+   * descriptor from the host's `recordingScriptEventDescriptors()`.
+   *
+   * Empty as of the state.save / state.restore wiring (compose-ai-tools#749). All previously
+   * roadmapped events have a host today: `state.{recreate,save,restore}` →
+   * [`StateRecordingScriptEvents`][ee.schimke.composeai.daemon.StateRecordingScriptEvents],
+   * `preview.reload` →
+   * [`PreviewReloadRecordingScriptEvents`][ee.schimke.composeai.daemon.PreviewReloadRecordingScriptEvents],
+   * `lifecycle.event` →
+   * [`LifecycleRecordingScriptEvents`][ee.schimke.composeai.daemon.LifecycleRecordingScriptEvents].
+   */
+  public val roadmapDescriptors: List<DataExtensionDescriptor> = emptyList()
+
+  /**
+   * Combined list of [recordingDescriptor] + [roadmapDescriptors]. Retained for callers that build
+   * their `dataExtensions` from a single source; new code should prefer
+   * `host.recordingScriptEventDescriptors() + roadmapDescriptors` so the host can opt in / out of
+   * the supported half independently.
+   */
+  public val descriptors: List<DataExtensionDescriptor> =
+    listOf(recordingDescriptor) + roadmapDescriptors
+}
+
+public data class SimplePlannedDataExtension(
+  override val id: DataExtensionId,
+  override val hooks: Set<DataExtensionHookKind> = emptySet(),
+  override val constraints: DataExtensionConstraints = DataExtensionConstraints(),
+  override val inputs: Set<DataProductKey<*>> = emptySet(),
+  override val outputs: Set<DataProductKey<*>> = emptySet(),
+  override val targets: Set<DataExtensionTarget> = emptySet(),
+) : PlannedDataExtension
+
+public data class OrderedDataExtensionPlan(
+  val extensions: List<PlannedDataExtension>,
+  val initialCapabilities: Set<DataExtensionCapability> = emptySet(),
+) {
+  val providedCapabilities: Set<DataExtensionCapability> =
+    extensions.fold(initialCapabilities) { provided, extension ->
+      provided + extension.constraints.provides
+    }
+}
+
+public data class DataExtensionPlanningError(
+  val code: String,
+  val message: String,
+  val extensions: List<DataExtensionId> = emptyList(),
+)
+
+public data class DataExtensionPlanningResult(
+  val orderedExtensions: List<PlannedDataExtension>,
+  val errors: List<DataExtensionPlanningError>,
+) {
+  val isValid: Boolean
+    get() = errors.isEmpty()
+}
+
+public object DataExtensionPlanner {
+  public fun planOutputs(
+    extensions: List<PlannedDataExtension>,
+    requestedOutputs: Set<DataProductKey<*>>,
+    initialProducts: Set<DataProductKey<*>> = emptySet(),
+    initialCapabilities: Set<DataExtensionCapability> = emptySet(),
+    target: DataExtensionTarget? = null,
+  ): DataExtensionPlanningResult {
+    val eligibleExtensions =
+      if (target == null) extensions
+      else
+        extensions.filter { extension ->
+          extension.targets.isEmpty() || target in extension.targets
+        }
+    val duplicateErrors =
+      duplicateIdErrors(eligibleExtensions) + duplicateOutputErrors(eligibleExtensions)
+    if (duplicateErrors.isNotEmpty()) {
+      return DataExtensionPlanningResult(emptyList(), duplicateErrors)
+    }
+
+    val byOutput =
+      eligibleExtensions
+        .flatMap { extension -> extension.outputs.map { output -> output to extension } }
+        .associate { it.first to it.second }
+    val selected = linkedMapOf<DataExtensionId, PlannedDataExtension>()
+    val visiting = linkedSetOf<DataProductKey<*>>()
+    val errors = mutableListOf<DataExtensionPlanningError>()
+
+    fun resolve(product: DataProductKey<*>) {
+      if (product in initialProducts) return
+      val provider = byOutput[product]
+      if (provider == null) {
+        errors +=
+          DataExtensionPlanningError(
+            code = "MissingProductProvider",
+            message = "No data extension provides requested product '$product'.",
+          )
+        return
+      }
+      if (provider.id in selected) return
+      if (!visiting.add(product)) {
+        errors +=
+          DataExtensionPlanningError(
+            code = "ProductDependencyCycle",
+            message = "Data product dependency graph contains a cycle at '$product'.",
+            extensions = listOf(provider.id),
+          )
+        return
+      }
+      provider.inputs.sorted().forEach(::resolve)
+      visiting.remove(product)
+      selected[provider.id] = provider
+    }
+
+    requestedOutputs.sorted().forEach(::resolve)
+    if (errors.isNotEmpty()) {
+      return DataExtensionPlanningResult(emptyList(), errors)
+    }
+
+    val sorted = plan(selected.values.toList(), initialCapabilities = initialCapabilities)
+    return DataExtensionPlanningResult(
+      orderedExtensions = sorted.orderedExtensions,
+      errors = sorted.errors + validateProducts(sorted.orderedExtensions, initialProducts),
+    )
+  }
+
+  public fun <Request> planRequest(
+    extensions: List<DataExtension<Request>>,
+    request: Request,
+    initialCapabilities: Set<DataExtensionCapability> = emptySet(),
+  ): DataExtensionPlanningResult =
+    plan(
+      extensions = extensions.mapNotNull { it.plan(request) },
+      initialCapabilities = initialCapabilities,
+    )
+
+  public fun plan(
+    extensions: List<PlannedDataExtension>,
+    initialCapabilities: Set<DataExtensionCapability> = emptySet(),
+  ): DataExtensionPlanningResult {
+    val duplicateErrors = duplicateIdErrors(extensions)
+    if (duplicateErrors.isNotEmpty()) {
+      return DataExtensionPlanningResult(emptyList(), duplicateErrors)
+    }
+
+    val sorted = sort(extensions)
+    val errors = sorted.errors + validateCapabilities(sorted.ordered, initialCapabilities)
+    return DataExtensionPlanningResult(orderedExtensions = sorted.ordered, errors = errors)
+  }
+
+  private fun duplicateIdErrors(
+    extensions: List<PlannedDataExtension>
+  ): List<DataExtensionPlanningError> =
+    extensions
+      .groupBy { it.id }
+      .filterValues { it.size > 1 }
+      .map { (id, matches) ->
+        DataExtensionPlanningError(
+          code = "DuplicateExtensionId",
+          message = "Data extension '$id' is planned ${matches.size} times.",
+          extensions = listOf(id),
+        )
+      }
+
+  private fun duplicateOutputErrors(
+    extensions: List<PlannedDataExtension>
+  ): List<DataExtensionPlanningError> =
+    extensions
+      .flatMap { extension -> extension.outputs.map { output -> output to extension.id } }
+      .groupBy { it.first }
+      .filterValues { it.size > 1 }
+      .map { (output, matches) ->
+        DataExtensionPlanningError(
+          code = "DuplicateProductProvider",
+          message =
+            "Data product '$output' is provided by multiple extensions: " +
+              matches.joinToString { it.second.value } +
+              ".",
+          extensions = matches.map { it.second },
+        )
+      }
+
+  private data class SortResult(
+    val ordered: List<PlannedDataExtension>,
+    val errors: List<DataExtensionPlanningError>,
+  )
+
+  private fun sort(extensions: List<PlannedDataExtension>): SortResult {
+    val byId = extensions.associateBy { it.id }
+    val edges = linkedMapOf<DataExtensionId, MutableSet<DataExtensionId>>()
+    val incoming = linkedMapOf<DataExtensionId, MutableSet<DataExtensionId>>()
+    val errors = mutableListOf<DataExtensionPlanningError>()
+
+    extensions
+      .sortedBy { it.id }
+      .forEach { extension ->
+        edges[extension.id] = linkedSetOf()
+        incoming[extension.id] = linkedSetOf()
+      }
+
+    fun addEdge(before: DataExtensionId, after: DataExtensionId) {
+      if (before == after) {
+        errors +=
+          DataExtensionPlanningError(
+            code = "SelfOrderingConstraint",
+            message = "Data extension '$before' cannot order itself before or after itself.",
+            extensions = listOf(before),
+          )
+        return
+      }
+      if (before !in byId || after !in byId) return
+      if (edges.getValue(before).add(after)) {
+        incoming.getValue(after).add(before)
+      }
+    }
+
+    for (extension in extensions) {
+      for (before in extension.constraints.before) {
+        if (before !in byId) {
+          errors += unknownConstraint(extension.id, before, "before")
+        } else {
+          addEdge(extension.id, before)
+        }
+      }
+      for (after in extension.constraints.after) {
+        if (after !in byId) {
+          errors += unknownConstraint(extension.id, after, "after")
+        } else {
+          addEdge(after, extension.id)
+        }
+      }
+    }
+
+    val byPhaseThenId =
+      compareBy<PlannedDataExtension> { it.constraints.phase.ordinal }.thenBy { it.id.value }
+    val phaseOrdered = extensions.sortedWith(byPhaseThenId)
+    for (index in phaseOrdered.indices) {
+      val earlier = phaseOrdered[index]
+      for (later in phaseOrdered.drop(index + 1)) {
+        if (earlier.constraints.phase.ordinal < later.constraints.phase.ordinal) {
+          addEdge(earlier.id, later.id)
+        }
+      }
+    }
+
+    val remainingIncoming =
+      incoming.mapValuesTo(linkedMapOf()) { (_, value) -> value.toMutableSet() }
+    val ready =
+      extensions
+        .filter { remainingIncoming.getValue(it.id).isEmpty() }
+        .sortedWith(byPhaseThenId)
+        .toMutableList()
+    val ordered = mutableListOf<PlannedDataExtension>()
+
+    while (ready.isNotEmpty()) {
+      val next = ready.removeAt(0)
+      ordered += next
+      for (after in edges.getValue(next.id).sorted()) {
+        val afterIncoming = remainingIncoming.getValue(after)
+        afterIncoming.remove(next.id)
+        if (afterIncoming.isEmpty()) {
+          byId[after]?.let { candidate ->
+            if (candidate !in ordered && candidate !in ready) {
+              ready += candidate
+              ready.sortWith(byPhaseThenId)
+            }
+          }
+        }
+      }
+    }
+
+    if (ordered.size != extensions.size) {
+      val cycleIds = extensions.map { it.id }.filter { id -> ordered.none { it.id == id } }.sorted()
+      errors +=
+        DataExtensionPlanningError(
+          code = "OrderingCycle",
+          message =
+            "Data extension ordering constraints contain a cycle: ${cycleIds.joinToString()}.",
+          extensions = cycleIds,
+        )
+    }
+
+    return SortResult(ordered = ordered, errors = errors)
+  }
+
+  private fun unknownConstraint(
+    owner: DataExtensionId,
+    target: DataExtensionId,
+    relation: String,
+  ): DataExtensionPlanningError =
+    DataExtensionPlanningError(
+      code = "UnknownOrderingTarget",
+      message =
+        "Data extension '$owner' declares '$relation' constraint on unknown extension '$target'.",
+      extensions = listOf(owner, target),
+    )
+
+  private fun validateCapabilities(
+    ordered: List<PlannedDataExtension>,
+    initialCapabilities: Set<DataExtensionCapability>,
+  ): List<DataExtensionPlanningError> = buildList {
+    var provided = initialCapabilities
+    val plannedProviders = ordered.flatMap { extension ->
+      extension.constraints.provides.map { it to extension.id }
+    }
+
+    for (extension in ordered) {
+      val conflicts =
+        extension.constraints.conflictsWith.intersect(
+          provided +
+            plannedProviders
+              .filter { (_, provider) -> provider != extension.id }
+              .map { (capability, _) -> capability }
+              .toSet()
+        )
+      if (conflicts.isNotEmpty()) {
+        add(
+          DataExtensionPlanningError(
+            code = "ConflictingCapability",
+            message =
+              "Data extension '${extension.id}' conflicts with planned " +
+                "capabilities: ${conflicts.joinToString()}.",
+            extensions =
+              listOf(extension.id) +
+                plannedProviders
+                  .filter { (capability, _) -> capability in conflicts }
+                  .map { it.second },
+          )
+        )
+      }
+
+      val missing = extension.constraints.requires - provided
+      if (missing.isNotEmpty()) {
+        add(
+          DataExtensionPlanningError(
+            code = "MissingCapability",
+            message =
+              "Data extension '${extension.id}' requires capabilities that are not " +
+                "available yet: ${missing.joinToString()}.",
+            extensions =
+              listOf(extension.id) +
+                plannedProviders
+                  .filter { (capability, _) -> capability in missing }
+                  .map { it.second },
+          )
+        )
+      }
+
+      provided += extension.constraints.provides
+    }
+  }
+
+  private fun validateProducts(
+    ordered: List<PlannedDataExtension>,
+    initialProducts: Set<DataProductKey<*>>,
+  ): List<DataExtensionPlanningError> = buildList {
+    var provided = initialProducts
+    for (extension in ordered) {
+      val missing = extension.inputs - provided
+      if (missing.isNotEmpty()) {
+        add(
+          DataExtensionPlanningError(
+            code = "MissingProductInput",
+            message =
+              "Data extension '${extension.id}' requires data products that are not " +
+                "available yet: ${missing.joinToString()}.",
+            extensions = listOf(extension.id),
+          )
+        )
+      }
+      provided += extension.outputs
+    }
+  }
+}

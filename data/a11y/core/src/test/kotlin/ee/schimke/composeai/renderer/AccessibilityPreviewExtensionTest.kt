@@ -1,7 +1,7 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.daemon.protocol.PipelineCapability
 import ee.schimke.composeai.data.render.RenderPreviewExtension
-import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelinePlan
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineValidator
 import org.junit.Assert.assertEquals

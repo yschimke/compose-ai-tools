@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // Filter matrices, ColorMatrix4x5, PostCaptureProcessor implementation, shared constants.
   api(project(":data-displayfilter-core"))
   // DataProductRegistry, DataFetchResult / DataProductCapability wire types, the Extension class

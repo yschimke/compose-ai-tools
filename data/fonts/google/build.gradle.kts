@@ -19,7 +19,7 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   implementation(libs.okhttp)
   // `api` so consumers writing a custom downloader get Okio's `FileSystem` without re-declaring it.
   api(libs.okio)

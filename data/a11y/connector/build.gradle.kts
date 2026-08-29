@@ -18,7 +18,7 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.a11y.connector" }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // Core a11y types + ATF wrapper + overlay generator. Re-exported via `api` so consumers
   // (`:daemon:android`) can refer to `AccessibilityFinding` / `AccessibilityNode` without
   // adding a second `project` dependency.

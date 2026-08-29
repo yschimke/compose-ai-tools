@@ -1,7 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload

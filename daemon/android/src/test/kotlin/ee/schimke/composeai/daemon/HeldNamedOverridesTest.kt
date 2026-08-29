@@ -1,6 +1,6 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

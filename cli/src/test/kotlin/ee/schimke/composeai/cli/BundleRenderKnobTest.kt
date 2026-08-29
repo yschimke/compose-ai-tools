@@ -4,8 +4,8 @@ import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.cli.serve.FakeRenderSession
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeRenderHost
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
-import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test

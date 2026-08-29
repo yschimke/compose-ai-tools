@@ -1,9 +1,9 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

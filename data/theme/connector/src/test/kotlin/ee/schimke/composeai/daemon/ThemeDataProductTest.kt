@@ -1,9 +1,9 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.text.font.FontWeight
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook

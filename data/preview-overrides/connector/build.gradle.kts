@@ -22,14 +22,14 @@ plugins {
 dependencies {
   // Wire-shape + product kind (`compose/overrides`), re-exported so `:daemon:*` can register the
   // extension by referring to the connector's classes only.
-  api(libs.composeai.data.preview.overrides.core)
+  api(project(":data-preview-overrides-core"))
   // The consumer runtime — the connector seeds + reads the same `PreviewOverrideController` the
   // `previewOverride*` lookups use, and provides `LocalPreviewOverrideHost`.
   api(project(":data-preview-overrides-runtime"))
 
   // DataProductRegistry, DataExtension, AroundComposableExtension.
   api(project(":daemon:core"))
-  api(libs.composeai.data.render.core)
+  api(project(":data-render-core"))
   api(project(":data-render-compose"))
 
   implementation(libs.jetbrains.compose.runtime)

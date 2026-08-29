@@ -40,7 +40,7 @@ val probeVersion: String = rootProject.extra["contractVersion"] as String
  *
  * The probe still checks them, and the check still means something: it catches conflict resolution
  * quietly selecting some *other* version of a contract than the one this repository pins. What it
- * can no longer do for these nine is prove the probe compiled against THIS pull request's source,
+ * can no longer do for these four is prove the probe compiled against THIS pull request's source,
  * because the source is not here — that guarantee now belongs to the contracts repository's own CI.
  */
 val externalContracts =
@@ -49,11 +49,6 @@ val externalContracts =
     "daemon-devices",
     "daemon-bta",
     "agent-grant-protocol",
-    "data-render-core",
-    "data-layoutinspector-core",
-    "data-theme-core",
-    "data-preview-overrides-core",
-    "common-io",
   )
 
 /** The released version of [externalContracts], pinned in `gradle/libs.versions.toml`. */

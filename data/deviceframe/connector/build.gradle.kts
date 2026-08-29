@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // Catalog + compositor (pure java.awt). Re-exported so the renderer modules can depend on the
   // connector alone and still see DeviceArtCatalog / DeviceFrameCompositor, mirroring how
   // data-displayfilter-connector re-exports data-displayfilter-core.

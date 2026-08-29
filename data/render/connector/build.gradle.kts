@@ -8,8 +8,8 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
-  api(libs.composeai.data.render.core)
+  implementation(project(":common-io"))
+  api(project(":data-render-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))
   implementation(libs.jetbrains.compose.foundation)

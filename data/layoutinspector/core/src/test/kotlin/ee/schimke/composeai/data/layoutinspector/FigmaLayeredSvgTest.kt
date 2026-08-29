@@ -1,0 +1,3790 @@
+package ee.schimke.composeai.data.layoutinspector
+
+import java.io.ByteArrayInputStream
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class FigmaLayeredSvgTest {
+
+  private fun bounds(l: Int, t: Int, r: Int, b: Int) = LayoutInspectorBounds(l, t, r, b)
+
+  /**
+   * Parses [svg] with a namespace-aware XML parser and fails the test if it isn't well-formed. The
+   * layered export is meant to round-trip through Figma / Illustrator, which read the `.svg` as XML
+   * (strict), not through Chromium's lenient HTML parser — so an unescaped `&`/`<` anywhere (a
+   * `<text>`, an attribute, or the `@font-face` `<style>` block) is a hard import failure, not a
+   * cosmetic one. The document declares no DTD, so parsing pulls no external entities.
+   */
+  private fun assertWellFormedXml(svg: String) {
+    val builder = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+    builder.newDocumentBuilder().parse(ByteArrayInputStream(svg.toByteArray(Charsets.UTF_8)))
+  }
+
+  private fun layoutNode(
+    component: String,
+    l: Int,
+    t: Int,
+    r: Int,
+    b: Int,
+    tokens: ComposeSemanticsTokens? = null,
+    modifiers: List<LayoutInspectorModifier> = emptyList(),
+    children: List<LayoutInspectorNode> = emptyList(),
+  ) =
+    LayoutInspectorNode(
+      nodeId = component,
+      component = component,
+      bounds = bounds(l, t, r, b),
+      size = LayoutInspectorSize(r - l, b - t),
+      modifiers = modifiers,
+      tokens = tokens,
+      children = children,
+    )
+
+  private fun render(
+    layout: LayoutInspectorNode,
+    semantics: ComposeSemanticsNode? = null,
+    colorNames: Map<String, String> = emptyMap(),
+    density: Float = 1f,
+  ): String {
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        semantics = semantics?.let { ComposeSemanticsPayload(it) },
+        colorNames = colorNames,
+        density = density,
+      )
+    return FigmaLayeredSvg.render(model)
+  }
+
+  @Test
+  fun vectorPathCarriesStrokeLinecap() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "c",
+        component = "Canvas",
+        bounds = bounds(0, 0, 40, 40),
+        size = LayoutInspectorSize(40, 40),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 40f,
+            viewportHeight = 40f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M4,20 L36,20",
+                  strokeArgb = "#FF6750A4",
+                  strokeWidth = 8f,
+                  strokeCap = "round",
+                )
+              ),
+          ),
+      )
+    val svg = render(node)
+    assertTrue(svg.contains("""stroke-linecap="round""""))
+  }
+
+  @Test
+  fun vectorPreservesItsAspectRatioInsideANonSquareLayer() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(10, 20, 58, 32),
+        size = LayoutInspectorSize(48, 12),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    // A 24×24 vector fits the 48×12 layer at 0.5× and is horizontally centered. Independent
+    // scaling would emit scale(2 0.5), visibly flattening the icon.
+    assertTrue(svg, svg.contains("""transform="translate(28 20) scale(0.5 0.5)""""))
+    assertFalse(svg, svg.contains("scale(2 0.5)"))
+  }
+
+  /**
+   * Issue #2852: Jetsnack's gradient-tinted icon button rings itself with `border(width,
+   * Brush.linearGradient(...), CircleShape)`. The brush resolved to no flat colour, so the ring
+   * vanished from the export entirely — a nearly-black circle against a PNG showing a
+   * cyan-to-purple border. The captured gradient is now emitted as a real `<linearGradient>` def
+   * the stroke references, so it survives *and* stays editable in Figma.
+   */
+  @Test
+  fun aGradientBorderIsEmittedAsALinearGradientStroke() {
+    val node =
+      layoutNode(
+        "IconButton",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            borderGradient =
+              LayoutInspectorGradient(
+                colors = listOf("#FF00FFFF", "#FF7B1FA2"),
+                startX = 0f,
+                startY = 0f,
+                endX = 1f,
+                endY = 1f,
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertTrue(svg, svg.contains("<linearGradient"))
+    assertTrue("first stop", svg.contains("""stop-color="#00FFFF""""))
+    assertTrue("second stop", svg.contains("""stop-color="#7B1FA2""""))
+    assertTrue("diagonal", svg.contains("""x2="1""") && svg.contains("""y2="1""""))
+    assertTrue("the stroke references the def", svg.contains("""stroke="url(#gs-"""))
+    // Evenly spaced by default, as Compose does when the brush declares no stops.
+    assertTrue(svg, svg.contains("""offset="0""""))
+    assertTrue(svg, svg.contains("""offset="1""""))
+  }
+
+  @Test
+  fun aGradientBackgroundIsEmittedAsALinearGradientFill() {
+    val node =
+      layoutNode(
+        "Ramp",
+        0,
+        0,
+        100,
+        20,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient =
+              LayoutInspectorGradient(
+                colors = listOf("#FFFF0000", "#8000FF00"),
+                stops = listOf(0f, 0.75f),
+              )
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertTrue("the fill references the def", svg.contains("""fill="url(#gf-"""))
+    assertTrue("explicit stop position is kept", svg.contains("""offset="0.75""""))
+    // A translucent stop keeps its alpha as stop-opacity rather than losing it in the hex.
+    assertTrue(svg, svg.contains("""stop-opacity="0.5"""))
+  }
+
+  @Test
+  fun aLayerWithBothGradientsGetsTwoDistinctDefs() {
+    val node =
+      layoutNode(
+        "Chip",
+        0,
+        0,
+        60,
+        24,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#FF111111", "#FF222222")),
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF333333", "#FF444444")),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertEquals("one def per gradient", 2, Regex("<linearGradient").findAll(svg).count())
+    assertTrue(svg, svg.contains("""fill="url(#gf-"""))
+    assertTrue(svg, svg.contains("""stroke="url(#gs-"""))
+    assertGradientReferencesResolve(svg)
+  }
+
+  /** Every `url(#…)` a shape points at, and every `<linearGradient id="…">` the doc defines. */
+  private fun gradientRefs(svg: String) =
+    Regex("""url\(#(g[fs]-[^)]+)\)""").findAll(svg).map { it.groupValues[1] }.toList()
+
+  private fun gradientDefIds(svg: String) =
+    Regex("""<linearGradient id="([^"]+)"""").findAll(svg).map { it.groupValues[1] }.toList()
+
+  /**
+   * A `url(#…)` that names no def paints nothing at all, so the gradient silently disappears —
+   * which is the very failure #2852 is about. Asserting the *prefix* of the reference isn't enough
+   * to catch that; the id has to actually resolve.
+   */
+  private fun assertGradientReferencesResolve(svg: String) {
+    val defs = gradientDefIds(svg)
+    val refs = gradientRefs(svg)
+    assertTrue("expected at least one gradient reference in\n$svg", refs.isNotEmpty())
+    for (ref in refs) {
+      assertTrue("`url(#$ref)` resolves to no def (defs: $defs)\n$svg", defs.contains(ref))
+    }
+    assertEquals("def ids must be unique", defs.size, defs.distinct().size)
+  }
+
+  /**
+   * The bordered case: `shape()` insets its layer copy by half the stroke so SVG's centered stroke
+   * lands inside the bounds like Compose's does — and the gradient id used to be derived from that
+   * *inset* copy's coordinates while the def was keyed on the original. Even the default 1px border
+   * rounds to a 1px inset, so every bordered gradient layer emitted a dangling `url(#…)` and drew
+   * nothing.
+   */
+  @Test
+  fun aBorderedGradientLayerReferencesTheDefThatWasActuallyEmitted() {
+    val node =
+      layoutNode(
+        "GradientRing",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#FF111111", "#FF222222")),
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF00FFFF", "#FF7B1FA2")),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertGradientReferencesResolve(svg)
+  }
+
+  /**
+   * Two overlaid children can share a name *and* a top-left — and distinct names can sanitise to
+   * the same slug — so an id derived from name + coordinates collided and both shapes resolved to
+   * one def, painting one layer with the other's colours.
+   */
+  @Test
+  fun overlaidSiblingsSharingANameAndOriginGetDistinctGradientIds() {
+    fun ramp(first: String, second: String) =
+      layoutNode(
+        "Ramp",
+        0,
+        0,
+        40,
+        40,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf(first, second))
+          ),
+      )
+    val node =
+      layoutNode(
+        "Stack",
+        0,
+        0,
+        40,
+        40,
+        children = listOf(ramp("#FF111111", "#FF222222"), ramp("#FF333333", "#FF444444")),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertEquals("one def per gradient", 2, gradientDefIds(svg).size)
+    assertGradientReferencesResolve(svg)
+    assertEquals("each sibling references its own def", 2, gradientRefs(svg).distinct().size)
+    // Both colour pairs survive — a collision would drop one layer's stops entirely.
+    assertTrue(svg, svg.contains("""stop-color="#111111""""))
+    assertTrue(svg, svg.contains("""stop-color="#333333""""))
+  }
+
+  /**
+   * A gradient border is a stroke like any other and takes the captured `borderWidth`; keying the
+   * width on the flat `stroke` alone left every brush ring at the 1px default, so Jetsnack's 2dp
+   * gradient ring drew as a hairline (and thinner still at capture densities above 1).
+   */
+  @Test
+  fun aGradientBorderUsesTheCapturedWidth() {
+    val node =
+      layoutNode(
+        "GradientRing",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF00FFFF", "#FF7B1FA2")),
+          ),
+      )
+
+    val svg = render(node, density = 2f)
+
+    assertWellFormedXml(svg)
+    assertTrue(
+      "2dp at density 2 is a 4px ring, not a 1px hairline\n$svg",
+      svg.contains("""stroke-width="4""""),
+    )
+  }
+
+  @Test
+  fun vectorRetainsAnExplicitNonuniformLayoutTransform() {
+    // "Explicit" is the captured `transform`: the node really is drawn through a
+    // `graphicsLayer(scaleX = 2f)`, so the vector is stretched to match. The bounds agree with
+    // that scale (24 × 2 = 48 wide), but it's the transform — not the bounds ratio — that decides.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(10, 20, 58, 44),
+        size = LayoutInspectorSize(24, 24),
+        transform = LayoutInspectorTransform(scaleX = 2f, scaleY = 1f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 1)""""))
+  }
+
+  @Test
+  fun drawCapturedVectorRetainsAnAxisMirror() {
+    // Material 3 implements a bottom-to-top VerticalSlider track by drawing in its normal local
+    // coordinates through `scale(1f, -1f)`. Bounds retain the same axis-aligned box, so only the
+    // signed captured transform distinguishes the intended mirror from an ordinary track.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "vertical-track",
+        component = "Spacer",
+        bounds = bounds(10, 20, 52, 938),
+        size = LayoutInspectorSize(42, 918),
+        transform = LayoutInspectorTransform(scaleX = 1f, scaleY = -1f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 42f,
+            viewportHeight = 918f,
+            fromDrawCapture = true,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L42,0 L42,918 L0,918 Z",
+                  fillArgb = "#FF6750A4",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(
+      "the origin moves to the bottom edge before the negative Y scale\n$svg",
+      svg.contains("""transform="translate(10 938) scale(1 -1)""""),
+    )
+  }
+
+  /**
+   * Issue #2853: Jetsnack's `Profile/Animating FAB content` draws a square icon into a box the
+   * animation has shrunk — the icon is *clipped*, never distorted. Inferring a scale from the ratio
+   * of drawn box to layout slot squashed it to `scale(0.49 0.13)`; with no captured `transform`
+   * there is no draw-time scale to apply, so it must stay square.
+   */
+  @Test
+  fun aClippedVectorStaysSquareInsteadOfBeingSquashedToItsDrawnBox() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        // 24×24 measured, drawn into ~12×3 by the animating container. No `transform`: nothing
+        // scaled it.
+        bounds = bounds(10, 20, 22, 23),
+        size = LayoutInspectorSize(24, 24),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("the icon must stay square\n$svg", svg.contains("""scale(1 1)"""))
+    assertFalse("the drawn-box ratio must not become a scale\n$svg", svg.contains("scale(0.5 0.13"))
+  }
+
+  /**
+   * A uniformly shrunk node (Wear's curved-edge transform, #2615) still scales with its capture.
+   */
+  @Test
+  fun aDrawCapturedControlKeepsItsPlacedBoundsScale() {
+    // A draw-captured control records its viewport in *placed* px while measuring to its 48dp
+    // touch target, so the drawn/slot ratio is what maps it back — dropping it would draw a
+    // RadioButton at 2.4× over its own box. Only `ImageVector` nodes take the transform rule.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "radio",
+        component = "RadioButton",
+        bounds = bounds(0, 0, 20, 20),
+        size = LayoutInspectorSize(48, 48),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 20f,
+            viewportHeight = 20f,
+            fromDrawCapture = true,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L20,0 L20,20 L0,20 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("the control must draw at its own size\n$svg", svg.contains("""scale(1 1)"""))
+    assertFalse("must not blow up to the touch target\n$svg", svg.contains("scale(2.4"))
+  }
+
+  @Test
+  fun aUniformlyScaledVectorFollowsItsCapturedTransform() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(0, 0, 12, 12),
+        size = LayoutInspectorSize(24, 24),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    assertTrue(render(node).contains("""scale(0.5 0.5)"""))
+  }
+
+  /**
+   * Issue #2853, the embedded-container regression: a captured graphics-layer scale is measured
+   * through the root coordinates, so it is already baked into the node's drawn `bounds` — and, when
+   * the container also scales the node's *measured* slot, into its `size`. Fitting the layout slot
+   * (`size / viewport`) and then multiplying by the captured `transform` again double-counts the
+   * scale: an embedded Jetchat mic group blew up from `scale(2.62)` to `scale(6.54)` that way. The
+   * fit must come from the drawn bounds alone, uniformly.
+   */
+  @Test
+  fun aScaledVectorFitsItsDrawnBoundsInsteadOfDoubleCountingTheTransform() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        // A 24-unit icon drawn at 2.5×: the container scaled both the drawn bounds and the measured
+        // slot to 60, and `transform` reports the same 2.5 the coordinate mapping measured.
+        bounds = bounds(0, 0, 60, 60),
+        size = LayoutInspectorSize(60, 60),
+        transform = LayoutInspectorTransform(scaleX = 2.5f, scaleY = 2.5f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("fits the drawn bounds once\n$svg", svg.contains("""scale(2.5 2.5)"""))
+    assertFalse("must not double-count the captured scale\n$svg", svg.contains("scale(6.25"))
+  }
+
+  /**
+   * Issue #2853: a *uniform* graphics-layer scale on a square icon in a **non-square** layout slot
+   * must keep its aspect ratio. A 24×24 icon in a 48×24 slot at 0.5× has 24×12 drawn bounds;
+   * reading each axis straight off those bounds would emit `scale(1 0.5)` and squash the icon. The
+   * uniform transform is the signal that the two axes should stay equal — fit the viewport
+   * uniformly into the drawn bounds instead, `scale(0.5 0.5)`.
+   */
+  @Test
+  fun aUniformlyScaledVectorInANonSquareSlotKeepsItsAspectRatio() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        // 48×24 slot drawn at 0.5× → 24×12 bounds. The transform is uniform (0.5, 0.5).
+        bounds = bounds(0, 0, 24, 12),
+        size = LayoutInspectorSize(48, 24),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("the icon must keep its aspect ratio\n$svg", svg.contains("""scale(0.5 0.5)"""))
+    assertFalse("a square icon must not be squashed\n$svg", svg.contains("scale(1 0.5)"))
+  }
+
+  @Test
+  fun vectorHonorsExplicitFillBoundsContentScale() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "image",
+        component = "Image",
+        bounds = bounds(10, 20, 58, 32),
+        size = LayoutInspectorSize(48, 12),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties = mapOf("contentScale" to "ContentScale.FillBounds"),
+            )
+          ),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 0.5)""""))
+  }
+
+  @Test
+  fun everyLayoutNodeBecomesANamedGroup() {
+    val svg =
+      render(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          400,
+          800,
+          children =
+            listOf(layoutNode("Header", 0, 0, 400, 100), layoutNode("Body", 0, 100, 400, 800)),
+        )
+      )
+    assertTrue(svg.contains("""<g id="Screen""""))
+    assertTrue(svg.contains("""<g id="Header""""))
+    assertTrue(svg.contains("""<g id="Body""""))
+    assertTrue(svg.startsWith("<svg"))
+    assertTrue(svg.trimEnd().endsWith("</svg>"))
+  }
+
+  @Test
+  fun layerNameStripsMeasurePolicySuffixSoGroupsReadAsComposables() {
+    // When source-info resolution fails the component falls back to the measure-policy class name
+    // (`BoxMeasurePolicy`, `RootMeasurePolicy`); the layer id should read as the composable
+    // instead.
+    val svg =
+      render(
+        layoutNode(
+          "RootMeasurePolicy",
+          0,
+          0,
+          200,
+          100,
+          children =
+            listOf(
+              layoutNode("BoxMeasurePolicy", 0, 0, 100, 50),
+              layoutNode("OutlinedTextFieldMeasurePolicy", 0, 50, 200, 100),
+            ),
+        )
+      )
+    assertTrue(svg, svg.contains("""<g id="Root""""))
+    assertTrue(svg, svg.contains("""<g id="Box""""))
+    assertTrue(svg, svg.contains("""<g id="OutlinedTextField""""))
+    assertFalse(svg, svg.contains("MeasurePolicy"))
+  }
+
+  @Test
+  fun collapsesPurePassthroughWrappersIntoTheirSingleChild() {
+    // Compose stacks anonymous single-child layout nodes per widget (padding / min-size / clip
+    // wrappers). Those draw nothing and only nest one child, so they collapse into the child that
+    // actually paints — the export shouldn't emit a pile of empty <g> groups.
+    val svg =
+      render(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          200,
+          100,
+          children =
+            listOf(
+              layoutNode(
+                "WrapperA",
+                0,
+                0,
+                100,
+                40,
+                children =
+                  listOf(
+                    layoutNode(
+                      "WrapperB",
+                      0,
+                      0,
+                      100,
+                      40,
+                      children =
+                        listOf(
+                          layoutNode(
+                            "Button",
+                            0,
+                            0,
+                            100,
+                            40,
+                            tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+                          )
+                        ),
+                    )
+                  ),
+              )
+            ),
+        )
+      )
+    // The two empty wrappers are gone; the painting Button and the root frame survive.
+    assertFalse(svg, svg.contains("WrapperA"))
+    assertFalse(svg, svg.contains("WrapperB"))
+    assertTrue(svg, svg.contains("""<g id="Screen""""))
+    assertTrue(svg, svg.contains("""<g id="Button""""))
+    assertTrue(svg, svg.contains("<rect"))
+  }
+
+  @Test
+  fun keepsGroupingLayersThatHoldMultipleChildren() {
+    // A pass-through node with 2+ children genuinely groups siblings — it's real structure, not a
+    // redundant nesting level, so it must be preserved even though it draws nothing itself.
+    val svg =
+      render(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          200,
+          100,
+          children =
+            listOf(
+              layoutNode("Header", 0, 0, 200, 40),
+              layoutNode(
+                "Row",
+                0,
+                0,
+                200,
+                40,
+                children =
+                  listOf(layoutNode("Left", 0, 0, 100, 40), layoutNode("Right", 100, 0, 200, 40)),
+              ),
+            ),
+        )
+      )
+    assertTrue(svg, svg.contains("""<g id="Left""""))
+    assertTrue(svg, svg.contains("""<g id="Right""""))
+  }
+
+  @Test
+  fun layerLabelPrefersInheritedDisplayNameOverOwnComponent() {
+    // A node keeps its own identity in `component` (here a measure-policy fallback), but the layer
+    // label reads the friendly inherited `displayName`.
+    val svg =
+      render(
+        LayoutInspectorNode(
+          nodeId = "root",
+          component = "BoxMeasurePolicy",
+          displayName = "Card",
+          bounds = LayoutInspectorBounds(0, 0, 100, 60),
+          size = LayoutInspectorSize(100, 60),
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+        )
+      )
+    assertTrue(svg, svg.contains("""<g id="Card""""))
+    assertFalse(svg, svg.contains("""id="Box"""))
+  }
+
+  private fun plusVector(fromDrawCapture: Boolean) =
+    LayoutInspectorVectorGraphic(
+      viewportWidth = 24f,
+      viewportHeight = 24f,
+      paths =
+        listOf(LayoutInspectorVectorPath(pathData = "M11 5h2v14h-2z", fillArgb = "#FF000000")),
+      fromDrawCapture = fromDrawCapture,
+    )
+
+  private fun tintModifier() =
+    LayoutInspectorModifier(name = "drawWithContent", properties = emptyMap())
+
+  private fun vectorNode(
+    vector: LayoutInspectorVectorGraphic,
+    modifiers: List<LayoutInspectorModifier>,
+  ) =
+    LayoutInspectorPayload(
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = LayoutInspectorBounds(0, 0, 24, 24),
+        size = LayoutInspectorSize(24, 24),
+        vectorGraphic = vector,
+        modifiers = modifiers,
+      )
+    )
+
+  /**
+   * Issue #2852: Jetsnack tints its gradient icons with `Modifier.drawWithContent { drawContent();
+   * drawRect(brush, blendMode = Plus/Darken) }`. A blend-mode composite over arbitrary content has
+   * no faithful SVG equivalent, and the export emitted the bare `ImageVector` — painting the
+   * untinted black glyph the PNG never shows. The node must raster so the tint survives.
+   */
+  @Test
+  fun anIconDrawnOverByABlendModeTintRastersInsteadOfLosingTheTint() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = false), listOf(tintModifier())),
+        captureCanvasDraws = true,
+      )
+
+    assertEquals(listOf("icon"), model.rasterTargets.map { it.nodeId })
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue("the untinted vector must not be emitted\n$svg", !svg.contains("M11 5h2v14h-2z"))
+  }
+
+  /**
+   * A detached / not-yet-placed vector (inside a subcomposed Button or TextField) reports
+   * `(0,0,0,0)` bounds, which `toLayer` reconstructs from its measured size. The overlay raster has
+   * to crop that recovered box — cropping the raw zero-area one yields the transparent 1×1
+   * fallback, i.e. the icon disappears instead of being preserved.
+   */
+  @Test
+  fun anOverDrawnIconWithRecoveredBoundsRastersAtItsRecoveredSize() {
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "root",
+              component = "Box",
+              bounds = LayoutInspectorBounds(0, 0, 24, 24),
+              size = LayoutInspectorSize(24, 24),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "icon",
+                    component = "Icon",
+                    bounds = LayoutInspectorBounds(0, 0, 0, 0),
+                    size = LayoutInspectorSize(24, 24),
+                    vectorGraphic = plusVector(fromDrawCapture = false),
+                    modifiers = listOf(tintModifier()),
+                  )
+                ),
+            )
+          ),
+        captureCanvasDraws = true,
+      )
+
+    val target = model.rasterTargets.single { it.nodeId == "icon" }
+    assertTrue(
+      "the raster must cover the recovered box, not a zero-area one: $target",
+      target.right > target.left && target.bottom > target.top,
+    )
+  }
+
+  @Test
+  fun anIconWithNoOverDrawStaysAnEditableVector() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = false), emptyList()),
+        captureCanvasDraws = true,
+      )
+
+    assertTrue(model.rasterTargets.isEmpty())
+    assertTrue(FigmaLayeredSvg.render(model).contains("M11 5h2v14h-2z"))
+  }
+
+  /**
+   * The counterpart guard: when the paths were recorded *from* the draw lambda (a slider groove, a
+   * progress arc) the modifier is already fully represented by them, so rastering would throw away
+   * the editable capture the recorder just made.
+   */
+  @Test
+  fun aCapturedDrawKeepsItsVectorRatherThanRasteringItsOwnModifier() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = true), listOf(tintModifier())),
+        captureCanvasDraws = true,
+      )
+
+    assertTrue("a captured draw is its own vector", model.rasterTargets.isEmpty())
+    assertTrue(FigmaLayeredSvg.render(model).contains("M11 5h2v14h-2z"))
+  }
+
+  /** With no frame to crop from, the untinted vector still beats a broken `<image>` reference. */
+  @Test
+  fun withoutAFrameToCropTheOverDrawnIconKeepsItsVector() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = false), listOf(tintModifier())),
+        captureCanvasDraws = false,
+      )
+
+    assertTrue(model.rasterTargets.isEmpty())
+    assertTrue(FigmaLayeredSvg.render(model).contains("M11 5h2v14h-2z"))
+  }
+
+  @Test
+  fun inheritedDisplayNameIsNotUsedForOpaqueRasterMatching() {
+    // Regression guard (#2469 follow-up): an IconButton's internal wrapper inherits the label
+    // "IconButton" for display, but its own identity is a plain Box — it must NOT match the "Icon"
+    // raster fragment and rasterise, which would drop the whole editable button subtree into a PNG.
+    // Only the real Icon leaf, whose own `component` is "Icon", rasterises.
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "screen",
+              component = "Screen",
+              bounds = LayoutInspectorBounds(0, 0, 200, 100),
+              size = LayoutInspectorSize(200, 100),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "iconButton",
+                    component = "BoxMeasurePolicy",
+                    displayName = "IconButton",
+                    bounds = LayoutInspectorBounds(0, 0, 48, 48),
+                    size = LayoutInspectorSize(48, 48),
+                    children =
+                      listOf(
+                        LayoutInspectorNode(
+                          nodeId = "icon",
+                          component = "Icon",
+                          bounds = LayoutInspectorBounds(12, 12, 36, 36),
+                          size = LayoutInspectorSize(24, 24),
+                        ),
+                        LayoutInspectorNode(
+                          nodeId = "ripple",
+                          component = "BoxMeasurePolicy",
+                          displayName = "IconButton",
+                          bounds = LayoutInspectorBounds(0, 0, 48, 48),
+                          size = LayoutInspectorSize(48, 48),
+                          tokens = ComposeSemanticsTokens(backgroundColor = "#22000000"),
+                        ),
+                      ),
+                  )
+                ),
+            )
+          ),
+        rasterComponents = setOf("Icon"),
+      )
+    // Only the real Icon leaf became a raster; the IconButton wrapper stayed editable vector.
+    assertEquals(listOf("icon"), model.rasterTargets.map { it.nodeId })
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(svg, svg.contains("""<g id="IconButton""""))
+  }
+
+  @Test
+  fun ownMeasurePolicyIdentityStillRastersUnderAnInheritedLabel() {
+    // Counterpart to the IconButton guard: a control's own identity is its measure-policy class
+    // (OutlinedTextFieldMeasurePolicy) even though its friendly label was inherited from the
+    // enclosing Column. Raster matching keys off `component`, so the control still rasterises — the
+    // token export can't vectorise its imperatively drawn chrome, and an inherited label must not
+    // hide that own identity.
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "form",
+              component = "Column",
+              bounds = LayoutInspectorBounds(0, 0, 300, 200),
+              size = LayoutInspectorSize(300, 200),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "textField",
+                    component = "OutlinedTextFieldMeasurePolicy",
+                    displayName = "Column",
+                    bounds = LayoutInspectorBounds(0, 0, 300, 56),
+                    size = LayoutInspectorSize(300, 56),
+                  )
+                ),
+            )
+          ),
+        rasterComponents = setOf("TextField"),
+      )
+    assertEquals(listOf("textField"), model.rasterTargets.map { it.nodeId })
+  }
+
+  @Test
+  fun rootSvgRequestsGeometricPrecisionSoTextMatchesTheRender() {
+    // The default `text-rendering:auto` grid-fits glyphs to pixel boundaries in the browser, which
+    // leaves a constant edge diff against the Skiko render on text-heavy previews. Pin the
+    // `geometricPrecision` request on the root so every `<text>` rasterises at its exact metrics.
+    val svg = render(layoutNode("Screen", 0, 0, 400, 800))
+    assertTrue(svg, svg.contains("""text-rendering="geometricPrecision""""))
+  }
+
+  @Test
+  fun spToPxAppliesDensityAndFontScale() {
+    // sp text sizes as sp × density × fontScale; fontScale defaults to 1.0 (an un-scaled capture).
+    assertEquals(32.0, FigmaSvgModel.spToPx("16.0sp", 2f)!!, 0.001)
+    assertEquals(64.0, FigmaSvgModel.spToPx("16.0sp", 2f, 2f)!!, 0.001)
+    // An `em` line-height resolves against the (scaled) font px, so it grows with fontScale too.
+    assertEquals(1.5 * 64.0, FigmaSvgModel.lineHeightToPx("1.5em", "16.0sp", 2f, 2f)!!, 0.001)
+    // An `sp` line-height scales directly.
+    assertEquals(48.0, FigmaSvgModel.lineHeightToPx("12.0sp", "16.0sp", 2f, 2f)!!, 0.001)
+  }
+
+  @Test
+  fun nestingIsPreservedAsNestedGroups() {
+    val svg =
+      render(
+        layoutNode("Card", 0, 0, 200, 200, children = listOf(layoutNode("Inner", 10, 10, 190, 190)))
+      )
+    val cardIdx = svg.indexOf("""<g id="Card"""")
+    val innerIdx = svg.indexOf("""<g id="Inner"""")
+    // Inner opens after Card and before Card closes → it is a descendant group.
+    assertTrue(cardIdx in 0 until innerIdx)
+    // The Inner group's closing tag precedes Card's, confirming containment.
+    val innerClose = svg.indexOf("</g>", innerIdx)
+    val cardClose = svg.lastIndexOf("</g>")
+    assertTrue(innerClose in (innerIdx + 1) until cardClose)
+  }
+
+  @Test
+  fun backgroundTokenBecomesFilledRect() {
+    val svg =
+      render(
+        layoutNode(
+          "Surface",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        )
+      )
+    assertTrue(svg.contains("<rect"))
+    assertTrue(svg.contains("""fill="#6750A4""""))
+  }
+
+  @Test
+  fun opaqueFillHasNoOpacityAttributeButTranslucentDoes() {
+    val opaque =
+      render(
+        layoutNode(
+          "A",
+          0,
+          0,
+          10,
+          10,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF112233"),
+        )
+      )
+    assertFalse(opaque.contains("fill-opacity"))
+    val translucent =
+      render(
+        layoutNode(
+          "A",
+          0,
+          0,
+          10,
+          10,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#80112233"),
+        )
+      )
+    assertTrue(translucent.contains("fill-opacity"))
+  }
+
+  @Test
+  fun borderTokenBecomesStroke() {
+    val svg =
+      render(
+        layoutNode(
+          "Bordered",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF000000"),
+        )
+      )
+    assertTrue(svg.contains("""stroke="#000000""""))
+  }
+
+  @Test
+  fun uniformCornerRadiusUsesRxRy() {
+    val svg =
+      render(
+        layoutNode(
+          "Rounded",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", cornerRadius = "12.0dp"),
+        )
+      )
+    assertTrue(svg.contains("""rx="12""""))
+    assertTrue(svg.contains("""ry="12""""))
+  }
+
+  @Test
+  fun cornerRadiusScalesWithDensity() {
+    val svg =
+      render(
+        layoutNode(
+          "Rounded",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", cornerRadius = "8.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("""rx="16""""))
+  }
+
+  @Test
+  fun aDefaultMinSizeGrowsTheDrawnShapeCenteredOnTheBounds() {
+    // An M3 Badge with a single digit is *placed* in a narrow box (bounds 20×42) but its captured
+    // `defaultMinSize` (42dp × 42dp here at density 1) is the box it draws its background circle
+    // in,
+    // centered. The export grows the fill to `max(bounds, minSize)` centered on the bounds — a
+    // 42×42
+    // circle at [42,42,84,84] — not a squashed 20×42 capsule at the placement bounds.
+    val badge =
+      layoutNode(
+        "Badge",
+        53,
+        42,
+        73,
+        84,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = "#FFB3261E",
+            shape = "circle",
+            minWidth = "42.0dp",
+            minHeight = "42.0dp",
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(badge)))
+    // 42-wide circle centered on the bounds' centre (x=63) → x=42, width 42, max-radius (r=21).
+    assertTrue(svg, svg.contains("""x="42"""") && svg.contains("""width="42""""))
+    assertTrue("drawn as a full circle (r = size/2)", svg.contains("""rx="21""""))
+  }
+
+  @Test
+  fun aMinSizeWithinTheBoundsDoesNotGrowTheShape() {
+    // A button / chip also carries a `defaultMinSize`, but its content already exceeds it, so the
+    // min ≤ its placement bounds and the fill stays exactly at the bounds — no ballooning.
+    val chip =
+      layoutNode(
+        "Chip",
+        42,
+        63,
+        231,
+        147,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = "#FFE8DEF8",
+            shape = "circle",
+            minHeight = "32.0dp",
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(chip)))
+    // bounds 189×84; minHeight 32 < 84 → no growth. Stays 189-wide at x=42, 84 tall.
+    assertTrue(svg, svg.contains("""x="42"""") && svg.contains("""width="189""""))
+    assertTrue("keeps its bounds height", svg.contains("""height="84""""))
+  }
+
+  @Test
+  fun aMeasuredSizeLargerThanBoundsGrowsTheFillClampedToTheParent() {
+    // A Wear `Button`/`Card` places its background across content + its own horizontal padding, so
+    // the fill node's `bounds` (the inner content rect) is narrower than its measured `size`. The
+    // export grows the fill to the measured size — clamped to the parent's placed bounds — centered
+    // on the bounds. Pill bounds 78×80 @ (44,28), size 134×104, parent box 134×104 @ (16,16) →
+    // fill at 134×104 @ (16,16), not a narrow 78×80 at the inner placement.
+    val pill =
+      LayoutInspectorNode(
+        nodeId = "pill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 28, 122, 108),
+        size = LayoutInspectorSize(134, 104),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C", cornerRadius = "26.0dp"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(16, 16, 150, 120),
+        size = LayoutInspectorSize(134, 104),
+        children = listOf(pill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    assertTrue(svg, svg.contains("""x="16"""") && svg.contains("""width="134""""))
+    assertTrue("grown to the measured height too", svg.contains("""height="104""""))
+  }
+
+  @Test
+  fun aPollutedMeasuredSizeIsClampedToTheParentBounds() {
+    // A loosely-constrained node can report a `size` far larger than its real drawn extent (the
+    // whole sandbox). Clamp to the parent's placed bounds so the fill never paints beyond it.
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 28, 122, 108),
+        size = LayoutInspectorSize(454, 454),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(16, 16, 150, 120),
+        size = LayoutInspectorSize(134, 104),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    assertTrue(svg, svg.contains("""width="134"""") && !svg.contains("""width="454""""))
+  }
+
+  @Test
+  fun anOffCenterGrownFillIsClampedInsideTheParentNotCenteredOutOfIt() {
+    // The grown width is clamped to the parent, but the shape is centered on its own bounds — so a
+    // fill whose bounds sit off-center in its parent must still not slide past the parent edge.
+    // Parent x 0..100; child bounds x 0..40 (hard against the left), measured size 100 wide → grown
+    // to width 100, which centered on the child (centre x=20) would be x=-30..70. It must instead
+    // be
+    // clamped to x=0..100, flush inside the parent.
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(0, 40, 40, 120),
+        size = LayoutInspectorSize(100, 80),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val box =
+      LayoutInspectorNode(
+        nodeId = "box",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 40, 100, 120),
+        size = LayoutInspectorSize(100, 80),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(box)))
+    // Grown to the parent width, pinned to the parent's left edge — never x="-30".
+    assertTrue(svg, svg.contains("""x="0"""") && svg.contains("""width="100""""))
+    assertFalse("must not be shifted left of the parent", svg.contains("""x="-"""))
+  }
+
+  @Test
+  fun aRoundClipMasksTheTreeToTheFramesInscribedCircleAndCapsTheExtent() {
+    // A round Wear device screen is rendered through Roborazzi's device crop — the frame is masked
+    // to
+    // its inscribed circle. The export must mask to the same circle (or its square full-frame
+    // background paints the corners the render leaves clear) AND cap the canvas to the frame, not
+    // the
+    // taller off-screen content that a scrolling list pushes below the visible screen.
+    val root =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "RootMeasurePolicy",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+        children =
+          listOf(
+            // A list item scrolled off the bottom of the 384 frame — must not inflate the canvas.
+            layoutNode(
+              "OffScreenCard",
+              20,
+              360,
+              364,
+              520,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF2E2E38"),
+            )
+          ),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root), roundClip = true)
+    // Circle centred on the frame with the inscribed radius, in root-pixel space.
+    assertNotNull(model.roundClip)
+    assertEquals(192, model.roundClip!!.cx)
+    assertEquals(192, model.roundClip.cy)
+    assertEquals(192, model.roundClip.r)
+    // Extent is exactly the 384 frame — NOT the 520-tall off-screen content, and not the frame
+    // plus a margin: the mask defines the watch face, so the canvas is the same box the render
+    // cropped its PNG to.
+    assertEquals(384, model.width)
+    assertEquals(384, model.height)
+    assertEquals("a mask-anchored canvas carries no margin", 0, model.padding)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue("emits a clipPath circle", svg.contains("""<clipPath id="deviceRound"><circle"""))
+    assertTrue(
+      "the tree group references the clip",
+      svg.contains("""clip-path="url(#deviceRound)""""),
+    )
+  }
+
+  @Test
+  fun aCapsuleClipMasksATallWearFrameToAVerticalStadium() {
+    // A Wear scroll-SVG export grows the round face into a TALL frame so the whole
+    // TransformingLazyColumn composes in one pass. Masking that to the inscribed circle would clip
+    // the list to a lens, so a capsule (vertical stadium) clip is used instead: a top half-circle
+    // of radius width/2, straight sides, a bottom half-circle — emitted as <rect rx=width/2>.
+    val root =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "RootMeasurePolicy",
+        // 384 wide, 900 tall — the grown scroll frame.
+        bounds = bounds(0, 0, 384, 900),
+        size = LayoutInspectorSize(384, 900),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+        children =
+          listOf(
+            layoutNode(
+              "Card",
+              20,
+              400,
+              364,
+              560,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF2E2E38"),
+            )
+          ),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root), capsuleClip = true)
+    // Capsule spanning the full tall frame, rx = width/2 so the caps are true half-circles.
+    assertNotNull(model.capsuleClip)
+    assertEquals(0, model.capsuleClip!!.x)
+    assertEquals(0, model.capsuleClip.y)
+    assertEquals(384, model.capsuleClip.width)
+    assertEquals(900, model.capsuleClip.height)
+    assertEquals(192, model.capsuleClip.rx)
+    // The plain round clip must NOT also be set — they are mutually exclusive.
+    assertNull("capsule and round clip are mutually exclusive", model.roundClip)
+    // Extent is exactly the tall frame the stadium masks — no margin around it.
+    assertEquals(384, model.width)
+    assertEquals(900, model.height)
+    assertEquals(0, model.padding)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(
+      "emits a rounded-rect clipPath",
+      svg.contains("""<clipPath id="deviceRound"><rect""") && svg.contains("""rx="192""""),
+    )
+    assertTrue(
+      "the tree group references the clip",
+      svg.contains("""clip-path="url(#deviceRound)""""),
+    )
+    assertFalse(
+      "no circle clip for a capsule frame",
+      svg.contains("""<clipPath id="deviceRound"><circle"""),
+    )
+  }
+
+  @Test
+  fun aRoundClipOnATallFrameAutoSelectsTheCapsule() {
+    // The Wear scroll-SVG export grows the square watch face into a TALL frame and re-renders
+    // through the always-on figma-svg extension, which passes `roundClip = isRound`. A round frame
+    // that's taller than it is wide is the grown scroll frame, so `roundClip` alone must resolve to
+    // a capsule (not a lens-clipping circle) — no separate flag needs threading through the daemon.
+    val root =
+      layoutNode(
+        "screen",
+        0,
+        0,
+        384,
+        1200,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root), roundClip = true)
+    assertNotNull("tall round frame → capsule", model.capsuleClip)
+    assertNull("no circle on a tall round frame", model.roundClip)
+    assertEquals(192, model.capsuleClip!!.rx)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue("emits a rounded-rect clip", svg.contains("""<clipPath id="deviceRound"><rect"""))
+    assertFalse("no circle clip", svg.contains("""<clipPath id="deviceRound"><circle"""))
+  }
+
+  @Test
+  fun capsuleClipTakesPrecedenceOverRoundClipWhenBothRequested() {
+    // A caller that flags a frame both round and tall-scroll gets the capsule — the tall-mode shape
+    // wins so the grown list is never clipped to a lens.
+    val root =
+      layoutNode(
+        "screen",
+        0,
+        0,
+        384,
+        900,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+      )
+    val model =
+      FigmaSvgModel.from(LayoutInspectorPayload(root), roundClip = true, capsuleClip = true)
+    assertNotNull("capsule wins", model.capsuleClip)
+    assertNull("round clip suppressed", model.roundClip)
+  }
+
+  @Test
+  fun curvedTextIsEmittedAsATextPathOnItsBaselineArc() {
+    // A Wear `TimeText` clock is laid out along an arc — captured as a curved-text run and rendered
+    // as an SVG `<textPath>` on the baseline circle so it stays editable (not dropped, not a
+    // raster).
+    // Top-centred arc: centre (192,192), radius 160, spanning ~28° around 270° (screen up).
+    val node =
+      LayoutInspectorNode(
+        nodeId = "clock",
+        component = "CurvedLayoutKt",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        curvedTexts =
+          listOf(
+            LayoutInspectorCurvedText(
+              text = "10:10",
+              centerXPx = 192.0,
+              centerYPx = 192.0,
+              radiusPx = 160.0,
+              startAngleRadians = 4.4652,
+              sweepRadians = 0.4944,
+              clockwise = true,
+              fontSizePx = 30.0,
+              fontWeight = 600,
+              colorArgb = "#FFC6C6C7",
+            )
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(node)))
+    assertTrue("emits a baseline arc path", svg.contains("""<path id="curve-c0" d="M """))
+    assertTrue(
+      "draws an SVG arc (A) command",
+      Regex("""d="M [\d.]+ [\d.]+ A 160""").containsMatchIn(svg),
+    )
+    assertTrue(
+      "the text rides the path via <textPath>",
+      svg.contains("""<textPath href="#curve-c0""""),
+    )
+    assertTrue("carries the clock string", svg.contains(">10:10</textPath>"))
+    assertTrue("emits the captured weight", svg.contains("""font-weight="600""""))
+    assertTrue("drops the ARGB alpha for the SVG fill", svg.contains("""fill="#C6C6C7""""))
+  }
+
+  @Test
+  fun twoCurvedLayoutsWithTheSameNameGetDistinctPathIds() {
+    // Duplicate SVG ids make a `<textPath href>` resolve to the first matching path, so two
+    // same-named `CurvedLayout`s (a top TimeText + a bottom curved label) must not collide. A
+    // document-wide sequence keeps every arc id unique.
+    fun clock(text: String) =
+      LayoutInspectorNode(
+        nodeId = "n-$text",
+        component = "CurvedLayoutKt",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        curvedTexts =
+          listOf(
+            LayoutInspectorCurvedText(
+              text = text,
+              centerXPx = 192.0,
+              centerYPx = 192.0,
+              radiusPx = 160.0,
+              startAngleRadians = 4.4652,
+              sweepRadians = 0.4944,
+              clockwise = true,
+              fontSizePx = 30.0,
+            )
+          ),
+      )
+    val root =
+      LayoutInspectorNode(
+        nodeId = "root",
+        component = "Root",
+        bounds = bounds(0, 0, 384, 384),
+        size = LayoutInspectorSize(384, 384),
+        children = listOf(clock("10:10"), clock("Steps")),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(root)))
+    val ids = Regex("""<path id="(curve-c\d+)"""").findAll(svg).map { it.groupValues[1] }.toList()
+    assertEquals("one path id per curved run", 2, ids.size)
+    assertEquals("the two path ids are distinct", ids.size, ids.toSet().size)
+  }
+
+  @Test
+  fun withoutRoundClipTheExportStaysSquareAndUncapped() {
+    // The default (non-round) export must be unchanged: no clip, and the canvas still grows to the
+    // full content extent so a normal sticker isn't wrongly clipped or cropped.
+    val root =
+      layoutNode(
+        "screen",
+        0,
+        0,
+        384,
+        384,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(root))
+    assertNull("no round clip by default", model.roundClip)
+    val svg = FigmaLayeredSvg.render(model)
+    assertFalse("no clipPath emitted", svg.contains("clipPath"))
+    assertFalse("no clip-path attr on the tree", svg.contains("clip-path"))
+  }
+
+  @Test
+  fun aPaintFillWhosePainterIsNotAColorPainterRastersFromTheFrameInHybridMode() {
+    // Wear `SwitchButton`/list `Card` fill their container via `Modifier.paint(painter)` where the
+    // painter is a component-private `Painter` (an animated colour painter, a `BackgroundPainter`),
+    // NOT a plain `ColorPainter` — so the token resolver can't read a flat colour and the fill
+    // would
+    // vanish from a vector-only export. In hybrid mode (a frame exists to crop) the node's painted
+    // region must instead be captured as an `<image>`, exactly like an opaque `Image`/`Icon`.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "pill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 32, 175, 104),
+        size = LayoutInspectorSize(187, 104),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties = mapOf("painter" to "SwitchButtonKt\$SwitchButton\$colorPainter\$1@1"),
+              bounds = bounds(16, 16, 203, 120),
+            )
+          ),
+        children =
+          listOf(
+            layoutNode("Label", 44, 50, 99, 86, tokens = null)
+          ), // a child that must be dropped
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("unresolved paint fill must raster as an <image>", svg.contains("<image "))
+    // Cropped to the paint modifier's drawn region (the full pill), not the inner content bounds.
+    assertTrue(
+      "image spans the painted region",
+      svg.contains("""width="187"""") && svg.contains("""height="104""""),
+    )
+    assertFalse("the subtree is dropped, so no child group survives", svg.contains(">Label<"))
+  }
+
+  @Test
+  fun aBrushBackgroundRastersTheCompleteLayerInHybridMode() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "gradient",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(12, 20, 212, 68),
+        size = LayoutInspectorSize(200, 48),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "BackgroundElement",
+              properties = mapOf("brush" to "LinearGradient(colors=[red, blue])"),
+              bounds = bounds(12, 20, 212, 68),
+            )
+          ),
+        children =
+          listOf(
+            layoutNode(
+              "GradientLabel",
+              24,
+              30,
+              160,
+              58,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+            )
+          ),
+      )
+
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+
+    assertTrue("the gradient layer must survive as rendered pixels", svg.contains("<image "))
+    assertTrue(svg.contains("""x="12" y="20" width="200" height="48""""))
+    assertFalse(
+      "the composited raster already contains descendants, so they must not be drawn twice",
+      svg.contains("""id="GradientLabel""""),
+    )
+  }
+
+  @Test
+  fun aCoil3AsyncImageContentPainterRastersFromTheFrameInHybridMode() {
+    // Coil 3's `AsyncImage` draws through its own `ContentPainterElement` (inspector name
+    // `content`, carrying `request`/`imageLoader` but no `painter` property) on a `Layout` whose
+    // measure policy is a lambda in coil's `internal/utils.kt` — so the node's component reads
+    // `UtilsKt`, matching neither the Image/AsyncImage opaque names nor the `paint` fill modifier,
+    // and the speaker photo silently vanished from the hybrid export (Confetti `speakerdetails`).
+    // The content painter must raster exactly like an unresolved `Modifier.paint`.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "photo",
+        component = "UtilsKt",
+        bounds = bounds(223, 280, 853, 910),
+        size = LayoutInspectorSize(630, 630),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "content",
+              properties =
+                mapOf(
+                  "request" to "ImageRequest(context=..., data=https://example.com/avatar.png)",
+                  "imageLoader" to "coil3.RealImageLoader@5af8a2df",
+                  "contentScale" to "androidx.compose.ui.layout.ContentScale\$Companion\$Fit\$1@1",
+                ),
+              bounds = bounds(223, 280, 853, 910),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("a Coil content painter must raster as an <image>", svg.contains("<image "))
+    assertTrue(
+      "image spans the photo box",
+      svg.contains("""width="630"""") && svg.contains("""height="630""""),
+    )
+  }
+
+  @Test
+  fun aCoil2ContentPainterModifierClassNameFallbackRastersInHybridMode() {
+    // Coil 2's `ContentPainterModifier` names itself via `debugInspectorInfo`, which is compiled
+    // out of release artifacts — so the capture falls back to the element's class name. That
+    // spelling must raster the same way as Coil 3's `content`.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "avatar",
+        component = "UtilsKt",
+        bounds = bounds(0, 0, 96, 96),
+        size = LayoutInspectorSize(96, 96),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "ContentPainterModifier",
+              properties = emptyMap(),
+              bounds = bounds(0, 0, 96, 96),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("a Coil 2 content painter must raster as an <image>", svg.contains("<image "))
+  }
+
+  @Test
+  fun aCoilContentPainterStaysAGroupInVectorOnlyMode() {
+    // With no frame to crop from (vector-only export) there are no pixels to recover — the node
+    // must fall through to a plain group exactly as before, not emit an <image> with a dangling
+    // href.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "photo",
+        component = "UtilsKt",
+        bounds = bounds(0, 0, 240, 240),
+        size = LayoutInspectorSize(240, 240),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "content",
+              properties = emptyMap(),
+              bounds = bounds(0, 0, 240, 240),
+            )
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(node)))
+    assertFalse("vector-only export must not reference a raster", svg.contains("<image "))
+  }
+
+  @Test
+  fun aColorPainterFillWithAColorFilterRastersBecauseTheTintCannotVectorise() {
+    // `Modifier.paint(ColorPainter(...), colorFilter = tint(...))` stringifies its painter as
+    // `ColorPainter(...)`, but the resolver leaves `backgroundColor` null because the re-tint can't
+    // collapse to a flat token. That (visible) fill must still fall to the frame raster — the
+    // `ColorPainter(` prefix alone must NOT mark it vectorisable when a filter is present.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "tinted",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 100, 100),
+        size = LayoutInspectorSize(100, 100),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties =
+                mapOf(
+                  "painter" to "ColorPainter(color=Color(1.0, 0.0, 0.0, 1.0, sRGB IEC61966-2.1))",
+                  "colorFilter" to "ColorFilter(...)",
+                ),
+              bounds = bounds(0, 0, 100, 100),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue(
+      "a colour-filtered ColorPainter fill must raster from the frame",
+      svg.contains("<image "),
+    )
+  }
+
+  @Test
+  fun aTransparentColorPainterFillWithoutAFilterDoesNotRaster() {
+    // A `ColorPainter` that resolved to nothing because it's fully transparent (no filter) has no
+    // visible pixels to recover — it must NOT raster, or an invisible fill would bake an opaque
+    // crop.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "clear",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 100, 100),
+        size = LayoutInspectorSize(100, 100),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties =
+                mapOf(
+                  "painter" to "ColorPainter(color=Color(0.0, 0.0, 0.0, 0.0, sRGB IEC61966-2.1))"
+                ),
+              bounds = bounds(0, 0, 100, 100),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertFalse("a transparent unfiltered ColorPainter must not raster", svg.contains("<image "))
+  }
+
+  @Test
+  fun aPlainColorPainterFillStaysVectorAndDoesNotRaster() {
+    // The one painter we CAN vectorise — a solid `ColorPainter` — must still resolve to a flat fill
+    // rect even in hybrid mode; it must NOT fall to the frame-raster path.
+    val node =
+      layoutNode(
+        "Surface",
+        16,
+        16,
+        150,
+        120,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+    assertTrue("a solid fill stays a vector rect", svg.contains("""fill="#332E3C""""))
+    assertFalse("a resolvable fill must not raster", svg.contains("<image "))
+  }
+
+  @Test
+  fun anUnvectorizablePaintFillStaysVectorOnlyOutsideHybridMode() {
+    // Without a frame to crop from (vector-only export) there's nothing to raster, so an unresolved
+    // paint fill can't be recovered — the node stays a (fill-less) group rather than emitting a
+    // dangling `<image>` ref. The raster fallback is strictly a hybrid-mode affordance.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "pill",
+        component = "RowMeasurePolicy",
+        bounds = bounds(44, 32, 175, 104),
+        size = LayoutInspectorSize(187, 104),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties = mapOf("painter" to "some.pkg.BackgroundPainter@2"),
+              bounds = bounds(16, 16, 203, 120),
+            )
+          ),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(node)))
+    assertFalse("vector-only export must not emit an <image>", svg.contains("<image "))
+  }
+
+  @Test
+  fun aTouchTargetInflatedFillDoesNotGrowToItsMeasuredSize() {
+    // Every M3 `Button`/`IconButton` fills via a `BackgroundElement` on a node that also carries
+    // `Modifier.minimumInteractiveComponentSize()`. That modifier inflates the measured `size` up
+    // to
+    // the 48dp touch target while the background still paints at the smaller visual `bounds`, so
+    // the
+    // measured-`size` growth must be SUPPRESSED here — otherwise a 40dp pill balloons into its
+    // invisible touch margin. Fill bounds 170×80 @ (0,8), size 170×96 (the touch target), parent
+    // 170×96 @ (0,0): the fill must stay 80 tall at y=8, NOT grow to 96 at y=0. (The complement of
+    // `aMeasuredSizeLargerThanBoundsGrowsTheFillClampedToTheParent`, whose node carries no such
+    // modifier.)
+    val fill =
+      LayoutInspectorNode(
+        nodeId = "fill",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 8, 170, 88),
+        size = LayoutInspectorSize(170, 96),
+        modifiers = listOf(LayoutInspectorModifier(name = "minimumInteractiveComponentSize")),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+      )
+    val root =
+      LayoutInspectorNode(
+        nodeId = "root",
+        component = "RootMeasurePolicy",
+        bounds = bounds(0, 0, 170, 96),
+        size = LayoutInspectorSize(170, 96),
+        children = listOf(fill),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(root)))
+    assertTrue("fill stays at its visual bounds height", svg.contains("""height="80""""))
+    assertTrue("fill stays at its visual y", svg.contains("""y="8""""))
+    assertFalse("fill must not grow to the touch-target height", svg.contains("""height="96""""))
+  }
+
+  @Test
+  fun aFullyTransparentBorderEmitsNoStroke() {
+    // A `Switch` on-track carries `borderColor` at alpha 0 — an invisible outline. It must not emit
+    // a stroke (nor inset the fill for a stroke that never paints).
+    val svg =
+      render(
+        layoutNode(
+          "OnTrack",
+          0,
+          0,
+          100,
+          50,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FF6750A4",
+              borderColor = "#00000000",
+              borderWidth = "2.0dp",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue("no stroke for a transparent border", !svg.contains("stroke="))
+    // The fill keeps its full bounds (no stroke-inset): a 100-wide rect at x=0.
+    assertTrue(svg.contains("""width="100""""))
+  }
+
+  @Test
+  fun borderWidthTokenSetsTheStrokeWidthScaledByDensity() {
+    // An off-state `Switch` track is a 2dp outline, not a 1dp hairline. The captured `borderWidth`
+    // sets the stroke width (dp × density) instead of the hardcoded 1dp fallback.
+    val svg =
+      render(
+        layoutNode(
+          "Track",
+          0,
+          0,
+          100,
+          50,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF79747E", borderWidth = "2.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue("stroke width is 2dp × density 2 = 4", svg.contains("""stroke-width="4""""))
+  }
+
+  @Test
+  fun aBorderWithoutACapturedWidthFallsBackToADensityHairline() {
+    val svg =
+      render(
+        layoutNode(
+          "Hairline",
+          0,
+          0,
+          100,
+          50,
+          tokens = ComposeSemanticsTokens(borderColor = "#FF79747E"),
+        ),
+        density = 2f,
+      )
+    // No borderWidth → 1dp hairline scaled by density (2).
+    assertTrue("hairline falls back to 1dp × density", svg.contains("""stroke-width="2""""))
+  }
+
+  @Test
+  fun shadowElevationBecomesADropShadowFilterScaledByDensity() {
+    // A `Surface`/`Card`/`FAB` reports `elevation` (dp); the export emits a `feDropShadow` def and
+    // filters the elevated group so it casts its Material drop shadow. Elevation → px scales by
+    // density: 6dp at density 2 → a 12px filter id.
+    val svg =
+      render(
+        layoutNode(
+          "Fab",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", elevation = "6.0dp"),
+        ),
+        density = 2f,
+      )
+    assertTrue("a drop-shadow filter is defined", svg.contains("<feDropShadow"))
+    assertTrue("the filter id scales with density (6dp × 2)", svg.contains("""id="shadow-12""""))
+    assertTrue(
+      "the elevated group references the filter",
+      svg.contains("""filter="url(#shadow-12)""""),
+    )
+  }
+
+  @Test
+  fun noElevationEmitsNoShadowFilter() {
+    val svg =
+      render(
+        layoutNode(
+          "Flat",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        )
+      )
+    assertTrue("no shadow filter without elevation", !svg.contains("feDropShadow"))
+    assertTrue(!svg.contains("filter=\"url(#shadow"))
+  }
+
+  @Test
+  fun graphicsLayerOpacityAppliesToTheWholeSvgGroup() {
+    val svg =
+      render(
+        layoutNode(
+          "FadingButton",
+          0,
+          0,
+          100,
+          40,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+          children =
+            listOf(
+              layoutNode(
+                "Label",
+                10,
+                10,
+                90,
+                30,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+              )
+            ),
+        )
+      )
+
+    assertTrue(
+      "opacity belongs on the parent group so it affects fill and descendants",
+      svg.contains("""<g id="FadingButton" opacity="0.25">"""),
+    )
+  }
+
+  @Test
+  fun graphicsLayerAfterBackgroundNestsOnlyTheInnerContent() {
+    val svg =
+      render(
+        layoutNode(
+          "FadingButton",
+          0,
+          0,
+          100,
+          40,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(name = "BackgroundElement"),
+              LayoutInspectorModifier(
+                name = "graphicsLayer",
+                properties = mapOf("alpha" to "0.25"),
+              ),
+            ),
+          children =
+            listOf(
+              layoutNode(
+                "Label",
+                10,
+                10,
+                90,
+                30,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+              )
+            ),
+        )
+      )
+
+    val shapeIndex = svg.indexOf("""fill="#6750A4"""")
+    val innerOpacityIndex = svg.indexOf("""<g opacity="0.25">""")
+    val labelIndex = svg.indexOf("""id="Label"""")
+    assertTrue("the background must stay outside the opacity group", shapeIndex < innerOpacityIndex)
+    assertTrue(
+      "the content must be nested inside the opacity group",
+      innerOpacityIndex < labelIndex,
+    )
+    assertFalse(svg.contains("""id="FadingButton" opacity="0.25""""))
+  }
+
+  @Test
+  fun finalFrameRasterDoesNotReapplyLocalOrAncestorOpacity() {
+    val node =
+      layoutNode(
+        "FadingContainer",
+        0,
+        0,
+        100,
+        100,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(name = "graphicsLayer", properties = mapOf("alpha" to "0.25")),
+            LayoutInspectorModifier(name = "BackgroundElement"),
+          ),
+        children = listOf(layoutNode("Image", 10, 10, 90, 90)),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(node), rasterComponents = setOf("Image"))
+    val svg = FigmaLayeredSvg.render(model)
+
+    assertFalse(svg.contains("""id="FadingContainer" opacity="0.25""""))
+    assertFalse(svg.contains("""id="Image" opacity="""))
+    assertTrue(svg.contains("""<g opacity="0.25">"""))
+    assertTrue(svg.contains("<image "))
+  }
+
+  @Test
+  fun rawPixelCornerRadiusRendersRoundedRectWithoutDensityScaling() {
+    // `RoundedCornerShape(20f)` rides on `cornerRadiusPx` (not the dp `cornerRadius`) and is
+    // already
+    // in layer-space pixels — so it renders at 20, not 20*density, even at density 2.
+    val svg =
+      render(
+        layoutNode(
+          "PxRounded",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", cornerRadiusPx = "20.0px"),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("""rx="20""""))
+    assertTrue(svg.contains("""ry="20""""))
+  }
+
+  @Test
+  fun nonUniformPxCornersBecomeAPath() {
+    val svg =
+      render(
+        layoutNode(
+          "TopPxRounded",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadiusPx = "20.0px,20.0px,0.0px,0.0px",
+            ),
+        )
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue(svg.contains(" A")) // arc commands for the rounded corners
+  }
+
+  @Test
+  fun dpCornerRadiusWinsOverPxWhenBothPresent() {
+    // Defensive: a shape resolvable to dp keeps the dp path (density-scaled), never the px
+    // fallback.
+    val svg =
+      render(
+        layoutNode(
+          "BothCorners",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadius = "8.0dp",
+              cornerRadiusPx = "20.0px",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("""rx="16"""")) // 8dp * 2 density, not the 20px fallback
+    assertFalse(svg.contains("""rx="20""""))
+  }
+
+  @Test
+  fun nonUniformCornersBecomeAPath() {
+    val svg =
+      render(
+        layoutNode(
+          "TopRounded",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadius = "12.0dp,12.0dp,0.0dp,0.0dp",
+            ),
+        )
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue(svg.contains(" A")) // arc commands for the rounded corners
+  }
+
+  @Test
+  fun circleShapeIsDrawnWithHalfMinSideRadius() {
+    val svg =
+      render(
+        layoutNode(
+          "Avatar",
+          0,
+          0,
+          48,
+          48,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFCCCCCC", shape = "circle"),
+        )
+      )
+    assertTrue(svg.contains("""rx="24""""))
+  }
+
+  @Test
+  fun cutCornerShapeChamfersInsteadOfRounding() {
+    // A CutCornerShape reports its corner size on `cornerRadius` plus `shape="cut"`; the export
+    // must
+    // bevel (straight line segments) rather than round (arcs) or drop to a rounded/sharp rect.
+    val svg =
+      render(
+        layoutNode(
+          "Cut",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadius = "12.0dp",
+              shape = "cut",
+            ),
+        )
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue("chamfers are straight line segments", svg.contains(" L"))
+    assertFalse("no arc commands for a cut corner", svg.contains(" A"))
+    assertFalse("a cut corner is never a rounded <rect rx>", svg.contains("rx="))
+  }
+
+  @Test
+  fun rawPixelCutCornerChamfers() {
+    // A CutCornerShape(<px>f) rides on `cornerRadiusPx` + `shape="cut"` — same chamfer, no density.
+    val svg =
+      render(
+        layoutNode(
+          "CutPx",
+          0,
+          0,
+          100,
+          100,
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FFFFFFFF",
+              cornerRadiusPx = "20.0px",
+              shape = "cut",
+            ),
+        ),
+        density = 2f,
+      )
+    assertTrue(svg.contains("<path"))
+    assertTrue(svg.contains(" L"))
+    assertFalse(svg.contains(" A"))
+    // Raw px: the chamfer point is at x=20 (top-left ends where the top edge starts), not 40.
+    assertTrue("px chamfer uses raw pixels, no density scaling", svg.contains("M20"))
+  }
+
+  @Test
+  fun textNodeIsMatchedByBoundsAndEmittedAsEditableText() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontWeight = 500,
+                  fontStyle = "normal",
+                ),
+              textColor = ComposeSemanticsTextColor(foreground = "#FF202020"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains(">Hello</text>"))
+    assertTrue(svg.contains("""font-size="16""""))
+    assertTrue(svg.contains("""font-weight="500""""))
+    assertTrue(svg.contains("""fill="#202020""""))
+  }
+
+  @Test
+  fun renderedTextLayoutWinsOverPlainSemanticsText() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Accessibility copy",
+              layoutText = "Visible copy",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+
+    assertTrue(svg.contains(">Visible copy</text>"))
+    assertFalse(svg.contains("Accessibility copy"))
+  }
+
+  @Test
+  fun modifierTextWinsWhenOnlyPlainSemanticsTextRemains() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        200,
+        100,
+        children =
+          listOf(
+            layoutNode(
+              "Text",
+              8,
+              8,
+              192,
+              40,
+              modifiers =
+                listOf(
+                  LayoutInspectorModifier(
+                    name = "text",
+                    properties =
+                      mapOf("layoutText" to "Visible modifier", "layoutTextFontSizePx" to "16"),
+                  )
+                ),
+            )
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Accessibility copy",
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+
+    assertTrue(svg.contains(">Visible modifier</text>"))
+    assertFalse(svg.contains("Accessibility copy"))
+  }
+
+  @Test
+  fun accessibilityOnlyParentTextIsNotPaintedOverVisualChild() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        200,
+        100,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              20,
+              20,
+              80,
+              80,
+              children =
+                listOf(
+                  layoutNode(
+                    "Text",
+                    38,
+                    30,
+                    62,
+                    70,
+                    modifiers =
+                      listOf(
+                        LayoutInspectorModifier(
+                          name = "text",
+                          properties = mapOf("layoutText" to "17", "layoutTextFontSizePx" to "24"),
+                        )
+                      ),
+                  )
+                ),
+            )
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "date-cell",
+              boundsInRoot = "20,20,80,80",
+              text = "Start date, Thursday, August 17, 2023",
+              mergeMode = "clearAndSet",
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    val evidenceDir = File("build/figma-svg-datepicker").apply { mkdirs() }
+    File(evidenceDir, "date-cell.svg").writeText(svg)
+
+    assertTrue(svg.contains(">17</text>"))
+    assertFalse(svg.contains("Start date, Thursday, August 17, 2023"))
+  }
+
+  /**
+   * Issue #2885: `TextAlign.Center` used to export as a left-anchored `<text>` at the start of the
+   * paragraph's layout bounds, so a `Modifier.fillMaxWidth()` heading drifted hard left of where
+   * the PNG drew it. The resolved alignment now rides the capture and drives the anchor.
+   */
+  @Test
+  fun centeredSingleLineTextIsAnchoredAtTheMiddleOfItsParagraphBox() {
+    val layout =
+      layoutNode("Card", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "Wellness",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", textAlign = "center"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertWellFormedXml(svg)
+    assertTrue("centred text needs a middle anchor", svg.contains("""text-anchor="middle""""))
+    // Midpoint of the paragraph box (20..180), not its left edge.
+    assertTrue("anchor x is the box midpoint", svg.contains("""<text x="100""""))
+    assertFalse("must not stay pinned to the box start", svg.contains("""<text x="20""""))
+  }
+
+  @Test
+  fun rightAlignedSingleLineTextIsAnchoredAtTheEndOfItsParagraphBox() {
+    val layout =
+      layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "42",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", textAlign = "end"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertWellFormedXml(svg)
+    assertTrue(svg.contains("""text-anchor="end""""))
+    assertTrue(svg.contains("""<text x="180""""))
+  }
+
+  /**
+   * `start`/`end` are logical: Compose puts `end` at the LEFT edge under RTL. Anchoring it right
+   * regardless would mirror `ar` / `ar-XB` renders to the wrong side of the paragraph box.
+   */
+  @Test
+  fun logicalAlignmentsAreResolvedAgainstTheCapturedLayoutDirection() {
+    fun svgFor(align: String, direction: String?): String {
+      val layout =
+        layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+      val semantics =
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "t",
+                boundsInRoot = "20,8,180,40",
+                text = "مرحبا",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    textAlign = align,
+                    layoutDirection = direction,
+                  ),
+              )
+            ),
+        )
+      return render(layout, semantics = semantics)
+    }
+
+    // RTL: end → left edge, start → right edge.
+    svgFor("end", "rtl").let {
+      assertFalse("RTL end must not anchor right", it.contains("text-anchor="))
+      assertTrue(it.contains("""<text x="20""""))
+    }
+    svgFor("start", "rtl").let {
+      assertTrue("RTL start anchors at the right edge", it.contains("""text-anchor="end""""))
+      assertTrue(it.contains("""<text x="180""""))
+    }
+    // LTR (and an absent direction, which defaults to LTR) keeps the natural mapping.
+    for (direction in listOf("ltr", null)) {
+      svgFor("end", direction).let {
+        assertTrue(it.contains("""text-anchor="end""""))
+        assertTrue(it.contains("""<text x="180""""))
+      }
+      svgFor("start", direction).let {
+        assertFalse(it.contains("text-anchor="))
+        assertTrue(it.contains("""<text x="20""""))
+      }
+    }
+    // `right` is absolute — RTL must not flip it.
+    svgFor("right", "rtl").let {
+      assertTrue(it.contains("""text-anchor="end""""))
+      assertTrue(it.contains("""<text x="180""""))
+    }
+  }
+
+  @Test
+  fun unalignedTextKeepsItsHistoricalLeftAnchor() {
+    val layout =
+      layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "Left",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("no alignment captured ⇒ no anchor attribute", svg.contains("text-anchor="))
+    assertTrue(svg.contains("""<text x="20""""))
+  }
+
+  /**
+   * Issue #2884: `@Preview(showBackground = true, backgroundColor = …)` never reached the export,
+   * so a preview whose PNG is opaque exported onto transparency. A maskless preview now paints its
+   * frame as the bottom layer.
+   */
+  @Test
+  fun aPreviewBackgroundIsPaintedAsTheBottomLayer() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        100,
+        60,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              10,
+              10,
+              90,
+              50,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(layout = LayoutInspectorPayload(layout), deviceBackground = "#FF000000")
+    assertNotNull("the opted-in background reaches the model", model.deviceBackground)
+    assertNotNull("a maskless preview gets a frame rect to fill", model.backgroundRect)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue("background rect is emitted", svg.contains("""<rect x="10" y="10""""))
+    assertTrue(svg.contains("""fill="#000000""""))
+    assertTrue(
+      "background must be drawn before the content it sits behind",
+      svg.indexOf("""fill="#000000"""") < svg.indexOf("""fill="#6750A4""""),
+    )
+  }
+
+  /**
+   * Issue #2974: a dark `@Preview(showBackground = true)` whose only drawn child is a thin divider
+   * centred in a taller fixed-size `Box` sized the background rect to the *divider* bounds, so most
+   * of the SVG stayed transparent while the PNG filled the whole crop. When the render's frame size
+   * is known, the background must cover that whole crop, not the shrink-wrapped drawn content.
+   */
+  @Test
+  fun aThinChildDoesNotShrinkWrapTheShowBackgroundFillWhenTheFrameSizeIsKnown() {
+    // Root Box is 263×26; the only painting child is a 1dp divider centred vertically.
+    val layout =
+      layoutNode(
+        "Box",
+        0,
+        0,
+        263,
+        26,
+        children =
+          listOf(
+            layoutNode(
+              "JetsnackDivider",
+              0,
+              12,
+              263,
+              14,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#1FFFFFFF"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        deviceBackground = "#FF1C1B1F",
+        frameWidthPx = 263,
+        frameHeightPx = 26,
+      )
+    val rect = model.backgroundRect
+    assertNotNull("a maskless preview gets a frame rect to fill", rect)
+    assertEquals("background fills the full crop width", 0, rect!!.x)
+    assertEquals("background fills the full crop height", 0, rect.y)
+    assertEquals(263, rect.width)
+    assertEquals(26, rect.height)
+    // The canvas must contain the full background crop, not shrink-wrap to the thin divider — and
+    // with the frame size known it IS the crop, so the SVG matches its paired PNG exactly.
+    assertEquals(263, model.width)
+    assertEquals(26, model.height)
+    assertEquals("a frame-anchored canvas carries no margin", 0, model.padding)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue(
+      "the full-crop dark background rect is emitted",
+      svg.contains("""<rect x="0" y="0" width="263" height="26" fill="#1C1B1F""""),
+    )
+  }
+
+  /**
+   * Without a known frame size (the vector-only path — e.g. #2884's synthetic model) the background
+   * still sizes from the drawn-content extent, so that regression guard keeps holding.
+   */
+  @Test
+  fun withNoFrameSizeTheShowBackgroundFillStillSizesFromTheDrawnExtent() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        100,
+        60,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              10,
+              10,
+              90,
+              50,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(layout = LayoutInspectorPayload(layout), deviceBackground = "#FF000000")
+    val rect = model.backgroundRect
+    assertNotNull(rect)
+    assertEquals(10, rect!!.x)
+    assertEquals(10, rect.y)
+    assertEquals(80, rect.width)
+    assertEquals(40, rect.height)
+  }
+
+  /**
+   * Follow-up to #2974, revised by #2853: the background fills whatever the canvas ends up being,
+   * and with a captured frame the canvas **is** the frame.
+   *
+   * The earlier rule grew the canvas to any drawing retained past the frame (a card's chrome wider
+   * than its box, a scroll item past its parent edge) so that content wouldn't sit over
+   * transparency. But a lazy list composes items far outside the viewport — Jetsnack's `Screens/App
+   * shell` renders 400×800 and carries cards out to 566×970 — and growing the canvas to hold them
+   * stranded their white backgrounds outside the phone UI as detached tiles the render never
+   * painted. The frame PNG is the authority on what was rendered, so it now bounds the canvas;
+   * retained drawing that overhangs is cropped at the frame edge exactly as the render cropped it,
+   * and the background still covers every pixel of the result.
+   */
+  @Test
+  fun aShowBackgroundFillCoversTheFrameTheRenderCaptured() {
+    val layout =
+      layoutNode(
+        "Box",
+        0,
+        0,
+        100,
+        26,
+        children =
+          listOf(
+            // A drawing layer that extends past the 100×26 captured frame (to 120×40).
+            layoutNode(
+              "Chrome",
+              0,
+              0,
+              120,
+              40,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        deviceBackground = "#FF1C1B1F",
+        frameWidthPx = 100,
+        frameHeightPx = 26,
+      )
+    val rect = model.backgroundRect
+    assertNotNull(rect)
+    // Background spans the captured 100×26 frame — every pixel the render produced — rather than
+    // the 120×40 bbox of a chrome layer that overhangs it.
+    assertEquals(0, rect!!.x)
+    assertEquals(0, rect.y)
+    assertEquals(100, rect.width)
+    assertEquals(26, rect.height)
+    // And the canvas is that frame exactly — no margin — so the SVG and the PNG the render wrote
+    // are the same box.
+    assertEquals(100, model.width)
+    assertEquals(26, model.height)
+  }
+
+  /**
+   * Raster parity: a sticker whose drawn content sits inside a larger captured frame (the usual
+   * shape — a `compose-m3` component sticker draws a capsule inside 16dp of padding and a touch
+   * target) exports at the **frame's** size with the content at its frame coordinates, so the
+   * `serve` viewer's SVG toggle swaps two boxes that are the same size and keeps the component
+   * where the snapshot put it. Before this the canvas shrink-wrapped to the drawn extent plus a
+   * fixed 16px margin, which is smaller than the frame by however much padding the sticker carried.
+   */
+  @Test
+  fun aKnownFrameSizeAnchorsTheCanvasToTheFrameRatherThanShrinkWrappingTheContent() {
+    // A 300×210 frame whose only drawn layer is a 216×105 capsule inset at (42, 53).
+    val layout =
+      layoutNode(
+        "Root",
+        0,
+        0,
+        300,
+        210,
+        children =
+          listOf(
+            layoutNode(
+              "Button",
+              42,
+              53,
+              258,
+              158,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        frameWidthPx = 300,
+        frameHeightPx = 210,
+      )
+    assertEquals("canvas width is the captured frame", 300, model.width)
+    assertEquals("canvas height is the captured frame", 210, model.height)
+    assertEquals(0, model.padding)
+    assertEquals("no shift: frame coordinates are canvas coordinates", 0, model.tx)
+    assertEquals(0, model.ty)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue(svg.contains("""width="300" height="210" viewBox="0 0 300 210""""))
+    // The capsule keeps the coordinates the render drew it at.
+    assertTrue(svg.contains("""x="42" y="53" width="216" height="105""""))
+  }
+
+  /**
+   * The frameless (vector-only / synthetic) path has no raster to agree with, so it keeps the
+   * padded shrink-wrapped canvas.
+   */
+  @Test
+  fun withNoFrameSizeTheCanvasStillShrinkWrapsWithItsMargin() {
+    val layout =
+      layoutNode(
+        "Root",
+        0,
+        0,
+        300,
+        210,
+        children =
+          listOf(
+            layoutNode(
+              "Button",
+              42,
+              53,
+              258,
+              158,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model = FigmaSvgModel.from(layout = LayoutInspectorPayload(layout))
+    assertEquals(216 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(105 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    assertEquals(FigmaSvgModel.DEFAULT_PADDING, model.padding)
+  }
+
+  @Test
+  fun aRoundDeviceStillPaintsItsBackgroundAsTheMaskShapeNotARect() {
+    val layout = layoutNode("Screen", 0, 0, 384, 384)
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        roundClip = true,
+        deviceBackground = "#FF000000",
+      )
+    assertNotNull(model.roundClip)
+    assertNull("a masked frame uses the mask shape, not a rect", model.backgroundRect)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(svg.contains("""<circle cx="192" cy="192" r="192" fill="#000000""""))
+  }
+
+  @Test
+  fun withNoOptedInBackgroundTheExportStaysTransparent() {
+    val layout = layoutNode("Card", 0, 0, 100, 60)
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(layout))
+    assertNull(model.deviceBackground)
+    assertNull(model.backgroundRect)
+  }
+
+  @Test
+  fun capturedLetterSpacingIsEmittedSoGlyphAdvancesMatchTheRender() {
+    // A tracked run (Material label/body text carries 0.1–0.5sp) must emit SVG `letter-spacing`,
+    // else
+    // the browser lays it out with the font's natural advances and the line drifts across its
+    // width.
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              // 0.5sp at density 2 → 1.0px.
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", letterSpacing = "0.5sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics, density = 2f)
+    assertTrue("expected letter-spacing in $svg", svg.contains("""letter-spacing="1""""))
+  }
+
+  @Test
+  fun zeroLetterSpacingEmitsNoAttribute() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", letterSpacing = "0.0sp"),
+            )
+          ),
+      )
+    assertFalse(render(layout, semantics = semantics, density = 2f).contains("letter-spacing"))
+  }
+
+  @Test
+  fun embedFamilyNormalisesFileDerivedFacesToGoogleFamilies() {
+    // A FontListFontFamily reports its resolved face by file stem ("Roboto-Medium",
+    // "NotoSerif-Regular", "DroidSansMono"); the embed resolver keys on the spaced Google family
+    // with
+    // weight/italic supplied separately, so the style suffix drops and CamelCase words space out.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("Roboto-Medium", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("Roboto-Regular", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("NotoSerif-Regular", "Roboto"))
+    assertEquals("Droid Sans Mono", FigmaLayeredSvg.embedFamily("DroidSansMono", "Roboto"))
+    // Generics keep their existing mappings.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("sans-serif", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("serif", "Roboto"))
+    assertNull(FigmaLayeredSvg.embedFamily("cursive", "Roboto"))
+  }
+
+  private fun textBaselineY(svg: String): Double =
+    Regex("""<text [^>]*\by="([0-9.]+)"""").find(svg)!!.groupValues[1].toDouble()
+
+  private fun textNodeWith(lineHeight: String?): String {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", lineHeight = lineHeight),
+            )
+          ),
+      )
+    return render(layout, semantics = semantics)
+  }
+
+  @Test
+  fun textBaselineSitsBelowBareAscentAndWithinItsBox() {
+    // The baseline must land inside the text box (top=8, bottom=40) and *below* the old flat
+    // `top + 0.8·fontSize` heuristic (8 + 12.8 = 20.8) — Compose draws the baseline lower because
+    // the
+    // line-height leading is split above the first line. With fontSize 16 + lineHeight 24 the model
+    // is 8 + halfLeading((24 - 16·1.17)/2 = 2.64) + ascent(16·0.93 = 14.88) ≈ 25.5.
+    val y = textBaselineY(textNodeWith(lineHeight = "24.0sp"))
+    assertTrue("baseline $y must be below the bare-0.8em heuristic (20.8)", y > 20.8)
+    assertTrue("baseline $y must stay within the box bottom (40)", y < 40.0)
+    assertTrue("baseline $y must be near the leading+ascent model (~25.5)", y in 24.5..26.5)
+  }
+
+  @Test
+  fun largerLineHeightLowersTheBaseline() {
+    // More leading pushes the first line's baseline down (the extra space is split above it).
+    val tight = textBaselineY(textNodeWith(lineHeight = "18.0sp"))
+    val loose = textBaselineY(textNodeWith(lineHeight = "28.0sp"))
+    assertTrue(
+      "looser line height ($loose) must lower the baseline vs tight ($tight)",
+      loose > tight,
+    )
+  }
+
+  @Test
+  fun lineHeightToPxParsesSpAndEm() {
+    assertEquals(24.0, FigmaSvgModel.lineHeightToPx("24.0sp", "16.0sp", 1f)!!, 1e-9)
+    assertEquals(48.0, FigmaSvgModel.lineHeightToPx("24.0sp", "16.0sp", 2f)!!, 1e-9)
+    // em is relative to the resolved font size: 1.5em × 16sp = 24px at density 1.
+    assertEquals(24.0, FigmaSvgModel.lineHeightToPx("1.5em", "16.0sp", 1f)!!, 1e-9)
+    assertNull(FigmaSvgModel.lineHeightToPx("1.5em", null, 1f))
+    assertNull(FigmaSvgModel.lineHeightToPx("weird", "16.0sp", 1f))
+  }
+
+  @Test
+  fun resolveFamilyMapsSansGenericToDefaultButKeepsRealFaces() {
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily(null, "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("sans-serif", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("SANS-SERIF", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("system-ui", "Roboto"))
+    assertEquals("Lobster", FigmaLayeredSvg.resolveFamily("Lobster", "Roboto"))
+  }
+
+  @Test
+  fun defaultFamilySentinelClassifiesAsUnstatedRatherThanAConcreteFace() {
+    // Issue #3209: an Android capture of `FontFamily.Default` writes the sentinel's `toString()`,
+    // not a face name. Emitting it verbatim gave `font-family="FontFamily.Default, sans-serif"`
+    // (a first name that resolves nowhere) and made the embed path hunt for `Font Family.Default`.
+    // Both classifiers must read it as "no family stated", exactly like null / a sans generic.
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("FontFamily.Default", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("fontfamily.default", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily(" FontFamily.Default ", "Roboto"))
+    assertEquals("sans-serif", FigmaLayeredSvg.resolveFamily("FontFamily.Default", "sans-serif"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("FontFamily.Default", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("FONTFAMILY.DEFAULT", "Roboto"))
+    // A blank capture is the same "unstated" case, not a face named "".
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("  ", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("", "Roboto"))
+  }
+
+  @Test
+  fun resolveFamilyKeepsMeaningfulGenericsSoSerifStaysSerif() {
+    // The sans default must NOT swallow serif/monospace — that's what erased specimen identity.
+    assertEquals("serif", FigmaLayeredSvg.resolveFamily("serif", "Roboto"))
+    assertEquals("monospace", FigmaLayeredSvg.resolveFamily("monospace", "Roboto"))
+    assertEquals("serif", FigmaLayeredSvg.resolveFamily("SERIF", "Roboto"))
+    assertEquals("cursive", FigmaLayeredSvg.resolveFamily("cursive", "Roboto"))
+    assertEquals("fantasy", FigmaLayeredSvg.resolveFamily("fantasy", "Roboto"))
+  }
+
+  @Test
+  fun concreteTextFamilyCarriesAStyleGenericFallbackSoItNeverRendersAsSerif() {
+    // A concrete face with no embedded @font-face fell back to the viewer's default *serif* in
+    // Chromium/Figma (the visible bug). It must now carry a style-correct generic fallback.
+    assertEquals(
+      "Roboto-Regular, sans-serif",
+      FigmaLayeredSvg.withGenericFallback("Roboto-Regular"),
+    )
+    assertEquals(
+      "NotoSerif-Regular, serif",
+      FigmaLayeredSvg.withGenericFallback("NotoSerif-Regular"),
+    )
+    assertEquals("DroidSansMono, monospace", FigmaLayeredSvg.withGenericFallback("DroidSansMono"))
+    assertEquals("'Noto Serif', serif", FigmaLayeredSvg.withGenericFallback("Noto Serif"))
+    // A bare generic is already a fallback — left unchanged, no double list.
+    assertEquals("sans-serif", FigmaLayeredSvg.withGenericFallback("sans-serif"))
+    assertEquals("serif", FigmaLayeredSvg.withGenericFallback("serif"))
+    assertEquals("monospace", FigmaLayeredSvg.withGenericFallback("monospace"))
+  }
+
+  @Test
+  fun textEmitsTheGenericFallbackInline() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography =
+                ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "Roboto-Regular"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertTrue(
+      "concrete text family must carry a generic fallback",
+      svg.contains("""font-family="Roboto-Regular, sans-serif""""),
+    )
+  }
+
+  @Test
+  fun annotatedTextEmitsStyledTspansAcrossWrappedLines() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "base code",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(
+                        0,
+                        5,
+                        "16.0sp",
+                        fontFamily = "monospace",
+                        fontWeight = 400,
+                      ),
+                      ComposeSemanticsTextSpan(
+                        5,
+                        9,
+                        "12.0sp",
+                        fontFamily = "serif",
+                        fontWeight = 400,
+                      ),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("code", 0, 44, start = 5, end = 9),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains("""<tspan x="10" y="30" font-size="16" font-family="monospace""""))
+    assertTrue(svg.contains(">base </tspan>"))
+    assertTrue(svg.contains("""<tspan x="10" y="54" font-size="12" font-family="serif""""))
+    assertTrue(svg.contains(">code</tspan>"))
+  }
+
+  /**
+   * A styled span's `fontSizePx` is emitted as an *overriding* `font-size` on its `<tspan>`, so a
+   * graphics-layer-scaled `Text` has to scale the spans as well as the base run — otherwise the
+   * baselines shrink while the styled glyphs stay full size and overflow their line (#2901 review).
+   */
+  @Test
+  fun annotatedTextSpansScaleWithADrawTimeTransform() {
+    val text =
+      LayoutInspectorNode(
+        nodeId = "Text",
+        component = "Text",
+        bounds = bounds(10, 10, 100, 55),
+        size = LayoutInspectorSize(180, 90),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+      )
+    val layout = layoutNode("Screen", 0, 0, 200, 100, children = listOf(text))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,100,55",
+              text = "base code",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(
+                        0,
+                        5,
+                        "16.0sp",
+                        fontFamily = "monospace",
+                        fontWeight = 400,
+                      ),
+                      ComposeSemanticsTextSpan(
+                        5,
+                        9,
+                        "12.0sp",
+                        fontFamily = "serif",
+                        fontWeight = 400,
+                      ),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("code", 0, 44, start = 5, end = 9),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    // Every emitted font-size is halved — the base run and both span overrides — and so are the
+    // per-line baselines (20 → 10, 44 → 22, against the layer's top at y=10).
+    assertTrue("base run scales:\n$svg", svg.contains("""<text font-size="8""""))
+    assertTrue("16sp span scales:\n$svg", svg.contains("""y="20" font-size="8""""))
+    assertTrue("12sp span scales:\n$svg", svg.contains("""y="32" font-size="6""""))
+    assertFalse("no un-scaled span size survives:\n$svg", svg.contains("""font-size="12""""))
+    assertFalse("no un-scaled base size survives:\n$svg", svg.contains("""font-size="16""""))
+  }
+
+  @Test
+  fun annotatedTextKeepsEllipsisOnTheFinalStyledLine() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "base truncated",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(
+                        0,
+                        5,
+                        "16.0sp",
+                        fontFamily = "monospace",
+                        fontWeight = 400,
+                      ),
+                      ComposeSemanticsTextSpan(
+                        5,
+                        14,
+                        "12.0sp",
+                        fontFamily = "serif",
+                        fontWeight = 400,
+                      ),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("trunc…", 0, 44, start = 5, end = 10),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains(">trunc…</tspan>"))
+    assertFalse(svg.contains(">trunc</tspan>"))
+  }
+
+  @Test
+  fun wrappedTextEmitsOnePositionedTspanPerLineInsteadOfOneBaseline() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "Outlined card",
+              typography =
+                ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "Roboto-Regular"),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine(text = "Outlined", left = 0, baseline = 20),
+                      ComposeSemanticsTextLine(text = "card", left = 0, baseline = 44),
+                    ),
+                ),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    // Two positioned tspans at layer origin (10,10) + each line's offset — not one collapsed line.
+    assertTrue("line 1 tspan", svg.contains("""<tspan x="10" y="30">Outlined</tspan>"""))
+    assertTrue("line 2 tspan", svg.contains("""<tspan x="10" y="54">card</tspan>"""))
+    // The single-baseline form must not also be emitted for this node.
+    assertFalse("no collapsed single line", svg.contains(""">Outlined card</text>"""))
+  }
+
+  @Test
+  fun singleLineTextKeepsThePlainBaselineForm() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("no tspan for single-line text", svg.contains("<tspan"))
+    assertTrue("plain baseline text", svg.contains(">Hi</text>"))
+  }
+
+  @Test
+  fun singleLineEllipsisUsesTheCapturedVisibleRun() {
+    val layout =
+      layoutNode("Screen", 0, 0, 240, 80, children = listOf(layoutNode("Text", 8, 8, 160, 48)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,240,80",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,160,48",
+              text = "Effectenbeurszaal",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 1,
+                  truncated = true,
+                  overflow = "Ellipsis",
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine(
+                        text = "Effect…",
+                        left = 0,
+                        baseline = 24,
+                        start = 0,
+                        end = 6,
+                        width = 120,
+                      )
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(
+      svg.contains(
+        """<tspan x="8" y="32" textLength="120" lengthAdjust="spacing">Effect…</tspan>"""
+      )
+    )
+    assertFalse(
+      "full source string must not overflow its measured slot",
+      svg.contains("Effectenbeurszaal"),
+    )
+  }
+
+  @Test
+  fun embedFamilyMapsGenericsToConcreteEmbeddableFaces() {
+    // sans generics ride the default embedded face; serif/monospace get a real same-style face.
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily(null, "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("sans-serif", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("system-ui", "Roboto"))
+    assertEquals("Noto Serif", FigmaLayeredSvg.embedFamily("serif", "Roboto"))
+    assertEquals("Roboto Mono", FigmaLayeredSvg.embedFamily("monospace", "Roboto"))
+    assertEquals("Roboto Mono", FigmaLayeredSvg.embedFamily("MONOSPACE", "Roboto"))
+    // No concrete stand-in → null so the producer skips embedding and the text keeps the generic.
+    assertNull(FigmaLayeredSvg.embedFamily("cursive", "Roboto"))
+    assertNull(FigmaLayeredSvg.embedFamily("fantasy", "Roboto"))
+    // A real captured face is unchanged.
+    assertEquals("Lobster", FigmaLayeredSvg.embedFamily("Lobster", "Roboto"))
+  }
+
+  @Test
+  fun embeddedFontFacesEmitAtFontFaceAndNameTheText() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Hi",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"), // generic family
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(LayoutInspectorPayload(layout), ComposeSemanticsPayload(semantics))
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(defaultFontFamily = "Roboto"),
+        listOf(FigmaSvgFontFace("Roboto", 400, italic = false, dataBase64 = "QUJD")),
+      )
+    assertTrue("must emit an @font-face", svg.contains("@font-face"))
+    assertTrue("face names the family", svg.contains("font-family:'Roboto'"))
+    assertTrue("face embeds the woff2 data URI", svg.contains("data:font/woff2;base64,QUJD"))
+    assertTrue("face declares the format", svg.contains("format('woff2')"))
+    // The generic-family text now names the embedded face rather than inheriting bare sans-serif.
+    assertTrue("text uses the embedded family", svg.contains("""font-family="Roboto""""))
+    assertFalse(
+      "root no longer defaults to sans-serif",
+      svg.contains("""font-family="sans-serif""""),
+    )
+  }
+
+  @Test
+  fun noFontFacesKeepsTheVectorOnlySansSerifDefault() {
+    val svg = render(layoutNode("Screen", 0, 0, 100, 100))
+    assertFalse(svg.contains("@font-face"))
+    assertTrue(svg.contains("""font-family="sans-serif""""))
+  }
+
+  @Test
+  fun embeddedFontFaceFamilyIsXmlEscapedInTheStyleBlock() {
+    // The `@font-face` family rides inside `<defs><style>`, whose content is XML character data —
+    // so
+    // a family carrying `&`/`<`/`>` must be entity-escaped there too, not just CSS-escaped, or the
+    // exported `.svg` fails to parse on Figma/Illustrator import (Chromium's HTML parser hides it).
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(layoutNode("Screen", 0, 0, 100, 100)))
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(defaultFontFamily = "Roboto"),
+        listOf(FigmaSvgFontFace("Ampersand & Co <b>", 400, italic = false, dataBase64 = "QUJD")),
+      )
+    val style = svg.substringAfter("<style>").substringBefore("</style>")
+    assertTrue(
+      "family is entity-escaped inside <style>",
+      style.contains("font-family:'Ampersand &amp; Co &lt;b&gt;'"),
+    )
+    assertFalse("no raw < survives in the style block", style.contains('<'))
+    assertFalse("no raw > survives in the style block", style.contains('>'))
+    assertFalse(
+      "no bare & survives in the style block",
+      style.contains(Regex("&(?!amp;|lt;|gt;|quot;|apos;)")),
+    )
+    assertWellFormedXml(svg)
+  }
+
+  @Test
+  fun hostileStringsInEveryTextSurfaceStillParseAsXml() {
+    // Layer names, theme-token labels, straight `<text>`, and curved `<textPath>` runs are all
+    // attacker-influenced — a composable name or a `Text("<b>&…")` can carry any character. This is
+    // the whole-document regression guard: every escape site (`escape`/`escapeAttr`/the `<style>`
+    // block) must combine into a document a strict XML parser accepts.
+    val hostile = "a < b & \"c\" 'd' >e"
+    val layout =
+      layoutNode(
+        hostile, // layer name → `id` attr + `<title>`
+        0,
+        0,
+        200,
+        200,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "clock",
+              component = hostile,
+              bounds = bounds(0, 0, 200, 60),
+              size = LayoutInspectorSize(200, 60),
+              curvedTexts =
+                listOf(
+                  LayoutInspectorCurvedText(
+                    text = hostile,
+                    centerXPx = 100.0,
+                    centerYPx = 100.0,
+                    radiusPx = 80.0,
+                    startAngleRadians = 4.4652,
+                    sweepRadians = 0.5,
+                    clockwise = true,
+                    fontSizePx = 20.0,
+                    fontWeight = 600,
+                    colorArgb = "#FFC6C6C7",
+                  )
+                ),
+            ),
+            layoutNode("Text", 8, 80, 192, 120),
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,200",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "Text",
+              boundsInRoot = "8,80,192,120",
+              text = hostile,
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        LayoutInspectorPayload(layout),
+        ComposeSemanticsPayload(semantics),
+        colorNames = mapOf("#FF6750A4" to hostile), // token name → `data-token` attr + `<title>`
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        model,
+        FigmaLayeredSvg.Options(),
+        listOf(FigmaSvgFontFace(hostile, 400, italic = false, dataBase64 = "QUJD")),
+      )
+    // Straight text content and the clock string are entity-escaped, not passed through raw …
+    assertTrue(svg.contains("a &lt; b &amp; \"c\" 'd' &gt;e"))
+    // … and the whole document — names, tokens, text, curved text, font-face — parses as XML.
+    assertWellFormedXml(svg)
+  }
+
+  @Test
+  fun textAttachesDespiteOffByOneBoundsSkew() {
+    // Regression: semantics bounds truncate to Int while layout bounds round, so the same node can
+    // differ by up to 1px per edge. Exact-key matching dropped the text; tolerant matching keeps
+    // it.
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 9, 192, 41)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40", // skewed by 1px on two edges vs the layout node
+              text = "Hello",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertTrue("text must still attach despite off-by-one bounds", svg.contains(">Hello</text>"))
+  }
+
+  @Test
+  fun textAttachesThroughItsOuterClickableModifierBounds() {
+    // Jetchat's emoji cells expose the full 42dp click target to semantics, while the layout
+    // node's own bounds are the inner padded glyph box. Matching only node bounds dropped every
+    // supplementary-plane emoji from the SVG even though semantics captured them.
+    val emoji =
+      LayoutInspectorNode(
+        nodeId = "emoji",
+        component = "EmptyMeasurePolicy",
+        bounds = bounds(20, 20, 40, 40),
+        size = LayoutInspectorSize(42, 42),
+        modifiers =
+          listOf(LayoutInspectorModifier(name = "clickable", bounds = bounds(0, 0, 42, 42))),
+      )
+    val layout = layoutNode("Screen", 0, 0, 100, 100, children = listOf(emoji))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,100,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "emoji-semantics",
+              boundsInRoot = "0,0,42,42",
+              text = "😀",
+              typography = ComposeSemanticsTypography(fontSize = "18.0sp"),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue("surrogate-pair emoji text must remain editable", svg.contains(">😀</text>"))
+    assertTrue("text uses the inner layout origin", svg.contains("""<text x="20""""))
+  }
+
+  @Test
+  fun textIsNotAttachedToAWildlyDifferentNode() {
+    // A text node far from any layout node must not be force-attached (tolerance is tight).
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Box", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(nodeId = "t", boundsInRoot = "500,500,600,540", text = "Elsewhere")
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("far-away text must not be attached", svg.contains("Elsewhere"))
+  }
+
+  @Test
+  fun namedThemeColorIsAnnotatedOnTheLayer() {
+    val svg =
+      render(
+        layoutNode(
+          "Surface",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+        ),
+        colorNames = mapOf("#FF6750A4" to "primary"),
+      )
+    assertTrue(svg.contains("""data-token="primary""""))
+    assertTrue(svg.contains("<title>"))
+    assertTrue(svg.contains("primary"))
+  }
+
+  @Test
+  fun namedColorLookupIsCaseInsensitive() {
+    val svg =
+      render(
+        layoutNode(
+          "Surface",
+          0,
+          0,
+          10,
+          10,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#ff6750a4"),
+        ),
+        colorNames = mapOf("#FF6750A4" to "primary"),
+      )
+    assertTrue(svg.contains("""data-token="primary""""))
+  }
+
+  @Test
+  fun layerNameIsXmlAttributeEscaped() {
+    val svg = render(layoutNode("""Weird"<Name>&""", 0, 0, 10, 10))
+    assertTrue(svg.contains("&quot;"))
+    assertTrue(svg.contains("&lt;"))
+    assertFalse(svg.contains("""id="Weird"<Name>&""""))
+  }
+
+  @Test
+  fun pxCornerRadiusThatCannotBeReadAsDpFallsBackToSharpRect() {
+    val svg =
+      render(
+        layoutNode(
+          "Weird",
+          0,
+          0,
+          100,
+          100,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", cornerRadius = "12px"),
+        )
+      )
+    assertFalse(svg.contains("rx="))
+    assertFalse(svg.contains("<path"))
+    assertTrue(svg.contains("<rect"))
+  }
+
+  @Test
+  fun viewBoxIsUnionOfDrawingLayersPlusPadding() {
+    // Grouping-only root (no tokens/text) must not constrain the canvas; the filled child does.
+    val svg =
+      render(
+        layoutNode(
+          "Root",
+          0,
+          0,
+          1000,
+          1000,
+          children =
+            listOf(
+              layoutNode(
+                "Box",
+                10,
+                20,
+                110,
+                220,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000"),
+              )
+            ),
+        )
+      )
+    // extent x:[10..110] y:[20..220]; +16 padding each side → 132 x 232
+    assertTrue(svg, svg.contains("""viewBox="0 0 132 232""""))
+  }
+
+  @Test
+  fun colorParsingHelpers() {
+    val opaque = FigmaSvgModel.argbToColor("#FF6750A4", emptyMap())
+    assertEquals("#6750A4", opaque?.hex)
+    assertEquals(1.0, opaque?.opacity!!, 0.0001)
+    val translucent = FigmaSvgModel.argbToColor("#806750A4", emptyMap())
+    assertEquals(128 / 255.0, translucent?.opacity!!, 0.0001)
+    assertNull(FigmaSvgModel.argbToColor("not-a-color", emptyMap()))
+    assertNull(FigmaSvgModel.argbToColor("#GGGGGG", emptyMap()))
+  }
+
+  @Test
+  fun outputIsDeterministic() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        200,
+        200,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", cornerRadius = "8.0dp"),
+        children = listOf(layoutNode("Child", 10, 10, 190, 190)),
+      )
+    assertEquals(render(layout), render(layout))
+  }
+
+  @Test
+  fun opaqueComponentBecomesAnImagePlaceholderAndRasterTarget() {
+    // A screen that is mostly vector (a Surface) with one opaque component (an Image) that must be
+    // rendered rather than vectorised — the hybrid the design workflow wants.
+    val layout =
+      LayoutInspectorPayload(
+        layoutNode(
+          "Screen",
+          0,
+          0,
+          200,
+          200,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFBFE"),
+          children = listOf(layoutNode("Image", 20, 20, 180, 120)),
+        )
+      )
+    val model =
+      FigmaSvgModel.from(layout, rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS)
+    val svg = FigmaLayeredSvg.render(model)
+    // The Image node is an <image> placeholder, not a vector shape.
+    assertTrue(svg.contains("<image "))
+    assertTrue(svg.contains("""href="figma-raster/"""))
+    // The vector part (the Surface fill) is still present.
+    assertTrue(svg.contains("""fill="#FFFBFE""""))
+    // The pipeline is told exactly what to capture.
+    assertEquals(1, model.rasterTargets.size)
+    val target = model.rasterTargets.single()
+    assertEquals("Image", target.nodeId)
+    assertEquals(20, target.left)
+    assertEquals(180, target.right)
+  }
+
+  @Test
+  fun opaqueNodeDropsItsSubtree() {
+    // An Icon with vector-looking children still rasterises as one image — its subtree is replaced.
+    val layout =
+      LayoutInspectorPayload(
+        layoutNode(
+          "IconButton",
+          0,
+          0,
+          48,
+          48,
+          children =
+            listOf(
+              layoutNode(
+                "Icon",
+                8,
+                8,
+                40,
+                40,
+                children = listOf(layoutNode("InnerVector", 8, 8, 40, 40)),
+              )
+            ),
+        )
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(layout, rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS)
+      )
+    assertTrue(svg.contains("<image "))
+    assertFalse("opaque subtree must not emit its inner nodes", svg.contains("InnerVector"))
+  }
+
+  @Test
+  fun hybridIsOptInSoDefaultExportIsVectorOnly() {
+    // The pure model default stays vector-only: `from(...)` only emits <image> refs when a caller
+    // opts in with `rasterComponents`. The daemon producer opts in (and crops the PNGs those refs
+    // point at) only when it has the captured frame to crop from — a model-only caller with no
+    // frame must never emit an <image> ref to a PNG nobody wrote.
+    val layout = LayoutInspectorPayload(layoutNode("Image", 0, 0, 100, 100))
+    val model = FigmaSvgModel.from(layout)
+    assertFalse(FigmaLayeredSvg.render(model).contains("<image "))
+    assertTrue(model.rasterTargets.isEmpty())
+  }
+
+  @Test
+  fun rasterComponentSetIsConfigurable() {
+    val layout = LayoutInspectorPayload(layoutNode("SparklineChartXyz", 0, 0, 100, 40))
+    // A custom set that only rasterises "Gauge" → this Chart stays vector (no <image>).
+    val vectorOnly = FigmaSvgModel.from(layout, rasterComponents = setOf("Gauge"))
+    assertTrue(FigmaLayeredSvg.render(vectorOnly).let { !it.contains("<image ") })
+    assertTrue(vectorOnly.rasterTargets.isEmpty())
+    // The default preset includes "Chart" → rasterised when opted in.
+    val hybrid =
+      FigmaSvgModel.from(layout, rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS)
+    assertTrue(FigmaLayeredSvg.render(hybrid).contains("<image "))
+    assertEquals(1, hybrid.rasterTargets.size)
+  }
+
+  @Test
+  fun defaultRasterHrefSanitizesNodeId() {
+    assertEquals("figma-raster/node_12_.png", FigmaSvgModel.defaultRasterHref("node:12/"))
+  }
+
+  /**
+   * A Wear `TransformingLazyColumn` item near the round face's edge is shrunk by a draw-time
+   * `graphicsLayer` scale: its `bounds` is the small, drawn rect while its `size` stays at the full
+   * measured extent. The fill-growth heuristic used to read that gap as a `boundsIn` under-report
+   * and grow the item back to full size at the compressed placement, so neighbouring items
+   * overlapped into one merged blob (issue #2615). The captured `transform` scales every measured
+   * signal into drawn space so the export lands on the rect the render actually painted.
+   */
+  @Test
+  fun anEdgeScaledItemGrowsOnlyToItsScaledMeasuredSize() {
+    // size 203×64 at scale 0.5 → drawn 102×32, centred on the item's own bounds (100..190, 60..90).
+    val item =
+      LayoutInspectorNode(
+        nodeId = "item",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(100, 60, 190, 90),
+        size = LayoutInspectorSize(203, 64),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C", cornerRadius = "26.0dp"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(item),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    assertTrue("grown to the scaled width, not 203:\n$svg", svg.contains("""width="102""""))
+    assertTrue("grown to the scaled height, not 64:\n$svg", svg.contains("""height="32""""))
+    // Centred on the bounds: (100+190-102)/2 = 94, (60+90-32)/2 = 59.
+    assertTrue(svg, svg.contains("""x="94"""") && svg.contains("""y="59""""))
+    // The corner radius rides the same scale — 26dp × 0.5.
+    assertTrue("corner radius scales with the box:\n$svg", svg.contains("""rx="13""""))
+  }
+
+  @Test
+  fun anUnscaledItemStillGrowsToItsFullMeasuredSize() {
+    // The identity transform must leave the pre-existing Wear `Button`/`Card` growth untouched.
+    val item =
+      LayoutInspectorNode(
+        nodeId = "item",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(100, 60, 190, 90),
+        size = LayoutInspectorSize(203, 64),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(item),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    assertTrue(svg, svg.contains("""width="203"""") && svg.contains("""height="64""""))
+  }
+
+  @Test
+  fun anItemPlacedPastTheParentEdgeIsNotPulledBackIntoView() {
+    // A list item scrolled past the viewport bottom is placed outside its parent on purpose. The
+    // parent clamp used to drag the grown shape back inside, dropping it on top of the item above;
+    // growth may only inflate the node's own placement (issue #2615).
+    val offscreen =
+      LayoutInspectorNode(
+        nodeId = "offscreen",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(60, 230, 170, 260),
+        size = LayoutInspectorSize(110, 40),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(offscreen),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    // Grown 40 tall and centred on 230..260 → y=225; NOT yanked up to the parent's 227-40=187.
+    assertTrue("stays where it was placed:\n$svg", svg.contains("""y="225""""))
+    assertFalse("must not be clamped into the viewport:\n$svg", svg.contains("""y="187""""))
+  }
+}

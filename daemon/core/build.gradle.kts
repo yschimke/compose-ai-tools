@@ -39,19 +39,19 @@ dependencies {
   // existing consumer of `ee.schimke.composeai.daemon.bta.*` reaches it through here.
   api(libs.composeai.daemon.bta)
 
-  api(libs.composeai.data.render.core)
+  api(project(":data-render-core"))
 
   // Semantics-tree models + structural differ (issue #1785). `api`, not `implementation`: the
   // published `HistoryDiffResult.semanticsDelta` field is a `SemanticsDelta`, so the type is part
   // of this module's compile ABI. Pure-JVM core module (no Compose/Android) — safe on the
   // renderer-agnostic daemon classpath.
-  api(libs.composeai.data.layoutinspector.core)
+  api(project(":data-layoutinspector-core"))
 
   // Theme-token models + structural differ (issue #1873). `api`, not `implementation`: the
   // published `HistoryDataDelta.theme` field is a `ThemeDelta`, so the type is part of this
   // module's compile ABI. Pure-JVM core module (no Compose/Android) — safe on the
   // renderer-agnostic daemon classpath, same as `:data-layoutinspector-core`.
-  api(libs.composeai.data.theme.core)
+  api(project(":data-theme-core"))
 
   // `PreviewOverrideValue` (the plain-Compose named-override value type) lives in the published
   // `:data-preview-overrides-core` so the runtime/producer/MCP clients depend on the override
@@ -61,12 +61,12 @@ dependencies {
   // ABI
   // → `api`, not `implementation`. Pure-JVM (kotlinx-serialization only), safe on the daemon
   // classpath; the module has no dependency back on `:daemon:core`, so no cycle.
-  api(libs.composeai.data.preview.overrides.core)
+  api(project(":data-preview-overrides-core"))
 
   // Okio-based file IO (`SystemFileSystem`) for data-product reads, history sidecars, bundle IR
   // replay, and forensics dumps. `implementation` — Okio stays an internal detail; daemon/core's
   // public surface keeps its java.io.File signatures.
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
 
   // Protocol message types are @Serializable. Exposed as `api` so downstream
   // daemon modules (e.g. :daemon:android) get

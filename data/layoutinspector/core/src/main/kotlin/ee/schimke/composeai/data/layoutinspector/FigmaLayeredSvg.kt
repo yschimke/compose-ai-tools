@@ -1,0 +1,1617 @@
+package ee.schimke.composeai.data.layoutinspector
+
+import java.util.IdentityHashMap
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+
+/**
+ * Bakes a [FigmaSvgModel] into a **layered, editable SVG** designed to round-trip cleanly through
+ * Figma's SVG import (and Sketch / Penpot / Illustrator).
+ *
+ * How the emitted document maps to Figma layers:
+ * - **Every layer is a `<g id="…">`** whose `id` is the composable name — so a `Button`, a `Card`,
+ *   a whole screen each land as a *named* group/frame, nested exactly as the composables nest. This
+ *   is the difference from [SemanticsWireframeSvg], which flattens the tree into anonymous boxes.
+ * - **Container tokens become real vector shapes**: a layer with a background token is a filled
+ *   `<rect>` (or a rounded-corner `<path>` when the corners aren't uniform), a border token adds a
+ *   stroke, and the resolved corner radius imports as Figma's editable corner radius.
+ * - **Text is editable `<text>`**, not outlines — with the captured family/size/weight/colour — so
+ *   a designer edits the string in place and the type stays live.
+ * - **Named theme colours ride along**: when a fill resolves to a theme role, the role name is
+ *   emitted in a `<title>` and a `data-token` attribute, so the paired `figma-variables.json` (and
+ *   a future live-variable import) can bind the fill to a variable instead of a raw literal.
+ * - **Stock Material icons name themselves.** An `Icon` painting an `androidx.compose.material
+ *   .icons.Icons.*` vector carries its canonical
+ *   [fonts.google.com/icons](https://fonts.google.com/icons) identity on its layer —
+ *   `data-material-icon="account_circle"`, its style, and the CDN URL of that exact drawing — and
+ *   its geometry is hoisted into a shared `<defs>` entry that every placement `<use>`s. So an icon
+ *   row collapses to one definition, and a design tool can swap the layer for the real library
+ *   component instead of inheriting a nameless blob of paths.
+ *
+ *   The definition holds the **captured** paths, not a fetched asset: the export never reaches the
+ *   network, and the reference is an *annotation* over the geometry Compose actually drew. (They
+ *   are the same artwork — `Icons.Filled.Menu`'s path data is byte-identical to
+ *   `materialicons/menu/…/24px.svg` — which is exactly why annotating is enough. See
+ *   [MaterialIconRef] for why this points at legacy Material Icons rather than Material Symbols.)
+ *   Opt out with `Options.materialIconRefs = false` to inline every icon's paths as before.
+ *
+ * Pure and deterministic: model in, SVG string out — no graphics toolkit, no IO — so it lives on
+ * the render-subprocess-safe core classpath next to [SemanticsWireframeSvg].
+ */
+public object FigmaLayeredSvg {
+
+  public data class Options(
+    /** Emit the `<title>`/`data-token` theme-role annotations on named-colour shapes. */
+    val annotateTokens: Boolean = true,
+    /** Fallback text size (px) when a text node didn't resolve one. */
+    val defaultFontSizePx: Double = 14.0,
+    /**
+     * Family a `<text>` gets when its captured family is null or a *sans* generic
+     * (`sans-serif`/`system-ui`). Left as `sans-serif` for the vector-only export; the
+     * font-embedding path sets it to the resolved default face (e.g. `Roboto`) so the emitted
+     * `@font-face` matches by name. Non-sans generics (`serif`/`monospace`) keep their own identity
+     * via [resolveFamily]/[embedFamily] rather than collapsing to this default.
+     */
+    val defaultFontFamily: String = "sans-serif",
+    /**
+     * Emit stock Material icons as a shared `<defs>` definition plus a `<use>` reference, annotated
+     * with their canonical fonts.google.com identity ([MaterialIconRef]). Set false to inline every
+     * icon's paths as before — the escape hatch for a consumer that can't resolve `<use>`.
+     */
+    val materialIconRefs: Boolean = true,
+  )
+
+  /**
+   * @param fontFaces faces to embed as `@font-face` (via `<defs><style>`) so the text renders with
+   *   the real typeface in Chromium/Figma instead of a substituted `sans-serif`. Empty (default)
+   *   keeps the export vector-only with no embedded fonts.
+   * @param familyOverrides maps a text node's *captured* [FigmaSvgText.fontFamily] (e.g. the
+   *   absolute path of the font file the render loaded) to the family name to emit on the `<text>`
+   *   — so it matches the `@font-face` the producer embedded for that file. Unmapped families fall
+   *   back to [resolveFamily].
+   */
+  public fun render(
+    model: FigmaSvgModel,
+    options: Options = Options(),
+    fontFaces: List<FigmaSvgFontFace> = emptyList(),
+    familyOverrides: Map<String, String> = emptyMap(),
+  ): String {
+    val sb = StringBuilder()
+    val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
+    // Stock Material icons become one shared def each, referenced by `<use>` at every placement and
+    // annotated with their fonts.google.com identity — see [materialIconDefs]. Resolved before the
+    // header because the `xlink:href` those references carry needs the namespace declared on it.
+    val iconIds = if (options.materialIconRefs) materialIconDefs(model.root) else emptyMap()
+    val xlinkNs = if (iconIds.isEmpty()) "" else """xmlns:xlink="http://www.w3.org/1999/xlink" """
+    // `text-rendering="geometricPrecision"` turns off the browser's glyph grid-fitting/hinting so
+    // every `<text>` rasterises at its exact subpixel metrics — matching how the Skiko render (and
+    // Figma itself) place glyphs, instead of the default `auto` hinting that snaps edges to pixel
+    // boundaries and leaves a constant ~2-3% edge diff against the render on text-heavy previews.
+    sb.append(
+      """<svg xmlns="http://www.w3.org/2000/svg" $xlinkNs""" +
+        """width="${model.width}" height="${model.height}" """ +
+        """viewBox="0 0 ${model.width} ${model.height}" text-rendering="geometricPrecision" """ +
+        """font-family="${escapeAttr(rootFamily)}">"""
+    )
+    sb.append('\n')
+    if (fontFaces.isNotEmpty()) sb.append(fontFaceDefs(fontFaces))
+    // Emit one reusable `feDropShadow` filter per distinct elevation so an elevated surface casts
+    // its Material drop shadow instead of reading as a flat fill.
+    val elevations = collectElevations(model.root)
+    if (elevations.isNotEmpty()) sb.append(shadowFilterDefs(elevations))
+    // Brush fills/strokes captured off the modifier chain, as real gradient defs (issue #2852).
+    val gradientSeq = gradientSeq(model.root)
+    sb.append(gradientDefs(model.root, gradientSeq))
+    sb.append(materialIconDefsSvg(model.root, iconIds))
+    // A round Wear device screen masks the whole tree to the inscribed circle (Roborazzi's device
+    // crop), so the square full-frame background doesn't paint the corners the render leaves clear.
+    // A *tall* Wear scroll frame masks to a vertical stadium (capsule) instead — the circle would
+    // clip the grown list to a lens. The two are mutually exclusive.
+    val clip = model.roundClip
+    val capsule = model.capsuleClip
+    if (capsule != null) {
+      sb.append(
+        """<clipPath id="deviceRound"><rect x="${capsule.x}" y="${capsule.y}" """ +
+          """width="${capsule.width}" height="${capsule.height}" """ +
+          """rx="${capsule.rx}" ry="${capsule.rx}"/></clipPath>"""
+      )
+      sb.append('\n')
+    } else if (clip != null) {
+      sb.append(
+        """<clipPath id="deviceRound"><circle cx="${clip.cx}" cy="${clip.cy}" """ +
+          """r="${clip.r}"/></clipPath>"""
+      )
+      sb.append('\n')
+    }
+    // Everything is drawn in root-pixel space; a single group translate drops the tree into the
+    // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
+    // import).
+    val clipAttr = if (clip != null || capsule != null) """ clip-path="url(#deviceRound)"""" else ""
+    // A **full-bleed** background on a masked export has to be painted outside the clip group, or
+    // the device mask would cut it back to the watch face — which is precisely the *clipped* mode
+    // it exists to contrast with. `FigmaSvgModel.from` sets `backgroundRect` alongside a mask only
+    // in that mode, so the presence of both is the signal.
+    val fullBleedOverMask =
+      model.deviceBackground != null &&
+        model.backgroundRect != null &&
+        (clip != null || capsule != null)
+    if (fullBleedOverMask) {
+      sb.append("""<g transform="translate(${model.tx}, ${model.ty})">""").append('\n')
+      sb
+        .append("  ")
+        .append(backgroundRectSvg(model.backgroundRect, model.deviceBackground))
+        .append('\n')
+      sb.append("</g>\n")
+    }
+    sb.append("""<g transform="translate(${model.tx}, ${model.ty})"$clipAttr>""")
+    sb.append('\n')
+    // A device preview paints its screen background (the black watch face) behind the tree, in the
+    // device-mask shape so it fills the face and the corners stay transparent — set only when a
+    // device frame opted in, so component previews stay background-free.
+    model.deviceBackground?.let { bg ->
+      val fillOpacity = opacity("fill", bg)
+      val shape =
+        when {
+          // Already painted above, outside the clip.
+          fullBleedOverMask -> null
+          // CONTENT_SHAPE: the component's own silhouette, drawn through the ordinary layer-shape
+          // path so radii / circle / cut / sampled outline all come out identical to the layer it
+          // was taken from.
+          model.backgroundShape != null -> shape(model.backgroundShape, emptyMap())
+          capsule != null ->
+            """<rect x="${capsule.x}" y="${capsule.y}" width="${capsule.width}" """ +
+              """height="${capsule.height}" rx="${capsule.rx}" ry="${capsule.rx}" """ +
+              """fill="${bg.hex}"$fillOpacity/>"""
+          clip != null ->
+            """<circle cx="${clip.cx}" cy="${clip.cy}" r="${clip.r}" fill="${bg.hex}"$fillOpacity/>"""
+          // A maskless `@Preview(showBackground = true, backgroundColor = …)` paints the flat
+          // frame the render drew behind the composable (issue #2884) — without it the SVG was
+          // transparent exactly where the PNG was opaque.
+          else -> model.backgroundRect?.let { backgroundRectSvg(it, bg) }
+        }
+      if (shape != null) sb.append("  ").append(shape).append('\n')
+    }
+    renderLayer(
+      model.root,
+      sb,
+      options,
+      familyOverrides,
+      depth = 1,
+      gradientSeq = gradientSeq,
+      iconIds = iconIds,
+    )
+    sb.append("</g>\n")
+    sb.append("</svg>\n")
+    return sb.toString()
+  }
+
+  /**
+   * The flat background rect — the bottom layer of a maskless `showBackground` export, and of a
+   * full-bleed masked one (issue #2884).
+   */
+  private fun backgroundRectSvg(r: FigmaSvgRect, bg: FigmaSvgColor): String =
+    """<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" """ +
+      """fill="${bg.hex}"${opacity("fill", bg)}/>"""
+
+  /** True when this layer draws its own rect: a flat fill/stroke, or a captured brush (#2852). */
+  private fun FigmaSvgLayer.paintsShape(): Boolean =
+    fill != null || stroke != null || fillGradient != null || strokeGradient != null
+
+  private fun renderLayer(
+    layer: FigmaSvgLayer,
+    sb: StringBuilder,
+    options: Options,
+    familyOverrides: Map<String, String>,
+    depth: Int,
+    inheritedOpacity: Double = 1.0,
+    // Monotonic counter for curved-text `<path>` ids, threaded through the whole walk so every arc
+    // gets a document-unique id even when two `CurvedLayout`s share a component name — otherwise
+    // duplicate ids make a later `<textPath href>` resolve to the first path (Codex #2395).
+    curveSeq: IntArray = intArrayOf(0),
+    // Gradient def ids, assigned once for the whole tree so a shape's `url(#…)` always resolves.
+    gradientSeq: Map<FigmaSvgLayer, Int> = emptyMap(),
+    // Monotonic counter for `Modifier.clip` `<clipPath>` ids, threaded so every mask is unique.
+    clipSeq: IntArray = intArrayOf(0),
+    // `<defs>` ids for the Material icons in this tree, assigned once so every `<use href>`
+    // resolves. Empty when icon refs are off — then every icon inlines its own paths.
+    iconIds: Map<MaterialIconKey, String> = emptyMap(),
+  ) {
+    val indent = "  ".repeat(depth)
+    // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
+    // exporter can't vectorise. No shape/text/children; the group keeps the composable name.
+    if (layer.raster != null) {
+      // Raster crops come from the final composited frame, so every ancestor/local graphics-layer
+      // alpha is already baked into the pixels. Reapplying it here would fade the crop twice.
+      sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
+      sb.append(indent).append("  ").append(image(layer, layer.raster)).append('\n')
+      sb.append("$indent</g>\n")
+      return
+    }
+    // A captured `ImageVector` (an `Icon`/`Image`) emits as editable `<path>` layers under a
+    // transform that maps the vector's own viewport onto the layer's placed box — the vector
+    // alternative to the `<image>` leaf above. Also a leaf: an icon's art has no editable subtree.
+    if (layer.vector != null) {
+      sb.append(vectorGroup(layer, layer.vector, indent, inheritedOpacity, iconIds)).append('\n')
+      return
+    }
+    val tokenName = layer.fill?.tokenName ?: layer.stroke?.tokenName
+    val dataToken =
+      if (options.annotateTokens && tokenName != null) """ data-token="${escapeAttr(tokenName)}""""
+      else ""
+    // An elevated surface casts its Material drop shadow via a `feDropShadow` filter on its group,
+    // so the shadow falls behind the whole silhouette (fill + children) exactly as the render draws
+    // it. Keyed by rounded px so layers at the same elevation share one filter def.
+    val filterAttr =
+      if (layer.elevationPx >= 1.0) """ filter="url(#${shadowFilterId(layer.elevationPx)})""""
+      else ""
+    val containsRaster = layer.containsCapturedRaster()
+    val outerOpacity = inheritedOpacity * layer.opacity
+    val namedGroupOpacity = if (containsRaster) 1.0 else outerOpacity
+    // A `Modifier.clip` layer masks its children to its own box + corner shape. Emit a `<clipPath>`
+    // when a child actually reaches the mask (Jetsnack Search/Categories' image overflowing
+    // `.clip(CategoryShape)`, or an expressive `ToggleButton`'s content filling a circle) — a
+    // rectangular clip only trims a child that overflows the box, but a rounded/circle/cut clip
+    // also
+    // trims the corners of a child that merely fills the box, so both cases are covered (issue
+    // #2852). A clip nothing reaches changes no pixels and stays clip-path-free.
+    // The mask is cut from [FigmaSvgLayer.clipBox] when the layer carries one — a layer whose own
+    // box was narrowed to what it paints inside a larger clipping coordinator still masks with the
+    // coordinator's rect, corners and all. For every ordinary layer this is the layer itself.
+    val maskLayer = layer.maskShape()
+    val clipId =
+      if (
+        layer.clipChildren &&
+          (maskLayer.clipsAnyDescendant() || layer.background?.clipToShape == true)
+      ) {
+        "clip-${clipSeq[0]++}"
+      } else null
+    if (clipId != null) {
+      sb.append(indent).append(clipPathDef(maskLayer, clipId)).append('\n')
+    }
+    // The mask wraps the *children* (below), not this named group: attaching it to the whole group
+    // would also clip the node's own background/border and its drop shadow, which in Compose's
+    // outer→inner order precede the clip (`background(color).clip(circle)` keeps a square
+    // background). The node's own shape is drawn at its box with its own corners regardless.
+    sb.append(
+      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr${opacityAttr(namedGroupOpacity)}>"""
+    )
+    sb.append('\n')
+    if (options.annotateTokens && tokenName != null) {
+      sb.append("""$indent  <title>${escape(layer.name)} · ${escape(tokenName)}</title>""")
+      sb.append('\n')
+    }
+
+    // A captured Canvas-draw background (`Modifier.drawBehind {…}`) paints first, beneath the
+    // layer's own shape/text and its children — matching draw order, so the editable vector layers
+    // sit on top of the rasterised background.
+    //
+    // Unless the chain says otherwise: a capture taken from a draw modifier *inside* the
+    // `background`/`border` it shares a node with is painted after that shape by Compose, so it is
+    // held back and emitted over the shape instead (still under the text and children, which are
+    // inside both). Either way it goes out exactly once.
+    val rasterOverShape = layer.background?.takeIf { it.aboveShape }
+    if (rasterOverShape == null) {
+      layer.background?.let { bg ->
+        sb.append(indent).append("  ").append(backgroundImage(bg, clipId)).append('\n')
+      }
+    }
+    if (containsRaster) {
+      // A group containing a final-frame crop cannot carry inherited opacity without fading that
+      // crop twice. Apply the outer alpha only to this layer's vector shape, then thread the
+      // combined outer/content alpha into editable descendants; raster leaves deliberately ignore
+      // it above.
+      if (layer.paintsShape()) {
+        appendOpacityGroup(sb, indent + "  ", outerOpacity) {
+          sb.append(indent).append("    ").append(shape(layer, gradientSeq)).append('\n')
+        }
+      }
+      rasterOverShape?.let {
+        sb.append(indent).append("  ").append(backgroundImage(it, clipId)).append('\n')
+      }
+      val contentOpacity = outerOpacity * layer.contentOpacity
+      if (layer.text != null || layer.curvedTexts.isNotEmpty()) {
+        appendOpacityGroup(sb, indent + "  ", contentOpacity) {
+          appendTextContent(layer, sb, options, familyOverrides, indent + "    ", curveSeq)
+        }
+      }
+      renderChildren(
+        layer,
+        sb,
+        options,
+        familyOverrides,
+        depth + 1,
+        inheritedOpacity = contentOpacity,
+        curveSeq = curveSeq,
+        gradientSeq = gradientSeq,
+        clipSeq = clipSeq,
+        clipId = clipId,
+        iconIds = iconIds,
+      )
+    } else {
+      if (layer.paintsShape()) {
+        sb.append(indent).append("  ").append(shape(layer, gradientSeq)).append('\n')
+      }
+      rasterOverShape?.let {
+        sb.append(indent).append("  ").append(backgroundImage(it, clipId)).append('\n')
+      }
+      val hasInnerContent =
+        layer.text != null || layer.curvedTexts.isNotEmpty() || layer.children.isNotEmpty()
+      if (hasInnerContent && layer.contentOpacity < 0.999) {
+        sb
+          .append(indent)
+          .append("  ")
+          .append("""<g${opacityAttr(layer.contentOpacity)}>""")
+          .append('\n')
+        appendTextContent(layer, sb, options, familyOverrides, indent + "    ", curveSeq)
+        renderChildren(
+          layer,
+          sb,
+          options,
+          familyOverrides,
+          depth + 2,
+          inheritedOpacity = 1.0,
+          curveSeq = curveSeq,
+          gradientSeq = gradientSeq,
+          clipSeq = clipSeq,
+          clipId = clipId,
+          iconIds = iconIds,
+        )
+        sb.append(indent).append("  </g>\n")
+      } else {
+        appendTextContent(layer, sb, options, familyOverrides, indent + "  ", curveSeq)
+        renderChildren(
+          layer,
+          sb,
+          options,
+          familyOverrides,
+          depth + 1,
+          inheritedOpacity = 1.0,
+          curveSeq = curveSeq,
+          gradientSeq = gradientSeq,
+          clipSeq = clipSeq,
+          clipId = clipId,
+          iconIds = iconIds,
+        )
+      }
+    }
+    sb.append("$indent</g>\n")
+  }
+
+  /**
+   * Renders a layer's children, wrapping them in the layer's `Modifier.clip` mask when one is in
+   * force ([clipId] non-null). Only the children are masked — never the node's own shape/shadow —
+   * so a `background(color).clip(circle)` keeps a square background while its content is clipped,
+   * and an elevated card's drop shadow isn't cut off (issue #2852). A null [clipId] renders the
+   * children exactly as before, un-nested.
+   */
+  private fun renderChildren(
+    layer: FigmaSvgLayer,
+    sb: StringBuilder,
+    options: Options,
+    familyOverrides: Map<String, String>,
+    childDepth: Int,
+    inheritedOpacity: Double,
+    curveSeq: IntArray,
+    gradientSeq: Map<FigmaSvgLayer, Int>,
+    clipSeq: IntArray,
+    clipId: String?,
+    iconIds: Map<MaterialIconKey, String>,
+  ) {
+    if (layer.children.isEmpty()) return
+    val wrap = clipId != null
+    val wrapIndent = "  ".repeat(childDepth)
+    if (wrap) sb.append(wrapIndent).append("""<g clip-path="url(#$clipId)">""").append('\n')
+    val childDepthEffective = if (wrap) childDepth + 1 else childDepth
+    for (child in layer.children) {
+      renderLayer(
+        child,
+        sb,
+        options,
+        familyOverrides,
+        childDepthEffective,
+        inheritedOpacity = inheritedOpacity,
+        curveSeq = curveSeq,
+        gradientSeq = gradientSeq,
+        clipSeq = clipSeq,
+        iconIds = iconIds,
+      )
+    }
+    if (wrap) sb.append(wrapIndent).append("</g>\n")
+  }
+
+  private fun appendTextContent(
+    layer: FigmaSvgLayer,
+    sb: StringBuilder,
+    options: Options,
+    familyOverrides: Map<String, String>,
+    indent: String,
+    curveSeq: IntArray,
+  ) {
+    // A turned layer turns its text along with the rest of its own drawing. Wrapped rather than
+    // attributed because one layer can emit several runs (a straight `<text>` plus curved ones)
+    // and they all belong to the same turn.
+    val turn =
+      if (layer.text == null && layer.curvedTexts.isEmpty()) ""
+      else rotateTransform(layer).trimEnd()
+    val inner = if (turn.isEmpty()) indent else "$indent  "
+    if (turn.isNotEmpty()) sb.append(indent).append("""<g transform="$turn">""").append('\n')
+    if (layer.text != null) {
+      sb.append(inner).append(text(layer, options, familyOverrides)).append('\n')
+    }
+    layer.curvedTexts.forEach { ct ->
+      sb.append(inner).append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
+    }
+    if (turn.isNotEmpty()) sb.append(indent).append("</g>").append('\n')
+  }
+
+  private inline fun appendOpacityGroup(
+    sb: StringBuilder,
+    indent: String,
+    opacity: Double,
+    content: () -> Unit,
+  ) {
+    if (opacity >= 0.999) {
+      content()
+      return
+    }
+    sb.append(indent).append("""<g${opacityAttr(opacity)}>""").append('\n')
+    content()
+    sb.append(indent).append("</g>\n")
+  }
+
+  /**
+   * True when this subtree holds pixels taken from the composited frame, whose alpha is therefore
+   * already baked in. An isolated re-draw ([FigmaSvgBackgroundRaster.fromFrame] `= false`) is
+   * deliberately not counted: it was captured below the graphics layers, so it wants the ordinary
+   * group opacity like any vector layer.
+   */
+  private fun FigmaSvgLayer.containsCapturedRaster(): Boolean =
+    raster != null || background?.fromFrame == true || children.any { it.containsCapturedRaster() }
+
+  /**
+   * A Wear curved-text run (a `TimeText` clock) as an SVG `<textPath>` on its baseline arc. The
+   * baseline circle is centred at ([LayoutInspectorCurvedText.centerXPx], `centerYPx`) with radius
+   * `radiusPx`; the run spans `sweepRadians` from `startAngleRadians` (screen convention: clockwise
+   * from +x, so `1.5π` = top). The text is centred on the arc so it reads across the top exactly as
+   * the render draws it, and stays editable rather than dropping out or baking to a raster.
+   */
+  private fun curvedText(ct: LayoutInspectorCurvedText, id: String): String {
+    val dir = if (ct.clockwise) 1.0 else -1.0
+    val a0 = ct.startAngleRadians
+    val a1 = ct.startAngleRadians + dir * ct.sweepRadians
+    val sx = ct.centerXPx + ct.radiusPx * cos(a0)
+    val sy = ct.centerYPx + ct.radiusPx * sin(a0)
+    val ex = ct.centerXPx + ct.radiusPx * cos(a1)
+    val ey = ct.centerYPx + ct.radiusPx * sin(a1)
+    // SVG arc sweep-flag: 1 draws in the increasing-angle (visually clockwise, y-down) direction.
+    val sweepFlag = if (ct.clockwise) 1 else 0
+    val largeArc = if (ct.sweepRadians > PI) 1 else 0
+    val pathId = "curve-${escapeAttr(id)}"
+    val r = fmt(ct.radiusPx)
+    val d = "M ${fmt(sx)} ${fmt(sy)} A $r $r 0 $largeArc $sweepFlag ${fmt(ex)} ${fmt(ey)}"
+    val fill = ct.colorArgb?.let { curvedColorHex(it) } ?: "#000000"
+    val weight = ct.fontWeight?.let { " font-weight=\"$it\"" } ?: ""
+    return "<path id=\"$pathId\" d=\"$d\" fill=\"none\"/>" +
+      "<text font-size=\"${fmt(ct.fontSizePx)}\"$weight fill=\"$fill\" dominant-baseline=\"alphabetic\">" +
+      "<textPath href=\"#$pathId\" startOffset=\"50%\" text-anchor=\"middle\">" +
+      "${escape(ct.text)}</textPath></text>"
+  }
+
+  /** `#AARRGGBB` (or `#RRGGBB`) → `#RRGGBB` for an SVG `fill`. */
+  private fun curvedColorHex(argb: String): String {
+    val hex = argb.removePrefix("#")
+    return if (hex.length == 8) "#${hex.substring(2)}" else "#$hex"
+  }
+
+  /**
+   * A per-layer gradient sequence number, assigned by one pre-order walk and shared between the
+   * `<defs>` and the shapes that reference them, so both sides always agree on the id.
+   *
+   * Keyed by layer *identity* and derived from position in the walk rather than from the layer's
+   * name or coordinates: two overlaid children can share a name and a top-left, and sanitising
+   * distinct names can collapse them to the same slug, either of which would emit duplicate def ids
+   * and paint one of the layers with the other's colours. The same monotonic-counter shape
+   * `curveSeq` already uses for curved-text path ids (Codex #2395).
+   */
+  /**
+   * What makes two drawings of a Material icon *the same definition*: its canonical identity, its
+   * viewport, and the exact painted paths.
+   *
+   * Paint is part of the key on purpose. The alternative — one colourless def tinted per instance
+   * via `currentColor` — dedupes harder but leans on inherited-paint resolution that SVG consumers
+   * implement unevenly; keying on the painted geometry keeps every `<use>` a literal stand-in for
+   * the paths it replaced. A screen's icon row in one content colour still collapses to a single
+   * def, which is the case that actually repeats.
+   */
+  private data class MaterialIconKey(
+    val ref: MaterialIconRef,
+    val viewportWidth: Float,
+    val viewportHeight: Float,
+    val paths: List<FigmaSvgVectorPath>,
+  )
+
+  private fun materialIconKey(vec: FigmaSvgVector): MaterialIconKey? =
+    vec.materialIcon?.let { MaterialIconKey(it, vec.viewportWidth, vec.viewportHeight, vec.paths) }
+
+  /**
+   * A `<defs>` id per distinct Material icon in the tree, in document order.
+   *
+   * The id spells the icon out — `material-icon-materialiconsoutlined-account_circle` — so the
+   * reference is legible in the raw SVG and in a design tool's layer list, with a `-2`, `-3`, …
+   * suffix only when the same icon appears in more than one paint.
+   */
+  private fun materialIconDefs(root: FigmaSvgLayer): Map<MaterialIconKey, String> {
+    val ids = LinkedHashMap<MaterialIconKey, String>()
+    val perIcon = HashMap<String, Int>()
+    fun visit(layer: FigmaSvgLayer) {
+      layer.vector?.let(::materialIconKey)?.let { key ->
+        ids.getOrPut(key) {
+          val base = "material-icon-${key.ref.style.cdnFamily}-${key.ref.name}"
+          val n = perIcon.merge(base, 1, Int::plus)!!
+          if (n == 1) base else "$base-$n"
+        }
+      }
+      layer.children.forEach(::visit)
+    }
+    visit(root)
+    return ids
+  }
+
+  /**
+   * Every distinct Material icon as a reusable `<g>` def holding its captured paths.
+   *
+   * A `<g>` rather than a `<symbol>`: a `<use>` of a symbol re-maps the symbol's `viewBox` onto the
+   * *use element's* width/height (defaulting to the whole viewport), while a `<g>` instantiates in
+   * the current user space — which is exactly what the icon's placement group already establishes.
+   */
+  private fun materialIconDefsSvg(root: FigmaSvgLayer, ids: Map<MaterialIconKey, String>): String {
+    if (ids.isEmpty()) return ""
+    val sb = StringBuilder()
+    sb.append("<defs>\n")
+    for ((key, id) in ids) {
+      sb.append("""  <g id="$id">""").append('\n')
+      for (p in key.paths) sb.append("    ").append(vectorPath(p)).append('\n')
+      sb.append("  </g>\n")
+    }
+    sb.append("</defs>\n")
+    return sb.toString()
+  }
+
+  private fun gradientSeq(root: FigmaSvgLayer): Map<FigmaSvgLayer, Int> {
+    val seq = IdentityHashMap<FigmaSvgLayer, Int>()
+    fun visit(layer: FigmaSvgLayer) {
+      if (layer.fillGradient != null || layer.strokeGradient != null) seq[layer] = seq.size
+      layer.children.forEach(::visit)
+    }
+    visit(root)
+    return seq
+  }
+
+  /**
+   * A document-unique id for one of a layer's gradients: its sequence number plus a fill/stroke
+   * discriminator, so a component carrying both a gradient fill and a gradient border gets two
+   * distinct defs. Returns null for a layer that declared no gradient.
+   */
+  private fun gradientId(
+    seq: Map<FigmaSvgLayer, Int>,
+    layer: FigmaSvgLayer,
+    kind: String,
+  ): String? = seq[layer]?.let { "g$kind-$it" }
+
+  /** Every gradient in the tree as an SVG `<linearGradient>` def, in document order. */
+  private fun gradientDefs(root: FigmaSvgLayer, seq: Map<FigmaSvgLayer, Int>): String {
+    val sb = StringBuilder()
+    fun emit(layer: FigmaSvgLayer) {
+      layer.fillGradient?.let { g ->
+        gradientId(seq, layer, "f")?.let { sb.append(linearGradientDef(it, g)) }
+      }
+      layer.strokeGradient?.let { g ->
+        gradientId(seq, layer, "s")?.let { sb.append(linearGradientDef(it, g)) }
+      }
+      layer.children.forEach(::emit)
+    }
+    emit(root)
+    if (sb.isEmpty()) return ""
+    return "<defs>\n$sb</defs>\n"
+  }
+
+  /**
+   * One `<linearGradient>`. Coordinates are already fractions of the node box, which is SVG's
+   * default `objectBoundingBox` gradient space, so they map across unchanged. Stops default to even
+   * spacing when the brush declared none — the same rule Compose applies.
+   */
+  private fun linearGradientDef(id: String, gradient: LayoutInspectorGradient): String {
+    val sb = StringBuilder()
+    sb.append("""  <linearGradient id="$id" x1="${fmt(gradient.startX.toDouble())}" """)
+    sb.append("""y1="${fmt(gradient.startY.toDouble())}" x2="${fmt(gradient.endX.toDouble())}" """)
+    sb.append("""y2="${fmt(gradient.endY.toDouble())}">""").append('\n')
+    val last = (gradient.colors.size - 1).coerceAtLeast(1)
+    gradient.colors.forEachIndexed { index, argb ->
+      val offset = gradient.stops?.getOrNull(index) ?: (index.toFloat() / last)
+      val color = argbToSvg(argb)
+      val alpha = argbAlpha(argb)
+      val alphaAttr = if (alpha < 0.999) """ stop-opacity="${fmt(alpha)}"""" else ""
+      sb
+        .append("""    <stop offset="${fmt(offset.toDouble())}" stop-color="$color"$alphaAttr/>""")
+        .append('\n')
+    }
+    sb.append("  </linearGradient>\n")
+    return sb.toString()
+  }
+
+  /** `#AARRGGBB` → the `#RRGGBB` an SVG `stop-color` takes. */
+  private fun argbToSvg(argb: String): String {
+    val hex = argb.removePrefix("#")
+    return if (hex.length == 8) "#${hex.substring(2)}" else "#$hex"
+  }
+
+  /** The alpha channel of `#AARRGGBB` as `0..1`; opaque when the string carries no alpha. */
+  private fun argbAlpha(argb: String): Double {
+    val hex = argb.removePrefix("#")
+    if (hex.length != 8) return 1.0
+    return (hex.substring(0, 2).toIntOrNull(16) ?: 255) / 255.0
+  }
+
+  /** Distinct rounded-px elevations in the tree, so one `feDropShadow` def is shared per level. */
+  private fun collectElevations(
+    layer: FigmaSvgLayer,
+    acc: MutableSet<Int> = mutableSetOf(),
+  ): Set<Int> {
+    if (layer.elevationPx >= 1.0) acc.add(layer.elevationPx.roundToInt())
+    for (child in layer.children) collectElevations(child, acc)
+    return acc
+  }
+
+  private fun shadowFilterId(elevationPx: Double): String = "shadow-${elevationPx.roundToInt()}"
+
+  /**
+   * A `feDropShadow` per elevation level, approximating Material's key shadow: the blur and
+   * vertical offset scale with elevation, at a soft opacity. The filter region is expanded so a
+   * large blur isn't clipped at the layer's bounds.
+   */
+  private fun shadowFilterDefs(elevations: Set<Int>): String {
+    val sb = StringBuilder("<defs>\n")
+    for (e in elevations.sorted()) {
+      val dy = fmt(e * 0.5)
+      val blur = fmt(e * 0.6)
+      sb.append(
+        """  <filter id="${shadowFilterId(e.toDouble())}" x="-50%" y="-50%" width="200%" height="200%">"""
+      )
+      sb.append('\n')
+      sb.append(
+        """    <feDropShadow dx="0" dy="$dy" stdDeviation="$blur" flood-color="#000000" flood-opacity="0.26"/>"""
+      )
+      sb.append('\n')
+      sb.append("  </filter>\n")
+    }
+    sb.append("</defs>\n")
+    return sb.toString()
+  }
+
+  private fun image(layer: FigmaSvgLayer, raster: FigmaSvgRaster): String =
+    """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
+      """width="${layer.width}" height="${layer.height}"${rotateAttr(layer)}/>"""
+
+  private fun backgroundImage(bg: FigmaSvgBackgroundRaster, clipId: String?): String =
+    """<image href="${escapeAttr(bg.href)}" x="${bg.left}" y="${bg.top}" """ +
+      "width=\"${bg.width}\" height=\"${bg.height}\"" +
+      (if (bg.clipToShape && clipId != null) " clip-path=\"url(#$clipId)\"" else "") +
+      "/>"
+
+  /**
+   * A captured icon [FigmaSvgVector] fitted in its pre-transform layout slot, then mapped through
+   * the captured placed bounds. This preserves the normal aspect fit while retaining an explicit
+   * nonuniform graphics-layer scale; `ContentScale.FillBounds` opts directly into a stretched fit.
+   */
+  private fun vectorGroup(
+    layer: FigmaSvgLayer,
+    vec: FigmaSvgVector,
+    indent: String,
+    inheritedOpacity: Double,
+    iconIds: Map<MaterialIconKey, String> = emptyMap(),
+  ): String {
+    val layoutWidth = vec.layoutWidth.takeIf { it > 0 }?.toDouble() ?: layer.width.toDouble()
+    val layoutHeight = vec.layoutHeight.takeIf { it > 0 }?.toDouble() ?: layer.height.toDouble()
+    val scaleX: Double
+    val scaleY: Double
+    if (vec.fillBounds) {
+      scaleX = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
+      scaleY = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+    } else {
+      // Fit the vector's own viewport into its layout slot, uniformly — an icon keeps its aspect
+      // ratio.
+      val layoutScale =
+        minOf(
+          layoutWidth / vec.viewportWidth.toDouble(),
+          layoutHeight / vec.viewportHeight.toDouble(),
+        )
+      if (vec.fromDrawCapture) {
+        // A draw capture's viewport is already in *placed* px — the recorder is sized to the node's
+        // `boundsIn(root)`, not its layout slot — so it maps onto the layer box directly, and is
+        // 1:1 in the usual case. A `RadioButton`/`Checkbox` relies on that: it records a ~20px
+        // viewport while measuring to a 48dp touch target, and fitting the slot would draw the
+        // control 2.4× over its own box.
+        //
+        // Read the ratio off the layer box (not the layout slot) so a node whose box the export
+        // grew or narrowed still tracks it — and take it **uniformly**, because these paths carry
+        // strokes and SVG scales a stroke with its group. Wear's `LinearProgressIndicator` is the
+        // case that proves it: it strokes a 24px round-capped track inside its 16px-tall draw box,
+        // deliberately overflowing. The old fit multiplied one axis's slot ratio by the other's
+        // placed ratio (`min(slot/viewport) × (layer/slot)`), landing on `scale(1.0 0.68)` — which
+        // squashed that stroke to 16px and flattened both round caps into ellipses.
+        val uniform =
+          minOf(
+            if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0,
+            if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0,
+          )
+        scaleX = uniform
+        scaleY = uniform
+      } else if (
+        abs(vec.scaleX - 1.0) > VECTOR_SCALE_EPSILON || abs(vec.scaleY - 1.0) > VECTOR_SCALE_EPSILON
+      ) {
+        // The node carries a captured draw-time graphics-layer scale (issue #2853). The connector
+        // measures that scale through the root coordinates, so it is *already baked into the drawn*
+        // `bounds` — re-deriving the fit as `layoutScale * vec.scaleX` (a layout-slot fit times the
+        // scale) double-counts it whenever the measured slot is itself scaled. That double-count
+        // blew an embedded Jetchat mic group up from `scale(2.62)` to `scale(6.54)`. A *present*
+        // transform means the node was genuinely scaled (not clipped — a clip leaves no captured
+        // scale and falls through below), so the fit comes off the drawn bounds instead of the
+        // slot, avoiding the double-count.
+        val boundsScaleX =
+          if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
+        val boundsScaleY =
+          if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+        if (abs(vec.scaleX - vec.scaleY) > VECTOR_SCALE_EPSILON) {
+          // A genuinely *non-uniform* layer scale: the two drawn axes really do differ, so read
+          // each straight off its bounds.
+          scaleX = boundsScaleX
+          scaleY = boundsScaleY
+        } else {
+          // A *uniform* layer scale: keep the viewport's aspect ratio by fitting it uniformly into
+          // the drawn bounds. Reading each axis independently would squash a square icon sitting in
+          // a non-square layout slot — a 24×24 icon in a 48×24 slot at 0.5× has 24×12 drawn bounds,
+          // which must stay `scale(0.5 0.5)`, not become `scale(1 0.5)`.
+          val uniform = minOf(boundsScaleX, boundsScaleY)
+          scaleX = uniform
+          scaleY = uniform
+        }
+      } else {
+        // Identity transform: nothing scaled the node, so any gap between its drawn box and its
+        // layout slot is a *clip*, not a scale. Fit the layout slot — never the ratio of the drawn
+        // box, which squashed a square icon in an animating container to `scale(0.49 0.13)` (issue
+        // #2853): Jetsnack's FAB shrinks the box it draws its icon into, but the icon is never
+        // distorted — it's cropped, and stays square right up to the point it vanishes.
+        scaleX = layoutScale
+        scaleY = layoutScale
+      }
+    }
+    val fittedWidth = vec.viewportWidth.toDouble() * scaleX
+    val fittedHeight = vec.viewportHeight.toDouble() * scaleY
+    val x = layer.left + (layer.width - fittedWidth) / 2.0
+    val y = layer.top + (layer.height - fittedHeight) / 2.0
+    // A negative Compose graphics-layer scale mirrors around the layer's centre. SVG's negative
+    // scale mirrors around the origin, so move the origin to the far edge on each flipped axis
+    // before applying it. Keeping fitted sizes positive also leaves all centring/aspect-fit logic
+    // above unchanged for the overwhelmingly common non-mirrored case.
+    val translateX = if (vec.flipX) x + fittedWidth else x
+    val translateY = if (vec.flipY) y + fittedHeight else y
+    val emittedScaleX = if (vec.flipX) -scaleX else scaleX
+    val emittedScaleY = if (vec.flipY) -scaleY else scaleY
+    val sb = StringBuilder()
+    // A stock Material icon names itself on its own layer: the canonical fonts.google.com icon
+    // name, its style, and the CDN URL of that exact drawing. The geometry below is still the one
+    // Compose painted — this is an identity a design tool can act on (swap the layer for the real
+    // library component), never a substitution the export made on its own.
+    val iconId = materialIconKey(vec)?.let { iconIds[it] }
+    // Annotated exactly when referenced, so `Options.materialIconRefs = false` is a single switch
+    // back to the pre-feature output rather than a half-off state.
+    val iconRef = iconId?.let { vec.materialIcon }
+    val iconAttrs =
+      if (iconRef == null) ""
+      else
+        """ data-material-icon="${escapeAttr(iconRef.name)}"""" +
+          """ data-material-icon-style="${escapeAttr(iconRef.style.composeName)}"""" +
+          """ data-material-icon-url="${escapeAttr(iconRef.url)}"""" +
+          if (iconRef.autoMirrored) """ data-material-icon-auto-mirrored="true"""" else ""
+    sb
+      .append(
+        """$indent<g id="${escapeAttr(layer.name)}"$iconAttrs${opacityAttr(inheritedOpacity * layer.opacity)}>"""
+      )
+      .append('\n')
+    sb
+      .append(
+        """$indent  <g transform="${rotateTransform(layer)}translate(${fmt(translateX)} ${fmt(translateY)}) scale(${fmt(emittedScaleX)} ${fmt(emittedScaleY)})"${opacityAttr(layer.contentOpacity)}>"""
+      )
+      .append('\n')
+    if (iconId != null) {
+      // `xlink:href` alongside `href` because SVG 1.1 consumers (some design-tool importers) never
+      // learned the SVG 2 attribute, and a `<use>` that doesn't resolve draws nothing at all.
+      sb
+        .append(indent)
+        .append("    ")
+        .append("""<use href="#$iconId" xlink:href="#$iconId"/>""")
+        .append('\n')
+    } else {
+      for (p in vec.paths) sb.append(indent).append("    ").append(vectorPath(p)).append('\n')
+    }
+    sb.append("$indent  </g>\n")
+    sb.append("$indent</g>")
+    return sb.toString()
+  }
+
+  private fun vectorPath(p: FigmaSvgVectorPath): String {
+    val fill = paintAttr("fill", p.fillArgb, p.fillAlpha) ?: """fill="none""""
+    val fillRule = if (p.evenOdd && p.fillArgb != null) """ fill-rule="evenodd"""" else ""
+    val stroke =
+      if (p.strokeArgb != null && p.strokeWidth > 0f) {
+        paintAttr("stroke", p.strokeArgb, p.strokeAlpha)?.let {
+          val cap = p.strokeCap?.let { c -> """ stroke-linecap="$c"""" } ?: ""
+          val join = p.strokeJoin?.let { j -> """ stroke-linejoin="$j"""" } ?: ""
+          """ $it stroke-width="${fmt(p.strokeWidth.toDouble())}"$cap$join"""
+        } ?: ""
+      } else ""
+    // The group transform goes on the `<path>` itself rather than being baked into `d`: an
+    // `ImageVector` group's translate/rotate/scale is exactly an SVG transform list, and stamping
+    // it here keeps the captured path data byte-identical to the geometry the vector declares —
+    // which is what makes an icon's paths still legible (and editable) in a design tool.
+    val transform = p.transform?.let { """ transform="${escapeAttr(it)}"""" } ?: ""
+    return """<path d="${escapeAttr(p.pathData)}"$transform $fill$fillRule$stroke/>"""
+  }
+
+  private fun opacityAttr(opacity: Double): String =
+    if (opacity < 0.999) """ opacity="${fmt(opacity.coerceIn(0.0, 1.0))}"""" else ""
+
+  /**
+   * A captured `#AARRGGBB` paint as an SVG colour + opacity pair (`fill="#RRGGBB"
+   * fill-opacity="0.5"`), folding the channel alpha and the painter's extra [extraAlpha] together.
+   * Null when fully transparent or absent, so the caller can fall back to `fill="none"`.
+   */
+  private fun paintAttr(kind: String, argb: String?, extraAlpha: Float): String? {
+    if (argb == null) return null
+    val hex = argb.removePrefix("#")
+    val (a, rgb) =
+      if (hex.length == 8) hex.substring(0, 2).toInt(16) to hex.substring(2)
+      else 255 to hex.takeLast(6)
+    val op = (a / 255.0) * extraAlpha.coerceIn(0f, 1f).toDouble()
+    if (op <= 0.0) return null
+    val opAttr = if (op < 0.999) """ $kind-opacity="${fmt(op)}"""" else ""
+    return """$kind="#$rgb"$opAttr"""
+  }
+
+  /**
+   * ` transform="rotate(θ cx cy)"` for a layer whose own drawing is turned, else `""`.
+   *
+   * The turn is about the layer's box centre because that is the point the captured rotation was
+   * measured around: the box is the node's un-rotated rect re-centred on its bounding box, and a
+   * rotation maps a rect's centre onto its bounding box's centre. It goes on the layer's own drawn
+   * elements and never on a group that contains its children — every descendant of a rotated node
+   * measures the same rotation for itself, so nesting the turn would apply it twice.
+   */
+  private fun rotateAttr(layer: FigmaSvgLayer): String {
+    if (layer.rotationDegrees == 0.0) return ""
+    val cx = (layer.left + layer.right) / 2.0
+    val cy = (layer.top + layer.bottom) / 2.0
+    return """ transform="rotate(${fmt(layer.rotationDegrees)} ${fmt(cx)} ${fmt(cy)})""""
+  }
+
+  /**
+   * `rotate(θ cx cy) ` for a turned layer, else `""` — the same turn [rotateAttr] emits, as a bare
+   * transform-list prefix for an element that already carries a `transform` of its own. It comes
+   * first so the fit that follows stays in the layer's own un-rotated space.
+   */
+  private fun rotateTransform(layer: FigmaSvgLayer): String {
+    if (layer.rotationDegrees == 0.0) return ""
+    val cx = (layer.left + layer.right) / 2.0
+    val cy = (layer.top + layer.bottom) / 2.0
+    return "rotate(${fmt(layer.rotationDegrees)} ${fmt(cx)} ${fmt(cy)}) "
+  }
+
+  private fun shape(layer0: FigmaSvgLayer, gradientSeq: Map<FigmaSvgLayer, Int>): String {
+    // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke
+    // on the path, so a bare rect at the bounds paints half the stroke outside the edge (the
+    // "double
+    // outline" an OutlinedButton/OutlinedCard shows against its render). Inset the drawn box by
+    // half
+    // the stroke width so the centered stroke's outer edge lands on the bound, matching the render.
+    // Only when stroked — a fill-only shape keeps its exact bounds; corner radii shrink by the same
+    // inset so a pill stays a pill.
+    val layer =
+      if (layer0.stroke != null || layer0.strokeGradient != null) {
+        val d = (layer0.strokeWidthPx / 2.0).roundToInt()
+        layer0.copy(
+          left = layer0.left + d,
+          top = layer0.top + d,
+          right = layer0.right - d,
+          bottom = layer0.bottom - d,
+          cornerRadiiPx = layer0.cornerRadiiPx?.map { (it - d).coerceAtLeast(0.0) },
+        )
+      } else {
+        layer0
+      }
+    // A captured brush wins over the flat token: `url(#…)` points at a `<linearGradient>` def
+    // emitted for this layer, so a gradient-painted container stays an editable vector layer
+    // instead of collapsing to a raster or vanishing entirely (issue #2852).
+    //
+    // The id is looked up against `layer0`, the layer as `gradientDefs` saw it — `layer` above may
+    // be an inset *copy* made for the centered stroke, and an identity-keyed lookup on the copy
+    // would miss, emitting a `url(#…)` pointing at no def at all. (Even a default 1px border
+    // rounds to a 1px inset, so this hit every bordered gradient layer.)
+    val fillAttr =
+      layer.fillGradient
+        ?.let { gradientId(gradientSeq, layer0, "f") }
+        ?.let { """fill="url(#$it)"""" }
+        ?: layer.fill?.let { """fill="${it.hex}"${opacity("fill", it)}""" }
+        ?: """fill="none""""
+    val strokeAttr =
+      layer.strokeGradient
+        ?.let { gradientId(gradientSeq, layer0, "s") }
+        ?.let { """ stroke="url(#$it)" stroke-width="${fmt(layer.strokeWidthPx)}"""" }
+        ?: layer.stroke?.let {
+          """ stroke="${it.hex}"${opacity("stroke", it)} stroke-width="${fmt(layer.strokeWidthPx)}""""
+        }
+        ?: ""
+    val radii = effectiveRadii(layer)
+    val turn = rotateAttr(layer)
+    return if (radii == null) {
+      // A shape we could not reduce to corners still has its sampled outline — draw *that* rather
+      // than a sharp rect, which would assert geometry we never established over the correctly
+      // shaped pixels underneath (issue #3254).
+      val outline = layer.shapePathData?.let { unitPathToBox(it, layer) }
+      if (outline != null) """<path d="$outline" $fillAttr$strokeAttr$turn/>"""
+      else
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
+          """$fillAttr$strokeAttr$turn/>"""
+    } else if (layer.cut) {
+      // A cut/chamfered corner can't be expressed as a `<rect rx>` — always a path with straight
+      // corner segments, uniform or not.
+      """<path d="${cornerRectPath(layer, radii, cut = true)}" $fillAttr$strokeAttr$turn/>"""
+    } else if (radii.distinct().size == 1) {
+      val r = fmt(radii[0])
+      """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
+        """rx="$r" ry="$r" $fillAttr$strokeAttr$turn/>"""
+    } else {
+      """<path d="${cornerRectPath(layer, radii, cut = false)}" $fillAttr$strokeAttr$turn/>"""
+    }
+  }
+
+  /**
+   * Maps a unit-box outline ([FigmaSvgLayer.shapePathData]) onto [layer]'s absolute box. The
+   * coordinates are expanded here rather than emitted under a `transform="scale(…)"` because a
+   * non-uniform scale would stretch the stroke width with the shape. Only the `M`/`L`/`Z` grammar
+   * the sampler produces is accepted; anything else yields null and the caller falls back to the
+   * rect, so a malformed path can never emit broken SVG.
+   */
+  private fun unitPathToBox(unitPath: String, layer: FigmaSvgLayer): String? {
+    if (layer.width <= 0 || layer.height <= 0) return null
+    val out = StringBuilder()
+    for (token in unitPath.trim().split(' ')) {
+      if (token.isEmpty()) continue
+      if (token == "Z") {
+        out.append(" Z")
+        continue
+      }
+      val command = token.first()
+      if (command != 'M' && command != 'L') return null
+      val (rawX, rawY) = token.drop(1).split(',').takeIf { it.size == 2 } ?: return null
+      val x = rawX.toDoubleOrNull() ?: return null
+      val y = rawY.toDoubleOrNull() ?: return null
+      if (out.isNotEmpty()) out.append(' ')
+      out.append(command)
+      out.append(fmt(layer.left + x * layer.width)).append(',')
+      out.append(fmt(layer.top + y * layer.height))
+    }
+    return out.toString().takeIf { it.isNotBlank() }
+  }
+
+  /** Resolves the four px corner radii to draw with, honouring [FigmaSvgLayer.circle]. */
+  private fun effectiveRadii(layer: FigmaSvgLayer): List<Double>? {
+    if (layer.circle) {
+      val r = minOf(layer.width, layer.height) / 2.0
+      return listOf(r, r, r, r)
+    }
+    return layer.cornerRadiiPx
+  }
+
+  /**
+   * True when a `Modifier.clip` on this layer would actually remove pixels a descendant draws — the
+   * only case worth emitting a `<clipPath>` for. Two ways a descendant reaches the mask:
+   * - it **overflows the box** (a child placed past the clip — Jetsnack Search/Categories' image);
+   *   the single case a *rectangular* clip trims. A one-pixel slop absorbs sub-pixel bounds
+   *   rounding so a child sitting flush at a straight edge isn't clipped a hair short of the
+   *   render.
+   * - it **reaches a rounded/circle/cut corner** even while fitting the bounding box — a child
+   *   filling a `CircleShape` container hits the square's corners the mask cuts. Only shaped clips
+   *   have this; a rectangular clip's corners remove nothing.
+   *
+   * Over-triggering is harmless (a mask nothing crosses is a no-op); under-triggering drops a clip
+   * the render applied, so the corner test errs toward emitting.
+   */
+  /** This layer as its own mask: its [FigmaSvgLayer.clipBox] rect when it has one, else itself. */
+  private fun FigmaSvgLayer.maskShape(): FigmaSvgLayer =
+    clipBox?.let { copy(left = it.left, top = it.top, right = it.right, bottom = it.bottom) }
+      ?: this
+
+  private fun FigmaSvgLayer.clipsAnyDescendant(): Boolean {
+    if (children.isEmpty()) return false
+    fun overflows(l: Int, t: Int, r: Int, b: Int): Boolean =
+      l < left - CLIP_OVERFLOW_SLOP ||
+        t < top - CLIP_OVERFLOW_SLOP ||
+        r > right + CLIP_OVERFLOW_SLOP ||
+        b > bottom + CLIP_OVERFLOW_SLOP
+
+    // Per-corner radii (top-left, top-right, bottom-right, bottom-left) of the clip outline; null
+    // for a sharp rectangle, which trims only on overflow. `circle` resolves to a max-radius shape.
+    val radii = effectiveRadii(this)
+    val cut = this.cut
+    // Is the descendant's point nearest a rounded/cut corner actually *outside* the outline? Beyond
+    // the arc (distance from the arc centre > r) or beyond the chamfer line ((dx+dy) < r), reckoned
+    // only in the corner's own outer quadrant — so an inset child sitting **inside** the arc (a
+    // card's padded label) is not treated as clipped, while a full-bleed child that fills the box
+    // and reaches the bare corner is. This is what keeps the mask off every rounded card that
+    // merely
+    // contains inset content.
+    fun cornerOutside(px: Double, py: Double, cx: Double, cy: Double, r: Double): Boolean {
+      val dx = kotlin.math.abs(px - cx)
+      val dy = kotlin.math.abs(py - cy)
+      return if (cut) dx + dy < r else dx * dx + dy * dy > r * r
+    }
+    fun reachesCorner(l: Int, t: Int, r: Int, b: Int): Boolean {
+      radii ?: return false
+      val dl = l.toDouble()
+      val dt = t.toDouble()
+      val dr = r.toDouble()
+      val db = b.toDouble()
+      // top-left
+      if (radii[0] > 0.0) {
+        val px = maxOf(dl, left.toDouble())
+        val py = maxOf(dt, top.toDouble())
+        val cx = left + radii[0]
+        val cy = top + radii[0]
+        if (px < cx && py < cy && cornerOutside(px, py, cx, cy, radii[0])) return true
+      }
+      // top-right
+      if (radii[1] > 0.0) {
+        val px = minOf(dr, right.toDouble())
+        val py = maxOf(dt, top.toDouble())
+        val cx = right - radii[1]
+        val cy = top + radii[1]
+        if (px > cx && py < cy && cornerOutside(px, py, cx, cy, radii[1])) return true
+      }
+      // bottom-right
+      if (radii[2] > 0.0) {
+        val px = minOf(dr, right.toDouble())
+        val py = minOf(db, bottom.toDouble())
+        val cx = right - radii[2]
+        val cy = bottom - radii[2]
+        if (px > cx && py > cy && cornerOutside(px, py, cx, cy, radii[2])) return true
+      }
+      // bottom-left
+      if (radii[3] > 0.0) {
+        val px = maxOf(dl, left.toDouble())
+        val py = minOf(db, bottom.toDouble())
+        val cx = left + radii[3]
+        val cy = bottom - radii[3]
+        if (px < cx && py > cy && cornerOutside(px, py, cx, cy, radii[3])) return true
+      }
+      return false
+    }
+
+    fun scan(node: FigmaSvgLayer): Boolean {
+      if (node !== this) {
+        if (node.paintsShape() || node.text != null || node.raster != null || node.vector != null) {
+          if (
+            overflows(node.left, node.top, node.right, node.bottom) ||
+              reachesCorner(node.left, node.top, node.right, node.bottom)
+          )
+            return true
+        }
+        // A background box is trimmed by the same two conditions its owner's shape is — overflow,
+        // and simply reaching a rounded/cut corner. Testing only overflow lost the outer rounding
+        // of every Wear split button: each half's container paints flush inside the pill (no
+        // overflow) while its top-left/bottom-left square corner is exactly what the pill cuts, so
+        // the mask was never emitted and both halves exported square-ended.
+        node.background?.let {
+          if (
+            overflows(it.left, it.top, it.right, it.bottom) ||
+              reachesCorner(it.left, it.top, it.right, it.bottom)
+          )
+            return true
+        }
+      }
+      return node.children.any(::scan)
+    }
+    return children.any(::scan)
+  }
+
+  /**
+   * The `<clipPath>` def for a `Modifier.clip` layer, its shape matching the drawn box + corners.
+   */
+  private fun clipPathDef(layer: FigmaSvgLayer, id: String): String =
+    // A turned layer masks with its turned outline: the clip is the same shape as the fill, so it
+    // carries the same `rotate(...)`.
+    """<clipPath id="$id">${clipShapeElement(layer)}</clipPath>"""
+
+  /** The bare shape element (`<rect>`/rounded `<rect>`/`<path>`) inside a clipPath, no paint. */
+  private fun clipShapeElement(layer: FigmaSvgLayer): String {
+    val radii = effectiveRadii(layer)
+    val turn = rotateAttr(layer)
+    return when {
+      radii == null ->
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}"$turn/>"""
+      layer.cut -> """<path d="${cornerRectPath(layer, radii, cut = true)}"$turn/>"""
+      radii.distinct().size == 1 -> {
+        val r = fmt(radii[0])
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" rx="$r" ry="$r"$turn/>"""
+      }
+      else -> """<path d="${cornerRectPath(layer, radii, cut = false)}"$turn/>"""
+    }
+  }
+
+  /**
+   * A rectangle path with independent corner sizes (top-left, top-right, bottom-right,
+   * bottom-left), each clamped to half the shorter side so overlapping corners don't invert the
+   * path. Each corner is an arc (rounded) or — when [cut] — a straight chamfer segment between the
+   * same two points, so a `CutCornerShape` bevels where a `RoundedCornerShape` rounds.
+   */
+  private fun cornerRectPath(layer: FigmaSvgLayer, radii: List<Double>, cut: Boolean): String {
+    val x = layer.left.toDouble()
+    val y = layer.top.toDouble()
+    val w = layer.width.toDouble()
+    val h = layer.height.toDouble()
+    val cap = minOf(w, h) / 2.0
+    val c = radii.map { it.coerceIn(0.0, cap) }
+    val (tl, tr, br, bl) = Quad(c[0], c[1], c[2], c[3])
+    // A rounded corner is an arc to (ex,ey); a cut corner is a straight line to the same point.
+    fun corner(r: Double, ex: Double, ey: Double): String =
+      when {
+        r <= 0.0 -> ""
+        cut -> "L${fmt(ex)},${fmt(ey)} "
+        else -> "A${fmt(r)},${fmt(r)} 0 0 1 ${fmt(ex)},${fmt(ey)} "
+      }
+    return buildString {
+      append("M${fmt(x + tl)},${fmt(y)} ")
+      append("H${fmt(x + w - tr)} ")
+      append(corner(tr, x + w, y + tr))
+      append("V${fmt(y + h - br)} ")
+      append(corner(br, x + w - br, y + h))
+      append("H${fmt(x + bl)} ")
+      append(corner(bl, x, y + h - bl))
+      append("V${fmt(y + tl)} ")
+      append(corner(tl, x + tl, y))
+      append("Z")
+    }
+  }
+
+  private data class Quad(val a: Double, val b: Double, val c: Double, val d: Double)
+
+  private fun text(
+    layer: FigmaSvgLayer,
+    options: Options,
+    familyOverrides: Map<String, String>,
+  ): String {
+    val t = layer.text!!
+    val size = t.fontSizePx ?: options.defaultFontSizePx
+    val baseline = layer.top + baselineOffset(t, size, (layer.bottom - layer.top).toDouble())
+    // An embedded face (via `familyOverrides`) is guaranteed present in the SVG's `@font-face`, so
+    // it
+    // stays a bare family name. Only the *unbacked* path — a captured face with no embedded bytes,
+    // where the viewer would otherwise substitute its default serif — gets a style-correct generic
+    // fallback appended.
+    val familyName =
+      t.fontFamily?.let { familyOverrides[it] }
+        ?: withGenericFallback(resolveFamily(t.fontFamily, options.defaultFontFamily))
+    val family = """ font-family="${escapeAttr(familyName)}""""
+    val weight = t.fontWeight?.let { """ font-weight="$it"""" } ?: ""
+    val style = if (t.italic) """ font-style="italic"""" else ""
+    val fill =
+      t.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: """ fill="#000000""""
+    // Emit the captured tracking as SVG `letter-spacing` so the run's glyph advances match the
+    // render; without it a browser uses the font's natural advances and a tracked line drifts.
+    val letterSpacing =
+      t.letterSpacingPx
+        ?.takeIf { kotlin.math.abs(it) >= 0.01 }
+        ?.let { """ letter-spacing="${fmt(it)}"""" } ?: ""
+    val lines = t.lines
+    if (!lines.isNullOrEmpty()) {
+      // Wrapped or ellipsised text: one positioned <tspan> per captured line at the exact place the
+      // render drew it, instead of collapsing the full source string onto one baseline. x/y are
+      // absolute (layer origin + the captured per-line offset), so alignment, break points, and a
+      // single-line visible ellipsis are preserved on Figma import.
+      val tspans =
+        lines.joinToString("") { line ->
+          val lineStart = line.start
+          val lineEnd = line.end
+          val styled =
+            if (lineStart != null && lineEnd != null) {
+              val sourceStart = lineStart.coerceIn(0, t.content.length)
+              val sourceEnd = lineEnd.coerceIn(sourceStart, t.content.length)
+              val sourceLine = t.content.substring(sourceStart, sourceEnd)
+              styledTspans(
+                content = t.content,
+                spans = t.spans,
+                rangeStart = lineStart,
+                rangeEnd = lineEnd,
+                trailingContent =
+                  if (line.content.startsWith(sourceLine)) {
+                    line.content.removePrefix(sourceLine)
+                  } else {
+                    ""
+                  },
+                firstPosition =
+                  """ x="${layer.left + line.left}" y="${layer.top + line.baseline}"""",
+                options = options,
+                familyOverrides = familyOverrides,
+              )
+            } else null
+          styled
+            ?: """<tspan x="${layer.left + line.left}" y="${layer.top + line.baseline}"${lineLength(line)}>${escape(line.content)}</tspan>"""
+        }
+      return """<text font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>$tspans</text>"""
+    }
+    val styled =
+      styledTspans(
+        content = t.content,
+        spans = t.spans,
+        rangeStart = 0,
+        rangeEnd = t.content.length,
+        firstPosition = "",
+        options = options,
+        familyOverrides = familyOverrides,
+      )
+    // Single-line text: anchor it the way the paragraph was aligned. Left/start keeps the
+    // historical `x = layer.left` with no anchor attribute; centre/right/end move the anchor point
+    // to the middle/right edge of the layer's own (paragraph) box and let the viewer place the run
+    // around it. Without this a `TextAlign.Center` heading in a `fillMaxWidth()` box exported
+    // hard against the left edge (issue #2885).
+    val (anchorX, anchor) = singleLineAnchor(layer, t.textAlign, t.layoutDirection)
+    return """<text x="$anchorX" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$anchor$fill>""" +
+      "${styled ?: escape(t.content)}</text>"
+  }
+
+  /**
+   * `textLength` + `lengthAdjust` pinning a line to the width the render measured it at
+   * (issue #3024), or `""` when the capture carries no width (pre-schema-v12) or the line is empty.
+   *
+   * Placing a line at the render's break point isn't enough on its own: the viewer still lays the
+   * glyphs out with its own metrics, and those differ from Android's — the embedded face is subset
+   * with `GPOS`/`kern` stripped, so a browser draws the run unkerned where the render kerned it.
+   * `textLength` makes the viewer absorb that drift.
+   *
+   * `lengthAdjust="spacing"` — adjust the gaps between glyphs, never the glyphs themselves. The
+   * alternative (`spacingAndGlyphs`) would squeeze the outlines too, which hides a wrong font size
+   * by making it *look* right inside the correct box; that is exactly how #3024's 50%-oversized
+   * heading would have gone unnoticed. Spacing-only keeps a size error visible as a size error.
+   *
+   * Emitted only for a whole-line run. A styled line is several `<tspan>`s and the capture measures
+   * only the line as a whole, so there is nothing correct to put on each piece.
+   */
+  private fun lineLength(line: FigmaSvgTextLine): String {
+    val width = line.width?.takeIf { it > 0 } ?: return ""
+    if (line.content.isEmpty()) return ""
+    return """ textLength="$width" lengthAdjust="spacing""""
+  }
+
+  /**
+   * The `x` and `text-anchor` attribute for a single-line run under [textAlign], within [layer]'s
+   * paragraph box. `justify` behaves as start for a single line (there is nothing to stretch to),
+   * matching how Compose lays it out; an unknown/absent alignment keeps the historical left anchor
+   * so nothing that wasn't explicitly aligned moves.
+   *
+   * `start`/`end` are **logical**: Compose resolves `start` to the right edge and `end` to the left
+   * under RTL, so they are resolved against [layoutDirection] (absent ⇒ LTR). `left`/`right` are
+   * absolute and ignore it.
+   */
+  private fun singleLineAnchor(
+    layer: FigmaSvgLayer,
+    textAlign: String?,
+    layoutDirection: String?,
+  ): Pair<Int, String> {
+    val rtl = layoutDirection?.lowercase() == "rtl"
+    val resolved =
+      when (textAlign?.lowercase()) {
+        "start" -> if (rtl) "right" else "left"
+        "end" -> if (rtl) "left" else "right"
+        else -> textAlign?.lowercase()
+      }
+    return when (resolved) {
+      "center" -> (layer.left + layer.width / 2) to """ text-anchor="middle""""
+      "right" -> layer.right to """ text-anchor="end""""
+      else -> layer.left to ""
+    }
+  }
+
+  /** Styled `<tspan>`s for the intersections of [spans] with `[rangeStart, rangeEnd)`. */
+  private fun styledTspans(
+    content: String,
+    spans: List<FigmaSvgTextSpan>?,
+    rangeStart: Int,
+    rangeEnd: Int,
+    trailingContent: String = "",
+    firstPosition: String,
+    options: Options,
+    familyOverrides: Map<String, String>,
+  ): String? {
+    spans ?: return null
+    val start = rangeStart.coerceIn(0, content.length)
+    val end = rangeEnd.coerceIn(start, content.length)
+    val pieces = spans.mapNotNull { span ->
+      val pieceStart = maxOf(start, span.start).coerceIn(start, end)
+      val pieceEnd = minOf(end, span.end).coerceIn(pieceStart, end)
+      if (pieceStart >= pieceEnd) null else Triple(pieceStart, pieceEnd, span)
+    }
+    if (pieces.isEmpty()) return null
+    return pieces
+      .mapIndexed { index, (pieceStart, pieceEnd, span) ->
+        val position = if (index == 0) firstPosition else ""
+        val suffix = if (index == pieces.lastIndex) trailingContent else ""
+        val size = span.fontSizePx?.let { """ font-size="${fmt(it)}"""" } ?: ""
+        val family =
+          span.fontFamily?.let { captured ->
+            val emitted =
+              familyOverrides[captured]
+                ?: withGenericFallback(resolveFamily(captured, options.defaultFontFamily))
+            """ font-family="${escapeAttr(emitted)}""""
+          } ?: ""
+        val weight = span.fontWeight?.let { """ font-weight="$it"""" } ?: ""
+        val style = if (span.italic) """ font-style="italic"""" else ""
+        val fill = span.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: ""
+        """<tspan$position$size$family$weight$style$fill>${escape(content.substring(pieceStart, pieceEnd) + suffix)}</tspan>"""
+      }
+      .joinToString("")
+  }
+
+  // Typical UI-font metrics as a fraction of the em (font size). Compose lays a line out as the
+  // font
+  // box (ascent + descent ≈ [FONT_BOX]·em) with any extra line-height leading split above and below
+  // it; the baseline then sits [ASCENT]·em below the top of that font box. Approximations, not the
+  // exact resolved face metrics — but close enough that the SVG text lands within a pixel of the
+  // render (the fidelity harness confirms it), and a designer nudges it in Figma regardless.
+  /** A captured graphics-layer scale within this of 1.0 counts as the identity (no scale). */
+  private const val VECTOR_SCALE_EPSILON = 0.001
+
+  /**
+   * A descendant this many px beyond a `Modifier.clip` layer's box counts as overflow worth
+   * emitting a `<clipPath>` for — below it the gap is sub-pixel placement rounding, not a child the
+   * render actually clipped.
+   */
+  private const val CLIP_OVERFLOW_SLOP = 1
+
+  private const val ASCENT_EM = 0.93
+  private const val FONT_BOX_EM = 1.17
+
+  /**
+   * The first-line baseline offset from the layer's top, given the font [size] (px) and the layer's
+   * measured [boxHeight] (px). Uses the resolved line height when captured, else the measured box
+   * when it looks single-line, else a 1.2·em default; the leading beyond the font box is split so
+   * the baseline drops below a bare ascent-from-top — which is where Compose actually draws it.
+   */
+  private fun baselineOffset(t: FigmaSvgText, size: Double, boxHeight: Double): Double {
+    val lineHeight =
+      t.lineHeightPx ?: boxHeight.takeIf { it in (size * 0.9)..(size * 2.2) } ?: (size * 1.2)
+    val halfLeading = ((lineHeight - size * FONT_BOX_EM) / 2).coerceAtLeast(0.0)
+    return halfLeading + size * ASCENT_EM
+  }
+
+  /** All CSS generic families — none carries a matchable face of its own. */
+  private val CSS_GENERICS =
+    setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
+
+  /**
+   * The sans generics: they resolve to Compose's Material default typeface, which is itself the
+   * default embedded face — so mapping them to [defaultFamily] is exact, not a substitution.
+   */
+  private val SANS_GENERICS = setOf("sans-serif", "system-ui")
+
+  /**
+   * Generics whose *style* has an embeddable Google-Fonts stand-in. A `serif` / `monospace`
+   * specimen is a `GenericFontFamily`, so the capture only knows the generic name (Compose resolves
+   * the concrete face inside the font engine, out of reach). Mapping it to a concrete same-style
+   * family lets the embedding path reproduce a real serif / monospace instead of the sans default —
+   * a far closer match than Roboto, and a designer re-picks the exact face in Figma regardless.
+   */
+  private val GENERIC_EMBED_FACE = mapOf("serif" to "Noto Serif", "monospace" to "Roboto Mono")
+
+  /**
+   * `FontFamily.Default`'s `toString()` — a sentinel, not a face name (issue #3209). Compose's
+   * default family carries no display name, so an Android capture that stringifies it writes this
+   * literal where a family belongs; it resolves nowhere (Figma, a browser, a font resolver), and
+   * treating it as concrete emitted `font-family="FontFamily.Default, sans-serif"` and sent the
+   * embedder hunting for a face called `Font Family.Default`. A capture stating it means "no family
+   * stated", exactly like a null capture or a sans generic. Handled here rather than only at the
+   * capture site so already-baked payloads and bundles classify correctly too.
+   */
+  private const val DEFAULT_FAMILY_SENTINEL = "fontfamily.default"
+
+  /**
+   * The captured family when it names one, else null — folding the [DEFAULT_FAMILY_SENTINEL] (and a
+   * blank capture) into the same "unstated" case a null capture takes.
+   */
+  private fun statedFamily(captured: String?): String? =
+    captured?.trim()?.takeIf { it.isNotEmpty() && it.lowercase() != DEFAULT_FAMILY_SENTINEL }
+
+  /**
+   * The family name to emit on a `<text>` when no embedded face overrides it — i.e. the vector-only
+   * export or a family the embedding path couldn't resolve. A null / `FontFamily.Default` /
+   * sans-serif capture becomes [defaultFamily]; a meaningful generic (`serif`, `monospace`,
+   * `cursive`, `fantasy`) is emitted **as-is** so the viewer renders a real face of that style
+   * rather than the sans default (which is what lost serif/monospace specimens their identity); a
+   * real captured face keeps its name.
+   */
+  public fun resolveFamily(captured: String?, defaultFamily: String): String {
+    val stated = statedFamily(captured) ?: return defaultFamily
+    val generic = stated.lowercase()
+    if (generic in SANS_GENERICS) return defaultFamily
+    if (generic in CSS_GENERICS) return generic
+    return svgFontFamily(stated)
+  }
+
+  /**
+   * Appends a CSS **generic fallback** to a concrete `<text>` family so text never collapses to the
+   * viewer's default *serif* when the named face is unavailable — the common case, since
+   * `@font-face` embedding needs a font resolver (and Figma may drop the embedded face on import).
+   * `Roboto-Regular` alone renders as Times/serif in Chromium & Figma; `Roboto-Regular, sans-serif`
+   * renders in the right style. The generic is inferred from the face name (`…Mono` → `monospace`,
+   * `…Serif` → `serif`, else `sans-serif`) so a serif/monospace specimen keeps its style, not just
+   * sans. A name that is *already* a bare generic is returned unchanged; a multi-word face is
+   * quoted so the list parses. This is presentation-only — [embedFamily]/[resolveFamily] (the
+   * `@font-face` name and the override key) are untouched, so an embedded face still matches by its
+   * bare name.
+   */
+  public fun withGenericFallback(family: String): String {
+    if (family.lowercase() in CSS_GENERICS) return family
+    val lower = family.lowercase()
+    val generic =
+      when {
+        "mono" in lower -> "monospace"
+        "serif" in lower -> "serif"
+        else -> "sans-serif"
+      }
+    val quoted = if (family.any { it == ' ' }) "'${cssFamily(family)}'" else family
+    return "$quoted, $generic"
+  }
+
+  /**
+   * The concrete family the producer should fetch + embed for a [captured] family, or null when
+   * there's no embeddable face (a bare `cursive` / `fantasy`) — the `<text>` then falls back to
+   * [resolveFamily] and the viewer supplies the generic. Shared with the producer so the name it
+   * embeds matches what [resolveFamily] would emit for the same capture.
+   */
+  public fun embedFamily(captured: String?, defaultFamily: String): String? {
+    val stated = statedFamily(captured) ?: return defaultFamily
+    val generic = stated.lowercase()
+    if (generic in SANS_GENERICS) return defaultFamily
+    GENERIC_EMBED_FACE[generic]?.let {
+      return it
+    }
+    if (generic in CSS_GENERICS) return null
+    return embeddableFamily(stated)
+  }
+
+  /**
+   * Style tokens carried separately by the face's `weight`/`italic`, so dropped from a file-derived
+   * family name when deriving its embeddable *family*.
+   */
+  private val STYLE_TOKENS =
+    setOf(
+      "thin",
+      "extralight",
+      "ultralight",
+      "light",
+      "regular",
+      "normal",
+      "book",
+      "roman",
+      "medium",
+      "semibold",
+      "demibold",
+      "bold",
+      "extrabold",
+      "ultrabold",
+      "black",
+      "heavy",
+      "italic",
+      "oblique",
+    )
+
+  /**
+   * Normalise a concrete, file-derived face identity — `NotoSerif-Regular`, `DroidSansMono`,
+   * `Roboto-Medium` — to a Google-Fonts *family* name (`Noto Serif`, `Droid Sans Mono`, `Roboto`)
+   * the embedding resolver can actually fetch. A `FontListFontFamily` reports its resolved face by
+   * file stem, which carries a `-Style` suffix and runs the family words together in CamelCase; the
+   * resolver keys on the spaced family with weight/italic supplied separately, so split on
+   * hyphen/underscore/space *and* CamelCase boundaries and drop a trailing style token. Pure string
+   * work: a name Google has no family for just fails the fetch and the text keeps its vector-only
+   * fallback (no worse than before), while the common bundled faces (Roboto/Noto/Droid/…) resolve.
+   */
+  private fun embeddableFamily(identity: String): String {
+    val leaf = svgFontFamily(identity)
+    val words =
+      leaf
+        .replace(Regex("([a-z0-9])([A-Z])"), "$1 $2")
+        .split('-', '_', ' ')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    val kept =
+      if (words.size > 1 && words.last().lowercase() in STYLE_TOKENS) words.dropLast(1) else words
+    return kept.joinToString(" ").ifBlank { leaf }
+  }
+
+  /** `<defs><style>` with one `@font-face` per embedded face, its bytes as a base64 data URI. */
+  private fun fontFaceDefs(faces: List<FigmaSvgFontFace>): String = buildString {
+    append("<defs><style>")
+    for (f in faces) {
+      val mime =
+        when (f.format) {
+          "truetype" -> "font/ttf"
+          "opentype" -> "font/otf"
+          else -> "font/woff2"
+        }
+      // `<style>` content is XML character data, so a raw `&`/`<`/`>` in a family or format keyword
+      // is a fatal parse error the moment the exported `.svg` is read as XML (the Figma /
+      // Illustrator
+      // import this export targets) — even though Chromium's lenient HTML parser tolerates it. XML-
+      // escape the two free-form strings on top of the CSS-escaping; the parser decodes the entity
+      // back before the CSS engine sees it, so the declared family still matches the `<text>` name.
+      append("@font-face{font-family:'").append(escape(cssFamily(f.family))).append("';")
+      append("font-style:").append(if (f.italic) "italic" else "normal").append(';')
+      append("font-weight:").append(f.weight).append(';')
+      append("src:url(data:$mime;base64,")
+        .append(f.dataBase64)
+        .append(") format('")
+        .append(escape(f.format))
+        .append("');}")
+    }
+    append("</style></defs>\n")
+  }
+
+  private fun cssFamily(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
+
+  /**
+   * Compose reports a `FontListFontFamily` as a resolved face identity (a file path or
+   * `res/font/id`) rather than a display name. Strip it to a last path segment so the SVG carries
+   * something a font picker can match; a generic name (`sans-serif`) passes through unchanged.
+   */
+  private fun svgFontFamily(identity: String): String {
+    if (!identity.contains('/') && !identity.contains('\\')) return identity
+    val leaf = identity.substringAfterLast('/').substringAfterLast('\\')
+    return leaf.substringBeforeLast('.').ifBlank { identity }
+  }
+
+  private fun opacity(kind: String, color: FigmaSvgColor): String =
+    if (color.opacity < 1.0) """ $kind-opacity="${fmt(color.opacity)}"""" else ""
+
+  /** Trim trailing zeros so `12.0` → `12` and `10.5` stays `10.5`, keeping the SVG compact. */
+  private fun fmt(v: Double): String {
+    if (v == v.toLong().toDouble()) return v.toLong().toString()
+    return ((v * 100).toLong() / 100.0).toString()
+  }
+
+  private fun escape(s: String): String =
+    buildString(s.length) {
+      for (c in s) {
+        when (c) {
+          '&' -> append("&amp;")
+          '<' -> append("&lt;")
+          '>' -> append("&gt;")
+          else -> append(c)
+        }
+      }
+    }
+
+  private fun escapeAttr(s: String): String =
+    buildString(s.length) {
+      for (c in s) {
+        when (c) {
+          '&' -> append("&amp;")
+          '<' -> append("&lt;")
+          '>' -> append("&gt;")
+          '"' -> append("&quot;")
+          '\'' -> append("&apos;")
+          else -> append(c)
+        }
+      }
+    }
+}

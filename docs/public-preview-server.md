@@ -2040,7 +2040,7 @@ its children's, and so on — with a leader line naming the composables on each 
 It reuses the [`compose/figma-svg`](daemon/DATA-PRODUCTS.md) export and nothing else. That export
 already emits **every composable as a `<g id="…">`, nested exactly as the composables nest**, so the
 structure this needs is sitting in bytes the SVG lane already serves: the view is a pure SVG→SVG
-rewrite ([`ExplodedSvg`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)),
+rewrite ([`ExplodedSvg`](../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)),
 not a second capture, a new data product, or a daemon capability to negotiate. Each drawing element
 is assigned to the plane matching its named-group depth; each plane is re-emitted as a structural
 copy of the original tree with only that plane's elements kept, so the enclosing

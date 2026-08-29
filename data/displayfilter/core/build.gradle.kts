@@ -5,12 +5,12 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   // The post-capture processor reads CommonDataProducts.ImageArtifact and emits its own
   // DataProductKey artifacts; both live in :data-render-core. No Compose, no Android — color
   // matrices apply to the captured PNG via java.awt.image.BufferedImage so the same module
   // works for the Android (Robolectric, host JVM) and Desktop renderers.
-  api(libs.composeai.data.render.core)
+  api(project(":data-render-core"))
   testImplementation(libs.junit)
 }
 

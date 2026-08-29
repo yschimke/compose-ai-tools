@@ -2,9 +2,9 @@ package ee.schimke.composeai.daemon
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.SimplePlannedDataExtension
 import org.junit.Assert.assertEquals

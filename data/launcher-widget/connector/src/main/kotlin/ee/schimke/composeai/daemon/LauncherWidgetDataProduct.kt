@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
@@ -18,7 +19,6 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension

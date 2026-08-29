@@ -92,7 +92,7 @@ both daemons all read it.
 
 ## How it is applied
 
-[`LinkBufferComposer`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/render/core/src/main/kotlin/ee/schimke/composeai/data/render/LinkBufferComposer.kt)
+[`LinkBufferComposer`](../data/render/core/src/main/kotlin/ee/schimke/composeai/data/render/LinkBufferComposer.kt)
 in `:data-render-core` sets the flag reflectively, and the render entry points call it before they
 compose anything:
 

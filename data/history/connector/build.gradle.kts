@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
   api(project(":daemon:core"))
   api(project(":data-history-core"))
   testImplementation(libs.junit)

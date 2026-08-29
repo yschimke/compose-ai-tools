@@ -4,8 +4,8 @@ import androidx.compose.material3.ShapeDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.ComposableExtractorHook
 import ee.schimke.composeai.data.render.extensions.compose.hasComposableExtractorHook

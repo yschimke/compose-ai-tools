@@ -17,16 +17,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Material3TypographyOverride
+import ee.schimke.composeai.daemon.protocol.TypographyToken
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.DataProductKey
 import ee.schimke.composeai.data.render.extensions.DataProductSink
@@ -37,7 +38,6 @@ import ee.schimke.composeai.data.render.extensions.compose.ExtensionCompositionS
 import ee.schimke.composeai.data.theme.Material3ThemeProduct
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemePayload
-import ee.schimke.composeai.data.theme.TypographyToken
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json

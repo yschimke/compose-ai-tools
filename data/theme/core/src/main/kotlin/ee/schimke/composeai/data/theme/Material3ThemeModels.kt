@@ -1,0 +1,35 @@
+package ee.schimke.composeai.data.theme
+
+import ee.schimke.composeai.daemon.protocol.TypographyToken
+import kotlinx.serialization.Serializable
+
+/**
+ * Stable identity of the `compose/theme` data product. Lifted out of `ThemeDataProductRegistry` so
+ * MCP clients and other connectors can depend on the payload schema without pulling in the
+ * daemon-side registry or Compose runtime.
+ */
+public object Material3ThemeProduct {
+  public const val KIND: String = "compose/theme"
+
+  /**
+   * v2 populates [ThemePayload.consumers] (node → tokens read) via resolved-value attribution; v1
+   * shipped resolved tokens only and left `consumers` empty (#449, #1847). The payload shape is
+   * unchanged — v1 readers see a populated list where they previously saw `[]`.
+   */
+  public const val SCHEMA_VERSION: Int = 2
+}
+
+@Serializable
+public data class ThemePayload(
+  val resolvedTokens: ResolvedThemeTokens,
+  val consumers: List<ThemeConsumer> = emptyList(),
+)
+
+@Serializable
+public data class ResolvedThemeTokens(
+  val colorScheme: Map<String, String>,
+  val typography: Map<String, TypographyToken>,
+  val shapes: Map<String, String>,
+)
+
+public @Serializable data class ThemeConsumer(val nodeId: String, val tokens: List<String>)

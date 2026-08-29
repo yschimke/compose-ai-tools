@@ -226,7 +226,7 @@ dependencies {
   api(project(":cli:serve"))
 
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
-  implementation(libs.composeai.common.io)
+  implementation(project(":common-io"))
 
   // mDNS/DNS-SD advertiser for `serve --lan` — publishes `_composeai._tcp` so the mobile/wear
   // session-viewer clients (`:clients:*`) discover the server on the LAN without a typed URL.
@@ -235,11 +235,11 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
 
   // Semantics text-diff engine + payload model for the `diff-semantics` command (issue #1785).
-  implementation(libs.composeai.data.layoutinspector.core)
+  implementation(project(":data-layoutinspector-core"))
 
   // Material 3 resolved tokens + node-consumer attribution, joined to semantics for the live
   // Typography inspection layer.
-  implementation(libs.composeai.data.theme.core)
+  implementation(project(":data-theme-core"))
 
   // `fonts/used` sidecar file name for `bundle pack --with-semantics` font carriage.
   implementation(project(":data-fonts-core"))
@@ -285,7 +285,7 @@ dependencies {
   // editable
   // knobs `compose-preview serve` reads from a bundle's `previews/<id>.overrides.json` sidecar to
   // present controls. Pure JVM (depends only on `:daemon:core`), not a renderer artifact.
-  implementation(libs.composeai.data.preview.overrides.core)
+  implementation(project(":data-preview-overrides-core"))
   // Wire-shape of the `compose/remotecompose` data product (`RemoteComposeKnobDeclaration` /
   // `RemoteComposeDeclarationsPayload`) — the Remote Compose named-value knobs `serve` reads from a
   // bundle's `previews/<id>.remotecompose.json` sidecar to advertise editable controls. Pure JVM
@@ -296,7 +296,7 @@ dependencies {
   // presented on, shared with both renderers and both daemons so the served pages cannot disagree
   // with the pixels. Pure JVM ARGB math, no Compose types, so it stays off the renderer/daemon
   // boundary the CLI guards for the same reason the two entries above do.
-  implementation(libs.composeai.data.render.core)
+  implementation(project(":data-render-core"))
   // Public render-session library — the CLI consumes its own published API for daemon-driven
   // commands (`compose-preview a11y` etc.) instead of touching DaemonClient directly. We eat
   // our own dog food: anything the CLI can do, a third-party tooling consumer can do via the

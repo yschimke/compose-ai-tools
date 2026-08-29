@@ -276,6 +276,13 @@ project(":preview-data-api").projectDir = file("api/preview-data-api")
 // Content-crop geometry shared by the preview server (catalog thumbnails) and the CLI
 // (`bundle split`). Extracted from `:cli:serve`'s `ServeThumbCrop.kt` so a CLI command does not
 // depend on the server for arithmetic — #3824 preparation.
+// Okio-based file/IO foundation. Every non-Gradle production module funnels file reads/writes
+// through `:common-io`'s suspend helpers (Dispatchers.IO + Okio FileSystem) instead of
+// `java.io.File`. Published because most consumers are themselves published.
+include(":common-io")
+
+project(":common-io").projectDir = file("common/io")
+
 include(":common-image-crop")
 
 project(":common-image-crop").projectDir = file("common/image-crop")
@@ -523,6 +530,10 @@ include(":data-fonts-google")
 
 project(":data-fonts-google").projectDir = file("data/fonts/google")
 
+include(":data-render-core")
+
+project(":data-render-core").projectDir = file("data/render/core")
+
 include(":data-render-compose")
 
 project(":data-render-compose").projectDir = file("data/render/compose")
@@ -559,6 +570,10 @@ include(":data-layoutinspector-connector")
 
 project(":data-layoutinspector-connector").projectDir = file("data/layoutinspector/connector")
 
+include(":data-layoutinspector-core")
+
+project(":data-layoutinspector-core").projectDir = file("data/layoutinspector/core")
+
 include(":data-resources-connector")
 
 project(":data-resources-connector").projectDir = file("data/resources/connector")
@@ -574,6 +589,10 @@ project(":data-strings-connector").projectDir = file("data/strings/connector")
 include(":data-strings-core")
 
 project(":data-strings-core").projectDir = file("data/strings/core")
+
+include(":data-theme-core")
+
+project(":data-theme-core").projectDir = file("data/theme/core")
 
 include(":data-theme-connector")
 
@@ -724,6 +743,14 @@ project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")
 include(":data-remotecompose-connector")
 
 project(":data-remotecompose-connector").projectDir = file("data/remotecompose/connector")
+
+// Plain-Compose named overrides — opt-in author-declared editable knobs (`previewOverride*`). Unlike
+// Remote Compose this needs no alpha runtime, so the runtime + connector are portable Compose
+// Multiplatform JVM modules consumed by both daemon backends. `core` carries the wire-shape; `runtime`
+// is the consumer-facing lookup API; `connector` seeds values + produces the `compose/overrides` data.
+include(":data-preview-overrides-core")
+
+project(":data-preview-overrides-core").projectDir = file("data/preview-overrides/core")
 
 include(":data-preview-overrides-runtime")
 

@@ -1,0 +1,130 @@
+package ee.schimke.composeai.data.overrides
+
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
+import kotlinx.serialization.Serializable
+
+/**
+ * Stable identity of the `compose/overrides` data product. Lifted out of the daemon-side registry
+ * (as `RemoteComposeProduct` is) so the bundle producer and MCP clients can depend on the payload
+ * schema without pulling in the connector, Compose, or any backend.
+ */
+public object PreviewOverridesProduct {
+  public const val KIND: String = "compose/overrides"
+  public const val SCHEMA_VERSION: Int = 1
+}
+
+/**
+ * Type tags for a [PreviewOverrideDeclaration] — what kind of control a viewer renders for the
+ * knob. Kept as small string constants (rather than an enum on the wire) so an older reader
+ * tolerates a future type it doesn't recognise. Matches the [PreviewOverrideValue] variants the
+ * runtime emits.
+ */
+public object PreviewOverrideType {
+  public const val STRING: String = "string"
+  public const val INT: String = "int"
+  public const val FLOAT: String = "float"
+  public const val BOOL: String = "bool"
+  public const val COLOR: String = "color"
+}
+
+/**
+ * One value of a knob's **value set** — what the knob may be set to, and how a viewer names it.
+ *
+ * [label] defaults to [value], so a set whose values are already human-readable declares nothing
+ * extra. It earns its keep where the wire value is a slug the visitor should not have to know: a
+ * size axis seeds `xs` and reads "Extra small", a pseudo-locale is `en-XA` and reads "Accented
+ * (pseudo)".
+ */
+public @Serializable data class PreviewOverrideOption(val value: String, val label: String = value)
+
+/**
+ * One author-declared editable knob a preview exposes through a `previewOverride*` lookup.
+ *
+ * Named distinctly from the protocol's [ee.schimke.composeai.daemon.protocol.PreviewOverrides] (the
+ * display-knob bag — size / theme / locale) to avoid confusion: a *declaration* is "this preview
+ * offers an editable string named `label`, default `Tap me`", produced by the preview itself,
+ * whereas `PreviewOverrides.namedOverrides` is the daemon's seed of *replacement values* for those
+ * declarations.
+ *
+ * **Repeated components.** A scalar knob (the common case) has [index] = null. A knob declared
+ * inside a repeat (a per-item value on a list) is recorded once per item with [index] = 0, 1, 2, …;
+ * the on-wire key the daemon seeds against is then [seedKey] — the base key with the index appended
+ * in brackets. The item count is itself just an ordinary int knob the author feeds into
+ * `repeat(n)`.
+ */
+@Serializable
+public data class PreviewOverrideDeclaration(
+  /**
+   * Author-chosen key, e.g. `"label"` or `"rowCount"`. Stable across renders for the same call
+   * site.
+   */
+  val key: String,
+  /** One of [PreviewOverrideType]. The viewer picks the control widget from this. */
+  val type: String,
+  /** Human label for the control; defaults to [key]. */
+  val label: String = key,
+  /** The author-supplied fallback value (what renders with no override applied). */
+  val default: PreviewOverrideValue,
+  /**
+   * The effective value after the latest render — the daemon-seeded replacement, or the [default]
+   * when none was seeded. Null in a bundle sidecar captured by a standalone (non-daemon) render
+   * that only knows the declared default. A viewer shows this as the control's current state.
+   */
+  val current: PreviewOverrideValue? = null,
+  /** Non-null for one instance of a repeated/indexed knob; the wire key is then [seedKey]. */
+  val index: Int? = null,
+  /**
+   * Author-supplied autocomplete suggestions for a [PreviewOverrideType.STRING] knob (e.g. a font
+   * knob's declared `@TypographyCatalog` names). A viewer offers these as a combobox datalist while
+   * keeping the field free-text. Empty for an ordinary knob. Back-compatible: an older reader that
+   * doesn't know the field renders the plain string input it always did.
+   */
+  val suggestions: List<String> = emptyList(),
+  /**
+   * When true, this string knob is a **Google Fonts family** field: a viewer additionally splices
+   * the full fonts.google.com family list into the datalist (after [suggestions]), so any family is
+   * selectable while the declared [suggestions] stay at the top. Off for an ordinary knob.
+   */
+  val googleFonts: Boolean = false,
+  /**
+   * The knob's **value set** — every value it may take, each with the name a viewer shows.
+   *
+   * Distinct from [suggestions] in kind, not just in shape: suggestions are *hints* over a field
+   * that stays free-text, whereas a value set paired with [optionsExhaustive] says these are the
+   * only values, and a viewer may then render a closed picker instead of a text box. That is the
+   * difference between having to know that a `size` knob spells its values `xs`/`s`/`m`/`l`/`xl`
+   * and being able to see them.
+   *
+   * Empty for a knob that declares none, which is every knob authored before this field existed —
+   * an older reader ignores it and renders the input it always did.
+   */
+  val options: List<PreviewOverrideOption> = emptyList(),
+  /**
+   * Whether [options] is the **complete** set of values (a closed enumeration) rather than a
+   * shortlist. Only meaningful with a non-empty [options].
+   *
+   * A viewer renders an exhaustive set as a closed picker — no value outside the set is expressible
+   * — and a non-exhaustive one as a combobox that still accepts anything typed. The locale field is
+   * the standing example of the latter: the presets are worth offering, but any valid BCP-47 tag
+   * has to remain typeable.
+   */
+  val optionsExhaustive: Boolean = false,
+) {
+  /**
+   * The composite key the daemon seeds against: the bare [key] for a scalar knob, or the key with
+   * the [index] appended in square brackets (`rowLabel` at index 2 seeds against `rowLabel` then
+   * `2` in brackets) when indexed.
+   */
+  val seedKey: String
+    get() = if (index == null) key else "$key[$index]"
+}
+
+/**
+ * Wire shape returned by `data/fetch?kind=compose/overrides` and carried in a bundle's
+ * `previews/<id>.overrides.json` sidecar: the set of editable knobs the preview declared during its
+ * latest render, in declaration order.
+ */
+@Serializable
+public data class PreviewOverridesPayload(
+  val declarations: List<PreviewOverrideDeclaration> = emptyList()
+)

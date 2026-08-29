@@ -32,7 +32,7 @@ dependencies {
   api(project(":common-web-escaping"))
   // `api` so `:cli` keeps seeing Okio's `Path` / `FileSystem` transitively, as it did while these
   // files were its own sources.
-  api(libs.composeai.common.io)
+  api(project(":common-io"))
 
   // `previews.json` — the packer writes the published `PreviewManifest` DTO into the bundle, and
   // reading a bundle's per-preview labels means parsing it. `api`, as `:cli` does, so the DTOs stay
