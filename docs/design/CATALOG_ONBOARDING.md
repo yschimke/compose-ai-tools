@@ -2,223 +2,250 @@
 
 **Status:** plan, for [#4789](https://github.com/yschimke/compose-ai-tools/issues/4789). Nothing here
 is built yet. It answers the issue's TODO — *how it works, the lifecycle, approvals* — against what
-[`preview.coo.ee`](../public-preview-server.md) already does, and is deliberately staged so each
+[`preview.coo.ee`](../public-preview-server.md) and this repo's CI already do, and is staged so each
 phase is useful alone.
 
-The ask: paste `https://github.com/owner/repo` into the preview server and get a catalog at
-`/<system>/`. Today that is an operator with a shell, a `POST /admin/trust`, and a
+The ask: paste `https://github.com/owner/repo` and get a catalog at `/<system>/`, **with no change to
+the target repository**. Today that is an operator with a shell, a `POST /admin/trust` and a
 `POST /admin/catalogs` — [the admin API](../public-preview-server.md#the-admin-api) already makes it
 two HTTP calls rather than a redeploy, but both need `SERVE_ADMIN_TOKEN`, which is
-[a code-execution credential](../public-preview-server.md#trusted-producers). Self-serve is not a new
-serving path; it is a way for somebody who is *not* the operator to reach that path safely.
+[a code-execution credential](../public-preview-server.md#trusted-producers) — and it presumes the
+target repo already publishes a catalog branch, which a stranger's repo does not.
 
-## The one claim everything else hangs off
+## The shape: a builder repo, and a PR as the approval
 
-**The server never builds the repo.** Rendering happens in the project's own CI — that is the whole
-economic shape in [`HOSTED_SERVICE_PLAN.md` §2](../HOSTED_SERVICE_PLAN.md), and "a public box runs a
-stranger's Gradle" is an [explicit non-goal](../public-preview-server.md#two-axes-trust--format)
-(`--revisions` off, trust fail-closed). So onboarding is never *"the server renders your repo"*; it
-is:
+**The target repo is never edited, and never asked for anything.** A separate **builder repository**
+holds one config entry per onboarded project, checks the target out, renders it, and publishes the
+catalog branch the preview server serves. Onboarding a project is a **pull request against the
+builder** carrying that entry; CI on the PR does a trial build and posts the renders it got. Merging
+is the approval, and the merge publishes. A schedule re-renders each entry as its target moves.
 
-> **your CI publishes a `design-artifacts/<system>` branch, and this box agrees to serve it.**
+Three properties fall out, and they are why this beats asking the target to add a workflow:
 
-The "trivial" part of a trivial onboarding flow is removing the **operator round-trip**, not moving
-the render. Everything below follows from that.
+- **Nothing upstream to negotiate.** No workflow file, no `catalog.spec.json`, no plugin block, no
+  maintainer to persuade. The CLI already
+  [auto-injects the plugin](../isolated-projects-autoinject.md) into a build it does not own, via an
+  init script, with no edit to the consumer — that is the primitive this whole design rests on.
+- **The approval is a code review with evidence attached**, not a button. The diff is small and
+  legible, CI proves the thing actually renders before anyone merges, and the audit trail is a PR.
+- **No new server surface at all.** No consent page, no pending-request queue, no per-repo identity
+  verification. The server keeps doing exactly what it does today: fetch a catalog branch from a repo
+  it is configured to fetch from.
 
-## Two cases, and only one of them is short
+### It is mostly already built
 
-A URL lands in one of two states, and the probe's first job is to tell them apart:
+[`integration.yml`](../../.github/workflows/integration.yml) is this system, at a smaller scale and
+pointed at a different goal. It carries a matrix of external projects — `android/wear-os-samples`,
+`android/androidify`, `android/nowinandroid`, `android/adaptive-apps-samples`, `yschimke/cadence`,
+`yschimke/meshcore-mobile` … — as entries of exactly the shape an onboarding registry needs:
 
-**A — the repo already publishes.** A `design-artifacts/*` branch exists (the repo already calls
-[`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml), as
-Horologist and the Confetti app do). The bytes exist; onboarding is a *decision*, not a build. This
-is the case that becomes genuinely one paste.
+```yaml
+- name: wear-os-samples (ComposeStarter)
+  slug: wear-os-samples
+  repo: android/wear-os-samples
+  ref: main
+  workdir: ComposeStarter
+  module: app
+```
 
-**B — it does not.** There is nothing to serve, and the server cannot make it. The flow's terminal
-step here is **a pull request against the repo** adding a caller workflow + a starter
-`catalog.spec.json`. Its maintainers merge it, their CI pushes the branch, and the request re-enters
-case A. This is slower, and it is also the *right* shape: the repo's own code review is the
-strongest consent signal available, and it costs this box nothing.
+It checks each one out, injects the plugin, discovers and renders previews, stages a gallery, and
+**force-pushes a preview branch** — on a nightly cron as well as on push. Per-entry Gradle args
+already absorb the awkward targets (ComposeStarter's isolated-projects + configuration-cache
+settings), a `_skip_if_unchanged` marker already suppresses no-op pushes, and one drifty cell already
+runs `continue-on-error` as a *signal* rather than a gate.
 
-Nothing in case B is novel machinery — the reusable workflow, the spec, and the `bundle pack`
-pipeline all ship. What is missing is the thing that opens the PR (see [Phase 2](#phase-2--case-b-the-workflow-pr)).
+So the work is not "build a builder". It is: generalise that matrix into a registry anyone may PR
+into, and point its publish at `design-artifacts/<system>` branches instead of integration baselines.
+
+### Why a separate repository, and not a folder here
+
+Blast radius. **Building a target repo executes that repo's code** — Gradle build scripts, plugins
+and annotation processors all run at configuration and build time. A registry that accepts strangers'
+projects is therefore a job that runs hostile code by design, and it must not share a repository with
+this project's release credentials, remote-cache tokens, or `contents: write` on `main`. Separate
+minutes accounting and a separate branch namespace are the lesser reasons.
+
+## The one safety property, and how it survives
+
+The [original constraint](../public-preview-server.md#two-axes-trust--format) — *a public box never
+runs a stranger's Compose* — is unchanged and still load-bearing. **The preview server still builds
+nothing.** What this design adds is that a *disposable CI runner* does, and that runner is arranged
+so a hostile target gets nothing worth having:
+
+| Control | Why | Precedent |
+|---|---|---|
+| **The build job holds no write credential.** Build and render run under a read-only token; a **separate publish job** takes the staged bytes and pushes them, and runs no target code at all. | The one job that can write is the one the target cannot influence. | Already exactly how `integration.yml` is structured — *"the only place a write token is exposed, and it runs NO consumer code"*. |
+| **No secrets reach the build job.** Notably not the Gradle remote-cache token: `integration.yml` passes one, and an onboarding builder must not. | A hostile build's cheapest win is exfiltrating whatever is in the environment. | New, and the single most important difference from the workflow it is copied from. |
+| **Targets are pinned by commit SHA**, resolved at PR time and bumped by the refresh job. | A reviewed entry stays the thing that was reviewed; a branch can be re-pointed after approval. | New. |
+| **Hard timeout, concurrency cap, no self-hosted runners.** | Bounds the cost of a target that mines or spins. | Partly present (job timeouts). |
+| **Public repos only, and the entry records the licence.** | Rendering source we were not given is a policy question, not a technical one — see below. | New. |
+
+### The correction this forces on the trust model
+
+With one builder publishing every catalog, all of them arrive from **one producer**. That is a
+simplification for the trust store — one `POST /admin/trust` entry rather than one per project — and
+it is a trap, because trust is not a badge:
+[it gates server-side re-render](../public-preview-server.md#trusted-server-side-re-render---allow-render-trusted).
+Blanket-trusting the builder's branch namespace would make *every onboarded project's* Compose
+eligible to be built and executed on the box, on a deployment where `SERVE_ALLOW_RENDER_TRUSTED`
+defaults on. One trusted producer would silently mean forty trusted targets.
+
+So:
+
+- **Onboarded catalogs publish untrusted, and serve baked PNGs.** They badge `unverified` and show
+  the existing `catalog-baked-only` / `unverified-no-rerender`
+  [degradation banner](../public-preview-server.md#why-a-session-is-snapshot-only--the-degradation-banner).
+  This is a complete product — the gallery tier of
+  [`HOSTED_SERVICE_PLAN.md` §2](../HOSTED_SERVICE_PLAN.md) is exactly this — and a CMP catalog is
+  still live in-browser via the [Wasm tier](../public-preview-server.md#two-axes-trust--format), which
+  executes nothing server-side.
+- **Provenance names the target, not the builder.** The published bundle records
+  `{targetRepo, targetSha, builderRun}`, so a badge can never say "trusted" about bytes whose origin
+  is a repo nobody vetted. The existing
+  [`attributionRepos`](../public-preview-server.md#the-catalog-set-is-config-not-image-content)
+  mechanism is the precedent and probably the mechanism: it exists so Android's samples, fetched from
+  preview branches in a fork, are credited to `android/compose-samples`.
+- **Re-render eligibility, if it is ever granted, is per target**, decided once someone has watched a
+  project publish for a while — never a property of the builder's branch prefix.
+
+## What the builder cannot do, and how you find out
+
+Auto-injection has a documented hard limit: it applies the plugin through
+`allprojects { buildscript { … } }`, which **Gradle's Isolated Projects rejects outright**, and there
+is [no mechanism that is simultaneously IP-clean, edit-free, and on AGP's
+classloader](../isolated-projects-autoinject.md). A target with `org.gradle.unsafe.isolated-projects`
+on in its own `gradle.properties` cannot be onboarded this way at all. Other targets will need per-entry
+Gradle args, a `workdir`, an AGP floor, an SDK component, or a secret they are never going to get.
+
+This is precisely why **the trial build belongs on the PR**: a target that cannot be built without
+upstream cooperation says so in CI, before anyone merges, with the log attached. An entry that only
+works with per-project args records them in the entry, where they are reviewed. The unonboardable
+minority is then a small, visible set — and for *those*, the fallback is the original route: a PR
+against the **target** repo adding a caller of
+[`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml), which its
+maintainers merge and own. That route stays supported and is the better one for any project that
+*wants* to publish its own catalog under its own name; it is no longer the default.
+
+## The consent question the PR does not answer
+
+A PR into the builder is **our** approval to host. It is not the target project's approval to be
+hosted, and this design has no moment where the target says yes. That is a defensible position —
+rendering public, open-source UI into a public gallery is close to what a docs site or a CI badge
+does — but it has to be a stated policy rather than an omission:
+
+- **Public repositories only**, with an OSS licence recorded in the entry.
+- **Attribution, not endorsement.** Every card and page names the source repo and the exact commit,
+  and nothing implies the project published it. `attributionRepos` already does the naming half;
+  a *"rendered from `owner/repo@sha` by preview.coo.ee, unaffiliated"* line is the other half.
+- **Opt-out on request, honoured fast** — a documented address, and removal by reverting the entry.
+  Cheap to offer and worth far more than it costs.
+- **Opt-in is still better where it is available.** If a maintainer asks to own their catalog, hand
+  them the reusable workflow and retire the builder entry.
+
+Whether to require a signal from the target repo (a marker file, an issue, a maintainer's comment)
+before onboarding it is [open question 1](#open-questions-for-4789).
 
 ## Lifecycle
 
-One request, one state machine, persisted (see [Where the queue lives](#where-the-queue-lives)):
-
 ```
-                        ┌──────────────── needs-workflow ──► pr-open ──► (CI pushes branch)
-                        │                      │                              │
-requested ──► probing ──┤                      └──► abandoned (PR closed/     │
-                        │                            30d idle)                │
-                        └──────────────── publishable ◄────────────────────────┘
-                                                │
-                                                ▼
-                                        pending-approval ──► denied
-                                                │
-                                                ▼
-                                    published (unlisted, unverified)
-                                          │        │
-                              operator ───┤        └─── stale (branch gone / no refresh in 30d)
-                              lists it    │                       │
-                              and/or      ▼                       ▼
-                              trusts it   listed · trusted     retired
+PR against the builder ──► trial build on the PR ──┬─► fails ──► entry not merged
+  (entry: repo, ref/sha,                           │            (log says what upstream would need)
+   workdir, module, args)                          │
+                                                   └─► renders ──► review ──► merge = approval
+                                                                                  │
+                                    ┌─────────────────────────────────────────────┘
+                                    ▼
+                       publish job pushes design-artifacts/<system>
+                                    │
+                                    ▼
+                       server registers it (POST /admin/catalogs, unlisted, untrusted)
+                                    │
+                    ┌───────────────┼────────────────┐
+                    ▼               ▼                ▼
+              scheduled       operator lists    N consecutive
+              re-render        it / promotes     build failures
+              (SHA bump)       to trusted             │
+                    │                                 ▼
+                    └──────────► stale ──────────► entry disabled, catalog retired
 ```
 
-Four transitions carry the design; the rest is bookkeeping.
-
-- **probing** — cheap, build-free, and entirely GitHub API reads: does the repo exist and is it
-  public; does a `design-artifacts/*` branch exist and what systems does it name; does the branch
-  head carry a readable catalog manifest; how big is it; is there a `catalog.spec.json` to validate
-  (the reusable workflow's own fast, build-free spec check, reused here). Everything the probe learns
-  is shown to the requester *before* they commit to a request, and again to the approver.
-- **published** — registers through the existing `ServeCatalogAdmin.register` + `ServeCatalogStore.load`
-  path, so a self-serve catalog is in every way an ordinary one: same refresh loop, same provenance
-  snapshot, same `catalogs.json` write-back. No second code path to keep honest.
-- **stale** — the reason a self-serve set does not grow without bound. The branch refresher
-  ([`SERVE_CATALOG_REFRESH`](../public-preview-server.md#image-seed-vs-deployment-config)) already
-  re-checks each head; a catalog whose branch has been deleted, or which has not moved and has served
-  no traffic in 30 days, auto-retires with a mail-free notice on `/status`. Retiring is
-  `DELETE /admin/catalogs/<system>`, which already drops the session and any daemon.
-- **retired by its owner** — the same proof that created it (repo write, below) also deletes it.
-  Self-serve that cannot self-unserve is a support queue.
-
-## Approvals: three consents, currently one token
-
-`SERVE_ADMIN_TOKEN` conflates three questions that have different answers, different risk, and
-different people. Splitting them is the substance of this plan.
-
-| # | Question | Answered by | When |
-|---|---|---|---|
-| 1 | **Is the requester entitled to speak for this repo?** | GitHub identity + `push` permission on `owner/repo`, verified server-side | at request time |
-| 2 | **Will this box host it?** | the operator, on a consent page | before it serves |
-| 3 | **May its code execute here?** | the operator, separately and later — a trust-store entry | never automatically |
-
-**(1) is proven, never claimed.** The pieces exist: `GitHubOAuthVerifier` already exchanges a code,
-reads `GET /repos/{owner}/{repo}`, and reports the caller's `permissions`. What it cannot do today is
-say it about an *arbitrary* repo — the session cookie carries
-[`SessionPayload(login, repositoryAccess)`](../public-preview-server.md#the-admin-api): one login and
-one Boolean about the single configured `--github-auth-repo`. Onboarding needs a verdict per repo,
-checked at request time rather than baked into a cookie. That is the same gap
-[`HOSTED_SERVICE_PLAN.md` §1](../HOSTED_SERVICE_PLAN.md) flags as the real work before a tenancy model
-exists, and this is the smallest useful step into it: **verify on demand, cache nothing security-relevant
-in the cookie.**
-
-**(2) is a human, and the UI for it is already written.** [Agent access
-grants](../public-preview-server.md#granting-an-agent-temporary-access---agent-grants) are the same
-shape — a stranger asks, a human with rights approves on a page that states plainly what is being
-granted, and `/status` lists what is pending and what is live with a Revoke beside each. Onboarding
-should reuse that furniture rather than invent a second consent surface: an approval page naming the
-repo, the probe's findings, the disk it will take, and the requester's verified login. A catalog costs
-disk, front-page space and reputation; those are the operator's to spend.
-
-**(3) is the one that must not be folded into (2), and this is the crux.** Trust gates
-[server-side re-render](../public-preview-server.md#trusted-server-side-re-render---allow-render-trusted):
-trusting a branch makes that producer's Compose eligible to be *built and executed on the box*, on a
-deployment where `SERVE_ALLOW_RENDER_TRUSTED` defaults on. An onboarding flow that trusted what it
-published would turn "paste a URL" into remote code execution behind two clicks.
-
-So: **an onboarded catalog is published untrusted.** It serves baked PNGs, badges `unverified`, and
-shows the existing `unverified-no-rerender` / `catalog-baked-only`
-[degradation banner](../public-preview-server.md#why-a-session-is-snapshot-only--the-degradation-banner).
-That is a complete, useful product — the gallery tier of
-[`HOSTED_SERVICE_PLAN.md` §2](../HOSTED_SERVICE_PLAN.md) is exactly this — and for a CMP catalog the
-[Wasm tier](../public-preview-server.md#two-axes-trust--format) still gives an in-browser live
-experience with no server-side execution at all. Promoting a catalog to trusted (and thus to live
-Android/Robolectric seats) stays a typed operator decision through `POST /admin/trust`, made about a
-producer the operator has by then watched publish for a while. Not a step in the paste-a-URL flow, and
-not a checkbox on its approval page.
-
-**Unlisted by default, for the same reason.** A published catalog gets `listed: false` — reachable at
-`/<system>/`, off the front page, exactly how `cadence` is published today. Listing is a second, cheap
-operator gesture (`POST /admin/catalogs` already converges a changed `listed` in place). The front page
-stays curated while the flow stays self-serve; the requester still gets a URL to paste into their PR
-the moment it publishes, which is the whole growth loop in
-[`HOSTED_SERVICE_PLAN.md` §6](../HOSTED_SERVICE_PLAN.md).
+- **Scheduled re-render.** A cron per entry (nightly for a few, weekly for most), resolving the
+  target's ref to a new SHA and skipping the push when nothing changed — `_skip_if_unchanged` already
+  does that half. The server's own branch refresher
+  ([`SERVE_CATALOG_REFRESH`](../public-preview-server.md#image-seed-vs-deployment-config)) then picks
+  the new head up with no restart, so nothing needs to poke the box.
+- **Failure is expected and must be boring.** Targets drift, and one broken entry must never fail the
+  run for the others (`fail-fast: false`, per-entry `continue-on-error`, exactly as the drifty
+  `androidchka` cell is handled today). An entry that fails N runs in a row is auto-disabled with an
+  issue filed; the already-published catalog keeps serving its last good bytes until it goes stale.
+- **Retire** is `DELETE /admin/catalogs/<system>`, which already drops the session and any daemon.
 
 ## Phases
 
-Each is shippable alone, and stopping after any one wastes nothing.
+**Phase 1 — the builder, seeded by hand.** Stand the repo up with the registry format, the
+untrusted-build/trusted-publish split, the trial-build PR check, and the cron. Seed it with three or
+four projects already known to build (the `integration.yml` matrix is a ready-made list, and its
+`yschimke/cadence` cell is already a published catalog). Publishing into the server stays an operator
+`POST /admin/catalogs` at this stage — a handful of entries does not need automating.
 
-### Phase 1 — case A: paste a URL for a repo that already publishes
+**Phase 2 — the paste-a-URL front door.** A page on the server that takes a GitHub URL, probes the
+repo (build-free: does it exist, is it public, is it a Gradle/Compose project, is Isolated Projects
+on in `gradle.properties` — the one known-fatal marker), and **opens the builder PR for the
+requester**, prefilled. The request becomes a PR without the requester needing to know the registry
+exists. This is where a GitHub App earns its place
+([`HOSTED_SERVICE_PLAN.md` §7](../HOSTED_SERVICE_PLAN.md)) — opening the PR is the one thing OAuth
+alone cannot do.
 
-The narrow, high-value slice. `GET /onboard` is a page with one field; `POST /onboard` takes
-`{"url"}`, probes, and queues a request. Approval publishes it via the existing administrators.
+**Phase 3 — publish on merge, and upkeep.** The builder calls `POST /admin/catalogs` itself with a
+scoped token when an entry first publishes; auto-disable on repeated failure; the operator's view of
+the self-serve set on `/status`; per-target promotion to trusted as a separate, typed decision.
 
-- **Slug.** Derive `system` from the branch name (`design-artifacts/<system>`). A slug already served
-  falls back to `owner-repo`; the requester sees the resolved slug before approving. Impersonation is
-  already handled a layer down — a `group` claim is
-  [checked against provenance](../public-preview-server.md#the-catalog-set-is-config-not-image-content),
-  so serving third-party bytes under a well-known id cannot make them read as an official design
-  system. Onboarded catalogs claim no group and fall to the owner heading.
-- **Caps, at probe time and not after the fetch.** A catalog branch is fetched to disk today with no
-  size ceiling; a self-serve door makes that a liability rather than a hypothetical. Refuse above a
-  configured tarball/branch size, cap requests per login and per repo, and rate-limit the probe (it
-  spends this box's GitHub API quota).
-- **Reuses:** `ServeCatalogAdmin`, `ServeCatalogStore.load`, `CatalogLoadTracker`, the branch
-  refresher, `/status`, the agent-grant consent furniture. New: the probe, the queue, two pages.
+## What this supersedes
 
-### Phase 2 — case B: the workflow PR
+An earlier revision of this document (merged in
+[#4793](https://github.com/yschimke/compose-ai-tools/pull/4793)) had onboarding end in a PR against
+the **target** repo, gated by a per-repo GitHub identity check and an operator consent page with a
+pending-request queue persisted on `/config`. The builder inverts that, and most of it is no longer
+needed:
 
-Needs a **GitHub App** — the biggest single unlock in
-[`HOSTED_SERVICE_PLAN.md` §7](../HOSTED_SERVICE_PLAN.md), and it pays for itself three times here:
-installation *is* consent (1) without asking a user for broad OAuth scopes, installation identity is
-the seed of a tenancy model, and only an App can open the PR. The PR adds a caller of
-`design-artifacts-reusable.yml` plus a starter `catalog.spec.json` scaffolded from the repo's
-preview-enabled modules; the body says what it does and what it costs. Merging is the repo's own
-decision, reviewed by its own maintainers.
+| Dropped | Because |
+|---|---|
+| Consent page + pending queue on `/config` | The PR *is* the queue and the consent record. |
+| Per-repo `push`-permission verification | The requester no longer needs rights on the target; approval is ours to give. |
+| A workflow PR against the target repo | Now the fallback for the IP/awkward minority, not the main path. |
 
-Everything after the merge is already automatic: CI pushes `design-artifacts/<system>`, and the box
-picks the head up on its next refresh.
-
-### Phase 3 — lifecycle upkeep
-
-Staleness eviction, self-service retire, per-requester quotas, and the operator's view of the whole
-self-serve set on `/status`. Small, and the difference between a demo and something that can be left
-running.
-
-## Where the queue lives
-
-Agent grants keep their store in memory, and that is right for an 8-hour credential — a redeploy
-ending every grant is a feature. **An onboarding request waiting on a human is not that.** A box rolls
-onto a new image [the instant a release publishes](../public-preview-server.md#deploying-previewcooee);
-an in-memory queue would silently drop every pending request each time. The queue belongs on the
-`/config` volume beside `catalogs.json` and `producers.json`, with the same best-effort-and-reported
-write-back semantics.
-
-Which lands it in the same place as the rest of that config, and inherits the same limit:
-`ServeCatalogAdmin` and `ServeTrustAdmin` hold `@Volatile` in-memory state and serialise whole-file
-read-modify-write on a JVM-local lock. Correct for one process, wrong for several — and self-serve
-raises the write rate against it. This does not need fixing to ship (`preview.coo.ee` is one box), but
-it is worth naming: [`HOSTED_SERVICE_PLAN.md` §5.3](../HOSTED_SERVICE_PLAN.md) already owes a
-centralised store at replica #2, and this feature makes that debt larger rather than creating it.
+What survives unchanged: untrusted-and-unlisted by default, trust as a separate typed decision,
+staleness eviction, and the observation that self-serve growth makes
+[`HOSTED_SERVICE_PLAN.md` §5.3](../HOSTED_SERVICE_PLAN.md)'s single-process admin config debt larger.
+Unlisted-by-default still holds for the same reason as before — `listed: false` keeps the front page
+curated while `/<system>/` is live immediately, and `POST /admin/catalogs` already converges a changed
+`listed` in place.
 
 ## Non-goals
 
-- **Server-side building of an arbitrary repo.** See the claim at the top. The
-  [playground](PLAYGROUND.md) remains the single deliberate exception to "no stranger's code on
-  the server", and it is jailed, capped and preflighted; onboarding is not a second one.
-- **Auto-trust, auto-list, or auto-live-seats.** Each is a separate operator decision.
-- **Private repos and multi-tenancy.** Phase 2 of the hosted-service plan, gated on there being
-  demand; this flow is public repos only, and says so on the page.
-- **Billing.** Nothing here meters anything.
+- **The preview server building anything.** The builder is CI; the box that serves traffic keeps
+  executing nothing. The [playground](PLAYGROUND.md) remains the single deliberate exception to that
+  rule, and it is jailed, capped and preflighted.
+- **Auto-trust, auto-list, auto-live-seats.** Each stays a separate operator decision.
+- **Private repos, multi-tenancy, billing.** Later phases of the hosted-service plan, if ever.
 
 ## Open questions for #4789
 
-1. **Anonymous requests at all?** Requiring a signed-in GitHub account with repo write is the strong
-   posture and makes consent (1) real. The weaker "anyone may nominate any public repo, operator
-   approves" is a smaller build and a bigger moderation surface. This plan assumes the former.
-2. **Unlisted by default** — as argued above — or listed on approval, on the grounds that an approved
-   catalog has already been looked at by a human?
-3. **Should Phase 1 ship without the App?** It can: OAuth plus a per-repo permission check covers case
-   A. Phase 2 is what needs the App.
-4. **Who pays for disk**, and what is the cap — per catalog and in total — on an 8 GB box already
-   holding ~17 catalogs?
+1. **Does a target have to signal consent before we render it?** Public + licensed + attributed +
+   opt-out is the low-friction posture and matches what CI badges and docs sites already do. Requiring
+   a marker file or a maintainer's comment is politer and roughly halves the addressable set.
+2. **Where does the builder live, and what is it called?** A new repo is argued for above; the entry
+   format and the reusable render steps still come from here.
+3. **How much builder time is this worth?** ~3 minutes per target per run on the measured
+   `integration.yml` cells; 40 targets nightly is ~2 hours of runner time a day.
+4. **Disk cap per catalog and in total**, on an 8 GB box already holding ~17 catalogs — unchanged from
+   the previous revision, and now more pressing, since this path can add catalogs much faster.
 
 ## See also
 
-- [`public-preview-server.md`](../public-preview-server.md) — the admin API, trust, degradations, agent grants.
-- [`HOSTED_SERVICE_PLAN.md`](../HOSTED_SERVICE_PLAN.md) — §1 identity gap, §5.3 multi-replica config, §7 the GitHub App.
-- [`DESIGN_CATALOGS.md`](DESIGN_CATALOGS.md) — what a catalog is, and what a repo has to own to have one.
-- [`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml) — the workflow Phase 2's PR adds.
+- [`integration.yml`](../../.github/workflows/integration.yml) — the builder, already running at small scale.
+- [`isolated-projects-autoinject.md`](../isolated-projects-autoinject.md) — why edit-free injection works, and where it stops.
+- [`public-preview-server.md`](../public-preview-server.md) — the admin API, trust, degradations, attribution.
+- [`HOSTED_SERVICE_PLAN.md`](../HOSTED_SERVICE_PLAN.md) — §5.3 multi-replica config, §7 the GitHub App.
+- [`DESIGN_CATALOGS.md`](DESIGN_CATALOGS.md) — what a catalog is.
+- [`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml) — the fallback route, owned by the target.
