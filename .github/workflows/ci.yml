@@ -1396,16 +1396,7 @@ jobs:
       # gates github.com per repository 403s that fetch — on a box that already had the JDK.
       - name: Run cloud JDK setup tests
         run: scripts/test-setup-cloud-jdk.sh
-      # Guards the preview-host image's baked font cache. Its failure mode is silent: a wrong
-      # cache filename or a skipped stage-2 range query leaves faces the renderer never finds, so
-      # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.
-      - name: Run preview-image font-prewarm tests
-        run: deploy/image/test-prewarm-fonts.sh
-      # Both rollout failure modes report SUCCESS while leaving the state the rollout exists to
-      # prevent: old replicas still running beside the new ones, or a released lock held by a
-      # runner that carried on rolling. Neither shows up in any log.
-      - name: Run rollout cleanup tests
-        run: deploy/image/test-rollout-cleanup.sh
+
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
       # The android-all cache-key script DELETES ~200 MB coordinate directories
@@ -1413,75 +1404,7 @@ jobs:
       # "the key moves iff the retained set moves" — are gated, not eyeballed.
       - name: Run android-all cache-key tests
         run: python3 .github/ci/test_android_all_cache_key.py -v
-      # The deploy image's .env migrations edit an operator's live config on an
-      # already-deployed box, so the "leaves a custom catalog list alone" cases
-      # are worth a gate rather than a manual check.
-      - name: Run deploy .env migration tests
-        run: ./deploy/image/test-env-migrations.sh
-      # A SERVE_* knob the entrypoint reads but docker-compose.yml never forwards is silently
-      # inert: the operator sets it in .env exactly as documented and the box comes up ignoring
-      # it, with nothing logged. SERVE_PLAYGROUND sat that way for its whole life, which is what
-      # kept the public host's playground pinned to one catalog with the Android modes off.
-      - name: Run deploy compose env-passthrough tests
-        run: ./deploy/image/test-compose-env-passthrough.sh
-      # SERVE_JAVA_OPTS must be APPENDED to the image's baked JAVA_TOOL_OPTIONS. The variable exists
-      # precisely because assigning JAVA_TOOL_OPTIONS replaces that string — dropping the heap
-      # ceiling and the daemon library paths for the sake of one -D, with nothing in the resulting
-      # failure pointing back at the change. A refactor rewriting the append as an assignment would
-      # reintroduce that trap and would look entirely reasonable in a diff.
-      - name: Run deploy JAVA_TOOL_OPTIONS append tests
-        run: ./deploy/image/test-java-opts-append.sh
-      # env-redundant.sh reads a file holding SERVE_TOKEN, SERVE_ADMIN_TOKEN, the GitHub OAuth
-      # secret and the deploy hook token, and exists so its output can be pasted somewhere. A
-      # refactor that started echoing key=value for the active list would read as an improvement in
-      # a diff and would quietly turn a tidy-up tool into a credential leak.
-      - name: Run deploy .env redundancy tests
-        run: ./deploy/image/test-env-redundant.sh
-      # The live-seat budget is derived at container start from memory AND cores. Getting it wrong
-      # is silent: too low and a large box runs a fraction of what it affords, too high and it
-      # spawns daemons it cannot feed. Neither shows up as an error, only as throughput.
-      - name: Run deploy live-seat derivation tests
-        run: ./deploy/image/test-derive-live-seats.sh
-      # The agent-grant lane derives its own default (on where SERVE_GITHUB_AUTH_* gives it a human
-      # to approve against, off otherwise), because both flat answers are wrong in opposite
-      # directions: `1` fails startup on every box with no OAuth app, `0` ships the feature dead on
-      # the box it was built for. A derivation has no output of its own, so getting it wrong either
-      # breaks unrelated deployments on their next roll or quietly disables the lane — both silent.
-      - name: Run deploy agent-grant default tests
-        run: ./deploy/image/test-agent-grants-default.sh
-      # The image lane derives its default from its own gating repository, and both halves are
-      # silent when wrong: too narrow and an operator who named SERVE_IMAGE_UPLOAD_REPO gets a box
-      # that 404s POST /images with nothing logged, too wide (keying on SERVE_GITHUB_AUTH_*, whose
-      # repo this image defaults to yschimke/compose-ai-tools) and every adopter's box grows an
-      # upload lane gated by our collaborators rather than theirs.
-      - name: Run deploy image-lane default tests
-        run: ./deploy/image/test-image-lane-default.sh
-      # The release-matched Compose/Wasm browser is part of the CLI distribution and therefore
-      # should appear on every preview-host without a volume or .env entry. Keep the optional
-      # SERVE_WASM_DIR additive and last-wins for operators that carry extra or replacement apps.
-      - name: Run built-in Wasm preview UI tests
-        run: ./deploy/image/test-preview-ui-default.sh
-      # The version-control config overlay is opt-in, so nothing exercises it on the way to a
-      # release — a wrong source path or mount target is found on a box, after a restart, serving a
-      # stale catalog set. Every failure mode is silent: a missing source makes Docker create an
-      # empty directory at the mount point, and a dropped `:ro` lets the admin API write back into
-      # the git working tree.
-      - name: Run deploy config-mount tests
-        run: ./deploy/image/test-deploy-config-mount.sh
-      # A sandbox profile the docs recommend but the image cannot launch is silent in the posture
-      # this image ships in: a repo-access-gated host admits the playground before it looks at the
-      # jail, so a missing binary logs a preflight warning and serves UNCONTAINED rather than
-      # refusing. That is how preview.coo.ee ran with `active: true` and every containment check
-      # false (issue #3211).
-      - name: Run deploy sandbox tooling tests
-        run: ./deploy/image/test-sandbox-tooling.sh
-      # The edge half of a top-level site: Caddy derives its site-address line from the same
-      # catalogs.json the app boots from, and both ways of getting that wrong are silent. A missed
-      # hostname is a site configured in the app and unreachable at the edge (no match, so no
-      # certificate is ever requested); an invented one blocks on an ACME challenge for a name that
-      # doesn't resolve. Neither shows up until someone points a browser at the domain.
-      - name: Run caddy site-domain tests
-        run: ./deploy/image/test-site-domains.sh
+
       # The seed-config reconcile POSTs to a live server's admin API during publish, so its
       # ordering (trust before catalogs) and payload-shape rules are gated rather than eyeballed —
       # a dropped `listed: false` or `group` silently moves a card on the front page.

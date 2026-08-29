@@ -76,8 +76,10 @@ On this profile `catalogs.json` is bind-mounted from the repo, so `git pull` plu
 `sudo docker compose up -d` delivers a new site to the app and the edge at once —
 both read it at startup. See
 [docs/public-preview-server.md](../../docs/public-preview-server.md#top-level-sites-one-catalog-on-a-hostname-of-its-own)
-for what a site changes about the pages, and [`deploy/image/`](../image/README.md)
-for the prebuilt-image profile, where the config lives on a volume instead.
+for what a site changes about the pages, and
+[compose-preview-server's `deploy/image/`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md)
+for the prebuilt-image profile, where the config lives on a volume instead. That
+profile moved to the server's own repository along with the server.
 
 ## Deploy
 

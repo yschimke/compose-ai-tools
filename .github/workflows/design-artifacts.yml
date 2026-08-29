@@ -449,7 +449,8 @@ jobs:
           # a render daemon from it (no build). The DESKTOP CMP catalog (compose-m3,
           # the wasm-tier row) runs on the Skiko daemon; an Android catalog flagged
           # `androidLiveBundle` (wear-m3) runs on the Robolectric daemon a box carrying
-          # the Android sidecar provides — see deploy/image. The Android-only tiers
+          # the Android sidecar provides — see the preview-host image in
+          # yschimke/compose-preview-server. The Android-only tiers
           # (wear-m3) publishes its live bundle through the reusable job below, not
           # this matrix.
           PUBLISH_LIVE_BUNDLE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && '1' || '' }}

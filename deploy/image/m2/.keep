@@ -1,4 +1,0 @@
-Placeholder so the Dockerfile `COPY m2/` always has a directory.
-The automatic release path builds the same tag's published `ee` Maven tree
-directly into this directory; manual/local builds leave it empty and runtime
-dependency resolution falls back to the configured remote repositories.
