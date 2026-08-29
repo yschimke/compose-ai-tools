@@ -6,9 +6,10 @@ what to do meanwhile.** This document is the "meanwhile" — what the preparatio
 and what is left.
 
 Nothing here moves the server. The gate is red and the depth condition — the load-bearing one — is
-red by a factor of four. The server is still the *driver* of protocol and data-product work rather
-than a consumer of a finished one, and splitting in that state converts roughly eight PRs a week
-into two-repo, two-release round trips.
+red by an order of magnitude (22.4/wk against a target of 2; see [Where this stands](#where-this-stands-measured-2026-08-29)
+for the current figures and the caveat on the window). The server is still the *driver* of protocol
+and data-product work rather than a consumer of a finished one, and splitting in that state converts
+those PRs into two-repo, two-release round trips.
 
 ## Why prepare at all, if the answer is "not yet"
 
@@ -415,7 +416,8 @@ motivated the note below.
 | Depth — deep crossings per week | 22.4/wk | ≤ 2/wk |
 
 **The structural work is in good shape; it is the traffic that is red.** `checkServeSeam` is green,
-its 45 tests pass, `cliInternalsUsedByServe` is down to three entries, the artifact probe works, and
+its 45 tests pass, `cliInternalsUsedByServe` is **empty** on both `main` and `test` — the
+`serve→cli` half of the register is closed, not merely shrinking — the artifact probe works, and
 items 1, 4, 5, 6, 9 and 10 are done. What has not moved is how often a pull request still touches
 both sides.
 
@@ -434,10 +436,27 @@ Re-running the measurement with those three paths excluded from `DEEP_PATTERNS` 
 three also touched `daemon/core` or `daemon/desktop`. Publishing a contract removes a *build* edge;
 it does not remove the reason a change needs to touch both sides.
 
-So the remaining lever is `daemon/core` (48) and `daemon/desktop` (23) — which is the same coupling
+The traffic is `daemon/core` (48) and `daemon/desktop` (23) — the same coupling
 [`daemon-core` was a contract 14× the size of the contract](#daemon-core-was-a-contract-14-the-size-of-the-contract)
-already describes, and which items 3 and 7 address. Contract extraction is finished as a strategy
-for this gate.
+already describes.
+
+**No remaining preparation item reduces this number, and it is worth being blunt about that.**
+Item 3 removes an MCP classpath leak from `:render-session-subprocess`; item 7 moves server
+implementation out of the CLI and shrinks the `cli→serve` symbol seam. Both are worth doing and
+neither changes the measurement's condition, which is whether a single pull request touches `serve`
+*and* a daemon path. Structural work does not move traffic — that is the same conclusion the
+contracts experiment above reached, and it applies to the remaining items too.
+
+What moves this number is the thing the opening section already names: the server being the
+**driver** of protocol and data-product work rather than a consumer of a finished one. The gate
+falls when a change to serve stops requiring a change to the daemon in the same breath. That is a
+question about how settled the protocol is, not about packaging, and no item on the list below
+delivers it.
+
+So: do items 3 and 7 for their own merits — a cleaner classpath, a thinner CLI adapter, and item 7
+in particular retires the source-scanning tokenizer in favour of `checkServeModuleBoundary` reading
+a resolved classpath. Do not expect either to turn the gate green, and re-measure rather than
+assuming they did.
 
 One caveat on reading the number: the current window is unusually full of one-off structural pull
 requests — the extension split (#4759), the contracts cutover (#4771), the CI rename (#4761). Those
@@ -506,10 +525,11 @@ From #3824's follow-up investigation, with what has landed marked.
 
 6. **Add ABI validation and explicit API enforcement to the contract modules**, so a contract can't
    change shape silently between the two repos. — *done.* Every contract module carries
-   `explicitApi()` and a committed ABI dump wired into `check`: `:daemon-client`,
+   `explicitApi()` and a committed ABI dump wired into `check`: `:daemon:core`, `:daemon-client`,
    `:preview-data-api`, `:render-session-api`, `:render-session-subprocess`, `:common-image-crop`,
    `:common-web-escaping`, `:bundle-format`, `:bundle-coordinates`, `:data-remotecompose-core`,
-   `:data-pseudolocale-core` here, and all nine coordinates in
+   `:data-pseudolocale-core` here — every name in the probe's `contracts` list that is not in
+   `externalContracts` — and all nine coordinates in
    [yschimke/compose-preview-contracts](https://github.com/yschimke/compose-preview-contracts),
    whose `AGENTS.md` makes it the first rule in the repository.
 7. **Extract the server implementation**, leaving a genuinely thin CLI adapter. `ServeCommand.kt`
