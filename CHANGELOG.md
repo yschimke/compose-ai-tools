@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.51.0](https://github.com/yschimke/compose-ai-tools/compare/v1.50.0...v1.51.0) (2026-08-29)
+
+
+### Features
+
+* **serve:** ship the Wasm preview UI by default ([#4796](https://github.com/yschimke/compose-ai-tools/issues/4796)) ([7f30946](https://github.com/yschimke/compose-ai-tools/commit/7f3094618b82c791b372586c841ebb036dac5233))
+
 ## [1.50.0](https://github.com/yschimke/compose-ai-tools/compare/v1.49.0...v1.50.0) (2026-08-29)
 
 
