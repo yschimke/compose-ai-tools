@@ -32,6 +32,8 @@ snapshot, legacy-viewer, and WebSocket requests. Use `?token=...&session=...&pre
 link directly into a preview. Add `&live=1` to connect its live stream immediately (handy for a
 saved development URL or browser smoke test).
 
+Open the native UI Composer directly with `?token=...&session=compose-m3&compose=1`.
+
 Implemented in the prototype:
 
 - catalog loading, filtering, responsive preview cards, and direct preview deep links;
@@ -40,6 +42,9 @@ Implemented in the prototype:
   or live-daemon round trip;
 - native interaction plus dark mode, font scale, RTL locale, transparent background, and published
   override-variant seeds for those `compose-m3` components;
+- a native UI Composer workspace: drag or add compiled catalog components onto a phone canvas,
+  reorder/duplicate/remove them, tune spacing and padding, switch themes, then hide the editing
+  chrome and interact with the assembled screen in preview mode;
 - baked PNG previews through `/render/{id}.png`;
 - persistent live preview frames through `/ws/{id}` with connection/error state;
 - light/dark, font-scale, locale, and transparent-background render overrides;

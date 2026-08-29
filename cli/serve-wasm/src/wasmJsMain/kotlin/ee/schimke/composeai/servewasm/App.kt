@@ -84,6 +84,7 @@ fun PreviewServerApp(client: BrowserPreviewClient, config: ClientConfig) {
       var catalog by remember { mutableStateOf<Catalog?>(null) }
       var loadError by remember { mutableStateOf<String?>(null) }
       var selectedId by remember { mutableStateOf(config.initialPreview) }
+      var composing by remember { mutableStateOf(config.initialComposer) }
       var filter by remember { mutableStateOf("") }
       LaunchedEffect(Unit) {
         try {
@@ -105,11 +106,25 @@ fun PreviewServerApp(client: BrowserPreviewClient, config: ClientConfig) {
           BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = maxWidth < 760.dp
             Column(Modifier.fillMaxSize()) {
-              AppHeader(loaded, selected, compact) {
-                selectedId = null
-                client.replaceLocation(null)
-              }
-              if (selected != null) {
+              AppHeader(
+                catalog = loaded,
+                selected = selected,
+                composing = composing,
+                compact = compact,
+                onCatalog = {
+                  composing = false
+                  selectedId = null
+                  client.replaceLocation(null)
+                },
+                onCompose = {
+                  composing = true
+                  selectedId = null
+                  client.replaceComposerLocation()
+                },
+              )
+              if (composing) {
+                UiComposer(compact)
+              } else if (selected != null) {
                 PreviewDetail(
                   preview = selected,
                   client = client,
@@ -145,8 +160,10 @@ fun PreviewServerApp(client: BrowserPreviewClient, config: ClientConfig) {
 private fun AppHeader(
   catalog: Catalog,
   selected: PreviewSummary?,
+  composing: Boolean,
   compact: Boolean,
-  onBack: () -> Unit,
+  onCatalog: () -> Unit,
+  onCompose: () -> Unit,
 ) {
   Row(
     Modifier.fillMaxWidth().height(68.dp).background(Color(0xFF15181D)).padding(horizontal = 20.dp),
@@ -161,14 +178,21 @@ private fun AppHeader(
     }
     Column(Modifier.weight(1f)) {
       Text(
-        if (selected == null) catalog.module else selected.label,
+        when {
+          composing -> "UI Composer"
+          selected == null -> catalog.module
+          else -> selected.label
+        },
         style = MaterialTheme.typography.titleMedium,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
       Text(
-        if (selected == null) "Wasm preview browser · ${catalog.previews.size} previews"
-        else "${catalog.module} · ${selected.id}",
+        when {
+          composing -> "Drag, arrange, and interact with native CMP components"
+          selected == null -> "Wasm preview browser · ${catalog.previews.size} previews"
+          else -> "${catalog.module} · ${selected.id}"
+        },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.secondary,
         maxLines = 1,
@@ -176,7 +200,14 @@ private fun AppHeader(
     }
     if (!compact && catalog.trust != null) StatusPill(catalog.trust, Color(0xFF65D6A3))
     StatusPill("Wasm prototype", MaterialTheme.colorScheme.primary)
-    if (selected != null) OutlinedButton(onClick = onBack) { Text("All previews") }
+    when {
+      composing -> OutlinedButton(onClick = onCatalog) { Text("Catalog") }
+      selected != null -> {
+        if (!compact) OutlinedButton(onClick = onCompose) { Text("Compose UI") }
+        OutlinedButton(onClick = onCatalog) { Text("All previews") }
+      }
+      else -> Button(onClick = onCompose) { Text("Compose UI") }
+    }
   }
   HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .55f))
 }
@@ -734,7 +765,7 @@ private fun closeMessage(code: Int, reason: String): String =
   }
 
 @Composable
-private fun StatusPill(label: String, color: Color) {
+internal fun StatusPill(label: String, color: Color) {
   Surface(
     color = color.copy(alpha = .14f),
     shape = RoundedCornerShape(50),
