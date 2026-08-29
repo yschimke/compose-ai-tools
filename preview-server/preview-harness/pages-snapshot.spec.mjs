@@ -1547,6 +1547,47 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // Mixed-height preview families are the shape that exposed #4784: a short control beside a
+    // tall screen left a half-height card pinned to the top of the row. The ordinary fixture image
+    // stub is intentionally one size, so make the FAB short while its neighbouring cards remain
+    // tall. This gives the visual-diff bot the missing shape and measures the contract before the
+    // shot: equal card bottoms, with the short render centred inside its expanded image well.
+    fixture: "serve-landing-grouped",
+    suffix: "mixed-preview-heights",
+    apply: async (page) => {
+      await filterTo(page, "");
+      await page.click('.cp-pane-tab[data-pane="components"]');
+      await page.waitForSelector("#cp-pane-components:not([hidden])");
+      await page.evaluate(() => {
+        const image = document.querySelector("#cp-group-fab .cp-imgwrap img");
+        image.style.maxHeight = "96px";
+      });
+      const geometry = await page.evaluate(() => {
+        const shortCard = document.querySelector("#cp-group-fab .cp-card");
+        const tallCard = document.querySelector("#cp-group-card .cp-card");
+        const well = shortCard?.querySelector(".cp-imgwrap");
+        const image = well?.querySelector("img");
+        if (!shortCard || !tallCard || !well || !image) return null;
+        const shortRect = shortCard.getBoundingClientRect();
+        const tallRect = tallCard.getBoundingClientRect();
+        const wellRect = well.getBoundingClientRect();
+        const imageRect = image.getBoundingClientRect();
+        return {
+          heightDelta: Math.abs(shortRect.height - tallRect.height),
+          bottomDelta: Math.abs(shortRect.bottom - tallRect.bottom),
+          centerDelta: Math.abs(
+            imageRect.top + imageRect.height / 2 -
+              (wellRect.top + wellRect.height / 2),
+          ),
+        };
+      });
+      expect(geometry).not.toBeNull();
+      expect(geometry.heightDelta).toBeLessThan(1);
+      expect(geometry.bottomDelta).toBeLessThan(1);
+      expect(geometry.centerDelta).toBeLessThan(1);
+    },
+  },
+  {
     fixture: "serve-landing-sections",
     suffix: "filter-focus",
     parkPointer: true,

@@ -1063,7 +1063,7 @@ html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: n
    each claiming a five-column row and painting four of them blank — 28 of 33 rows were using at
    most 2 of the 5 columns they declared (issue #4423). The headings still mark every boundary;
    what they no longer do is force a grid break. */
-.cp-section, .cp-grid-groups { display: flex; flex-wrap: wrap; align-items: flex-start;
+.cp-section, .cp-grid-groups { display: flex; flex-wrap: wrap; align-items: stretch;
   --cp-card-w: 212px; --cp-card-gap: 18px; gap: 0 var(--cp-card-gap, 18px); }
 .cp-section { margin: 0; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-section[hidden] { display: none; }
@@ -1091,6 +1091,7 @@ html.cp-js.cp-multi-section .cp-section-head { display: block; }
    the heading a visitor asked for lands at viewport zero, under the sticky toolbar; the same
    reason `.cp-section` above carries one for `#cp-panel-<slug>`. */
 .cp-subgroup {
+  display: flex; flex-direction: column;
   flex: 0 1 calc(var(--cp-n, 1) * var(--cp-card-w, 212px)
     + (var(--cp-n, 1) - 1) * var(--cp-card-gap, 18px));
   min-width: 0; max-width: 100%;
@@ -1105,8 +1106,16 @@ html.cp-js.cp-multi-section .cp-section-head { display: block; }
    indefinite, which is exactly the measurement the cluster's flex basis above is taken from — the
    whole sheet would stack into a single column. A wrapping flex row measures as the sum of its
    cards, which is the number the basis wants. */
-.cp-cards { display: flex; flex-wrap: wrap; gap: var(--cp-card-gap, 18px); }
-.cp-cards > .cp-card { flex: 0 0 var(--cp-card-w, 212px); max-width: 100%; }
+.cp-cards { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: stretch;
+  gap: var(--cp-card-gap, 18px); }
+/* Every family on a flex line inherits the tallest family's height. Carry that height through the
+   subgroup and card, then let the image well consume the spare space: short components sit in the
+   vertical centre of the same full-height tile as a tall screen, while every metadata footer stays
+   aligned at the bottom (issue #4784). Scoped to catalog preview cards; front-door `.cp-sys` cards
+   use their own fixed hero row. */
+.cp-cards > .cp-card { flex: 0 0 var(--cp-card-w, 212px); max-width: 100%;
+  display: flex; flex-direction: column; }
+.cp-cards > .cp-card > .cp-imgwrap { flex: 1 1 auto; }
 /* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
    app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport.
    That is exactly why it is NOT an M3 segmented button: a segmented track is specified for a
