@@ -1456,6 +1456,8 @@ jobs:
       # pairs with.
       - name: Run figma-reference tests
         run: node --test .github/actions/lib/figma-reference/index.test.mjs
+      - name: Run consumer contract notice tests
+        run: python3 .github/ci/test_consumer_contract_notice.py -v
       # The export-driver pin decides which revision of this repo other people's CI
       # executes, and it is rewritten unattended after each release. Both failure
       # modes are quiet: sites drifting apart means two jobs in one run render with
@@ -1508,6 +1510,59 @@ jobs:
   # vscjava.vscode-gradle stub so our extensionDependency check passes, and
   # run the extension against a fixture workspace. xvfb is needed because
   # VS Code expects a display even in headless mode.
+  consumer-contract-notice:
+    name: Consumer Contract Notice
+    # Informational only — see the script's docstring for why this must not gate. It is a
+    # separate job rather than a step on an existing one so its permissions stay minimal and
+    # a failure to comment can never be mistaken for a contract problem.
+    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Detect contract surfaces and comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Fail open: a diff we cannot compute must not look like "no contracts touched".
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" 2>/dev/null); then
+            echo "::warning::could not diff against the base; skipping the consumer contract notice."
+            exit 0
+          fi
+
+          body=$(printf '%s\n' "$changed" | python3 .github/ci/consumer-contract-notice.py -)
+          MARKER="<!-- consumer-contract-notice -->"
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+
+          if [ "$body" = "NO_CONTRACT_SURFACES" ]; then
+            # Nothing to say. Patch an existing notice to reflect that rather than leaving a
+            # stale one describing surfaces a later push removed from the diff; never post a
+            # fresh "nothing to report" comment.
+            if [ -n "$COMMENT_ID" ]; then
+              gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" -X PATCH \
+                -f body="${MARKER}"$'\n'"## Contract surfaces this PR reaches"$'\n\n'"None as of $(git rev-parse --short "$MERGE_SHA"). An earlier revision of this PR touched one; it no longer does."
+            fi
+            echo "no contract surfaces touched"
+            exit 0
+          fi
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" -X PATCH -f body="$body"
+          else
+            gh pr comment "$PR_NUMBER" --body "$body"
+          fi
+
   serve-web-bundle:
     name: Serve Web Components
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
