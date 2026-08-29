@@ -47,7 +47,14 @@ object ServeParityIssuesStore {
   private val REPOSITORY = Regex("[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
   private val ID = Regex("[^\\p{Cc}]{1,300}")
   private val AREAS = setOf("spec", "component", "preview", "renderer", "comparison")
-  private val PARITY = setOf("regression", "known-difference", "verification-needed")
+  /**
+   * The `parity:` vocabulary this index accepts, kept in step with `parity-issues.mjs`'s own set —
+   * a value only one end knows is a classification the round trip drops without saying so.
+   * `upstream` and `catalog` are the two answers the report form's "Where does it belong?" control
+   * offers beside the `verification-needed` it already had.
+   */
+  private val PARITY =
+    setOf("regression", "known-difference", "verification-needed", "upstream", "catalog")
   private val JSON = Json { ignoreUnknownKeys = true }
 
   fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ParityIssues? {

@@ -57,6 +57,48 @@ internal object ServeIssueReport {
    */
   const val SELECTION_PLACEHOLDER: String = "{{selection}}"
 
+  /**
+   * The classification line's fixed opening — the reporter's answer to "where does this belong?",
+   * which `<cp-report-classification>` finds by this prefix and rewrites as a whole line.
+   *
+   * A **prefix** rather than a placeholder, and the body it opens is written by the server in full
+   * rather than left blank, because the answer travels to GitHub in the `<select>` itself: its
+   * value is the `labels` query parameter, so the label is applied with or without JavaScript. The
+   * body line is the same fact in prose, for the reader of the issue and for the case where the
+   * repository has no such label to apply.
+   *
+   * That is also why [CLASSIFICATION_UNSTATED] says what it says. A visitor with scripting off can
+   * pick an answer — the select works — but cannot have the body rewritten, so any *specific*
+   * sentence the server pre-wrote would be a claim about their answer that the label beside it
+   * could contradict. Pointing at the label instead is true in every case, and is the one thing a
+   * body can say about a value it does not know.
+   */
+  const val CLASSIFICATION_PREFIX: String = "**Where it belongs:** "
+
+  /**
+   * What the line says until a browser rewrites it from the control. See [CLASSIFICATION_PREFIX].
+   */
+  const val CLASSIFICATION_UNSTATED: String = "as labelled on this issue"
+
+  /**
+   * Stand-in for locator blocks the SERVER cannot write, because which comparisons they name is
+   * chosen after the page is served.
+   *
+   * The comparison wall's own report is page-scoped: it names the page and the lane, and carries no
+   * locator, because a wall singles out no preview. That is still true of the page — but not of a
+   * reader who has ticked four rows, and an umbrella issue naming several components is a shape
+   * this format already has (`locatorsFromBody` returns a list, and the producer emits a row per
+   * block). So the wall's template carries this line and `<cp-compare-wall>` fills it with one
+   * block per ticked row, using the same writer this object exposes, ported to `report/locator.ts`
+   * and pinned to the same shared fixture.
+   *
+   * Occupies a whole LINE and is substituted with its newline, so a report filed with nothing
+   * ticked reproduces byte for byte the page-scoped body the server writes on its own — which is
+   * also what a visitor with JavaScript off files, since the ticking is the part that needs a
+   * browser.
+   */
+  const val LOCATORS_PLACEHOLDER: String = "{{locators}}"
+
   const val LOCATOR_FENCE: String = "compose-parity-locator/v1"
 
   /** The only plane `v1` accepts for [Bounds]; see that type and D1. */
@@ -255,6 +297,7 @@ internal object ServeIssueReport {
     ctx: Context,
     renderPlaceholder: Boolean = false,
     selectionPlaceholder: Boolean = false,
+    locatorsPlaceholder: Boolean = false,
   ): String {
     val rows = buildList {
       ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Design system | `$it` |") }
@@ -317,6 +360,7 @@ internal object ServeIssueReport {
     return buildString {
       append("### What's wrong\n\n")
       append("<!-- What did you expect to see, and what did you get? -->\n\n\n")
+      append("$CLASSIFICATION_PREFIX$CLASSIFICATION_UNSTATED\n\n")
       append("### Screenshot\n\n")
       if (embedPair) {
         // Both outer panels of the comparison, in the order the page draws them, so an issue about
@@ -369,6 +413,11 @@ internal object ServeIssueReport {
       if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
       append("\n")
       locator(ctx)?.let { append("\n").append(locatorBlock(it, selectionPlaceholder)) }
+      // No leading blank line of its own: the placeholder is a line the filler either replaces
+      // (writing its own separator ahead of the blocks) or deletes outright, and a blank line the
+      // server had already committed to would survive the deletion and leave a body that is not the
+      // one it writes without this parameter.
+      if (locatorsPlaceholder) append(LOCATORS_PLACEHOLDER).append("\n")
     }
   }
 

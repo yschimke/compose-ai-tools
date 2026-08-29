@@ -3191,7 +3191,8 @@ class ServeHttpServer(
       // and the tool version, and drops the preview-shaped rows the way every other optional fact
       // is dropped. A row's own defect keeps the better route it already had: opening the focused
       // comparison, which files against that exact preview and reference.
-      val reportIssue = pageScopedReportIssue(renderHost, sessionId, "these comparisons")
+      val reportIssue =
+        pageScopedReportIssue(renderHost, sessionId, "these comparisons", pickable = true)
       call.respondText(
         ServeWeb.comparisonPage(
           moduleLabel = renderHost.label,
@@ -4564,6 +4565,17 @@ class ServeHttpServer(
     renderHost: ServeHost,
     sessionId: String,
     subject: String,
+    /**
+     * Whether this page can name comparisons the visitor picks — the comparison wall, and nothing
+     * else so far.
+     *
+     * True adds the [ServeIssueReport.LOCATORS_PLACEHOLDER] line to the template and the two facts
+     * a browser-written locator cannot derive from the row it is about (the system, and the
+     * delivery revision). Left false everywhere else deliberately: a placeholder on a page with
+     * nothing to fill it would be filed verbatim, and a design page or the motion browser has no
+     * picker to fill it with.
+     */
+    pickable: Boolean = false,
   ): ServeWeb.ReportIssue? {
     val bundleHost = catalogBundleHost(renderHost)?.takeIf { it.isCatalog } ?: return null
     val context =
@@ -4578,10 +4590,17 @@ class ServeHttpServer(
     return ServeWeb.ReportIssue(
       action = ServeIssueReport.action(context.repo),
       body = ServeIssueReport.body(context),
-      bodyTemplate = ServeIssueReport.body(context, renderPlaceholder = true),
+      bodyTemplate =
+        ServeIssueReport.body(
+          context,
+          renderPlaceholder = true,
+          locatorsPlaceholder = pickable,
+        ),
       repo = context.repo,
       login = githubAuth?.currentLogin(call),
       subject = subject,
+      locatorSystem = if (pickable) context.system else null,
+      locatorRevision = if (pickable) context.catalog else null,
     )
   }
 

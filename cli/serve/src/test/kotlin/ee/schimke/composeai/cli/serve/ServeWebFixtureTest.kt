@@ -146,17 +146,28 @@ class ServeWebFixtureTest {
    * every component and singles out none (issue #4289). No preview, no render, no reference: the
    * golden pins the shape a report filed from the wall actually has.
    */
+  /**
+   * The wall's own page report, which — unlike every other page-scoped one — is **pickable**: its
+   * template carries the `{{locators}}` line and the two page-level locator facts, which is what
+   * turns the row checkboxes on. The golden would otherwise show a wall whose pickers can never
+   * upgrade, which is not the page this server serves.
+   */
   private fun fixtureWallReportIssue(): ServeWeb.ReportIssue =
     fixturePageReportIssue(
       "https://preview.coo.ee/compose-m3/compare?format=reference",
       "these comparisons",
+      pickable = true,
     )
 
   /**
    * The page-scoped catalog report every catalog surface that names no single preview now carries
    * (issue #4704) — the wall, the landing, the pages index, a design page, the motion browser.
    */
-  private fun fixturePageReportIssue(pageUrl: String, subject: String): ServeWeb.ReportIssue {
+  private fun fixturePageReportIssue(
+    pageUrl: String,
+    subject: String,
+    pickable: Boolean = false,
+  ): ServeWeb.ReportIssue {
     val context =
       ServeIssueReport.Context(
         repo = "yschimke/compose-ai-tools",
@@ -169,10 +180,17 @@ class ServeWebFixtureTest {
     return ServeWeb.ReportIssue(
       action = ServeIssueReport.action(context.repo),
       body = ServeIssueReport.body(context),
-      bodyTemplate = ServeIssueReport.body(context, renderPlaceholder = true),
+      bodyTemplate =
+        ServeIssueReport.body(
+          context,
+          renderPlaceholder = true,
+          locatorsPlaceholder = pickable,
+        ),
       repo = context.repo,
       login = "yschimke",
       subject = subject,
+      locatorSystem = if (pickable) context.system else null,
+      locatorRevision = if (pickable) context.catalog else null,
     )
   }
 

@@ -915,6 +915,47 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The Bugs column with TITLES, and a row picked for a multi-row report — the two surfaces the
+    // wall's default 1024px shot cannot show.
+    //
+    // Wider on purpose, and the width is the point rather than a convenience. Three picture panels
+    // plus the preview column, `Match` and the pills already come to within ~10px of the content
+    // width at 1024, so `serve.css` drops the issue titles below 1100px and the default shot
+    // legitimately diffs a row of bare numbers. Without this state the titled column — the change
+    // that column exists for — would be diffed by nothing at all.
+    //
+    // The pick is in the same shot because it is the same question ("what has already been said
+    // about this row, and what am I about to say"), and because the picked bar is a `hidden`
+    // element unhidden by script: it is exactly the kind of surface that regresses silently, which
+    // it did here — a `display: flex` of its own outranked the UA sheet's `[hidden]` rule and every
+    // wall opened claiming "0 comparisons will be named".
+    fixture: "serve-format-compare",
+    suffix: "picked",
+    viewport: { width: 1280, height: 900 },
+    parkPointer: true,
+    apply: async (page) => {
+      // Runs after `reference-lane`, which is the only lane that pairs a design reference and so
+      // the only one whose rows can be picked at all. Asserted rather than assumed: reordered
+      // states would otherwise leave this shooting an SVG lane with the pickers hidden.
+      await expect(page.locator(".cp-compare-table[data-picking='on']")).toHaveCount(1);
+      await page.click(".cp-compare-row:not([hidden]) .cp-compare-pick-input");
+      await page.waitForSelector("#cp-compare-picked:not([hidden])");
+      // The body the form would submit, asserted here because this is the only layer that runs the
+      // real element against the real template: the shot proves the bar, this proves the locator
+      // the bar is claiming.
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              document.querySelector("#cp-report-body")?.value.includes(
+                "```compose-parity-locator/v1",
+              ) ?? false,
+          ),
+        )
+        .toBe(true);
+    },
+  },
+  {
     // A component under the POINTER. The sheet carries no resting marks, so this is the whole
     // discovery story: the outline appears where you point, and it appears whether or not the
     // opt-in layer is on (this shot is taken with it off, which is the default). A hover state

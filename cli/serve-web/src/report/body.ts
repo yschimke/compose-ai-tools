@@ -15,8 +15,9 @@
 // navigation sink. That is what keeps the report a GET form rather than a CodeQL finding; see
 // `ServeIssueReport.action`.
 
-import { fillReport } from "../annotate/report.js";
-import { fillSelection, type Selection } from "./locator.js";
+import { fillReport, needsRender } from "../annotate/report.js";
+import { withClassification } from "./classification.js";
+import { fillLocators, fillSelection, type Selection } from "./locator.js";
 
 /** What the page knows so far. Every field is independently optional. */
 export interface ReportInputs {
@@ -25,6 +26,24 @@ export interface ReportInputs {
     /** The scorer's sentence, or null while it has not produced one. */
     scores?: string | null;
     selection?: Selection;
+    /**
+     * The classification sentence `<cp-report-classification>` last wrote, if any.
+     *
+     * A fourth producer, and here for the reason the other three are: this writer composes the body
+     * from the template every time any of them reports in, so a classification applied to the
+     * field directly would be silently undone by the next score or selection. Passing it through
+     * keeps the rule that exactly one thing writes the field.
+     */
+    classification?: string;
+    /**
+     * One `compose-parity-locator/v1` block per comparison the reader ticked on the wall.
+     *
+     * The fifth producer, and the only one that adds identity rather than detail: a page-scoped
+     * report names no preview until somebody picks some, and these are what turn it into an
+     * umbrella issue the catalog's index can join to rows. Empty — the state this starts in — fills
+     * the template's placeholder with nothing, reproducing the body the server wrote.
+     */
+    locators?: string[];
 }
 
 export class ReportBody {
@@ -46,6 +65,11 @@ export class ReportBody {
     attach(input: HTMLInputElement | null): boolean {
         const template = input?.getAttribute("data-report-template");
         if (!input || !template) return false;
+        // Re-attaching the SAME field is not a different comparison, so it keeps what has been
+        // learned. Two elements claim the field on the focused comparison now — the comparison
+        // itself and the classification control — and whichever ran second would otherwise reset
+        // the other's contribution the moment it arrived.
+        if (input === this.input) return true;
         this.input = input;
         this.template = template;
         this.state = { scores: null, selection: {} };
@@ -60,12 +84,27 @@ export class ReportBody {
 
     private write(): void {
         const { input, template } = this;
+        if (!input || !template) return;
         // No render URL yet means the page has not finished parsing its own panels. The server's
-        // body is already in the field and is correct; there is nothing to improve on.
-        if (!input || !template || !this.state.render) return;
-        input.value = fillSelection(
-            fillReport(template, this.state.render, this.state.scores ?? null),
-            this.state.selection ?? {},
+        // body is already in the field and is correct; there is nothing to improve on — and the
+        // template's `{{render}}` would be filed verbatim, which is worse than waiting. Asked of
+        // the template rather than assumed, because the comparison wall's page-scoped report names
+        // no render at all and would otherwise never be composable — so a picked set of rows could
+        // never reach the body.
+        if (needsRender(template) && !this.state.render) return;
+        input.value = withClassification(
+            fillLocators(
+                fillSelection(
+                    fillReport(
+                        template,
+                        this.state.render ?? "",
+                        this.state.scores ?? null,
+                    ),
+                    this.state.selection ?? {},
+                ),
+                this.state.locators ?? [],
+            ),
+            this.state.classification ?? "",
         );
     }
 }

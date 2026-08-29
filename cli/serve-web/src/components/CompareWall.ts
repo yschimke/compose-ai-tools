@@ -27,6 +27,12 @@ import {
     type Format,
 } from "../compare/pairing.js";
 import { specLeadsColumns, targetHeadLabel } from "../compare/columns.js";
+import {
+    locatorBlocks,
+    locatorForRow,
+    type PickFacts,
+} from "../compare/picks.js";
+import { reportBody } from "../report/body.js";
 import { initialState, poppedState, type WallState } from "../compare/state.js";
 import { GEOMETRY_REPORT_THRESHOLD } from "../compare/thresholds.js";
 import {
@@ -74,6 +80,14 @@ export class CompareWall extends LitElement {
     private targetHead: HTMLElement | null = null;
     /** The middle column's header, which rides between the pair wherever the pair goes. */
     private diffHead: HTMLElement | null = null;
+    /** The wall's own table, which carries `data-picking` for the row checkboxes' visibility. */
+    private table: HTMLElement | null = null;
+    /** The page-scoped report's hidden body field, when this wall can write locators into it. */
+    private reportField: HTMLInputElement | null = null;
+    /** The page-level halves of a locator, or null on a wall with no report to file. */
+    private pickFacts: PickFacts | null = null;
+    private pickedBar: HTMLElement | null = null;
+    private pickedText: HTMLElement | null = null;
 
     private available: Available = { svg: false, rc: false, reference: false };
     private state!: WallState;
@@ -126,6 +140,8 @@ export class CompareWall extends LitElement {
         this.search =
             document.querySelector<HTMLInputElement>("#cp-compare-search");
         this.empty = document.getElementById("cp-compare-empty");
+        this.table = root.querySelector(".cp-compare-table");
+        this.resolvePicking();
 
         this.available = {
             svg: root.getAttribute("data-has-svg") === "1",
@@ -215,6 +231,18 @@ export class CompareWall extends LitElement {
                 this.applySearch();
             });
         }
+        for (const box of this.pickInputs()) {
+            this.on(box, "change", () => this.syncPicks());
+        }
+        const clear = this.pickedBar?.querySelector<HTMLElement>(
+            ".cp-compare-picked-clear",
+        );
+        if (clear) {
+            this.on(clear, "click", () => {
+                for (const box of this.pickInputs()) box.checked = false;
+                this.syncPicks();
+            });
+        }
         const off = window.cpUrlState?.onPop(() => {
             this.state = poppedState({
                 initial: this.initial,
@@ -231,6 +259,142 @@ export class CompareWall extends LitElement {
     /** Whether the published player wall is standing in for the client-rendered `rc` lane. */
     private lanesActive(): boolean {
         return Boolean(this.lanesPane) && this.state.format === "rc";
+    }
+
+    // ---- the multi-row picker -------------------------------------------------------------------
+
+    /**
+     * Read the page-level halves of a locator off the wall's own report, once.
+     *
+     * Their presence is the whole switch: `ServeWeb.reportIssueHtml` writes
+     * `data-cp-locator-system` only where the body template also carries a `{{locators}}` line, so
+     * one attribute answers both "may this page write locators" and "is there anywhere to put
+     * them". A wall with no report to file — a plain local session — leaves [pickFacts] null and
+     * the checkboxes stay hidden, which is what they should be when a tick could not become
+     * anything.
+     */
+    private resolvePicking(): void {
+        this.pickedBar = document.getElementById("cp-compare-picked");
+        this.pickedText =
+            this.pickedBar?.querySelector(".cp-compare-picked-text") ?? null;
+        const report = document.getElementById("cp-report");
+        const repository = report?.getAttribute("data-cp-repo") ?? "";
+        const system = report?.getAttribute("data-cp-locator-system") ?? "";
+        const field =
+            document.querySelector<HTMLInputElement>("#cp-report-body");
+        if (!repository || !system || !field) return;
+        this.reportField = field;
+        this.pickFacts = {
+            repository,
+            system,
+            revision: report?.getAttribute("data-cp-locator-revision") || null,
+        };
+    }
+
+    private pickInputs(): HTMLInputElement[] {
+        return this.rows.flatMap((row) => {
+            const box = row.querySelector<HTMLInputElement>(
+                ".cp-compare-pick-input",
+            );
+            return box ? [box] : [];
+        });
+    }
+
+    /** Whether this wall, in the lane it is showing, can name comparisons at all. */
+    private picking(): boolean {
+        return Boolean(this.pickFacts) && this.state.format === "reference";
+    }
+
+    /**
+     * The locator a row would contribute right now, or null if it would contribute none.
+     *
+     * Read from the row's own "+ file" href — the one {@link dressRow} has already re-pointed at
+     * the pair this row is SHOWING — so the picked set follows the lane and the theme without a
+     * second copy of the pairing rules to keep in step.
+     */
+    private locatorFor(row: HTMLElement) {
+        const facts = this.pickFacts;
+        if (!facts) return null;
+        const report = row.querySelector<HTMLAnchorElement>(
+            ".cp-compare-bug-new",
+        );
+        const detail = report?.getAttribute("href") ?? "";
+        return locatorForRow(
+            detail,
+            location.href,
+            row.getAttribute("data-component-id") ?? "",
+            facts,
+        );
+    }
+
+    /**
+     * Recompute what is picked, hand it to the report, and say so.
+     *
+     * The disabling is the interesting half. The producer refuses a body naming one component
+     * twice — and refuses the WHOLE body, so a report ticking two variants of one component is not
+     * partly indexed, it silently never appears anywhere. A wall of per-variant rows makes that the
+     * easy mistake to make, so the second variant's checkbox goes disabled the moment the first is
+     * ticked, with a title saying why. Untick the first and it comes back.
+     */
+    private syncPicks(): void {
+        const field = this.reportField;
+        if (!field) return;
+        const picking = this.picking();
+        const claimed = new Set<string>();
+        const locators = [];
+        for (const row of this.rows) {
+            const box = row.querySelector<HTMLInputElement>(
+                ".cp-compare-pick-input",
+            );
+            if (!box) continue;
+            const locator = picking ? this.locatorFor(row) : null;
+            if (!locator) {
+                // Nothing this row could contribute in this lane. Unticked as well as disabled: a
+                // tick left standing on a row the report cannot name is a promise the body does not
+                // keep.
+                box.checked = false;
+                box.disabled = true;
+                box.title = picking
+                    ? "This lane has no design reference for this comparison"
+                    : "";
+                continue;
+            }
+            // Cleared before the second pass rather than left as it was found: the "one component
+            // once" disabling below is derived state, and a box still disabled from the LAST pass
+            // is one the second pass skips — so unticking a row would never give its siblings back.
+            box.disabled = false;
+            box.title = "";
+            if (box.checked) {
+                claimed.add(locator.componentId);
+                locators.push(locator);
+            }
+        }
+        for (const row of this.rows) {
+            const box = row.querySelector<HTMLInputElement>(
+                ".cp-compare-pick-input",
+            );
+            if (!box || box.disabled) continue;
+            const component = row.getAttribute("data-component-id") ?? "";
+            const taken = !box.checked && claimed.has(component);
+            box.disabled = taken;
+            box.title = taken
+                ? "One report can name a component once — another variant of this one is already picked"
+                : "";
+        }
+        const blocks = locatorBlocks(locators);
+        if (reportBody.attach(field)) reportBody.set({ locators: blocks });
+        this.showPicked(blocks.length);
+    }
+
+    /** The line above the report that says what it will name. Hidden at zero. */
+    private showPicked(count: number): void {
+        if (this.pickedBar) this.pickedBar.hidden = count === 0;
+        if (this.pickedText) {
+            this.pickedText.textContent =
+                count === 1
+                    ? "1 comparison will be named in the report below."
+                    : `${count} comparisons will be named in the report below.`;
+        }
     }
 
     private sourcesOf(row: HTMLElement) {
@@ -263,6 +427,14 @@ export class CompareWall extends LitElement {
         this.root.setAttribute("data-format", this.state.format);
         this.root.setAttribute("data-theme", this.state.theme);
         this.orderColumns();
+        // Off the reference lane there is no design reference to name, so the checkboxes go away
+        // rather than sitting there disabled — and `syncPicks` drops whatever was ticked, because a
+        // report that still claimed those rows would be describing a comparison the page is no
+        // longer making.
+        if (this.table) {
+            if (this.picking()) this.table.setAttribute("data-picking", "on");
+            else this.table.removeAttribute("data-picking");
+        }
 
         // The lane wall is its own view: it owns its rows, its reference picker and its diffs, and
         // needs none of the per-row scoring below — every number it shows was computed offline. Hand
@@ -431,6 +603,10 @@ export class CompareWall extends LitElement {
         }
         if (this.count) this.count.textContent = countLabel(visible);
         if (this.empty) this.empty.hidden = visible !== 0;
+        // After the dressing, never before it: a row's locator is read off the "+ file" href that
+        // {@link dressRow} has just re-pointed at the pair this lane is showing, so recomputing the
+        // picked set any earlier would write the previous lane's comparisons into the report.
+        this.syncPicks();
     }
 
     // ---- one row -------------------------------------------------------------

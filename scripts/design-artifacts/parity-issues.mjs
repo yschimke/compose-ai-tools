@@ -20,7 +20,15 @@ const FENCE = /^ {0,3}```compose-parity-locator\/v1\s*\n([\s\S]*?)\n {0,3}```/gm
  */
 const FENCE_OPEN = /^ {0,3}```compose-parity-locator\/v1[^\S\n]*$/gm;
 const AREA = new Set(["spec", "component", "preview", "renderer", "comparison"]);
-const PARITY = new Set(["regression", "known-difference", "verification-needed"]);
+/**
+ * The `parity:` vocabulary, which is also the answer set of the report form's "Where does it
+ * belong?" control (`ServeWeb.reportClassificationHtml`). `upstream` and `catalog` were added with
+ * it: the reporter is looking at both pictures and is the person best placed to say which side a
+ * difference lives on, and `verification-needed` — already here — is what they pick when they
+ * cannot. A value this set does not know is dropped from the index silently, so this list and
+ * `ServeParityIssuesStore.PARITY` have to move together.
+ */
+const PARITY = new Set(["regression", "known-difference", "verification-needed", "upstream", "catalog"]);
 
 /**
  * Every key the writer always emits. `revision` is deliberately absent: `ServeIssueReport.locator`

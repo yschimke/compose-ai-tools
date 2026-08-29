@@ -78,6 +78,19 @@ const RAW_SCORES_ROW = "| Raw comparison | `{{rawScores}}` |";
 const RENDER_DESTINATION = "]({{render}})";
 
 /**
+ * Whether [template] has a render link to fill in at all.
+ *
+ * The body writer holds off composing anything until it has a render URL, because filing
+ * `{{render}}` verbatim is worse than filing the server's own body. That rule is right for every
+ * template that HAS one — and wrong for the comparison wall's, which names no render because a wall
+ * shows every preview at once. Asking the template rather than assuming makes the page-scoped
+ * report composable, which is what lets a picked set of rows reach the body at all.
+ */
+export function needsRender(template: string): boolean {
+    return template.includes(RENDER_DESTINATION);
+}
+
+/**
  * The report body's render and score placeholders, filled.
  *
  * Page-derived values reach the form's hidden INPUT and nothing else — never an `href` or any other

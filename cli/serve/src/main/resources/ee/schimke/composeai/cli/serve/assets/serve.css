@@ -665,6 +665,19 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   padding: 8px 12px; font: inherit; border: 1px solid var(--cp-border);
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface-container-low); color: inherit; }
+/* "Where does it belong?" — the `parity:` label the reporter picks. Laid out exactly like the
+   Summary above it, because it is the same kind of thing: a question the form asks, answered before
+   the issue opens. `<cp-report-classification>` is a plain grid container rather than an inline
+   custom element, which browsers default unknown tags to — without this the label and its note
+   would run together on one line and the select would inherit the run. */
+.cp-report-class { display: grid; gap: 6px; width: 100%; }
+.cp-report-class-label { display: grid; gap: 6px; width: 100%; font-weight: 500; }
+.cp-report-class-input { width: 100%; min-height: 40px; box-sizing: border-box;
+  padding: 8px 12px; font: inherit; border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: inherit; }
+.cp-report-class-note { font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); color: var(--cp-fg-muted); }
 .cp-report-submit { display: inline-flex; align-items: center; gap: 8px; font: inherit;
   font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
@@ -2632,21 +2645,73 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    matters to a reader who is already asking why a number appeared before the pictures did. */
 .cp-compare-score[data-score-source="published"] {
   text-decoration: underline dotted currentColor 1px; text-underline-offset: 3px; }
+/* The multi-row picker: a checkbox beside each row's own name, and the line that says what it has
+   selected. Both are inert without the script that turns a tick into a locator block, so both are
+   hidden until `<cp-compare-wall>` marks the wall pickable — a checkbox that silently does nothing
+   is worse than no checkbox, and the lane that cannot pair a design reference has no comparison to
+   name. In the row's NAME cell rather than beside "+ file": the two are different gestures, one
+   filing about this row now and one gathering rows for a single report, and a reader deciding
+   between them should not have to tell them apart by their icons. */
+.cp-compare-table:not([data-picking="on"]) .cp-compare-pick { display: none; }
+.cp-compare-pick { display: inline-flex; vertical-align: middle; margin-right: 8px; }
+.cp-compare-pick-input { margin: 0; accent-color: var(--md-sys-color-primary); }
+.cp-compare-pick-input:disabled { opacity: .35; }
+.cp-compare-picked { display: flex; align-items: center; gap: 10px; margin: 10px 0 0;
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); color: var(--cp-fg-muted); }
+/* A `display` of its own outranks the UA sheet's `[hidden] { display: none }`, so the bar has to
+   restate it or the server-rendered `hidden` does nothing and every wall opens saying "0
+   comparisons will be named". Caught by the harness capture, which is what it is for. */
+.cp-compare-picked[hidden] { display: none; }
+.cp-compare-picked-clear { font: inherit; color: inherit; cursor: pointer;
+  padding: 1px 8px; border-radius: 999px; border: 1px solid var(--cp-border);
+  background: none; }
+.cp-compare-picked-clear:hover { border-color: currentColor; }
+
 /* The Bugs column: what is already filed against this row, and the way to file more.
    STACKED rather than run along the row, and that is a width decision, not a style one: this table
    already carries three picture panels, and a row with four issues laid out horizontally would push
    `Match` — the column the wall is sorted by and read for — past the scroll edge at 1024px. One
    pill per line makes the column as wide as its widest pill and no wider; the rows are 220px tall
-   already, so the extra lines cost nothing. */
+   already, so the extra lines cost nothing.
+
+   The pill now carries the issue TITLE beside its number, which is the fact the column is actually
+   read for — `#77` alone cannot tell a reader whether the thing already filed is the difference
+   they are looking at. Everything below exists to let it do that without taking the width back:
+   the title is capped at the column's `max-width`, ellipsised on one line rather than wrapped (a
+   wrapped title would set the row's height from text on a wall whose rows are pictures), and it
+   drops out entirely at the width where the pictures start to lose. The tooltip is unchanged and
+   still holds the untruncated title, so the ellipsis hides nothing that was reachable before. */
 .cp-compare-bugs { text-align: right; }
 .cp-compare-bug, .cp-compare-bug-new { display: block; width: fit-content; margin: 4px 0 0 auto;
   padding: 1px 6px; white-space: nowrap;
   border-radius: 999px; font-size: .72rem; font-variant-numeric: tabular-nums;
   text-decoration: none; border: 1px solid var(--cp-border); }
-.cp-compare-bug { color: light-dark(#8a1c1c, #ef9292); }
+.cp-compare-bug { color: light-dark(#8a1c1c, #ef9292);
+  display: flex; gap: .45em; align-items: baseline; max-width: 22ch; }
+.cp-compare-bug-num { flex: none; }
+/* `min-width: 0` is what makes the ellipsis work at all: a flex item's automatic minimum size is
+   its content, so without this the title refuses to shrink and the pill overflows the cap instead
+   of truncating. Muted against the number, which is the part that is a link you might quote. */
+.cp-compare-bug-title { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--cp-fg-muted); font-variant-numeric: normal; }
 .cp-compare-bug--closed { color: var(--cp-fg-faint); }
+.cp-compare-bug--closed .cp-compare-bug-title { color: inherit; }
 .cp-compare-bug-new { color: var(--cp-fg-muted); border-style: dashed; }
 .cp-compare-bug:hover, .cp-compare-bug-new:hover { border-color: currentColor; }
+/* Below this the three picture panels are what the wall is for and there is no room left beside
+   them; the pill falls back to the number it was, tooltip and all.
+   The threshold is ABOVE the 1024px the note further up measures `Match` at, and that is measured
+   rather than chosen: three 190px panels, the preview column, `Match` and the pills already come to
+   within about 10px of the content width at 1024, so ANY title there pushes the column past the
+   scroll edge — the exact failure the stacked layout exists to avoid. So the titles are a
+   wider-than-1024 affordance, and the preview-harness captures them at one: the
+   `format-compare-picked` state shoots this wall at 1280 so the diff bot sees the column the way a
+   reader with the room does, and the default 1024 shot keeps proving the fallback. That is a deliberate trade — a horizontally
+   stacked column grew without bound, this one cannot — and it keeps the titles inside the width the
+   preview-harness captures at (`HARNESS_WIDTH`, 1024), so the visual-diff bot sees this column the
+   way a reader does instead of diffing a row of bare numbers. */
+@media (max-width: 1100px) { .cp-compare-bug-title { display: none; } }
 /* The comparison column's header names its lane in the DOM, not in a `::after`. It used to be a
    `font-size: 0` `<th>` with three `content:` rules keyed off `data-format` — which worked, but
    could only ever say the generic "Design reference", because CSS has no way to reach the catalog's

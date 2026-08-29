@@ -24,6 +24,7 @@ import "./components/ParityLanes.js";
 import "./components/ParityScores.js";
 import "./components/RcLanes.js";
 import "./components/ReferenceCompare.js";
+import "./components/ReportClassification.js";
 import "./components/RevisionRuns.js";
 import "./components/SpecCompare.js";
 import "./components/ViewerDrawers.js";

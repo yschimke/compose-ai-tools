@@ -1179,6 +1179,61 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the report form asks where the difference belongs, and files the answer as a label`() {
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        reportIssue =
+          ServeWeb.ReportIssue(
+            action = "https://github.com/o/r/issues/new",
+            body = "### What's wrong",
+            bodyTemplate = "### What's wrong",
+            repo = "o/r",
+          ),
+      )
+    // `name="labels"` is the whole transport: GitHub's new-issue form reads it straight from the
+    // query, so the answer reaches the filed issue with the browser's own control and no script.
+    assertTrue(html.contains("<select class=\"cp-report-class-input\" name=\"labels\">"), html)
+    // The three answers, in the `parity:` vocabulary the catalog's own issue index speaks — a value
+    // outside it comes back from `parity/issues.json` as no classification at all.
+    for (value in listOf("parity:upstream", "parity:catalog", "parity:verification-needed")) {
+      assertTrue(html.contains("<option value=\"$value\""), "$value offered: $html")
+    }
+    // Not knowing is the default, and a first-class answer: a report filed without a thought about
+    // this is an unclassified one, and saying so beats a confident wrong label.
+    assertTrue(
+      html.contains("whether this is ours or upstream.\" selected>Needs investigating"),
+      html,
+    )
+    // Every option carries the sentence `<cp-report-classification>` writes into the body, so the
+    // issue states the answer in prose as well — for the reader, and for a repository that has no
+    // such label to apply.
+    assertTrue(html.contains("data-cp-sentence=\"Upstream: the framework"), html)
+  }
+
+  @Test
+  fun `the report body carries a classification line pointing at the label`() {
+    // Written by the server in BOTH the plain body and the template, and pointing at the label
+    // rather than pre-writing an answer: a visitor with scripting off can still pick one — the
+    // select works — but cannot have the body rewritten, so any specific sentence here would be a
+    // claim the label beside it could contradict.
+    val body =
+      ServeIssueReport.body(
+        ServeIssueReport.Context(repo = "yschimke/m3-catalog", previewId = "button")
+      )
+    assertTrue(
+      body.contains(
+        "${ServeIssueReport.CLASSIFICATION_PREFIX}${ServeIssueReport.CLASSIFICATION_UNSTATED}"
+      ),
+      body,
+    )
+  }
+
+  @Test
   fun `the viewer links the figma node a preview is specified by`() {
     val preview = ServePreview(id = "plain.Button", label = "button")
     val html =
@@ -2128,13 +2183,93 @@ class ServeWebTest {
     assertTrue(cell.contains("cp-compare-bug--closed"), "the closed one says so: $cell")
     // Matched on the component as well as on the preview id — an issue may name either.
     assertTrue(cell.contains("/issues/41"), cell)
+    // The pill says what the issue is, not just that there is one: "does someone already know?" is
+    // the question this column exists for and a bare number cannot answer it.
+    assertTrue(
+      cell.contains(
+        "<span class=\"cp-compare-bug-title\">Glyph colour is darker than the design token</span>"
+      ),
+      cell,
+    )
+    // …and the tooltip still carries state, number and the untruncated title, since the visible
+    // title is capped at the column width.
+    assertTrue(
+      cell.contains("title=\"open · #40 Glyph colour is darker than the design token\""),
+      cell,
+    )
     // "+ file" is offered on every row, including rows with nothing filed: an unfiled bad score is
     // exactly what a reader is scanning this wall for. It lands on the focused comparison, which
     // files a report naming that exact preview AND reference.
     assertTrue(cell.contains("cp-compare-bug-new"), cell)
     assertTrue(cell.contains("/compare/button?token=t&amp;reference=button"), cell)
-    // The numbers join the haystack, so `#40` narrows the wall to the rows a report names.
-    assertTrue(html.contains("data-hay=\"button button #40 #41\""), html)
+    // The numbers join the haystack, so `#40` narrows the wall to the rows a report names — and so
+    // do the titles, because the pill now shows them and a filter has to match what the reader can
+    // see.
+    assertTrue(
+      html.contains(
+        "data-hay=\"button button #40 glyph colour is darker than the design token " +
+          "#41 verified after the token update\""
+      ),
+      html,
+    )
+  }
+
+  @Test
+  fun `the wall offers a picker per row, and the facts a browser needs to write its locator`() {
+    val preview =
+      ServePreview(
+        id = "button__ideal__default__light",
+        label = "Button",
+        componentId = "Button/Filled",
+      )
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(preview),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+        reportIssue =
+          ServeWeb.ReportIssue(
+            action = "https://github.com/o/r/issues/new",
+            body = "### Which page",
+            bodyTemplate = "### Which page\n${ServeIssueReport.LOCATORS_PLACEHOLDER}\n",
+            repo = "o/r",
+            subject = "these comparisons",
+            locatorSystem = "m3-catalog",
+            locatorRevision = "o/r@design-artifacts/m3-catalog",
+          ),
+      )
+    // The two page-level halves of a locator, which no row can know. Their presence is also the
+    // switch: `<cp-compare-wall>` shows the row checkboxes only where it can turn a tick into a
+    // block, and a wall with no report to file leaves them hidden.
+    assertTrue(html.contains("data-cp-locator-system=\"m3-catalog\""), html)
+    assertTrue(
+      html.contains("data-cp-locator-revision=\"o/r@design-artifacts/m3-catalog\""),
+      html,
+    )
+    // The row's own half: the component identity the locator names, taken from the catalog rather
+    // than re-derived in the browser from the preview id.
+    assertTrue(html.contains("data-component-id=\"Button/Filled\""), html)
+    // The picker itself, beside the row's name — server-rendered on every row and hidden by CSS
+    // until the wall marks itself pickable, because a tick means nothing without the script.
+    assertTrue(html.contains("<input type=\"checkbox\" class=\"cp-compare-pick-input\""), html)
+    assertTrue(html.contains("id=\"cp-compare-picked\""), html)
+  }
+
+  @Test
+  fun `a page report names no locator until a page can pick one`() {
+    // The placeholder is a line the browser either fills or deletes. On a page with nothing to fill
+    // it — every page-scoped report but the wall's — it would be filed verbatim, so it is not
+    // written at all, and the body a visitor with JS off files is unchanged either way.
+    val context = ServeIssueReport.Context(repo = "yschimke/m3-catalog", system = "m3-catalog")
+    val plain = ServeIssueReport.body(context, renderPlaceholder = true)
+    assertFalse(plain.contains(ServeIssueReport.LOCATORS_PLACEHOLDER), plain)
+    val pickable =
+      ServeIssueReport.body(context, renderPlaceholder = true, locatorsPlaceholder = true)
+    assertTrue(pickable.contains("\n${ServeIssueReport.LOCATORS_PLACEHOLDER}\n"), pickable)
+    // Deleting the placeholder LINE has to reproduce the other body byte for byte — that is what a
+    // report filed with nothing ticked must be, and what a visitor with no script files.
+    assertEquals(plain, pickable.replace("${ServeIssueReport.LOCATORS_PLACEHOLDER}\n", ""))
   }
 
   @Test

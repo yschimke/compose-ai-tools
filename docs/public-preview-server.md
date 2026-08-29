@@ -2702,6 +2702,15 @@ Open the focused **Reference / Diff / Actual** page for the preview
 prefilled body carries a fenced ```compose-parity-locator/v1``` block naming the repository, system,
 component, preview id, reference id, variant and any active overrides.
 
+**Several comparisons in one issue.** On the comparison wall's reference lane each row carries a
+checkbox beside its name. Tick the rows and the wall's own report — "report a catalog issue", at the
+top of the page — grows one locator block per ticked row, so the umbrella issue reaches the Bugs
+column of every row it names instead of none of them. One block per **component**: the producer
+refuses a body naming a component, a preview or a reference twice, and refuses the whole body, so
+the wall disables a second variant of a component you have already picked rather than letting you
+file an issue that would silently index nowhere. Ticking nothing files exactly the page-scoped
+report the wall filed before.
+
 **Leave the block alone.** It is the issue's machine-readable identity, and it is what the index
 below joins on: an issue whose fence has been edited, reformatted or deleted is skipped when the
 index is regenerated, so it silently stops appearing on the component's page. Everything a human
@@ -2724,7 +2733,16 @@ Two small label vocabularies, both low-cardinality on purpose:
 | `area:comparison` | the comparison or its scoring is wrong |
 | `parity:regression` | it used to match and no longer does |
 | `parity:known-difference` | tolerated, with an acceptance (step 3) |
-| `parity:verification-needed` | a fix landed; the comparison has not confirmed it |
+| `parity:verification-needed` | nobody has established yet whose it is, or a fix landed and the comparison has not confirmed it |
+| `parity:upstream` | the framework or design system the catalog builds on, not the catalog |
+| `parity:catalog` | the catalog's own code draws it wrongly |
+
+The last three are also the report form's own question — **"Where does it belong?"**, beside the
+Summary field. Whatever is chosen there rides to GitHub as the `labels` parameter, so the label is
+applied as the issue is opened, and the body's `**Where it belongs:**` line says the same thing in
+prose for a repository that has no such label to apply. It defaults to `parity:verification-needed`,
+which is the honest answer when the reporter cannot tell — the point of asking on the comparison is
+that the person looking at both pictures is best placed to say, not that they must guess.
 
 Labels are **enrichment, not identity** — they are read when present and ignored when absent. There
 is deliberately **no label per component**: that is what the locator is for, and a few hundred
