@@ -37,8 +37,9 @@ release to propagate through Maven Central.
 
 ## Publishing the image (one-time / per release)
 
-The [`preview-host-image.yml`](../../.github/workflows/preview-host-image.yml)
-workflow builds and pushes to GHCR. The automatic path starts as soon as the
+The [`preview-host-image.yml`](https://github.com/yschimke/compose-preview-server/blob/main/.github/workflows/preview-host-image.yml)
+workflow in **yschimke/compose-preview-server** builds and pushes to GHCR — that
+repository owns the server and this image now. The automatic path starts as soon as the
 release tag exists and builds its inputs directly from that tag, in parallel
 with the core release. Trigger it either way:
 
@@ -799,8 +800,8 @@ services split the work:
   live one, waits for that replica's `/readyz` healthcheck to pass, lets Caddy
   drain traffic onto it, then retires the old replica. The chain stays hands-off:
 
-  > merge → cut a `v*` tag → core release + `preview-host-image.yml` start in
-  > parallel → image publishes `:latest` →
+  > merge → cut a `v*` tag in compose-preview-server → its release publishes
+  > `:latest` →
   > `rollout` pulls it → new replica boots + goes healthy → traffic drains over →
   > old replica retired
 

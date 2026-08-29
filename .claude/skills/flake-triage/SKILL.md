@@ -29,18 +29,15 @@ md5sum run-*.png
 compares a file against itself and always "passes".
 
 **A harness capture has the same oracle, and it is cheaper.** The captures the
-`serve-preview-diff` bot compares are Playwright shots of committed static
-fixtures, so N runs cost seconds and need no JVM. **Two harnesses write into that
-one baseline set**, and they do not share an invocation — find which one owns your
-capture (`git grep "<fixture>" -- '*/preview-harness/*'`) and use its own:
+visual-diff bot compares are Playwright shots of committed static fixtures, so N
+runs cost seconds and need no JVM.
 
-```
-# preview-server/preview-harness — the `serve` web surfaces (serve-*, viewer-*).
-cd preview-server/preview-harness
-HARNESS_CHROMIUM=/path/to/chromium HARNESS_THEME=light \
-  npx playwright test -c playwright.config.mjs pages-snapshot.spec.mjs -g "<fixture>"
-md5sum out/<capture>.light.png
-```
+**The `serve` captures (serve-*, viewer-*) are not triaged here any more.** That
+harness moved with the server to yschimke/compose-preview-server, where it runs as
+the `visual-harness` CI job; triage them in that repository, against its
+`preview-harness/`. What stays here is the fixture tree those captures read
+(`preview-server/preview-harness/fixtures/`, still asserted by `ServeWebFixtureTest`
+and friends) — a fixture edit here changes what that repository captures.
 
 ```
 # compose-preview-vscode/preview-harness — the VS Code panel's own fixtures.
@@ -54,10 +51,8 @@ HARNESS_CHROMIUM=/path/to/chromium HARNESS_FIXTURE=<fixture> HARNESS_THEME=light
 md5sum preview-harness/out/<capture>.light.png
 ```
 
-The spec filenames differ (`pages-snapshot.spec.mjs` vs `snapshot.spec.mjs`), so
-the two commands are not interchangeable. `HARNESS_THEME` narrows to one theme in
-both; `HARNESS_FIXTURE` is the extension harness's own selector and is cleaner
-than `-g` there.
+`HARNESS_THEME` narrows to one theme; `HARNESS_FIXTURE` is the extension
+harness's own selector and is cleaner than `-g` there.
 
 There is no `--rerun` equivalent to remember: each invocation rewrites `out/`.
 
