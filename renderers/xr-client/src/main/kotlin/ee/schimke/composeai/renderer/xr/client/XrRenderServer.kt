@@ -67,9 +67,17 @@ public fun interface XrRenderServerFactory {
 public class XrRenderServer
 private constructor(
   private val client: XrServerClient,
-  /** The server's advertised `capabilities` from `initialize`. */
-  public override val capabilities: JsonObject,
+  /**
+   * The verified `initialize` result — protocol version, scene version and capabilities. Unlike the
+   * raw [capabilities] object this is checked at handshake time, so holding one means the server is
+   * a version this client can actually speak.
+   */
+  public val handshake: XrServerHandshake,
 ) : XrRenderServerHandle {
+
+  /** The server's advertised `capabilities` from `initialize`. */
+  public override val capabilities: JsonObject
+    get() = handshake.capabilities
 
   public override fun render(
     sessionId: String,
@@ -92,8 +100,10 @@ private constructor(
   public companion object {
     /**
      * Spawn `xr-composite --serve` from [binary] (+ [materials]) and complete `initialize`. Throws
-     * [XrServerException] if the handshake fails. [width]/[height] are the process-level defaults
-     * for sessions that don't pass their own.
+     * [XrServerException] if the handshake fails — including when the server speaks a protocol
+     * version this client does not, which the daemon surfaces as an `xr/start` error rather than as
+     * a composite that never appears. [width]/[height] are the process-level defaults for sessions
+     * that don't pass their own.
      */
     public fun start(
       binary: File,
@@ -102,14 +112,14 @@ private constructor(
       height: Int = 800,
     ): XrRenderServer {
       val client = XrServerClient.spawn(binary, materials, width, height)
-      val caps =
+      val handshake =
         try {
           client.initialize()
         } catch (e: Throwable) {
           client.close()
           throw e
         }
-      return XrRenderServer(client, caps)
+      return XrRenderServer(client, handshake)
     }
 
     /**

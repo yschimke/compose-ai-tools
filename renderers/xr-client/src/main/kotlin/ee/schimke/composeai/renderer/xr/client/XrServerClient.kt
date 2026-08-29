@@ -15,8 +15,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
@@ -35,6 +38,73 @@ public data class StreamFrame(
 /** Thrown on transport / protocol failure talking to the native render server. */
 public class XrServerException(message: String, cause: Throwable? = null) :
   RuntimeException(message, cause)
+
+/**
+ * What `initialize` told us about the server we are attached to.
+ *
+ * The handshake used to be plumbed and then ignored — `capabilities` was carried as an untyped
+ * `JsonObject` that nothing read. That was survivable while client and server were built from the
+ * same commit; it is not, now that the compositor is provisioned at a pinned version that
+ * deliberately lags (see the `xr-composite` pin). Version skew is the normal case here, so the
+ * handshake has to be load-bearing: a mismatch must surface as a NAMED error, not as a composite
+ * that silently never appears.
+ */
+public data class XrServerHandshake(
+  /** `serverInfo.name` — `xr-composite` for the real server. Reported in errors, not enforced. */
+  val serverName: String?,
+  /** `serverInfo.version` — the RPC surface the server speaks. */
+  val serviceVersion: Int,
+  /** `capabilities.spatialSceneVersion` — the scene format it parses, or null if unreported. */
+  val spatialSceneVersion: Int?,
+  /** The raw `capabilities` object, for callers that want to inspect beyond the typed fields. */
+  val capabilities: JsonObject,
+) {
+  /** Whether the server advertised [name] as a boolean-true capability. */
+  public fun has(name: String): Boolean = capabilities[name]?.jsonPrimitive?.booleanOrNull == true
+
+  public companion object {
+    /**
+     * Parse and VERIFY an `initialize` result. Pure, so the compatibility rules are unit-testable
+     * without spawning a process.
+     *
+     * Accepts a server in `[MIN_SUPPORTED_XR_RENDER_SERVICE_VERSION, XR_RENDER_SERVICE_VERSION]`
+     * and refuses one newer than this client, whose semantics we cannot know. Refusing a *newer*
+     * server rather than an older one is deliberate: the pin means the server normally lags, so
+     * requiring equality would make every service bump a flag day.
+     */
+    public fun parse(result: JsonObject): XrServerHandshake {
+      val capabilities =
+        result[XrRenderService.Result.CAPABILITIES]?.jsonObject
+          ?: throw XrServerException("initialize: no capabilities in result ($result)")
+      val serverInfo = result[XrRenderService.Result.SERVER_INFO]?.jsonObject
+      val name = serverInfo?.get("name")?.jsonPrimitive?.contentOrNull
+      val version =
+        serverInfo?.get("version")?.jsonPrimitive?.intOrNull
+          ?: throw XrServerException(
+            "initialize: no serverInfo.version — not an ${XrRenderService.SERVER_NAME} render " +
+              "server, or one too old to report its protocol version (result: $result)"
+          )
+      if (
+        version > XrRenderService.XR_RENDER_SERVICE_VERSION ||
+          version < XrRenderService.MIN_SUPPORTED_XR_RENDER_SERVICE_VERSION
+      ) {
+        throw XrServerException(
+          "XR render service version mismatch: ${name ?: "server"} speaks v$version, this client " +
+            "speaks v${XrRenderService.XR_RENDER_SERVICE_VERSION} and supports back to " +
+            "v${XrRenderService.MIN_SUPPORTED_XR_RENDER_SERVICE_VERSION}. Update the " +
+            "`xr-composite` pin to a release built from a compatible commit."
+        )
+      }
+      return XrServerHandshake(
+        serverName = name,
+        serviceVersion = version,
+        spatialSceneVersion =
+          capabilities[XrRenderService.Capability.SPATIAL_SCENE_VERSION]?.jsonPrimitive?.intOrNull,
+        capabilities = capabilities,
+      )
+    }
+  }
+}
 
 /**
  * JVM client for the native `xr-composite --serve` render server (see
@@ -66,17 +136,44 @@ internal constructor(
   // One frame queue per sessionId — the reader routes `streamFrame` notifications here by
   // sessionId.
   private val frames = ConcurrentHashMap<String, LinkedBlockingQueue<StreamFrame>>()
+  // The verified `initialize` result, retained so render/updatePanels can gate on what the server
+  // actually advertised. Null until initialize() runs.
+  @Volatile private var handshake: XrServerHandshake? = null
+  // Sessions this client has rendered into and not yet stopped — the basis of the `multiSession`
+  // gate. A single-session server silently reuses one scene for a second id, so opening one
+  // without the capability corrupts both sessions rather than failing.
+  private val openSessions = ConcurrentHashMap.newKeySet<String>()
   private val reader =
     Thread({ runReader(input) }, "xr-server-client-reader").apply {
       isDaemon = true
       start()
     }
 
-  /** Drives `initialize`; returns the server's `capabilities` object. */
-  public fun initialize(timeout: Duration = 60.seconds): JsonObject {
+  /**
+   * Drives `initialize` and VERIFIES the result, throwing [XrServerException] on a protocol version
+   * this client cannot speak. The handshake is retained so later calls can gate on the capabilities
+   * the server actually advertised rather than assuming them.
+   */
+  public fun initialize(timeout: Duration = 60.seconds): XrServerHandshake {
     val result = request(XrRenderService.Method.INITIALIZE, buildJsonObject {}, timeout)
-    return result[XrRenderService.Result.CAPABILITIES]?.jsonObject
-      ?: throw XrServerException("initialize: no capabilities in result ($result)")
+    val parsed = XrServerHandshake.parse(result)
+    handshake = parsed
+    return parsed
+  }
+
+  /**
+   * Fail unless the server advertised [capability]. An absent capability means the server predates
+   * the feature; calling anyway produces a confusing mid-stream error instead of a named one.
+   */
+  private fun requireCapability(capability: String, what: String) {
+    val caps =
+      handshake ?: throw XrServerException("$what before initialize: the handshake has not run yet")
+    if (!caps.has(capability)) {
+      throw XrServerException(
+        "$what: server ${caps.serverName ?: "(unknown)"} v${caps.serviceVersion} does not " +
+          "advertise the `$capability` capability"
+      )
+    }
   }
 
   /**
@@ -93,6 +190,14 @@ internal constructor(
     height: Int? = null,
     timeout: Duration = 60.seconds,
   ): StreamFrame {
+    requireCapability(XrRenderService.Capability.RENDER, "render")
+    checkSceneVersion(scene)
+    if (!openSessions.contains(sessionId) && openSessions.isNotEmpty()) {
+      requireCapability(
+        XrRenderService.Capability.MULTI_SESSION,
+        "render into a second session ($sessionId, alongside ${openSessions.joinToString()})",
+      )
+    }
     val params = buildJsonObject {
       put(XrRenderService.Param.SESSION_ID, sessionId)
       put(XrRenderService.Param.SCENE, scene)
@@ -102,6 +207,7 @@ internal constructor(
       height?.let { put(XrRenderService.Param.HEIGHT, it) }
     }
     request(XrRenderService.Method.RENDER, params, timeout)
+    openSessions.add(sessionId)
     return awaitFrame(sessionId, timeout)
   }
 
@@ -115,6 +221,7 @@ internal constructor(
     panels: JsonArray,
     timeout: Duration = 60.seconds,
   ): StreamFrame {
+    requireCapability(XrRenderService.Capability.UPDATE_PANELS, "updatePanels")
     val params = buildJsonObject {
       put(XrRenderService.Param.SESSION_ID, sessionId)
       put(XrRenderService.Param.PANELS, panels)
@@ -133,6 +240,7 @@ internal constructor(
       }
     )
     frames.remove(sessionId)
+    openSessions.remove(sessionId)
   }
 
   /** Whether the spawned child is still alive (always true for the stream-backed test client). */
@@ -167,6 +275,27 @@ internal constructor(
       process?.destroyForcibly()
     }
     reader.join(2_000)
+  }
+
+  /**
+   * Fail when the scene we are about to send declares a `version` the server said it cannot parse.
+   *
+   * Checks the actual payload against the server's advertised `spatialSceneVersion` rather than a
+   * compile-time constant, which is both stricter and keeps this module free of a dependency on the
+   * SpatialScene DTOs — its whole dependency list is kotlinx-serialization-json. Silent when either
+   * side does not report a version: an unreported version is not evidence of a mismatch.
+   */
+  private fun checkSceneVersion(scene: JsonElement) {
+    val serverVersion = handshake?.spatialSceneVersion ?: return
+    val sceneVersion = (scene as? JsonObject)?.get("version")?.jsonPrimitive?.intOrNull ?: return
+    if (sceneVersion != serverVersion) {
+      throw XrServerException(
+        "SpatialScene version mismatch: this scene is v$sceneVersion but the render server parses " +
+          "v$serverVersion. The compositor is pinned separately from this repository " +
+          "(`xr-composite` in gradle/libs.versions.toml); bump that pin to a release built " +
+          "against scene v$sceneVersion."
+      )
+    }
   }
 
   // ---- internals ----

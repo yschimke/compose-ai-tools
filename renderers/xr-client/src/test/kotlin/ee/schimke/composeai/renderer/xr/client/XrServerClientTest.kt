@@ -8,6 +8,7 @@ import java.io.PipedOutputStream
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -38,7 +39,17 @@ class XrServerClientTest {
   /**
    * A scripted fake server: reads each request and replies, pushing a streamFrame before the ack.
    */
-  private fun startFakeServer(serverIn: InputStream, serverOut: OutputStream) {
+  private fun startFakeServer(
+    serverIn: InputStream,
+    serverOut: OutputStream,
+    capabilities: JsonObject = buildJsonObject {
+      put("render", true)
+      put("updatePanels", true)
+      put("streamFrame", true)
+      put("multiSession", true)
+      put("spatialSceneVersion", 1)
+    },
+  ) {
     serverThread =
       Thread {
         var seq = 0L
@@ -54,14 +65,17 @@ class XrServerClientTest {
                 result(
                   id!!,
                   buildJsonObject {
+                    // Mirrors what the native server actually sends. This fake omitted
+                    // `serverInfo` entirely until the handshake became load-bearing — an
+                    // unfaithful fake nothing could detect, because nothing read the result.
                     put(
-                      "capabilities",
+                      "serverInfo",
                       buildJsonObject {
-                        put("render", true)
-                        put("updatePanels", true)
-                        put("streamFrame", true)
+                        put("name", XrRenderService.SERVER_NAME)
+                        put("version", XrRenderService.XR_RENDER_SERVICE_VERSION)
                       },
                     )
+                    put("capabilities", capabilities)
                   },
                 ),
               )
@@ -105,8 +119,11 @@ class XrServerClientTest {
 
     val client = XrServerClient(clientToServer, clientIn, process = null)
 
-    val caps = client.initialize()
-    assertEquals(true, caps["render"]?.jsonPrimitive?.content?.toBoolean())
+    val handshake = client.initialize()
+    assertEquals(XrRenderService.SERVER_NAME, handshake.serverName)
+    assertEquals(XrRenderService.XR_RENDER_SERVICE_VERSION, handshake.serviceVersion)
+    assertEquals(1, handshake.spatialSceneVersion)
+    assertEquals(true, handshake.has(XrRenderService.Capability.RENDER))
 
     val scene = buildJsonObject {
       put("version", 1)
@@ -233,5 +250,115 @@ class XrServerClientTest {
       }
       buf.write(b)
     }
+  }
+
+  /** Wire a client to a fake server advertising [capabilities]. */
+  private fun connect(capabilities: JsonObject? = null): XrServerClient {
+    val clientToServer = PipedOutputStream()
+    val serverIn = PipedInputStream(clientToServer, 1 shl 16)
+    val serverToClient = PipedOutputStream()
+    val clientIn = PipedInputStream(serverToClient, 1 shl 16)
+    if (capabilities == null) startFakeServer(serverIn, serverToClient)
+    else startFakeServer(serverIn, serverToClient, capabilities)
+    return XrServerClient(clientToServer, clientIn, process = null)
+  }
+
+  private fun scene(version: Int = 1) = buildJsonObject {
+    put("version", version)
+    put("units", "dp")
+    put("camera", buildJsonObject { put("kind", "orbit") })
+    put("panels", buildJsonArray {})
+  }
+
+  @Test
+  fun `a second session is refused when the server does not advertise multiSession`() {
+    // A single-session server silently reuses one scene for a second id, so the two sessions
+    // corrupt each other's frames rather than failing. Refuse before sending.
+    val client =
+      connect(
+        buildJsonObject {
+          put("render", true)
+          put("updatePanels", true)
+          put("streamFrame", true)
+          put("multiSession", false)
+          put("spatialSceneVersion", 1)
+        }
+      )
+    client.initialize()
+    client.render("s1", scene(), sceneDir = ".")
+    val e = assertFailsWith<XrServerException> { client.render("s2", scene(), sceneDir = ".") }
+    assertTrue(e.message!!.contains("multiSession"), e.message)
+  }
+
+  @Test
+  fun `reusing the same session needs no multiSession capability`() {
+    val client =
+      connect(
+        buildJsonObject {
+          put("render", true)
+          put("updatePanels", true)
+          put("streamFrame", true)
+          put("multiSession", false)
+          put("spatialSceneVersion", 1)
+        }
+      )
+    client.initialize()
+    client.render("s1", scene(), sceneDir = ".")
+    // Re-rendering the SAME session is single-session behaviour and must stay allowed.
+    assertEquals(2L, client.render("s1", scene(), sceneDir = ".").seq)
+  }
+
+  @Test
+  fun `a stopped session no longer counts against the multiSession gate`() {
+    val client =
+      connect(
+        buildJsonObject {
+          put("render", true)
+          put("updatePanels", true)
+          put("streamFrame", true)
+          put("multiSession", false)
+          put("spatialSceneVersion", 1)
+        }
+      )
+    client.initialize()
+    client.render("s1", scene(), sceneDir = ".")
+    client.stop("s1")
+    // One session at a time is exactly what a single-session server supports.
+    assertEquals(2L, client.render("s2", scene(), sceneDir = ".").seq)
+  }
+
+  @Test
+  fun `a scene whose version the server cannot parse is refused before sending`() {
+    val client = connect()
+    client.initialize()
+    val e =
+      assertFailsWith<XrServerException> { client.render("s1", scene(version = 2), sceneDir = ".") }
+    assertTrue(e.message!!.contains("SpatialScene version mismatch"), e.message)
+    assertTrue(e.message!!.contains("xr-composite"), e.message)
+  }
+
+  @Test
+  fun `updatePanels is refused when the server does not advertise it`() {
+    val client =
+      connect(
+        buildJsonObject {
+          put("render", true)
+          put("updatePanels", false)
+          put("streamFrame", true)
+          put("multiSession", true)
+          put("spatialSceneVersion", 1)
+        }
+      )
+    client.initialize()
+    client.render("s1", scene(), sceneDir = ".")
+    val e = assertFailsWith<XrServerException> { client.updatePanels("s1", buildJsonArray {}) }
+    assertTrue(e.message!!.contains("updatePanels"), e.message)
+  }
+
+  @Test
+  fun `calling render before initialize is a named error`() {
+    val client = connect()
+    val e = assertFailsWith<XrServerException> { client.render("s1", scene(), sceneDir = ".") }
+    assertTrue(e.message!!.contains("before initialize"), e.message)
   }
 }

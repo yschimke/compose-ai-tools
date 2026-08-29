@@ -13,6 +13,8 @@
   "x-service": {
     "version": 1,
     "version-description": "Version of THIS RPC surface, reported as `initialize`'s `serverInfo.version`.\n\nBumped when a method, parameter, result field or error code changes meaning — not when the\nSpatialScene format changes, which carries its own `SPATIAL_SCENE_VERSION`. A client compares\nthe two independently: it can speak service v1 against a server whose scene format moved, and\nvice versa.",
+    "min-supported-version": 1,
+    "min-supported-version-description": "Oldest service version a current client still speaks.\n\nThe compatibility window exists because the pin makes version skew the NORMAL case, not\nan error: the compositor is provisioned at a version that deliberately lags, so the\nserver is routinely older than the client. Requiring equality would make bumping this\ncontract a flag day — every render broken until a new compositor is built, published and\npinned. So a client accepts a server in [min-supported-version, version] and refuses one\nNEWER than itself, whose semantics it cannot know. Individual additions are gated by\n`capabilities` instead, which is what they are for.",
     "server-name": "xr-composite",
     "default-session-id": "default",
     "default-session-id-description": "Session id the server falls back to when a call carries neither `sessionId` nor\n`frameStreamId` and `initialize` registered no default. Part of the contract: a\nsingle-session client that never names a session still has its frames tagged with this,\nso a client demultiplexing by session id must use the same literal.",
