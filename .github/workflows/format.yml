@@ -49,5 +49,36 @@ jobs:
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      # Retried once, and only because the failure mode being retried is provably not a
+      # formatting violation.
+      #
+      # `com.ncorti.ktfmt.gradle` fails intermittently on its own scratch files:
+      #
+      #   Execution failed for task ':rc-player-trace:ktfmtCheckScripts'
+      #   > Could not read path '…/rc-player/trace/build/tmp/ktfmtCheckKmpWasmJsMain/<uuid>/<uuid>.txt'
+      #
+      # Note the mismatch — `ktfmtCheckScripts` naming `ktfmtCheckKmpWasmJsMain`'s directory.
+      # Each task writes results under `getTemporaryDir()/<random uuid>` (its OWN directory),
+      # so one task cannot legitimately name another's. What it actually shows is Gradle
+      # attributing an un-awaited worker failure to whichever task reached the barrier first,
+      # which is why both the reported task and the reported path move between runs.
+      #
+      # It is not this repository's to fix: the plugin is on 0.27.0, already the newest
+      # published version, and nothing in the build config chooses those paths.
+      #
+      # Retrying is sound here for one specific reason: an actual unformatted file is
+      # deterministic and fails both attempts, so this rescues the flake WITHOUT weakening the
+      # gate. Observed on 2026-08-29 across three unrelated branches in one hour (#11009,
+      # #11024, #11033), each cleared by a re-run of the identical commit — a merge blocker
+      # for everyone, resolved only by someone noticing and pressing the button.
+      #
+      # If this ever starts needing more than one retry, that is a different failure and the
+      # retry should come out rather than grow.
       - name: Run ktfmt check
-        run: ./gradlew ktfmtCheckAll
+        # Spelled with `if` for legibility, not necessity: under the default `bash -e` shell,
+        # `cmd && exit 0` also reaches the retry, because `-e` is exempt for every element of an
+        # AND-list but the last. Verified both spellings rather than trusting the folklore.
+        run: |
+          if ./gradlew ktfmtCheckAll; then exit 0; fi
+          echo "::warning::ktfmt check failed; retrying once (see the comment in format.yml)."
+          ./gradlew ktfmtCheckAll
