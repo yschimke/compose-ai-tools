@@ -1510,6 +1510,39 @@ jobs:
   # vscjava.vscode-gradle stub so our extensionDependency check passes, and
   # run the extension against a fixture workspace. xvfb is needed because
   # VS Code expects a display even in headless mode.
+  # The `xr-composite` pin is what makes the compositor releasable on its own cadence: the CLI and
+  # the Gradle plugin both resolve the binary by it rather than by their own version. That only
+  # holds while the pin actually moves when the compositor does. A change that leaves it behind
+  # ships nothing and says nothing — a missing asset is a graceful skip, so the render still
+  # succeeds, just without a composite. Deliberately NOT behind a `changes` path filter: a gate
+  # that can be scheduled away is not a gate, and this one costs a second.
+  xr-composite-pin:
+    name: XR Composite Pin
+    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run pin gate tests
+        run: python3 .github/ci/test_check_xr_composite_pin.py -v
+      - name: Check the pin moved with the compositor
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # The runner's checkout is shallow, so fetch the base commit the event names rather than
+          # relying on `origin/main` being present. Fails CLOSED, unlike the consumer-contract
+          # notice: a diff we cannot compute must not read as "the compositor is untouched".
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA"); then
+            echo "::error::could not diff against $BASE_SHA — re-run this job. The pin gate must not pass on an uncomputed diff."
+            exit 1
+          fi
+          printf '%s\n' "$changed" |
+            python3 .github/ci/check_xr_composite_pin.py --changed - --base "$BASE_SHA"
+
   consumer-contract-notice:
     name: Consumer Contract Notice
     # Informational only — see the script's docstring for why this must not gate. It is a

@@ -168,11 +168,15 @@ band on the horizon. The horizon colour also doubles as the readback **clear col
 
 ## Consumer flow — auto-provisioned by the CLI
 
-Consumers do **not** build this tool or run an install step. On each GitHub Release the binary +
-compiled `materials/` are published per OS as `xr-composite-<platform>-<version>.tar.gz`
-(`linux-x86_64` / `macos-arm64` / `windows-x86_64`, see `.github/workflows/release.yml`). When the
+Consumers do **not** build this tool or run an install step. The binary + compiled `materials/` are
+published per OS as `xr-composite-<platform>-<version>.tar.gz` (`linux-x86_64` / `macos-arm64` /
+`windows-x86_64`) by
+[`.github/workflows/xr-composite-release.yml`](../../.github/workflows/xr-composite-release.yml) —
+**not** on every release. `<version>` is the `xr-composite` pin in
+[`gradle/libs.versions.toml`](../../gradle/libs.versions.toml), which moves only when this directory
+does; see [docs/RELEASING.md](../../docs/RELEASING.md) for how to cut one. When the
 `compose-preview` CLI drives a render and discovers an `XR_SUBSPACE` preview, it **auto-fetches** the
-tarball matching its own released version into a shared, well-known cache:
+tarball matching that pin into a shared, well-known cache:
 
 ```
 ${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/xr-composite   (+ materials/)
@@ -183,9 +187,10 @@ The Gradle plugin's `composePreviewCompositeXr` task then *reads* that cache (re
 plugin's version + host platform). The CLI is the only writer; the plugin never downloads, so a raw
 `./gradlew composePreviewRenderAll` stays explicit (set the property/env or pre-populate the cache).
 
-Everything is best-effort: an offline machine, a missing asset for a local `-SNAPSHOT` build (no
-published release → 404), or an unsupported platform logs a concise note and the composite still is
-simply absent — the render is never failed. Only the CLI auto-provisions the binary today (into the
+Everything is best-effort: an offline machine, a pin naming a release with no published asset (→
+404), or an unsupported platform logs a concise note and the composite still is simply absent — the
+render is never failed. That graceful skip is also why the `XR Composite Pin` CI gate exists: a
+compositor change that never gets published degrades without a single error. Only the CLI auto-provisions the binary today (into the
 shared cache the plugin reads); daemon-side auto-provisioning is a follow-up, tied to the daemon
 actually producing composites.
 

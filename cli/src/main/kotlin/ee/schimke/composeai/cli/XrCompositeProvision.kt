@@ -79,8 +79,8 @@ object XrCompositeProvision {
   /**
    * Download URL on the GitHub Release tagged `v<version>`, where `version` is the pinned
    * `xr-composite` release rather than the CLI's own — so a CLI release that did not rebuild the
-   * compositor still resolves the last one that did. A pin naming a release with no published
-   * asset 404s and the caller falls through to a graceful skip.
+   * compositor still resolves the last one that did. A pin naming a release with no published asset
+   * 404s and the caller falls through to a graceful skip.
    */
   internal fun assetUrl(version: String, platform: String): String =
     "https://github.com/$REPO/releases/download/v$version/${assetName(version, platform)}"

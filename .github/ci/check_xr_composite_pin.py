@@ -15,6 +15,12 @@ built artifact — see NON_SHIPPING), the same diff must change the `xr-composit
 
 Exits non-zero with a fix hint on violation. `--print-pin` just prints the pin, which is how
 `xr-composite-release.yml` checks that it publishes the version consumers actually ask for.
+
+Changed paths come from `git diff` against `--base` by default (what a contributor wants locally)
+or, with `--changed -`, from stdin — the shape CI uses, since a PR runner has only a shallow
+checkout and the base SHA is what the event carries. Unlike the informational consumer-contract
+notice this fails CLOSED: a diff we cannot compute must not read as "the compositor is untouched",
+which is the silent pass this gate exists to prevent.
 """
 
 from __future__ import annotations
@@ -103,7 +109,12 @@ def main() -> int:
     ap.add_argument(
         "--base",
         default="origin/main",
-        help="merge base to diff against (default: origin/main)",
+        help="base ref to diff against and read the previous pin from (default: origin/main)",
+    )
+    ap.add_argument(
+        "--changed",
+        metavar="FILE",
+        help="read changed paths from FILE ('-' for stdin) instead of asking git",
     )
     args = ap.parse_args()
 
@@ -111,7 +122,12 @@ def main() -> int:
         print(current_pin())
         return 0
 
-    touched = shipping_changes(changed_paths(args.base))
+    if args.changed:
+        raw = sys.stdin.read() if args.changed == "-" else Path(args.changed).read_text()
+        paths = [line.strip() for line in raw.splitlines() if line.strip()]
+    else:
+        paths = changed_paths(args.base)
+    touched = shipping_changes(paths)
     if not touched:
         return 0
 
