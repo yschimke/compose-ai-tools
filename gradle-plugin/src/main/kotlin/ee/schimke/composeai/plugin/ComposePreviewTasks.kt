@@ -762,6 +762,25 @@ internal object ComposePreviewTasks {
       // implicit-dependency validation error. `mustRunAfter` supplies it WITHOUT pulling render in
       // when only bundle is requested — render still doesn't run unless the caller asks for it.
       mustRunAfter("composePreviewRender")
+      // …and the same for the OTHER two dirs `renderFiles` declares. `composePreviewRenderSvg` and
+      // `composePreviewRenderLottie` write `svg-renders/` and `lottie-renders/`, which are wired as
+      // inputs a few lines below, so they need the ordering for exactly the reason the render task
+      // above does — and only the render task above had it. Asking for both halves in one
+      // invocation therefore failed the build outright:
+      //
+      //   $ ./gradlew :catalog:composePreviewRenderAll :catalog:composePreviewBundle
+      //   Declare an explicit dependency on ':catalog:composePreviewRenderLottie'
+      //   from ':catalog:composePreviewBundle' using Task#mustRunAfter.
+      //
+      // which is what `composePreviewRenderAll` aggregates, so the documented pack flow only
+      // survived by being two separate Gradle invocations.
+      //
+      // By type rather than by name: these two are registered on the Android path only, so naming
+      // them as strings would throw on a desktop module, and a `matching {}` predicate would
+      // realize every task to test it. A typed collection stays lazy and is empty where they do not
+      // exist. It also catches the desktop `composePreviewRender`, which is harmless — it is
+      // already named above, and an ordering declared twice is still one edge.
+      mustRunAfter(project.tasks.withType(RenderPreviewsTask::class.java))
       dependsOn(discoverTaskName)
       // Pack the module's PROCESSED resources into `classes/app.jar` ([moduleResourcesDir] points
       // at
