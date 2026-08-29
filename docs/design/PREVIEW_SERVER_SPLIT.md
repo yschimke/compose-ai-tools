@@ -403,6 +403,47 @@ port that `:daemon:core` owns, and `:daemon:desktop` adapts `XrSessionManager` o
 renderer client is no longer on the protocol contract's compile ABI — or on the classpath of a
 preview server that never renders XR.
 
+## Where this stands, measured 2026-08-29
+
+Re-run `python3 scripts/measure-serve-coupling.py` for today's numbers; these are the ones that
+motivated the note below.
+
+| gate condition | measured | target |
+| --- | --- | --- |
+| Volume — crossing PRs as a share of all PRs | 20.3% | ≤ 5% |
+| Volume — as a share of component-touching PRs | 43.3% | ≤ 15% |
+| Depth — deep crossings per week | 22.4/wk | ≤ 2/wk |
+
+**The structural work is in good shape; it is the traffic that is red.** `checkServeSeam` is green,
+its 45 tests pass, `cliInternalsUsedByServe` is down to three entries, the artifact probe works, and
+items 1, 4, 5, 6, 9 and 10 are done. What has not moved is how often a pull request still touches
+both sides.
+
+### Extracting contracts does not move this gate
+
+Worth writing down because it is counter-intuitive and was measured rather than assumed. The
+2026-08-29 cutover moved `daemon-protocol`, `daemon-bta` and `daemon-devices` out of this repository
+entirely, into compose-preview-contracts. Deep traffic named all three:
+
+```
+deep traffic: daemon/core x48, daemon/desktop x23, daemon/protocol x23, daemon/bta x18, daemon/devices x12
+```
+
+Re-running the measurement with those three paths excluded from `DEEP_PATTERNS` leaves depth at
+**22.4/wk — unchanged**. The crossings are counted per pull request, and every PR that touched the
+three also touched `daemon/core` or `daemon/desktop`. Publishing a contract removes a *build* edge;
+it does not remove the reason a change needs to touch both sides.
+
+So the remaining lever is `daemon/core` (48) and `daemon/desktop` (23) — which is the same coupling
+[`daemon-core` was a contract 14× the size of the contract](#daemon-core-was-a-contract-14-the-size-of-the-contract)
+already describes, and which items 3 and 7 address. Contract extraction is finished as a strategy
+for this gate.
+
+One caveat on reading the number: the current window is unusually full of one-off structural pull
+requests — the extension split (#4759), the contracts cutover (#4771), the CI rename (#4761). Those
+are not ongoing coupling and will age out of the window. That effect has not been separated from
+real traffic, so treat 22.4/wk as an upper bound rather than a steady state.
+
 ## Preparation order
 
 From #3824's follow-up investigation, with what has landed marked.
@@ -464,7 +505,13 @@ From #3824's follow-up investigation, with what has landed marked.
    > `unpublishedContracts` is still `{}`.
 
 6. **Add ABI validation and explicit API enforcement to the contract modules**, so a contract can't
-   change shape silently between the two repos.
+   change shape silently between the two repos. — *done.* Every contract module carries
+   `explicitApi()` and a committed ABI dump wired into `check`: `:daemon-client`,
+   `:preview-data-api`, `:render-session-api`, `:render-session-subprocess`, `:common-image-crop`,
+   `:common-web-escaping`, `:bundle-format`, `:bundle-coordinates`, `:data-remotecompose-core`,
+   `:data-pseudolocale-core` here, and all nine coordinates in
+   [yschimke/compose-preview-contracts](https://github.com/yschimke/compose-preview-contracts),
+   whose `AGENTS.md` makes it the first rule in the repository.
 7. **Extract the server implementation**, leaving a genuinely thin CLI adapter. `ServeCommand.kt`
    (~4.9k lines) currently combines CLI routing, Gradle discovery, rendering, bundle handling,
    sidecar resolution and server startup; it is the `cli→serve` half of the register.
