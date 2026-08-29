@@ -17,6 +17,7 @@ import {
     whole,
 } from "./capture.js";
 import { elementLabel, elementMarkdown } from "./markdown.js";
+import { markupEditor } from "./markup.js";
 import { pickElement, pickRegion } from "./select.js";
 import {
     Capture,
@@ -24,8 +25,14 @@ import {
     nextId,
     readCaptures,
     removeCapture,
+    replaceCapture,
     sessionStore,
 } from "./store.js";
+import {
+    hostedCaptureUrl,
+    uploadCapture,
+    withUploadedCaptures,
+} from "./upload.js";
 
 type Mode = "view" | "region" | "element";
 
@@ -49,33 +56,19 @@ export function installCapture(): void {
     }
     wireHandOff();
     render();
+    if (imageUploadEnabled()) void uploadReportCaptures();
 }
 
 /** The two forms that open a prefilled issue: `/report-bug`'s, and a preview's own. */
 const REPORT_FORMS = ".cp-report-bug-form, .cp-report-form";
 
 /**
- * Hand the capture back to the clipboard at the moment the issue form is submitted.
+ * Complete the image hand-off when the issue form is submitted.
  *
- * **Why this is the fix for "images don't make it to the bug" (issue #4334).** They cannot. GitHub's
- * new-issue form prefills from a URL and a URL carries a *body*; there is no query parameter for an
- * attachment, and an image only becomes one by being pasted into GitHub's own editor, which uploads
- * it to GitHub's storage. So the last few centimetres of the journey are always the reporter's
- * clipboard, and the only thing this end can do is make sure the right thing is on it at the right
- * moment — and say so.
- *
- * It was already copied ONCE, in [run], at the instant of capture. That is the wrong moment on its
- * own and the report page is the proof: between the shutter and this button the reporter navigates
- * to `/report-bug`, reads the report, and types a summary — a stretch of ordinary computer use in
- * which copying something else is entirely normal, and every one of those overwrites the picture.
- * Then the issue opens, the Screenshot section says paste, and what pastes is whatever they copied
- * last. The capture is not lost — it is still in the list with a Copy button on it — but nothing
- * ever told them that the paste they were about to do would produce the wrong thing.
- *
- * Copying inside the `submit` handler is what makes it work: it is a real user gesture, so the
- * clipboard write is authorised (Safari's rule, which is why [copyPng] takes the blob as a promise
- * rather than awaiting it first), and it is the last instant this tab controls before GitHub has
- * focus.
+ * Hosted captures are already embedded in the prefilled Markdown. If hosting was unavailable, the
+ * clipboard remains the reliable fallback: copying here uses the submit gesture for browser
+ * permission and happens after the reporter has finished writing, so an intervening copy cannot
+ * silently replace the screenshot.
  *
  * The NEWEST capture, because a clipboard holds one image and the newest is the one the pile's own
  * eviction rule already treats as the most wanted. When there are others the note says so, since
@@ -138,6 +131,15 @@ function handOff(): void {
     const mine = captures.filter((c) => !!c.page && c.page === page);
     const latest = mine[mine.length - 1];
     if (!latest) return;
+    applyHostedCaptures(mine);
+    if (mine.every((capture) => !!hostedCaptureUrl(capture.uploadedUrl))) {
+        note(
+            mine.length === 1
+                ? "Your capture is embedded in the report."
+                : `Your ${mine.length} captures are embedded in the report.`,
+        );
+        return;
+    }
     const rest =
         mine.length > 1
             ? ` The other ${mine.length - 1} are still here — press Copy on one to send it too.`
@@ -183,6 +185,85 @@ function render(): void {
         .forEach((note) => (note.hidden = captures.length > 0));
 }
 
+const originalBodies = new WeakMap<HTMLInputElement, string>();
+let uploadGeneration = 0;
+
+/** Upload this report's captures in the background while the reporter writes the summary. */
+async function uploadReportCaptures(): Promise<void> {
+    const generation = ++uploadGeneration;
+    const page = reportedPage();
+    const mine = readCaptures(sessionStore()).filter(
+        (capture) => !!capture.page && capture.page === page,
+    );
+    const pending = mine.filter(
+        (capture) => !hostedCaptureUrl(capture.uploadedUrl),
+    );
+    // An edit clears `uploadedUrl`. Remove the old embed immediately, before the replacement
+    // upload begins; if that upload fails, falling back to the clipboard must not leave the issue
+    // body pointing at the unannotated pixels.
+    applyHostedCaptures(mine);
+    if (!pending.length) {
+        return;
+    }
+    const submit = document.querySelector<HTMLButtonElement>(".cp-bug-submit");
+    if (submit) submit.disabled = true;
+    note(
+        pending.length === 1
+            ? "Uploading your capture…"
+            : `Uploading ${pending.length} captures…`,
+    );
+    try {
+        for (const capture of pending) {
+            const uploaded = await uploadCapture(capture);
+            // An edit or removal starts a new generation. Never let this older request restore its
+            // pre-edit pixels (and URL) after the replacement has reached sessionStorage.
+            if (generation !== uploadGeneration) return;
+            replaceCapture(sessionStore(), {
+                ...capture,
+                uploadedUrl: uploaded.url,
+            });
+        }
+        if (generation !== uploadGeneration) return;
+        const current = readCaptures(sessionStore()).filter(
+            (capture) => !!capture.page && capture.page === page,
+        );
+        applyHostedCaptures(current);
+        note(
+            current.length === 1
+                ? "Capture uploaded — it will be embedded in the report."
+                : `${current.length} captures uploaded — they will be embedded in the report.`,
+        );
+        render();
+    } catch {
+        if (generation !== uploadGeneration) return;
+        note(
+            "This server could not host the capture. It will be copied when you open the issue, so paste it into the Screenshot section.",
+        );
+    } finally {
+        if (generation === uploadGeneration && submit) submit.disabled = false;
+    }
+}
+
+function imageUploadEnabled(): boolean {
+    return (
+        document
+            .querySelector(".cp-shots")
+            ?.getAttribute("data-cp-image-upload") === "true"
+    );
+}
+
+function applyHostedCaptures(captures: Capture[]): void {
+    const input = document.querySelector<HTMLInputElement>("#cp-bug-body");
+    if (!input) return;
+    if (!originalBodies.has(input)) originalBodies.set(input, input.value);
+    input.value = withUploadedCaptures(
+        originalBodies.get(input) ?? input.value,
+        captures,
+    );
+    const preview = document.querySelector<HTMLElement>("#cp-bug-preview");
+    if (preview) preview.textContent = input.value;
+}
+
 function fill(list: HTMLElement, captures: Capture[]): void {
     list.replaceChildren(...captures.map(item));
 }
@@ -225,6 +306,27 @@ function item(capture: Capture): HTMLElement {
             copyPng(blobFromDataUrl(capture.dataUrl)),
         ),
     );
+    const markUp = document.createElement("button");
+    markUp.type = "button";
+    markUp.className = "cp-shot-action";
+    markUp.textContent = "Mark up";
+    markUp.title = "Draw a box, arrow, note, or freehand mark on this capture";
+    markUp.addEventListener("click", () => {
+        li.querySelector(".cp-markup")?.remove();
+        const editor = markupEditor(
+            capture,
+            (updated) => {
+                replaceCapture(sessionStore(), updated);
+                render();
+                if (imageUploadEnabled()) {
+                    void uploadReportCaptures();
+                }
+            },
+            () => li.querySelector(".cp-markup")?.remove(),
+        );
+        li.append(editor);
+    });
+    actions.append(markUp);
     if (capture.markdown) {
         const markdown = capture.markdown;
         actions.append(
@@ -245,6 +347,9 @@ function item(capture: Capture): HTMLElement {
         action("Remove", "Discard this capture", () => {
             removeCapture(sessionStore(), capture.id);
             render();
+            if (imageUploadEnabled()) {
+                void uploadReportCaptures();
+            }
             return Promise.resolve();
         }),
     );

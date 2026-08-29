@@ -2364,6 +2364,14 @@ public class ServeRunner(
         themeOptimizerAdmin = backgroundWork,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
+        imageBrowserLogin =
+          githubAuth?.let { auth ->
+            { call, repository ->
+              auth.currentLogin(call)?.takeIf {
+                auth.hasRepositoryAccess(call) && auth.accessRepository() == repository
+              }
+            }
+          },
         agentGrants = agentGrantStore,
         agentGrantLimiter = agentGrantStore?.let { buildAgentGrantRateLimiter() },
         playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
