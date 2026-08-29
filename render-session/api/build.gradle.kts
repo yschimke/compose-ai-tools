@@ -26,7 +26,18 @@ dependencies {
   // Protocol message types (`RenderTier`, `PreviewOverrides`, `FileKind`, etc.) are re-exposed
   // through this module's API. Consumers see them as `ee.schimke.composeai.daemon.protocol.*`
   // and the `RenderSession` contract references them directly — no duplicate DTOs in this jar.
-  api(project(":daemon:core"))
+  //
+  // `:daemon-protocol`, NOT `:daemon:core`. Every one of the 24 types this module's public
+  // surface names is declared in the protocol module; none comes from the daemon implementation.
+  // Depending on `:daemon:core` therefore put 653 public declarations — the JSON-RPC server, the
+  // encoders, the sandbox lifecycle, the history archive — on the compile ABI of a contract that
+  // needs none of them, which is what kept this module out of the extracted contracts repository
+  // (compose-ai-tools#4732: "publishing it from there would publish the daemon from there").
+  //
+  // Package is not module: these types all live in the `…daemon.protocol` package, but that alone
+  // proved nothing — `docs/design/PREVIEW_SERVER_SPLIT.md` records the same assumption being wrong
+  // elsewhere. Each declaration site was checked before this narrowed.
+  api(project(":daemon-protocol"))
 
   testImplementation(libs.junit)
 }
