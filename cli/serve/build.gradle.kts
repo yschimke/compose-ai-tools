@@ -18,9 +18,9 @@ import org.gradle.process.CommandLineArgumentProvider
 // docs/design/PREVIEW_SERVER_SPLIT.md) is that the two are independent, and doing them together
 // makes a 300-file move unreviewable.
 //
-// The direction that remains is `:cli` -> here, which is what the seam register calls
-// `serveInternalsUsedByCli`: 102 symbols on `main`, dominated by `ServeCommand.kt`. That is the
-// rest of item 7 and is deliberately NOT addressed by this module extraction.
+// The allowed direction is `:cli` -> here. The server implementation, argv semantics, defaults,
+// and usage text live in this module; `:cli` keeps only the thin adapter that supplies Gradle build
+// operations and the tool-wide preview matcher.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
@@ -58,8 +58,8 @@ base { archivesName.set("compose-preview-serve") }
 
 // Published, because after #3824's repo split `:cli` cannot reach the server any other way.
 //
-// The seam register is down to 16 `:cli` -> serve crossings (`ServeCommand`'s four seam types plus
-// `bundle`, `auth` and the history commands), and every one of them is a compile-time dependency.
+// The seam register is down to 11 `:cli` -> serve crossings (`ServeCommand`'s four seam types plus
+// `bundle` and the history commands), and every one of them is a compile-time dependency.
 // Once the two live in separate repositories the only way to satisfy them is a published artifact,
 // so an unpublished `:cli:serve` is the remaining hard blocker on the split regardless of how low
 // that number goes. Every project dependency this module has is already published, so nothing here
