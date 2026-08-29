@@ -347,7 +347,17 @@ jobs:
             # `--rerun-tasks`), that was in a container with the Kotlin/Native toolchain already
             # warm, which a fresh runner is not. Their coverage is not weakened: the macOS job runs
             # exactly these four unconditionally.
-            ./gradlew test checkKotlinAbi --continue \
+            # `jvmTest` and `desktopTest` alongside `test`, for the same reason and by the same
+            # mechanism as `checkKotlinAbi`: unqualified, so Gradle runs each in every project
+            # that HAS it and does not match the rest.
+            #
+            # `test` alone was a single-platform assumption. A Kotlin Multiplatform module names
+            # its JVM tests `jvmTest` — or `desktopTest`, when the target is declared
+            # `jvm("desktop")` — and registers no `test` task, so six modules' JVM suites were
+            # absent from a run that calls itself full. This is the branch every non-PR event
+            # takes (push to main, the nightly cron) and the one a global-path PR resolves to,
+            # so it is where the gap mattered most and was least visible.
+            ./gradlew test jvmTest desktopTest checkKotlinAbi --continue \
               -x :rc-player-trace:checkKotlinAbi \
               -x :rc-player-protocol:checkKotlinAbi \
               -x :rc-player-runtime:checkKotlinAbi \
