@@ -6,14 +6,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * `ServeCommand`'s implementations of the [ee.schimke.composeai.cli.serve.ServeOptions] members
- * that exist to bind something `:cli` has and the server must not see.
+ * The two callbacks `ServeCommand` binds to CLI-owned policy: preview matching and init-script
+ * injection.
  *
- * These are one-line delegations, which is exactly why they need a test: each forwards to a
- * package-level function of the *same name*, and an unqualified call inside an override resolves to
- * the override. `previewIdMatchesRequest` shipped that way and recursed until the stack went — with
- * a fully green `:cli:test`, because nothing here exercised the Gradle-backed serve path. A
- * delegation that calls itself is invisible to every test that does not call it.
+ * Both are tiny enough to look infallible and important enough to pin. The preview matcher once
+ * forwarded through a same-named override that called itself until the stack went, with a green
+ * suite because nothing exercised this Gradle-backed wiring path.
  */
 class ServeOptionsDelegationTest {
   @Test
@@ -21,11 +19,13 @@ class ServeOptionsDelegationTest {
     val cmd = ServeCommand(emptyList())
     // No selectors set: the shared rule matches everything. Recursion shows up as
     // StackOverflowError.
-    assertTrue(cmd.previewIdMatchesRequest("com.example.FooKt.Bar", null, null, null, null, null))
+    assertTrue(
+      cmd.options.previewIdMatchesRequest("com.example.FooKt.Bar", null, null, null, null, null)
+    )
     // And it really is the shared rule, not a vacuous `true`.
     assertEquals(
       false,
-      cmd.previewIdMatchesRequest(
+      cmd.options.previewIdMatchesRequest(
         "com.example.FooKt.Bar",
         exactId = "other.Id",
         null,
@@ -35,7 +35,14 @@ class ServeOptionsDelegationTest {
       ),
     )
     assertTrue(
-      cmd.previewIdMatchesRequest("com.example.FooKt.Bar", null, filter = "foo", null, null, null)
+      cmd.options.previewIdMatchesRequest(
+        "com.example.FooKt.Bar",
+        null,
+        filter = "foo",
+        null,
+        null,
+        null,
+      )
     )
   }
 

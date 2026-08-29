@@ -606,18 +606,13 @@ tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
 
 tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 
-// The `serve` <-> `cli` seam, ratcheted ahead of the module extraction.
+// The remaining `cli` -> `serve` symbol seam.
 //
-// `checkCliDaemonLibraryBoundary` above proves a *classpath* boundary. This one proves a boundary
-// that has no classpath yet: `serve` is still a package inside `:cli`, so every symbol it borrows
-// from the CLI — and every symbol the CLI borrows back — is invisible to the build and free to
-// multiply. Issue #3824 measured the cost of that drift; `scripts/serve-seam-allowlist.json`
-// writes today's crossings down, and this check fails when the list grows OR when it stops being
-// accurate because a crossing was removed and nobody pruned it.
-//
-// It becomes `checkServeModuleBoundary` — a real resolved-classpath check — when the extraction
-// lands. Until then this is the only thing standing between the split and another quarter of
-// invisible coupling. See docs/design/PREVIEW_SERVER_SPLIT.md.
+// `:cli:serve:checkServeModuleBoundary` proves the server cannot reach back into the CLI (or a
+// renderer/plugin implementation) through its resolved classpath. The build intentionally permits
+// the other direction, so this symbol ratchet remains for the small public surface the CLI adapter
+// and bundle/history commands consume. It fails when that surface grows or when a removed entry is
+// not pruned from `scripts/serve-seam-allowlist.json`.
 abstract class CheckServeSeam : DefaultTask() {
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)

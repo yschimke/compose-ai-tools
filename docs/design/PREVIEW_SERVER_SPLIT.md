@@ -71,7 +71,7 @@ probe's hand-maintained coordinate list: without it, serve could start importing
 module and the probe would resolve the same coordinates and pass while the dependency floor had
 grown underneath it.
 
-Today's register: **21 + 102** crossings in `main` (serve→cli, cli→serve) and **9 + 19** in `test`.
+Today's register: **0 + 11** crossings in `main` (serve→cli, cli→serve) and **0 + 13** in `test`.
 
 **Known limitation: it reads source text, not the compiler's view.** Deciding what is code and what
 is a comment or a literal means the checker carries a small Kotlin tokenizer, and review found three
@@ -127,9 +127,12 @@ reverse, and `checkServeModuleBoundary` walks the module's resolved runtime clas
 `ee.schimke.composeai.cli.serve` package — moving a module and renaming its package are independent
 changes, and doing both at once would make a 300-file diff unreviewable.
 
-What is left is `serveInternalsUsedByCli` — 102 entries on `main`, dominated by `ServeCommand.kt`
-(~4.9k lines in `:cli`, 92 of the 102 on its own). Reducing that to a thin entry point is the rest
-of preparation item 7.
+`ServeCommand.kt` is now a thin adapter: it supplies the server with the CLI-owned Gradle build
+operations and the tool-wide preview selector, then calls `ServeRunner`. Server argv syntax,
+normalization, defaults and usage text live in `ServeCommandOptions` inside `:cli:serve`; changing a
+server flag no longer edits `:cli`. The 11 remaining `serveInternalsUsedByCli` entries are explicit
+compile-time surfaces used by that adapter and by the bundle/history commands, not implementation
+left on the wrong side of the module boundary. Preparation item 7 is complete.
 
 ### 2. `scripts/check-preview-server-contracts.sh` — the artifact probe
 
@@ -418,7 +421,7 @@ motivated the note below.
 **The structural work is in good shape; it is the traffic that is red.** `checkServeSeam` is green,
 its 45 tests pass, `cliInternalsUsedByServe` is **empty** on both `main` and `test` — the
 `serve→cli` half of the register is closed, not merely shrinking — the artifact probe works, and
-items 1, 4, 5, 6, 9 and 10 are done. What has not moved is how often a pull request still touches
+items 1, 4, 5, 6, 7, 9 and 10 are done. What has not moved is how often a pull request still touches
 both sides.
 
 ### Extracting contracts does not move this gate
@@ -441,8 +444,8 @@ The traffic is `daemon/core` (48) and `daemon/desktop` (23) — the same couplin
 already describes.
 
 **No remaining preparation item reduces this number, and it is worth being blunt about that.**
-Item 3 removes an MCP classpath leak from `:render-session-subprocess`; item 7 moves server
-implementation out of the CLI and shrinks the `cli→serve` symbol seam. Both are worth doing and
+Item 3 removes an MCP classpath leak from `:render-session-subprocess`; item 7 moved server
+implementation out of the CLI and shrank the `cli→serve` symbol seam. Both are worthwhile and
 neither changes the measurement's condition, which is whether a single pull request touches `serve`
 *and* a daemon path. Structural work does not move traffic — that is the same conclusion the
 contracts experiment above reached, and it applies to the remaining items too.
@@ -453,10 +456,10 @@ falls when a change to serve stops requiring a change to the daemon in the same 
 question about how settled the protocol is, not about packaging, and no item on the list below
 delivers it.
 
-So: do items 3 and 7 for their own merits — a cleaner classpath, a thinner CLI adapter, and item 7
-in particular retires the source-scanning tokenizer in favour of `checkServeModuleBoundary` reading
-a resolved classpath. Do not expect either to turn the gate green, and re-measure rather than
-assuming they did.
+Item 7 is now done for its own merits: a thin CLI adapter and a resolved-classpath
+`checkServeModuleBoundary` for the extracted module. The source-scanning seam check remains useful
+for the deliberately allowed adapter direction. Do item 3 for its cleaner classpath, but do not
+expect it to turn the gate green; re-measure rather than assuming it did.
 
 One caveat on reading the number: the current window is unusually full of one-off structural pull
 requests — the extension split (#4759), the contracts cutover (#4771), the CI rename (#4761). Those
@@ -532,9 +535,12 @@ From #3824's follow-up investigation, with what has landed marked.
    `externalContracts` — and all nine coordinates in
    [yschimke/compose-preview-contracts](https://github.com/yschimke/compose-preview-contracts),
    whose `AGENTS.md` makes it the first rule in the repository.
-7. **Extract the server implementation**, leaving a genuinely thin CLI adapter. `ServeCommand.kt`
-   (~4.9k lines) currently combines CLI routing, Gradle discovery, rendering, bundle handling,
-   sidecar resolution and server startup; it is the `cli→serve` half of the register.
+7. **Extract the server implementation**, leaving a genuinely thin CLI adapter. — *done.*
+   `ServeCommand.kt` went from ~4.9k lines to the adapter that implements `ServeBuildHost` and starts
+   `ServeRunner`. The implementation, server-owned argv semantics, defaults and usage text live in
+   `:cli:serve`; its resolved runtime classpath is guarded by `checkServeModuleBoundary`, transitives
+   included. The package remains `ee.schimke.composeai.cli.serve` so the module move did not become
+   a 300-file package rename at the same time.
 8. **Enforce the allowlist on resolved Gradle project identities, transitives included.**
    `checkContractSurface` does this for the probe; the extracted server's own module needs the same.
 9. **Build the server against artifacts from a build-local Maven repository.** — *done* for the

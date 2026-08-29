@@ -6,16 +6,16 @@ import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.File
 
 /**
- * Everything `compose-preview serve` needs from its command line and its build, as a contract.
+ * The normalized configuration the preview server consumes.
  *
  * `ServeCommand` parsed 79 flags and then ran ~3,800 lines of preview server on the results, all
  * inside `:cli`. That is what kept 92 serve symbols on the seam register: #4599 gave the server its
  * own module, but the code that *starts* it stayed on the CLI side of the boundary, so the one file
  * that matters most for separability was the one file the boundary did not cover.
  *
- * The seam is the flags and the build, not the code. Nothing below knows what a flag is, and
- * nothing below names a Gradle type — see the build section for why that second part is the
- * load-bearing one.
+ * [ServeCommandOptions] owns argv syntax, defaults, and normalization inside the server artifact;
+ * this interface is the stable shape [ServeRunner] and focused tests consume. Build operations are
+ * separate in [ServeBuildHost], whose signatures deliberately name no Gradle type.
  */
 public interface ServeOptions {
 
@@ -590,10 +590,10 @@ public interface ServeOptions {
    */
   public val browseProject: Boolean
 
-  // ---- the one rule that needs the raw `args`, bound on the `:cli` side ----
+  // ---- the one selector rule shared with the root CLI ----
   //
-  // `args` is the thing that must not cross: a server that can read the command line is a server
-  // that still has a CLI in it. This rule needs it, so it is bound where `args` lives.
+  // The server owns its argv, but preview-reference matching remains a tool-wide policy. The root
+  // CLI injects that pure callback so `serve`, `render`, and `show` cannot drift apart.
 
   /** The shared preview-id selector rule, so `serve` and the other commands agree on a match. */
   public fun previewIdMatchesRequest(

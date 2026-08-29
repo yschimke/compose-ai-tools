@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Ratchet on the `serve` <-> `cli` coupling, ahead of the module extraction.
+"""Ratchet on the remaining `cli` -> `serve` symbol coupling.
 
-Issue #3824 asks for `checkServeModuleBoundary`, a build-enforced boundary
-around an extracted `:cli:serve` module. That check cannot exist until the
-module does — but the coupling it would police is drifting *now*, invisibly,
-because `serve` is a package and packages have no boundary.
+Issue #3824's extracted `:cli:serve` module has a build-enforced reverse
+boundary: `checkServeModuleBoundary` walks its resolved classpath, transitives
+included, and rejects the CLI, renderer implementations, and the Gradle plugin.
+The build permits the useful direction — the root CLI invoking the server — so
+that symbol surface still needs a shrinking register.
 
-This is that boundary, one level down: a ratchet over the *symbol* surface
-between `ee.schimke.composeai.cli.serve` and the rest of `ee.schimke.composeai.cli`.
+This is that ratchet over the *symbol* surface between
+`ee.schimke.composeai.cli.serve` and the rest of `ee.schimke.composeai.cli`.
 Every symbol crossing it today is written down in `serve-seam-allowlist.json`.
 The check fails when:
 
