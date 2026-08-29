@@ -14,7 +14,7 @@
 // Named families the player fetches for itself are unaffected: those are added to the registry
 // later and the player repaints through `onFontLoaded`.
 //
-// NOT a custom element, and deliberately still a global. Its consumers are the legacy IIFEs
+// NOT a custom element, and deliberately still a global. Its consumers include page-level code
 // (`viewer.js`, `format-compare.js`, the inline doc-player script), which read
 // `window.cpRcFonts` at call time and already guard for its absence. Moving the implementation
 // into this package buys the type check and the tests; changing the *seam* would mean editing

@@ -20,7 +20,7 @@
 //
 // Two mirrors this cannot reach yet: `viewer.js` restates the same 90/75 inline for its SVG
 // fidelity readout, and `scripts/design-artifacts/render-compare-html.mjs` restates it for the
-// published wall. Both become imports as their files are ported.
+// published wall. Keep the two policies separate even though both are typed imports now.
 
 export type Grade = "good" | "warn" | "bad";
 

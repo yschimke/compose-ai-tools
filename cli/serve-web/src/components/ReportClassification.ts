@@ -33,6 +33,7 @@ export class ReportClassification extends ControllerElement {
     }
 
     private install(): boolean {
+        if (!this.isConnected) return false;
         if (this.select) return true;
         const select = this.querySelector("select");
         const field =
@@ -42,13 +43,19 @@ export class ReportClassification extends ControllerElement {
         if (!select || !field) return false;
         this.select = select;
         this.field = field;
-        select.addEventListener("change", () => this.apply());
+        this.listen(select, "change", () => this.apply());
         // Applied at once, not only on change: the default answer is a real answer — it is what the
         // form will submit as the label if nobody touches the control — and a body that still
         // pointed at the label while the select said something specific would be the one
         // disagreement this line exists to prevent.
         this.apply();
         return true;
+    }
+
+    override disconnectedCallback(): void {
+        this.select = null;
+        this.field = null;
+        super.disconnectedCallback();
     }
 
     /**

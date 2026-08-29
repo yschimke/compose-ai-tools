@@ -93,6 +93,21 @@ describe("<cp-acceptance-audit>", () => {
         assert.match(text(band), /no longer has/);
     });
 
+    it("unmounts its external Vue tree while detached and repaints on reconnect", async () => {
+        const band = await mount(routes(knownDifferencesJson(SCENE)), [
+            { ...PREVIEWS[0], id: "iconbutton-tonal__ideal__default__dark" },
+        ]);
+        const element = document.querySelector("cp-acceptance-audit")!;
+        element.remove();
+        assert.equal(band.hidden, true);
+        assert.equal(text(band).trim(), "");
+
+        document.body.appendChild(element);
+        for (let turn = 0; turn < 40 && band.hidden; turn++) await flush();
+        assert.equal(band.hidden, false);
+        assert.match(text(band), /Needs attention \(1\)/);
+    });
+
     it("says nothing is wrong when every target exists and the issue is open", async () => {
         const band = await mount(
             routes(knownDifferencesJson(SCENE)),

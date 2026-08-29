@@ -70,6 +70,7 @@ export class AcceptanceAudit extends ControllerElement {
     private band: HTMLElement | null = null;
     private issueHref: Record<string, string> = {};
     private installed = false;
+    private evaluation = 0;
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -89,11 +90,14 @@ export class AcceptanceAudit extends ControllerElement {
         } catch {
             return true;
         }
-        void this.evaluate(payload);
+        void this.evaluate(payload, ++this.evaluation);
         return true;
     }
 
-    private async evaluate(payload: Payload): Promise<void> {
+    private async evaluate(
+        payload: Payload,
+        evaluation: number,
+    ): Promise<void> {
         for (const issue of payload.issues ?? []) {
             this.issueHref[
                 `${issue.repository.toLowerCase()}#${issue.number}`
@@ -114,7 +118,22 @@ export class AcceptanceAudit extends ControllerElement {
             // would be a clean bill of health nobody measured.
             this.failed = true;
         }
+        if (evaluation !== this.evaluation || !this.isConnected) return;
         this.paint();
+    }
+
+    override disconnectedCallback(): void {
+        this.evaluation++;
+        if (this.band) {
+            render(null, this.band);
+            this.band.hidden = true;
+        }
+        this.band = null;
+        this.installed = false;
+        this.report = null;
+        this.failed = false;
+        this.issueHref = {};
+        super.disconnectedCallback();
     }
 
     private paint(): void {

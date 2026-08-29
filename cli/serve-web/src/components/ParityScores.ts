@@ -32,7 +32,6 @@ import {
     summaryOf,
     unavailableCell,
     type Finding,
-    type Measurement,
     type ScoreCell,
 } from "../parity/findings.js";
 

@@ -85,6 +85,23 @@ describe("<cp-revision-runs>", () => {
         assert.deepEqual(fetches.calls, []);
     });
 
+    it("stops watching while detached and resumes after a move", async () => {
+        const fetches = stubFetch({ ok: true, body: PAYLOAD });
+        const details = await mount();
+        const element = details.querySelector("cp-revision-runs")!;
+        element.remove();
+
+        details.open = true;
+        details.dispatchEvent(new Event("toggle"));
+        await flush();
+        assert.deepEqual(fetches.calls, []);
+
+        details.querySelector(".cp-revisions-menu")!.prepend(element);
+        await flush();
+        await flush();
+        assert.deepEqual(fetches.calls, ["/wear/api/render-runs/media"]);
+    });
+
     it("marks the head of each run and indents the rest", async () => {
         stubFetch({ ok: true, body: PAYLOAD });
         const details = await mount();

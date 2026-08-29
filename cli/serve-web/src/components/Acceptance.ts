@@ -78,6 +78,7 @@ export class Acceptance extends ControllerElement {
 
     private band: HTMLElement | null = null;
     private installed = false;
+    private evaluation = 0;
 
     connectedCallback(): void {
         super.connectedCallback();
@@ -104,11 +105,14 @@ export class Acceptance extends ControllerElement {
         } catch {
             return true;
         }
-        void this.evaluate(payload);
+        void this.evaluate(payload, ++this.evaluation);
         return true;
     }
 
-    private async evaluate(payload: Payload): Promise<void> {
+    private async evaluate(
+        payload: Payload,
+        evaluation: number,
+    ): Promise<void> {
         try {
             this.report = await evaluateComparison(
                 {
@@ -128,7 +132,21 @@ export class Acceptance extends ControllerElement {
             // one failure mode a suppression model must not have.
             this.failed = true;
         }
+        if (evaluation !== this.evaluation || !this.isConnected) return;
         this.paint();
+    }
+
+    override disconnectedCallback(): void {
+        this.evaluation++;
+        if (this.band) {
+            render(null, this.band);
+            this.band.hidden = true;
+        }
+        this.band = null;
+        this.installed = false;
+        this.report = null;
+        this.failed = false;
+        super.disconnectedCallback();
     }
 
     /**

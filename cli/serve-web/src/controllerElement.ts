@@ -7,9 +7,27 @@
  * by the Kotlin pages.
  */
 export class ControllerElement extends HTMLElement {
+    private lifecycleCleanups: Array<() => void> = [];
+
     connectedCallback(): void {}
 
-    disconnectedCallback(): void {}
+    disconnectedCallback(): void {
+        for (const cleanup of this.lifecycleCleanups.splice(0).reverse())
+            cleanup();
+    }
+
+    /** Add an event listener whose lifetime is the current element connection. */
+    protected listen(
+        target: EventTarget,
+        type: string,
+        listener: EventListenerOrEventListenerObject,
+        options?: boolean | AddEventListenerOptions,
+    ): void {
+        target.addEventListener(type, listener, options);
+        this.lifecycleCleanups.push(() =>
+            target.removeEventListener(type, listener, options),
+        );
+    }
 }
 
 /** Define a controller element with the same compact class decorator syntax. */

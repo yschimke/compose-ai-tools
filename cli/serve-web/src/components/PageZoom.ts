@@ -19,14 +19,13 @@
 // stands in. This element sits OUTSIDE that layer (as does the tooltip): a
 // control that panned away with the sheet could not be reached to undo the pan.
 //
-// NEW BEHAVIOUR, SO IT STARTS HERE RATHER THAN IN `design-page.js`
+// COMPONENT BOUNDARY
 //
-// The rest of that page — measuring an overlay onto each node, the lane flip, the
-// per-node diff scoring — is still a legacy IIFE awaiting its own port (README.md
-// § Porting the next component). Growing it by another 300 lines of gesture
-// handling would have made that port harder and left this feature untestable
-// except through a browser. The coupling that remains is deliberately one-way and
-// through the DOM: this element reads `.cp-page-selected` to know a node is
+// The page's overlay measurement, lane flip and per-node scoring live in the
+// neighbouring `<cp-design-page>` controller. Gesture state remains separate so
+// its viewport arithmetic stays testable without that page-sized controller. The
+// coupling is deliberately one-way and through the DOM: this element reads
+// `.cp-page-selected` to know a node is
 // selected (so Escape unwinds the selection before the zoom) and writes
 // `--cp-page-zoom` on the stage for the stylesheet to counter-scale the marks by.
 
@@ -34,7 +33,6 @@ import { Fragment, h, type VNode } from "vue";
 import { customElement } from "../controllerElement.js";
 import { VueElement } from "../vueElement.js";
 import {
-    MIN_SCALE,
     STEP,
     clamp,
     frameRect,

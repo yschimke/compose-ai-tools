@@ -90,7 +90,7 @@ export function visibilityMessage(visible: boolean, fps?: number): string {
  * look. That fallback is the case that fires most (1006 — an abnormal close, typically a proxy 502
  * on the WS upgrade), so the shorter wording was what most people actually saw.
  *
- * `viewer.js` still owns its own copy; this is a mirror until that file is ported too.
+ * The viewer has the same wording; keep both callers covered when changing it.
  */
 export function closeReason(
     event: {

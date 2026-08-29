@@ -3715,9 +3715,6 @@ function liveTransportAvailable() {
 function bestLiveMode() {
     return rules.bestLiveMode(liveOffer());
 }
-function anyLiveActive() {
-    return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked);
-}
 // Every lane that paints a *running* composition rather than a finished image: the daemon
 // stream, the in-browser Wasm app, and both Remote Compose player lanes (which replay the
 // document client-side). This is what the status dot reports, so picking "JS" from the combo
