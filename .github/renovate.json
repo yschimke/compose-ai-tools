@@ -187,5 +187,19 @@
       "matchCurrentValue": "/^9\\.7\\.0$/",
       "allowedVersions": "/^9\\.7\\.0$/"
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The `xr-composite` pin — the compositor's release version in compose-preview-xr. Invisible to the gradle manager: it is a bare `[versions]` entry with no library or plugin declaring `version.ref = \"xr-composite\"`, so there is no coordinate for Renovate to resolve. The CLI and the Gradle plugin both bake it in at build time and resolve the binary by it, so without this it is the one dependency here that could never be offered an update. Anchored to this single entry rather than written generically, because `extractVersionTemplate` below is specific to it: the catalog holds a bare `1.0.0` while the upstream tags are `v1.0.0`.",
+      "managerFilePatterns": [
+        "/^gradle/libs\\.versions\\.toml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s*\\nxr-composite\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "semver"
+    }
   ]
 }
