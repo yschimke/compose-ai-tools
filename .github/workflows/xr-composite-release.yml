@@ -1,0 +1,147 @@
+name: xr-composite release
+
+# Publish the native `xr-composite` compositor's per-OS tarballs, on its own cadence.
+#
+# This used to be the `build-xr-composite` job inside `release.yml`, running on every release. It
+# does not belong there: `renderers/xr-composite/` has changed 13 times in the repository's life
+# while 226 releases republished the binaries (1.23 GB, 108 downloads total). The cause was the
+# addressing scheme, not the workflow — both consumers asked for the binary at THEIR own version
+# (`BUNDLE_VERSION` in the CLI, `PluginVersion` in the plugin), so an asset had to exist at every
+# release. Both now read the `xr-composite` pin in `gradle/libs.versions.toml`, which moves only
+# when the compositor does, so publishing can move with it.
+#
+# Cutting an XR release, in order:
+#   1. Land the change to `renderers/xr-composite/`. `check_xr_composite_pin.py` fails the PR
+#      unless the same PR moves the `xr-composite` pin, so the pin is never left stale.
+#   2. Run this workflow (Actions → "xr-composite release" → Run workflow) naming the release the
+#      assets attach to — normally the release the pin was bumped to.
+#   3. Confirm the assets are on that Release. The provisioner 404s into a graceful skip if they
+#      are not, so a missed step degrades silently — which is exactly why step 1 is a hard gate.
+#
+# Assets attach to an existing `v<version>` GitHub Release rather than a tag namespace of their
+# own. That keeps `XrCompositeProvision.assetUrl` unchanged and, more importantly, means the pin's
+# starting value (`1.47.0`) already resolves to assets published today — no window in which the
+# compositor silently stops provisioning. Moving to a dedicated `xr-composite-v*` namespace is a
+# follow-up that only touches `assetUrl`'s tag derivation, and it is cheap once the pin exists.
+#
+# `xr-composite-build.yml` still builds the same matrix on every PR touching the compositor. This
+# workflow is only about publishing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Release to publish the assets to. Must match the `xr-composite` pin in
+          gradle/libs.versions.toml, and a GitHub Release tagged `v<version>` must already exist.
+        required: true
+      ref:
+        description: 'Ref to build the compositor from (default: the default branch).'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xr-composite-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  # Refuse to publish assets whose version does not match the pin the CLI and plugin actually ask
+  # for. Publishing `1.48.0` while both consumers request `1.47.0` produces a green run and a
+  # compositor nobody fetches — the silent-degradation shape this whole change exists to remove.
+  verify-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+      - name: Version matches the catalog pin
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          pin="$(python3 .github/ci/check_xr_composite_pin.py --print-pin)"
+          if [ "$pin" != "$INPUT_VERSION" ]; then
+            echo "::error::asked to publish xr-composite $INPUT_VERSION but gradle/libs.versions.toml pins $pin."
+            echo "Bump the pin first (the consumers resolve the binary by it), then re-run naming that version."
+            exit 1
+          fi
+          echo "ok: publishing xr-composite $pin, which is what the CLI and plugin resolve"
+
+  build:
+    needs: verify-pin
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            asset: linux-x86_64
+          - os: macos-14
+            platform: mac
+            asset: macos-arm64
+          - os: windows-2022
+            platform: windows
+            asset: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+          # Same reason release.yml's job sparse-checked out: one conformance fixture exercises a
+          # 255-character path segment whose full path exceeds the Windows runner's MAX_PATH.
+          sparse-checkout: |
+            .github/actions/build-xr-composite
+            renderers/xr-composite
+      - uses: ./.github/actions/build-xr-composite
+        with:
+          platform: ${{ matrix.platform }}
+      - name: Package versioned tarball
+        shell: bash
+        env:
+          XR_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p staged-artifacts
+          tar -C dist -czf \
+            "staged-artifacts/xr-composite-${{ matrix.asset }}-${XR_VERSION}.tar.gz" .
+          ls -l staged-artifacts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xr-composite-${{ matrix.asset }}
+          path: staged-artifacts/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # upload assets onto the existing release
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Upload assets onto the release
+        # `--clobber` so a re-run after a partial upload converges rather than erroring. The release
+        # must already exist: this workflow publishes a compositor onto a cut release, it does not
+        # cut one. `$TAG_NAME` is read from env rather than templated into the script so the input
+        # cannot break out of the quoting.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: v${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "::error::no GitHub Release tagged $TAG_NAME — cut it first, then re-run."
+            exit 1
+          fi
+          ls -l artifacts
+          gh release upload "$TAG_NAME" --clobber artifacts/xr-composite-*.tar.gz
+          echo "published xr-composite assets onto $TAG_NAME"

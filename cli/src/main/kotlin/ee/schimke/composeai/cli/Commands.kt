@@ -474,7 +474,7 @@ abstract class Command(
         manifest.previews.any { it.params.kind == XrCompositeProvision.XR_SUBSPACE_KIND }
       }
     if (!hasXr) return emptyList()
-    val binary = XrCompositeProvision.ensureCached(BUNDLE_VERSION) ?: return emptyList()
+    val binary = XrCompositeProvision.ensureCached(XR_COMPOSITE_VERSION) ?: return emptyList()
     return listOf("-PcomposePreview.xrCompositeBinary=${binary.absolutePath}")
   }
 

@@ -223,11 +223,16 @@ val generatePluginVersionResource =
     val xrRuntimeTesting = libs.versions.xr.runtime.testing.get()
     val xrScenecoreTesting = libs.versions.xr.scenecore.testing.get()
     val xrArcoreTesting = libs.versions.xr.arcore.testing.get()
+    // The pinned `xr-composite` release, so `xrCompositeCacheBinaryPath` reads the same shared
+    // cache directory the CLI writes (`XrCompositeProvision`). Both sides bake the one catalog
+    // value; addressing it by each side's own version is what used to force a rebuild per release.
+    val xrComposite = libs.versions.xr.composite.get()
     inputs.property("version", pluginVersion)
     inputs.property("xrCompose", xrCompose)
     inputs.property("xrRuntimeTesting", xrRuntimeTesting)
     inputs.property("xrScenecoreTesting", xrScenecoreTesting)
     inputs.property("xrArcoreTesting", xrArcoreTesting)
+    inputs.property("xrComposite", xrComposite)
     outputs.dir(outputDir)
     doLast {
       val base =
@@ -242,6 +247,7 @@ val generatePluginVersionResource =
           append("runtimeTesting=$xrRuntimeTesting\n")
           append("scenecoreTesting=$xrScenecoreTesting\n")
           append("arcoreTesting=$xrArcoreTesting\n")
+          append("composite=$xrComposite\n")
         }
       )
     }

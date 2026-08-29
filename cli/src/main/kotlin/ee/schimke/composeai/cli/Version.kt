@@ -14,7 +14,22 @@ import java.util.Properties
  * `project.version`, which already honours the `PLUGIN_VERSION` env override CI sets and the
  * `.release-please-manifest.json` patch-bump fallback for local builds.
  */
-internal val BUNDLE_VERSION: String by lazy {
+internal val BUNDLE_VERSION: String by lazy { cliVersionProperty("version") }
+
+/**
+ * Release the native `xr-composite` compositor is provisioned from — see [XrCompositeProvision].
+ *
+ * Deliberately NOT [BUNDLE_VERSION]. Addressing the binary by the CLI's own version forced an
+ * `xr-composite-*.tar.gz` asset to exist on every release, so the compositor was rebuilt and
+ * republished 226 times for 13 source changes, and every CLI upgrade orphaned the user's cached
+ * copy of an unchanged binary. This is a pin in `gradle/libs.versions.toml` (`xr-composite`) that
+ * moves only when `renderers/xr-composite/` changes; `check_xr_composite_pin.py` fails a PR that
+ * touches the compositor without moving it.
+ */
+internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompositeVersion") }
+
+/** Read one key from the build-time-generated `cli-version.properties`. */
+private fun cliVersionProperty(key: String): String {
   val props = Properties()
   val stream =
     object {}
@@ -23,7 +38,7 @@ internal val BUNDLE_VERSION: String by lazy {
       .getResourceAsStream("ee/schimke/composeai/cli/cli-version.properties")
       ?: error("cli-version.properties missing from compose-preview jar")
   stream.use { props.load(it) }
-  props.getProperty("version") ?: error("version property missing from cli-version.properties")
+  return props.getProperty(key) ?: error("$key property missing from cli-version.properties")
 }
 
 /** GitHub repo slug used to resolve CLI releases (tarballs, action tags, issue links). */

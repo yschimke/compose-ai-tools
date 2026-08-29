@@ -161,6 +161,15 @@ xr-compose = "1.0.0-alpha17"
 xr-runtime-testing = "1.0.0-beta02"
 xr-scenecore-testing = "1.0.0-beta02"
 xr-arcore-testing = "1.0.0-beta02"
+# The published `xr-composite` native compositor the CLI provisions on demand and
+# the Gradle plugin reads from the shared cache. Deliberately a PIN, not the repo's
+# own version: the C++ under `renderers/xr-composite/` has changed 13 times in the
+# repo's life while 226 releases republished it, because both consumers used to
+# address the binary by THEIR version (`BUNDLE_VERSION` / `PluginVersion`), forcing
+# an asset to exist at every release. Bumping this is what cuts an XR release; see
+# `.github/workflows/xr-composite-release.yml` and the `check_xr_composite_pin.py`
+# gate that fails a PR touching the compositor without moving it.
+xr-composite = "1.47.0"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state

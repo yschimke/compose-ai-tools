@@ -802,12 +802,19 @@ val generateCliVersionResource =
   tasks.register("generateCliVersionResource") {
     val outputDir = layout.buildDirectory.dir("generated/cli-version-resource")
     val cliVersion = project.version.toString()
+    // The `xr-composite` release the provisioner fetches from — a catalog PIN that moves only
+    // when the native compositor changes, NOT this CLI's version. Baked here (rather than read
+    // from the catalog at runtime, which the installed CLI has no access to) so the writer of the
+    // shared cache and the plugin-side reader resolve the same directory; the plugin bakes the
+    // same value through `generatePluginVersionResource`. See `XrCompositeProvision`.
+    val xrCompositeVersion = libs.versions.xr.composite.get()
     inputs.property("version", cliVersion)
+    inputs.property("xrCompositeVersion", xrCompositeVersion)
     outputs.dir(outputDir)
     doLast {
       val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
       file.parentFile.mkdirs()
-      file.writeText("version=$cliVersion\n")
+      file.writeText("version=$cliVersion\nxrCompositeVersion=$xrCompositeVersion\n")
     }
   }
 
