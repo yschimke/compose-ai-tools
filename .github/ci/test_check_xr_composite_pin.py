@@ -110,6 +110,34 @@ class OverrideReason(unittest.TestCase):
             gate.override_reason(body), "literals replaced by equal constants"
         )
 
+    def test_a_marker_wrapped_in_backticks_is_found(self):
+        # The shape that made this gate fail its own PR: a marker written as inline code, which is
+        # how anyone documenting a magic string in a PR body writes it.
+        self.assertEqual(
+            gate.override_reason("`XR-Release: none - constants of equal value`"),
+            "constants of equal value",
+        )
+
+    def test_a_marker_as_a_list_item_or_quote_is_found(self):
+        self.assertEqual(gate.override_reason("- XR-Release: none - regen only"), "regen only")
+        self.assertEqual(gate.override_reason("> XR-Release: none - regen only"), "regen only")
+        self.assertEqual(gate.override_reason("* XR-Release: none - regen only"), "regen only")
+
+    def test_a_bare_backticked_opt_out_still_does_not_match(self):
+        # Relaxing the anchors must not relax the mandatory reason.
+        self.assertIsNone(gate.override_reason("`XR-Release: none`"))
+
+    def test_a_marker_inside_a_real_body_is_found(self):
+        body = (
+            "## Summary\n\nSome prose about the change.\n\n"
+            "`XR-Release: none - literals replaced by constants of equal value`\n\n"
+            "## Test plan\n- built it\n"
+        )
+        self.assertEqual(
+            gate.override_reason(body),
+            "literals replaced by constants of equal value",
+        )
+
     def test_an_em_dash_or_colon_separator_works(self):
         self.assertEqual(gate.override_reason("XR-Release: none \u2014 pure rename"), "pure rename")
         self.assertEqual(gate.override_reason("XR-Release: none: pure rename"), "pure rename")

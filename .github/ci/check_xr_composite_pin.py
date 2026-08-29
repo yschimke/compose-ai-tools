@@ -59,8 +59,14 @@ PIN_RE = re.compile(r'^\s*xr-composite\s*=\s*"([^"]+)"', re.MULTILINE)
 
 # `XR-Release: none - <reason>`, anywhere in the PR body. The reason is required: a bare
 # `XR-Release: none` does not match, so the opt-out cannot be taken without saying why.
+#
+# The leading and trailing character classes matter. A marker line in a PR body is naturally
+# written as inline code, a list item or a quote — `` `XR-Release: none - …` ``, `- XR-Release:
+# …`, `> XR-Release: …`. An anchor that only accepted a bare line made the opt-out silently
+# unavailable to anyone who formatted it, which is exactly how this gate first failed its own PR.
 OVERRIDE_RE = re.compile(
-    r"^\s*XR-Release:\s*none\s*[-\u2014:]\s*(\S.*?)\s*$", re.MULTILINE | re.IGNORECASE
+    r"^[\s>*+`'\"-]*XR-Release:\s*none\s*[-\u2014:]\s*(\S.*?)[\s`'\"]*$",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 
