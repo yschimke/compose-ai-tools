@@ -233,23 +233,37 @@ class BrowserPreviewClient(private val config: ClientConfig) {
   private fun JsonObject.int(key: String): Int? =
     this[key]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
 
-  private fun JsonObject.overrideSeeds(): Map<String, String> =
-    this["overrides"]
-      ?.jsonArray
-      .orEmpty()
-      .mapNotNull { value ->
-        val declaration = value as? JsonObject ?: return@mapNotNull null
-        val key = declaration.string("key")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        val index = declaration.int("index")
-        val encoded =
-          ((declaration["current"] ?: declaration["default"]) as? JsonObject)
-            ?.get("value")
-            ?.jsonPrimitive
-            ?.contentOrNull ?: return@mapNotNull null
-        (if (index == null) key else "$key[$index]") to encoded
-      }
-      .toMap()
+  private fun JsonObject.overrideSeeds(): Map<String, String> = overrideSeedsOf(this)
 }
+
+/**
+ * The knob seeds a published preview's override declarations carry.
+ *
+ * A declaration's value is not always spelled `value`. `PreviewOverrideValue` serialises each case
+ * under its own property name, and the colour case carries `argb` — so reading only `value` dropped
+ * every colour override on the floor and rendered the composable's author default instead of the
+ * catalog's current colour, silently and only for colours.
+ *
+ * Top-level and `internal` so the parsing can be tested without a browser: it is the half of this
+ * client that has rules, and the half where a missing case looks like a working render.
+ */
+internal fun overrideSeedsOf(root: JsonObject): Map<String, String> =
+  root["overrides"]
+    ?.jsonArray
+    .orEmpty()
+    .mapNotNull { value ->
+      val declaration = value as? JsonObject ?: return@mapNotNull null
+      val key =
+        (declaration["key"]?.jsonPrimitive?.contentOrNull)?.takeIf { it.isNotBlank() }
+          ?: return@mapNotNull null
+      val index = declaration["index"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+      val declared = (declaration["current"] ?: declaration["default"]) as? JsonObject
+      val encoded =
+        (declared?.get("value") ?: declared?.get("argb"))?.jsonPrimitive?.contentOrNull
+          ?: return@mapNotNull null
+      (if (index == null) key else "$key[$index]") to encoded
+    }
+    .toMap()
 
 internal fun parseQuery(search: String): Map<String, String> {
   val raw = search.removePrefix("?")
