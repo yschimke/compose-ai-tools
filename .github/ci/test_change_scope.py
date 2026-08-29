@@ -86,9 +86,10 @@ class DecideRun(unittest.TestCase):
         # The CLI materialises the init script every integration job uses.
         self.assertEqual(decide(["cli/src/main/kotlin/InitScript.kt"]), "true")
 
-    def test_common_io(self):
-        # Direct dep of :daemon:harness — must run the daemon harness.
-        self.assertEqual(decide(["common-io/src/main/kotlin/Io.kt"]), "true")
+    # `test_common_io` was here: `common-io/**` was a direct dep of :daemon:harness, so a change
+    # to it had to run the harness. That module now lives in compose-preview-contracts and the
+    # path cannot occur in this repository, so the assertion could only ever pass vacuously.
+    # Not repointed at :daemon:core — `test_daemon` above already covers exactly that.
 
     def test_daemon_harness_baselines(self):
         # The harness's committed pixel baselines live under daemon/** (not the

@@ -119,9 +119,9 @@ dependencies {
   // Android renderer consumes from `:data-focus-connector`: no focus logic is reimplemented in
   // `DesktopFocusRenderer`, it only decides when to flip the controller and where to press.
   implementation(project(":data-focus-connector-desktop"))
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
-  implementation(project(":data-render-core"))
+  implementation(libs.composeai.data.render.core)
   // Runtime-aware LocalSystemTheme binding. CMP 1.12 changed the local from the androidx enum to
   // the Skiko enum without changing its erased JVM getter, so a direct provider silently breaks
   // dark previews when this 1.11-compiled renderer runs inside a 1.12 catalog.

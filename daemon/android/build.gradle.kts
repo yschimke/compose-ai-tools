@@ -53,9 +53,9 @@ android {
 }
 
 dependencies {
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
-  implementation(project(":data-render-core"))
+  implementation(libs.composeai.data.render.core)
   // Renderer-agnostic protocol types, JsonRpcServer, RenderHost interface,
   // and RenderRequest/RenderResult data classes — see DESIGN.md § 4. The
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't

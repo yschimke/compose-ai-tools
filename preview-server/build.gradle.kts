@@ -17,7 +17,22 @@ plugins {
 val contractVersion: String =
   (findProperty("composeai.contractVersion") as String?) ?: "0.0.0-contract-probe-SNAPSHOT"
 
+// The version the contracts that MOVED OUT resolve at. They are published from
+// yschimke/compose-preview-contracts, so this build cannot publish them under `contractVersion`
+// the way it does the rest — they come from Maven Central at whatever
+// `composeai-contracts` names in the root build's gradle/libs.versions.toml.
+// `scripts/check-preview-server-contracts.sh` reads that file and passes it through, so the pin
+// has one home rather than two that can disagree.
+val externalContractsVersion: String =
+  (findProperty("composeai.externalContractsVersion") as String?)
+    ?: error(
+      "composeai.externalContractsVersion is required. Run this build through " +
+        "scripts/check-preview-server-contracts.sh, which reads the pin from " +
+        "gradle/libs.versions.toml — building `-p preview-server` directly cannot see it."
+    )
+
 allprojects {
   group = "ee.schimke.composeai.previewserver"
   extra["contractVersion"] = contractVersion
+  extra["externalContractsVersion"] = externalContractsVersion
 }

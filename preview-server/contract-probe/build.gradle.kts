@@ -30,6 +30,35 @@ kotlin { jvmToolchain(21) }
 
 val probeVersion: String = rootProject.extra["contractVersion"] as String
 
+/**
+ * The contracts that are no longer published by this repository.
+ *
+ * They live in yschimke/compose-preview-contracts and resolve from Maven Central at
+ * [externalContractsVersion], not at [probeVersion] — this build cannot publish them, because it no
+ * longer contains them. Before the cutover every contract came from `publishToMavenLocal` here and
+ * one version covered the whole list.
+ *
+ * The probe still checks them, and the check still means something: it catches conflict resolution
+ * quietly selecting some *other* version of a contract than the one this repository pins. What it
+ * can no longer do for these nine is prove the probe compiled against THIS pull request's source,
+ * because the source is not here — that guarantee now belongs to the contracts repository's own CI.
+ */
+val externalContracts =
+  setOf(
+    "daemon-protocol",
+    "daemon-devices",
+    "daemon-bta",
+    "agent-grant-protocol",
+    "data-render-core",
+    "data-layoutinspector-core",
+    "data-theme-core",
+    "data-preview-overrides-core",
+    "common-io",
+  )
+
+/** The released version of [externalContracts], pinned in `gradle/libs.versions.toml`. */
+val externalContractsVersion: String = rootProject.extra["externalContractsVersion"] as String
+
 /** This repo's own publishing group. Anything else on the graph is a third-party dependency. */
 val INTERNAL_GROUP = "ee.schimke.composeai"
 
@@ -85,7 +114,10 @@ val contracts =
   )
 
 dependencies {
-  contracts.forEach { implementation("ee.schimke.composeai:$it:$probeVersion") }
+  contracts.forEach {
+    val version = if (it in externalContracts) externalContractsVersion else probeVersion
+    implementation("ee.schimke.composeai:$it:$version")
+  }
   implementation(libs.okio)
   implementation(libs.kotlinx.serialization.json)
 
@@ -122,8 +154,15 @@ abstract class CheckContractSurface : DefaultTask() {
   /** The group whose artifacts are this repo's own — everything else is third-party. */
   @get:Input abstract val internalGroup: Property<String>
 
-  /** The version the contracts were published under, which allowed modules must resolve at. */
-  @get:Input abstract val expectedVersion: Property<String>
+  /**
+   * Contract name -> the version it must resolve at.
+   *
+   * Was a single version, when this repository published every contract. It cannot be: the
+   * contracts that moved to yschimke/compose-preview-contracts resolve at their released version
+   * while the rest resolve at the probe version, so a single expectation would flag all nine of
+   * them on every run.
+   */
+  @get:Input abstract val expectedVersions: MapProperty<String, String>
 
   /**
    * The resolved runtime classpath as `name:version` pairs, transitives included.
@@ -157,8 +196,9 @@ abstract class CheckContractSurface : DefaultTask() {
     val recordedLeaks = leaks.get()
     val unexpected = (seen - allowedNames - recordedLeaks.keys).sorted()
     val healed = (recordedLeaks.keys - seen).sorted()
+    val expected = expectedVersions.get()
     val wrongVersion =
-      (seen intersect allowedNames).filter { resolved[it] != expectedVersion.get() }.sorted()
+      (seen intersect allowedNames).filter { resolved[it] != expected[it] }.sorted()
 
     val problems = buildList {
       if (unexpected.isNotEmpty()) {
@@ -183,15 +223,18 @@ abstract class CheckContractSurface : DefaultTask() {
         add(
           buildString {
             appendLine(
-              "${wrongVersion.size} contract(s) did not resolve at the probe version " +
-                "${expectedVersion.get()}, so the probe is not checking what this build published:"
+              "${wrongVersion.size} contract(s) did not resolve at the version this build pins:"
             )
-            wrongVersion.forEach { appendLine("    $it -> ${resolved[it]}") }
+            wrongVersion.forEach {
+              appendLine("    $it -> ${resolved[it]} (expected ${expected[it]})")
+            }
             appendLine()
             append(
-              "A contract POM pinning a sibling to a released version lets conflict resolution " +
-                "pick the release over the freshly published artifact, which would hide a removal " +
-                "or an incompatible change in the contract this PR actually touches."
+              "A contract POM pinning a sibling lets conflict resolution pick that version over " +
+                "the one intended here. For a locally published contract that hides a removal or " +
+                "an incompatible change in the contract this PR actually touches; for one of the " +
+                "external contracts it means the server is not resolving the version " +
+                "`composeai-contracts` names in gradle/libs.versions.toml."
             )
           }
         )
@@ -232,7 +275,11 @@ tasks.register<CheckContractSurface>("checkContractSurface") {
   allowed.set(contracts)
   leaks.set(contractLeaks)
   internalGroup.set(INTERNAL_GROUP)
-  expectedVersion.set(probeVersion)
+  expectedVersions.set(
+    contracts.associateWith {
+      if (it in externalContracts) externalContractsVersion else probeVersion
+    }
+  )
   resolvedModules.set(
     configurations.named("runtimeClasspath").map { configuration ->
       configuration.incoming.resolutionResult.allComponents

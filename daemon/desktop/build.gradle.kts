@@ -55,9 +55,9 @@ dependencies {
   // `XrSessions` port, so the renderer client is a detail of the desktop daemon rather than of the
   // published protocol contract.
   implementation(project(":renderer-xr-client"))
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
-  implementation(project(":data-render-core"))
+  implementation(libs.composeai.data.render.core)
   implementation(project(":data-render-connector"))
   // `CompositionTracing` — composable-level spans folded into the render trace.
   implementation(project(":data-render-compose"))

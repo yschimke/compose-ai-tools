@@ -13,10 +13,10 @@ plugins {
 }
 
 dependencies {
-  implementation(project(":common-io"))
+  implementation(libs.composeai.common.io)
   api(project(":data-strings-core"))
   api(project(":daemon:core"))
-  api(project(":data-layoutinspector-core"))
+  api(libs.composeai.data.layoutinspector.core)
   compileOnly(libs.jetbrains.compose.ui)
   testImplementation(libs.jetbrains.compose.ui)
   testImplementation(libs.junit)

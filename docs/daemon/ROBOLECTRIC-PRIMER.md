@@ -166,7 +166,7 @@ previous render set. That's why every size override has to spell out
 `sw320dp`, and overriding only the available width left a 227 dp round
 Wear preview reporting `smallestScreenWidthDp == 320` alongside a
 `screenWidthDp` of 227 (issue #3309). The shared
-[`previewSizeQualifiers`](../../data/render/core/src/main/kotlin/ee/schimke/composeai/data/render/PreviewSizeQualifiers.kt)
+[`previewSizeQualifiers`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/render/core/src/main/kotlin/ee/schimke/composeai/data/render/PreviewSizeQualifiers.kt)
 emits the triple in grammar order for all three render paths.
 
 ## Native code and graphics

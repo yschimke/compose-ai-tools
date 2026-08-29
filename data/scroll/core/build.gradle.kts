@@ -8,8 +8,8 @@ plugins {
 }
 
 dependencies {
-  implementation(project(":common-io"))
-  api(project(":data-render-core"))
+  implementation(libs.composeai.common.io)
+  api(libs.composeai.data.render.core)
   api(project(":data-render-compose"))
 
   testImplementation(libs.junit)

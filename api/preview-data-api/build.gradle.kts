@@ -27,13 +27,13 @@ dependencies {
   // `SpatialSemanticsTree` embeds the 2D `ComposeSemanticsNode` as each panel's content, so the
   // node type is part of this module's public wire shape — `api`, not `implementation`. Both are
   // pure `@Serializable` DTO jars (no cycle: `:data-layoutinspector-core` doesn't depend back).
-  api(project(":data-layoutinspector-core"))
+  api(libs.composeai.data.layoutinspector.core)
 
   // Okio-based file IO for `PreviewResultBuilder`'s manifest read and PNG sha256 (#3824
   // preparation item 5's follow-on). `api` because `readManifest` takes a `FileSystem` parameter,
   // so the type is part of this module's public surface. `:common-io` is itself a contract, so an
   // extracted preview server gains nothing new on its dependency floor by seeing it.
-  api(project(":common-io"))
+  api(libs.composeai.common.io)
 
   testImplementation(libs.junit)
   testImplementation(kotlin("test"))

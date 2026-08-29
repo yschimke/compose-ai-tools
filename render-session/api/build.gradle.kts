@@ -37,7 +37,7 @@ dependencies {
   // Package is not module: these types all live in the `…daemon.protocol` package, but that alone
   // proved nothing — `docs/design/PREVIEW_SERVER_SPLIT.md` records the same assumption being wrong
   // elsewhere. Each declaration site was checked before this narrowed.
-  api(project(":daemon-protocol"))
+  api(libs.composeai.daemon.protocol)
 
   testImplementation(libs.junit)
 }

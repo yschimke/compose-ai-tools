@@ -7,7 +7,7 @@ level, labelling each sheet with the composables that drew it and folding struct
 into concise breadcrumbs.
 
 The feature itself is
-[`ExplodedSvg`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)
+[`ExplodedSvg`](https://github.com/yschimke/compose-preview-contracts/blob/main/data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)
 — a pure SVG→SVG rewrite, no second render — and is written up in
 [public-preview-server.md](../../docs/public-preview-server.md#exploded-3d--the-screen-pulled-apart-by-composable-exploded1).
 

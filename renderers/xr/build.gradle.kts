@@ -52,7 +52,7 @@ dependencies {
   // (issue #2977). Pure-JVM + kotlinx-serialization-json (already on this module's classpath), so
   // it
   // doesn't drag anything new onto the render runtime.
-  implementation(project(":data-render-core"))
+  implementation(libs.composeai.data.render.core)
 
   // `XrSubspaceRenderer` projects each panel's semantics via the daemon-side connector's
   // `ComposeSemanticsDataProducer.buildPayload` (single-sourcing the `compose/semantics`
