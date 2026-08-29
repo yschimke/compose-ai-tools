@@ -289,17 +289,29 @@
       "sha256": "75a88ba34aef5dab4ae816530c80d88a44c89d951b4f7f01ac9d9e3c7d35ffc7",
       "size": 55371
     },
+    "serve-format-compare-picked.dark.png": {
+      "fixture": "serve-format-compare-picked",
+      "theme": "dark",
+      "sha256": "6bb8caa5a571fcada5be17dc45c6341542a434d48c016e6aee6a66359c04534e",
+      "size": 80676
+    },
+    "serve-format-compare-picked.light.png": {
+      "fixture": "serve-format-compare-picked",
+      "theme": "light",
+      "sha256": "a8e6967200799f4596dabf2d6563d8086252eca55e363f50e57136a77f6f8ae8",
+      "size": 78981
+    },
     "serve-format-compare-reference-lane.dark.png": {
       "fixture": "serve-format-compare-reference-lane",
       "theme": "dark",
-      "sha256": "7fbb1f3ab454c99edb1d46311d23ed426d231f2ffff41ad21494a377b2d86566",
-      "size": 70552
+      "sha256": "6e01cc2ba44e8021cacba70713de6b6b2e14f9abbbf0b633a137767063d53a96",
+      "size": 70692
     },
     "serve-format-compare-reference-lane.light.png": {
       "fixture": "serve-format-compare-reference-lane",
       "theme": "light",
-      "sha256": "c2e834e60d922bb7ca09fc300b4cc69437699a63c770bc421ce591c6dd14c404",
-      "size": 68940
+      "sha256": "3d8e60499596d6d05bf1d79e9557746da63c832387d315ac06b91c9822294528",
+      "size": 69041
     },
     "serve-format-compare-report-menu.dark.png": {
       "fixture": "serve-format-compare-report-menu",
@@ -1120,14 +1132,14 @@
     "serve-reference-compare-report-open-mobile.dark.png": {
       "fixture": "serve-reference-compare-report-open-mobile",
       "theme": "dark",
-      "sha256": "fdf522dd5f50dd812df7c3baac60c7a154c3aa0819b279b9af6fa48b282ff69b",
-      "size": 162577
+      "sha256": "39ce0b80cebd811a312a728160c6a7ed4f2a07fbc337c5fc98eebcff8ab8ae5a",
+      "size": 177292
     },
     "serve-reference-compare-report-open-mobile.light.png": {
       "fixture": "serve-reference-compare-report-open-mobile",
       "theme": "light",
-      "sha256": "336405cc90b494bd3d560c4ce30c4389d8d542b4fa6e43685e99a2a4be6cc1f8",
-      "size": 158048
+      "sha256": "f7e639e466c9ffb9cfe4ac79b041a404c2c0f06c05319ba43905ce5349a9a7ce",
+      "size": 172574
     },
     "serve-reference-compare-round-device.dark.png": {
       "fixture": "serve-reference-compare-round-device",
@@ -1648,38 +1660,38 @@
     "serve-viewer-report-open-bundle.dark.png": {
       "fixture": "serve-viewer-report-open-bundle",
       "theme": "dark",
-      "sha256": "d8f00097e2ffe54a50cf377059f1ded854118af7663319c9a545892db89992cb",
-      "size": 152549
+      "sha256": "0b69d07427482745310fcc2d69e68a081762a5abe8d2ce1d50599751dfde1ce6",
+      "size": 171508
     },
     "serve-viewer-report-open-bundle.light.png": {
       "fixture": "serve-viewer-report-open-bundle",
       "theme": "light",
-      "sha256": "63dbc72e2d038ddaab37e2c032a11003db2f0fe87ae6d0a4362e90b85602fc0c",
-      "size": 149424
+      "sha256": "73681200a2f8b9629a58be56cd455dc55a37a535785ff9471f5fd94d285ed07e",
+      "size": 168180
     },
     "serve-viewer-report-open-mobile.dark.png": {
       "fixture": "serve-viewer-report-open-mobile",
       "theme": "dark",
-      "sha256": "6c4636d32d386ae0eb0bf06ad560f73ee4b1983f5e0ceab2c00b0d2e63831455",
-      "size": 110657
+      "sha256": "8ca5a78e26cd22c3f329c10afa9bdd7f870673dab29c49a738803cbde1e0b01f",
+      "size": 127141
     },
     "serve-viewer-report-open-mobile.light.png": {
       "fixture": "serve-viewer-report-open-mobile",
       "theme": "light",
-      "sha256": "a145b0d9ead55e6a342739d55fb7d9a1850581cc6891053c156df20c95aedadb",
-      "size": 108983
+      "sha256": "6e0c4455ac12728dceac19219af03ee3f83b7f08c1e4f4cd39e1aa5da163a0aa",
+      "size": 125045
     },
     "serve-viewer-report-open.dark.png": {
       "fixture": "serve-viewer-report-open",
       "theme": "dark",
-      "sha256": "f357e3e819749a602b4f73eb661f59b64c481c473eb1ce7fb321e866977b63e7",
-      "size": 147291
+      "sha256": "9f799329b63e619ca9c8f82cc822824a0daf702c2b4ba033ec287804262b02a6",
+      "size": 166671
     },
     "serve-viewer-report-open.light.png": {
       "fixture": "serve-viewer-report-open",
       "theme": "light",
-      "sha256": "410caeb630070455888cf10c2f54a7a78b9ceb04e37b1faf9b287e7deef3c6a1",
-      "size": 144731
+      "sha256": "52e5419e5a9afc345d602bd3b118fa24a70f3fc2cc18f22f1ef934235ac68b56",
+      "size": 163826
     },
     "serve-viewer-revision-runs.dark.png": {
       "fixture": "serve-viewer-revision-runs",

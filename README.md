@@ -179,6 +179,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-format-compare/dark](renders/serve-format-compare.dark.png) |
 | `light` | ![serve-format-compare/light](renders/serve-format-compare.light.png) |
 
+## serve-format-compare-picked
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-format-compare-picked/dark](renders/serve-format-compare-picked.dark.png) |
+| `light` | ![serve-format-compare-picked/light](renders/serve-format-compare-picked.light.png) |
+
 ## serve-format-compare-reference-lane
 
 | Theme | Capture |
