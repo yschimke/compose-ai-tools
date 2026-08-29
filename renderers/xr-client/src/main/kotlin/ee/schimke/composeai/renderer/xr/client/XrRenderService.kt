@@ -31,6 +31,19 @@ public object XrRenderService {
    */
   public const val XR_RENDER_SERVICE_VERSION: Int = 1
 
+  /**
+   * Oldest service version a current client still speaks.
+   *
+   * The compatibility window exists because the pin makes version skew the NORMAL case, not an
+   * error: the compositor is provisioned at a version that deliberately lags, so the server is
+   * routinely older than the client. Requiring equality would make bumping this contract a flag day
+   * — every render broken until a new compositor is built, published and pinned. So a client
+   * accepts a server in [min-supported-version, version] and refuses one NEWER than itself, whose
+   * semantics it cannot know. Individual additions are gated by `capabilities` instead, which is
+   * what they are for.
+   */
+  public const val MIN_SUPPORTED_XR_RENDER_SERVICE_VERSION: Int = 1
+
   /** Value of `initialize`'s `serverInfo.name`. */
   public const val SERVER_NAME: String = "xr-composite"
 

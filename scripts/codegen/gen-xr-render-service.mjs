@@ -153,6 +153,9 @@ function emitKotlin() {
   out.push(...ktDoc(svc["version-description"], "  "));
   out.push(`  public const val ${VERSION_CONST}: Int = ${svc.version}`);
   out.push("");
+  out.push(...ktDoc(svc["min-supported-version-description"], "  "));
+  out.push(`  public const val MIN_SUPPORTED_${VERSION_CONST}: Int = ${svc["min-supported-version"]}`);
+  out.push("");
   out.push(...ktDoc(`Value of \`initialize\`'s \`serverInfo.name\`.`, "  "));
   out.push(`  public const val SERVER_NAME: String = "${svc["server-name"]}"`);
   out.push("");
@@ -244,6 +247,10 @@ function emitCpp() {
   out.push(...cppDoc(svc["version-description"]));
   out.push(`constexpr int ${VERSION_CONST} = ${svc.version};`);
   out.push("");
+  out.push(...cppDoc(svc["min-supported-version-description"]));
+  out.push(`constexpr int kMinSupported${VERSION_CONST
+    .split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join("")} = ${svc["min-supported-version"]};`);
+  out.push("");
   out.push(...cppDoc("Value of `initialize`'s `serverInfo.name`."));
   out.push(`constexpr const char* kServerName = "${svc["server-name"]}";`);
   out.push("");
@@ -328,6 +335,9 @@ function emitPython() {
   out.push("");
   out.push(...pyDoc(svc["version-description"]));
   out.push(`${VERSION_CONST} = ${svc.version}`);
+  out.push("");
+  out.push(...pyDoc(svc["min-supported-version-description"]));
+  out.push(`MIN_SUPPORTED_${VERSION_CONST} = ${svc["min-supported-version"]}`);
   out.push("");
   out.push('# Value of `initialize`\'s `serverInfo.name`.');
   out.push(`SERVER_NAME = "${svc["server-name"]}"`);
