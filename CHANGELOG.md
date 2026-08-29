@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.49.0](https://github.com/yschimke/compose-ai-tools/compare/v1.48.0...v1.49.0) (2026-08-29)
+
+
+### Features
+
+* **xr:** make the render service handshake load-bearing ([#4781](https://github.com/yschimke/compose-ai-tools/issues/4781)) ([c8e5ef5](https://github.com/yschimke/compose-ai-tools/commit/c8e5ef5763ba3809d5676a99d4b3dd0609d4e26c))
+* **xr:** single-source the XR render service protocol from a schema ([#4777](https://github.com/yschimke/compose-ai-tools/issues/4777)) ([be730f4](https://github.com/yschimke/compose-ai-tools/commit/be730f427d4144bf7c254d41a1f669e84e19720b))
+
 ## [1.48.0](https://github.com/yschimke/compose-ai-tools/compare/v1.47.0...v1.48.0) (2026-08-29)
 
 
