@@ -1,14 +1,14 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.daemon.protocol.ExtractionSpec
+import ee.schimke.composeai.daemon.protocol.PipelineCapability
+import ee.schimke.composeai.daemon.protocol.PipelineStepTrait
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionCliCommand
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.PreviewExtensionUsageMode
+import ee.schimke.composeai.daemon.protocol.PreviewPipelineStep
+import ee.schimke.composeai.daemon.protocol.SamplingPolicy
 import ee.schimke.composeai.data.render.RenderPreviewExtension
-import ee.schimke.composeai.data.render.pipeline.ExtractionSpec
-import ee.schimke.composeai.data.render.pipeline.PipelineCapability
-import ee.schimke.composeai.data.render.pipeline.PipelineStepTrait
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCliCommand
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
-import ee.schimke.composeai.data.render.pipeline.PreviewExtensionUsageMode
-import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
-import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 
 /** Pipeline metadata for accessibility hierarchy extraction. */
 object AccessibilitySemanticsPreviewExtension {

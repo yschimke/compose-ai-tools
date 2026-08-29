@@ -1,15 +1,15 @@
 package ee.schimke.composeai.scroll
 
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
+import ee.schimke.composeai.daemon.protocol.PipelineCapability
 import ee.schimke.composeai.data.render.RenderPreviewExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import ee.schimke.composeai.data.render.extensions.compose.FrameDriverHook
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionStateRegistry
 import ee.schimke.composeai.data.render.extensions.compose.hasFrameDriverHook
-import ee.schimke.composeai.data.render.pipeline.PipelineCapability
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelinePlan
 import ee.schimke.composeai.data.render.pipeline.PreviewPipelineValidator
 import org.junit.Assert.assertEquals

@@ -2195,8 +2195,8 @@ class DaemonMcpServerTest {
     // dispatch arms are Android-only, but the descriptor is plain metadata so we can construct
     // the equivalent advertisement with `:data-render-core` types alone.
     val navDescriptor =
-      ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor(
-        id = ee.schimke.composeai.data.render.extensions.DataExtensionId("navigation"),
+      ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor(
+        id = ee.schimke.composeai.daemon.protocol.DataExtensionId("navigation"),
         displayName = "Navigation script controls",
         recordingScriptEvents =
           listOf(
@@ -2208,7 +2208,7 @@ class DaemonMcpServerTest {
               "navigation.predictiveBackCancelled",
             )
             .map { id ->
-              ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor(
+              ee.schimke.composeai.daemon.protocol.RecordingScriptEventDescriptor(
                 id = id,
                 displayName = id,
                 summary = "navigation script event $id",
@@ -2517,12 +2517,12 @@ class DaemonMcpServerTest {
     factory.daemonConfigurer = { d ->
       d.advertisedDataExtensions =
         listOf(
-          ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor(
-            id = ee.schimke.composeai.data.render.extensions.DataExtensionId("state-roadmap"),
+          ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor(
+            id = ee.schimke.composeai.daemon.protocol.DataExtensionId("state-roadmap"),
             displayName = "State (roadmap)",
             recordingScriptEvents =
               listOf(
-                ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor(
+                ee.schimke.composeai.daemon.protocol.RecordingScriptEventDescriptor(
                   id = "state.save",
                   displayName = "State save (planned)",
                   summary = "Planned state-save script event.",

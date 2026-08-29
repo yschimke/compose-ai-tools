@@ -2,7 +2,7 @@ package ee.schimke.composeai.daemon
 
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsNode
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
+import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension

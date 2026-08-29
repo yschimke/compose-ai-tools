@@ -1,9 +1,9 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.graphics.Color
+import ee.schimke.composeai.daemon.protocol.TypographyToken
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemePayload
-import ee.schimke.composeai.data.theme.TypographyToken
 
 /**
  * Theme-token reading that never mentions Material 3.

@@ -1,9 +1,9 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
-import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor
 
 /**
  * Preview-reload `record_preview` script event. One descriptor — `preview.reload` — that forces a

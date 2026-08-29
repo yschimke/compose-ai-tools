@@ -5,8 +5,8 @@ package ee.schimke.composeai.daemon
 import androidx.compose.runtime.RecomposeScope
 import androidx.compose.runtime.tooling.CompositionObserverHandle
 import androidx.compose.ui.ImageComposeScene
+import ee.schimke.composeai.daemon.protocol.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
-import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionLifecycle
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.CompositionObserverHook

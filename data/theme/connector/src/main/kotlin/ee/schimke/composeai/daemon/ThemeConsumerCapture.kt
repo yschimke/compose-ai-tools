@@ -10,11 +10,11 @@ import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
+import ee.schimke.composeai.daemon.protocol.TypographyToken
 import ee.schimke.composeai.data.theme.NodeThemeFacts
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemeConsumer
 import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
-import ee.schimke.composeai.data.theme.TypographyToken
 
 /**
  * Reads per-node resolved facts off the rendered semantics tree so each node can be attributed to

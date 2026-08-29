@@ -101,8 +101,7 @@ class FakeDaemon : DaemonSpawn {
 
   /** Data extensions advertised in `initialize.capabilities.dataExtensions`. */
   @Volatile
-  var advertisedDataExtensions:
-    List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor> =
+  var advertisedDataExtensions: List<ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor> =
     emptyList()
 
   /**

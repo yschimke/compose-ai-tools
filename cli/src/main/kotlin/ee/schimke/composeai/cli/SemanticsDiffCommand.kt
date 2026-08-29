@@ -1,10 +1,10 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.SemanticsDelta
+import ee.schimke.composeai.daemon.protocol.SemanticsNodeSummary
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
-import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
-import ee.schimke.composeai.data.layoutinspector.SemanticsNodeSummary
 import ee.schimke.composeai.io.SystemFileSystem
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json

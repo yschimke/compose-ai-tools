@@ -3,8 +3,8 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.SamplingPolicy
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
-import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.xr.SPATIAL_SEMANTICS_TREE_VERSION
 import ee.schimke.composeai.xr.Size3dDp

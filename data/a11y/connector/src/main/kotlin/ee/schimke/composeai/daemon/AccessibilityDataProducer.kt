@@ -4,8 +4,8 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.SamplingPolicy
 import ee.schimke.composeai.data.render.extensions.RenderImageArtifact
-import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityFinding

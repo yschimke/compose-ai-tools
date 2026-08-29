@@ -6,9 +6,9 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.SamplingPolicy
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.RenderTraceDataProduct
-import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
 

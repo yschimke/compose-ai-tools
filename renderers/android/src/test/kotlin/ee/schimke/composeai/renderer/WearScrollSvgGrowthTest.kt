@@ -37,7 +37,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
+import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.PreviewContext
 import java.io.File
 import java.nio.file.Files

@@ -449,7 +449,7 @@ class ServeLiveSessionTest {
               type = "bool",
               label = "secondary",
               default =
-                ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(false),
+                ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue(false),
             )
           ),
       )
@@ -466,7 +466,8 @@ class ServeLiveSessionTest {
         )
       assertEquals(
         mapOf(
-          "secondary" to ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(true)
+          "secondary" to
+            ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue(true)
         ),
         session.lastStreamOverrides?.namedOverrides,
         "the connect query's knob should reach stream/start typed",
@@ -476,7 +477,8 @@ class ServeLiveSessionTest {
       live.onClientMessage("""{"type":"setOverrides","overrides":{"knob.secondary":"true"}}""")
       assertEquals(
         mapOf(
-          "secondary" to ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue(true)
+          "secondary" to
+            ee.schimke.composeai.daemon.protocol.PreviewOverrideValue.BooleanValue(true)
         ),
         session.lastStreamOverrides?.namedOverrides,
         "setOverrides' knob should reach the restarted stream typed",
