@@ -231,6 +231,14 @@ function markupClosed(): void {
 }
 
 const originalBodies = new WeakMap<HTMLInputElement, string>();
+/**
+ * The exact value this module last wrote to a body field.
+ *
+ * How {@link applyHostedCaptures} tells its own re-embed apart from someone
+ * else's rewrite: equal means the cached base is still the right thing to build
+ * on, different means the field moved underneath us and the base is stale.
+ */
+const lastWritten = new WeakMap<HTMLInputElement, string>();
 let uploadGeneration = 0;
 
 /** Upload this report's captures in the background while the reporter writes the summary. */
@@ -329,11 +337,22 @@ function reportBodyInput(): HTMLInputElement | null {
 function applyHostedCaptures(captures: Capture[]): boolean {
     const input = reportBodyInput();
     if (!input) return false;
-    if (!originalBodies.has(input)) originalBodies.set(input, input.value);
-    input.value = withUploadedCaptures(
+    // Re-read the base whenever anything but us has written to the field since we
+    // last did. The bug page's body is a server-rendered constant, so caching it
+    // once is right there — but a preview page's is live: `refreshReportLink`
+    // (viewer.ts) replaces it wholesale with the CURRENT render URL every time the
+    // knobs change. A base cached on the first submission would quietly rebuild
+    // every later one from the first render's settings, so the second report
+    // describes the first bug.
+    if (!originalBodies.has(input) || lastWritten.get(input) !== input.value) {
+        originalBodies.set(input, input.value);
+    }
+    const next = withUploadedCaptures(
         originalBodies.get(input) ?? input.value,
         captures,
     );
+    input.value = next;
+    lastWritten.set(input, next);
     const preview = document.querySelector<HTMLElement>("#cp-bug-preview");
     if (preview) preview.textContent = input.value;
     return true;

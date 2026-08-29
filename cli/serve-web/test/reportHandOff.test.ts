@@ -485,6 +485,32 @@ describe("embedding hosted captures in the form actually being submitted", () =>
         assert.match(note(), /on the clipboard/);
     });
 
+    it("rebuilds from the body as it is now, not as it was first submitted", async () => {
+        // A preview page's body is live: `refreshReportLink` in viewer.ts replaces it wholesale
+        // with the current render URL whenever the knobs change. Caching the first submission's
+        // value and rebuilding every later one from it means the second report quietly describes
+        // the first bug — the reporter changed the preview precisely because the first framing
+        // was wrong.
+        stubBrowser([hosted("shot-1", "Region")]);
+        previewPage();
+        installCapture();
+        submitReport(".cp-report-form");
+        await settled();
+        assert.match(body("#cp-report-body"), /report/);
+
+        // The reporter goes back, changes the preview, and files again.
+        document.querySelector<HTMLInputElement>("#cp-report-body")!.value =
+            "second render";
+        submitReport(".cp-report-form");
+        await settled();
+
+        const now = body("#cp-report-body");
+        assert.match(now, /second render/);
+        assert.doesNotMatch(now, /^report/);
+        // …and the capture is still embedded, once.
+        assert.equal(now.match(/!\[Region\]/g)?.length, 1);
+    });
+
     it("copies the newest capture the report will NOT carry", async () => {
         // A capture is unhosted because its upload failed, or because marking it up cleared the
         // URL. Copying `latest` regardless sends a picture the body already embeds and drops the
