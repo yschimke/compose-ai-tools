@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.47.0](https://github.com/yschimke/compose-ai-tools/compare/v1.46.2...v1.47.0) (2026-08-29)
+
+
+### Features
+
+* split the VS Code extension into its own repository ([#4759](https://github.com/yschimke/compose-ai-tools/issues/4759)) ([c5d874e](https://github.com/yschimke/compose-ai-tools/commit/c5d874e40a4cc771dfb5dacca66fd7c9c49742b6))
+
+
+### Bug Fixes
+
+* **ci:** stop the parity bot reporting on runs it never measured ([#4763](https://github.com/yschimke/compose-ai-tools/issues/4763)) ([2089d68](https://github.com/yschimke/compose-ai-tools/commit/2089d68d53ec51a4b2829b6a92a08e4d9fc4d72b))
+* close the split's follow-up gaps found in review ([#4760](https://github.com/yschimke/compose-ai-tools/issues/4760)) ([58f2da5](https://github.com/yschimke/compose-ai-tools/commit/58f2da5373493438f99decf684193bf1dfea1be6))
+* **rc-player:** stop the CMP player doubling padding at density != 1 ([#4766](https://github.com/yschimke/compose-ai-tools/issues/4766)) ([8e48329](https://github.com/yschimke/compose-ai-tools/commit/8e4832966117bd2fab07549efa93333d808fbcad))
+* **serve:** file a comparison's pair, not one panel of it ([#4767](https://github.com/yschimke/compose-ai-tools/issues/4767)) ([436e588](https://github.com/yschimke/compose-ai-tools/commit/436e58882ea655c3fa02a913ec5c3ca1a591daba))
+* **serve:** give a design page the whole viewport width ([#4757](https://github.com/yschimke/compose-ai-tools/issues/4757)) ([33d8f1a](https://github.com/yschimke/compose-ai-tools/commit/33d8f1aa542c8659b680de86e5baec45104fbbd6))
+
 ## [1.46.2](https://github.com/yschimke/compose-ai-tools/compare/v1.46.1...v1.46.2) (2026-08-28)
 
 
