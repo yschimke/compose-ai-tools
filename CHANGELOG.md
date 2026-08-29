@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.50.0](https://github.com/yschimke/compose-ai-tools/compare/v1.49.0...v1.50.0) (2026-08-29)
+
+
+### Features
+
+* **serve:** prototype a Wasm preview frontend ([#4786](https://github.com/yschimke/compose-ai-tools/issues/4786)) ([38579e9](https://github.com/yschimke/compose-ai-tools/commit/38579e9537e0748fd6974843eeee5823def1ec69))
+
+
+### Bug Fixes
+
+* **plugin:** order composePreviewBundle after every render task it reads ([#4792](https://github.com/yschimke/compose-ai-tools/issues/4792)) ([3d98583](https://github.com/yschimke/compose-ai-tools/commit/3d98583706f774fd58f5281e082eb3647ebeec0b))
+
 ## [1.49.0](https://github.com/yschimke/compose-ai-tools/compare/v1.48.0...v1.49.0) (2026-08-29)
 
 
