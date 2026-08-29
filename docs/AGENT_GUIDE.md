@@ -132,18 +132,19 @@ Four-stage pipeline, spread across the modules:
 
 The CLI ([cli/](../cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code extension ([compose-preview-vscode/](https://github.com/yschimke/compose-preview-vscode/blob/main/src/)) are thin drivers over the Gradle tasks — they shell out via the Tooling API (`GradleConnector.kt`, `gradleService.ts`) and read the resulting `previews.json` / PNG files. The CLI also ships a `compose-preview` binary with `installDist` for use as an agent/MCP backend.
 
-### `preview-server/` — a separate build, on purpose
+### The preview server lives in another repository now
 
-`compose-preview serve` is being prepared for extraction into its own repository (issue #3824). It has **not** moved, and by the repo's own gate it should not move yet — run `python3 scripts/measure-serve-coupling.py` for today's numbers.
+`compose-preview serve` **moved**. It is [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server), and it publishes `ee.schimke.composeai:compose-preview-serve` from there — first release 2.0.0. Its deployment, its GHCR image and its Playwright harness went with it.
 
-What exists is the seam. `preview-server/` is a **separate Gradle build** that is deliberately **not** included in the root `settings.gradle.kts`. Do not wire it in with `includeBuild` "for convenience": the whole value is that it can only resolve the contracts as published artifacts, exactly as it would after the split, so a contract that is unpublishable or drags an MCP server / renderer client onto the classpath fails now rather than on the day of the move. It is built by `scripts/check-preview-server-contracts.sh` (publish contracts to Maven Local at a fixed probe version, then build against them), which CI runs as `Preview Server Contracts`.
+The instruments that prepared the move are gone with it. `preview-server/` (the contract probe) and `scripts/check-preview-server-contracts.sh` existed to prove the server's dependency floor was publishable *before* the extraction; a published 2.0.0 is that proof, so do not go looking for the `Preview Server Contracts` CI job — it no longer exists.
 
-Two ratchets guard the rest, and both fail in *both* directions — a new crossing fails, and so does a recorded one that has quietly gone away, so neither register can rot into decoration:
+One ratchet remains, and it still measures something real:
 
-- `./gradlew :cli:checkServeSeam` (`scripts/check-serve-seam.py` + `scripts/serve-seam-allowlist.json`) — the symbol surface between `cli.serve` and the rest of `:cli`, which has no build boundary to police it while `serve` is still a package.
-- `checkContractSurface` in the probe build — the extracted server's resolved dependency floor, transitives included, with its two known leaks recorded and required to shrink.
+- `./gradlew :cli:checkServeSeam` (`scripts/check-serve-seam.py` + `scripts/serve-seam-allowlist.json`) — the symbol surface between `cli.serve` and the rest of `:cli`.
 
-Full picture, and the order the remaining work goes in: [docs/design/PREVIEW_SERVER_SPLIT.md](design/PREVIEW_SERVER_SPLIT.md).
+It remains because **`cli/serve` has not moved yet**. `browse` delegates to `ServeCommand` outright, and `bundle render` and `history manifest` reach into server types, so removing it would take three commands with it. Those dependencies get refactored first; until then the seam is still worth watching.
+
+The historical record, preserved in the tense it was written in: [docs/design/PREVIEW_SERVER_SPLIT.md](design/PREVIEW_SERVER_SPLIT.md).
 
 ## State seams
 

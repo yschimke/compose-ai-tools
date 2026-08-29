@@ -1,0 +1,107 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Not found — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <script>try{var s=localStorage.getItem("cp-interface-mode");if(s){localStorage.removeItem("cp-interface-mode");if((s==="catalog"||s==="dev")&&document.cookie.indexOf("cp_chrome=")<0){document.cookie="cp_chrome="+s+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");if(document.cookie.indexOf("cp_chrome="+s)>=0&&!/[?&]chrome=/.test(location.search))location.reload();}}}catch(e){}</script>
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <script src="/assets/serve/fixture/serve-chrome.js"></script>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span class="cp-site-wordmark">compose-preview</span>
+    </a>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <div class="cp-interface-mode" role="group" aria-label="Interface mode">
+      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
+      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
+    </div>
+    <details class="cp-site-menu" id="cp-site-menu">
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
+    </details>
+    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+      <a class="cp-site-status-link" id="cp-status-link" href="/status">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
+      <details class="cp-settings">
+        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+        </summary>
+        <div class="cp-settings-panel">
+          <fieldset class="cp-settings-group cp-settings-keyboard">
+            <legend class="cp-settings-legend">Keyboard</legend>
+            <label class="cp-settings-option">
+              <input type="checkbox" data-cp-keyboard-navigation>
+              <span>Power-user navigation</span>
+            </label>
+            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+              shortcuts and an on-screen command palette.</p>
+            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+              View keyboard tour
+            </button>
+          </fieldset>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+        <main class="cp-main">
+        <h1 class="cp-head">Not found</h1>
+<p class="cp-sub">That preview does not exist in this catalog.</p>
+<a class="cp-back" href="/">← All design systems</a>
+        </main>
+        <footer class="cp-site-footer">
+          <div class="cp-site-footer-links">
+            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a> ·
+            <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-report-bug-link" title="Report a bug in the preview server itself — not in a preview"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a server bug</button></form> ·
+            <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+          </div>
+        </footer>
+        <div class="cp-fab" data-cp-capture-src="/assets/serve/fixture/report-capture.js">
+          <details class="cp-fab-menu">
+            <summary class="cp-fab-btn" title="Report a problem" aria-label="Report a problem"
+              ><svg class="cp-fab-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.4a7.7 7.7 0 0 1-8.3 7.6c-.7 0-1.4-.1-2-.3L4 21l1.4-3.9a7.3 7.3 0 0 1-1.9-4.9 7.7 7.7 0 0 1 8.5-7.6 7.8 7.8 0 0 1 8.5 7.8z"/><path d="M12 8.4v4"/><path d="M12 15.4h.01"/></svg></summary>
+            <div class="cp-fab-panel">
+              <p class="cp-fab-head">Report a problem</p>
+              <p class="cp-fab-sub">Two trackers &mdash; pick whichever owns the thing that is
+                wrong.</p>
+              <a class="cp-fab-choice cp-fab-catalog" href="#cp-report" hidden>
+                <span class="cp-fab-what">Something is wrong with this <strong>preview</strong></span>
+                <span class="cp-fab-who">wrong colours, wrong spec, a state that is missing</span>
+              </a>
+              <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-fab-choice"><span class="cp-fab-what">Something is wrong with the <strong>preview server</strong></span><span class="cp-fab-who">the page, a control, a render that failed &mdash; goes to <code>yschimke/compose-ai-tools</code></span></button></form>
+              <div class="cp-shot" hidden>
+                <p class="cp-shot-head">Capture what you can see</p>
+                <p class="cp-fab-who">The report embeds the plain render. Anything the browser composes
+                  &mdash; the spec triptych, a wipe, an overlay, an error &mdash; only reaches the issue as a
+                  picture you take.</p>
+                <div class="cp-shot-modes">
+                  <button type="button" class="cp-shot-mode" data-cp-capture="view"
+                    title="The whole browser viewport, as it is now">Whole view</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="region"
+                    title="Drag a box around the part that is wrong">Region</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="element"
+                    title="Point at one element — a render, a table, a single cell">Element</button>
+                </div>
+                <p class="cp-shot-note" role="status"></p>
+                <ul class="cp-shot-list"></ul>
+              </div>
+            </div>
+          </details>
+        </div>
+        <script>(function(){var key="cp_chrome";document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{document.cookie=key+"="+mode+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");}catch(e){}var u=new URL(location.href);u.searchParams.delete("chrome");if(document.cookie.indexOf(key+"="+mode)<0)u.searchParams.set("chrome",mode);var q=u.searchParams.toString();location.assign(u.pathname+(q?"?"+q:"")+u.hash);});});})();</script>
+        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
+      </body>
+    </html>

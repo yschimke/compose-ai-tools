@@ -10,8 +10,7 @@ name: PR Commands
 #   /rerun <target>      full re-run of the latest run of one workflow on
 #                        the head SHA. <target> is a workflow file stem
 #                        (`compose-preview`, `ci`, ...) or an alias:
-#                        previews -> compose-preview, serve ->
-#                        serve-preview-comment
+#                        previews -> compose-preview
 #   /rerun all           full re-run of every completed run on the head SHA
 #
 # Checking "Re-run preview diff" in the sticky <!-- preview-diff --> comment
@@ -128,16 +127,13 @@ jobs:
 
           case "$target" in
             previews) target="compose-preview" ;;
-            # `serve` was an alias until the preview server was split out
-            # (yschimke/compose-preview-server), which now owns the serve pages
-            # and their visual harness. Retired rather than repointed, for the
-            # same reason `vscode` was: it would re-run something in a repository
-            # that no longer contains the surface.
-            # `vscode` was the alias for this until the extension was split out
-            # (yschimke/compose-preview-vscode). It is retired rather than repointed:
-            # this pipeline captures serve pages now, so `/rerun vscode` would have
-            # re-run something the typist did not mean, in a repository that no longer
-            # contains the extension at all.
+            # Two aliases are retired rather than repointed, for the same reason:
+            # each named a pipeline that now lives in another repository, so
+            # `/rerun <alias>` would re-run something the typist did not mean, in a
+            # repository that no longer contains the surface.
+            #   `vscode` -> the extension, split out to yschimke/compose-preview-vscode
+            #   `serve`  -> the serve pages and their visual harness, split out to
+            #               yschimke/compose-preview-server
           esac
 
           HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
@@ -197,7 +193,7 @@ jobs:
               '[.[] | select((.path | sub(".*/"; "") | sub("\\.ya?ml$"; "")) == $t)] | first // empty | [.id, .status, .name] | @tsv')
             if [ -z "$match" ]; then
               available=$(printf '%s' "$runs" | jq -r '[.[] | .path | sub(".*/"; "") | sub("\\.ya?ml$"; "")] | unique | join(", ")')
-              reply "\`/rerun ${target}\`: no run of that workflow on head \`${HEAD_SHA:0:8}\`. Workflows with runs on this commit: ${available}. Aliases: \`previews\`, \`serve\`, \`all\`."
+              reply "\`/rerun ${target}\`: no run of that workflow on head \`${HEAD_SHA:0:8}\`. Workflows with runs on this commit: ${available}. Aliases: \`previews\`, \`all\`."
               exit 0
             fi
             IFS=$'\t' read -r id status name <<< "$match"

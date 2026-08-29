@@ -1,0 +1,636 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Playground — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <script src="/assets/serve/fixture/serve-chrome.js"></script>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span class="cp-site-wordmark">compose-preview</span>
+    </a>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <details class="cp-site-menu" id="cp-site-menu">
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
+    </details>
+    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+      <a class="cp-site-status-link" id="cp-status-link" href="/status?token=demo-token-fixture">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
+      <details class="cp-settings">
+        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+        </summary>
+        <div class="cp-settings-panel">
+          <fieldset class="cp-settings-group cp-settings-keyboard">
+            <legend class="cp-settings-legend">Keyboard</legend>
+            <label class="cp-settings-option">
+              <input type="checkbox" data-cp-keyboard-navigation>
+              <span>Power-user navigation</span>
+            </label>
+            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+              shortcuts and an on-screen command palette.</p>
+            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+              View keyboard tour
+            </button>
+          </fieldset>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+        <main class="cp-main">
+                <link rel="stylesheet" href="/assets/serve/fixture/codemirror.css">
+        <link rel="stylesheet" href="/assets/serve/fixture/playground.css">
+        <h1 class="cp-head">Playground</h1>
+        <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
+          preview. This lane runs your code on the server, so it stays behind your token.</p>
+        <div class="cp-pg">
+          <div class="cp-pg-bar">
+            <label class="cp-pg-modelabel" for="pg-catalog">Catalog</label>
+            <select id="pg-catalog" class="cp-pg-mode">
+              <option value="" selected>Server default</option>
+              <option value="compose-m3">compose-m3 (desktop)</option>
+              <option value="compose-wear">compose-wear (android)</option>
+            </select>
+            <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
+            <select id="pg-mode" class="cp-pg-mode">
+              <option value="compose-cmp" selected>Compose (Desktop)</option>
+              <option value="compose-android">Compose (Android)</option>
+              <option value="remote-compose">Remote Compose</option>
+            </select>
+            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
+            <button id="pg-edit-lease" class="cp-doc-btn" type="button">Acquire editing lease</button>
+          </div>
+          <p id="pg-edit-lease-note" class="cp-pg-status" hidden></p>
+          <div id="pg-files" class="cp-pg-files" role="tablist" aria-label="Snippet files">
+            <button class="cp-pg-file" type="button" role="tab" aria-current="true"
+              data-pg-file="Snippet.kt">Snippet.kt</button>
+            <button id="pg-add-file" class="cp-pg-filebtn" type="button">+ file</button>
+            <button id="pg-remove-file" class="cp-pg-filebtn" type="button" hidden>Remove file</button>
+          </div>
+          <textarea id="pg-source" class="cp-pg-source" spellcheck="false"
+            aria-label="Kotlin source">import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
+
+@Preview
+@Composable
+fun Greeting() {
+    Button(onClick = {}) {
+        Text(&quot;Hello, Compose!&quot;)
+    }
+}</textarea>
+          <div id="pg-status" class="cp-pg-status" role="status" hidden></div>
+          <ul id="pg-diagnostics" class="cp-pg-diags" aria-live="polite" hidden></ul>
+          <div id="pg-result" class="cp-doc-result cp-pg-result" hidden>
+            <p id="pg-preview-note" class="cp-pg-status" hidden></p>
+            <img id="pg-image" class="cp-pg-image" alt="Rendered first frame" hidden>
+            <p id="pg-open-row" hidden>
+              <a id="pg-open" class="cp-doc-btn" href="#" rel="noopener">Open preview →</a>
+            </p>
+            <ul id="pg-previews" class="cp-pg-diags" hidden
+              aria-label="Previews declared by this snippet"></ul>
+          </div>
+        </div>
+        <script src="/assets/serve/fixture/codemirror.js"></script>
+        <script>(function () {
+  var source = document.getElementById("pg-source");
+  var mode = document.getElementById("pg-mode");
+  var catalog = document.getElementById("pg-catalog");
+  var run = document.getElementById("pg-run");
+  var editLeaseButton = document.getElementById("pg-edit-lease");
+  var editLeaseNote = document.getElementById("pg-edit-lease-note");
+  var fileBar = document.getElementById("pg-files");
+  var addFile = document.getElementById("pg-add-file");
+  var removeFile = document.getElementById("pg-remove-file");
+  var statusEl = document.getElementById("pg-status");
+  var diags = document.getElementById("pg-diagnostics");
+  var result = document.getElementById("pg-result");
+  var image = document.getElementById("pg-image");
+  var openRow = document.getElementById("pg-open-row");
+  var openLink = document.getElementById("pg-open");
+  var note = document.getElementById("pg-preview-note");
+  var previewList = document.getElementById("pg-previews");
+  var suffix = "?token=demo-token-fixture";
+  var editLease = null;
+  var editRevision = 0;
+  // One holder per document/tab: closing one tab must not tear down another tab's shared
+  // owner-wide incremental workspace.
+  var editClient = (window.crypto && typeof window.crypto.randomUUID === "function")
+    ? window.crypto.randomUUID()
+    : (Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
+  function releaseEditLeaseOnDiscard() {
+    if (!editLease) return;
+    var body = JSON.stringify({ lease: editLease, client: editClient });
+    var url = "/api/1/compiler/edit-lease/release" + suffix;
+    editLease = null;
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    } else {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body,
+        credentials: "same-origin",
+        keepalive: true
+      }).catch(function () {});
+    }
+  }
+  window.addEventListener("pagehide", function (event) {
+    // A bfcache page is still alive and may be restored; an actually discarded page should
+    // surrender the one host-wide lease immediately. Delivery remains best-effort, with the
+    // server TTL as the hard fallback.
+    if (!event.persisted) releaseEditLeaseOnDiscard();
+  });
+  function setEditLease(value, message, expiresAt, revision) {
+    editLease = value;
+    editRevision = value && Number.isFinite(revision) ? revision : 0;
+    if (!editLeaseButton) return;
+    editLeaseButton.disabled = false;
+    editLeaseButton.textContent = value ? "Release editing lease" : "Acquire editing lease";
+    editLeaseButton.setAttribute("aria-pressed", value ? "true" : "false");
+    editLeaseNote.hidden = !message;
+    editLeaseNote.textContent = message || "";
+    if (value && expiresAt) {
+      editLeaseButton.title = "Lease expires " + new Date(expiresAt).toLocaleTimeString();
+    } else {
+      editLeaseButton.removeAttribute("title");
+    }
+  }
+  if (editLeaseButton) {
+    editLeaseButton.addEventListener("click", function () {
+      editLeaseButton.disabled = true;
+      if (!editLease) {
+        fetch("/api/1/compiler/edit-lease" + suffix, {
+          method: "POST",
+          headers: { "Accept": "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ client: editClient })
+        })
+          .then(function (r) {
+            return r.json().then(function (body) {
+              if (!r.ok) throw new Error(body.message || "The editing lease is busy.");
+              return body;
+            });
+          })
+          .then(function (body) {
+            setEditLease(body.lease, body.message, body.expiresAtEpochMs, body.revision);
+          })
+          .catch(function (e) {
+            setEditLease(null, e.message || "Could not acquire editing lease.");
+          });
+      } else {
+        var releasing = editLease;
+        fetch("/api/1/compiler/edit-lease/release" + suffix, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lease: releasing, client: editClient })
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("The editing lease has already expired.");
+            setEditLease(null, "Editing lease released.");
+          })
+          .catch(function (e) { setEditLease(null, e.message); });
+      }
+    });
+  }
+  // The catalog selector. Each entry carries its own mode list because a catalog's bundle
+  // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
+  // catalog are not the same choice with a different classpath, they are different modes.
+  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"\",\"label\":\"Server default\",\"backend\":\"\",\"modes\":[\"compose-cmp\",\"compose-android\",\"remote-compose\"],\"resolved\":true,\"system\":\"\",\"module\":\"\"},{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true,\"system\":\"compose-m3\",\"module\":\"\"},{\"id\":\"compose-wear\",\"label\":\"compose-wear (android)\",\"backend\":\"android\",\"modes\":[\"compose-android\",\"remote-compose\"],\"resolved\":false,\"system\":\"compose-wear\",\"module\":\"\"}]}").catalogs || [];
+  var modeLabels = {"compose-cmp": "Compose (Desktop)", "compose-android": "Compose (Android)", "remote-compose": "Remote Compose"};
+  function selectedCatalog() {
+    var id = catalog ? catalog.value : "";
+    for (var i = 0; i < catalogs.length; i++) if (catalogs[i].id === id) return catalogs[i];
+    return catalogs.length ? catalogs[0] : null;
+  }
+  // Repopulate Mode from the selected catalog, keeping the current mode when that catalog still
+  // offers it — switching between two desktop catalogs must not silently reset the mode.
+  function syncModes() {
+    var entry = selectedCatalog();
+    var wanted = mode.value;
+    var offered = entry ? (entry.modes || []) : [];
+    mode.innerHTML = "";
+    offered.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = modeLabels[m] || m;
+      mode.appendChild(opt);
+    });
+    if (offered.indexOf(wanted) >= 0) mode.value = wanted;
+    mode.disabled = offered.length === 0;
+    run.disabled = offered.length === 0;
+  }
+  // Catalogs are fetched in the BACKGROUND after the server starts, so a page opened during
+  // startup legitimately renders a short (or empty) list. Re-ask rather than making the visitor
+  // guess that a reload would help.
+  //
+  // ONE fetch is not enough: on a host with nothing pinned the editor commonly loads before the
+  // initial catalog loader has published anything, so the single reply is empty too and nothing
+  // would ever ask again — a permanently disabled Run on a host that came up fine seconds later.
+  // So poll while the answer is still empty, bounded (a host that genuinely serves no compilable
+  // catalog must not poll forever), and stop the moment something is offered.
+  var emptyPolls = 0;
+  var MAX_EMPTY_POLLS = 12;
+  var POLL_MS = 2500;
+  function refreshCatalogs() {
+    fetch("/api/1/compiler/catalogs" + suffix, { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res || !res.catalogs) return;
+        var previous = catalog ? catalog.value : "";
+        catalogs = res.catalogs;
+        if (catalog) {
+          catalog.innerHTML = "";
+          catalogs.forEach(function (c) {
+            var opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.label;
+            catalog.appendChild(opt);
+          });
+          if (!catalogs.length) {
+            var none = document.createElement("option");
+            none.value = ""; none.disabled = true; none.selected = true;
+            none.textContent = "No catalogs available yet…";
+            catalog.appendChild(none);
+          } else {
+            var keep = false;
+            for (var i = 0; i < catalogs.length; i++) {
+              if (catalogs[i].id === previous) keep = true;
+            }
+            catalog.value = keep ? previous : catalogs[0].id;
+          }
+        }
+        var empty = document.getElementById("pg-empty");
+        if (empty) empty.hidden = catalogs.length > 0;
+        syncModes();
+        if (!catalogs.length && ++emptyPolls < MAX_EMPTY_POLLS) {
+          window.setTimeout(refreshCatalogs, POLL_MS);
+        }
+      })
+      .catch(function () { /* the baked-in list still stands */ });
+  }
+  if (catalog) {
+    catalog.addEventListener("change", syncModes);
+    // Opening the dropdown is the one moment a stale list actually costs the visitor something,
+    // and it's a cheap place to catch catalogs that finished loading after the poll gave up.
+    catalog.addEventListener("focus", refreshCatalogs);
+  }
+  syncModes();
+  // Unconditional, not just when there is a selector: a page opened before the host's own pinned
+  // bundle finished resolving renders with no modes at all, and the refresh is what recovers it
+  // without asking the visitor to reload.
+  refreshCatalogs();
+  // CodeMirror over the textarea when the vendored bundle loaded, plain textarea when it
+  // didn't. Every read/write of the buffer goes through readSource/writeSource, so a failed
+  // asset fetch degrades to exactly the pre-editor behaviour instead of a dead page — the
+  // editor is a convenience, and the compile lane is the feature.
+  var editor = null;
+  if (window.CodeMirror) {
+    editor = window.CodeMirror.fromTextArea(source, {
+      mode: "text/x-kotlin",
+      lineNumbers: true,
+      // `fromTextArea` hides the original textarea, which takes its aria-label out of the
+      // accessibility tree with it. CodeMirror only names its own generated input through
+      // this option, so without it a screen reader announces an unlabelled edit box.
+      screenReaderLabel: "Kotlin source",
+      indentUnit: 4,
+      // Kotlin is space-indented; without this Tab inserts a literal tab that the compiler
+      // accepts but nobody wants pasted back into a file.
+      indentWithTabs: false,
+      matchBrackets: true,
+      viewportMargin: Infinity,
+    });
+    // Tab as INDENT, not focus-escape. A code box that swallows Tab is a keyboard trap, so
+    // Esc first moves focus out — the standard escape hatch (WCAG 2.1.2).
+    editor.setOption("extraKeys", {
+      Tab: function (cm) { cm.execCommand("indentMore"); },
+      "Shift-Tab": function (cm) { cm.execCommand("indentLess"); },
+      Esc: function (cm) { cm.getInputField().blur(); },
+      "Ctrl-Enter": function () { run.click(); },
+      "Cmd-Enter": function () { run.click(); },
+    });
+  }
+  function readSource() { return editor ? editor.getValue() : source.value; }
+  function writeSource(text) {
+    if (editor) editor.setValue(text); else source.value = text;
+  }
+  // CodeMirror diagnostics are deliberately drawn by this page instead of depending on its
+  // optional lint addon: the compiler already returns exact 0-based locations, and keeping the
+  // tiny renderer here preserves the editor's plain-textarea fallback. The list below the
+  // editor remains the accessible summary; these widgets put each message beside the code that
+  // caused it, which is where it is useful while fixing a failed compile.
+  var editorDiags = [];
+  var latestDiags = [];
+  function clearEditorDiags() {
+    if (!editor) return;
+    editorDiags.forEach(function (entry) {
+      if (entry.widget) entry.widget.clear();
+      if (entry.lineHandle) editor.removeLineClass(entry.lineHandle, "background", entry.lineClass);
+      if (entry.mark) entry.mark.clear();
+    });
+    editorDiags = [];
+  }
+  function renderEditorDiags() {
+    clearEditorDiags();
+    if (!editor) return;
+    var file = files[active];
+    latestDiags.forEach(function (d) {
+      if (d.file !== file.name || d.line == null || d.line < 0 || d.line >= editor.lineCount()) return;
+      var severity = d.severity || "info";
+      var lineClass = "cp-pg-line-" + severity;
+      // CodeMirror moves this handle with the line when edits are inserted above it. Keeping
+      // the original numeric index would clear whichever line later occupied that position and
+      // strand the actual diagnostic highlight after the next compile.
+      var lineHandle = editor.addLineClass(d.line, "background", lineClass);
+      var message = document.createElement("div");
+      message.className = "cp-pg-inline-diag cp-pg-inline-" + severity;
+      // The live summary below already announces the same diagnostic. Keep this visual copy
+      // out of the accessibility tree so a compile failure is not read twice.
+      message.setAttribute("aria-hidden", "true");
+      message.textContent = d.message;
+      var widget = editor.addLineWidget(d.line, message, { coverGutter: false, noHScroll: true });
+      var mark = null;
+      if (d.ch != null) {
+        var lineText = editor.getLine(d.line) || "";
+        var start = Math.max(0, Math.min(d.ch, lineText.length));
+        var endLine = d.endLine == null ? d.line : Math.max(d.line, d.endLine);
+        var endCh = d.endCh == null ? Math.min(lineText.length, start + 1) : d.endCh;
+        if (endLine !== d.line || endCh > start) {
+          mark = editor.markText(
+            { line: d.line, ch: start },
+            { line: endLine, ch: endCh },
+            { className: "cp-pg-range-" + severity }
+          );
+        }
+      }
+      editorDiags.push({ widget: widget, lineHandle: lineHandle, lineClass: lineClass, mark: mark });
+    });
+  }
+  // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
+  // buffer, `active` is the one the textarea is showing. A single-file snippet keeps exactly
+  // the old shape, so nothing about the common case changes.
+  var files = [{ name: "Snippet.kt", text: readSource() }];
+  var active = 0;
+  function uniqueName(name) {
+    var taken = {}; files.forEach(function (f) { taken[f.name.toLowerCase()] = true; });
+    if (!taken[name.toLowerCase()]) return name;
+    var stem = name.replace(/\.kt$/, "");
+    for (var i = 1; ; i++) {
+      var candidate = stem + "_" + i + ".kt";
+      if (!taken[candidate.toLowerCase()]) return candidate;
+    }
+  }
+  function renderFiles() {
+    // Rebuild the tab strip from `files`; the +/- buttons are kept, not recreated.
+    var tabs = fileBar.querySelectorAll("[data-pg-file]");
+    for (var i = 0; i < tabs.length; i++) fileBar.removeChild(tabs[i]);
+    files.forEach(function (f, i) {
+      var tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "cp-pg-file";
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("data-pg-file", f.name);
+      tab.setAttribute("aria-current", i === active ? "true" : "false");
+      tab.textContent = f.name;
+      tab.addEventListener("click", function () { showFile(i); });
+      fileBar.insertBefore(tab, addFile);
+    });
+    removeFile.hidden = files.length < 2;
+  }
+  addFile.addEventListener("click", function () {
+    files[active].text = readSource();
+    // Auto-named rather than prompted: Kotlin does not tie declarations to a file name, so the
+    // name only ever shows up in diagnostics — not worth a modal dialog on every added file.
+    var name = uniqueName("File" + (files.length + 1) + ".kt");
+    files.push({ name: name, text: "" });
+    active = files.length - 1;
+    writeSource("");
+    renderFiles();
+    if (editor) editor.focus(); else source.focus();
+  });
+  removeFile.addEventListener("click", function () {
+    if (files.length < 2) return;
+    files.splice(active, 1);
+    active = Math.min(active, files.length - 1);
+    writeSource(files[active].text);
+    renderFiles();
+    // Removing the active file is also a tab transition. Repaint the retained diagnostics for
+    // the buffer that just became active instead of leaving its messages hidden until a click
+    // or another compile happens to refresh them.
+    renderEditorDiags();
+  });
+  renderFiles();
+  function setStatus(text, isError) {
+    statusEl.hidden = false;
+    statusEl.className = "cp-pg-status" + (isError ? " cp-doc-error" : "");
+    statusEl.textContent = text;
+  }
+  function clearOut() {
+    latestDiags = [];
+    clearEditorDiags();
+    diags.hidden = true; diags.innerHTML = "";
+    result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
+    note.hidden = true; note.textContent = "";
+    previewList.hidden = true; previewList.innerHTML = "";
+  }
+  function indexOfFile(name) {
+    for (var i = 0; i < files.length; i++) if (files[i].name === name) return i;
+    return -1;
+  }
+  function showFile(i) {
+    if (i < 0 || i === active) return;
+    files[active].text = readSource();
+    active = i;
+    writeSource(files[active].text);
+    renderFiles();
+    renderEditorDiags();
+  }
+  function renderDiags(list) {
+    latestDiags = list || [];
+    renderEditorDiags();
+    if (!latestDiags.length) return;
+    diags.hidden = false;
+    latestDiags.forEach(function (d) {
+      var li = document.createElement("li");
+      li.className = "cp-pg-diag cp-pg-" + (d.severity || "info");
+      // With several buffers open, "unresolved reference at line 5" is useless without the
+      // file — the server keys diagnostics by basename, so name it and, when that file is one
+      // of ours, make the entry jump to its tab.
+      var owner = indexOfFile(d.file || "");
+      var where = (d.file ? d.file : "") + ((d.line != null) ? (":" + (d.line + 1)) : "");
+      var loc = where ? (" (" + where + ")") : "";
+      li.textContent = (d.severity || "info") + ": " + d.message + loc;
+      if (owner >= 0) {
+        li.style.cursor = "pointer";
+        li.title = "Show " + d.file + (d.line != null ? ":" + (d.line + 1) : "");
+        li.addEventListener("click", function () {
+          showFile(owner);
+          if (editor && d.line != null) {
+            editor.setCursor({ line: d.line, ch: d.ch || 0 });
+            editor.scrollIntoView({ line: d.line, ch: d.ch || 0 }, 80);
+            editor.focus();
+          }
+        });
+      }
+      diags.appendChild(li);
+    });
+  }
+  // A monotonic id fences stale runs: only the newest click updates the DOM, and Run is disabled
+  // while a compile is in flight so a burst can't double-submit (each submit mints a token).
+  var reqId = 0;
+  run.addEventListener("click", function () {
+    var myId = ++reqId;
+    run.disabled = true;
+    clearOut();
+    setStatus("Compiling…", false);
+    files[active].text = readSource();
+    var body = JSON.stringify({
+      confType: mode.value,
+      catalog: catalog ? catalog.value : "",
+      files: files,
+      editLease: editLease || "",
+      revision: editLease ? ++editRevision : 0
+    });
+    fetch("/api/1/compiler/run" + suffix, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body
+    })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          if (!r.ok) throw new Error(t || ("run failed (" + r.status + ")"));
+          return JSON.parse(t);
+        });
+      })
+      .then(function (res) {
+        if (myId !== reqId) return;
+        run.disabled = false;
+        if (editLeaseButton) editLeaseButton.disabled = false;
+        renderDiags(res.diagnostics);
+        var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
+        if (res.exception) {
+          if (res.exception.indexOf("live-edit lease") >= 0) setEditLease(null, res.exception);
+          setStatus(res.exception, true); return;
+        }
+        if (hasError) {
+          setStatus(
+            res.revision != null
+              ? ("Compilation failed at revision " + res.revision +
+                (res.incremental ? " (incremental)." : " (full fallback)."))
+              : "Compilation failed.",
+            true
+          );
+          return;
+        }
+        result.hidden = false;
+        if (res.image) { image.hidden = false; image.src = res.image; }
+        var link = res.documentUrl || res.previewUrl;
+        if (link) {
+          openRow.hidden = false;
+          openLink.href = link + suffix;
+          openLink.textContent = res.documentUrl ? "Open document →" : "Open live preview →";
+        }
+        // A snippet routinely declares more than one @Preview, and only the first drives the
+        // still frame. The rest are compiled and live in the same session, so list every one as
+        // its own link — `?preview=<id>` opens the session on it — rather than naming the drawn
+        // one and leaving the others unreachable. Kept out of the status line, which stays the
+        // terminal "Done." the e2e keys on.
+        var all = res.previews || [];
+        if (res.previewId && all.length > 1) {
+          note.hidden = false;
+          note.textContent =
+            "Rendered " + res.previewId + " — " + all.length + " previews in this snippet.";
+        }
+        // Only the live-preview lane can open on a chosen preview; a documentUrl addresses a
+        // rendered document, which `?preview=` means nothing to. So the per-preview links hang
+        // off res.previewUrl specifically rather than the `link` that may be either.
+        if (res.previewUrl && all.length > 1) {
+          previewList.hidden = false;
+          previewList.innerHTML = "";
+          all.forEach(function (id) {
+            var li = document.createElement("li");
+            li.className = "cp-pg-diag cp-pg-info";
+            var a = document.createElement("a");
+            // Same `/pg/<token>` redemption the main link uses, plus the preview to open on.
+            // The token rides in `suffix`, so `?`/`&` depends on whether it is already there.
+            a.href = res.previewUrl + suffix + (suffix ? "&" : "?") +
+              "preview=" + encodeURIComponent(id);
+            a.rel = "noopener";
+            a.textContent = id === res.previewId ? (id + " (shown above)") : id;
+            li.appendChild(a);
+            previewList.appendChild(li);
+          });
+        }
+        setStatus("Done.", false);
+        if (res.revision != null && editLeaseNote) {
+          editLeaseNote.hidden = false;
+          editLeaseNote.textContent = "Revision " + res.revision +
+            (res.incremental ? " compiled incrementally." : " used a full compile.");
+        }
+      })
+      .catch(function (e) {
+        if (myId !== reqId) return;
+        run.disabled = false;
+        if (editLeaseButton) editLeaseButton.disabled = false;
+        setStatus(e.message || "run failed", true);
+      });
+  });
+})();</script>
+        </main>
+        <footer class="cp-site-footer">
+          <div class="cp-site-footer-links">
+            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a> ·
+            <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-report-bug-link" title="Report a bug in the preview server itself — not in a preview"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a server bug</button></form> ·
+            <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+          </div>
+        </footer>
+        <div class="cp-fab" data-cp-capture-src="/assets/serve/fixture/report-capture.js">
+          <details class="cp-fab-menu">
+            <summary class="cp-fab-btn" title="Report a problem" aria-label="Report a problem"
+              ><svg class="cp-fab-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.4a7.7 7.7 0 0 1-8.3 7.6c-.7 0-1.4-.1-2-.3L4 21l1.4-3.9a7.3 7.3 0 0 1-1.9-4.9 7.7 7.7 0 0 1 8.5-7.6 7.8 7.8 0 0 1 8.5 7.8z"/><path d="M12 8.4v4"/><path d="M12 15.4h.01"/></svg></summary>
+            <div class="cp-fab-panel">
+              <p class="cp-fab-head">Report a problem</p>
+              <p class="cp-fab-sub">Two trackers &mdash; pick whichever owns the thing that is
+                wrong.</p>
+              <a class="cp-fab-choice cp-fab-catalog" href="#cp-report" hidden>
+                <span class="cp-fab-what">Something is wrong with this <strong>preview</strong></span>
+                <span class="cp-fab-who">wrong colours, wrong spec, a state that is missing</span>
+              </a>
+              <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-fab-choice"><span class="cp-fab-what">Something is wrong with the <strong>preview server</strong></span><span class="cp-fab-who">the page, a control, a render that failed &mdash; goes to <code>yschimke/compose-ai-tools</code></span></button></form>
+              <div class="cp-shot" hidden>
+                <p class="cp-shot-head">Capture what you can see</p>
+                <p class="cp-fab-who">The report embeds the plain render. Anything the browser composes
+                  &mdash; the spec triptych, a wipe, an overlay, an error &mdash; only reaches the issue as a
+                  picture you take.</p>
+                <div class="cp-shot-modes">
+                  <button type="button" class="cp-shot-mode" data-cp-capture="view"
+                    title="The whole browser viewport, as it is now">Whole view</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="region"
+                    title="Drag a box around the part that is wrong">Region</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="element"
+                    title="Point at one element — a render, a table, a single cell">Element</button>
+                </div>
+                <p class="cp-shot-note" role="status"></p>
+                <ul class="cp-shot-list"></ul>
+              </div>
+            </div>
+          </details>
+        </div>
+        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
+      </body>
+    </html>
