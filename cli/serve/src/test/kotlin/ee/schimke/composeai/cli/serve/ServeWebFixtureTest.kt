@@ -217,6 +217,10 @@ class ServeWebFixtureTest {
               .joinToString("&", prefix = if (overrides.isEmpty()) "" else "?") { (key, value) ->
                 "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
               },
+        // The comparison's other panel, exactly as `handleReferenceComparison` supplies it — a
+        // report from that page carries the pair (#4765), and a golden that carried only the
+        // render would show a report this server no longer serves.
+        referenceUrl = referenceId?.let { "https://preview.coo.ee/compose-m3/reference/$it.png" },
         // The goldens stand in for preview.coo.ee, whose render lane is token-free — so they
         // capture the embedded-image form of the body.
         publicRender = true,
@@ -3637,6 +3641,68 @@ class ServeWebFixtureTest {
         siteName = "Wear Material 3",
       )
 
+    // The same page as reached from the **focused comparison** (#4765). Its own golden because the
+    // evidence half is a different surface there: the report carries the pair the page drew rather
+    // than one render, so the preview shows two panels side by side and the prose says what is
+    // still missing from them — the diff, which the browser composes and no URL can name.
+    val bugReportComparePageContext =
+      bugReportPageContext.copy(
+        path = "/compose-m3/compare/button-filled?reference=button-figma",
+        url = "https://preview.coo.ee/compose-m3/compare/button-filled?reference=button-figma",
+        renderUrl = "https://preview.coo.ee/compose-m3/render/button-filled.png",
+        referenceUrl = "https://preview.coo.ee/compose-m3/reference/button-figma.png",
+      )
+    val bugReportCompare =
+      ServeWeb.bugReportPage(
+        report =
+          ServeWeb.BugReport(
+            action = ServeBugReport.action(),
+            body = ServeBugReport.body(bugReportServer, bugReportComparePageContext),
+            bodyTemplate =
+              ServeBugReport.body(
+                bugReportServer,
+                bugReportComparePageContext,
+                clientPlaceholder = true,
+              ),
+            repo = ServeBugReport.REPO,
+            // Both thumbnails point at the harness's placeholder lane, like every other fixture's
+            // stage: what this golden is about is the arrangement, not the pixels in it.
+            renderUrl = "/compose-m3/render/button-filled.png",
+            referenceUrl = "/compose-m3/reference/button-figma.png",
+            login = "yschimke",
+          ),
+        sections =
+          listOf(
+            ServeWeb.BugReportSection(
+              "Server",
+              listOf(
+                "compose-preview" to version,
+                "Mode" to "public (open)",
+                "Uptime" to "3d 4h",
+                "Server JVM" to "17.0.11 (Eclipse Adoptium)",
+                "Server OS" to "Linux 6.8.0-generic (amd64)",
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Page",
+              listOf(
+                "Page" to "/compose-m3/compare/button-filled?reference=button-figma",
+                "Design system" to "compose-m3",
+                "Preview" to "button-filled",
+                "Catalog" to "yschimke/compose-ai-tools@design-artifacts/compose-m3",
+                "Catalog rendered by" to "compose-ai-tools 0.16.54",
+                "Trust" to "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+                "Render lane" to "live daemon",
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Browser",
+              listOf("User agent, viewport, pixel ratio, colour scheme" to "added by your browser"),
+            ),
+          ),
+        version = version,
+      )
+
     // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
     // regeneration below and the sync assertion further down, so a fixture can never be written
     // by one and forgotten by the other.
@@ -3700,6 +3766,7 @@ class ServeWebFixtureTest {
         "serve-viewer-cross-product.html" to viewerCrossProduct,
         "serve-status.html" to serveStatus,
         "serve-report-bug.html" to bugReport,
+        "serve-report-bug-compare.html" to bugReportCompare,
         "serve-report-bug-site.html" to bugReportSite,
         "serve-landing-variants.html" to landingVariants,
         "serve-landing-tree-depth.html" to landingTreeDepth,

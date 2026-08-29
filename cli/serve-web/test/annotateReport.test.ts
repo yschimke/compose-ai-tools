@@ -160,6 +160,27 @@ describe("fillReport", () => {
         );
     });
 
+    it("fills the render cell of a comparison's pair, leaving the reference alone", () => {
+        // Since #4765 the comparison's body embeds both outer panels as a two-cell table, and the
+        // reference cell is a literal URL that comes FIRST in the row. The swap is a
+        // replace-first, so this is the shape that proves it still lands on the render.
+        const pair = [
+            "| Design reference | Render |",
+            "| --- | --- |",
+            "| ![reference](https://preview.example/reference/spec.png) | " +
+                "![Button]({{render}}) |",
+        ].join("\n");
+        assert.equal(
+            fillReport(pair, "https://preview.example/r.png", null),
+            [
+                "| Design reference | Render |",
+                "| --- | --- |",
+                "| ![reference](https://preview.example/reference/spec.png) | " +
+                    "![Button](https://preview.example/r.png) |",
+            ].join("\n"),
+        );
+    });
+
     it("leaves a body with no score row alone", () => {
         const noRow = "| Preview | `plain.Button` |\n![render]({{render}})";
         assert.equal(

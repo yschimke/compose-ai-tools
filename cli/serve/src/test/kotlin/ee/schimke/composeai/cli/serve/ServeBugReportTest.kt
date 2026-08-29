@@ -217,17 +217,19 @@ class ServeBugReportTest {
 
   @Test
   fun `a served path says which system and preview it is showing`() {
+    // …and which of the two preview-shaped routes it was, because they draw different things from
+    // the same id: one render on a stage, or that render beside a design reference (#4765).
     assertEquals(
-      ServeBugReport.PageRef("jetnews", "Article__dark"),
+      ServeBugReport.PageRef("jetnews", "Article__dark", "p"),
       ServeBugReport.parsePath("/jetnews/p/Article__dark"),
     )
     assertEquals(
-      ServeBugReport.PageRef("jetnews", "Article__dark"),
+      ServeBugReport.PageRef("jetnews", "Article__dark", "compare"),
       ServeBugReport.parsePath("/jetnews/compare/Article__dark?reference=x"),
     )
     // The rooted single-session form has no system prefix.
     assertEquals(
-      ServeBugReport.PageRef(previewSegment = "Article__dark"),
+      ServeBugReport.PageRef(previewSegment = "Article__dark", previewRoute = "p"),
       ServeBugReport.parsePath("/p/Article__dark"),
     )
     // A catalog landing names the system and no preview.
@@ -245,9 +247,76 @@ class ServeBugReportTest {
     // Decoding would turn a legitimate %2B into a space and %2F into a separator — the exact bug
     // the usage route documents.
     assertEquals(
-      ServeBugReport.PageRef("jetnews", "A%2Bb%2Fc"),
+      ServeBugReport.PageRef("jetnews", "A%2Bb%2Fc", "p"),
       ServeBugReport.parsePath("/jetnews/p/A%2Bb%2Fc"),
     )
+  }
+
+  @Test
+  fun `the comparison's own query names which reference was on the stage`() {
+    // Left encoded, like the preview segment beside it: the caller matches it against the
+    // session's own reference ids re-encoded the same way.
+    assertEquals(
+      "article%2Bcard",
+      ServeBugReport.referenceSegment("/jetnews/compare/Article?reference=article%2Bcard"),
+    )
+    // No `?reference=` means the page showed the preview's first, which the caller resolves.
+    assertNull(ServeBugReport.referenceSegment("/jetnews/compare/Article"))
+    assertNull(ServeBugReport.referenceSegment("/jetnews/compare/Article?reference="))
+    assertNull(ServeBugReport.referenceSegment(null))
+  }
+
+  @Test
+  fun `the spec lane is recognised from the same query the view row is read from`() {
+    // The one viewer lane that puts a design reference beside the render. Read from `?mode=`
+    // exactly as `viewLabel` reads it, so the View row and the images cannot disagree.
+    assertTrue(ServeBugReport.onSpecLane("/jetnews/p/Article?mode=spec&specView=triptych"))
+    assertTrue(ServeBugReport.onSpecLane("/jetnews/p/Article?mode=SPEC"))
+    assertFalse(ServeBugReport.onSpecLane("/jetnews/p/Article?mode=motion"))
+    assertFalse(ServeBugReport.onSpecLane("/jetnews/p/Article"))
+    assertFalse(ServeBugReport.onSpecLane(null))
+  }
+
+  @Test
+  fun `a report from a comparison carries the pair, not one panel of it`() {
+    // #4765: the render alone was the wrong evidence for "these two disagree" — the picture in the
+    // issue contradicted the complaint it was filed with.
+    val comparison =
+      page.copy(
+        path = "/jetnews/compare/Article__dark",
+        url = "https://preview.coo.ee/jetnews/compare/Article__dark",
+        referenceUrl = "https://preview.coo.ee/jetnews/reference/article-card-figma.png",
+      )
+    val body = ServeBugReport.body(server, comparison)
+    // Still below the paste slot, and still labelled for what it is rather than standing in as
+    // "the screenshot" — the split issue #4261 drew.
+    val screenshot = body.indexOf("### Screenshot")
+    val pair = body.indexOf("### Reference and render")
+    assertTrue(screenshot in 0 until pair, body)
+    assertTrue(body.contains("| Design reference | Render |"), body)
+    assertTrue(
+      body.contains(
+        "| ![reference](https://preview.coo.ee/jetnews/reference/article-card-figma.png) | " +
+          "![render](https://preview.coo.ee/jetnews/render/Article__dark.png) |"
+      ),
+      body,
+    )
+    assertFalse(body.contains("### Base render"), body)
+    // The panel that has no URL is named, so the reporter knows what a capture is still for.
+    assertTrue(body.contains("The diff between them is drawn in your browser"), body)
+  }
+
+  @Test
+  fun `a comparison this host cannot publish links both panels rather than embedding either`() {
+    val local =
+      page.copy(
+        renderUrl = "http://127.0.0.1:8080/render/Article__dark.png",
+        referenceUrl = "http://127.0.0.1:8080/reference/article-card-figma.png",
+      )
+    val body = ServeBugReport.body(server, local)
+    assertFalse(body.contains("!["), body)
+    assertTrue(body.contains("[PNG at these settings](http://127.0.0.1:8080/render/"), body)
+    assertTrue(body.contains("[Design reference PNG](http://127.0.0.1:8080/reference/"), body)
   }
 
   @Test

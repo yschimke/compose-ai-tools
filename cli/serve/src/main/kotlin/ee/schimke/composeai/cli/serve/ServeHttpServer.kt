@@ -3794,6 +3794,23 @@ class ServeHttpServer(
             preview.sourceFile,
           )
         }
+      // The frame this page drew, named as the page names it: an override-free, unpinned
+      // comparison carries the generation it was assembled from, so a report filed from here
+      // embeds the pixels the verdict above it was measured on rather than whatever the catalog
+      // publishes by the time someone opens the issue ([ServeCacheGeneration]).
+      //
+      // Both panels take it, exactly as the page's own `assetQuery` gives both of them one suffix:
+      // a report that embedded this generation's render beside the reference lane's tip would be a
+      // comparison across two publishes, which is the failure the shared scope exists to prevent.
+      val assetQuerySuffix =
+        if (
+          overrideParams.isEmpty() &&
+            ServeCatalogRevision.normalize(
+              call.request.queryParameters[ServeCatalogRevision.PARAM]
+            ) == null
+        )
+          ServeCacheGeneration.scope(requestQuerySuffix(), catalogGeneration(renderHost))
+        else requestQuerySuffix()
       val reportContext =
         ServeIssueReport.Context(
           repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
@@ -3808,24 +3825,19 @@ class ServeHttpServer(
           catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
           toolVersion = bundleHost?.provenance?.toolVersion,
           comparisonUrl = ServeIssueReport.withoutToken(externalPageUrl()),
-          // The frame this page drew, named as the page names it: an override-free, unpinned
-          // comparison carries the generation it was assembled from, so a report filed from here
-          // embeds the pixels the verdict above it was measured on rather than whatever the
-          // catalog publishes by the time someone opens the issue ([ServeCacheGeneration]).
           renderUrl =
             ServeIssueReport.withoutToken(
-              "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png" +
-                if (
-                  overrideParams.isEmpty() &&
-                    ServeCatalogRevision.normalize(
-                      call.request.queryParameters[ServeCatalogRevision.PARAM]
-                    ) == null
-                )
-                  ServeCacheGeneration.scope(
-                    requestQuerySuffix(),
-                    catalogGeneration(renderHost),
-                  )
-                else requestQuerySuffix()
+              "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}" +
+                ".png$assetQuerySuffix"
+            ),
+          // …and the panel it is being compared against, so the issue opens showing the
+          // disagreement rather than one side of it (#4765). The reference the PAGE resolved, not
+          // the query's raw value: `?reference=` may be absent, in which case both this and the
+          // panel above it are the preview's first.
+          referenceUrl =
+            ServeIssueReport.withoutToken(
+              "${externalOrigin()}$basePath/reference/" +
+                "${WebEscaping.urlEncodeSegment(reference.id)}.png$assetQuerySuffix"
             ),
           publicRender = isPublic,
         )
@@ -5041,6 +5053,38 @@ class ServeHttpServer(
     // rewrites it as the knobs change), and without carrying them the report embeds the DEFAULT
     // render rather than the one that prompted it — which is the whole evidentiary point.
     val overrideSuffix = renderOverrideSuffix(from, system)
+    // Which design reference — if any — was on the stage BESIDE that render, and only where the
+    // reporter's own path and query settle it rather than the server picking one (#4765).
+    //
+    // Two pages put a reference there and they are knowable to different depths. The focused
+    // comparison names its pair in the URL, so the answer is exact. The viewer's spec lane names
+    // its lane (`?mode=spec`) but keeps the SOURCE picker in the DOM, so a catalog that offers a
+    // second source could have been showing that instead — there the reference is embedded only
+    // when the lane has nothing to switch to. Every other page leaves this null and keeps the base
+    // render alone, which is the same restraint `ServeBugReport.Page.view` was added for.
+    val stageReference = previewId?.let { id ->
+      val references = host?.designReferencesFor(id).orEmpty()
+      when {
+        ref.previewRoute == ServeBugReport.COMPARE_ROUTE -> {
+          val named = ServeBugReport.referenceSegment(from)
+          // Match, don't trust — and mirror `handleReferenceComparison` exactly: a `?reference=`
+          // naming one this preview does not have is the page's own 404, so falling back to the
+          // first here would embed a pair that page never drew.
+          if (named == null) references.firstOrNull()
+          else
+            references.firstOrNull {
+              it.id == named || WebEscaping.urlEncodeSegment(it.id) == named
+            }
+        }
+        ref.previewRoute == ServeBugReport.VIEWER_ROUTE && ServeBugReport.onSpecLane(from) ->
+          // The lane's own default is the first reference ([ServeWeb.SpecSource]); a second
+          // source means the picker had somewhere to go and the URL does not say whether it went
+          // there, so the report keeps the render alone rather than guessing which pair it was.
+          if (host != null && preview != null && parallelSpecSource(host, preview) != null) null
+          else references.firstOrNull()
+        else -> null
+      }
+    }
     val status = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
     val server =
       ServeBugReport.Server(
@@ -5090,6 +5134,16 @@ class ServeHttpServer(
                 overrideSuffix
             )
           },
+        // The same suffix the render carries. The reference lane reads none of the overrides in it
+        // — a knob does not move a design reference — but it does read the `at=` pin, and a pinned
+        // comparison whose reference quietly came from the tip would put two moments side by side.
+        referenceUrl =
+          stageReference?.let {
+            ServeIssueReport.withoutToken(
+              "${externalOrigin()}$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png" +
+                overrideSuffix
+            )
+          },
         publicRender = isPublic,
       )
     val skin = siteSkin()
@@ -5132,6 +5186,17 @@ class ServeHttpServer(
                 (if (overrideSuffix.isEmpty()) "?" else "&") +
                   "token=${WebEscaping.urlEncodeSegment(linkToken())}"
             "$basePath/render/${WebEscaping.urlEncodeSegment(it)}.png$overrideSuffix$gate"
+          },
+        // The other panel, on the same terms: the page shows what the body carries, so a
+        // comparison-sourced report previews the pair rather than half of it.
+        referenceUrl =
+          stageReference?.let {
+            val gate =
+              if (isPublic) ""
+              else
+                (if (overrideSuffix.isEmpty()) "?" else "&") +
+                  "token=${WebEscaping.urlEncodeSegment(linkToken())}"
+            "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png$overrideSuffix$gate"
           },
         login = githubAuth?.currentLogin(call),
         catalog = catalogTarget,

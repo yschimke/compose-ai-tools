@@ -37,6 +37,12 @@ class ServeIssueReportTest {
       publicRender = true,
     )
 
+  /** The same report as filed from the focused comparison, which has the reference too. */
+  private val pair =
+    full.copy(
+      referenceUrl = "https://preview.coo.ee/jetnews/reference/article-card-figma.png?uiMode=dark"
+    )
+
   @Test
   fun `a preview's bug is filed against the catalog's source repo`() {
     // The source repo owns the Kotlin that misrendered — even when it is a fork (Android's samples
@@ -136,6 +142,75 @@ class ServeIssueReportTest {
     assertTrue(body.contains("Camo proxies the source URL"), body)
     assertTrue(body.contains("does not make a versioned snapshot"), body)
     assertTrue(body.contains("Copy PNG"), "the durable paste path is still offered")
+  }
+
+  @Test
+  fun `a comparison report embeds both panels, not just the render`() {
+    // #4765: an issue about the reference and the render disagreeing arrived showing one of them,
+    // so the picture contradicted the complaint and a triager had to open the comparison to see
+    // what was being reported.
+    val body = ServeIssueReport.body(pair)
+    assertTrue(body.contains("| Design reference | Render |"), body)
+    assertTrue(
+      body.contains(
+        "| ![reference](https://preview.coo.ee/jetnews/reference/article-card-figma.png" +
+          "?uiMode=dark) | " +
+          "![Article](https://preview.coo.ee/jetnews/render/Article__dark.png?uiMode=dark) |"
+      ),
+      body,
+    )
+    // The third panel has no URL — the browser composes it — so the body says so and asks for it.
+    assertTrue(body.contains("The DIFF between those two panels"), body)
+    assertTrue(body.contains("capture control"), body)
+    // Neither panel is offered a second time as a bare link: the images already carry both URLs.
+    assertFalse(body.contains("[PNG at these settings]"), body)
+    assertFalse(body.contains("[Design reference PNG]"), body)
+  }
+
+  @Test
+  fun `the pair leaves exactly one render placeholder for the page's script to fill`() {
+    // `fillReport` in `annotate/report.ts` substitutes the FIRST `]({{render}})` it finds. The
+    // reference cell is a literal URL and comes first in the row, so a second occurrence would
+    // send the swap to the wrong panel and file a body still carrying the placeholder.
+    val tpl = ServeIssueReport.body(pair, renderPlaceholder = true)
+    assertEquals(1, tpl.split("]({{render}})").size - 1, tpl)
+    assertTrue(tpl.contains("![Article]({{render}})"), tpl)
+    assertTrue(tpl.contains("![reference](https://preview.coo.ee/jetnews/reference/"), tpl)
+  }
+
+  @Test
+  fun `half a comparison is never embedded, and both halves are still linked`() {
+    // One panel of a pair reads as "the render" and is worse evidence than the render admitting
+    // what it is — so an unreachable half takes the whole pair back to the link form, which still
+    // names both sides for a triager who can reach the box.
+    val local = pair.copy(referenceUrl = "http://127.0.0.1:8080/reference/article-card-figma.png")
+    val body = ServeIssueReport.body(local)
+    assertFalse(body.contains("| Design reference | Render |"), body)
+    assertTrue(body.contains("![Article](https://preview.coo.ee/jetnews/render/"), body)
+    assertTrue(body.contains("[Design reference PNG](http://127.0.0.1:8080/reference/"), body)
+  }
+
+  @Test
+  fun `a token-gated comparison links both panels rather than embedding either`() {
+    val body = ServeIssueReport.body(pair.copy(publicRender = false))
+    assertFalse(body.contains("!["), body)
+    assertTrue(
+      body.contains("[PNG at these settings](https://preview.coo.ee/jetnews/render/"),
+      body,
+    )
+    assertTrue(
+      body.contains("[Design reference PNG](https://preview.coo.ee/jetnews/reference/"),
+      body,
+    )
+  }
+
+  @Test
+  fun `a report with no reference is unchanged by the pair form existing`() {
+    // The viewer's plain lane has nothing on the stage beside the render, and its spec lane keeps
+    // the picked source out of the URL — so neither grows a panel this writer would be inventing.
+    val body = ServeIssueReport.body(full)
+    assertFalse(body.contains("| Design reference | Render |"), body)
+    assertFalse(body.contains("Design reference PNG"), body)
   }
 
   @Test
