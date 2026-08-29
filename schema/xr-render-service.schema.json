@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/xr-render-service.schema.json",
+  "title": "XR render service",
+  "description": "The JSON-RPC surface the native `xr-composite --serve` process speaks over stdio, framed\nLSP-style with `Content-Length` headers.\n\nThis is the RPC boundary between the compositor and its JVM client (`:renderer-xr-client`,\nwhich the daemon's XR backend holds). It is a *separate* contract from the SpatialScene data\nformat in `spatial-scene.schema.json`: the scene describes what to draw, this describes how to\nask. They version independently, because the compositor is provisioned at a pinned version that\ndeliberately lags the repository (see the `xr-composite` pin in `gradle/libs.versions.toml`), so\nclient and server are routinely built from different commits.\n\nBefore this schema existed the method names, parameter keys and error codes lived as duplicated\nstring literals in `main.cpp`, `XrServerClient.kt` and `test/serve_smoke.py`. A rename on either\nside compiled cleanly on both and failed at runtime — silently, because a failed composite is a\ngraceful skip.",
+  "x-codegen": {
+    "version-const": "XR_RENDER_SERVICE_VERSION",
+    "kotlin-package": "ee.schimke.composeai.renderer.xr.client",
+    "kotlin-object": "XrRenderService",
+    "cpp-namespace": "xrcomposite",
+    "cpp-guard": "xr_render_service"
+  },
+  "x-service": {
+    "version": 1,
+    "version-description": "Version of THIS RPC surface, reported as `initialize`'s `serverInfo.version`.\n\nBumped when a method, parameter, result field or error code changes meaning — not when the\nSpatialScene format changes, which carries its own `SPATIAL_SCENE_VERSION`. A client compares\nthe two independently: it can speak service v1 against a server whose scene format moved, and\nvice versa.",
+    "server-name": "xr-composite",
+    "default-session-id": "default",
+    "default-session-id-description": "Session id the server falls back to when a call carries neither `sessionId` nor\n`frameStreamId` and `initialize` registered no default. Part of the contract: a\nsingle-session client that never names a session still has its frames tagged with this,\nso a client demultiplexing by session id must use the same literal.",
+    "methods": {
+      "initialize": {
+        "description": "Handshake. Returns the server's identity and capabilities; the client must check them before\nassuming any optional behaviour. Also registers the caller's default session id, so a\nsingle-session client can omit `sessionId` on every later call.",
+        "params": {
+          "frameStreamId": "Session id to treat as the default for calls that omit `sessionId`. Absent means the literal `\"default\"`."
+        },
+        "result": {
+          "serverInfo": "`{name, version}` — `name` is always `xr-composite`, `version` is the service version.",
+          "capabilities": "See `capabilities` below."
+        }
+      },
+      "render": {
+        "description": "Open or replace the session's scene and camera, then render one frame. Emits a `streamFrame`\nnotification; `out` additionally writes a PNG to disk. Re-creates the session when the\nviewport size changes.",
+        "alias": "xr/render",
+        "params": {
+          "scene": "The `SpatialScene` to render (see spatial-scene.schema.json).",
+          "sessionId": "Session to render into. Falls back to `frameStreamId`, then the initialize-registered default.",
+          "frameStreamId": "Alias for `sessionId`, matching the daemon's stream-frame naming.",
+          "sceneDir": "Directory panel `texture` paths resolve against. Defaults to the process working directory.",
+          "environment": "Backdrop override — a preset name, or `color:#RRGGBB`. Overrides the scene's own `environment`.",
+          "width": "Viewport width in px. Defaults to the process-wide `--width`.",
+          "height": "Viewport height in px. Defaults to the process-wide `--height`.",
+          "out": "Optional path to also write the rendered PNG to."
+        },
+        "result": {
+          "ok": "Always true on success.",
+          "seq": "Monotonic frame counter, matching the `streamFrame` just emitted.",
+          "sessionId": "The session actually rendered, after the fallback chain.",
+          "width": "Viewport width the session rendered at.",
+          "height": "Viewport height the session rendered at."
+        }
+      },
+      "xr/updatePanels": {
+        "description": "Mutate matching panels on an already-open session and re-render. A panel id not already in the\nscene is appended. Errors with `noSession` when `render` has not opened the session.",
+        "params": {
+          "sessionId": "Session to mutate. Same fallback chain as `render`.",
+          "frameStreamId": "Alias for `sessionId`.",
+          "panels": "Array of partial panels — `{id, texture?, poseInRoot?, sizeDp?}`.",
+          "out": "Optional path to also write the rendered PNG to."
+        },
+        "result": {
+          "ok": "Always true on success.",
+          "seq": "Monotonic frame counter, matching the `streamFrame` just emitted.",
+          "sessionId": "The session actually mutated."
+        }
+      },
+      "xr/stop": {
+        "description": "Tear down one session's Filament objects. The shared engine stays up for other sessions.\nAcks even when the session was already absent, so a client can stop idempotently.",
+        "params": {
+          "sessionId": "Session to tear down. Same fallback chain as `render`.",
+          "frameStreamId": "Alias for `sessionId`."
+        },
+        "result": {
+          "ok": "Always true.",
+          "sessionId": "The session addressed, after the fallback chain."
+        }
+      },
+      "shutdown": {
+        "description": "Acks with an empty object. Does not end the loop — send `exit` for that. Mirrors LSP, where\n`shutdown` and `exit` are separate so a client can wait for the ack before closing the pipe.",
+        "params": {},
+        "result": {}
+      },
+      "exit": {
+        "description": "Ends the serve loop. No response is sent, so send it as a notification.",
+        "params": {},
+        "result": {}
+      }
+    },
+    "notifications": {
+      "streamFrame": {
+        "description": "One rendered frame, pushed after every `render` and `xr/updatePanels`. Reuses the daemon's\n`composestream/1` shape — base64-over-JSON, per that protocol's RFC decision #4.",
+        "params": {
+          "encoding": "Image container. Always `png` today.",
+          "width": "Frame width in px.",
+          "height": "Frame height in px.",
+          "seq": "Monotonic frame counter, shared across all sessions of one process.",
+          "data": "Base64-encoded image bytes.",
+          "sessionId": "Session this frame belongs to, so a multiplexing client can demux. Omitted only when the session id is empty.",
+          "frameStreamId": "Same value as `sessionId`, under the daemon's stream-frame name."
+        }
+      }
+    },
+    "capabilities": {
+      "render": "Server accepts `render` / `xr/render`. Always true.",
+      "updatePanels": "Server accepts `xr/updatePanels`.",
+      "streamFrame": "Server pushes `streamFrame` notifications.",
+      "multiSession": "Server fans many `sessionId`s over one shared engine. A client must not open a second session without this.",
+      "spatialSceneVersion": "The `SPATIAL_SCENE_VERSION` this server parses. A client sending a different scene version should expect failures.",
+      "dataProducts": "Data-product kinds this server produces — `[\"xr/composite\"]`."
+    },
+    "errors": {
+      "parseError": {
+        "code": -32700,
+        "description": "Request body was not valid JSON. Replied with a null id."
+      },
+      "unknownMethod": {
+        "code": -32601,
+        "description": "Method name not recognised."
+      },
+      "invalidParams": {
+        "code": -32602,
+        "description": "Params were rejected — a malformed scene, an unreadable texture, a failed panel update."
+      },
+      "internalError": {
+        "code": -32603,
+        "description": "Session could not be created (Filament init failed)."
+      },
+      "noSession": {
+        "code": -32002,
+        "description": "`xr/updatePanels` addressed a session no `render` had opened. Server-defined, outside the JSON-RPC reserved range."
+      }
+    }
+  }
+}

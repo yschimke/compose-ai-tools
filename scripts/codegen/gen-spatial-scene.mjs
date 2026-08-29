@@ -10,7 +10,8 @@
 //
 // Deliberately dependency-free (Node stdlib only) and bespoke to this small schema: it produces the
 // existing idiomatic shapes (kotlinx defaults, TS string-literal unions, nlohmann std::optional)
-// rather than a generic tool's lowest-common-denominator output. See docs/design/WIRE_IDL_CODEGEN.md.
+// rather than a generic tool's lowest-common-denominator output. See schema/README.md.
+// (This pointed at docs/design/WIRE_IDL_CODEGEN.md, removed in #2291.)
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

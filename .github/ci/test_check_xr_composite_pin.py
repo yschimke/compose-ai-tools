@@ -103,6 +103,59 @@ class PinMoved(unittest.TestCase):
         self.assertTrue(gate.pin_moved(None, "1.47.0"))
 
 
+class OverrideReason(unittest.TestCase):
+    def test_a_stated_reason_is_extracted(self):
+        body = "Some summary.\n\nXR-Release: none - literals replaced by equal constants\n"
+        self.assertEqual(
+            gate.override_reason(body), "literals replaced by equal constants"
+        )
+
+    def test_a_marker_wrapped_in_backticks_is_found(self):
+        # The shape that made this gate fail its own PR: a marker written as inline code, which is
+        # how anyone documenting a magic string in a PR body writes it.
+        self.assertEqual(
+            gate.override_reason("`XR-Release: none - constants of equal value`"),
+            "constants of equal value",
+        )
+
+    def test_a_marker_as_a_list_item_or_quote_is_found(self):
+        self.assertEqual(gate.override_reason("- XR-Release: none - regen only"), "regen only")
+        self.assertEqual(gate.override_reason("> XR-Release: none - regen only"), "regen only")
+        self.assertEqual(gate.override_reason("* XR-Release: none - regen only"), "regen only")
+
+    def test_a_bare_backticked_opt_out_still_does_not_match(self):
+        # Relaxing the anchors must not relax the mandatory reason.
+        self.assertIsNone(gate.override_reason("`XR-Release: none`"))
+
+    def test_a_marker_inside_a_real_body_is_found(self):
+        body = (
+            "## Summary\n\nSome prose about the change.\n\n"
+            "`XR-Release: none - literals replaced by constants of equal value`\n\n"
+            "## Test plan\n- built it\n"
+        )
+        self.assertEqual(
+            gate.override_reason(body),
+            "literals replaced by constants of equal value",
+        )
+
+    def test_an_em_dash_or_colon_separator_works(self):
+        self.assertEqual(gate.override_reason("XR-Release: none \u2014 pure rename"), "pure rename")
+        self.assertEqual(gate.override_reason("XR-Release: none: pure rename"), "pure rename")
+
+    def test_a_bare_opt_out_without_a_reason_does_not_match(self):
+        # The whole point of the escape hatch is that it costs a sentence someone must justify.
+        self.assertIsNone(gate.override_reason("XR-Release: none"))
+        self.assertIsNone(gate.override_reason("XR-Release: none -   "))
+
+    def test_unrelated_bodies_do_not_match(self):
+        self.assertIsNone(gate.override_reason(""))
+        self.assertIsNone(gate.override_reason(None))
+        self.assertIsNone(gate.override_reason("We should cut an xr release for this."))
+
+    def test_case_insensitive_and_indented(self):
+        self.assertEqual(gate.override_reason("  xr-release: NONE - regen only"), "regen only")
+
+
 class RepositoryState(unittest.TestCase):
     def test_the_checked_in_catalog_declares_a_pin(self):
         # The gate, the CLI resource and the plugin resource all read this one entry; losing it

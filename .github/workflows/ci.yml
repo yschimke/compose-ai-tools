@@ -1097,10 +1097,16 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-      # The Kotlin / TypeScript / C++ SpatialScene mirrors are generated from
-      # schema/spatial-scene.schema.json. Fail if a committed mirror drifts from the schema.
-      - name: Check generated mirrors match the schema
+      # Two wire contracts, each single-sourced into language mirrors that must not drift:
+      #   * SpatialScene (the data)      — schema/spatial-scene.schema.json      -> Kotlin, C++
+      #   * XR render service (the RPC)  — schema/xr-render-service.schema.json  -> Kotlin, C++,
+      #                                                                            Python
+      # The job id and display name still say "SpatialScene" because they may be a required check;
+      # renaming one is a deliberate change, not a side effect of adding the second schema.
+      - name: Check generated SpatialScene mirrors match the schema
         run: node scripts/codegen/gen-spatial-scene.mjs --check
+      - name: Check generated XR render service mirrors match the schema
+        run: node scripts/codegen/gen-xr-render-service.mjs --check
 
   bundle-render:
     name: Bundle Render E2E
@@ -1583,6 +1589,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MERGE_SHA: ${{ github.sha }}
+          # Read as data, never templated into the script: a PR body is attacker-controlled text.
+          # The gate only looks for an `XR-Release: none - <reason>` line in it.
+          XR_RELEASE_OVERRIDE: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
           # The runner's checkout is shallow, so fetch the base commit the event names rather than

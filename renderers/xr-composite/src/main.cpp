@@ -13,6 +13,8 @@
 // macro that otherwise clobbers nlohmann::json's member function of the same name.
 #include "json.hpp"
 #include "spatial_scene.hpp"  // generated typed mirror of the SpatialScene wire contract
+#include "xr_render_service.hpp"  // generated mirror of the RPC surface (methods, keys, codes)
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -61,6 +63,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+// Short alias for the generated protocol vocabulary. Both sides of this boundary are generated
+// from schema/xr-render-service.schema.json, so a renamed method or param key is a compile error
+// here rather than a runtime mismatch against a client built from a different commit.
+namespace svc = xrcomposite::xr_render_service;
 
 using namespace filament;
 using namespace filament::math;
@@ -775,19 +782,20 @@ void emitStreamFrame(Compositor& comp, uint64_t seq, const std::string& sessionI
   auto pixels = comp.renderPixels();
   auto png = encodePng(pixels, comp.width(), comp.height());
   json params = {
-      {"encoding", "png"},
-      {"width", comp.width()},
-      {"height", comp.height()},
-      {"seq", seq},
-      {"data", base64Encode(png.data(), png.size())},
+      {svc::kParamEncoding, "png"},
+      {svc::kParamWidth, comp.width()},
+      {svc::kParamHeight, comp.height()},
+      {svc::kParamSeq, seq},
+      {svc::kParamData, base64Encode(png.data(), png.size())},
   };
   // The session this frame belongs to, so a multiplexing client can demux frames from the one
   // shared process. Mirrored as `frameStreamId` for the daemon's existing stream-frame shape.
   if (!sessionId.empty()) {
-    params["sessionId"] = sessionId;
-    params["frameStreamId"] = sessionId;
+    params[svc::kParamSessionId] = sessionId;
+    params[svc::kParamFrameStreamId] = sessionId;
   }
-  writeMessage({{"jsonrpc", "2.0"}, {"method", "streamFrame"}, {"params", params}});
+  writeMessage(
+      {{"jsonrpc", "2.0"}, {"method", svc::kNotificationStreamFrame}, {"params", params}});
 }
 
 int runServer(const Args& args) {
@@ -801,12 +809,13 @@ int runServer(const Args& args) {
   std::string body;
   // Single-session clients register a stream id once at `initialize` and then omit it on subsequent
   // calls; remember it so their frames stay tagged with that id rather than the literal "default".
-  std::string defaultSessionId = "default";
+  std::string defaultSessionId = svc::kDefaultSessionId;
 
   // sessionId precedence: explicit `sessionId`, then per-call `frameStreamId`, else the
   // initialize-registered default (back-compat with single-session callers and the one-shot smoke).
   auto sessionIdOf = [&](const json& params) -> std::string {
-    return params.value("sessionId", params.value("frameStreamId", defaultSessionId));
+    return params.value(svc::kParamSessionId,
+                        params.value(svc::kParamFrameStreamId, defaultSessionId));
   };
 
   while (readMessage(body)) {
@@ -814,34 +823,35 @@ int runServer(const Args& args) {
     try {
       msg = json::parse(body);
     } catch (const std::exception& e) {
-      writeError(nullptr, -32700, std::string("parse error: ") + e.what());
+      writeError(nullptr, svc::kErrorParseError, std::string("parse error: ") + e.what());
       continue;
     }
     json id = msg.contains("id") ? msg["id"] : json(nullptr);
     std::string method = msg.value("method", "");
     const json& params = msg.contains("params") ? msg["params"] : json::object();
 
-    if (method == "initialize") {
-      defaultSessionId = params.value("frameStreamId", defaultSessionId);
+    if (method == svc::kMethodInitialize) {
+      defaultSessionId = params.value(svc::kParamFrameStreamId, defaultSessionId);
       writeResult(id, {
-          {"serverInfo", {{"name", "xr-composite"}, {"version", 1}}},
-          {"capabilities", {
-              {"render", true},
-              {"updatePanels", true},
-              {"streamFrame", true},
-              {"multiSession", true},
-              {"spatialSceneVersion", xrcomposite::SPATIAL_SCENE_VERSION},
-              {"dataProducts", json::array({"xr/composite"})},
+          {svc::kResultServerInfo,
+           {{"name", svc::kServerName}, {"version", svc::XR_RENDER_SERVICE_VERSION}}},
+          {svc::kResultCapabilities, {
+              {svc::kCapabilityRender, true},
+              {svc::kCapabilityUpdatePanels, true},
+              {svc::kCapabilityStreamFrame, true},
+              {svc::kCapabilityMultiSession, true},
+              {svc::kCapabilitySpatialSceneVersion, xrcomposite::SPATIAL_SCENE_VERSION},
+              {svc::kCapabilityDataProducts, json::array({"xr/composite"})},
           }},
       });
-    } else if (method == "render" || method == "xr/render") {
+    } else if (method == svc::kMethodRender || method == svc::kMethodRenderAlias) {
       try {
         const std::string sid = sessionIdOf(params);
-        auto scene = params.at("scene").get<xrcomposite::SpatialScene>();
-        std::string sceneDir = params.value("sceneDir", ".");
-        std::string envOverride = params.value("environment", "");
-        uint32_t w = params.value("width", args.width);
-        uint32_t h = params.value("height", args.height);
+        auto scene = params.at(svc::kParamScene).get<xrcomposite::SpatialScene>();
+        std::string sceneDir = params.value(svc::kParamSceneDir, ".");
+        std::string envOverride = params.value(svc::kParamEnvironment, "");
+        uint32_t w = params.value(svc::kParamWidth, args.width);
+        uint32_t h = params.value(svc::kParamHeight, args.height);
         // (Re)create the session if absent or if its viewport changed.
         auto it = sessions.find(sid);
         if (it != sessions.end() && (it->second->width() != w || it->second->height() != h)) {
@@ -852,50 +862,62 @@ int runServer(const Args& args) {
         if (it == sessions.end()) {
           auto comp = std::make_unique<Compositor>();
           if (!comp->init(gl, w, h)) {
-            if (!id.is_null()) writeError(id, -32603, "session init failed");
+            if (!id.is_null()) writeError(id, svc::kErrorInternalError, "session init failed");
             continue;
           }
           it = sessions.emplace(sid, std::move(comp)).first;
         }
         Compositor& comp = *it->second;
         comp.setScene(scene, sceneDir, envOverride);
-        if (params.contains("out")) comp.writePng(params.at("out").get<std::string>());
+        if (params.contains(svc::kParamOut))
+          comp.writePng(params.at(svc::kParamOut).get<std::string>());
         emitStreamFrame(comp, ++seq, sid);
         if (!id.is_null())
-          writeResult(id, {{"ok", true}, {"seq", seq}, {"sessionId", sid},
-                           {"width", comp.width()}, {"height", comp.height()}});
+          writeResult(id, {{svc::kResultOk, true}, {svc::kResultSeq, seq},
+                           {svc::kResultSessionId, sid}, {svc::kResultWidth, comp.width()},
+                           {svc::kResultHeight, comp.height()}});
       } catch (const std::exception& e) {
-        if (!id.is_null()) writeError(id, -32602, std::string("render failed: ") + e.what());
+        if (!id.is_null())
+          writeError(id, svc::kErrorInvalidParams, std::string("render failed: ") + e.what());
       }
-    } else if (method == "xr/updatePanels") {
+    } else if (method == svc::kMethodUpdatePanels) {
       const std::string sid = sessionIdOf(params);
       auto it = sessions.find(sid);
       if (it == sessions.end()) {
-        if (!id.is_null()) writeError(id, -32002, "no scene: call render first for session " + sid);
+        if (!id.is_null())
+          writeError(id, svc::kErrorNoSession,
+                     "no scene: call render first for session " + sid);
         continue;
       }
       try {
-        if (params.contains("panels")) it->second->applyPanelUpdates(params.at("panels"));
-        if (params.contains("out")) it->second->writePng(params.at("out").get<std::string>());
+        if (params.contains(svc::kParamPanels))
+          it->second->applyPanelUpdates(params.at(svc::kParamPanels));
+        if (params.contains(svc::kParamOut))
+          it->second->writePng(params.at(svc::kParamOut).get<std::string>());
         emitStreamFrame(*it->second, ++seq, sid);
-        if (!id.is_null()) writeResult(id, {{"ok", true}, {"seq", seq}, {"sessionId", sid}});
+        if (!id.is_null())
+          writeResult(id, {{svc::kResultOk, true}, {svc::kResultSeq, seq},
+                           {svc::kResultSessionId, sid}});
       } catch (const std::exception& e) {
-        if (!id.is_null()) writeError(id, -32602, std::string("updatePanels failed: ") + e.what());
+        if (!id.is_null())
+          writeError(id, svc::kErrorInvalidParams,
+                     std::string("updatePanels failed: ") + e.what());
       }
-    } else if (method == "xr/stop") {
+    } else if (method == svc::kMethodStop) {
       const std::string sid = sessionIdOf(params);
       auto it = sessions.find(sid);
       if (it != sessions.end()) {
         it->second->teardown();
         sessions.erase(it);
       }
-      if (!id.is_null()) writeResult(id, {{"ok", true}, {"sessionId", sid}});
-    } else if (method == "shutdown") {
+      if (!id.is_null())
+        writeResult(id, {{svc::kResultOk, true}, {svc::kResultSessionId, sid}});
+    } else if (method == svc::kMethodShutdown) {
       if (!id.is_null()) writeResult(id, json::object());
-    } else if (method == "exit") {
+    } else if (method == svc::kMethodExit) {
       break;
     } else if (!method.empty()) {
-      if (!id.is_null()) writeError(id, -32601, "unknown method: " + method);
+      if (!id.is_null()) writeError(id, svc::kErrorUnknownMethod, "unknown method: " + method);
     }
   }
   fprintf(stderr, "xr-composite: stdio closed, exiting\n");

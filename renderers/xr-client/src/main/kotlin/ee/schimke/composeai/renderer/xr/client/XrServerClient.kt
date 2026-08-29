@@ -74,8 +74,8 @@ internal constructor(
 
   /** Drives `initialize`; returns the server's `capabilities` object. */
   public fun initialize(timeout: Duration = 60.seconds): JsonObject {
-    val result = request("initialize", buildJsonObject {}, timeout)
-    return result["capabilities"]?.jsonObject
+    val result = request(XrRenderService.Method.INITIALIZE, buildJsonObject {}, timeout)
+    return result[XrRenderService.Result.CAPABILITIES]?.jsonObject
       ?: throw XrServerException("initialize: no capabilities in result ($result)")
   }
 
@@ -94,14 +94,14 @@ internal constructor(
     timeout: Duration = 60.seconds,
   ): StreamFrame {
     val params = buildJsonObject {
-      put("sessionId", sessionId)
-      put("scene", scene)
-      sceneDir?.let { put("sceneDir", it) }
-      environment?.let { put("environment", it) }
-      width?.let { put("width", it) }
-      height?.let { put("height", it) }
+      put(XrRenderService.Param.SESSION_ID, sessionId)
+      put(XrRenderService.Param.SCENE, scene)
+      sceneDir?.let { put(XrRenderService.Param.SCENE_DIR, it) }
+      environment?.let { put(XrRenderService.Param.ENVIRONMENT, it) }
+      width?.let { put(XrRenderService.Param.WIDTH, it) }
+      height?.let { put(XrRenderService.Param.HEIGHT, it) }
     }
-    request("render", params, timeout)
+    request(XrRenderService.Method.RENDER, params, timeout)
     return awaitFrame(sessionId, timeout)
   }
 
@@ -116,10 +116,10 @@ internal constructor(
     timeout: Duration = 60.seconds,
   ): StreamFrame {
     val params = buildJsonObject {
-      put("sessionId", sessionId)
-      put("panels", panels)
+      put(XrRenderService.Param.SESSION_ID, sessionId)
+      put(XrRenderService.Param.PANELS, panels)
     }
-    request("xr/updatePanels", params, timeout)
+    request(XrRenderService.Method.UPDATE_PANELS, params, timeout)
     return awaitFrame(sessionId, timeout)
   }
 
@@ -128,8 +128,8 @@ internal constructor(
     sendFrame(
       buildJsonObject {
         put("jsonrpc", "2.0")
-        put("method", "xr/stop")
-        put("params", buildJsonObject { put("sessionId", sessionId) })
+        put("method", XrRenderService.Method.STOP)
+        put("params", buildJsonObject { put(XrRenderService.Param.SESSION_ID, sessionId) })
       }
     )
     frames.remove(sessionId)
@@ -143,7 +143,7 @@ internal constructor(
     sendFrame(
       buildJsonObject {
         put("jsonrpc", "2.0")
-        put("method", "exit")
+        put("method", XrRenderService.Method.EXIT)
       }
     )
   }
@@ -218,9 +218,13 @@ internal constructor(
         val id = obj["id"]?.jsonPrimitive?.long
         if (id != null) {
           responseSlots.computeIfAbsent(id) { LinkedBlockingQueue() }.put(obj)
-        } else if (obj["method"]?.jsonPrimitive?.content == "streamFrame") {
+        } else if (
+          obj["method"]?.jsonPrimitive?.content == XrRenderService.Notification.STREAM_FRAME
+        ) {
           obj["params"]?.jsonObject?.let { p ->
-            val sid = p["sessionId"]?.jsonPrimitive?.content ?: "default"
+            val sid =
+              p[XrRenderService.Param.SESSION_ID]?.jsonPrimitive?.content
+                ?: XrRenderService.DEFAULT_SESSION_ID
             frameQueue(sid).put(parseFrame(p))
           }
         }
@@ -234,11 +238,11 @@ internal constructor(
 
   private fun parseFrame(params: JsonObject): StreamFrame =
     StreamFrame(
-      seq = params["seq"]?.jsonPrimitive?.long ?: 0,
-      width = params["width"]?.jsonPrimitive?.int ?: 0,
-      height = params["height"]?.jsonPrimitive?.int ?: 0,
-      encoding = params["encoding"]?.jsonPrimitive?.content ?: "png",
-      dataBase64 = params["data"]?.jsonPrimitive?.content ?: "",
+      seq = params[XrRenderService.Param.SEQ]?.jsonPrimitive?.long ?: 0,
+      width = params[XrRenderService.Param.WIDTH]?.jsonPrimitive?.int ?: 0,
+      height = params[XrRenderService.Param.HEIGHT]?.jsonPrimitive?.int ?: 0,
+      encoding = params[XrRenderService.Param.ENCODING]?.jsonPrimitive?.content ?: "png",
+      dataBase64 = params[XrRenderService.Param.DATA]?.jsonPrimitive?.content ?: "",
     )
 
   public companion object {

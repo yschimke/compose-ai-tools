@@ -28,10 +28,21 @@ Part of the report-history epic (#1866); this directory is sub-issue #1867.
 | [`render-trace.schema.json`](render-trace.schema.json) | `render/trace` | 1 | `RenderTraceDataProduct` |
 | [`history-diff-regions.schema.json`](history-diff-regions.schema.json) | `history/diff/regions` | 1 | `HistoryDiffPayload` |
 
-[`spatial-scene.schema.json`](spatial-scene.schema.json) predates this set and
-is **codegen source-of-truth** (it generates Kotlin/C++ via
-`scripts/codegen/gen-spatial-scene.mjs`); it is validated by its own test and
-excluded from the validator below.
+Two schemas here are **codegen source-of-truth** rather than data-product
+payloads. Both are validated by their own generator's `--check` and excluded
+from the validator below:
+
+| schema | generates | mirrors |
+| --- | --- | --- |
+| [`spatial-scene.schema.json`](spatial-scene.schema.json) | `scripts/codegen/gen-spatial-scene.mjs` | Kotlin (`:preview-data-api`), C++ (`xr-composite`) |
+| [`xr-render-service.schema.json`](xr-render-service.schema.json) | `scripts/codegen/gen-xr-render-service.mjs` | Kotlin (`:renderer-xr-client`), C++ (`xr-composite`), Python (the serve smoke harness) |
+
+They describe the two halves of one boundary: the scene is *what to draw*, the
+render service is *how to ask*. They version independently — the compositor is
+provisioned at a pinned version that deliberately lags this repository (the
+`xr-composite` pin in `gradle/libs.versions.toml`), so its client and server are
+routinely built from different commits, and a change to one contract must not
+force a bump of the other.
 
 ## Versioning & the bump policy
 
