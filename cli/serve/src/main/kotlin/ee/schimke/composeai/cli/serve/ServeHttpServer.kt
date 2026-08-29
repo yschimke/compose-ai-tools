@@ -5263,7 +5263,18 @@ class ServeHttpServer(
         themeCss = skin.second,
         themeStorageKey = skin.third,
         navSuffix = if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(linkToken())}",
-        canUploadCaptures = imageStore != null && imageBrowserLogin != null,
+        // Resolve THIS caller, not merely the existence of a resolver. The lane admits a
+        // browser only when its OAuth session names a login with access to the *image*
+        // repository, so a resolver that exists still answers null for an anonymous visitor
+        // — and for a signed-in one whose OAuth repository is not the image repository.
+        // Advertising the lane on either meant every report attempted a doomed upload,
+        // disabled Submit while it failed, and spent the anonymous verification budget
+        // before falling back to the clipboard. Asking the same question the upload path
+        // asks costs nothing here: it is a cookie read, not a GitHub round trip.
+        canUploadCaptures =
+          imageStore != null &&
+            imageUploadAuth != null &&
+            imageBrowserLogin?.invoke(call, imageUploadAuth.repository) != null,
       ),
       ContentType.Text.Html,
     )
