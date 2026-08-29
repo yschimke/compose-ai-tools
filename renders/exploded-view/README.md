@@ -30,7 +30,7 @@ None of it is hand-drawn, and none of it has to be remembered:
 - **The PNGs of the viewer come from the preview-harness.** `_render-placeholder-exploded.svg` is
   what `pages-snapshot.spec.mjs` serves for the `?exploded=1` render lane, so the
   `serve-viewer-exploded` fixture's screenshot contains the real projection, and the
-  `vscode-preview-diff` bot diffs it on every PR without anyone capturing anything by hand.
+  `serve-preview-diff` bot diffs it on every PR without anyone capturing anything by hand.
 
 Regenerate the SVGs (and the harness's placeholder) with:
 

@@ -40,7 +40,7 @@ import kotlinx.serialization.json.buildJsonObject
  * new visual surfaces into the preview workflow — they're rendered to committed HTML fixtures under
  * `preview-server/preview-harness/fixtures/pages/`. The harness's `pages-snapshot.spec.mjs`
  * screenshots those per theme into `out/<fixture>.<theme>.png`, which the existing generic
- * `vscode-preview-diff.py` bot diffs + comments on every PR — no panel/`scenario.html` plumbing.
+ * `serve-preview-diff.py` bot diffs + comments on every PR — no panel/`scenario.html` plumbing.
  *
  * This test re-renders the pages from the *current* `ServeWeb` and asserts the committed fixtures
  * match, so any change to the serve UI fails here until the fixtures are refreshed. Regenerate

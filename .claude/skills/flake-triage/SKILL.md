@@ -29,7 +29,7 @@ md5sum run-*.png
 compares a file against itself and always "passes".
 
 **A harness capture has the same oracle, and it is cheaper.** The captures the
-`vscode-preview-diff` bot compares are Playwright shots of committed static
+`serve-preview-diff` bot compares are Playwright shots of committed static
 fixtures, so N runs cost seconds and need no JVM. **Two harnesses write into that
 one baseline set**, and they do not share an invocation — find which one owns your
 capture (`git grep "<fixture>" -- '*/preview-harness/*'`) and use its own:

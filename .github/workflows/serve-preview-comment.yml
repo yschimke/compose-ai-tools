@@ -1,22 +1,25 @@
-name: VS Code Preview Comment
+name: Serve Preview Comment
 
-# Mirrors the comment path of `compose-preview.yml` (the active per-PR
-# diff flow) but for the VS Code panel's `preview-harness`. Runs only when the PR touches
-# files that can change the panel's rendered look (extension source,
-# webview bundle, harness fixtures). Posts a sticky before/after
-# comment using `vscode-preview/main` as the baseline branch and
-# `vscode-preview/pr` as the per-PR captures branch — same shape as
-# `compose-preview/main` / `compose-preview/pr`.
+# Mirrors the comment path of `compose-preview.yml` (the active per-PR diff flow)
+# but for the serve page captures in `preview-server/preview-harness`. Runs only
+# when the PR touches files that can change how those pages render (the harness and
+# its fixtures, the CLI viewer's assets). Posts a sticky before/after comment using
+# `serve-preview/main` as the baseline branch and `serve-preview/pr` as the per-PR
+# captures branch — same shape as `compose-preview/main` / `compose-preview/pr`.
+#
+# Named `vscode-preview-*` until the VS Code extension was split out
+# (yschimke/compose-preview-vscode) and took the panel's harness with it. Nothing
+# here has been VS Code's since.
 
 on:
   pull_request:
     paths:
       - 'preview-server/preview-harness/**'
       - 'cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/**'
-      - '.github/actions/vscode-preview-baselines/**'
-      - '.github/actions/vscode-preview-comment/**'
-      - '.github/actions/lib/vscode-preview-diff.py'
-      - '.github/workflows/vscode-preview-comment.yml'
+      - '.github/actions/serve-preview-baselines/**'
+      - '.github/actions/serve-preview-comment/**'
+      - '.github/actions/lib/serve-preview-diff.py'
+      - '.github/workflows/serve-preview-comment.yml'
   # Manual re-run, for when the `pull_request` trigger is missed (it happens) and
   # the sticky comment is left describing an older head. `pr` is required in
   # practice: a dispatch carries no `pull_request` event, so without it the
@@ -36,12 +39,12 @@ concurrency:
   # Per-PR group so a fast-follow push cancels the in-flight diff for
   # the same PR but leaves other PRs alone — same shape as the
   # composable preview-comment flow.
-  group: vscode-preview-comment-${{ github.event.pull_request.number || inputs.pr || github.run_id }}
+  group: serve-preview-comment-${{ github.event.pull_request.number || inputs.pr || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   compare:
-    name: Compare vscode-preview captures
+    name: Compare serve-preview captures
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,7 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/vscode-preview-comment
+      - uses: ./.github/actions/serve-preview-comment
         with:
           # Empty on a `pull_request` run, where the action falls back to the
           # event's own PR number.

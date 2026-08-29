@@ -485,9 +485,14 @@ From #3824's follow-up investigation, with what has landed marked.
 
     The capture surface is preserved rather than merely relocated, which was the constraint from
     [AGENTS.md](../../AGENTS.md): a surface that stops being auto-captured is a regression, not a
-    saving. Both harnesses still write `<name>.<theme>.png`, `vscode-preview-comment` merges the two
-    `out/` directories before diffing, and capture names are unique across them — so the baselines
-    on `vscode-preview/main` matched unchanged and nothing needed regenerating. Two coverage gaps
+    saving. Both harnesses still wrote `<name>.<theme>.png`, `vscode-preview-comment` merged the two
+    `out/` directories before diffing, and capture names were unique across them — so the baselines
+    on `vscode-preview/main` matched unchanged and nothing needed regenerating.
+
+    That two-producer arrangement ended when the extension was split out to
+    yschimke/compose-preview-vscode: this repository's half is now `serve-preview-comment`
+    against `serve-preview/main`, and the extension runs its own copy of the same pipeline.
+    Two coverage gaps
     were closed on the way: the diff bot now triggers on `preview-server/preview-harness/**`, and on
     the whole of `serve/assets/**` rather than just `format-compare.js` — the fixture pages `<link>`
     the real viewer CSS/JS, so a viewer change moves these captures and previously could land

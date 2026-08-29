@@ -38,8 +38,10 @@ PRs touching `compose-preview-vscode/`, 60 touched only this harness. `harness:s
 Two consequences worth knowing:
 
 - **The captures feed one diff surface, from two producers.** The extension's harness and this one
-  both write `<name>.<theme>.png`; `vscode-preview-comment` merges the two `out/` directories and
-  diffs the result against `vscode-preview/main`. Capture names are unique across the two, so the
+  writes `<name>.<theme>.png`, and `serve-preview-comment` diffs this directory against
+  `serve-preview/main`. It merged two producers until the VS Code extension was split out
+  (yschimke/compose-preview-vscode), which now runs its own copy against its own baselines.
+  Capture names were unique across the two, so the
   merge is safe and the baselines did not need regenerating when this moved.
 - **Both must render on the same Chromium.** They share a baseline set, so a Playwright version skew
   between the two `package.json`s would move pixels for reasons no PR explains. Keep the

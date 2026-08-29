@@ -5,7 +5,7 @@
 //
 // This reuses the panel harness's *approach* (Playwright + the `_server.mjs`
 // static server + per-`(fixture × theme)` PNGs in `out/`, diffed by the
-// generic `vscode-preview-diff.py` bot) without its *invocation*: these
+// generic `serve-preview-diff.py` bot) without its *invocation*: these
 // pages are self-contained documents, so we navigate to them directly and
 // drive theme via `prefers-color-scheme` emulation, instead of booting
 // `scenario.html` and replaying webview messages.
@@ -666,7 +666,7 @@ async function openCatalogThemeBar(page) {
  * `<input type="search">` carries two pieces of chrome these states are not about: the `:focus`
  * outline and Chromium's native clear button. Whether they were painted varied BETWEEN CI RUNS OF
  * THE SAME CODE — `serve-landing-grouped-pages-section-match.dark` rendered both ways on
- * `vscode-preview/main`, which is how #4015 collected a "1 changed" comment for a capture its diff
+ * `serve-preview/main`, which is how #4015 collected a "1 changed" comment for a capture its diff
  * could not reach. Locally the focused variant won 5 runs out of 5, so whatever loses the focus
  * needs a loaded machine; that it is rare is exactly what made it expensive, because it lands on
  * whichever unrelated PR happens to be open.

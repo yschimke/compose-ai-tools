@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for vscode-preview-diff.py.
+"""Tests for serve-preview-diff.py.
 
 Pure stdlib (unittest) — no third-party deps so the test runs anywhere
 the action runs. Run directly:
 
-    python3 -m unittest .github/actions/lib/test_vscode_preview_diff.py
+    python3 -m unittest .github/actions/lib/test_serve_preview_diff.py
 
 The script under test has a hyphen in its filename, so we load it via
 importlib rather than a normal import.
@@ -23,7 +23,7 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _SPEC = importlib.util.spec_from_file_location(
-    "vscode_preview_diff", _HERE / "vscode-preview-diff.py"
+    "serve_preview_diff", _HERE / "serve-preview-diff.py"
 )
 mod = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
@@ -134,7 +134,7 @@ class TestPerceptualFilter(unittest.TestCase):
     The headless Chromium harness emits ±1-channel differences on a small
     number of antialiased pixels between runs even when nothing about the
     fixture has changed (originally surfaced by `inspection-tree`
-    repeatedly flipping by 2 bytes on `vscode-preview/main`). Without the
+    repeatedly flipping by 2 bytes on `serve-preview/main`). Without the
     perceptual filter those PNGs read as "changed" and ship a fake row in
     the PR diff comment.
     """
@@ -286,7 +286,7 @@ class TestCompare(unittest.TestCase):
                 repo = "yschimke/compose-ai-tools"
                 base_ref = "BASE"
                 head_ref = "HEAD"
-                base_branch = "vscode-preview/main"
+                base_branch = "serve-preview/main"
 
             buf = io.StringIO()
             old, sys.stdout = sys.stdout, buf
@@ -304,7 +304,7 @@ class TestCompare(unittest.TestCase):
         # The post step uses this exact sentinel to suppress empty
         # comments — keep the wording stable.
         self.assertIn("No visual changes detected.", out)
-        self.assertIn("<!-- vscode-preview-diff -->", out)
+        self.assertIn("<!-- serve-preview-diff -->", out)
 
     def test_changed_capture_renders_before_after(self) -> None:
         out = self._run(
