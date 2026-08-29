@@ -12,6 +12,7 @@ import {
   bindingExpression,
   buildBoundTemplate,
   codeConnectTemplate,
+  extractSlotManifest,
   fileKeyFromArg,
   indexNodesByName,
   resolveMappings,
@@ -42,6 +43,143 @@ test("variantPropsByName indexes component sets, ignores plain frames", () => {
   assert.equal(idx.get("Just A Sticker"), undefined);
 });
 
+test("extractSlotManifest reads raw REST SLOT nodes without a plugin export", () => {
+  const figmaFile = {
+    version: "123",
+    components: {
+      "9:1": { key: "button-key", name: "Button" },
+    },
+    document: {
+      id: "0:0",
+      children: [
+        {
+          id: "1:1",
+          name: "Card/Slots",
+          type: "COMPONENT",
+          absoluteBoundingBox: { x: 100, y: 200, width: 320, height: 180 },
+          componentPropertyDefinitions: {
+            "Content#1:2": {
+              type: "SLOT",
+              defaultValue: { guid: { sessionID: -1, localID: -1 } },
+              description: "Composable body content",
+              preferredValues: [{ type: "COMPONENT", key: "button-key" }],
+              slotSettings: {
+                stretchChildOnInsert: true,
+                minChildren: 0,
+                maxChildren: 2,
+                allowPreferredValuesOnly: true,
+              },
+            },
+          },
+          children: [
+            {
+              id: "1:2",
+              name: "Content",
+              type: "SLOT",
+              componentPropertyReferences: { slotContentId: "Content#1:2" },
+              absoluteBoundingBox: { x: 124, y: 248, width: 272, height: 96 },
+              layoutMode: "VERTICAL",
+              layoutSizingHorizontal: "FILL",
+              layoutSizingVertical: "HUG",
+              clipsContent: true,
+              children: [
+                {
+                  id: "2:1",
+                  name: "Primary button",
+                  type: "INSTANCE",
+                  componentId: "9:1",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const result = extractSlotManifest("FILE", figmaFile, [
+    {
+      nodeId: "1:1",
+      componentId: "card-slots",
+      figmaLayerName: "Card/Slots",
+      componentName: "CardSlots",
+    },
+  ]);
+
+  assert.equal(result.schema, "compose-preview-figma-slots/v1");
+  assert.equal(result.version, "123");
+  assert.equal(result.hosts.length, 1);
+  assert.deepEqual(result.hosts[0].slots[0], {
+    name: "Content",
+    propertyKey: "Content#1:2",
+    nodeId: "1:2",
+    description: "Composable body content",
+    bounds: { x: 24, y: 48, width: 272, height: 96 },
+    layout: {
+      mode: "VERTICAL",
+      horizontal: "FILL",
+      vertical: "HUG",
+      clipsContent: true,
+    },
+    preferredValues: [{ type: "COMPONENT", key: "button-key" }],
+    settings: {
+      stretchChildOnInsert: true,
+      minChildren: 0,
+      maxChildren: 2,
+      allowPreferredValuesOnly: true,
+    },
+    children: [
+      {
+        nodeId: "2:1",
+        name: "Primary button",
+        type: "INSTANCE",
+        componentNodeId: "9:1",
+        componentKey: "button-key",
+      },
+    ],
+  });
+});
+
+test("extractSlotManifest falls back to slot names and relative transforms", () => {
+  const result = extractSlotManifest(
+    "FILE",
+    {
+      document: {
+        id: "0:0",
+        children: [
+          {
+            id: "1:1",
+            name: "Host",
+            type: "FRAME",
+            children: [
+              {
+                id: "1:2",
+                name: "Actions",
+                type: "SLOT",
+                relativeTransform: [
+                  [1, 0, 12],
+                  [0, 1, 20],
+                ],
+                size: { x: 120, y: 40 },
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    [{ nodeId: "1:1", componentId: "host", componentName: "Host" }],
+  );
+
+  assert.equal(result.hosts[0].slots[0].name, "Actions");
+  assert.equal(result.hosts[0].slots[0].propertyKey, "Actions");
+  assert.deepEqual(result.hosts[0].slots[0].bounds, {
+    x: 12,
+    y: 20,
+    width: 120,
+    height: 40,
+  });
+});
+
 test("bindingExpression maps variant/boolean/text to figma.properties.*", () => {
   assert.equal(
     bindingExpression("State", { type: "VARIANT", variantOptions: ["Loading", "Populated"] }, { type: "DeviceState" }),
@@ -69,6 +207,25 @@ test("buildBoundTemplate interpolates matched params, keeps TODO for the rest", 
   assert.deepEqual(built.boundProps, ["State"]);
   assert.match(built.template, /state = \$\{figma\.properties\.enum\("State"/);
   assert.match(built.template, /title = TODO\("String"\)/);
+});
+
+test("buildBoundTemplate binds a composable lambda to a native Figma slot", () => {
+  const built = buildBoundTemplate(
+    "Card",
+    [
+      {
+        name: "content",
+        type: "@Composable () -> Unit",
+        hasDefault: false,
+        composableSlot: true,
+      },
+    ],
+    { "Content#7:1": { type: "SLOT" } },
+  );
+
+  assert.deepEqual(built.boundProps, ["Content"]);
+  assert.match(built.template, /const slot_content = figma\.selectedInstance\.getSlot\("Content"\)/);
+  assert.match(built.template, /content = \{ \$\{slot_content\} \}/);
 });
 
 test("buildBoundTemplate returns null when nothing binds (plain catalog case)", () => {

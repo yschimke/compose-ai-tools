@@ -105,6 +105,11 @@ DeviceSummaryCard(
 name; a param with no matching property keeps its `TODO`. Bound property names are recorded in
 `templateDataJson.props`.
 
+A required composable-lambda parameter matching a native Figma `SLOT` property is bound through the
+parserless template API's `selectedInstance.getSlot(...)` instead of being left as an empty `{ }`.
+That makes the slot a clickable region in Dev Mode and lets Figma MCP traverse its contents while the
+generated call site remains ordinary Compose code.
+
 **Important:** variant properties live on Figma **component sets**. The code-led rendered catalog is
 plain frames with none, so binding is a no-op there — it activates when you publish against an actual
 Figma design system whose components carry variants (e.g. a hand-built or generated `Button` set). This
@@ -135,6 +140,42 @@ Join sources (all already in the pipeline):
    The token only needs **read** access (the walk uses `GET /v1/files/:key`), so this step runs on any
    plan. Unresolved names (a component not on the board) and ambiguous names (the same component twice)
    are reported; the rest are bound.
+
+   The same REST response is also scanned for Figma's native `SLOT` nodes. When `--out` is present,
+   the publisher writes `figma-slots.json` beside it automatically; use
+   `--slots-out <path>` to choose another location. Figma's published REST schema currently lags the
+   service here, so the importer deliberately reads the raw `type: "SLOT"` nodes and SLOT component
+   properties without a generated API client. Each catalog-linked host records host-relative bounds,
+   auto-layout sizing, slot settings when returned, preferred component keys, and current children:
+
+   ```jsonc
+   {
+     "schema": "compose-preview-figma-slots/v1",
+     "fileKey": "…",
+     "hosts": [
+       {
+         "componentId": "Card/Slots",
+         "nodeId": "1:1",
+         "slots": [
+           {
+             "name": "Content",
+             "propertyKey": "Content#1:2",
+             "bounds": { "x": 24, "y": 48, "width": 272, "height": 96 },
+             "layout": {
+               "mode": "VERTICAL",
+               "horizontal": "FILL",
+               "vertical": "HUG",
+             },
+             "preferredValues": [{ "type": "COMPONENT", "key": "…" }],
+           },
+         ],
+       },
+     ],
+   }
+   ```
+
+   This is the reusable catalog/composer artifact: running a Figma plugin is not required for a new
+   file. Plugin-authored shared data may enrich it later, but is never the source of slot identity.
 
 3. **Publish** the resolved mappings. `send-mappings.json` is the exact argument object for Figma's
    `send_code_connect_mappings` MCP tool — hand it to an agent connected to the Figma MCP, or feed the

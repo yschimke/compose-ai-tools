@@ -2,7 +2,8 @@
 /**
  * Resolve a `code-connect.json` manifest (emitted by `figma-code-connect-emit.mjs`) against a Figma
  * file's layer tree and produce the `send_code_connect_mappings` payload — the last mile that binds
- * each Compose component to a real Figma node id.
+ * each Compose component to a real Figma node id. The same pass extracts native Figma SLOT nodes
+ * into `figma-slots.json`, without requiring the repository's Figma plugin to touch the file.
  *
  * Two-step flow:
  *   1. export     generate-design-catalog.mjs writes code-connect.json onto design-artifacts/<system>
@@ -25,6 +26,7 @@
  * fetch + file IO live in the CLI shell at the bottom.
  */
 import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
 /** Extract a Figma file key from a bare key or a `figma.com/design/:key/...` URL. */
@@ -121,10 +123,200 @@ export function variantPropsByName(document) {
   return byName;
 }
 
+/** Build an id → node index for one Figma REST document tree. */
+function indexDocument(document) {
+  const nodes = new Map();
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.id) nodes.set(node.id, node);
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(document);
+  return nodes;
+}
+
+const finiteNumber = (value) => (Number.isFinite(value) ? value : null);
+
+function nodeBounds(node) {
+  const box = node?.absoluteBoundingBox;
+  if (box && [box.x, box.y, box.width, box.height].every(Number.isFinite)) {
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }
+  const transform = node?.relativeTransform;
+  const x = finiteNumber(transform?.[0]?.[2]);
+  const y = finiteNumber(transform?.[1]?.[2]);
+  const width = finiteNumber(node?.size?.x ?? node?.width);
+  const height = finiteNumber(node?.size?.y ?? node?.height);
+  return x == null || y == null || width == null || height == null ? null : { x, y, width, height };
+}
+
+function relativeBounds(node, host) {
+  const bounds = nodeBounds(node);
+  const hostBounds = nodeBounds(host);
+  if (!bounds) return null;
+  if (!hostBounds || !node?.absoluteBoundingBox || !host?.absoluteBoundingBox) return bounds;
+  return {
+    x: bounds.x - hostBounds.x,
+    y: bounds.y - hostBounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  };
+}
+
+function slotPropertyDefinitions(node) {
+  return Object.entries(node?.componentPropertyDefinitions ?? {}).filter(
+    ([, definition]) => definition?.type === "SLOT",
+  );
+}
+
+function slotPropertyForNode(slot, ancestors) {
+  const propertyKey = slot.componentPropertyReferences?.slotContentId;
+  for (const ancestor of ancestors) {
+    const definitions = slotPropertyDefinitions(ancestor);
+    if (propertyKey) {
+      const exact = definitions.find(([key]) => key === propertyKey);
+      if (exact) return exact;
+    }
+    const byName = definitions.find(([key]) => normalizeName(propDisplayName(key)) === normalizeName(slot.name));
+    if (byName) return byName;
+  }
+  return [propertyKey ?? slot.name ?? "slot", { type: "SLOT" }];
+}
+
+function preferredValues(definition) {
+  return (definition?.preferredValues ?? [])
+    .filter(
+      (value) => (value?.type === "COMPONENT" || value?.type === "COMPONENT_SET") && typeof value.key === "string",
+    )
+    .map(({ type, key }) => ({ type, key }));
+}
+
+function slotSettings(definition) {
+  const settings = definition?.slotSettings;
+  if (!settings || typeof settings !== "object") return undefined;
+  const out = {};
+  for (const key of [
+    "stretchChildOnInsert",
+    "displayEmptyByDefault",
+    "minChildren",
+    "maxChildren",
+    "allowPreferredValuesOnly",
+  ]) {
+    if (settings[key] !== undefined) out[key] = settings[key];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function definedProperties(source, keys) {
+  const out = {};
+  for (const key of keys) {
+    if (source?.[key] !== undefined && source[key] !== null) out[key] = source[key];
+  }
+  return out;
+}
+
+function slotChild(child, components) {
+  const component = child.type === "INSTANCE" ? components?.[child.componentId] : null;
+  return {
+    nodeId: child.id,
+    name: child.name ?? child.id,
+    type: child.type ?? "UNKNOWN",
+    ...(child.componentId ? { componentNodeId: child.componentId } : {}),
+    ...(component?.key ? { componentKey: component.key } : {}),
+  };
+}
+
+/**
+ * Extract native Figma slots from the raw REST payload. Figma's published REST schema currently
+ * omits SLOT, but the service returns SLOT nodes and SLOT component-property definitions. This
+ * deliberately duck-types those fields so new files work without a plugin/export pass.
+ *
+ * Only roots already resolved through code-connect.json become hosts. That keeps the output joined
+ * to catalog component ids and avoids treating unrelated library components in a large Figma file
+ * as part of this catalog.
+ */
+export function extractSlotManifest(fileKey, figmaFile, resolved) {
+  const document = figmaFile?.document ?? figmaFile;
+  const nodes = indexDocument(document);
+  const components = figmaFile?.components ?? {};
+  const hosts = [];
+
+  for (const mapping of resolved) {
+    const host = nodes.get(mapping.nodeId);
+    if (!host) continue;
+    const slots = [];
+    const visit = (node, ancestors) => {
+      const nextAncestors = [node, ...ancestors];
+      if (node.type === "SLOT") {
+        const [propertyKey, definition] = slotPropertyForNode(node, ancestors);
+        const values = preferredValues(definition);
+        const settings = slotSettings(definition);
+        const bounds = relativeBounds(node, host);
+        const constraints = definedProperties(node, [
+          "minWidth",
+          "maxWidth",
+          "minHeight",
+          "maxHeight",
+          "layoutAlign",
+          "layoutGrow",
+          "preserveRatio",
+        ]);
+        slots.push({
+          name: propDisplayName(propertyKey || node.name || "slot"),
+          propertyKey,
+          nodeId: node.id,
+          ...(typeof definition.description === "string" && definition.description
+            ? { description: definition.description }
+            : {}),
+          ...(bounds ? { bounds } : {}),
+          layout: {
+            mode: node.layoutMode ?? "NONE",
+            horizontal: node.layoutSizingHorizontal ?? "FIXED",
+            vertical: node.layoutSizingVertical ?? "FIXED",
+            clipsContent: node.clipsContent === true,
+            ...definedProperties(node, [
+              "primaryAxisAlignItems",
+              "counterAxisAlignItems",
+              "itemSpacing",
+              "paddingLeft",
+              "paddingTop",
+              "paddingRight",
+              "paddingBottom",
+            ]),
+          },
+          ...(Object.keys(constraints).length ? { constraints } : {}),
+          ...(values.length ? { preferredValues: values } : {}),
+          ...(settings ? { settings } : {}),
+          children: (node.children ?? []).map((child) => slotChild(child, components)),
+        });
+        return; // A Figma slot cannot contain another slot; don't infer one from arbitrary content.
+      }
+      for (const child of node.children ?? []) visit(child, nextAncestors);
+    };
+    for (const child of host.children ?? []) visit(child, [host]);
+    if (slots.length === 0) continue;
+    hosts.push({
+      componentId: mapping.componentId ?? mapping.figmaLayerName,
+      componentName: mapping.componentName,
+      nodeId: host.id,
+      name: host.name ?? mapping.figmaLayerName,
+      ...(nodeBounds(host) ? { bounds: nodeBounds(host) } : {}),
+      slots,
+    });
+  }
+
+  return {
+    schema: "compose-preview-figma-slots/v1",
+    fileKey,
+    ...(figmaFile?.version ? { version: figmaFile.version } : {}),
+    hosts,
+  };
+}
+
 /** Normalized key for matching a Figma property name to a Kotlin parameter name. */
 const normalizeName = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/** Strip Figma's `#nodeId` suffix from a boolean/text property key to get its display name. */
+/** Strip Figma's `#nodeId` suffix from a non-variant property key to get its display name. */
 const propDisplayName = (key) => key.split("#")[0];
 
 /** A safe Kotlin/Figma identifier — guards the string-built template against injection. */
@@ -171,8 +363,15 @@ export function buildBoundTemplate(componentName, parameters = [], propDefs = {}
   }
   const required = parameters.filter((p) => !p.hasDefault);
   const boundProps = [];
+  const declarations = [];
   const lines = required.map((p) => {
     const match = isSafeIdent(p.name) ? propByNorm.get(normalizeName(p.name)) : undefined;
+    if (p.composableSlot && match?.def?.type === "SLOT") {
+      const variable = `slot_${p.name}`;
+      declarations.push(`const ${variable} = figma.selectedInstance.getSlot(${JSON.stringify(match.name)})`);
+      boundProps.push(match.name);
+      return `    ${p.name} = { \${${variable}} },`;
+    }
     const expr = match ? bindingExpression(match.name, match.def, p) : null;
     if (expr) {
       boundProps.push(match.name);
@@ -184,7 +383,8 @@ export function buildBoundTemplate(componentName, parameters = [], propDefs = {}
   if (boundProps.length === 0) return null;
   const body =
     lines.length === 0 ? `${componentName}()` : `${componentName}(\n${lines.join("\n")}\n)`;
-  const template = "const figma = require('figma')\nexport default figma.code`" + body + "`";
+  const preamble = ["const figma = require('figma')", ...declarations].join("\n");
+  const template = `${preamble}\nexport default figma.code\`${body}\``;
   return { template, boundProps };
 }
 
@@ -247,11 +447,13 @@ async function main() {
       manifest: { type: "string" },
       file: { type: "string" },
       out: { type: "string" },
+      "slots-out": { type: "string" },
     },
   });
   if (!values.manifest || !values.file) {
     console.error(
-      "usage: publish-code-connect --manifest <code-connect.json> --file <key|/design/ URL> [--out <send-mappings.json>]",
+      "usage: publish-code-connect --manifest <code-connect.json> --file <key|/design/ URL> " +
+        "[--out <send-mappings.json>] [--slots-out <figma-slots.json>]",
     );
     process.exit(2);
   }
@@ -290,6 +492,7 @@ async function main() {
   // (figma.properties.*) instead of a TODO. Empty for the code-led rendered catalog (plain frames).
   const propsByName = variantPropsByName(doc.document);
   const payload = toSendMappingsPayload(fileKey, resolved, propsByName);
+  const slots = extractSlotManifest(fileKey, doc, resolved);
   const boundCount = payload.mappings.filter((m) => {
     try {
       return (m.templateDataJson && JSON.parse(m.templateDataJson).props?.length) > 0;
@@ -306,6 +509,14 @@ async function main() {
     );
   } else {
     process.stdout.write(json);
+  }
+  const slotsOut = values["slots-out"] ?? (values.out ? join(dirname(values.out), "figma-slots.json") : null);
+  if (slotsOut) {
+    await writeFile(slotsOut, `${JSON.stringify(slots, null, 2)}\n`, "utf8");
+    console.log(
+      `[code-connect] native slots → ${slots.hosts.length} host(s), ` +
+        `${slots.hosts.reduce((count, host) => count + host.slots.length, 0)} slot(s) → ${slotsOut}`,
+    );
   }
   console.log(
     "[code-connect] hand this to Figma's send_code_connect_mappings MCP tool (or `figma connect`) " +
