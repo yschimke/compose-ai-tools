@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
+import com.example.designcatalogm3.shared.CatalogApp
 import com.example.designcatalogm3.shared.LocalWasmCatalogKnobs
 import com.example.designcatalogm3.shared.catalogComponentIds
 import kotlin.coroutines.resume

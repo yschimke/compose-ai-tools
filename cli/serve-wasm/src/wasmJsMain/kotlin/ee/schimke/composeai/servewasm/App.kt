@@ -277,9 +277,11 @@ private fun PreviewCard(
   client: BrowserPreviewClient,
   onClick: () -> Unit,
 ) {
+  val native = preview.nativeTarget
   var bitmap by remember(preview.id) { mutableStateOf<ImageBitmap?>(null) }
   var failed by remember(preview.id) { mutableStateOf(false) }
   LaunchedEffect(preview.id) {
+    if (preview.nativeTarget != null) return@LaunchedEffect
     try {
       bitmap = client.snapshot(preview.id, emptyMap())
     } catch (_: Throwable) {
@@ -295,7 +297,9 @@ private fun PreviewCard(
       contentAlignment = Alignment.Center,
     ) {
       val image = bitmap
-      if (image != null) {
+      if (native != null) {
+        NativeCatalogPreview(native, modifier = Modifier.fillMaxSize())
+      } else if (image != null) {
         Image(
           image,
           preview.label,
@@ -311,6 +315,13 @@ private fun PreviewCard(
         Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
           StatusPill("Live only", Color(0xFFFFCA75))
         }
+      } else if (native != null) {
+        Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+          StatusPill("Native CMP", Color(0xFF65D6A3))
+        }
+        // Catalog components are intentionally interactive, but a card is navigation rather than
+        // a mini editor. Keep its whole stage clickable even when the child is a Switch/Slider.
+        Box(Modifier.fillMaxSize().clickable(onClick = onClick))
       }
     }
     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -329,7 +340,8 @@ private fun PreviewCard(
       )
       if (preview.modes.isNotEmpty()) {
         Text(
-          preview.modes.joinToString(" · "),
+          if (native != null) "native cmp · snapshot fallback"
+          else preview.modes.joinToString(" · "),
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.primary,
         )
@@ -346,15 +358,19 @@ private fun PreviewDetail(
   initiallyLive: Boolean,
   onBack: () -> Unit,
 ) {
-  var live by remember(preview.id) { mutableStateOf(initiallyLive) }
-  var dark by remember(preview.id) { mutableStateOf(false) }
+  val nativeTarget = preview.nativeTarget
+  var live by remember(preview.id) { mutableStateOf(nativeTarget != null || initiallyLive) }
+  var dark by remember(preview.id) { mutableStateOf(nativeTarget?.dark ?: false) }
   var transparent by remember(preview.id) { mutableStateOf(false) }
-  var fontScale by remember(preview.id) { mutableStateOf(1f) }
+  var fontScale by remember(preview.id) { mutableStateOf(nativeTarget?.fontScale ?: 1f) }
   var locale by remember(preview.id) { mutableStateOf("") }
   var bitmap by remember(preview.id) { mutableStateOf<ImageBitmap?>(null) }
   var frameSize by remember(preview.id) { mutableStateOf(IntSize.Zero) }
   var stageSize by remember { mutableStateOf(IntSize.Zero) }
-  var status by remember(preview.id) { mutableStateOf("Snapshot") }
+  var status by
+    remember(preview.id) {
+      mutableStateOf(if (nativeTarget != null) "Native CMP · in browser" else "Snapshot")
+    }
   var error by remember(preview.id) { mutableStateOf<String?>(null) }
   val overrides = buildMap {
     put("uiMode", if (dark) "dark" else "light")
@@ -362,9 +378,14 @@ private fun PreviewDetail(
     if (fontScale != 1f) put("fontScale", ((fontScale * 100).roundToInt() / 100f).toString())
     if (locale.isNotBlank()) put("localeTag", locale.trim())
   }
+  val nativeActive = live && nativeTarget != null
+  val serverLive = live && nativeTarget == null
 
-  LaunchedEffect(preview.id, live, overrides) {
-    if (live) {
+  LaunchedEffect(preview.id, nativeActive, serverLive, overrides) {
+    if (nativeActive) {
+      status = "Native CMP · in browser"
+      error = null
+    } else if (serverLive) {
       client.sendOverrides(overrides)
     } else {
       status = "Rendering snapshot…"
@@ -381,8 +402,8 @@ private fun PreviewDetail(
     }
   }
 
-  LaunchedEffect(preview.id, live) {
-    if (!live) return@LaunchedEffect
+  LaunchedEffect(preview.id, serverLive) {
+    if (!serverLive) return@LaunchedEffect
     status = "Connecting…"
     error = null
     client.openStream(preview.id, overrides)
@@ -421,6 +442,7 @@ private fun PreviewDetail(
       preview = preview,
       live = live,
       status = status,
+      native = nativeTarget != null,
       dark = dark,
       transparent = transparent,
       fontScale = fontScale,
@@ -448,10 +470,26 @@ private fun PreviewDetail(
           stageSize,
           transparent,
           live,
+          nativeActive,
           status,
           error,
           onSize = { stageSize = it },
           onTap = { x, y -> client.sendTap(x, y) },
+          nativeContent =
+            nativeTarget
+              ?.takeIf { nativeActive }
+              ?.let { target ->
+                {
+                  NativeCatalogPreview(
+                    target = target,
+                    dark = dark,
+                    fontScale = fontScale,
+                    locale = locale,
+                    transparent = transparent,
+                    modifier = Modifier.fillMaxSize(),
+                  )
+                }
+              },
         )
       }
     }
@@ -464,10 +502,26 @@ private fun PreviewDetail(
           stageSize,
           transparent,
           live,
+          nativeActive,
           status,
           error,
           onSize = { stageSize = it },
           onTap = { x, y -> client.sendTap(x, y) },
+          nativeContent =
+            nativeTarget
+              ?.takeIf { nativeActive }
+              ?.let { target ->
+                {
+                  NativeCatalogPreview(
+                    target = target,
+                    dark = dark,
+                    fontScale = fontScale,
+                    locale = locale,
+                    transparent = transparent,
+                    modifier = Modifier.fillMaxSize(),
+                  )
+                }
+              },
         )
       }
       HorizontalDivider(
@@ -486,6 +540,7 @@ private fun ControlsPanel(
   preview: PreviewSummary,
   live: Boolean,
   status: String,
+  native: Boolean,
   dark: Boolean,
   transparent: Boolean,
   fontScale: Float,
@@ -502,7 +557,10 @@ private fun ControlsPanel(
   Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
-        Text("Live preview", style = MaterialTheme.typography.titleMedium)
+        Text(
+          if (native) "Native CMP" else "Server-rendered preview",
+          style = MaterialTheme.typography.titleMedium,
+        )
         Text(
           status,
           style = MaterialTheme.typography.labelSmall,
@@ -538,7 +596,10 @@ private fun ControlsPanel(
     )
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
     Text(
-      "${preview.modes.joinToString(" · ").ifEmpty { "Default render mode" }}",
+      if (native) "Native CMP · snapshot fallback available"
+      else
+        "Not bundled in this Wasm frontend · " +
+          preview.modes.joinToString(" · ").ifEmpty { "default render mode" },
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.secondary,
     )
@@ -559,15 +620,17 @@ private fun PreviewStage(
   stageSize: IntSize,
   transparent: Boolean,
   live: Boolean,
+  native: Boolean,
   status: String,
   error: String?,
   onSize: (IntSize) -> Unit,
   onTap: (Int, Int) -> Unit,
+  nativeContent: (@Composable () -> Unit)? = null,
 ) {
   Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
       StatusPill(
-        if (live) "LIVE" else "SNAPSHOT",
+        if (native) "NATIVE" else if (live) "SERVER LIVE" else "SERVER SNAPSHOT",
         if (live) Color(0xFF65D6A3) else MaterialTheme.colorScheme.primary,
       )
       Spacer(Modifier.width(10.dp))
@@ -576,7 +639,14 @@ private fun PreviewStage(
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
-      if (live) {
+      if (native) {
+        Spacer(Modifier.weight(1f))
+        Text(
+          "Runs in this browser",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+      } else if (live) {
         Spacer(Modifier.weight(1f))
         Text(
           "Click the preview to send input",
@@ -595,19 +665,24 @@ private fun PreviewStage(
             if (transparent) Modifier.checkerboard() else Modifier.background(Color(0xFFF8F8FA))
           )
           .onSizeChanged(onSize)
-          .pointerInput(live, frameSize, stageSize) {
-            detectTapGestures { point ->
-              if (live && frameSize.width > 0 && frameSize.height > 0) {
-                mapToFrame(point.x, point.y, stageSize, frameSize)?.let {
-                  onTap(it.first, it.second)
+          .then(
+            if (nativeContent != null) Modifier
+            else
+              Modifier.pointerInput(live, frameSize, stageSize) {
+                detectTapGestures { point ->
+                  if (live && frameSize.width > 0 && frameSize.height > 0) {
+                    mapToFrame(point.x, point.y, stageSize, frameSize)?.let {
+                      onTap(it.first, it.second)
+                    }
+                  }
                 }
               }
-            }
-          },
+          ),
         contentAlignment = Alignment.Center,
       ) {
         val image = bitmap
-        if (image == null) CircularProgressIndicator()
+        if (nativeContent != null) nativeContent()
+        else if (image == null) CircularProgressIndicator()
         else
           Image(
             image,
