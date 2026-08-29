@@ -48,6 +48,20 @@ if (outPath != null) {
         dir: p.projectDir.absolutePath,
         hasPreviewPlugin: hasPlugin,
         hasTestTask: p.tasks.findByName('test') != null,
+        // Which of the headless JVM test tasks this project actually has.
+        //
+        // `test` alone is a single-platform assumption. A Kotlin Multiplatform module names its
+        // JVM tests `jvmTest` and registers NO `test` task, so every one of them reported
+        // "has no tests" and the resolver emitted nothing — `:rc-player-compose` (25 test
+        // files), `:rc-player-runtime` (12), `:rc-player-protocol`, `:rc-player-trace` and
+        // `:slot-preview-runtime` had never run in CI, while `Module Unit Tests` skipped and
+        // the path config made them look covered (#4819).
+        //
+        // Deliberately an allowlist, not `withType(AbstractTestTask)`. That would also sweep in
+        // `wasmJsBrowserTest`, `iosSimulatorArm64Test` and Android's variant tasks, each of
+        // which needs a toolchain this job does not have — turning a coverage fix into a
+        // platform-provisioning problem. The browser and iOS lanes are tracked separately.
+        jvmTestTasks: ['test', 'jvmTest'].findAll { p.tasks.findByName(it) != null },
         // `checkKotlinAbi` exists only where a module opted into `abiValidation()`. The
         // affected-tests resolver needs to know per project, because naming a task that a
         // project does not have fails the whole Gradle invocation rather than that one task.

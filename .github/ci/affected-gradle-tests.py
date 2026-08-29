@@ -4,7 +4,17 @@
 Prints `full`, `none`, or a space-separated task list. Any ambiguity fails
 open to `full`; non-PR callers should bypass this script and run the full suite.
 
-Emits `:<project>:test` and, where the project has one, `:<project>:checkKotlinAbi`.
+Emits each project's headless JVM test tasks (`test` and/or `jvmTest`) and, where the
+project has one, `:<project>:checkKotlinAbi`. A task is named only where the project
+actually has it: naming one it does not have fails the entire invocation.
+
+Naming only `test` was a single-platform assumption. A Kotlin Multiplatform module calls
+its JVM tests `jvmTest` and registers no `test` task, so the graph reported "no tests"
+and this resolver emitted nothing for it. `:rc-player-compose` (25 test files),
+`:rc-player-runtime` (12), `:rc-player-protocol`, `:rc-player-trace` and
+`:slot-preview-runtime` had therefore never run in CI — `Module Unit Tests` skipped on a
+PR touching only them, while their paths sat in `ci-paths.json` making them look covered
+(#4819).
 
 The ABI half is not decoration. Every module with a published surface wires
 `checkKotlinAbi` into `check` and says in a comment that a gate is only worth having
@@ -80,8 +90,17 @@ def resolve(files: list[str], config: dict, projects: list[dict], workspace: Pat
     def task(path: str, name: str) -> str:
         return f"{path}:{name}" if path != ":" else f":{name}"
 
+    # `jvmTestTasks` is the current shape; `hasTestTask` is read as a fallback so a graph
+    # produced before that field existed still resolves `test` rather than silently
+    # resolving nothing — this script fails open everywhere else for the same reason.
+    def test_tasks(project: dict) -> list[str]:
+        names = project.get("jvmTestTasks")
+        if names is None:
+            names = ["test"] if project.get("hasTestTask") else []
+        return [task(project["path"], name) for name in names]
+
     tasks = sorted(
-        [task(p["path"], "test") for p in selected if p.get("hasTestTask")]
+        [t for p in selected for t in test_tasks(p)]
         + [task(p["path"], "checkKotlinAbi") for p in selected if p.get("hasAbiCheck")]
     )
     return " ".join(tasks) if tasks else "none"

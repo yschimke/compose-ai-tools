@@ -19,17 +19,26 @@ class AffectedGradleTestsTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "core").mkdir()
         (self.root / "app").mkdir()
+        (self.root / "kmp").mkdir()
         self.projects = [
-            {"path": ":", "dir": str(self.root), "dependencies": [], "hasTestTask": False},
+            {"path": ":", "dir": str(self.root), "dependencies": [], "jvmTestTasks": []},
             {
                 "path": ":core",
                 "dir": str(self.root / "core"),
                 "dependencies": [],
-                "hasTestTask": True,
+                "jvmTestTasks": ["test"],
                 # A published module: `abiValidation()` gives it `checkKotlinAbi`.
                 "hasAbiCheck": True,
             },
-            {"path": ":app", "dir": str(self.root / "app"), "dependencies": [":core"], "hasTestTask": True},
+            {"path": ":app", "dir": str(self.root / "app"), "dependencies": [":core"], "jvmTestTasks": ["test"]},
+            # A Kotlin Multiplatform module: its JVM tests are `jvmTest` and it registers no
+            # `test` task at all, which is exactly the shape that read as "no tests".
+            {
+                "path": ":kmp",
+                "dir": str(self.root / "kmp"),
+                "dependencies": [],
+                "jvmTestTasks": ["jvmTest"],
+            },
         ]
         self.config = {"ignorePaths": ["docs/**"], "globalPaths": ["gradle/**"]}
 
@@ -55,6 +64,45 @@ class AffectedGradleTestsTest(unittest.TestCase):
     def test_a_project_without_abi_validation_is_never_given_the_task(self):
         tasks = mod.resolve(["app/src/App.kt"], self.config, self.projects, self.root).split()
         self.assertEqual(tasks, [":app:test"])
+
+    def test_a_multiplatform_module_runs_its_jvmTest(self):
+        # The regression this exists for: a KMP module names its JVM tests `jvmTest` and has no
+        # `test` task, so the graph said "no tests", this resolver emitted nothing, and
+        # `Module Unit Tests` skipped — while the module's path in `ci-paths.json` made it look
+        # covered. `:rc-player-compose` had 25 test files that had never run (#4819).
+        self.assertEqual(
+            mod.resolve(["kmp/src/Main.kt"], self.config, self.projects, self.root),
+            ":kmp:jvmTest",
+        )
+
+    def test_a_module_is_never_given_a_test_task_it_lacks(self):
+        # Same trap as `checkKotlinAbi`: naming a task a project does not have fails the entire
+        # Gradle invocation, not just that task.
+        tasks = mod.resolve(["app/src/App.kt"], self.config, self.projects, self.root).split()
+        self.assertEqual(tasks, [":app:test"])
+        self.assertNotIn(":app:jvmTest", tasks)
+
+    def test_a_module_with_both_runs_both(self):
+        # A module carrying a JVM target beside a plain `test` gets both; neither substitutes
+        # for the other, and running one would silently skip the other's suite.
+        projects = [dict(p) for p in self.projects]
+        both = next(p for p in projects if p["path"] == ":kmp")
+        both["jvmTestTasks"] = ["test", "jvmTest"]
+        self.assertEqual(
+            mod.resolve(["kmp/src/Main.kt"], self.config, projects, self.root),
+            ":kmp:jvmTest :kmp:test",
+        )
+
+    def test_a_graph_without_the_field_still_resolves_test(self):
+        # Fail-open, like every other unknown in this script: a graph produced before
+        # `jvmTestTasks` existed must not silently resolve to no tests at all.
+        legacy = [
+            {"path": ":core", "dir": str(self.root / "core"), "dependencies": [], "hasTestTask": True}
+        ]
+        self.assertEqual(
+            mod.resolve(["core/src/Core.kt"], self.config, legacy, self.root),
+            ":core:test",
+        )
 
     def test_docs_only_skips(self):
         self.assertEqual(mod.resolve(["docs/x.md"], self.config, self.projects, self.root), "none")
