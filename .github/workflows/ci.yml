@@ -951,17 +951,24 @@ jobs:
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: ./gradlew :cli:build :bundle-viewer:build
 
-  # End-to-end gate for the XR composite still: build the native xr-composite binary, then run
-  # the xr-spatial sample's full render so composePreviewRenderXr writes scene.json + panel
-  # textures and composePreviewCompositeXr bakes composite.png from them — headless, no GPU.
-  # This is otherwise only exercised by hand, so without a gate the binary↔plugin contract
-  # (CLI flags, sanitised composite path, the optional capture in previews.json) can silently
-  # rot. The graceful no-binary path is covered by the plugin unit/functional tests.
+  # End-to-end gate for the XR composite still: fetch the PINNED compositor release, then run the
+  # xr-spatial sample's full render so composePreviewRenderXr writes scene.json + panel textures
+  # and composePreviewCompositeXr bakes composite.png from them — headless, no GPU. This is
+  # otherwise only exercised by hand, so without a gate the binary↔plugin contract (CLI flags,
+  # sanitised composite path, the optional capture in previews.json) can silently rot. The
+  # graceful no-binary path is covered by the plugin unit/functional tests.
+  #
+  # It downloads rather than builds because the compositor now ships from
+  # yschimke/compose-preview-xr. That is a strictly better test than the one it replaces: it
+  # exercises the artifact a user's CLI actually provisions, at the version this repository
+  # actually pins, so a pin pointing at a release whose binary no longer speaks this plugin's
+  # contract fails here instead of degrading into a silent "no composite" for every user.
+  # Building the C++ and proving it renders is compose-preview-xr's own build + serve smoke.
   render-xr-composite:
     name: Render XR composite (sample)
-    # Heavy (builds the native clang compositor + Xvfb render, ~6 min). Drift
-    # detector, not a PR gate — runs on push-to-main + nightly, skipped on PRs
-    # (a skipped required check counts as passing for branch protection).
+    # Heavy (Xvfb software-GL render, several minutes). Drift detector, not a PR
+    # gate — runs on push-to-main + nightly, skipped on PRs (a skipped required
+    # check counts as passing for branch protection).
     if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
@@ -973,11 +980,29 @@ jobs:
         with:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      # Build the compositor (clang + libc++ against the pinned Filament SDK) and its compiled
-      # materials into dist/ — the same composite action the build/release workflows use.
-      - uses: ./.github/actions/build-xr-composite
-        with:
-          platform: linux
+      # Provision the compositor exactly the way `XrCompositeProvision` does: the `xr-composite`
+      # pin names the version, Version.kt's XR_COMPOSITE_REPO names the repository, and the asset
+      # filename is derived identically. Both are printed by the pin gate rather than restated
+      # here, so this job and the CLI cannot drift into fetching different things.
+      - name: Download the pinned xr-composite release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(python3 .github/ci/check_xr_composite_pin.py --print-pin)"
+          repo="$(python3 .github/ci/check_xr_composite_pin.py --print-repo)"
+          asset="xr-composite-linux-x86_64-${version}.tar.gz"
+          echo "provisioning $repo v$version ($asset)"
+          mkdir -p dist
+          # Fail loudly on a 404. Downstream this same miss is a graceful skip, which is the
+          # whole reason a real fetch belongs in a gate rather than only in the happy path.
+          curl -fsSL --retry 3 --retry-delay 2 \
+            "https://github.com/${repo}/releases/download/v${version}/${asset}" \
+            -o "${RUNNER_TEMP}/${asset}"
+          tar -C dist -xzf "${RUNNER_TEMP}/${asset}"
+          chmod +x dist/xr-composite
+          ls -l dist
       # The prebuilt Filament Linux backend is GLX-only, so headless rendering needs a virtual
       # X display (Xvfb) routed to Mesa's llvmpipe software rasteriser — no GPU required.
       - name: Install Xvfb + Mesa software GL
@@ -1013,27 +1038,20 @@ jobs:
           grep -q 'composite.png' "$base/previews.json" \
             || { echo "::error::previews.json has no composite capture"; exit 1; }
           echo "OK: baked $png ($(du -h "$png" | cut -f1)), referenced in previews.json"
-      # Capture the 3D spatial webview fed by the REAL composePreviewRenderXr
-      # output (scene.json + harvested compose-spatial-semantics.json + panel
-      # The spatial webview capture that used to run here rendered the real XR scene
-      # through the VS Code extension's Playwright harness. The extension now lives in
-      # yschimke/compose-preview-vscode, which cannot build the XR renderer, so the
-      # capture has no home on either side and is gone rather than stubbed. The scene
-      # itself is still exercised below by `serve_smoke.py` against the native server.
-      # Exercise the long-lived server path (--serve): initialize -> render -> xr/updatePanels over
-      # JSON-RPC stdio, asserting streamFrame notifications arrive and a per-frame panel update
-      # actually changes the rendered image. Reuses the dist/ binary + materials and the committed
-      # spatial-scene fixture.
-      - name: Smoke-test the render server (--serve)
-        shell: bash
-        env:
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          GALLIUM_DRIVER: llvmpipe
-        run: |
-          xvfb-run -a -s "-screen 0 2000x1400x24" \
-            python3 renderers/xr-composite/test/serve_smoke.py \
-              "$PWD/dist/xr-composite" "$PWD/dist/materials" \
-              "$PWD/schema/fixtures/spatial-scene"
+      # Two things that used to run here no longer do, for unrelated reasons.
+      #
+      # The spatial webview capture rendered the real XR scene through the VS Code extension's
+      # Playwright harness. The extension now lives in yschimke/compose-preview-vscode, which
+      # cannot build the XR renderer, so the capture has no home on either side and is gone
+      # rather than stubbed.
+      #
+      # The python `serve_smoke.py` moved with the compositor: it is the server's own smoke, it
+      # lives beside the C++ it drives, and compose-preview-xr runs it on every change.
+      # Duplicating it against a pinned binary would re-test upstream's code, not this
+      # repository's. What is genuinely cross-boundary is the JVM client below — this
+      # repository's code talking to that pinned binary — so that one stays, and the scene is
+      # exercised through it.
+      #
       # Exercise the JVM client (:renderer-xr-client) against the real native server: unit tests
       # plus the XR_COMPOSITE_BIN-gated XrRenderServerIntegrationTest, which spawns the dist binary
       # and asserts a per-frame panel update changes the image. Mirrors the python smoke from Kotlin.
@@ -1574,12 +1592,13 @@ jobs:
   # vscjava.vscode-gradle stub so our extensionDependency check passes, and
   # run the extension against a fixture workspace. xvfb is needed because
   # VS Code expects a display even in headless mode.
-  # The `xr-composite` pin is what makes the compositor releasable on its own cadence: the CLI and
-  # the Gradle plugin both resolve the binary by it rather than by their own version. That only
-  # holds while the pin actually moves when the compositor does. A change that leaves it behind
-  # ships nothing and says nothing — a missing asset is a graceful skip, so the render still
-  # succeeds, just without a composite. Deliberately NOT behind a `changes` path filter: a gate
-  # that can be scheduled away is not a gate, and this one costs a second.
+  # The `xr-composite` pin is the entire interface to the compositor now that it lives in
+  # yschimke/compose-preview-xr: the CLI and the Gradle plugin both resolve the binary from that
+  # one catalog entry, and nothing here builds it. So the pin naming a release that does not
+  # exist — or one missing a platform tarball — is the whole failure mode, and it is a silent
+  # one: a 404 on download is a graceful skip, so the render still succeeds, just without a
+  # composite. Deliberately NOT behind a `changes` path filter: a gate that can be scheduled away
+  # is not a gate, and this one costs a second.
   xr-composite-pin:
     name: XR Composite Pin
     if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
@@ -1590,25 +1609,13 @@ jobs:
           persist-credentials: false
       - name: Run pin gate tests
         run: python3 .github/ci/test_check_xr_composite_pin.py -v
-      - name: Check the pin moved with the compositor
+      - name: Check the pin resolves to a complete release
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_SHA: ${{ github.sha }}
-          # Read as data, never templated into the script: a PR body is attacker-controlled text.
-          # The gate only looks for an `XR-Release: none - <reason>` line in it.
-          XR_RELEASE_OVERRIDE: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          # The runner's checkout is shallow, so fetch the base commit the event names rather than
-          # relying on `origin/main` being present. Fails CLOSED, unlike the consumer-contract
-          # notice: a diff we cannot compute must not read as "the compositor is untouched".
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA"); then
-            echo "::error::could not diff against $BASE_SHA — re-run this job. The pin gate must not pass on an uncomputed diff."
-            exit 1
-          fi
-          printf '%s\n' "$changed" |
-            python3 .github/ci/check_xr_composite_pin.py --changed - --base "$BASE_SHA"
+          # Authenticated so the releases API answers from a shared runner IP rather than
+          # rate-limiting. A rate-limit is not a verdict on the pin, so the gate would warn and
+          # pass — which is correct but useless. Read-only; the token needs nothing else.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/ci/check_xr_composite_pin.py
 
   consumer-contract-notice:
     name: Consumer Contract Notice

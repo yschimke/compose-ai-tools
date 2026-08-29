@@ -179,9 +179,10 @@ export async function reapPrRuns({
     //
     // 1. A manual `workflow_dispatch` on a PR branch has no PR association,
     //    so the empty-association fallback below would otherwise sweep it up.
-    //    xr-composite-release-smoke.yml exists partly to be run manually on any
-    //    branch for regression work; killing someone's investigation run
-    //    mid-flight would be a real cost for no queue benefit.
+    //    Several workflows here carry a `workflow_dispatch` trigger precisely so
+    //    they can be run by hand on any branch for regression work; killing
+    //    someone's investigation run mid-flight would be a real cost for no
+    //    queue benefit.
     // 2. Post-merge CI on the default branch is a `push` run, so this
     //    excludes it *categorically* rather than by heuristic — which is what
     //    lets a PR whose head is `main` be reaped at all (see below).

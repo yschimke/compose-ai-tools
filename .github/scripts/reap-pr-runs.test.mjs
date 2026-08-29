@@ -151,8 +151,8 @@ test('reaps a PR whose head is the default branch, but never its push runs', asy
 
 test('leaves a manual workflow_dispatch run alone', async () => {
   // A manual one-off has no PR association, so the empty-association fallback
-  // would sweep it up without the event allowlist. xr-composite-release-smoke.yml is
-  // run this way for regression work.
+  // would sweep it up without the event allowlist. Workflows carrying a
+  // `workflow_dispatch` trigger are run this way for regression work.
   const { github, core, calls } = harness({
     runs: [
       run(1, 'VS Code Extension E2E', 'in_progress', { event: 'workflow_dispatch' }),

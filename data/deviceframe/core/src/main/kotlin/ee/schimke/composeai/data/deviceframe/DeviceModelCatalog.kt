@@ -10,9 +10,10 @@ package ee.schimke.composeai.data.deviceframe
  * redistribution, so the upstream model's own licence governs use — and any produced image must
  * carry that model's [DeviceModelSpec.attribution], exactly like [DeviceArtCatalog.ATTRIBUTION].
  *
- * Offline tests and CI use the committed CC0 fixture under `renderers/xr-composite/test/models`
- * instead of a network fetch; `render_glb_preview.py` renders either a committed `.glb` or one of
- * these URLs.
+ * Offline rendering of these models is exercised in
+ * [yschimke/compose-preview-xr](https://github.com/yschimke/compose-preview-xr), which carries the
+ * committed CC0 fixture and the `render_glb_preview.py` harness alongside the compositor that
+ * consumes them.
  */
 object DeviceModelCatalog {
 

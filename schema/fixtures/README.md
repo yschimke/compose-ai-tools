@@ -12,7 +12,7 @@ that accident became a cross-repo dependency for tests that cannot leave this re
 
 | fixture | read by |
 | --- | --- |
-| `spatial-scene/` | `SpatialSceneTest`, `XrRenderServerIntegrationTest`, `serve_smoke.py`, the XR composite release smoke |
+| `spatial-scene/` | `SpatialSceneTest`, `XrRenderServerIntegrationTest`; vendored into [compose-preview-xr](https://github.com/yschimke/compose-preview-xr) for its `serve_smoke.py` |
 | `spatial-semantics-tree/` | `SpatialSemanticsTreeTest` |
 
 The extension keeps its own copy of the scene for its webview harness. Both are

@@ -556,8 +556,8 @@ jobs:
     # The native `xr-composite` binaries used to be built here too, and `release` needed them — so a
     # transient Filament SDK fetch failure on the macOS or Windows leg skipped this job and the CLI,
     # MCP and wasm-player assets never reached the Release, for a component the release did not
-    # touch. They now ship on their own cadence from `xr-composite-release.yml`, pinned by
-    # `xr-composite` in the version catalog. See docs/RELEASING.md.
+    # touch. They now ship from yschimke/compose-preview-xr on its own cadence, consumed by the
+    # `xr-composite` pin in the version catalog. See docs/RELEASING.md.
     needs: [build-applications]
     runs-on: ubuntu-latest
     permissions:

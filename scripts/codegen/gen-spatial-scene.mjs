@@ -37,9 +37,17 @@ const VERSION_VALUE = defs[cfg.root].properties.version.default;
 // from this repo at the release it pins and fails on any difference — so a schema change
 // here surfaces there as a red check the next time the pin moves, rather than as a mirror
 // that silently describes an older contract.
+// The C++ mirror used to be emitted here too, into `renderers/xr-composite/src/spatial_scene.hpp`.
+// The compositor now lives in yschimke/compose-preview-xr and this script cannot write into it, so
+// that target is gone rather than left pointing at a path `--check` would report missing on every
+// run — the same treatment the TypeScript mirror got when the extension moved out.
+//
+// What keeps the C++ copy honest is the OTHER side: compose-preview-xr's `contract-drift` workflow
+// checks this repository out at the SHA it pins, runs this generator with `--emit-cpp`, and fails
+// on any difference. Because it pins a SHA rather than tracking main, a change here cannot turn
+// that repository red until someone deliberately bumps the pin.
 const OUTPUTS = {
   kotlin: "api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt",
-  cpp: "renderers/xr-composite/src/spatial_scene.hpp",
 };
 
 const BANNER = (relPath) => [
@@ -377,9 +385,15 @@ if (process.argv.includes("--emit-typescript")) {
   process.exit(0);
 }
 
+// `--emit-cpp` prints the C++ mirror to stdout for compose-preview-xr, which owns its destination.
+// Its `contract-drift` workflow diffs this output against its committed `src/spatial_scene.hpp`.
+if (process.argv.includes("--emit-cpp")) {
+  process.stdout.write(emitCpp());
+  process.exit(0);
+}
+
 const generated = {
   [OUTPUTS.kotlin]: emitKotlin(),
-  [OUTPUTS.cpp]: emitCpp(),
 };
 
 const check = process.argv.includes("--check");

@@ -5,12 +5,13 @@ recovers a Compose-XR subspace layout and renders each panel's 2D content to a P
 **consumer** — the VS Code webview's WebGL 3D spatial-layout viewer. Both sides build to this shape so
 they can be developed in parallel and meet here.
 
-- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)) and native C++ ([`spatial_scene.hpp`](../../renderers/xr-composite/src/spatial_scene.hpp)) mirrors are **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) and gated by `--check` in CI. Edit the schema, not the mirrors.
+- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin mirror ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)) is **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) and gated by `--check` in CI. Edit the schema, not the mirrors.
+- **Native C++ mirror:** [`src/spatial_scene.hpp`](https://github.com/yschimke/compose-preview-xr/blob/main/src/spatial_scene.hpp), in the compositor repository, emitted by the same generator's `--emit-cpp`. Not covered by `--check` here — this repo cannot write into that one. Instead compose-preview-xr's `contract drift` workflow checks *this* repository out at a pinned SHA, runs this generator, and diffs; a contract change here therefore lands there as a deliberate pin bump rather than silently.
 - **TypeScript mirror:** [`src/webview/shared/spatialScene.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview/shared/spatialScene.ts), in the extension repository. Generated from the same schema but **not** covered by `--check` here — this repo cannot write into that one. Regenerate it from an extension checkout with `node ../compose-ai-tools/scripts/codegen/gen-spatial-scene.mjs --emit-typescript > src/webview/shared/spatialScene.ts`.
-- **Sample fixture:** [`schema/fixtures/spatial-scene/`](../../schema/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`) — the canonical copy, consumed by `SpatialSceneTest`, `XrRenderServerIntegrationTest`, `serve_smoke.py` and the XR release smoke. Edit this one.
+- **Sample fixture:** [`schema/fixtures/spatial-scene/`](../../schema/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`) — the canonical copy, consumed by `SpatialSceneTest` and `XrRenderServerIntegrationTest`, and vendored into compose-preview-xr for its `serve_smoke.py` (its `contract drift` job diffs the vendored copy against this one). Edit this one.
   The extension keeps a [consumer mirror](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/fixtures/spatial-scene/) for its webview harness; changing that copy moves no gate here.
 - **Background:** how poses are recovered offline — see the `SubspaceSceneRecorder` KDoc (`:renderer-xr`).
-- **Still-image consumer:** [`renderers/xr-composite`](../../renderers/xr-composite/README.md) — the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free.
+- **Still-image consumer:** [`yschimke/compose-preview-xr`](https://github.com/yschimke/compose-preview-xr) — the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free. Provisioned by the `xr-composite` pin in [`gradle/libs.versions.toml`](../../gradle/libs.versions.toml), so it deliberately lags this repository and a change here must stay backward-compatible with the pinned build.
 
 This is a **WebGL** viewer contract (Three.js/Babylon), **not** WebXR — VS Code ships stock Electron
 with WebXR disabled, so there is no `navigator.xr` and no immersive session. The viewer is an inline
@@ -81,7 +82,7 @@ The optional `environment` selects the scene backdrop and is **swappable**:
 
 The compositor also accepts a `--environment <preset | color:#RRGGBB>` CLI flag that **overrides**
 whatever the scene specifies (see the compositor's
-[README](../../renderers/xr-composite/README.md)).
+[README](https://github.com/yschimke/compose-preview-xr#readme)).
 
 ## Producer mapping (`:renderer-xr`, Phase A)
 
