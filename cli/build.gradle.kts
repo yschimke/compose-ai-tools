@@ -719,6 +719,9 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
    */
   @get:Input @get:Optional abstract val vscodeRoot: Property<String>
 
+  /** Root of a compose-preview-contracts checkout, when one is present. */
+  @get:Input @get:Optional abstract val contractsRoot: Property<String>
+
   /** Nothing to produce — the file just lets Gradle skip the check when nothing moved. */
   @get:OutputFile abstract val stamp: RegularFileProperty
 
@@ -731,6 +734,7 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
       // Passed explicitly rather than inherited, so what the checker sees is what Gradle
       // fingerprinted above. An inherited value could differ from the declared input.
       vscodeRoot.orNull?.let { environment("COMPOSE_PREVIEW_VSCODE_ROOT", it) }
+      contractsRoot.orNull?.let { environment("COMPOSE_PREVIEW_CONTRACTS_ROOT", it) }
     }
     stamp.get().asFile.writeText("ok\n")
   }
@@ -782,6 +786,35 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       rootProject.fileTree(vscodeRootPath) {
         include("**/*.ts")
         exclude("**/build/**", "**/node_modules/**", "**/.git/**", "**/out/**", "**/dist/**")
+      }
+    )
+  }
+
+  // The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts, so it is
+  // resolved and declared exactly like the TypeScript one above — and for the same reason. Without
+  // it as an input the first successful run stamps this task UP-TO-DATE and every later edit to
+  // the reader is invisible, which is the drift this gate exists to catch.
+  //
+  // Eagerly to a String, for the configuration-cache reason given above.
+  val contractsRootPath: String? =
+    providers.environmentVariable("COMPOSE_PREVIEW_CONTRACTS_ROOT").orNull?.takeIf {
+      it.isNotBlank()
+    }
+      ?: repoRoot.asFile.parentFile
+        ?.resolve("compose-preview-contracts")
+        ?.takeIf {
+          it.resolve(
+              "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
+            )
+            .isFile
+        }
+        ?.absolutePath
+  if (contractsRootPath != null) {
+    contractsRoot.set(contractsRootPath)
+    representations.from(
+      rootProject.fileTree(contractsRootPath) {
+        include("**/*.kt")
+        exclude("**/build/**", "**/.git/**")
       }
     )
   }

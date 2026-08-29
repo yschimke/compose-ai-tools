@@ -909,6 +909,12 @@ jobs:
           persist-credentials: false
           path: .compose-preview-vscode
           fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-contracts
+          persist-credentials: false
+          path: .compose-preview-contracts
+          fetch-depth: 1
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
@@ -922,6 +928,9 @@ jobs:
           # `:cli:check` runs `checkDaemonLaunchSchema`, whose TypeScript reader lives in the
           # extension repo. Without this it silently checks only the Kotlin half.
           COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
+          # And whose JVM reader lives in the contracts repo. Same failure mode: without this it
+          # silently checks one reader instead of two.
+          COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: ./gradlew :cli:build :bundle-viewer:build
 
   # End-to-end gate for the XR composite still: build the native xr-composite binary, then run
@@ -1247,6 +1256,12 @@ jobs:
           persist-credentials: false
           path: .compose-preview-vscode
           fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-contracts
+          persist-credentials: false
+          path: .compose-preview-contracts
+          fetch-depth: 1
       - name: Install perceptual-diff libraries
         run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests
@@ -1295,13 +1310,15 @@ jobs:
       - name: Run daemon-launch schema gate tests
         env:
           COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
+          COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: |
           set -euo pipefail
           out=$(python3 scripts/test_check_daemon_launch_schema.py -v 2>&1) || { echo "$out"; exit 1; }
           echo "$out"
-          # A skipped cross-repo test reports the same green as a passing one.
+          # A skipped cross-repo test reports the same green as a passing one. Two readers live
+          # outside this repository now, so either checkout failing to resolve has to be loud.
           if grep -q "skipped" <<<"$out"; then
-            echo "::error::the cross-repo TypeScript schema tests SKIPPED — COMPOSE_PREVIEW_VSCODE_ROOT did not resolve"
+            echo "::error::cross-repo schema tests SKIPPED — COMPOSE_PREVIEW_VSCODE_ROOT or COMPOSE_PREVIEW_CONTRACTS_ROOT did not resolve"
             exit 1
           fi
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing

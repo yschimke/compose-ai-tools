@@ -76,7 +76,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = Path(__file__).resolve().parent / "daemon-launch-schema-allowlist.json"
 
 WRITER = "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
-JVM_READER = "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
+# The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts, and is
+# resolved the same way as the TypeScript one below. Same reasoning: it is one of the three copies
+# of this schema, so dropping it would retire half the check rather than relocate it.
+JVM_READER_REL = (
+    "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
+)
 # The TypeScript reader moved to yschimke/compose-preview-vscode with the extension. It is still
 # one of the three copies of this schema — and the only reader that *gates* on the version — so
 # dropping it from this checker would retire the check that matters most, on the copy furthest from
@@ -87,6 +92,20 @@ JVM_READER = "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protoc
 # Kotlin half still runs, because "the other repository is not checked out" is not a drift signal
 # and this script is wired into `check`, which every contributor runs.
 TS_READER_REL = "src/daemon/daemonProtocol.ts"
+
+
+def contracts_root() -> Path | None:
+    """Root of a compose-preview-contracts checkout, or None when there is none."""
+    explicit = os.environ.get("COMPOSE_PREVIEW_CONTRACTS_ROOT", "").strip()
+    if explicit:
+        root = Path(explicit).resolve()
+        if not (root / JVM_READER_REL).is_file():
+            raise SystemExit(
+                f"COMPOSE_PREVIEW_CONTRACTS_ROOT={explicit} does not contain {JVM_READER_REL}"
+            )
+        return root
+    sibling = REPO_ROOT.parent / "compose-preview-contracts"
+    return sibling if (sibling / JVM_READER_REL).is_file() else None
 
 
 def ts_root() -> Path | None:
@@ -106,17 +125,25 @@ def ts_root() -> Path | None:
 _ts_root = ts_root()
 TS_READER = TS_READER_REL if _ts_root is not None else ""
 
+_contracts_root = contracts_root()
+JVM_READER = JVM_READER_REL if _contracts_root is not None else ""
+
 
 def resolve(rel: str) -> Path | None:
     """Map a path from this script or the allowlist onto disk.
 
-    Kotlin paths are this repository's. TypeScript paths are the VS Code extension's, and the
-    extension is a separate repository now — so a `.ts` path resolves against the checkout
-    `ts_reader_path` found, and is None when there is none.
+    Two of the three copies now live elsewhere. A `.ts` path is the VS Code extension's and a
+    `.kt` path is this repository's — except the JVM reader, which moved to
+    compose-preview-contracts with the wire contracts. Each resolves against the checkout its
+    `*_root()` found, and is None when there is none, so a missing sibling SKIPS that half rather
+    than failing: "the other repository is not checked out" is not a drift signal, and this script
+    is wired into `check`, which every contributor runs.
     """
     if rel.endswith(".ts"):
         root = _ts_root
         return (root / rel) if root is not None else None
+    if rel == JVM_READER_REL:
+        return (_contracts_root / rel) if _contracts_root is not None else None
     return REPO_ROOT / rel
 
 
@@ -124,7 +151,8 @@ def read(rel: str) -> str:
     path = resolve(rel)
     if path is None:
         raise FileNotFoundError(
-            f"{rel} lives in yschimke/compose-preview-vscode; set COMPOSE_PREVIEW_VSCODE_ROOT"
+            f"{rel} lives in another repository; set COMPOSE_PREVIEW_VSCODE_ROOT (.ts) or "
+            "COMPOSE_PREVIEW_CONTRACTS_ROOT (the JVM reader)"
         )
     return path.read_text(encoding="utf-8")
 

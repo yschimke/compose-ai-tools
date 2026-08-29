@@ -10,6 +10,8 @@ the list cannot quietly stop describing the code.
 """
 
 import importlib.util
+import os
+import pathlib
 import re
 import unittest
 from pathlib import Path
@@ -359,14 +361,36 @@ class MappingOwnership(unittest.TestCase):
     """
 
     @classmethod
+    def contracts_root(cls):
+        """A compose-preview-contracts checkout, or None.
+
+        The wire contracts publish from there now, so the modules that declare these types are not
+        in this tree. Resolved the same way `check-daemon-launch-schema.py` resolves its readers:
+        the env var CI sets, then a sibling checkout.
+        """
+        explicit = os.environ.get("COMPOSE_PREVIEW_CONTRACTS_ROOT", "").strip()
+        if explicit:
+            return pathlib.Path(explicit).resolve()
+        sibling = mod.REPO_ROOT.parent / "compose-preview-contracts"
+        return sibling if (sibling / "settings.gradle.kts").is_file() else None
+
+    @classmethod
     def setUpClass(cls):
         cls.artifacts = {}
-        for build_file in mod.REPO_ROOT.rglob("build.gradle.kts"):
-            if "/build/" in str(build_file):
-                continue
-            found = re.search(r'artifactId\s*=\s*"([^"]+)"', build_file.read_text(errors="ignore"))
-            if found:
-                cls.artifacts[build_file.parent] = found.group(1)
+        roots = [mod.REPO_ROOT]
+        external = cls.contracts_root()
+        if external is not None:
+            roots.append(external)
+        cls.has_contracts = external is not None
+        for root in roots:
+            for build_file in root.rglob("build.gradle.kts"):
+                if "/build/" in str(build_file):
+                    continue
+                found = re.search(
+                    r'artifactId\s*=\s*"([^"]+)"', build_file.read_text(errors="ignore")
+                )
+                if found:
+                    cls.artifacts[build_file.parent] = found.group(1)
 
         cls.declared_by = {}
         for module_dir, artifact in cls.artifacts.items():
@@ -419,6 +443,12 @@ class MappingOwnership(unittest.TestCase):
         the bug — instead of failing merely because the module was renamed. #4715 moved the owner
         from `daemon-core` to `daemon-bta` and this assertion, as a literal, went red on main.
         """
+        if not self.has_contracts:
+            self.skipTest(
+                "daemon-bta publishes from compose-preview-contracts; set "
+                "COMPOSE_PREVIEW_CONTRACTS_ROOT or check it out as a sibling to verify the "
+                "mapping against its sources"
+            )
         mapping = mod.load_allowlist()["contractPackages"]
         for name in ("BtaCompileSession", "DiagnosticCollector"):
             fqn = f"ee.schimke.composeai.daemon.bta.{name}"
