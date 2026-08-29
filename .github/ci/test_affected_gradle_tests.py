@@ -104,6 +104,19 @@ class AffectedGradleTestsTest(unittest.TestCase):
             ":core:test",
         )
 
+    def test_a_named_jvm_target_runs_its_test_task(self):
+        # A KMP JVM target can be NAMED: `jvm("desktop")` produces `desktopTest` and no
+        # `jvmTest`. `:samples:design-catalog-m3-shared` is that shape and is reachable from
+        # `:slot-preview-runtime` through the reverse closure, so it was being selected and then
+        # handed no task at all.
+        projects = [dict(p) for p in self.projects]
+        named = next(p for p in projects if p["path"] == ":kmp")
+        named["jvmTestTasks"] = ["desktopTest"]
+        self.assertEqual(
+            mod.resolve(["kmp/src/Main.kt"], self.config, projects, self.root),
+            ":kmp:desktopTest",
+        )
+
     def test_docs_only_skips(self):
         self.assertEqual(mod.resolve(["docs/x.md"], self.config, self.projects, self.root), "none")
 
@@ -122,6 +135,18 @@ class ModuleUnitTestsGateTest(unittest.TestCase):
     job can be enabled with nothing to run. Without the gate below it invoked `gradlew none` and
     failed the PR. Asserted as text so the test needs no YAML parser.
     """
+
+    def test_the_full_branch_names_the_multiplatform_test_tasks(self):
+        """`full` is not the scoped path, and it was missing the same tasks.
+
+        Every non-PR event (push to main, the nightly cron) and every global-path PR takes the
+        `full` branch, which invokes unqualified task names. `test` alone matches only projects
+        that HAVE a `test` task — which a KMP module does not — so six modules' JVM suites were
+        absent from a run that calls itself full. Naming them here is the same mechanism
+        `checkKotlinAbi` already relies on.
+        """
+        ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("./gradlew test jvmTest desktopTest checkKotlinAbi --continue", ci)
 
     def test_ci_gates_module_unit_tests_on_a_non_none_task_list(self):
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()

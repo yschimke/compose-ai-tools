@@ -61,7 +61,12 @@ if (outPath != null) {
         // `wasmJsBrowserTest`, `iosSimulatorArm64Test` and Android's variant tasks, each of
         // which needs a toolchain this job does not have — turning a coverage fix into a
         // platform-provisioning problem. The browser and iOS lanes are tracked separately.
-        jvmTestTasks: ['test', 'jvmTest'].findAll { p.tasks.findByName(it) != null },
+        // `desktopTest` is in the list because a KMP JVM target can be NAMED: a module declaring
+        // `jvm("desktop")` gets `desktopTest` and no `jvmTest`. `:samples:cmp-shared` and
+        // `:samples:design-catalog-m3-shared` are both that shape, and the latter is reachable
+        // from `:slot-preview-runtime` through the reverse closure — so it was being selected
+        // and then handed no task at all.
+        jvmTestTasks: ['test', 'jvmTest', 'desktopTest'].findAll { p.tasks.findByName(it) != null },
         // `checkKotlinAbi` exists only where a module opted into `abiValidation()`. The
         // affected-tests resolver needs to know per project, because naming a task that a
         // project does not have fails the whole Gradle invocation rather than that one task.
