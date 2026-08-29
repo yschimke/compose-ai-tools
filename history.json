@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "1c85edec23823b20a1864a7153e8e1b6323916d7",
+    "generatedFrom": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -5056,6 +5056,13 @@
             "path": "renders/samples:design-catalog-m3/SlottedCardSlotsSticker_Dark-7d7d04df.png",
             "versions": [
                 {
+                    "blob": "3b9fed23fa8f4c841e2f740a06e745884a070a51",
+                    "commit": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
+                    "date": "2026-08-29T16:15:22Z",
+                    "sourceSha": "ba1609e0",
+                    "commits": 1
+                },
+                {
                     "blob": "8ec794031e3e1e07d381aaed68a983edff453085",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -5063,13 +5070,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Light": {
             "path": "renders/samples:design-catalog-m3/SlottedCardSlotsSticker_Light-b0c4dbe9.png",
             "versions": [
+                {
+                    "blob": "603c7d12ed49263af42bf69ae9cbca36bf8bc76e",
+                    "commit": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
+                    "date": "2026-08-29T16:15:22Z",
+                    "sourceSha": "ba1609e0",
+                    "commits": 1
+                },
                 {
                     "blob": "bfcf3c9205c405929718ed6f9824778d41e083d7",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
@@ -5078,13 +5092,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Dark": {
             "path": "renders/samples:design-catalog-m3/SlottedCardSticker_Dark-c256794e.png",
             "versions": [
+                {
+                    "blob": "6e439438e2791ccaffd95e92b252e5b2b2bd56bc",
+                    "commit": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
+                    "date": "2026-08-29T16:15:22Z",
+                    "sourceSha": "ba1609e0",
+                    "commits": 1
+                },
                 {
                     "blob": "0abd028738b0d4d75e94579cc5b2dc73f83544f9",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
@@ -5093,13 +5114,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Light": {
             "path": "renders/samples:design-catalog-m3/SlottedCardSticker_Light-6bd99524.png",
             "versions": [
+                {
+                    "blob": "0de29132cf1341f365d2688a9f0dce729df09c1d",
+                    "commit": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
+                    "date": "2026-08-29T16:15:22Z",
+                    "sourceSha": "ba1609e0",
+                    "commits": 1
+                },
                 {
                     "blob": "c8b195f6c58d1f9453aec94fa4e30d5eb61b6d67",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
@@ -5108,7 +5136,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -5146,6 +5174,13 @@
             "path": "renders/samples:design-catalog-m3/SlottedCardArabic_Dark-809540c4.png",
             "versions": [
                 {
+                    "blob": "ef198f56405a0e55a2f4edcfaf873f914756d915",
+                    "commit": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
+                    "date": "2026-08-29T16:15:22Z",
+                    "sourceSha": "ba1609e0",
+                    "commits": 1
+                },
+                {
                     "blob": "a1d2d86a3136193b18e1498d8fb7cb2fdbd981ad",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -5153,13 +5188,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Light": {
             "path": "renders/samples:design-catalog-m3/SlottedCardArabic_Light-2266d195.png",
             "versions": [
+                {
+                    "blob": "07834d1ca266a9411e45537362eb98b087e9887f",
+                    "commit": "44ef00239c63df11e837f1e237f9c19b9e4c3e69",
+                    "date": "2026-08-29T16:15:22Z",
+                    "sourceSha": "ba1609e0",
+                    "commits": 1
+                },
                 {
                     "blob": "5f3c70521abb883b0cc089ef7b643c3085bec85f",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
@@ -5168,7 +5210,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
