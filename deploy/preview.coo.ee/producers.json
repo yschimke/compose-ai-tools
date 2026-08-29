@@ -1,0 +1,57 @@
+{
+  "_comment": "preview.coo.ee's TRUSTED PRODUCERS \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/trust/ deliberately: baking these made every adopter of the prebuilt image inherit trust in nine repos, which on a box with SERVE_ALLOW_RENDER_TRUSTED=1 is eligibility for server-side execution of those repos' Compose. Changes on main are applied directly by publish-preview-config.yml; image publishes reconcile the same file as a fallback. Both paths use .github/scripts/publish-config-to-box.sh via POST /admin/trust. Must cover every catalog in catalogs.json beside this file, or that catalog serves as `unverified`.",
+  "branches": [
+    {
+      "repo": "yschimke/compose-ai-tools",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/m3-catalog",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/wear-m3-catalog",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/meshcore-mobile",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/homeassistant-remotecompose",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/home-assistant-android",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/cadence",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/compose-samples",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/horologist",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/thunderbird-android",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/pocket-casts-android",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "joreilly/Confetti",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/Confetti",
+      "branch": "design-artifacts/*"
+    }
+  ]
+}

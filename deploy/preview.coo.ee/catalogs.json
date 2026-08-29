@@ -1,0 +1,214 @@
+{
+  "_comment": "preview.coo.ee's PUBLISHED CATALOG SET \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/ deliberately: baking it there made every adopter of the prebuilt image open on these catalogs (see the seed's comment). Changes on main are applied directly by publish-preview-config.yml; image publishes reconcile the same file as a fallback. Both paths use .github/scripts/publish-config-to-box.sh additively over POST /admin/catalogs, so this never needs an image rebuild. Another deployment adopting the preview server keeps its own copy of this shape and points DEPLOY_CONFIG_DIR at it. Every entry's design-artifacts/<system> branch must be trusted by producers.json beside this file. cadence is listed:false \u2014 reachable at /cadence/ but off the front-page index. compose-m3 and wear-m3 are listed:false for the same reason from the other direction: they are compose-ai-tools' own in-repo harness catalogs \u2014 they exist to exercise the preview pipeline's features, not to be a design system. m3-catalog is the real Material 3 reference and wear-m3-catalog will be the Wear one, so the two harness catalogs stay reachable at /compose-m3/ and /wear-m3/ as a live smoke target without presenting as design systems on the front page. loadPriority (default 0, highest first) is the startup FETCH order and nothing else \u2014 the list order above still decides the front page. A group's priority (default 0, highest first) is the FRONT-PAGE SECTION order: design-systems sits at 100 so the two reference design systems head the page however late their catalogs register, since a catalog published through the admin API is appended and used to drag its whole section to the bottom (#4601). Within a section the catalog list order still decides the cards. m3-catalog and wear-m3-catalog are the two reference design systems this box exists to serve, and being published late left them last in the queue (a runtime registration is appended), so a rollout served everything else first; they now lead it (#4231). NOTE the reconcile is additive (see publish-config-to-box.sh): it never deletes. Re-posting an entry whose listed, group or loadPriority changed converges it in place; an otherwise-unchanged one comes back 409. repo is the one field a re-post cannot converge \u2014 the server refuses to re-point a catalog under an existing id \u2014 so publish-config-to-box.sh reads GET /admin/catalogs first and, where the live repo differs from the one declared here, retires that id (DELETE /admin/catalogs/<system>) immediately before the POST re-creates it. That is what re-points a catalog that changed repositories, remote-m3 -> yschimke/wear-m3-catalog (#4588) being the case it was written for; without it the 409 reads as success while the box goes on serving the old repository's frozen branch. An unchanged catalog is never retired, and a box whose listing cannot be read degrades to the additive behaviour rather than failing the publish (both pinned in test-publish-config-to-box.sh). producers.json beside this file must still trust the new repo's design-artifacts/*, or the re-pointed catalog serves as `unverified`.",
+  "groups": [
+    {
+      "id": "design-systems",
+      "heading": "Design Systems",
+      "noun": "design system(s)",
+      "priority": 100
+    },
+    {
+      "id": "android-samples",
+      "heading": "android/compose-samples",
+      "noun": "sample(s)"
+    },
+    {
+      "id": "home-assistant",
+      "heading": "home-assistant/android",
+      "noun": "app(s)"
+    },
+    {
+      "id": "pocket-casts",
+      "heading": "Automattic/pocket-casts-android",
+      "noun": "app(s)"
+    },
+    {
+      "id": "thunderbird",
+      "heading": "thunderbird/thunderbird-android",
+      "noun": "app(s)"
+    }
+  ],
+  "catalogs": [
+    {
+      "system": "compose-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": false,
+      "group": "design-systems"
+    },
+    {
+      "system": "wear-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": false,
+      "group": "design-systems"
+    },
+    {
+      "system": "remote-m3",
+      "repo": "yschimke/wear-m3-catalog",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "m3-catalog",
+      "repo": "yschimke/m3-catalog",
+      "listed": true,
+      "group": "design-systems",
+      "loadPriority": 20
+    },
+    {
+      "system": "wear-m3-catalog",
+      "repo": "yschimke/wear-m3-catalog",
+      "listed": true,
+      "group": "design-systems",
+      "loadPriority": 10
+    },
+    {
+      "system": "meshcore-mobile",
+      "repo": "yschimke/meshcore-mobile",
+      "listed": true
+    },
+    {
+      "system": "homeassistant-remotecompose",
+      "repo": "yschimke/homeassistant-remotecompose",
+      "listed": true
+    },
+    {
+      "system": "home-assistant-android",
+      "repo": "yschimke/home-assistant-android",
+      "listed": true,
+      "group": "home-assistant",
+      "attributionRepos": [
+        "home-assistant/android"
+      ]
+    },
+    {
+      "system": "home-assistant-wear",
+      "repo": "yschimke/home-assistant-android",
+      "listed": true,
+      "group": "home-assistant",
+      "attributionRepos": [
+        "home-assistant/android"
+      ]
+    },
+    {
+      "system": "pocketcasts",
+      "repo": "yschimke/pocket-casts-android",
+      "listed": true,
+      "group": "pocket-casts",
+      "attributionRepos": [
+        "Automattic/pocket-casts-android"
+      ]
+    },
+    {
+      "system": "pocketcasts-wear",
+      "repo": "yschimke/pocket-casts-android",
+      "listed": true,
+      "group": "pocket-casts",
+      "attributionRepos": [
+        "Automattic/pocket-casts-android"
+      ]
+    },
+    {
+      "system": "horologist",
+      "repo": "yschimke/horologist",
+      "listed": true
+    },
+    {
+      "system": "thunderbird",
+      "repo": "yschimke/thunderbird-android",
+      "listed": true,
+      "group": "thunderbird",
+      "attributionRepos": [
+        "thunderbird/thunderbird-android"
+      ]
+    },
+    {
+      "system": "jetnews",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetcaster",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetcaster-wear",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetchat",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetsnack",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetlagged",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "reply",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "confetti-wear",
+      "repo": "joreilly/Confetti",
+      "listed": true
+    },
+    {
+      "system": "confetti-mobile",
+      "repo": "joreilly/Confetti",
+      "listed": true
+    },
+    {
+      "system": "cadence",
+      "repo": "yschimke/cadence",
+      "listed": false
+    }
+  ],
+  "_sites_comment": "TOP-LEVEL SITES \u2014 a catalog above, additionally served on a hostname of its own where it presents as the only thing on the box: landing at /, links inside the domain, no front door, /status + /sitemap.xml scoped to it, /<other-system>/ 404. Same sessions and same baked pixels as the canonical /<system>/ path, so a site adds no catalog, no daemon and no render. Two prerequisites OUTSIDE this file: DNS for the name must point at the box, and Caddy must route it here with a certificate. Delivered by the SAME additive reconcile as the catalogs (publish-config-to-box.sh POSTs each entry to /admin/sites, after the catalogs loop because a site may only name a catalog the box already serves), so a hostname committed here reaches the running box on the next push to main. It used to reach nothing: this file is read at startup and seeded onto its volume once, so a site had to be spelled a second time in SERVE_SITES in the box's untracked .env. The EDGE half is derived from this same list by the caddy container (deploy/image/caddy-entrypoint.sh), which reads it when Caddy starts \u2014 so a site added here is served by the app as soon as the reconcile runs, and reachable over TLS after the next `docker compose up -d`.",
+  "sites": [
+    {
+      "host": "m3.preview.coo.ee",
+      "system": "m3-catalog"
+    },
+    {
+      "host": "wear.preview.coo.ee",
+      "system": "wear-m3-catalog"
+    }
+  ]
+}
