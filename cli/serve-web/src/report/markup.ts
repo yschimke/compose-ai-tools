@@ -80,12 +80,19 @@ export function markupEditor(
         context.clearRect(0, 0, canvas.width, canvas.height);
         context.drawImage(committed, 0, 0);
     };
+    // Which load owns the canvas. Undo pressed twice before the first PNG has
+    // decoded starts two independent decodes, and nothing orders them: the older
+    // one finishing last would paint a later state than `history` records, so the
+    // canvas — and the save taken from it — disagree with the undo stack.
+    let loadGeneration = 0;
     const load = (dataUrl: string) => {
+        const generation = ++loadGeneration;
         imageReady = false;
         canvas.setAttribute("aria-busy", "true");
         if (saveButton) saveButton.disabled = true;
         const image = new Image();
         image.addEventListener("load", () => {
+            if (generation !== loadGeneration) return;
             if (!context || !committedContext) return;
             committedContext.clearRect(0, 0, canvas.width, canvas.height);
             committedContext.drawImage(

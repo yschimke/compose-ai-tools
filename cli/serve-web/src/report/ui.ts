@@ -131,8 +131,11 @@ function handOff(): void {
     const mine = captures.filter((c) => !!c.page && c.page === page);
     const latest = mine[mine.length - 1];
     if (!latest) return;
-    applyHostedCaptures(mine);
-    if (mine.every((capture) => !!hostedCaptureUrl(capture.uploadedUrl))) {
+    const embedded = applyHostedCaptures(mine);
+    if (
+        embedded &&
+        mine.every((capture) => !!hostedCaptureUrl(capture.uploadedUrl))
+    ) {
         note(
             mine.length === 1
                 ? "Your capture is embedded in the report."
@@ -140,11 +143,20 @@ function handOff(): void {
         );
         return;
     }
+    // The newest capture the report will NOT carry — not simply the newest. A
+    // capture is unhosted because its upload failed or because an edit cleared
+    // the URL, and neither is a reason to reach for it last: copying an already
+    // embedded `latest` sends the same picture twice and drops the edited one on
+    // the floor. When nothing was embedded at all, this is `latest` anyway.
+    const unhosted = mine.filter(
+        (capture) => !embedded || !hostedCaptureUrl(capture.uploadedUrl),
+    );
+    const copying = unhosted[unhosted.length - 1] ?? latest;
     const rest =
         mine.length > 1
             ? ` The other ${mine.length - 1} are still here — press Copy on one to send it too.`
             : "";
-    copyPng(blobFromDataUrl(latest.dataUrl)).then(
+    copyPng(blobFromDataUrl(copying.dataUrl)).then(
         () =>
             note(
                 `Your capture is on the clipboard — paste it into the issue's Screenshot section.${rest}`,
@@ -174,8 +186,36 @@ function reveal(): void {
     });
 }
 
-/** Every list on the page, refreshed from the store. */
+/**
+ * True while a markup editor is open anywhere on the page.
+ *
+ * The editor lives *inside* the row {@link fill} rebuilds wholesale, so a render
+ * under it takes the canvas with it.
+ */
+function markupOpen(): boolean {
+    return !!document.querySelector(".cp-markup");
+}
+
+/** A render that arrived while an editor was open, owed once it closes. */
+let renderPending = false;
+
+/**
+ * Every list on the page, refreshed from the store.
+ *
+ * Deferred while a markup editor is open. `fill` replaces every row, and the
+ * editor is a child of one — so rendering under it discards every box, arrow,
+ * note and pen stroke the reporter has not saved yet. A background upload
+ * completing is enough to trigger that, which means annotating a capture while
+ * its own upload finished silently threw the annotation away. Nothing here is
+ * urgent enough to cost someone that: the lists redraw the moment the editor
+ * closes, via {@link markupClosed}.
+ */
 function render(): void {
+    if (markupOpen()) {
+        renderPending = true;
+        return;
+    }
+    renderPending = false;
     const captures = readCaptures(sessionStore());
     document
         .querySelectorAll<HTMLElement>(".cp-shot-list")
@@ -185,7 +225,20 @@ function render(): void {
         .forEach((note) => (note.hidden = captures.length > 0));
 }
 
+/** Pay back a render deferred while the editor held the row. */
+function markupClosed(): void {
+    if (renderPending) render();
+}
+
 const originalBodies = new WeakMap<HTMLInputElement, string>();
+/**
+ * The exact value this module last wrote to a body field.
+ *
+ * How {@link applyHostedCaptures} tells its own re-embed apart from someone
+ * else's rewrite: equal means the cached base is still the right thing to build
+ * on, different means the field moved underneath us and the base is stale.
+ */
+const lastWritten = new WeakMap<HTMLInputElement, string>();
 let uploadGeneration = 0;
 
 /** Upload this report's captures in the background while the reporter writes the summary. */
@@ -202,10 +255,17 @@ async function uploadReportCaptures(): Promise<void> {
     // upload begins; if that upload fails, falling back to the clipboard must not leave the issue
     // body pointing at the unannotated pixels.
     applyHostedCaptures(mine);
+    const submit = document.querySelector<HTMLButtonElement>(".cp-bug-submit");
     if (!pending.length) {
+        // Nothing to wait for, so nothing may still be holding the button down.
+        // Removing the last capture mid-upload arrives exactly here: this call
+        // took the generation, so the in-flight one's `finally` sees a mismatch
+        // and declines to re-enable — and returning without doing it ourselves
+        // left Submit dead until a reload, on the tool someone reaches for when
+        // something is already broken.
+        if (submit) submit.disabled = false;
         return;
     }
-    const submit = document.querySelector<HTMLButtonElement>(".cp-bug-submit");
     if (submit) submit.disabled = true;
     note(
         pending.length === 1
@@ -252,16 +312,50 @@ function imageUploadEnabled(): boolean {
     );
 }
 
-function applyHostedCaptures(captures: Capture[]): void {
-    const input = document.querySelector<HTMLInputElement>("#cp-bug-body");
-    if (!input) return;
-    if (!originalBodies.has(input)) originalBodies.set(input, input.value);
-    input.value = withUploadedCaptures(
+/**
+ * The hidden body field of whichever report form this page carries.
+ *
+ * There are two, and {@link REPORT_FORMS} hands off for both: the dedicated bug
+ * page (`#cp-bug-body`) and a preview page's own inline form
+ * (`#cp-report-body`). Looking for only the first meant a hand-off from the
+ * second embedded nothing — and, because `handOff` reads "every capture hosted"
+ * as "every capture embedded", also skipped the clipboard fallback and told the
+ * reporter their capture was in the report. It opened with no screenshot at all.
+ */
+function reportBodyInput(): HTMLInputElement | null {
+    return document.querySelector<HTMLInputElement>(
+        "#cp-bug-body, #cp-report-body",
+    );
+}
+
+/**
+ * Write the hosted captures into the report body.
+ *
+ * @returns whether a body field existed to write into — the caller cannot treat
+ *   "uploaded" as "embedded" without it.
+ */
+function applyHostedCaptures(captures: Capture[]): boolean {
+    const input = reportBodyInput();
+    if (!input) return false;
+    // Re-read the base whenever anything but us has written to the field since we
+    // last did. The bug page's body is a server-rendered constant, so caching it
+    // once is right there — but a preview page's is live: `refreshReportLink`
+    // (viewer.ts) replaces it wholesale with the CURRENT render URL every time the
+    // knobs change. A base cached on the first submission would quietly rebuild
+    // every later one from the first render's settings, so the second report
+    // describes the first bug.
+    if (!originalBodies.has(input) || lastWritten.get(input) !== input.value) {
+        originalBodies.set(input, input.value);
+    }
+    const next = withUploadedCaptures(
         originalBodies.get(input) ?? input.value,
         captures,
     );
+    input.value = next;
+    lastWritten.set(input, next);
     const preview = document.querySelector<HTMLElement>("#cp-bug-preview");
     if (preview) preview.textContent = input.value;
+    return true;
 }
 
 function fill(list: HTMLElement, captures: Capture[]): void {
@@ -316,13 +410,21 @@ function item(capture: Capture): HTMLElement {
         const editor = markupEditor(
             capture,
             (updated) => {
+                // Close first: `render` defers while an editor is open, and a
+                // save that left it in the DOM would defer its own redraw and
+                // then never pay it back — the row would keep the pre-markup
+                // thumbnail until something else redrew the list.
+                li.querySelector(".cp-markup")?.remove();
                 replaceCapture(sessionStore(), updated);
                 render();
                 if (imageUploadEnabled()) {
                     void uploadReportCaptures();
                 }
             },
-            () => li.querySelector(".cp-markup")?.remove(),
+            () => {
+                li.querySelector(".cp-markup")?.remove();
+                markupClosed();
+            },
         );
         li.append(editor);
     });

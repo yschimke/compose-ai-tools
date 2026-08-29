@@ -113,6 +113,7 @@ function previewPage(): void {
           <form class="cp-report-form" method="get" target="_blank"
             action="https://github.com/acme/widgets/issues/new">
             <input class="cp-report-summary-input" type="text" name="title" required>
+            <input type="hidden" name="body" id="cp-report-body" value="report">
           </form>
         </div>
       </details>
@@ -429,6 +430,104 @@ describe("making a failed hand-off visible", () => {
         assert.equal(
             (document.querySelector(".cp-fab-menu") as HTMLDetailsElement).open,
             false,
+        );
+    });
+});
+
+describe("embedding hosted captures in the form actually being submitted", () => {
+    beforeEach(resetDom);
+
+    /** A capture the server already hosts, so the report can embed it by URL. */
+    function hosted(id: string, label: string): Capture {
+        return {
+            ...capture(id, label),
+            // Absolute and same-origin: `safeUploadUrl` parses with no base, and
+            // `hostedCaptureUrl` then requires the origin to match and the path to be
+            // `/i/<id>.<ext>`. A relative value fails the first and the store drops the
+            // whole capture.
+            uploadedUrl: `${location.origin}/i/${id}.png`,
+        };
+    }
+
+    function body(selector: string): string {
+        return document.querySelector<HTMLInputElement>(selector)!.value;
+    }
+
+    it("writes into a preview page's own form, not just the bug page's", async () => {
+        // Two forms carry a report, with two different body ids: `#cp-bug-body` on `/report-bug`
+        // and `#cp-report-body` on a preview page. Looking only for the first meant a hand-off
+        // from the second embedded nothing — and then reported success anyway, because "every
+        // capture hosted" was read as "every capture embedded". The issue opened with no
+        // screenshot and no clipboard fallback either: the one path where the reporter is told
+        // it worked and it did not.
+        stubBrowser([hosted("shot-1", "Region")]);
+        previewPage();
+        installCapture();
+        submitReport(".cp-report-form");
+        await settled();
+        assert.match(
+            body("#cp-report-body"),
+            /!\[Region\]\(\S*\/i\/shot-1\.png\)/,
+        );
+        assert.match(note(), /embedded in the report/);
+    });
+
+    it("falls back to the clipboard when there is no body field to embed into", async () => {
+        // A form with nowhere to write is not a successful embed. Better to copy the pixels and
+        // say so than to claim an embed that cannot have happened.
+        stubBrowser([hosted("shot-1", "Region")]);
+        previewPage();
+        document.querySelector("#cp-report-body")!.remove();
+        installCapture();
+        submitReport(".cp-report-form");
+        await settled();
+        assert.equal(written.length, 1);
+        assert.match(note(), /on the clipboard/);
+    });
+
+    it("rebuilds from the body as it is now, not as it was first submitted", async () => {
+        // A preview page's body is live: `refreshReportLink` in viewer.ts replaces it wholesale
+        // with the current render URL whenever the knobs change. Caching the first submission's
+        // value and rebuilding every later one from it means the second report quietly describes
+        // the first bug — the reporter changed the preview precisely because the first framing
+        // was wrong.
+        stubBrowser([hosted("shot-1", "Region")]);
+        previewPage();
+        installCapture();
+        submitReport(".cp-report-form");
+        await settled();
+        assert.match(body("#cp-report-body"), /report/);
+
+        // The reporter goes back, changes the preview, and files again.
+        document.querySelector<HTMLInputElement>("#cp-report-body")!.value =
+            "second render";
+        submitReport(".cp-report-form");
+        await settled();
+
+        const now = body("#cp-report-body");
+        assert.match(now, /second render/);
+        assert.doesNotMatch(now, /^report/);
+        // …and the capture is still embedded, once.
+        assert.equal(now.match(/!\[Region\]/g)?.length, 1);
+    });
+
+    it("copies the newest capture the report will NOT carry", async () => {
+        // A capture is unhosted because its upload failed, or because marking it up cleared the
+        // URL. Copying `latest` regardless sends a picture the body already embeds and drops the
+        // edited one entirely — the reporter's most recent, most deliberate evidence.
+        stubBrowser([
+            capture("shot-1", "Edited region"),
+            hosted("shot-2", "Whole view"),
+        ]);
+        previewPage();
+        installCapture();
+        submitReport(".cp-report-form");
+        await settled();
+        assert.equal(written.length, 1);
+        assert.deepEqual(
+            await (written[0] as { items: Record<string, Promise<string>> })
+                .items["image/png"],
+            `${PNG}shot-1`,
         );
     });
 });
