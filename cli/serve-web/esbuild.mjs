@@ -117,6 +117,15 @@ const optionsFor = ({ entry, out }) => ({
     logLevel: "info",
     legalComments: "none",
     minify: !watch,
+    // Vue ships these as compile-time feature flags. Set them explicitly so esbuild can discard
+    // the Options API, production devtools hooks and verbose hydration diagnostics that this
+    // custom-element-only application never calls. Without the definitions Vue retains the
+    // compatibility branches and emits a runtime warning as well as several avoidable kilobytes.
+    define: {
+        __VUE_OPTIONS_API__: "false",
+        __VUE_PROD_DEVTOOLS__: "false",
+        __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false",
+    },
     // Without this, esbuild falls back to the nearest tsconfig it can find and
     // may compile the Lit `@customElement` / `@state()` decorators as TC39
     // standard decorators. Lit 3 supports both, but this source uses the

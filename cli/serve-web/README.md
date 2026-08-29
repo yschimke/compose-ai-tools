@@ -15,6 +15,20 @@ npm test            # mocha + happy-dom
 npm run verify      # typecheck + test + build + assert the bundle is committed
 ```
 
+## Vue migration feasibility gate
+
+The proposed Lit-to-Vue switch starts with test-only custom elements under `src/vue-spike/`.
+They cover the three shapes this frontend actually uses: markup-owning controls, controllers over
+server-rendered DOM, and async data-driven components. They are intentionally absent from
+`src/main.ts`, so the production bundle remains Lit-only until the switch can be atomic.
+
+The first mixed-runtime measurement was 72.9 kB gzip for `serve-components.js`, versus 46.4 kB for
+the current Lit bundle. That is evidence against an incremental production rollout, not against
+Vue: while both runtimes were present the page paid both fixed costs. The atomic migration removes
+Lit before measuring the candidate against the final bundle budget. Vue's compile-time feature
+flags are already set in `esbuild.mjs` so unused Options API, devtools, and verbose hydration code
+can be removed when Vue reaches a production entry point.
+
 ## Why Lit, and why the same setup as the VS Code extension
 
 [`src/webview`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview) is already Lit 3 + esbuild + TypeScript, with
