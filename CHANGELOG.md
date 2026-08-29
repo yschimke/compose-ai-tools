@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.52.0](https://github.com/yschimke/compose-ai-tools/compare/v1.51.0...v1.52.0) (2026-08-29)
+
+
+### Features
+
+* **serve:** add native Wasm UI composer ([#4807](https://github.com/yschimke/compose-ai-tools/issues/4807)) ([41ea5a5](https://github.com/yschimke/compose-ai-tools/commit/41ea5a525ea7f920b3a5bd72211d5ca9c224e3e5))
+* **serve:** render CMP catalogs natively in Wasm ([#4803](https://github.com/yschimke/compose-ai-tools/issues/4803)) ([a4a3748](https://github.com/yschimke/compose-ai-tools/commit/a4a3748c56bab6afe0736edcb1f23385d97d4b4a))
+* **xr:** provision the compositor from compose-preview-xr ([#4799](https://github.com/yschimke/compose-ai-tools/issues/4799)) ([5680796](https://github.com/yschimke/compose-ai-tools/commit/5680796c6951e2fed3efaf22f2cbbc1c77d074e4))
+
+
+### Bug Fixes
+
+* **deps:** consume compose-preview-contracts 2.1.0 ([#4798](https://github.com/yschimke/compose-ai-tools/issues/4798)) ([771b0b2](https://github.com/yschimke/compose-ai-tools/commit/771b0b2025e71d6ee1838434e815e6071c508d6c))
+* satisfy remote compose remember lint ([#4806](https://github.com/yschimke/compose-ai-tools/issues/4806)) ([09c94c4](https://github.com/yschimke/compose-ai-tools/commit/09c94c42d654b75b38d0f52a8b5f0c49527b1c90))
+
+
+### Performance Improvements
+
+* split Vue bundles by web surface ([#4805](https://github.com/yschimke/compose-ai-tools/issues/4805)) ([de6a39e](https://github.com/yschimke/compose-ai-tools/commit/de6a39e7d0e4d364df605031ad45f8fb27c16191))
+
 ## [1.51.0](https://github.com/yschimke/compose-ai-tools/compare/v1.50.0...v1.51.0) (2026-08-29)
 
 
