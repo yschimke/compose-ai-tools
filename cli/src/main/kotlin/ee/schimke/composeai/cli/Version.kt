@@ -23,8 +23,10 @@ internal val BUNDLE_VERSION: String by lazy { cliVersionProperty("version") }
  * `xr-composite-*.tar.gz` asset to exist on every release, so the compositor was rebuilt and
  * republished 226 times for 13 source changes, and every CLI upgrade orphaned the user's cached
  * copy of an unchanged binary. This is a pin in `gradle/libs.versions.toml` (`xr-composite`) that
- * moves only when `renderers/xr-composite/` changes; `check_xr_composite_pin.py` fails a PR that
- * touches the compositor without moving it.
+ * moves only when a new compositor is released from [XR_COMPOSITE_REPO];
+ * `check_xr_composite_pin.py` fails a PR whose pin names a release that does not exist there, or
+ * one missing a platform tarball — either 404s on download, and a 404 downstream is a graceful skip
+ * nobody sees.
  */
 internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompositeVersion") }
 
@@ -51,6 +53,17 @@ internal const val REPO = "yschimke/compose-ai-tools"
  * snippets curl their `scripts/install.sh` URL from here.
  */
 internal const val SKILLS_REPO = "yschimke/skills"
+
+/**
+ * GitHub repo slug the native `xr-composite` compositor is released from.
+ *
+ * Separate from [REPO] since the compositor was split out of this repository: it changes roughly
+ * twice a quarter where this one releases daily, and republishing it per release cost 1.23 GB
+ * across 226 releases for 13 source changes. Its version is [XR_COMPOSITE_VERSION], a pin that
+ * moves only when the compositor does — so the release this resolves is almost never the current
+ * one here, and that is the point.
+ */
+internal const val XR_COMPOSITE_REPO = "yschimke/compose-preview-xr"
 
 /**
  * Compare two version strings componentwise (`major.minor.patch[-suffix]`), returning -1/0/1.

@@ -107,9 +107,9 @@ public data class XrServerHandshake(
 }
 
 /**
- * JVM client for the native `xr-composite --serve` render server (see
- * `renderers/xr-composite/README.md` → "Server mode"). Speaks the same LSP-style `Content-Length`
- * JSON-RPC framing the daemon's subprocess backend uses, demultiplexing id-matched responses from
+ * JVM client for the native `xr-composite --serve` render server (see the compositor's README in
+ * yschimke/compose-preview-xr → "Server mode"). Speaks the same LSP-style `Content-Length` JSON-RPC
+ * framing the daemon's subprocess backend uses, demultiplexing id-matched responses from
  * `streamFrame` notifications on a background reader thread.
  *
  * **Multi-session:** one client drives one native process that fans many sessions over a single

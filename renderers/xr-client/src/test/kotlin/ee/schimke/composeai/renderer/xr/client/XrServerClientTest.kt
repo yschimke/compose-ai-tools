@@ -23,8 +23,8 @@ import kotlinx.serialization.json.put
 /**
  * Exercises [XrServerClient]'s framing + request/notification demultiplexing against an in-memory
  * fake server over piped streams — no native binary required (the real end-to-end is covered by
- * `renderers/xr-composite/test/serve_smoke.py`). Verifies that `render` / `xr/updatePanels` return
- * the `streamFrame` the server pushed before its ack, in order.
+ * `test/serve_smoke.py` in yschimke/compose-preview-xr). Verifies that `render` / `xr/updatePanels`
+ * return the `streamFrame` the server pushed before its ack, in order.
  */
 class XrServerClientTest {
 

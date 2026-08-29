@@ -43,7 +43,7 @@ object XrCompositeProvision {
 
   /**
    * Pure platform token derivation from JVM `os.name` / `os.arch`, matching the Release asset
-   * matrix in `.github/workflows/xr-composite-release.yml`:
+   * matrix [XR_COMPOSITE_REPO]'s `release.yml` publishes:
    * - linux + x86_64/amd64 → `linux-x86_64`
    * - mac + aarch64/arm64 → `macos-arm64`
    * - windows + amd64/x86_64 → `windows-x86_64`
@@ -70,20 +70,20 @@ object XrCompositeProvision {
 
   /**
    * Release asset filename for a version + platform — `xr-composite-<platform>-<version>.tar.gz`.
-   * Exactly the name `xr-composite-release.yml` packs
-   * (`xr-composite-${asset}-${XR_COMPOSITE_VERSION}.tar.gz`).
+   * Exactly the name [XR_COMPOSITE_REPO]'s `release.yml` packs
+   * (`xr-composite-${asset}-${XR_VERSION}.tar.gz`).
    */
   internal fun assetName(version: String, platform: String): String =
     "xr-composite-$platform-$version.tar.gz"
 
   /**
-   * Download URL on the GitHub Release tagged `v<version>`, where `version` is the pinned
-   * `xr-composite` release rather than the CLI's own — so a CLI release that did not rebuild the
-   * compositor still resolves the last one that did. A pin naming a release with no published asset
-   * 404s and the caller falls through to a graceful skip.
+   * Download URL on the [XR_COMPOSITE_REPO] Release tagged `v<version>`, where `version` is the
+   * pinned `xr-composite` release rather than the CLI's own — so a CLI release that did not rebuild
+   * the compositor still resolves the last one that did. A pin naming a release with no published
+   * asset 404s and the caller falls through to a graceful skip.
    */
   internal fun assetUrl(version: String, platform: String): String =
-    "https://github.com/$REPO/releases/download/v$version/${assetName(version, platform)}"
+    "https://github.com/$XR_COMPOSITE_REPO/releases/download/v$version/${assetName(version, platform)}"
 
   /**
    * Root of the shared, well-known cache: `${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite`.

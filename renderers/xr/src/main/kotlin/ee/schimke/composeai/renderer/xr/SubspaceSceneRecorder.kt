@@ -386,7 +386,8 @@ public object SubspaceSceneRecorder {
     )
   }
 
-  // Compositor framing constants — kept in sync with renderers/xr-composite (45° vertical FOV) and
+  // Compositor framing constants — kept in sync with the xr-composite compositor in
+  // yschimke/compose-preview-xr (45° vertical FOV) and
   // the bake size the Gradle `composePreviewCompositeXr` task passes (--width 1280 --height 800).
   private const val VERTICAL_FOV_DEG = 45.0
   private const val COMPOSITE_WIDTH = 1280

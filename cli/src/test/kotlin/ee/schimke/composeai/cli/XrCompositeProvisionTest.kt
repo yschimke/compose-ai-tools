@@ -47,8 +47,11 @@ class XrCompositeProvisionTest {
       "xr-composite-linux-x86_64-0.13.1.tar.gz",
       XrCompositeProvision.assetName("0.13.1", "linux-x86_64"),
     )
+    // Spelled out rather than built from XR_COMPOSITE_REPO: this literal IS the contract with
+    // compose-preview-xr's release workflow, and a test that derives it from the same constant the
+    // code derives it from would pass through any repointing, including a wrong one.
     assertEquals(
-      "https://github.com/yschimke/compose-ai-tools/releases/download/" +
+      "https://github.com/yschimke/compose-preview-xr/releases/download/" +
         "v0.13.1/xr-composite-macos-arm64-0.13.1.tar.gz",
       XrCompositeProvision.assetUrl("0.13.1", "macos-arm64"),
     )

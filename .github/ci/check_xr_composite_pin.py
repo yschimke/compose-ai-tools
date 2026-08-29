@@ -1,81 +1,72 @@
 #!/usr/bin/env python3
-"""Fail a PR that changes the native compositor without moving the `xr-composite` pin.
+"""Fail a PR whose `xr-composite` pin does not name a real, fully-published release.
 
-The CLI (`XrCompositeProvision`) and the Gradle plugin (`xrCompositeCacheBinaryPath`) both resolve
-the native `xr-composite` binary by the `xr-composite` version in `gradle/libs.versions.toml`, not
-by their own version. That decoupling is what lets the compositor be published rarely — but it
-introduces the failure it replaces: a change to `renderers/xr-composite/` that does NOT move the
-pin ships nothing. Consumers keep fetching the previous release, the render still succeeds (the
-composite is an optional capture and every provisioning failure is a graceful skip), and nobody
-finds out. That is the same silent-degradation shape the extension split turned up in
-`validate-report-schemas.mjs`, so it gets a hard gate rather than a convention.
+The native compositor now lives in its own repository (yschimke/compose-preview-xr) and releases on
+its own cadence. Upstream consumes it purely by version: the CLI (`XrCompositeProvision`) and the
+Gradle plugin (`xrCompositeCacheBinaryPath`) both resolve the binary from the `xr-composite` entry
+in `gradle/libs.versions.toml`, and nothing in this repository builds it any more.
 
-The rule: if the diff touches `renderers/xr-composite/**` (excluding files that cannot affect the
-built artifact — see NON_SHIPPING), the same diff must change the `xr-composite` pin.
+That is the point of the split, and it moves the failure mode rather than removing it. Before, the
+hazard was a compositor change that shipped nowhere because the pin stayed put; this gate used to
+catch that, and it is now compose-preview-xr's problem. The hazard *here* is the mirror image: a
+pin naming a version whose Release does not exist, or exists with only some of its three platform
+tarballs attached. Both 404 on download, and every provisioning failure downstream is a **graceful
+skip** — the render still succeeds, just without a composite, and nobody finds out. So it gets a
+hard gate rather than a convention, exactly as the drift version did.
 
-Exits non-zero with a fix hint on violation. `--print-pin` just prints the pin, which is how
-`xr-composite-release.yml` checks that it publishes the version consumers actually ask for.
+Two checks, in order:
 
-A change that provably cannot alter the built binary's behaviour — a rename, a refactor, replacing
-a literal with a constant of the same value — has nothing to publish, and bumping the pin for it
-would name a release nobody cuts, which 404s into the same silent skip. Such a change opts out by
-stating a reason: put a line
+1. **Offline.** The pin parses as a version, and the repository this gate resolves against is the
+   same one the CLI bakes into the download URL (`XR_COMPOSITE_REPO` in `Version.kt`). A gate that
+   verifies a different repository than the CLI downloads from proves nothing.
+2. **Online.** The `v<pin>` Release on that repository exists and carries all three platform
+   tarballs, under exactly the names `XrCompositeProvision.assetName` derives.
 
-    XR-Release: none - <why this cannot change the binary>
+The online half distinguishes an *answer* from *no answer*, and only the former fails the build. A
+404, or a Release missing an asset, is GitHub telling us the pin is broken — fail closed. A
+transport error or a rate-limit is GitHub telling us nothing; it warns and passes, because the
+alternative is a gate that goes red for reasons unrelated to the diff, and because publication has
+its own safety net: compose-preview-xr's release workflow refuses to finish a Release that is
+missing any of the three tarballs. Pass `--offline` to skip the online half entirely.
 
-in the pull request body. CI passes it in via `XR_RELEASE_OVERRIDE` and the gate prints it. The
-reason is mandatory and lands in the PR record, so the opt-out is reviewable rather than a flag
-anyone can pass. It is deliberately not a path allowlist: widening NON_SHIPPING would hide the
-next real change to those same files.
-
-Changed paths come from `git diff` against `--base` by default (what a contributor wants locally)
-or, with `--changed -`, from stdin — the shape CI uses, since a PR runner has only a shallow
-checkout and the base SHA is what the event carries. Unlike the informational consumer-contract
-notice this fails CLOSED: a diff we cannot compute must not read as "the compositor is untouched",
-which is the silent pass this gate exists to prevent.
+`--print-pin` and `--print-repo` print the pin and the release repository and exit, so callers
+that need to fetch the binary derive both from here rather than hard-coding a second copy.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
-import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = Path("gradle/libs.versions.toml")
-WATCHED = "renderers/xr-composite/"
 
-# Paths under the watched tree that cannot change the published binary or its materials, so they
-# must not force a release. Kept deliberately short: anything not listed here is assumed shipping.
-NON_SHIPPING = (
-    "renderers/xr-composite/README.md",
-    "renderers/xr-composite/test/",
-)
+# Where the compositor is released from. Must equal `XR_COMPOSITE_REPO` in the CLI's Version.kt —
+# `declared_repo()` proves it rather than trusting this copy.
+XR_REPO = "yschimke/compose-preview-xr"
+VERSION_KT = Path("cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt")
+
+# The asset matrix compose-preview-xr publishes, and the matrix `XrCompositeProvision.platformToken`
+# maps a host onto. A platform missing from a Release is unprovisionable on that host alone, which
+# is the most silent shape this failure takes — the gate treats it exactly like a missing Release.
+PLATFORMS = ("linux-x86_64", "macos-arm64", "windows-x86_64")
 
 PIN_RE = re.compile(r'^\s*xr-composite\s*=\s*"([^"]+)"', re.MULTILINE)
+REPO_CONST_RE = re.compile(r'XR_COMPOSITE_REPO\s*[:=][^"]*"([^"]+)"')
 
-# `XR-Release: none - <reason>`, anywhere in the PR body. The reason is required: a bare
-# `XR-Release: none` does not match, so the opt-out cannot be taken without saying why.
-#
-# The leading and trailing character classes matter. A marker line in a PR body is naturally
-# written as inline code, a list item or a quote — `` `XR-Release: none - …` ``, `- XR-Release:
-# …`, `> XR-Release: …`. An anchor that only accepted a bare line made the opt-out silently
-# unavailable to anyone who formatted it, which is exactly how this gate first failed its own PR.
-OVERRIDE_RE = re.compile(
-    r"^[\s>*+`'\"-]*XR-Release:\s*none\s*[-\u2014:]\s*(\S.*?)[\s`'\"]*$",
-    re.MULTILINE | re.IGNORECASE,
-)
+# Deliberately loose: the pin must look like a release tag consumers can resolve, not conform to
+# full semver. A prerelease suffix is allowed because compose-preview-xr may cut one; `-SNAPSHOT`
+# is not, because it is this repository's own dev-version convention and is the way a pin most
+# plausibly ends up naming something nobody publishes — which 404s into a graceful skip.
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:-(?!SNAPSHOT$)[0-9A-Za-z.-]+)?$", re.IGNORECASE)
 
-
-def override_reason(body: str | None) -> str | None:
-    """The stated reason for shipping a compositor change without a release, or None."""
-    if not body:
-        return None
-    m = OVERRIDE_RE.search(body)
-    return m.group(1) if m else None
+RELEASE_API = "https://api.github.com/repos/{repo}/releases/tags/v{version}"
 
 
 def pin_from(text: str) -> str | None:
@@ -85,123 +76,160 @@ def pin_from(text: str) -> str | None:
 
 
 def current_pin() -> str:
-    text = (REPO / CATALOG).read_text()
-    pin = pin_from(text)
+    pin = pin_from((REPO / CATALOG).read_text())
     if pin is None:
         raise SystemExit(f'could not find `xr-composite = "…"` in {CATALOG}')
     return pin
 
 
-def shipping_changes(paths: list[str]) -> list[str]:
-    """Changed paths under the watched tree that can affect the published artifact."""
+def repo_from(kotlin: str) -> str | None:
+    """The `XR_COMPOSITE_REPO` constant declared in a Version.kt body, or None."""
+    m = REPO_CONST_RE.search(kotlin)
+    return m.group(1) if m else None
+
+
+def declared_repo() -> str | None:
+    return repo_from((REPO / VERSION_KT).read_text())
+
+
+def asset_name(version: str, platform: str) -> str:
+    """Mirror of `XrCompositeProvision.assetName` — the two must derive the same filename."""
+    return f"xr-composite-{platform}-{version}.tar.gz"
+
+
+def missing_assets(published: set[str], version: str) -> list[str]:
+    """Which platform tarballs the Release does not carry, in matrix order."""
     return [
-        p
-        for p in paths
-        if p.startswith(WATCHED) and not p.startswith(NON_SHIPPING)
+        asset_name(version, p) for p in PLATFORMS if asset_name(version, p) not in published
     ]
 
 
-def git(*args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=REPO, check=True, capture_output=True, text=True
-    ).stdout
+class Unanswered(Exception):
+    """GitHub told us nothing — a transport error or a rate-limit, not a verdict on the pin."""
 
 
-def changed_paths(base: str) -> list[str]:
-    return [p for p in git("diff", "--name-only", f"{base}...HEAD").splitlines() if p]
+def fetch_release_assets(repo: str, version: str, token: str | None = None) -> set[str] | None:
+    """Asset names on the `v<version>` Release, or None when there is no such Release.
 
-
-def pin_at(ref: str) -> str | None:
-    """The pin as of [ref], or None when the catalog or the entry is absent there."""
-    try:
-        return pin_from(git("show", f"{ref}:{CATALOG}"))
-    except subprocess.CalledProcessError:
-        return None
-
-
-def pin_moved(before: str | None, after: str) -> bool:
-    """Whether the diff moved the pin, for a compositor change that needs one.
-
-    `before is None` means the base has no `xr-composite` entry at all — only true for the PR that
-    introduces it, which by definition sets the pin this diff should have. Treated as moved, so
-    that one PR is not asked to bump a pin nobody was reading yet. Every later diff compares two
-    real values.
+    Raises [Unanswered] when the API could not be reached or refused to answer, which the caller
+    must not read as "the pin is broken".
     """
-    if before is None:
-        return True
-    return before != after
+    req = urllib.request.Request(RELEASE_API.format(repo=repo, version=version))
+    req.add_header("Accept", "application/vnd.github+json")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        # 403/429 is the rate limit; 5xx is GitHub being unwell. Neither is a verdict.
+        raise Unanswered(f"HTTP {e.code} from the releases API") from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise Unanswered(f"could not reach the releases API: {e}") from e
+    return {a.get("name", "") for a in body.get("assets", [])}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "--print-pin",
+        "--print-pin", action="store_true", help="print the current xr-composite pin and exit"
+    )
+    ap.add_argument(
+        "--print-repo",
         action="store_true",
-        help="print the current xr-composite pin and exit",
+        help="print the repository the compositor is released from and exit",
     )
     ap.add_argument(
-        "--base",
-        default="origin/main",
-        help="base ref to diff against and read the previous pin from (default: origin/main)",
-    )
-    ap.add_argument(
-        "--changed",
-        metavar="FILE",
-        help="read changed paths from FILE ('-' for stdin) instead of asking git",
-    )
-    ap.add_argument(
-        "--override-body",
-        help="text to scan for an `XR-Release: none - <reason>` opt-out "
-        "(default: the XR_RELEASE_OVERRIDE environment variable)",
+        "--offline",
+        action="store_true",
+        help="run only the offline checks (pin shape, repo agreement)",
     )
     args = ap.parse_args()
 
+    pin = current_pin()
     if args.print_pin:
-        print(current_pin())
+        print(pin)
+        return 0
+    if args.print_repo:
+        # From Version.kt, not this file's XR_REPO: a caller fetching the binary must resolve the
+        # same repository the CLI does, and the agreement between the two is checked below.
+        declared = declared_repo()
+        if declared is None:
+            raise SystemExit(f"could not find `XR_COMPOSITE_REPO` in {VERSION_KT}")
+        print(declared)
         return 0
 
-    if args.changed:
-        raw = sys.stdin.read() if args.changed == "-" else Path(args.changed).read_text()
-        paths = [line.strip() for line in raw.splitlines() if line.strip()]
-    else:
-        paths = changed_paths(args.base)
-    touched = shipping_changes(paths)
-    if not touched:
+    if not VERSION_RE.match(pin):
+        print(
+            f'::error::`xr-composite = "{pin}"` in {CATALOG} does not look like a release version.\n'
+            f"  Consumers resolve the binary by this value alone, and anything that is not a "
+            f"published tag 404s into a graceful skip — the render succeeds without a composite "
+            f"and nothing is logged.",
+            file=sys.stderr,
+        )
+        return 1
+
+    declared = declared_repo()
+    if declared is None:
+        print(
+            f"::error::could not find `XR_COMPOSITE_REPO` in {VERSION_KT}. This gate verifies the "
+            f"pin against a repository, and it must be the one the CLI downloads from.",
+            file=sys.stderr,
+        )
+        return 1
+    if declared != XR_REPO:
+        print(
+            f"::error::this gate checks {XR_REPO} but the CLI downloads from {declared} "
+            f"({VERSION_KT}). Verifying a different repository than the one consumers fetch from "
+            f"proves nothing.\n"
+            f"  Fix: update XR_REPO in {Path(__file__).relative_to(REPO)} to match.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.offline:
+        print(f"ok (offline): pin {pin} is well-formed and resolves against {declared}")
         return 0
 
-    body = args.override_body if args.override_body is not None else os.environ.get(
-        "XR_RELEASE_OVERRIDE"
-    )
-    reason = override_reason(body)
-    if reason:
-        print(f"ok: compositor changed with a stated no-release reason - {reason}")
+    try:
+        published = fetch_release_assets(declared, pin, os.environ.get("GITHUB_TOKEN"))
+    except Unanswered as e:
+        # No answer is not a failed answer. Say so loudly enough to be searchable, then pass —
+        # compose-preview-xr's own release workflow refuses to finish a Release missing a tarball,
+        # so this is a second line of defence, not the only one.
+        print(f"::warning::could not verify the xr-composite pin {pin}: {e}", file=sys.stderr)
         return 0
 
-    before, after = pin_at(args.base), current_pin()
-    if pin_moved(before, after):
-        moved = f"{before} → {after}" if before is not None else f"introduced at {after}"
-        print(f"ok: compositor changed and the pin {moved}")
-        return 0
+    if published is None:
+        print(
+            f"::error::`xr-composite = \"{pin}\"` in {CATALOG} names a release that does not "
+            f"exist: {declared} has no tag v{pin}.\n"
+            f"  The CLI and the Gradle plugin both download the binary from that tag, so this pin "
+            f"provisions nothing — quietly, because a missing asset is a graceful skip and the "
+            f"render still succeeds without a composite.\n"
+            f"  Fix: pin a version {declared} has actually released, or cut that release first.",
+            file=sys.stderr,
+        )
+        return 1
 
-    listing = "\n".join(f"    {p}" for p in touched[:10])
-    more = f"\n    … and {len(touched) - 10} more" if len(touched) > 10 else ""
-    print(
-        f"::error::this PR changes the native compositor but leaves `xr-composite = \"{after}\"` "
-        f"in {CATALOG} untouched.\n"
-        f"  Changed under {WATCHED}:\n{listing}{more}\n"
-        f"  The CLI and the Gradle plugin both resolve the binary by that pin, so an unmoved pin "
-        f"means consumers keep fetching the previous release and this change ships nowhere. It "
-        f"fails quietly: a missing asset is a graceful skip, so the render still succeeds without "
-        f"a composite.\n"
-        f"  Fix: bump `xr-composite` in {CATALOG} to the release you will publish the new binaries "
-        f"to, then run the `xr-composite release` workflow for that version once this lands. "
-        f"Docs-only or test-only changes under {WATCHED} are exempt and do not reach this error.\n"
-        f"  If this change cannot alter the built binary (a rename, a refactor, a literal replaced "
-        f"by an equal constant), say so in the PR body instead:\n"
-        f"    XR-Release: none - <why this cannot change the binary>",
-        file=sys.stderr,
-    )
-    return 1
+    missing = missing_assets(published, pin)
+    if missing:
+        listing = "\n".join(f"    {m}" for m in missing)
+        have = "\n".join(f"    {a}" for a in sorted(published)) or "    (none)"
+        print(
+            f"::error::{declared} v{pin} is missing platform tarballs:\n{listing}\n"
+            f"  Attached to that Release:\n{have}\n"
+            f"  A host whose platform is missing cannot provision the compositor at all, and says "
+            f"nothing about it — the failure is a graceful skip. Re-run compose-preview-xr's "
+            f"release workflow for v{pin} to re-attach, or move the pin to a complete release.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"ok: {declared} v{pin} exists with all {len(PLATFORMS)} platform tarballs")
+    return 0
 
 
 if __name__ == "__main__":

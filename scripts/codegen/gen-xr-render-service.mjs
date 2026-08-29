@@ -35,12 +35,15 @@ const VERSION_CONST = cfg["version-const"];
 const OUTPUTS = {
   kotlin:
     "renderers/xr-client/src/main/kotlin/ee/schimke/composeai/renderer/xr/client/XrRenderService.kt",
-  cpp: "renderers/xr-composite/src/xr_render_service.hpp",
-  // The serve smoke harness was the third hand-maintained copy of this vocabulary. It gets a
-  // generated mirror too, so a renamed method breaks the harness at import rather than leaving it
-  // asserting against a protocol nobody speaks any more.
-  python: "renderers/xr-composite/test/xr_render_service.py",
 };
+
+// The C++ and Python mirrors both belong to the compositor, which now lives in
+// yschimke/compose-preview-xr. This script cannot write into that repository, so their targets are
+// gone rather than left pointing at paths `--check` would report missing on every run. They are
+// still generated — via `--emit-cpp` / `--emit-python` below — and compose-preview-xr's
+// `contract-drift` workflow diffs this generator's output against its committed copies, at the
+// upstream SHA it pins. The Kotlin mirror stays here because its consumer, `:renderer-xr-client`,
+// stays here.
 
 const BANNER = () => [
   `// GENERATED FILE — DO NOT EDIT.`,
@@ -400,10 +403,18 @@ function emitPython() {
 
 // ---- driver ------------------------------------------------------------------------------------
 
+// Emitters for the mirrors compose-preview-xr owns. It diffs these against its committed copies.
+if (process.argv.includes("--emit-cpp")) {
+  process.stdout.write(emitCpp());
+  process.exit(0);
+}
+if (process.argv.includes("--emit-python")) {
+  process.stdout.write(emitPython());
+  process.exit(0);
+}
+
 const generated = {
   [OUTPUTS.kotlin]: emitKotlin(),
-  [OUTPUTS.cpp]: emitCpp(),
-  [OUTPUTS.python]: emitPython(),
 };
 
 const check = process.argv.includes("--check");

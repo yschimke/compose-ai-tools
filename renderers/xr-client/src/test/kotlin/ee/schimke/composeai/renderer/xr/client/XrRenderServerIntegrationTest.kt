@@ -13,9 +13,10 @@ import org.junit.Assume.assumeTrue
 
 /**
  * Real end-to-end: drives the actual native `xr-composite --serve` binary through [XrRenderServer]
- * (the Kotlin equivalent of `renderers/xr-composite/test/serve_smoke.py`). Gated on the binary
- * being resolvable (`XR_COMPOSITE_BIN` + materials) and a usable GL context — so it runs in the XR
- * CI job (Xvfb + the dist binary) and locally under `xvfb-run`, and skips cleanly everywhere else.
+ * (the Kotlin equivalent of `test/serve_smoke.py` in yschimke/compose-preview-xr). Gated on the
+ * binary being resolvable (`XR_COMPOSITE_BIN` + materials) and a usable GL context — so it runs in
+ * the XR CI job (Xvfb + the dist binary) and locally under `xvfb-run`, and skips cleanly everywhere
+ * else.
  */
 class XrRenderServerIntegrationTest {
 
