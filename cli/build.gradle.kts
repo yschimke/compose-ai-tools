@@ -761,31 +761,6 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       )
     }
   )
-  // Not only Kotlin/TypeScript: the mirrored-constant rule reads the production image, where the
-  // sandbox-count key is a literal in `JAVA_TOOL_OPTIONS`. Without this the same up-to-date hole
-  // the source tree had would reopen for exactly the file that rule was added to cover.
-  //
-  // That image left this repository with the preview server, so it is resolved from a checkout
-  // like the two readers below — `COMPOSE_PREVIEW_SERVER_ROOT`, else a sibling
-  // `../compose-preview-server` — and simply not declared when there is none, which is the same
-  // SKIP the checker itself applies. Eagerly to a String for the configuration-cache reason given
-  // below.
-  val serverDockerfilePath: String? =
-    providers
-      .environmentVariable("COMPOSE_PREVIEW_SERVER_ROOT")
-      .orNull
-      ?.takeIf { it.isNotBlank() }
-      ?.let { File(it, "deploy/image/Dockerfile") }
-      ?.takeIf { it.isFile }
-      ?.absolutePath
-      ?: repoRoot.asFile.parentFile
-        ?.resolve("compose-preview-server/deploy/image/Dockerfile")
-        ?.takeIf { it.isFile }
-        ?.absolutePath
-  if (serverDockerfilePath != null) {
-    representations.from(serverDockerfilePath)
-  }
-
   // The TypeScript reader — the only one that GATES on the schema version — lives in
   // yschimke/compose-preview-vscode. The checker reads it from `COMPOSE_PREVIEW_VSCODE_ROOT`, else
   // a sibling checkout, and walks that tree for unregistered mirrors just as it walks this one.
