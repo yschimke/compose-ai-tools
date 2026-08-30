@@ -178,9 +178,20 @@ annotation class CatalogComponent(
    * still not wanted.
    *
    * Travels as `key=value`-shaped strings for the same reason `@CatalogVariant.props` does —
-   * annotations cannot hold a `Map`. A malformed entry, a non-numeric width or a size this
-   * component never renders is ignored with a warning rather than failing discovery: a mis-typed
-   * mapping should cost the pairing, not the build.
+   * annotations cannot hold a `Map`. Discovery carries the entries verbatim and never parses them;
+   * `design-map.mjs`, which owns every other seed-naming rule, is the one reader, because two
+   * parsers is how two spellings come to disagree.
+   *
+   * A malformed entry — no `=`, a non-numeric width, an empty axis or value — costs that mapping
+   * rather than the build: the cell falls back to its bare `breakpoint=<dp>` seed. That degradation
+   * is byte-identical to declaring nothing, so it is *also* reported, as
+   * `diagnostics.invalidBreakpointKit` in the projection, deduplicated per `(component, entry)`.
+   * Without the report a typo would have no symptom at all beyond a kit cell that quietly never
+   * pairs.
+   *
+   * A **well-formed entry naming a width this capture is not** is the ordinary case, not a fault:
+   * one declaration serves every size and is re-read at each non-base capture, so `225=…` is
+   * legitimately unused when the 240dp capture reads it. Nothing is reported for it.
    */
   val breakpointKit: Array<String> = [],
 )

@@ -205,4 +205,61 @@ class CatalogEntryWireTest {
     assertEquals(true, byId.getValue("themecatalog__Brand_Light").fixedTheme)
     assertEquals(false, byId.getValue("test.ContactRow").fixedTheme)
   }
+
+  @Test
+  fun `a component's breakpointKit entries survive manifest decoding`() {
+    // What a non-base breakpoint capture MEANS to the kit. `ignoreUnknownKeys` drops an unmirrored
+    // field silently, and the degradation here has no symptom: the seed falls back to a bare
+    // `breakpoint=225`, which is byte-identical to what a component declaring nothing produces —
+    // so the kit cells the render was meant to pair with go uncompared and nothing says why.
+    val manifest =
+      Json.decodeFromString<PreviewManifest>(
+        """
+        {
+          "module": ":sample",
+          "variant": "debug",
+          "previews": [{
+            "id": "test.PickerSticker",
+            "functionName": "PickerSticker",
+            "className": "test.CatalogKt",
+            "catalog": {
+              "role": "COMPONENT",
+              "componentId": "Picker",
+              "breakpointKit": ["225=Larger Screen (BP)=Yes", "240=Larger Screen (BP)=Yes"]
+            }
+          }]
+        }
+        """
+          .trimIndent()
+      )
+
+    assertEquals(
+      listOf("225=Larger Screen (BP)=Yes", "240=Larger Screen (BP)=Yes"),
+      manifest.previews.single().catalog?.breakpointKit,
+    )
+  }
+
+  @Test
+  fun `a component declaring no breakpointKit decodes to an empty list`() {
+    // The overwhelmingly common case — most kits draw every screen cell at one size and have no
+    // size axis at all — and it must stay distinguishable from a dropped field rather than null.
+    val manifest =
+      Json.decodeFromString<PreviewManifest>(
+        """
+        {
+          "module": ":sample",
+          "variant": "debug",
+          "previews": [{
+            "id": "test.FilledButton",
+            "functionName": "FilledButton",
+            "className": "test.CatalogKt",
+            "catalog": { "role": "COMPONENT", "componentId": "Button/Filled" }
+          }]
+        }
+        """
+          .trimIndent()
+      )
+
+    assertEquals(emptyList<String>(), manifest.previews.single().catalog?.breakpointKit)
+  }
 }

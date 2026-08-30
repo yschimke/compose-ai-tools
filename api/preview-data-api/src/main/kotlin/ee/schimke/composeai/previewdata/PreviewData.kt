@@ -251,6 +251,18 @@ public data class CatalogEntry(
    * no motion where the published catalog has a recording.
    */
   val motionPreview: String? = null,
+  /**
+   * COMPONENT: `@CatalogComponent.breakpointKit` — what this component's non-base breakpoint
+   * captures mean to the design kit, as `"<widthDp>=<kitAxis>=<kitValue>"` entries. Carried
+   * verbatim rather than parsed, exactly as discovery writes it: `design-map.mjs` is the only
+   * consumer that reads the entries, and parsing in two places is how two spellings come to
+   * disagree.
+   *
+   * A reader that dropped the field would see a breakpoint capture seeded with its bare width —
+   * byte-identical to a component that declared nothing — so the kit cells the render was meant to
+   * pair with would go uncompared with no symptom at all (issue #4827).
+   */
+  val breakpointKit: List<String> = emptyList(),
 ) {
   /**
    * Binary-compatible constructor retained for consumers compiled before [kitValue] was added. A
@@ -291,6 +303,7 @@ public data class CatalogEntry(
     kitAxis = kitAxis,
     kitValue = null,
     motionPreview = null,
+    breakpointKit = emptyList(),
   )
 
   /** As above, for consumers compiled after [kitValue] but before [motionPreview]. */
@@ -327,6 +340,45 @@ public data class CatalogEntry(
     kitAxis = kitAxis,
     kitValue = kitValue,
     motionPreview = null,
+    breakpointKit = emptyList(),
+  )
+
+  /** As above, for consumers compiled after [motionPreview] but before [breakpointKit]. */
+  public constructor(
+    role: CatalogRole,
+    componentId: String,
+    group: String? = null,
+    section: String? = null,
+    caption: String? = null,
+    reference: String? = null,
+    referenceSet: String? = null,
+    noReference: String? = null,
+    referenceContentsOnly: Boolean = true,
+    parallel: String? = null,
+    state: String? = null,
+    props: List<CatalogVariantProp> = emptyList(),
+    perBreakpoint: Boolean = false,
+    kitAxis: String? = null,
+    kitValue: String? = null,
+    motionPreview: String? = null,
+  ) : this(
+    role = role,
+    componentId = componentId,
+    group = group,
+    section = section,
+    caption = caption,
+    reference = reference,
+    referenceSet = referenceSet,
+    noReference = noReference,
+    referenceContentsOnly = referenceContentsOnly,
+    parallel = parallel,
+    state = state,
+    props = props,
+    perBreakpoint = perBreakpoint,
+    kitAxis = kitAxis,
+    kitValue = kitValue,
+    motionPreview = motionPreview,
+    breakpointKit = emptyList(),
   )
 }
 
