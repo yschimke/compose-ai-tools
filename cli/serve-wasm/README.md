@@ -3,6 +3,18 @@
 An isolated Compose/Wasm prototype over the preview server's existing public client contracts. It
 does not share source or build output with `cli/serve-web`.
 
+> **This is a fork of compose-preview-server's `wasm-ui`, kept in step by a gate.** The same app is
+> compiled in both repositories because each one builds it against its own M3 catalog
+> (`:samples:design-catalog-m3-shared` here, `:native-catalog-m3` there), so neither build's output
+> can stand in for the other's. The shared sources are held byte-identical against a pinned upstream
+> SHA by `.github/ci/check_serve_wasm_fork.py`; `build.gradle.kts` and this README are
+> per-repository and deliberately not compared.
+>
+> **Changing anything under `src/`? Port it to `wasm-ui` too, then bump the pin with
+> `--update <sha>`.** The gate exists because that did not happen once: upstream fixed #4821 and
+> this copy went on drawing an unpressed button labelled "Pressed" inside the CLI's `preview-ui/`,
+> while `compose-preview serve` ran the fixed server.
+
 Build the CLI distribution. It carries the static app under `preview-ui/`:
 
 ```shell

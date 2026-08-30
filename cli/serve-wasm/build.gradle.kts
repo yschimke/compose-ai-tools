@@ -48,5 +48,24 @@ tasks.register<Sync>("wasmFrontendDist") {
       "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js"
     )
   )
+  // The typefaces the native catalog lane composes with (#4821, ported from
+  // compose-preview-server's `wasm-ui`). Staged from `:samples:cmp-wasm-catalog`'s own resources —
+  // the same files that sample loads and the offline parity harness registers — rather than a
+  // second vendored copy under `src/wasmJsMain/resources`, so the two can never drift onto
+  // different outlines. `CatalogFonts.FONTS_BASE` fetches them from `fonts/`.
+  //
+  // Without these the lane fell back to the CMP bundled font while claiming to reproduce snapshots
+  // the Android renderer rasterized with Roboto, so text metrics and wrapping differed in the
+  // default lane. Upstream stages the byte-identical set from its own `assets/rc-fonts`; only the
+  // source path differs, which is why `build.gradle.kts` is not one of the files
+  // `check-serve-wasm-fork.py` compares.
+  from(
+    rootProject.layout.projectDirectory.dir(
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts"
+    )
+  ) {
+    include("*.ttf", "fonts.json", "*OFL.txt", "LICENSE.txt")
+    into("fonts")
+  }
   into(layout.buildDirectory.dir("wasmDist"))
 }
