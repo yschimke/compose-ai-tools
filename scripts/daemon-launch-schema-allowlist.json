@@ -108,10 +108,7 @@
         "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
         "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"
       ],
-      "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one.",
-      "alsoAppearsIn": [
-        "deploy/image/Dockerfile"
-      ]
+      "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one. The production image also passes the key as a JAVA_TOOL_OPTIONS literal, but that image is yschimke/compose-preview-server's and is checked THERE, against the daemon-protocol artifact that repository resolves \u2014 the version pairing that actually ships. Checking it from here would compare two default branches instead."
     }
   },
   "versionStampAliases": {

@@ -93,14 +93,6 @@ JVM_READER_REL = (
 # and this script is wired into `check`, which every contributor runs.
 TS_READER_REL = "src/daemon/daemonProtocol.ts"
 
-# The production image's Dockerfile, which passes the sandbox-count key as a literal in
-# JAVA_TOOL_OPTIONS — a mirror of a Kotlin constant that no Kotlin scan can see. It left this
-# repository with the preview server (yschimke/compose-preview-server owns the image and publishes
-# it), so it resolves from a checkout exactly as the two readers above do. A missing checkout SKIPS
-# that mirror rather than failing, for the same reason: "the other repository is not checked out"
-# is not a drift signal, and this script runs inside `check`.
-SERVER_DOCKERFILE_REL = "deploy/image/Dockerfile"
-
 
 def contracts_root() -> Path | None:
     """Root of a compose-preview-contracts checkout, or None when there is none."""
@@ -130,24 +122,8 @@ def ts_root() -> Path | None:
     return sibling if (sibling / TS_READER_REL).is_file() else None
 
 
-def server_root() -> Path | None:
-    """Root of a compose-preview-server checkout, or None when there is none."""
-    explicit = os.environ.get("COMPOSE_PREVIEW_SERVER_ROOT", "").strip()
-    if explicit:
-        root = Path(explicit).resolve()
-        if not (root / SERVER_DOCKERFILE_REL).is_file():
-            raise SystemExit(
-                f"COMPOSE_PREVIEW_SERVER_ROOT={explicit} does not contain {SERVER_DOCKERFILE_REL}"
-            )
-        return root
-    sibling = REPO_ROOT.parent / "compose-preview-server"
-    return sibling if (sibling / SERVER_DOCKERFILE_REL).is_file() else None
-
-
 _ts_root = ts_root()
 TS_READER = TS_READER_REL if _ts_root is not None else ""
-
-_server_root = server_root()
 
 _contracts_root = contracts_root()
 JVM_READER = JVM_READER_REL if _contracts_root is not None else ""
@@ -168,8 +144,6 @@ def resolve(rel: str) -> Path | None:
         return (root / rel) if root is not None else None
     if rel == JVM_READER_REL:
         return (_contracts_root / rel) if _contracts_root is not None else None
-    if rel == SERVER_DOCKERFILE_REL:
-        return (_server_root / rel) if _server_root is not None else None
     return REPO_ROOT / rel
 
 
@@ -193,9 +167,8 @@ def read(rel: str) -> str:
     path = resolve(rel)
     if path is None:
         raise FileNotFoundError(
-            f"{rel} lives in another repository; set COMPOSE_PREVIEW_VSCODE_ROOT (.ts), "
-            "COMPOSE_PREVIEW_CONTRACTS_ROOT (the JVM reader) or "
-            "COMPOSE_PREVIEW_SERVER_ROOT (the production image)"
+            f"{rel} lives in another repository; set COMPOSE_PREVIEW_VSCODE_ROOT (.ts) or "
+            "COMPOSE_PREVIEW_CONTRACTS_ROOT (the JVM reader)"
         )
     return path.read_text(encoding="utf-8")
 
@@ -1021,19 +994,6 @@ def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
                 f"constant but is not declared there."
             )
             continue
-        # A key is not only mirrored by Kotlin constants. The production image passes
-        # `-Dcomposeai.daemon.sandboxCount=3` as a literal in its `JAVA_TOOL_OPTIONS`, so renaming
-        # the key consistently across every Kotlin copy would still leave deployed hosts setting a
-        # property nothing reads — silently falling back to a pool of one.
-        for rel in spec.get("alsoAppearsIn", []):
-            if not available(rel):
-                continue
-            if source.strip('"') not in read(rel):
-                failures.append(
-                    f"  {rel}: does not contain {source}, which it is registered as carrying for "
-                    f"`{name}`.\n    {spec['why']}"
-                )
-
         for rel in spec["mirroredBy"]:
             if not available(rel):
                 continue
