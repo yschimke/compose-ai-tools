@@ -918,6 +918,18 @@ jobs:
           persist-credentials: false
           path: .compose-preview-vscode
           fetch-depth: 1
+      # Same reason, third copy: the prebuilt host image moved to yschimke/compose-preview-server,
+      # and its Dockerfile pins the `android-all-instrumented` coordinate that Kotlin here also
+      # spells. The checker SKIPS that mirror without a checkout — right for a contributor, wrong
+      # here. Unpinned like the extension above and unlike the contracts pin below: nothing in this
+      # build resolves the server as an artifact (the dependency runs the other way), so there is
+      # no version for it to agree with — only "do the two default branches still spell it alike".
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-server
+          persist-credentials: false
+          path: .compose-preview-server
+          fetch-depth: 1
       # Pinned to the RELEASE this build compiles against, not the contracts repo's default
       # branch. The gate compares a source file there against bytecode resolved from
       # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
@@ -958,6 +970,9 @@ jobs:
           # And whose JVM reader lives in the contracts repo. Same failure mode: without this it
           # silently checks one reader instead of two.
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
+          # And whose mirrored `android-all-instrumented` coordinate lives in the server repo's
+          # image Dockerfile. Same failure mode again: without this the mirror is not checked.
+          COMPOSE_PREVIEW_SERVER_ROOT: ${{ github.workspace }}/.compose-preview-server
         run: ./gradlew :cli:build :bundle-viewer:build
 
   # End-to-end gate for the XR composite still: fetch the PINNED compositor release, then run the
@@ -1277,6 +1292,18 @@ jobs:
           persist-credentials: false
           path: .compose-preview-vscode
           fetch-depth: 1
+      # Same reason, third copy: the prebuilt host image moved to yschimke/compose-preview-server,
+      # and its Dockerfile pins the `android-all-instrumented` coordinate that Kotlin here also
+      # spells. The checker SKIPS that mirror without a checkout — right for a contributor, wrong
+      # here. Unpinned like the extension above and unlike the contracts pin below: nothing in this
+      # build resolves the server as an artifact (the dependency runs the other way), so there is
+      # no version for it to agree with — only "do the two default branches still spell it alike".
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-server
+          persist-credentials: false
+          path: .compose-preview-server
+          fetch-depth: 1
       # Pinned to the RELEASE this build compiles against, not the contracts repo's default
       # branch. The gate compares a source file there against bytecode resolved from
       # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
@@ -1340,14 +1367,15 @@ jobs:
         env:
           COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
+          COMPOSE_PREVIEW_SERVER_ROOT: ${{ github.workspace }}/.compose-preview-server
         run: |
           set -euo pipefail
           out=$(python3 scripts/test_check_daemon_launch_schema.py -v 2>&1) || { echo "$out"; exit 1; }
           echo "$out"
-          # A skipped cross-repo test reports the same green as a passing one. Two readers live
-          # outside this repository now, so either checkout failing to resolve has to be loud.
+          # A skipped cross-repo test reports the same green as a passing one. Three copies live
+          # outside this repository now, so any checkout failing to resolve has to be loud.
           if grep -q "skipped" <<<"$out"; then
-            echo "::error::cross-repo schema tests SKIPPED — COMPOSE_PREVIEW_VSCODE_ROOT or COMPOSE_PREVIEW_CONTRACTS_ROOT did not resolve"
+            echo "::error::cross-repo schema tests SKIPPED — one of COMPOSE_PREVIEW_VSCODE_ROOT, COMPOSE_PREVIEW_CONTRACTS_ROOT or COMPOSE_PREVIEW_SERVER_ROOT did not resolve"
             exit 1
           fi
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
