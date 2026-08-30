@@ -368,6 +368,15 @@ def _capture_label(capture: dict) -> str:
     return " \u00B7 ".join(parts)
 
 
+# The leaf an `@XrSubspacePreview`'s composite is always written as. Unlike
+# every other capture, this name carries no preview identity: the XR renderer
+# writes a directory per preview (`renders/<sanitizedId>/scene.json` plus a
+# texture per panel) and the compositor bakes the still beside them under this
+# fixed name, so the identity lives in the PARENT DIRECTORY. Emitted as a
+# literal by `PreviewDiscovery.previewOutputPlan`.
+XR_COMPOSITE_LEAF = "composite.png"
+
+
 def _render_basename(png_path: str, preview_id: str) -> str:
     """File basename the diff bot should use when copying/linking a capture.
 
@@ -376,9 +385,28 @@ def _render_basename(png_path: str, preview_id: str) -> str:
     same preview never collide). Fall back to ``<previewId>.png`` when the
     CLI didn't surface a real path — that matches the legacy behaviour for
     missing / unrendered rows.
+
+    The "leaf is already unique" assumption holds for every capture but one:
+    an XR composite is always literally ``composite.png`` (see
+    [XR_COMPOSITE_LEAF]), so taking the leaf bare collapsed every
+    ``@XrSubspacePreview`` in a module onto a single destination —
+    ``renders/<module>/composite.png`` — and whichever rendered last won. The
+    symptom was a preview diff flagging that file on PRs touching nothing near
+    it, showing two unrelated previews as one another's before/after
+    (compose-ai-tools#4853). For that leaf alone, fold in the parent directory
+    (the sanitised preview id) to restore uniqueness.
+
+    Deliberately keyed on the leaf rather than on "is this under a per-preview
+    subdirectory": ``png_path`` is a real resolved filesystem path, so any rule
+    inferred from the enclosing directory's name also fires on flat captures
+    that happen not to sit in a directory called ``renders`` — which would
+    re-key every committed baseline.
     """
     if png_path:
-        name = Path(png_path).name
+        path = Path(png_path)
+        name = path.name
+        if name == XR_COMPOSITE_LEAF and path.parent.name:
+            return f"{path.parent.name}__{name}"
         if name:
             return name
     return f"{preview_id}.png"

@@ -3238,5 +3238,54 @@ class BaselineSkewNoteTest(unittest.TestCase):
         self.assertNotIn("[!NOTE]", out)
 
 
+class RenderBasenameTest(unittest.TestCase):
+    """`_render_basename` must keep two captures from colliding on one destination.
+
+    Renders are copied to `renders/<module>/<renderBasename>`, so the basename
+    is the whole of a capture's identity within a module.
+    """
+
+    _XR = ("/w/samples/xr-spatial/build/compose-previews/renders/"
+           "com.example.XrKt.{}/composite.png")
+
+    def test_flat_capture_keeps_its_exact_basename(self):
+        # Every non-XR preview. The leaf already carries the preview id and any
+        # dimension suffix, and changing it here would re-key every committed
+        # baseline.
+        for path, want in [
+            ("/w/app/build/compose-previews/renders/pkg.Kt.ButtonPreview.png",
+             "pkg.Kt.ButtonPreview.png"),
+            ("/w/m/build/compose-previews/renders/pkg.Kt.Scroll_SCROLL_end.png",
+             "pkg.Kt.Scroll_SCROLL_end.png"),
+            # Not under a directory called `renders` at all — the rule must key
+            # on the leaf, not on the enclosing directory's name.
+            ("/tmp/whatever/Red.png", "Red.png"),
+        ]:
+            self.assertEqual(cp._render_basename(path, "x"), want)
+
+    def test_two_xr_previews_do_not_collide(self):
+        # The XR compositor bakes every preview's still as the literal
+        # `composite.png`, so the leaf alone is the same string for all of
+        # them. Taking it bare made them overwrite each other in
+        # `renders/<module>/`, and the diff bot reported one preview as
+        # another's "before" (#4853).
+        a = cp._render_basename(self._XR.format("RotateToLookAtUserPreview"), "x")
+        b = cp._render_basename(self._XR.format("SpatialPanelGridPreview"), "y")
+        self.assertNotEqual(a, b)
+        self.assertIn("RotateToLookAtUserPreview", a)
+        self.assertIn("SpatialPanelGridPreview", b)
+        # Still flat, so it addresses one file under `renders/<module>/`.
+        self.assertNotIn("/", a)
+
+    def test_xr_basename_is_stable_across_calls(self):
+        # A baseline is only comparable if one capture maps to one name on
+        # every run.
+        path = self._XR.format("RotateToLookAtUserPreview")
+        self.assertEqual(cp._render_basename(path, "x"), cp._render_basename(path, "x"))
+
+    def test_falls_back_to_preview_id_without_a_path(self):
+        self.assertEqual(cp._render_basename("", "pkg.Kt.Preview"), "pkg.Kt.Preview.png")
+
+
 if __name__ == "__main__":
     unittest.main()
