@@ -7,12 +7,12 @@ import androidx.compose.ui.text.platform.Font
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The typefaces the native catalog lane composes with.
@@ -66,23 +66,31 @@ internal fun parseFontsManifest(raw: String): List<ManifestFont> {
   val root =
     runCatching { Json { ignoreUnknownKeys = true }.parseToJsonElement(raw) as? JsonObject }
       .getOrNull() ?: return emptyList()
-  return root["families"]?.jsonArray.orEmpty().flatMap { entry ->
+  // `as?` at every field, never `.jsonPrimitive` / `.jsonArray`. Those accessors THROW on a
+  // wrong-typed element, and the only `runCatching` in this path is `loadCatalogFonts`'s, which
+  // wraps the whole call: one family whose `name` was an object, or whose `fonts` was not an array,
+  // therefore collapsed the entire manifest to `emptyList()` and cost the catalog every other
+  // family. That is precisely the "skipped, not fatal" this function's contract promises, so it has
+  // to hold per entry rather than per parse.
+  val families = root["families"] as? JsonArray ?: return emptyList()
+  return families.flatMap { entry ->
     val family = entry as? JsonObject ?: return@flatMap emptyList()
-    val name = family["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-    val role = family["role"]?.jsonPrimitive?.contentOrNull.orEmpty()
+    val name = (family["name"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+    val role = (family["role"] as? JsonPrimitive)?.contentOrNull.orEmpty()
     if (role.isEmpty()) return@flatMap emptyList()
-    family["fonts"]?.jsonArray.orEmpty().mapNotNull { value ->
+    val fonts = family["fonts"] as? JsonArray ?: return@flatMap emptyList()
+    fonts.mapNotNull { value ->
       val font = value as? JsonObject ?: return@mapNotNull null
       val file =
-        font["file"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        (font["file"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
           ?: return@mapNotNull null
       ManifestFont(
         role = role,
         family = name,
         file = file,
         // Absent weight is Regular, which is what a single-face family means by omitting it.
-        weight = font["weight"]?.jsonPrimitive?.intOrNull ?: 400,
-        italic = font["italic"]?.jsonPrimitive?.booleanOrNull ?: false,
+        weight = (font["weight"] as? JsonPrimitive)?.intOrNull ?: 400,
+        italic = (font["italic"] as? JsonPrimitive)?.booleanOrNull ?: false,
       )
     }
   }
