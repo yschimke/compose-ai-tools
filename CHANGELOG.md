@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.54.0](https://github.com/yschimke/compose-ai-tools/compare/v1.53.1...v1.54.0) (2026-08-30)
+
+
+### Features
+
+* **design-artifacts:** let each system project its own design map ([#4843](https://github.com/yschimke/compose-ai-tools/issues/4843)) ([9b1a992](https://github.com/yschimke/compose-ai-tools/commit/9b1a992b1d68448dd15dfea6c1ddec7814b609f1))
+
+
+### Bug Fixes
+
+* drop the cross-repo Dockerfile mirror check ([#4834](https://github.com/yschimke/compose-ai-tools/issues/4834)) ([0aa637c](https://github.com/yschimke/compose-ai-tools/commit/0aa637c1d3cec65fd011999163f4edb932a3a586))
+
 ## [1.53.1](https://github.com/yschimke/compose-ai-tools/compare/v1.53.0...v1.53.1) (2026-08-29)
 
 
