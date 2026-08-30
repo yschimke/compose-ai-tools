@@ -23,6 +23,12 @@ name: Design Artifacts (reusable)
 # bundle to `design-artifacts/<system>`, which the public preview server
 # (preview.coo.ee) serves at /<system>/.
 #
+# That last step is a SEPARATE JOB (`publish-catalog`), and deliberately so. Every
+# job that runs the rendered project's Gradle holds `contents: read`; only the
+# publish job, which runs none of it, can write. The rendered catalog crosses the
+# boundary as an artifact. That split is what lets a caller render with nothing but
+# read access — see `upstream-repository` for the case that needs it.
+#
 # Bespoke lanes some catalogs add (e.g. compose-m3's re-theme fold-in, a Wasm
 # tier) are intentionally out of scope — a caller that needs them keeps its own
 # workflow. This covers single-module (± one extra module) catalogs and repository-wide static or
@@ -277,9 +283,10 @@ on:
           describing an imported project belongs to whoever imported it, not to the project.
 
           SECURITY: the upstream tree is fetched with plain `git`, with no credential helper and no
-          token — a public clone needs none, and an untrusted fetch should be handed no secret. And
-          this executes code from a repository the caller named, so import mode REFUSES to
-          publish. Setting this with `publish: true` fails the run at its first step: the render and
+          token — a public clone needs none, and an untrusted fetch should be handed no secret. The
+          jobs that then run that project's Gradle hold `contents: read` and nothing more, because
+          publishing lives in its own job (`publish-catalog`) that runs none of it. And this
+          executes code from a repository the caller named, so import mode REFUSES to publish. Setting this with `publish: true` fails the run at its first step: the render and
           the force-push would share one job, one workspace and one `GH_TOKEN`, and a build that can
           write the workspace can rewrite the push step out from under it. Import callers pass
           `publish: false` with `upload-out: true` and publish from a separate job that runs none of
@@ -1045,7 +1052,7 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
-      contents: write
+      contents: read
     env:
       # The preview ids can contain an em-dash; force UTF-8 so `bundle pack --id`
       # round-trips and the generator's join stays exact.
@@ -1058,6 +1065,12 @@ jobs:
       # credential would let any of them read it straight out of the environment. A remote cache
       # miss is the whole cost.
       BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ inputs.upstream-repository == '' && secrets.buildfetch_ro_token || '' }}
+    outputs:
+      # The one thing the publish job cannot work out for itself. The findings emitter reports
+      # whether it could READ the parity branch by exporting PARITY_FINDINGS_UNREADABLE into this
+      # job's environment, and the catalog push needs it to decide whether to carry the served
+      # verdict forward. Environment variables do not cross a job boundary; an output does.
+      parity-findings-unreadable: ${{ steps.parity-findings-readability.outputs.unreadable }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2054,6 +2067,14 @@ jobs:
       # A repo that has never heard of the feature has no `design/pages/`, and the emitter is a
       # no-op for it. Fail-soft like the reference lane: a page whose export can't be copied is
       # dropped with a warning rather than costing the catalog its render.
+      # Reads the emitter's environment export and re-publishes it as a step output, because the
+      # step that consumes it now lives in another job. Deliberately unconditional: when the emitter
+      # did not run (import mode, or no parity lane) the variable is unset and this yields the empty
+      # string, which is exactly the "branch was readable / nothing to carry" case.
+      - name: Carry the parity-findings readability across the job boundary
+        id: parity-findings-readability
+        run: echo "unreadable=${PARITY_FINDINGS_UNREADABLE:-}" >> "$GITHUB_OUTPUT"
+
       - name: Publish design pages
         if: ${{ inputs.publish || inputs.upload-out }}
         run: |
@@ -2274,18 +2295,71 @@ jobs:
           exit 1
 
       - name: Upload catalog bundle
-        if: ${{ inputs.upload-out }}
+        # Also on a publishing run: this artifact is how the rendered catalog reaches the
+        # publish job, which is a different job precisely so the push and the render do not
+        # share a token. `upload-out` remains what a caller sets to get it for itself.
+        if: ${{ inputs.publish || inputs.upload-out }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.system }}-catalog-out
           path: ${{ github.workspace }}/out
           if-no-files-found: error
 
+  # The only job in this workflow that can write, and the only one that runs NONE of the rendered
+  # project's code.
+  #
+  # It used to be the tail of `generate`, which both renders (running the catalog's own Gradle — and,
+  # in import mode, a third-party project's) and pushed the delivery branch, so the render and a
+  # contents-write token shared one job and one workspace. A build that can write the workspace could
+  # rewrite `push-branch.sh` out from under the step that runs it moments later. Splitting them is
+  # what lets `generate` drop to `contents: read`, and it is what makes import mode possible at all:
+  # a caller can now hold `contents: read` for the whole render, because nothing it calls asks for
+  # more.
+  #
+  # Everything the moved steps need is reconstructed here rather than inherited: the caller's
+  # checkout (they read its HEAD for the commit subject, and write from `out/` beside it), the
+  # export-driver checkout (`push-branch.sh`, `push-history.sh`), and the rendered catalog, which
+  # arrives as the artifact `generate` uploads.
+  publish-catalog:
+    name: ${{ inputs.system }} · publish
+    needs: [driver, generate]
+    if: ${{ inputs.publish }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the calling repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The same ref `generate` rendered, so the HEAD these steps record as the source of the
+          # publish is the commit the bundle actually came from.
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Check out compose-ai-tools (export driver)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.DRIVER_PIN_REPO }}
+          # The revision the driver job resolved once for this run, exactly as every other job that
+          # checks the driver out — so the push helpers cannot come from a different driver than the
+          # one that produced the bundle.
+          ref: ${{ needs.driver.outputs.ref }}
+          path: compose-ai-tools
+          persist-credentials: false
+
+      - name: Download the rendered catalog
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f28c025e4dfd1ca53b3 # v6.0.0
+        with:
+          name: ${{ inputs.system }}-catalog-out
+          path: ${{ github.workspace }}/out
+
       - name: Publish to design-artifacts/${{ inputs.system }}
         if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
+          PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
         run: |
           set -euo pipefail
           # The SHA the bundle was actually rendered from is the calling repo's
@@ -2371,6 +2445,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
+          PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
         run: |
           set -euo pipefail
           # `history.json` — the per-preview render timeline `<cp-history-menu>` reads. The viewer
