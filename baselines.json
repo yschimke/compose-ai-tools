@@ -4140,7 +4140,7 @@
     "functionName": "RotateToLookAtUserPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "composite.png",
-    "sha256": "31c78e70ebca2f5c79c041a9d4f5c85e4e41f9605e080270a312ffbd55a88152",
+    "sha256": "0e3f66a1f230a8ae7e6e943cfb8d9ec3eedc88d2b9657a0016cc31e6c8fbaf7a",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrModifierPreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview": {
