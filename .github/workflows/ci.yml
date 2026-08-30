@@ -1325,13 +1325,10 @@ jobs:
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run per-job path-scope classifier tests
         run: python3 .github/ci/test_path_scope.py -v
-      # The preview-server split's two committed instruments (issue #3824): the serve <-> cli
-      # symbol ratchet and the coupling gate. Both are pure-stdlib and classify real repo paths,
-      # so a layout change that would silently stop the measurement fails here.
-      - name: Run serve seam ratchet tests
-        run: python3 scripts/test_check_serve_seam.py -v
-      - name: Run serve coupling measurement tests
-        run: python3 scripts/test_measure_serve_coupling.py -v
+      # The preview-server split's two committed instruments (issue #3824) — the serve <-> cli
+      # symbol ratchet and the coupling gate — were removed with `cli/serve` itself (#4732). The
+      # boundary they measured is now a Maven coordinate, which cannot be crossed in either
+      # direction, so there is nothing left for a source scanner to classify.
       # `daemon-launch.json` is written by the gradle plugin and read by the daemon JVM, the CLI
       # doctor and the VS Code extension, each with its own copy of the shape and of the schema
       # version. Two of those copies carry a comment asking a human to keep them in sync; this is
@@ -1458,6 +1455,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Four mirrors this suite checks now live in the preview server's repository (#4732): the
+      # scorer's `tuning.ts`, `ServeRcFonts.FACES` and its staging wiring, and the viewer's
+      # `format-compare.js`. Each test SKIPS without a checkout, and a silent skip is the failure
+      # mode this repository already refuses elsewhere (see the daemon-launch schema step in
+      # Actions Script Tests, which errors on the word "skipped"), so CI supplies one — the same
+      # arrangement the contracts and VS Code readers get.
+      #
+      # PINNED to the release `:cli` actually consumes, read from the version catalog, not the
+      # server's head. `v2.0.0` is the tree the published `compose-preview-serve:2.0.0` was built
+      # from, so the mirror compares against the artifact on the classpath. Against head, a change
+      # merged there but not yet released would fail this PR for a drift that does not exist yet.
+      - name: Resolve the pinned preview-server release
+        id: serve-ref
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^composeai-preview-serve = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::could not read composeai-preview-serve from gradle/libs.versions.toml"
+            exit 1
+          fi
+          echo "ref=v$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-preview-server
+          ref: ${{ steps.serve-ref.outputs.ref }}
+          path: .compose-preview-server
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -1476,7 +1500,21 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run driver tests
         working-directory: scripts/design-artifacts
-        run: npm test
+        env:
+          COMPOSE_PREVIEW_SERVER_ROOT: ${{ github.workspace }}/.compose-preview-server
+        run: |
+          set -euo pipefail
+          out=$(npm test 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          # The cross-repo mirrors above self-skip when the checkout is missing, and a skip reports
+          # the same green as a pass. The checkout is supplied, so a skip here means it did not
+          # resolve — which must be loud, not silently green. Matched on the mirrors' own skip
+          # reason rather than on a skip COUNT: this suite has ~29 legitimate skips from other
+          # causes (browser-gated cases), so a count check would either never fire or always fire.
+          if grep -q "no compose-preview-server checkout" <<<"$out"; then
+            echo "::error::cross-repo mirror tests SKIPPED — COMPOSE_PREVIEW_SERVER_ROOT did not resolve"
+            exit 1
+          fi
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
