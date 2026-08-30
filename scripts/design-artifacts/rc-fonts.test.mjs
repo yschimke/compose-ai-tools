@@ -22,7 +22,11 @@ const PAINT_CONTEXT = path.resolve(
 // than a stated skip. CI can set the variable to make them assert.
 function serverRoot() {
   const explicit = (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim();
-  const marker = "deploy/image/Dockerfile";
+  // The marker is the file this test actually reads, not an unrelated one. CI materialises only
+  // the four mirror sources (it fetches them rather than checking the repository out — see the
+  // "Fetch the pinned preview-server mirror sources" step and why), so a marker naming anything
+  // else would report "no checkout" for a tree that has exactly what is needed.
+  const marker = "server/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt";
   if (explicit) {
     if (!fs.existsSync(path.join(explicit, marker))) {
       throw new Error(`COMPOSE_PREVIEW_SERVER_ROOT=${explicit} does not contain ${marker}`);
