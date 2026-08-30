@@ -60,9 +60,38 @@ package ee.schimke.composeai.preview
  *
  * Auto mode walks the window in frame-sized steps, so it is proportional to [maxMs]: keep the
  * default unless a reveal genuinely runs longer, and prefer an explicit [afterMs] on a component
- * whose timing you know. An animation that never ends (an `InfiniteTransition`, an indeterminate
- * progress indicator) can't quiesce, so it simply captures at the [maxMs] bound — the annotation
- * belongs on a reveal, not on a spinner.
+ * whose timing you know.
+ *
+ * ### Spinners: use an exact [afterMs], not auto
+ *
+ * An animation that never ends — an `InfiniteTransition`, an indeterminate progress indicator —
+ * cannot quiesce. Under **auto** mode it walks the whole budget, gives up, and the render records
+ * `still_changing`, forever. That is the wrong word for it: nothing failed. And because the same
+ * word is what a genuinely broken reveal gets, a consumer cannot act on either — silencing the
+ * spinner's noise silences the real diagnostic (issue #4829).
+ *
+ * An exact [afterMs] is the answer, and it is a different mechanism rather than a longer wait: a
+ * fixed coordinate on a continuous animation is deterministic, so the renderer advances once and
+ * captures, skipping the quiescence probe entirely. Both backends land on the same instant, and
+ * neither reports a failed settle for it:
+ * ```kotlin
+ * @SettledPreview(afterMs = 600)       // "this still is the 600ms phase of a spinner"
+ * @Preview
+ * @Composable fun CircularProgressIndeterminate() = Sticker { CircularProgressIndicator() }
+ * ```
+ *
+ * So: **auto belongs on a reveal; an exact [afterMs] belongs on either** — on a reveal whose timing
+ * you know, and on a spinner, where it is the only way to say which phase you meant. Leaving a
+ * never-ending animation on auto is the case with nowhere to go, and the one this section exists to
+ * redirect.
+ *
+ * **On Android**, both lanes additionally record the capture as a machine-readable **phase pin** —
+ * `phasePinnedCaptures` in `<png>.warnings.json` — so a catalog can publish "this still is a
+ * deliberately chosen phase" and assert on it, as distinct from `unsettledCaptures`, which is a bug
+ * report. The Compose Desktop lanes land on the same instant but emit no such record: they have no
+ * `.warnings.json` writer at all today (`RenderWarningsSidecar` is Android-only, and
+ * `DesktopRendererMain` only knows the suffix in order to sweep it). A desktop-only catalog
+ * therefore gets the correct pixels and no published claim about them.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)

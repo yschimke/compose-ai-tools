@@ -1089,6 +1089,16 @@ data class CatalogEntry(
    */
   val perBreakpoint: Boolean = false,
   /**
+   * COMPONENT only: `@CatalogComponent.breakpointKit` — what this component's non-base breakpoint
+   * captures mean to the design kit, as `"<widthDp>=<kitAxis>=<kitValue>"` entries.
+   *
+   * Carried verbatim rather than parsed here: `design-map.mjs` is the only consumer, the projector
+   * already owns every other seed-naming rule, and parsing in two places is how the two come to
+   * disagree. Empty ⇒ a breakpoint capture is seeded with its bare width, exactly as before
+   * (issue #4827).
+   */
+  val breakpointKit: List<String> = emptyList(),
+  /**
    * COMPONENT only: `@CatalogComponent.motionPreview` — the exact `@Preview` function name whose
    * animated/interaction captures publish on this component, when the recording lives on a function
    * of its own (an `@OverrideVariant` fan-out that would duplicate it, or a pinned motion canvas

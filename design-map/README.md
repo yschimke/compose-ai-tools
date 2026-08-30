@@ -156,6 +156,23 @@ one-to-one onto distinct device widths are a size axis and one of them can be pi
 - the sizes the base did not take **fold under it as cells**, seeded `breakpoint=<dp>` and named
   `<dp>dp`, so they are published rather than discarded.
 
+A bare `breakpoint=<dp>` is a value no kit vocabulary contains, so such a cell resolves against
+nothing — correctly, for the majority of kits, which draw every screen cell at one size and have no
+size axis at all. Where a kit *does* publish screen size as a variant property, the component says
+so:
+
+```kotlin
+@CatalogComponent(id = "Picker", breakpointKit = ["225=Larger Screen (BP)=Yes"])
+```
+
+and the 225dp cell is seeded `breakpoint=225` with `kitAxis`/`kitValue` attached, pairing with the
+kit node the picture was always there for. It is a per-component declaration rather than a
+per-run flag because it is a property of one component's kit set, not of the catalog; a size the
+component never draws, or a malformed entry, keeps the bare seed and is reported unresolved rather
+than mispaired. A breakpoint capture is the one kind of cell that cannot carry `@OverrideVariant
+(kitAxis = …)` itself — it is not an annotation at all — which is why the mapping lives on the
+component.
+
 Two captures of the *same* width are still a mode, whatever devices they name: nothing orders them,
 so they stay `ambiguousMode`. An `@OverrideVariant` cell rides the base breakpoint only — the
 product of both axes would multiply the sheet by every size, and the base carries the matrix.

@@ -879,6 +879,77 @@ test("the sizes the base did not take fold under it as cells, seeded with their 
   ]);
 });
 
+test("a breakpoint cell names its kit axis when the component declares one", () => {
+  // #4827. The kit's `Picker` set publishes `Larger Screen (BP)=Yes` cells, and the catalog already
+  // renders the picture — it was just handed to the resolver as a bare `breakpoint=225`, a value no
+  // kit vocabulary contains, so 21 published kit cells sat uncompared.
+  const { variants } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes"],
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders.find((r) => r.name === "225dp").seeds, [
+    { key: "breakpoint", raw: "225", kitAxis: "Larger Screen (BP)", kitValue: "Yes" },
+  ]);
+});
+
+test("an undeclared size keeps its bare seed, so it is reported unresolved rather than mispaired", () => {
+  // The majority case: a kit that draws every screen cell at one size has no size axis at all, and
+  // the other unresolved breakpoint captures are CORRECTLY unresolved. Guessing an axis for them
+  // would pair a render against a kit cell that does not describe it.
+  const { variants } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 240, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes"],
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders.find((r) => r.name === "240dp").seeds, [
+    { key: "breakpoint", raw: "240" },
+  ]);
+});
+
+test("a malformed breakpointKit entry is reported, not silently ignored", () => {
+  // The degradation for a typo is the bare `breakpoint=<dp>` seed — which is exactly what an
+  // undeclared component produces — so without a diagnostic a mistyped mapping is invisible until
+  // someone wonders why a kit cell never paired.
+  const { variants, diagnostics } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)", "oops=Axis=Yes", "225==Yes"],
+    }),
+  ]);
+  assert.deepEqual(
+    diagnostics.invalidBreakpointKit.map((e) => e.entry).sort(),
+    ["225==Yes", "225=Larger Screen (BP)", "oops=Axis=Yes"],
+  );
+  assert.equal(diagnostics.invalidBreakpointKit[0].componentId, "Picker");
+  // …and the cell still degrades to the bare seed rather than pairing against a guess.
+  assert.deepEqual(variants.components[0].renders.find((r) => r.name === "225dp").seeds, [
+    { key: "breakpoint", raw: "225" },
+  ]);
+});
+
+test("a well-formed entry for another size is not a fault", () => {
+  // One declaration serves every size, so it is re-read at each non-base capture. A 240dp capture
+  // reading a 225dp declaration is the ordinary case, not a typo.
+  const { diagnostics } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes"],
+    }),
+    atWidth("Picker", 240, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes"],
+    }),
+  ]);
+  assert.deepEqual(diagnostics.invalidBreakpointKit, []);
+});
+
 test("a themed pair is still a mode, never a breakpoint — neither capture names a device", () => {
   const { diagnostics } = projectDesignMap([
     { ...component("Themed", { reference: ref("1:2") }), id: "com.example.CatalogKt.Themed_Dark" },

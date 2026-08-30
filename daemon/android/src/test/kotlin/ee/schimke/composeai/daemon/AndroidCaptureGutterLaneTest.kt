@@ -88,6 +88,61 @@ class AndroidCaptureGutterLaneTest {
   }
 
   @Test
+  fun `the host-side reshape carries the gutter, which is the lane production takes`() {
+    // The router below is the harness lane. The Android bundle daemon and `compose-preview serve`
+    // never mount one: they resolve `previewId=…` through `RobolectricHost.reshapeRenderPayload`,
+    // which re-serialises the spec into a payload string. That round-trip dropped the gutter
+    // (#4822) — and dropped it silently, because `parseFromPayloadOrNull` defaults every edge to
+    // 0 — so any override that forced a request off the baked lane (a theme, a knob, a Remote
+    // Compose seed) came back clipped to the composable's own frame.
+    val host =
+      RobolectricHost(
+        previewSpecResolver = {
+          RenderSpec(
+            previewId = it,
+            className = "com.example.FooKt",
+            functionName = "Foo",
+            widthPx = 384,
+            heightPx = 128,
+            density = 2.0f,
+            gutterStartDp = 0,
+            gutterTopDp = 8,
+            gutterEndDp = 0,
+            gutterBottomDp = 8,
+          )
+        }
+      )
+
+    val reshaped = host.reshapeRenderPayload("previewId=media-podcastcontrolbuttons;uiMode=light")
+    val spec = RenderSpec.parseFromPayloadOrNull(reshaped)
+
+    assertNotNull("reshaped payload must remain a parseable RenderSpec: $reshaped", spec)
+    assertTrue("the gutter must survive the string round-trip", spec!!.hasCaptureGutter())
+    assertEquals(0, spec.gutterStartDp)
+    assertEquals(8, spec.gutterTopDp)
+    assertEquals(0, spec.gutterEndDp)
+    assertEquals(8, spec.gutterBottomDp)
+    // 8+8 dp down at density 2 ⇒ 32 px, the difference between the reported 384×160 baked render
+    // and the 384×128 the live daemon was returning.
+    assertEquals(0, spec.gutterHorizontalPx())
+    assertEquals(32, spec.gutterVerticalPx())
+  }
+
+  @Test
+  fun `the host-side reshape emits no gutter token for an un-annotated preview`() {
+    // A payload for a preview that declares no gutter must be byte-identical to what it was before
+    // the token existed — the same guarantee the router makes.
+    val host =
+      RobolectricHost(
+        previewSpecResolver = {
+          RenderSpec(previewId = it, className = "com.example.FooKt", functionName = "Foo")
+        }
+      )
+
+    assertTrue(!host.reshapeRenderPayload("previewId=plain").contains("captureGutter="))
+  }
+
+  @Test
   fun `the router resolves a manifest-declared gutter and omits an absent one`() {
     val entry =
       PreviewManifestEntry(
