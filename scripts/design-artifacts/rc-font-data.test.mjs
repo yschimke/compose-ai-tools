@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RC_PLAYER_JS_BUNDLE } from "./rc-player-bundle.mjs";
+import { RC_PLAYER_JS_BUNDLE, rcPlayerBundleIssue } from "./rc-player-bundle.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -26,6 +26,11 @@ let browser;
 let skip = false;
 
 before(async () => {
+  const bundleIssue = rcPlayerBundleIssue();
+  if (bundleIssue) {
+    skip = bundleIssue;
+    return;
+  }
   try {
     const { chromium } = await import("playwright");
     browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });

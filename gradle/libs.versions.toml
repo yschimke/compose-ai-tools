@@ -367,16 +367,25 @@ composeai-preview-serve = "2.0.0"
 # the bundle it renders through is exactly the failure this repo already paid for once with the
 # AndroidX alphas.
 #
-# 1.55.0, not a fresh 0.x: `rc-player-*` and `third-party-rc-embedded-player` were published FROM
-# THIS REPO through 1.54.0, so rc-players continues that line rather than restarting one. A lower
-# number would be a downgrade to anything resolving a range or a BOM, and invisible to everything
-# else.
+# TWO refs, because the player coordinates fall into two groups with different availability.
 #
-# This pin names a release THAT DOES NOT EXIST YET — 1.55.0 is the first cut from the new
-# repository, and `rc-player-wasm-dist`, `third-party-rc-embedded-player-jvm` and
-# `remote-compose-player-js-dist` are new coordinates that first appear in it. Until it lands, this
-# build cannot resolve them; that is the known cost of cutting over in one step rather than two.
-rcplayers = "1.55.0"
+# `rcplayers` — the five that were published FROM THIS REPO through 1.54.0 and are on Central right
+# now. rc-players continues that line rather than restarting one (a lower number would be a
+# downgrade to anything resolving a range or a BOM), so these keep resolving throughout the move.
+# They move to 1.55.0 with everything else at the next release; there is no reason to drag them
+# there early.
+rcplayers = "1.54.0"
+
+# `rcplayers-new` — the three coordinates the extraction CREATED. They exist at no version yet:
+# `rc-player-wasm-dist` and `remote-compose-player-js-dist` wrap directories that used to be built
+# in-tree, and `third-party-rc-embedded-player-jvm` never published before. 1.55.0 is the first
+# rc-players release, so it is the first version that can carry them.
+#
+# Keeping them on a ref of their own is what stops the unpublished half blocking the published half:
+# one shared ref pinned every consumer to 1.55.0, including five artifacts that were sitting on
+# Central at 1.54.0, and reddened jobs that had no need to fail. Collapse the two back into one once
+# 1.55.0 is out.
+rcplayers-new = "1.55.0"
 
 [libraries]
 
@@ -405,16 +414,16 @@ rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose", version.
 # `dist` classifier is the distribution directory packaged for Maven; see that module's build file
 # in yschimke/rc-players for why it is a module of its own rather than a second publication on the
 # wasmJs one.
-rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist", version.ref = "rcplayers" }
+rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist", version.ref = "rcplayers-new" }
 # The vendored, locally patched AndroidX embedded player — the Android comparison lane. NOT a
 # supported API; pinned to one AndroidX alpha and versioned with the player stack rather than with
 # upstream.
 rcplayer-embedded-android = { module = "ee.schimke.composeai:third-party-rc-embedded-player", version.ref = "rcplayers" }
 # The desktop-JVM cut of the same vendored player, staged into `lib-rcjvm/` for serve's cmp-jvm lane.
-rcplayer-embedded-jvm = { module = "ee.schimke.composeai:third-party-rc-embedded-player-jvm", version.ref = "rcplayers" }
+rcplayer-embedded-jvm = { module = "ee.schimke.composeai:third-party-rc-embedded-player-jvm", version.ref = "rcplayers-new" }
 # The vendored TypeScript player's browser bundle — the client-side render lane the `rc-*` browser
 # tests and the design-artifacts job drive with `--player <bundle.js>`. A zip, `dist` classifier.
-rcplayer-js-dist = { module = "ee.schimke.composeai:remote-compose-player-js-dist", version.ref = "rcplayers" }
+rcplayer-js-dist = { module = "ee.schimke.composeai:remote-compose-player-js-dist", version.ref = "rcplayers-new" }
 # `@com.android.tools.screenshot.PreviewTest` — the marker Google's screenshot plugin requires on a
 # `@Preview` before it will render it (alpha15+ discovers nothing without it). Only the Studio-parity
 # fixtures in `:samples:android-screenshot-test` need it, on the `screenshotTest` classpath; version
