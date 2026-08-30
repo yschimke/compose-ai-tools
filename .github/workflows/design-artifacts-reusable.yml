@@ -896,12 +896,23 @@ jobs:
         if: ${{ inputs.stage-font-globs != '' }}
         env:
           FONT_GLOBS: ${{ inputs.stage-font-globs }}
+          # The globs are repo-relative, and in import mode the repo holding those fonts is the
+          # upstream checkout. Expanded from the workspace root they would match nothing — and
+          # `nullglob` makes that silent, so the render would quietly fall back to system fonts and
+          # publish wrong glyphs and wrong line breaks. Staging is resolved from the same directory
+          # the render itself runs in.
+          FONT_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '.' }}
         run: |
           set -euo pipefail
           command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends fontconfig; }
           mkdir -p "$HOME/.local/share/fonts"
+          cd "$FONT_ROOT"
           shopt -s nullglob
-          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
+          staged=0
+          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; staged=$((staged + 1)); done
+          # A glob set that matches nothing is a misconfiguration, not a no-op: the render proceeds
+          # with fallback fonts and the difference shows up as a pixel diff nobody can explain.
+          [ "$staged" -gt 0 ] || echo "::warning title=No fonts staged::stage-font-globs matched nothing under ${FONT_ROOT}"
           fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       - name: Install desktop (Skiko) render deps
@@ -1325,12 +1336,23 @@ jobs:
         if: ${{ inputs.stage-font-globs != '' }}
         env:
           FONT_GLOBS: ${{ inputs.stage-font-globs }}
+          # The globs are repo-relative, and in import mode the repo holding those fonts is the
+          # upstream checkout. Expanded from the workspace root they would match nothing — and
+          # `nullglob` makes that silent, so the render would quietly fall back to system fonts and
+          # publish wrong glyphs and wrong line breaks. Staging is resolved from the same directory
+          # the render itself runs in.
+          FONT_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '.' }}
         run: |
           set -euo pipefail
           command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends fontconfig; }
           mkdir -p "$HOME/.local/share/fonts"
+          cd "$FONT_ROOT"
           shopt -s nullglob
-          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
+          staged=0
+          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; staged=$((staged + 1)); done
+          # A glob set that matches nothing is a misconfiguration, not a no-op: the render proceeds
+          # with fallback fonts and the difference shows up as a pixel diff nobody can explain.
+          [ "$staged" -gt 0 ] || echo "::warning title=No fonts staged::stage-font-globs matched nothing under ${FONT_ROOT}"
           fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       # CMP desktop (Skiko) links libGL; install Mesa's software GL + a font stack.
@@ -1847,8 +1869,15 @@ jobs:
             echo "::notice title=No reference cache::'${BRANCH}' does not exist yet, so node structure will be fetched live. Run the design-parity import workflow to build it."
           fi
 
+      # Never in import mode. `upload-out` is exactly how an import runs, so this would
+      # otherwise fire in the SAME job and workspace as the imported project's Gradle build,
+      # holding a Figma token or a contents-write token. That build can rewrite the driver
+      # scripts these steps invoke, or leave state behind for them, so keeping it out of
+      # credentialed steps is the same boundary the publish refusal draws — publish was just
+      # the loudest of them. Nothing is lost: an imported third-party project has no Figma
+      # design map and no design-parity branch, so these lanes had nothing to say about it.
       - name: Publish design references
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.upstream-repository == '' }}
         env:
           # Only needed for `figma:` entries in a design-map — the adapter-free
           # REST render this driver does itself. Absent (forks, PR runs, catalogs
@@ -1934,8 +1963,15 @@ jobs:
       # warning rather than costing the catalog its publish. A repo with no
       # git history, no design-map and no token writes nothing at all, so this
       # is safe to run for every catalog unconditionally.
+      # Never in import mode. `upload-out` is exactly how an import runs, so this would
+      # otherwise fire in the SAME job and workspace as the imported project's Gradle build,
+      # holding a Figma token or a contents-write token. That build can rewrite the driver
+      # scripts these steps invoke, or leave state behind for them, so keeping it out of
+      # credentialed steps is the same boundary the publish refusal draws — publish was just
+      # the loudest of them. Nothing is lost: an imported third-party project has no Figma
+      # design map and no design-parity branch, so these lanes had nothing to say about it.
       - name: Publish design-parity activity
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.upstream-repository == '' }}
         env:
           FIGMA_TOKEN: ${{ secrets.figma_token }}
         run: |
@@ -1970,8 +2006,15 @@ jobs:
       # shows. Fail-soft like its neighbours — no parity branch, no design map, or a component with
       # no published reference each drop with a warning rather than costing the catalog its render,
       # so this is safe to run for every catalog unconditionally.
+      # Never in import mode. `upload-out` is exactly how an import runs, so this would
+      # otherwise fire in the SAME job and workspace as the imported project's Gradle build,
+      # holding a Figma token or a contents-write token. That build can rewrite the driver
+      # scripts these steps invoke, or leave state behind for them, so keeping it out of
+      # credentialed steps is the same boundary the publish refusal draws — publish was just
+      # the loudest of them. Nothing is lost: an imported third-party project has no Figma
+      # design map and no design-parity branch, so these lanes had nothing to say about it.
       - name: Publish design-parity findings
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.upstream-repository == '' }}
         env:
           # The emitter fetches the sibling `design-parity/<system>` branch. The calling repo is
           # checked out with `persist-credentials: false`, so its `origin` carries no credential
