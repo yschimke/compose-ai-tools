@@ -1288,6 +1288,7 @@ class RenderEngine(
       fontFallbacks,
       CoilLoadDiagnostics.drainPreview(),
       ee.schimke.composeai.renderer.VisualSettleDiagnostics.drainPreview(),
+      ee.schimke.composeai.renderer.VisualSettleDiagnostics.drainPinned(),
     )
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L

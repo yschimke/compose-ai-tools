@@ -1053,6 +1053,11 @@ abstract class RobolectricRenderTestBase(
         fontFallbacks,
         CoilLoadDiagnostics.drainPreview(),
         VisualSettleDiagnostics.drainPreview(),
+        // Not a warning: a still captured at a declared `@SettledPreview(afterMs = …)` coordinate.
+        // It rides in the same sidecar because it answers the same question — "is this still
+        // trustworthy?" — and because without it a spinner pinned to a deliberate phase and an
+        // ordinary static preview are indistinguishable to a consumer (issue #4829).
+        VisualSettleDiagnostics.drainPinned(),
       )
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
@@ -2358,6 +2363,17 @@ abstract class RobolectricRenderTestBase(
                 resolveCaptureRoot()
                   .interaction
                   .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+                // An exact `@SettledPreview(afterMs = …)` skipped the probe on purpose — the
+                // coordinate IS the answer, and probing would move off it. Record that as a phase
+                // pin so the declaration reaches a consumer (issue #4829). Without it a spinner
+                // pinned to a deliberate phase looks exactly like an ordinary static preview, and
+                // the only alternative — auto settle on an animation that cannot quiesce — reports
+                // `still_changing` forever, which is the same word used for a broken reveal.
+                if (job.hasExactSettle) {
+                  job.settleTargetMs?.let {
+                    VisualSettleDiagnostics.recordPinnedPhase("Preview '${preview.id}' still", it)
+                  }
+                }
               }
             }
 

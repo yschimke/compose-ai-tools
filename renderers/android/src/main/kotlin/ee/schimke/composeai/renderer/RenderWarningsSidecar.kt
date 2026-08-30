@@ -17,6 +17,13 @@ import okio.Path.Companion.toPath
  * - a still capture's quiescence probe ran out its sample budget (see [VisualSettleDiagnostics]),
  *   so the PNG is a half-drawn frame or the frame before a reveal that hadn't started.
  *
+ * It also carries one thing that is **not** a warning: `phasePinnedCaptures`, a still taken at an
+ * author-declared `@SettledPreview(afterMs = …)` coordinate. It rides here because it is the answer
+ * to the same question a consumer asks of `unsettledCaptures` — "is this still trustworthy?" — and
+ * the two are only useful together: without it, a spinner pinned to a deliberate phase and an
+ * ordinary static preview are indistinguishable, so a catalog that wants to assert its renders are
+ * settled has nothing to assert against (issue #4829).
+ *
  * Either way the PNG is kept and the warning rides alongside it.
  *
  * Hand-rolled JSON for the same reason as [RenderErrorSidecar]: the renderer-android runtime
@@ -37,10 +44,14 @@ object RenderWarningsSidecar {
   fun pathFor(pngFile: File): File = File(pngFile.parentFile, pngFile.name + ".warnings.json")
 
   /**
-   * Write [fallbacks], [imageLoads] and [unsettled] as the warnings sidecar for [pngFile], or
-   * delete any stale sidecar when all three are empty (a now-clean render must not keep yesterday's
+   * Write [fallbacks], [imageLoads], [unsettled] and [pinned] as the sidecar for [pngFile], or
+   * delete any stale sidecar when all four are empty (a now-clean render must not keep yesterday's
    * warning). Best-effort — a write failure prints to stderr but never derails the render,
    * mirroring [RenderErrorSidecar].
+   *
+   * [pinned] counts towards writing the file even though it is not a warning: it is a positive
+   * claim a consumer can assert on, and withholding it whenever the render was otherwise clean
+   * would make it available only on previews that also had something wrong with them.
    */
   @JvmOverloads
   fun writeOrDelete(
@@ -48,9 +59,10 @@ object RenderWarningsSidecar {
     fallbacks: List<FontResolutionDiagnostics.FontFallback>,
     imageLoads: List<CoilLoadDiagnostics.UnresolvedLoad> = emptyList(),
     unsettled: List<VisualSettleDiagnostics.UnsettledCapture> = emptyList(),
+    pinned: List<VisualSettleDiagnostics.PinnedCapture> = emptyList(),
     fileSystem: FileSystem = SystemFileSystem,
   ) {
-    if (fallbacks.isEmpty() && imageLoads.isEmpty() && unsettled.isEmpty()) {
+    if (fallbacks.isEmpty() && imageLoads.isEmpty() && unsettled.isEmpty() && pinned.isEmpty()) {
       deleteStale(pngFile)
       return
     }
@@ -58,7 +70,7 @@ object RenderWarningsSidecar {
       val sidecar = pathFor(pngFile)
       sidecar.parentFile?.mkdirs()
       fileSystem.write(sidecar.path.toPath()) {
-        writeUtf8(encode(fallbacks, imageLoads, unsettled))
+        writeUtf8(encode(fallbacks, imageLoads, unsettled, pinned))
       }
     } catch (writeFailure: Throwable) {
       System.err.println(
@@ -76,14 +88,16 @@ object RenderWarningsSidecar {
   /**
    * The JSON body. Pure + internal so a unit test can assert the shape without touching disk.
    *
-   * `unresolvedImages` and `unsettledCaptures` are additive: a reader that only knows about
-   * `fontFallbacks` (every reader that predates issue #2952) keeps working unchanged, and an empty
-   * array is still written when there are no warnings of that kind so the shape is stable.
+   * `unresolvedImages`, `unsettledCaptures` and `phasePinnedCaptures` are additive: a reader that
+   * only knows about `fontFallbacks` (every reader that predates issue #2952) keeps working
+   * unchanged, and an empty array is still written when there are none of that kind so the shape is
+   * stable.
    */
   internal fun encode(
     fallbacks: List<FontResolutionDiagnostics.FontFallback>,
     imageLoads: List<CoilLoadDiagnostics.UnresolvedLoad> = emptyList(),
     unsettled: List<VisualSettleDiagnostics.UnsettledCapture> = emptyList(),
+    pinned: List<VisualSettleDiagnostics.PinnedCapture> = emptyList(),
   ): String {
     val sb = StringBuilder()
     sb.append('{')
@@ -118,6 +132,16 @@ object RenderWarningsSidecar {
       sb.append("\"role\":").append(jsonString(capture.role)).append(',')
       sb.append("\"outcome\":").append(jsonString(capture.outcome.name.lowercase())).append(',')
       sb.append("\"samples\":").append(capture.samples).append(',')
+      sb.append("\"message\":").append(jsonString(VisualSettleDiagnostics.describe(capture)))
+      sb.append('}')
+    }
+    sb.append("],\"phasePinnedCaptures\":[")
+    pinned.forEachIndexed { i, capture ->
+      if (i > 0) sb.append(',')
+      sb.append('{')
+      sb.append("\"role\":").append(jsonString(capture.role)).append(',')
+      sb.append("\"outcome\":").append(jsonString("phase_pinned")).append(',')
+      sb.append("\"atMs\":").append(capture.atMs).append(',')
       sb.append("\"message\":").append(jsonString(VisualSettleDiagnostics.describe(capture)))
       sb.append('}')
     }
