@@ -19,23 +19,13 @@ Auto-rendered by the integration matrix from [`android/wear-os-samples@main`](ht
 - Source: [`android/wear-os-samples@main`](https://github.com/android/wear-os-samples/tree/main)
 - No source or build-script workarounds — the project renders against the locally-built plugin snapshot as-is.
 
-> [!WARNING]
-> 1 preview(s) failed to render in the latest update (1 with no prior baseline to retain). See **Render Failures** below.
-
-## Render Failures
-
-The render task completed but no PNG was produced for these previews. Entries with a prior baseline keep their previous image; the rest are absent from the gallery until a successful render lands.
-
-| Preview | Module | Function | Source | Baseline |
-|---------|--------|----------|--------|----------|
-| `app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Large Round 1.24f` | app | `alarmPreview` | `src/debug/java/com/example/wear/tiles/golden/Alarm.kt` | none |
-
 ## app
 
 | Preview | Image |
 |---------|-------|
 | `alarmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-tiles/renders/app/alarmPreview_Large_Round_0_94f-be132780.png" width="150" /> |
 | `alarmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-tiles/renders/app/alarmPreview_Large_Round_1_00f-5c5ff4ec.png" width="150" /> |
+| `alarmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-tiles/renders/app/alarmPreview_Large_Round_1_24f-0e00bbe4.png" width="150" /> |
 | `alarmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-tiles/renders/app/alarmPreview_Small_Round_0_94f-3219b540.png" width="150" /> |
 | `alarmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-tiles/renders/app/alarmPreview_Small_Round_1_00f-389a1e70.png" width="150" /> |
 | `alarmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-tiles/renders/app/alarmPreview_Small_Round_1_24f-0dd3ac7a.png" width="150" /> |
