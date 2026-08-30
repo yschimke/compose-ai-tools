@@ -265,6 +265,33 @@ on:
         required: false
         type: string
         default: ''
+      upstream-repository:
+        description: |
+          IMPORT MODE. An `owner/repo` to render INSTEAD of the calling repository — a third-party
+          Compose project the caller wants previews for without forking it or asking it to change.
+          Empty (the default) renders the caller's own checkout, which is every existing caller.
+
+          The upstream project is checked out into `upstream/` alongside the caller's checkout, and
+          the render runs there; `working-directory`, if also set, is interpreted relative to it, so
+          a monorepo upstream still resolves. `spec` stays CALLER-relative — the catalog spec
+          describing an imported project belongs to whoever imported it, not to the project.
+
+          SECURITY: the upstream tree is fetched with plain `git`, with no credential helper and no
+          token — a public clone needs none, and an untrusted fetch should be handed no secret. And
+          this executes code from a repository the caller named, so import mode REFUSES to
+          publish. Setting this with `publish: true` fails the run at its first step: the render and
+          the force-push would share one job, one workspace and one `GH_TOKEN`, and a build that can
+          write the workspace can rewrite the push step out from under it. Import callers pass
+          `publish: false` with `upload-out: true` and publish from a separate job that runs none of
+          the imported code — yschimke/compose-preview-imports is the worked example.
+        required: false
+        type: string
+        default: ''
+      upstream-ref:
+        description: 'Branch, tag or SHA of upstream-repository to render. Empty ⇒ its default branch, resolved to one immutable SHA before any shard checks it out. Ignored unless upstream-repository is set.'
+        required: false
+        type: string
+        default: ''
       design-map-command:
         description: >-
           Shell command that projects THIS system's `design-map.json` into the caller repo root,
@@ -385,7 +412,17 @@ env:
   # Where the rendered Gradle BUILD sits in the checkout. The plugin records each project's
   # directory relative to its own `rootDir`, which for a separate-build monorepo is the sample's
   # root — so the catalog step lifts those to repository-relative paths with this.
+  #
+  # Deliberately NOT the upstream-prefixed [RENDER_DIR] in import mode: these paths become source
+  # links back to the project the previews came from, and they must be relative to THAT
+  # repository's root. Prefixing them with the `upstream/` checkout directory would point every
+  # link at a path that exists only inside a runner that has since been destroyed.
   INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+  # The directory the render commands actually run in. Normally the caller's checkout (`.`, or its
+  # `working-directory` for a separate-build monorepo); in import mode the upstream checkout under
+  # `upstream/`, with `working-directory` applied INSIDE it. Computed once here because seven steps
+  # ask the same question and answering it seven times is how they drift apart.
+  RENDER_DIR: ${{ inputs.upstream-repository != '' && (inputs.working-directory != '' && format('upstream/{0}', inputs.working-directory) || 'upstream') || (inputs.working-directory || '.') }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
@@ -469,7 +506,61 @@ jobs:
       contents: read
     outputs:
       ref: ${{ steps.driver.outputs.ref }}
+      upstream-sha: ${{ steps.upstream.outputs.sha }}
     steps:
+      # IMPORT MODE is a refusal, not a warning. Rendering a caller-named third-party repository and
+      # force-pushing a branch cannot happen in one job: `generate` runs the imported project's
+      # Gradle and then runs the publish step with a contents-write `GH_TOKEN`, in the same workspace
+      # — so a build that can write files can rewrite `push-branch.sh`, or append to `GITHUB_ENV`,
+      # and have the later step run it with that token. Documentation cannot hold that boundary, so
+      # the combination is rejected here, in the job every other job depends on, before any of the
+      # imported project is fetched.
+      #
+      # The supported shape is `publish: false` + `upload-out: true`, with the caller publishing the
+      # artifact from a job that runs none of the imported code.
+      - name: Refuse to publish from an import
+        if: ${{ inputs.upstream-repository != '' && inputs.publish }}
+        run: |
+          echo "::error::import mode (upstream-repository) cannot be combined with publish: true." \
+            "Rendering a third-party repository and force-pushing share one job, one workspace and" \
+            "one token, so the imported build could rewrite the publish step. Pass publish: false" \
+            "with upload-out: true and publish from a separate job."
+          exit 1
+
+      # Resolve the upstream ref to ONE immutable commit for the whole run. A branch is a moving
+      # target: with render-shards > 1 each shard checks out independently and `generate` again after
+      # them, so a push landing mid-run would bake previews from two different revisions into one
+      # bundle — and if the preview ids happen to match, partition verification passes and the
+      # mismatch ships. Same argument, and same fix, as the driver pin resolved just below.
+      - name: Resolve the upstream revision
+        id: upstream
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_REF: ${{ inputs.upstream-ref }}
+        run: |
+          set -euo pipefail
+          # No credential: import mode is for public repositories, and `ls-remote` against one needs
+          # none. A private upstream is a caller-supplied-token feature this does not yet have.
+          if [ -n "${UPSTREAM_REF}" ]; then
+            sha=$(git -c credential.helper= ls-remote \
+              "https://github.com/${UPSTREAM_REPOSITORY}.git" \
+              "refs/heads/${UPSTREAM_REF}" "refs/tags/${UPSTREAM_REF}" | head -n1 | cut -f1)
+            # A 40-hex `upstream-ref` is already immutable and will not appear in ls-remote output.
+            if [ -z "$sha" ] && printf '%s' "${UPSTREAM_REF}" | grep -Eq '^[0-9a-f]{40}$'; then
+              sha="${UPSTREAM_REF}"
+            fi
+          else
+            sha=$(git -c credential.helper= ls-remote \
+              "https://github.com/${UPSTREAM_REPOSITORY}.git" HEAD | cut -f1)
+          fi
+          [ -n "$sha" ] || {
+            echo "::error::could not resolve ${UPSTREAM_REPOSITORY}@${UPSTREAM_REF:-HEAD}"
+            exit 1
+          }
+          echo "::notice::importing ${UPSTREAM_REPOSITORY} at ${sha}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
       # Typo'd modes used to be discovered by the `else` branch of the split step — after the render
       # — where an unknown value silently meant `full`. Every job needs this one, so rejecting it
       # here costs seconds and gates the whole pipeline.
@@ -664,13 +755,62 @@ jobs:
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
-      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+      # Withheld in import mode. `secrets: inherit` is the documented way to supply this, and the
+      # imported project's own build scripts and plugins run in this job — handing them a caller
+      # credential would let any of them read it straight out of the environment. A remote cache
+      # miss is the whole cost.
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ inputs.upstream-repository == '' && secrets.buildfetch_ro_token || '' }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+
+      # IMPORT MODE: the third-party project this run renders. Deliberately AFTER the caller's
+      # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
+      # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
+      # if its caller gave it one, out of the imported checkout's git config.
+      # Fetched with plain git rather than `actions/checkout`, deliberately and for two reasons.
+      #
+      # The first is that `actions/checkout` sends a credential. Its `token:` input defaults to the
+      # job's `github.token`, so pointing it at `repository:` hands that token to whatever host
+      # serves the request. Nothing here should present a credential to a third-party repository:
+      # imports are public, a public clone needs no authentication, and the correct number of
+      # secrets to expose to an untrusted fetch is zero. `git clone` with no helper configured sends
+      # nothing, which is what this does.
+      #
+      # The second is that a variable `repository:` on `actions/checkout` is exactly CodeQL's
+      # "checkout of untrusted code in a privileged context" pattern, and here it would not be a
+      # false positive — the whole feature is fetching code from a repository the caller named. The
+      # honest response is to remove the credential the rule is warning about rather than to dismiss
+      # the alert.
+      #
+      # Fetched by the SHA the driver resolved once, never the caller's moving ref: see that job.
+      # `--depth 1` of one commit; nothing in the imported history is read.
+      - name: Fetch the upstream project
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_SHA: ${{ needs.driver.outputs.upstream-sha }}
+        run: |
+          set -euo pipefail
+          # Belt and braces: the driver already resolved and validated this, but the value reaches a
+          # command line here, so it is re-checked at the point of use.
+          printf '%s' "${UPSTREAM_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::upstream sha '${UPSTREAM_SHA}' is not a commit"; exit 1; }
+          printf '%s' "${UPSTREAM_REPOSITORY}" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || {
+            echo "::error::'${UPSTREAM_REPOSITORY}' is not an owner/repo"; exit 1; }
+          rm -rf upstream
+          mkdir upstream
+          cd upstream
+          git init --quiet
+          # -c credential.helper=: with an empty value clears any inherited helper, so this fetch
+          # cannot pick up a token from the runner's git config.
+          git -c credential.helper= remote add origin \
+            "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
+          git checkout --quiet FETCH_HEAD
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -726,11 +866,18 @@ jobs:
           EXTRA_MODULE: ${{ inputs.extra-module }}
           PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
           WORKDIR: ${{ inputs.working-directory }}
+          SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
           LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
           LIVE_SOURCE: ${{ inputs.live-rerender-source }}
         run: |
           set -euo pipefail
-          to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
+          # Module paths are resolved against the directory the sources were actually checked out
+          # into — `upstream/` in import mode — because that is where the validator has to look for
+          # Kotlin sources. Without the prefix it silently finds none and falls back to
+          # structural-only validation, dropping the pre-render check for missing or renamed
+          # previews; worse, a caller directory that happens to share the path would be scanned
+          # instead. `--spec` stays caller-relative and is deliberately not prefixed.
+          to_dir() { printf '%s' "${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
           if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
           for ann in $PREVIEW_ANNOTATIONS; do args+=(--preview-annotation "$ann"); done
@@ -749,12 +896,23 @@ jobs:
         if: ${{ inputs.stage-font-globs != '' }}
         env:
           FONT_GLOBS: ${{ inputs.stage-font-globs }}
+          # The globs are repo-relative, and in import mode the repo holding those fonts is the
+          # upstream checkout. Expanded from the workspace root they would match nothing — and
+          # `nullglob` makes that silent, so the render would quietly fall back to system fonts and
+          # publish wrong glyphs and wrong line breaks. Staging is resolved from the same directory
+          # the render itself runs in.
+          FONT_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '.' }}
         run: |
           set -euo pipefail
           command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends fontconfig; }
           mkdir -p "$HOME/.local/share/fonts"
+          cd "$FONT_ROOT"
           shopt -s nullglob
-          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
+          staged=0
+          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; staged=$((staged + 1)); done
+          # A glob set that matches nothing is a misconfiguration, not a no-op: the render proceeds
+          # with fallback fonts and the difference shows up as a pixel diff nobody can explain.
+          [ "$staged" -gt 0 ] || echo "::warning title=No fonts staged::stage-font-globs matched nothing under ${FONT_ROOT}"
           fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       - name: Install desktop (Skiko) render deps
@@ -781,7 +939,7 @@ jobs:
       # build, warm caches), so it costs discovery — the same arrangement the single-job pipeline
       # already relies on for `modePriority`.
       - name: Discover previews
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         run: |
           set -euo pipefail
           compose-preview list --json --module "$INPUT_MODULE" \
@@ -837,7 +995,7 @@ jobs:
       # so the right answer is a no-op shard, not a failed one.
       - name: Render shard ${{ matrix.shard }}
         if: ${{ steps.shard-plan.outputs.previews != '0' }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
           EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
@@ -895,7 +1053,11 @@ jobs:
       LC_ALL: C.UTF-8
       # Read-only BuildFetch cache (safe at job scope): pull task outputs instead
       # of building cold. Empty when the secret isn't provided.
-      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+      # Withheld in import mode. `secrets: inherit` is the documented way to supply this, and the
+      # imported project's own build scripts and plugins run in this job — handing them a caller
+      # credential would let any of them read it straight out of the environment. A remote cache
+      # miss is the whole cost.
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ inputs.upstream-repository == '' && secrets.buildfetch_ro_token || '' }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -905,6 +1067,51 @@ jobs:
           # scheduled run needs to reach a catalog that lives off the default branch.
           ref: ${{ inputs.ref }}
           persist-credentials: false
+
+      # IMPORT MODE: the third-party project this run renders. Deliberately AFTER the caller's
+      # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
+      # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
+      # if its caller gave it one, out of the imported checkout's git config.
+      # Fetched with plain git rather than `actions/checkout`, deliberately and for two reasons.
+      #
+      # The first is that `actions/checkout` sends a credential. Its `token:` input defaults to the
+      # job's `github.token`, so pointing it at `repository:` hands that token to whatever host
+      # serves the request. Nothing here should present a credential to a third-party repository:
+      # imports are public, a public clone needs no authentication, and the correct number of
+      # secrets to expose to an untrusted fetch is zero. `git clone` with no helper configured sends
+      # nothing, which is what this does.
+      #
+      # The second is that a variable `repository:` on `actions/checkout` is exactly CodeQL's
+      # "checkout of untrusted code in a privileged context" pattern, and here it would not be a
+      # false positive — the whole feature is fetching code from a repository the caller named. The
+      # honest response is to remove the credential the rule is warning about rather than to dismiss
+      # the alert.
+      #
+      # Fetched by the SHA the driver resolved once, never the caller's moving ref: see that job.
+      # `--depth 1` of one commit; nothing in the imported history is read.
+      - name: Fetch the upstream project
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_SHA: ${{ needs.driver.outputs.upstream-sha }}
+        run: |
+          set -euo pipefail
+          # Belt and braces: the driver already resolved and validated this, but the value reaches a
+          # command line here, so it is re-checked at the point of use.
+          printf '%s' "${UPSTREAM_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::upstream sha '${UPSTREAM_SHA}' is not a commit"; exit 1; }
+          printf '%s' "${UPSTREAM_REPOSITORY}" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || {
+            echo "::error::'${UPSTREAM_REPOSITORY}' is not an owner/repo"; exit 1; }
+          rm -rf upstream
+          mkdir upstream
+          cd upstream
+          git init --quiet
+          # -c credential.helper=: with an empty value clears any inherited helper, so this fetch
+          # cannot pick up a token from the runner's git config.
+          git -c credential.helper= remote add origin \
+            "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
+          git checkout --quiet FETCH_HEAD
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -970,7 +1177,7 @@ jobs:
       # if two modules declare the same preview function.
       - name: Discover preview-enabled modules
         if: ${{ inputs.module == '' || inputs.modules == 'all' }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           SPEC: ${{ inputs.spec }}
           EXTRA_MODULE: ${{ inputs.extra-module }}
@@ -1014,6 +1221,7 @@ jobs:
           EXTRA_MODULE: ${{ inputs.extra-module }}
           PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
           WORKDIR: ${{ inputs.working-directory }}
+          SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
           LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
           LIVE_SOURCE: ${{ inputs.live-rerender-source }}
           ALL_MODULES: ${{ inputs.module == '' || inputs.modules == 'all' }}
@@ -1022,7 +1230,13 @@ jobs:
           # Single-module callers predate repository-wide discovery and still use the conventional
           # Gradle-path mapping. All-module callers consume BasicGradleProject.projectDirectory
           # captured by discovery; settings.gradle can map :ui to components/ui (or anywhere else).
-          to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
+          # Module paths are resolved against the directory the sources were actually checked out
+          # into — `upstream/` in import mode — because that is where the validator has to look for
+          # Kotlin sources. Without the prefix it silently finds none and falls back to
+          # structural-only validation, dropping the pre-render check for missing or renamed
+          # previews; worse, a caller directory that happens to share the path would be scanned
+          # instead. `--spec` stays caller-relative and is deliberately not prefixed.
+          to_dir() { printf '%s' "${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC")
           if [ "$ALL_MODULES" = "true" ]; then
             while IFS= read -r discovered_source; do
@@ -1079,7 +1293,7 @@ jobs:
       - name: Derive per-mode render exclusions
         id: mode-filter
         if: ${{ steps.validate-spec.outputs.deferred-modes != '' && inputs.render-shards < 2 }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           SPEC: ${{ inputs.spec }}
         run: |
@@ -1122,12 +1336,23 @@ jobs:
         if: ${{ inputs.stage-font-globs != '' }}
         env:
           FONT_GLOBS: ${{ inputs.stage-font-globs }}
+          # The globs are repo-relative, and in import mode the repo holding those fonts is the
+          # upstream checkout. Expanded from the workspace root they would match nothing — and
+          # `nullglob` makes that silent, so the render would quietly fall back to system fonts and
+          # publish wrong glyphs and wrong line breaks. Staging is resolved from the same directory
+          # the render itself runs in.
+          FONT_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '.' }}
         run: |
           set -euo pipefail
           command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends fontconfig; }
           mkdir -p "$HOME/.local/share/fonts"
+          cd "$FONT_ROOT"
           shopt -s nullglob
-          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
+          staged=0
+          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; staged=$((staged + 1)); done
+          # A glob set that matches nothing is a misconfiguration, not a no-op: the render proceeds
+          # with fallback fonts and the difference shows up as a pixel diff nobody can explain.
+          [ "$staged" -gt 0 ] || echo "::warning title=No fonts staged::stage-font-globs matched nothing under ${FONT_ROOT}"
           fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       # CMP desktop (Skiko) links libGL; install Mesa's software GL + a font stack.
@@ -1173,7 +1398,7 @@ jobs:
         if: ${{ inputs.render-shards < 2 }}
         # compose-preview finds the Gradle root by walking up for gradlew, so a
         # monorepo of separate builds must render from the build's own dir.
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           # Render only the previews this catalog still needs baked, when its spec defers
           # entries to the live preview server (issue #2950). Read by the render task as the
@@ -1301,7 +1526,7 @@ jobs:
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         run: |
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
@@ -1351,6 +1576,13 @@ jobs:
           # event ref (a default branch with no catalog) would point live re-render at a
           # revision the catalog doesn't exist on (issue #2963).
           RENDERED_REF: ${{ inputs.ref }}
+          # In import mode the rendered SOURCE is the imported project, not the caller. Source links
+          # and trusted live re-render both resolve `<repo>@<ref>` to fetch and build the module
+          # again; recording the importer would point them at a repository that does not contain the
+          # module at all. The ref recorded is the SHA the driver resolved, not the branch name —
+          # the branch will have moved by the time anyone follows the link.
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_SHA: ${{ needs.driver.outputs.upstream-sha }}
         run: |
           set -euo pipefail
           extra=()
@@ -1364,12 +1596,18 @@ jobs:
             done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
           fi
           source_args=()
+          # Which repository these previews actually came from: the imported project when there is
+          # one, otherwise the caller.
+          source_repo="${UPSTREAM_REPOSITORY:-$GITHUB_REPOSITORY}"
+          if [ -n "${UPSTREAM_REPOSITORY}" ]; then
+            source_ref="${UPSTREAM_SHA}"
+          else
+            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
+          fi
           if [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] && [ ! -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
-            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
-            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "$INPUT_MODULE")
+            source_args=(--source-repo "${source_repo}" --source-ref "${source_ref}" --source-module "$INPUT_MODULE")
           elif [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ]; then
-            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
-            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}")
+            source_args=(--source-repo "${source_repo}" --source-ref "${source_ref}")
             echo "::notice title=All-module catalog::source modules are recorded per preview; trusted live rendering uses the carried module bundles."
           fi
           incomplete=()
@@ -1631,8 +1869,15 @@ jobs:
             echo "::notice title=No reference cache::'${BRANCH}' does not exist yet, so node structure will be fetched live. Run the design-parity import workflow to build it."
           fi
 
+      # Never in import mode. `upload-out` is exactly how an import runs, so this would
+      # otherwise fire in the SAME job and workspace as the imported project's Gradle build,
+      # holding a Figma token or a contents-write token. That build can rewrite the driver
+      # scripts these steps invoke, or leave state behind for them, so keeping it out of
+      # credentialed steps is the same boundary the publish refusal draws — publish was just
+      # the loudest of them. Nothing is lost: an imported third-party project has no Figma
+      # design map and no design-parity branch, so these lanes had nothing to say about it.
       - name: Publish design references
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.upstream-repository == '' }}
         env:
           # Only needed for `figma:` entries in a design-map — the adapter-free
           # REST render this driver does itself. Absent (forks, PR runs, catalogs
@@ -1718,8 +1963,15 @@ jobs:
       # warning rather than costing the catalog its publish. A repo with no
       # git history, no design-map and no token writes nothing at all, so this
       # is safe to run for every catalog unconditionally.
+      # Never in import mode. `upload-out` is exactly how an import runs, so this would
+      # otherwise fire in the SAME job and workspace as the imported project's Gradle build,
+      # holding a Figma token or a contents-write token. That build can rewrite the driver
+      # scripts these steps invoke, or leave state behind for them, so keeping it out of
+      # credentialed steps is the same boundary the publish refusal draws — publish was just
+      # the loudest of them. Nothing is lost: an imported third-party project has no Figma
+      # design map and no design-parity branch, so these lanes had nothing to say about it.
       - name: Publish design-parity activity
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.upstream-repository == '' }}
         env:
           FIGMA_TOKEN: ${{ secrets.figma_token }}
         run: |
@@ -1754,8 +2006,15 @@ jobs:
       # shows. Fail-soft like its neighbours — no parity branch, no design map, or a component with
       # no published reference each drop with a warning rather than costing the catalog its render,
       # so this is safe to run for every catalog unconditionally.
+      # Never in import mode. `upload-out` is exactly how an import runs, so this would
+      # otherwise fire in the SAME job and workspace as the imported project's Gradle build,
+      # holding a Figma token or a contents-write token. That build can rewrite the driver
+      # scripts these steps invoke, or leave state behind for them, so keeping it out of
+      # credentialed steps is the same boundary the publish refusal draws — publish was just
+      # the loudest of them. Nothing is lost: an imported third-party project has no Figma
+      # design map and no design-parity branch, so these lanes had nothing to say about it.
       - name: Publish design-parity findings
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ (inputs.publish || inputs.upload-out) && inputs.upstream-repository == '' }}
         env:
           # The emitter fetches the sibling `design-parity/<system>` branch. The calling repo is
           # checked out with `persist-credentials: false`, so its `origin` carries no credential
