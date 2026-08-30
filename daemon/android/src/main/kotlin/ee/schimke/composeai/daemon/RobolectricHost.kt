@@ -1280,6 +1280,27 @@ open class RobolectricHost(
       (inbound["orientation"] ?: base.orientation?.name?.lowercase())?.let {
         append("orientation=").append(it).append(';')
       }
+      // `@CaptureGutter` (#4443) — four dp edges in start,top,end,bottom order, mirroring
+      // [PreviewManifestRouter]. Without this the string round-trip drops the gutter silently:
+      // `RenderSpec.parseFromPayloadOrNull` defaults every edge to 0, so the sandbox composed at
+      // the un-guttered size and every override-driven render came back clipped to the
+      // composable's own frame (#4822). The router is the harness lane; this is the lane the
+      // production bundle daemon and `compose-preview serve` actually take.
+      //
+      // Deliberately NOT traded with the wrap flags on a rotation, for the reason the router
+      // states: a wrap flag names an axis of the frame, a gutter edge names a direction the
+      // component draws in, and a `widthPx ↔ heightPx` swap does not move where a shadow falls.
+      if (base.hasCaptureGutter()) {
+        append("captureGutter=")
+          .append(base.gutterStartDp)
+          .append(',')
+          .append(base.gutterTopDp)
+          .append(',')
+          .append(base.gutterEndDp)
+          .append(',')
+          .append(base.gutterBottomDp)
+          .append(';')
+      }
       inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
       (inbound["inspectionMode"] ?: base.inspectionMode?.toString())?.let {
         append("inspectionMode=").append(it).append(';')
