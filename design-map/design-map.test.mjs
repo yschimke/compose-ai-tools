@@ -879,6 +879,38 @@ test("the sizes the base did not take fold under it as cells, seeded with their 
   ]);
 });
 
+test("a breakpoint cell names its kit axis when the component declares one", () => {
+  // #4827. The kit's `Picker` set publishes `Larger Screen (BP)=Yes` cells, and the catalog already
+  // renders the picture — it was just handed to the resolver as a bare `breakpoint=225`, a value no
+  // kit vocabulary contains, so 21 published kit cells sat uncompared.
+  const { variants } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes"],
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders.find((r) => r.name === "225dp").seeds, [
+    { key: "breakpoint", raw: "225", kitAxis: "Larger Screen (BP)", kitValue: "Yes" },
+  ]);
+});
+
+test("an undeclared size keeps its bare seed, so it is reported unresolved rather than mispaired", () => {
+  // The majority case: a kit that draws every screen cell at one size has no size axis at all, and
+  // the other unresolved breakpoint captures are CORRECTLY unresolved. Guessing an axis for them
+  // would pair a render against a kit cell that does not describe it.
+  const { variants } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 240, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes"],
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders.find((r) => r.name === "240dp").seeds, [
+    { key: "breakpoint", raw: "240" },
+  ]);
+});
+
 test("a themed pair is still a mode, never a breakpoint — neither capture names a device", () => {
   const { diagnostics } = projectDesignMap([
     { ...component("Themed", { reference: ref("1:2") }), id: "com.example.CatalogKt.Themed_Dark" },

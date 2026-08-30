@@ -156,6 +156,33 @@ annotation class CatalogComponent(
    * `@Preview`, as before.
    */
   val motionPreview: String = "",
+  /**
+   * What this component's **non-base breakpoint** captures mean to the design kit, as
+   * `"<widthDp>=<kitAxis>=<kitValue>"` entries — e.g. `["225=Larger Screen (BP)=Yes"]`.
+   *
+   * A breakpoint capture is the one kind of cell that cannot carry `@OverrideVariant(kitAxis = …,
+   * kitValue = …)`, because it is not an annotation at all: it is the same composable drawn on a
+   * wider screen by a multipreview, folded under its component rather than promoted to one of its
+   * own. So the size reached the resolver as a bare `breakpoint=225`, a value no kit vocabulary
+   * contains, and it reported "no counterpart for `breakpoint=225`" (issue #4827).
+   *
+   * Most kits draw every screen cell at one size and have no size axis at all, which is why this is
+   * opt-in and per component: declaring nothing keeps today's behaviour, and those captures stay
+   * correctly reported as renders with no kit counterpart rather than mispaired against whatever a
+   * guess produced. Declare it only where the kit genuinely publishes screen size as a variant
+   * property — Wear M3's `Picker` set and its `Larger Screen (BP)=Yes` cells are the motivating
+   * case.
+   *
+   * The base breakpoint is unaffected: it carries the component's own matrix, and an
+   * `@OverrideVariant` cell of a non-base breakpoint stays skipped. The product of two axes is
+   * still not wanted.
+   *
+   * Travels as `key=value`-shaped strings for the same reason `@CatalogVariant.props` does —
+   * annotations cannot hold a `Map`. A malformed entry, a non-numeric width or a size this
+   * component never renders is ignored with a warning rather than failing discovery: a mis-typed
+   * mapping should cost the pairing, not the build.
+   */
+  val breakpointKit: Array<String> = [],
 )
 
 /**

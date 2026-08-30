@@ -1217,6 +1217,7 @@ object PreviewDiscovery {
       kitAxis = annStringOrNull(component, "kitAxis"),
       motionPreview = annStringOrNull(component, "motionPreview"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
+      breakpointKit = annStringArray(component, "breakpointKit"),
     )
   }
 

@@ -503,6 +503,34 @@ export function declarationMisses(preview) {
  * this projection, which is why a FAB size axis read as unauthored while `FabSmall`/`FabMedium`/
  * `FabLarge` sat in the catalog all along.
  */
+/**
+ * The kit axis/value a component declares for a non-base breakpoint width, or `null`.
+ *
+ * [entries] are `@CatalogComponent.breakpointKit` strings, `"<widthDp>=<kitAxis>=<kitValue>"`. The
+ * `kitValue` half may itself contain `=` (a kit is free to name a cell `Size=Large`), so the split
+ * is on the FIRST TWO separators only — `String.split("=")` with a limit would drop the tail.
+ *
+ * A malformed entry, a non-numeric width or a width this component never renders yields `null`,
+ * which restores the bare `breakpoint=<width>` seed. That is the honest degradation: a mistyped
+ * mapping should cost the pairing, not silently pair the render against the wrong kit cell.
+ */
+export function breakpointKitNames(entries, widthDp) {
+  for (const entry of entries ?? []) {
+    if (typeof entry !== "string") continue;
+    const firstEq = entry.indexOf("=");
+    if (firstEq < 0) continue;
+    const secondEq = entry.indexOf("=", firstEq + 1);
+    if (secondEq < 0) continue;
+    const width = Number(entry.slice(0, firstEq).trim());
+    if (!Number.isFinite(width) || width !== widthDp) continue;
+    const kitAxis = entry.slice(firstEq + 1, secondEq).trim();
+    const kitValue = entry.slice(secondEq + 1).trim();
+    if (!kitAxis || !kitValue) continue;
+    return { kitAxis, kitValue };
+  }
+  return null;
+}
+
 export function variantRendersByComponent(previews, selection = selectCaptures(previews)) {
   const byComponent = new Map();
   for (const preview of previews) {
@@ -535,7 +563,24 @@ export function variantRendersByComponent(previews, selection = selectCaptures(p
     if (!isOverrideVariant && !isCatalogVariant) {
       const widthDp = catalog.role === "COMPONENT" ? selection.breakpointOf(preview) : null;
       if (widthDp === null) continue;
-      const seeds = [{ key: "breakpoint", raw: String(widthDp) }];
+      // `@CatalogComponent(breakpointKit = ["225=Larger Screen (BP)=Yes"])` says what this size
+      // MEANS to the kit. Without it the seed is a bare `breakpoint=225` — a value no kit
+      // vocabulary contains — and the resolver can only report "no counterpart for
+      // `breakpoint=225`", even where the kit publishes the very cells the render would pair with
+      // (issue #4827).
+      //
+      // Opt-in and per component, because most kits draw every screen cell at one size and have no
+      // size axis at all. Declaring nothing keeps the bare seed, so those captures stay honestly
+      // reported as renders with no kit counterpart rather than mispaired.
+      const kit = breakpointKitNames(catalog.breakpointKit, widthDp);
+      const seeds = [
+        {
+          key: "breakpoint",
+          raw: String(widthDp),
+          ...(kit?.kitAxis ? { kitAxis: kit.kitAxis } : {}),
+          ...(kit?.kitValue ? { kitValue: kit.kitValue } : {}),
+        },
+      ];
       const list = byComponent.get(catalog.componentId) ?? [];
       list.push({ previewId: preview.id, name: `${widthDp}dp`, seeds });
       byComponent.set(catalog.componentId, list);
