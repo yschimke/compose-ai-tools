@@ -1578,6 +1578,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "Projecting design-map.json for '$INPUT_SYSTEM'."
+          # DELETE FIRST, so the check below proves the command RECREATED the map rather than that
+          # a map exists. In the two-catalog repo this input is for, the committed one at this path
+          # belongs to the OTHER system — so a command that succeeds but writes somewhere else (the
+          # `--out-dir` mistake, which `scripts/design-map.sh` makes easy) would leave it standing,
+          # pass a mere existence check, and publish the other system's mappings under this one's
+          # name. That is the exact failure this step exists to stop, and it would sail through.
+          # Safe because the checkout is disposable: nothing later in the job wants the committed
+          # map back, and a command that writes none fails the step anyway.
+          rm -f design-map.json
           bash -c "$DESIGN_MAP_COMMAND"
           if [ ! -f design-map.json ]; then
             echo "::error title=design-map-command wrote no map::The command ran but left no design-map.json at the repo root, which is the only path the lanes below read. Check that it projects to the root rather than to an --out-dir."

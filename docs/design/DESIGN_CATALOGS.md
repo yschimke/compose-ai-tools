@@ -983,6 +983,7 @@ workspace, so it can regenerate the map before anything reads it. Pass the comma
     uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
     with:
       system: wear-m3-catalog
+      spec: catalog.spec.json
       module: ':catalog'
       design-map-command: >
         ./gradlew :catalog:composePreviewDiscover &&
@@ -992,6 +993,7 @@ workspace, so it can regenerate the map before anything reads it. Pass the comma
     uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
     with:
       system: remote-m3
+      spec: remote-catalog/catalog.spec.json
       module: ':remote-catalog'
       design-map-command: >
         ./gradlew :remote-catalog:composePreviewDiscover &&
