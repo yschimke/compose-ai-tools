@@ -12,10 +12,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RC_PLAYER_JS_BUNDLE } from "./rc-player-bundle.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
-const BUNDLE = path.join(ROOT, "third_party/remote-compose-player/dist/bundle.js");
+const BUNDLE = RC_PLAYER_JS_BUNDLE;
 const FONT = path.join(ROOT, "samples/design-catalog-m3/src/main/resources/fonts/orbitron-400.ttf");
 const FAMILY_ID = 42;
 const TEXT_ID = 43;

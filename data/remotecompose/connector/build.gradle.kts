@@ -131,7 +131,7 @@ dependencies {
   // `compileOnly` like the alpha players above: a consumer that doesn't ship the vendored player
   // still loads this connector, and `isEmbeddedPlayerAvailable` gates the call site at runtime so
   // selecting `player = embedded` there falls back to the view player instead of dying.
-  compileOnly(project(":third-party-rc-embedded-player"))
+  compileOnly(libs.rcplayer.embedded.android)
   testImplementation(libs.compose.remote.player.core)
   testImplementation(libs.compose.remote.core)
 

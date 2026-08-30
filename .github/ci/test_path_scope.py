@@ -24,7 +24,7 @@ class PathScopeTest(unittest.TestCase):
 
     def test_unions_matching_groups(self):
         self.assertEqual(
-            mod.decide(["cli/src/Main.kt", "third_party/remote-compose-player/src/web/main.ts"], self.config),
+            mod.decide(["cli/src/Main.kt", "scripts/design-artifacts/rc-compare.mjs.ts"], self.config),
             {"jvm": True, "js": True},
         )
 
@@ -56,7 +56,7 @@ class RepositoryConfigsTest(unittest.TestCase):
 
     def test_typescript_only_selects_javascript_codeql(self):
         result = mod.decide(
-            ["third_party/remote-compose-player/src/web/WebFonts.ts"],
+            ["scripts/design-artifacts/WebFonts.ts"],
             self.load("codeql-paths.json"),
         )
         self.assertEqual(
@@ -74,10 +74,10 @@ class RepositoryConfigsTest(unittest.TestCase):
     # rejected for living *inside* `cli/`, where it correctly wakes `build_cli` and
     # `module_unit_tests`; it has since left too, with the server (#4732).
     #
-    # The TypeScript left here is `third_party/remote-compose-player/**`, which IS outside
-    # the Gradle module tree — but it is the source the committed
-    # `third_party/remote-compose-player/dist/bundle.js` is built from, so it deliberately
-    # wakes `rc_player_tests`. That is the behaviour we want, not the one this test asserted.
+    # The vendored TypeScript player was the last candidate, and it left with the players
+    # (yschimke/rc-players). What remains here is `scripts/design-artifacts/**`, which is outside
+    # the Gradle module tree but deliberately wakes `rc_player_tests` and `design_artifacts` —
+    # the behaviour we want, not the one this test asserted.
     #
     # If a TypeScript surface that no Gradle group depends on returns, restore this.
 
@@ -148,19 +148,15 @@ class RepositoryConfigsTest(unittest.TestCase):
         self.assertEqual(missing, [stale])
 
 
-    def test_wasm_distribution_resources_run_the_rc_player_jobs(self):
-        # `wasmPlayerDist` syncs these two paths straight into the shipped player (see
-        # rc-player/wasm/build.gradle.kts), so a font swap or a fonts.json edit changes production
-        # pixels. Without them in `rc_player_tests` the CMP/Wasm parity and frame-pacing jobs both
-        # skip on exactly the change most likely to move a parity number.
-        for changed in (
-            "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/fonts.json",
-            "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/RobotoFlex.ttf",
-            "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js",
-        ):
-            with self.subTest(changed=changed):
-                result = mod.decide([changed], self.load("ci-paths.json"))
-                self.assertTrue(result["rc_player_tests"])
+    # `test_wasm_distribution_resources_run_the_rc_player_jobs` lived here. It asserted that the
+    # font faces and the js-joda shim `wasmPlayerDist` syncs into the shipped player wake
+    # `rc_player_tests`, because a font swap there changes production pixels.
+    #
+    # Those resources went with the player (yschimke/rc-players vendors its own copy under
+    # `rc-player/wasm/dist-assets/`), and `:samples:cmp-wasm-catalog`'s copies are now only that
+    # sample's own. They are no longer a player input, so waking the player jobs on them would be
+    # wrong rather than merely unnecessary. The property it protected is now that repository's to
+    # assert, against the paths its own dist task reads.
 
     def test_other_wasm_catalog_sources_do_not_run_the_rc_player_jobs(self):
         # Scoped to what the distribution actually copies: the catalog's own Kotlin is not a player

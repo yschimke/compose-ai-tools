@@ -31,22 +31,16 @@
     ],
     "renderer_android_tests": [
       "renderers/android/**",
-      "third_party/rc-embedded-player/**",
-      "third_party/rc-embedded-player-jvm/**",
       "data/layoutinspector/**",
       "data/render/**"
     ],
     "rc_player_tests": [
-      "rc-player/**",
-      "third_party/remote-compose-player/**",
       "scripts/design-artifacts/rc-compare*",
       "scripts/design-artifacts/rc-chromium*",
       "scripts/design-artifacts/rc-cmp-wasm-*",
       "scripts/design-artifacts/rc-clock*",
       "scripts/design-artifacts/rc-settle*",
-      ".github/workflows/design-artifacts-reusable.yml",
-      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/**",
-      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js"
+      ".github/workflows/design-artifacts-reusable.yml"
     ],
     "module_unit_tests": [
       "api/**",
@@ -60,8 +54,7 @@
       "mcp/**",
       "render-session/**",
       "renderers/**",
-      "runtimes/**",
-      "third_party/**"
+      "runtimes/**"
     ],
     "functional_tests": [
       "gradle-plugin/**",
@@ -114,7 +107,6 @@
     "design_artifacts": [
       "design-map/**",
       "scripts/design-artifacts/**",
-      "third_party/remote-compose-player/dist/**",
       ".github/actions/lib/**"
     ]
   }
