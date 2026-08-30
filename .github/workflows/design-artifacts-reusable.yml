@@ -1261,13 +1261,36 @@ jobs:
             exit 1
           fi
           compose-preview list --json > "$GITHUB_WORKSPACE/discovered-previews.json"
+          # An import renders composables only, so the synthetic activity / app-tour previews are
+          # excluded at render time. A module holding NOTHING else would then have its entire set
+          # excluded, and `excludePreviewIds` throws rather than render nothing — sinking the whole
+          # sweep over a module nobody wanted. That shape is the common one, not a corner: an
+          # Android application module with activities but no authored @Preview is what you get
+          # whenever the previews live in feature or design modules.
+          #
+          # So such a module must never reach the render list. Done by thinning the JSON here
+          # rather than by teaching preview-modules.mjs a flag, because THIS FILE reaches external
+          # callers immediately while `scripts/` does not: an external caller runs the export driver
+          # at the pinned commit (see .github/design-artifacts-driver-pin.txt), so a new script
+          # option would not exist for it and Node's strict parseArgs would abort the run on the
+          # unknown argument. Filtering the input keeps the pinned script's contract untouched, and
+          # keeps `--sources-output` in lockstep for free — it is derived from the same records.
+          modules_input="$GITHUB_WORKSPACE/discovered-previews.json"
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            jq '.previews |= map(select((.id // "") | (startswith("activity__") or startswith("apptour__")) | not))' \
+              "$GITHUB_WORKSPACE/discovered-previews.json" \
+              > "$GITHUB_WORKSPACE/discovered-previews-authored.json"
+            modules_input="$GITHUB_WORKSPACE/discovered-previews-authored.json"
+            echo "Import: $(jq '.previews | length' "$modules_input") authored preview(s) of" \
+              "$(jq '.previews | length' "$GITHUB_WORKSPACE/discovered-previews.json") discovered;" \
+              "activity/app-tour previews do not select a module."
+          fi
           preferred="$(node -e 'const fs=require("fs"); try { const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(s.module ?? ""); } catch {}' "$GITHUB_WORKSPACE/$SPEC")"
           preferred_args=(); if [ -n "$preferred" ]; then preferred_args=(--preferred "$preferred"); fi
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/preview-modules.mjs" \
-            --input "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --input "$modules_input" \
             --output "$GITHUB_WORKSPACE/preview-modules.txt" \
             --sources-output "$GITHUB_WORKSPACE/preview-module-sources.txt" \
-            ${IMPORT_EXCLUDE_PREVIEW_IDS:+--ignore-id-prefix activity__,apptour__} \
             "${preferred_args[@]}"
           echo "Publishing $(wc -l < "$GITHUB_WORKSPACE/preview-modules.txt" | tr -d ' ') preview-enabled module(s):"
           sed 's/^/  /' "$GITHUB_WORKSPACE/preview-modules.txt"
