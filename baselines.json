@@ -15,14 +15,6 @@
     "sha256": "e0572c5f61d0695a0286ab870b4a9f9b935fc43661157048dbca3d89da3b4475",
     "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
   },
-  "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Large Round 1.24f": {
-    "captureLabel": "",
-    "functionName": "alarmPreview",
-    "module": "app",
-    "renderBasename": "alarmPreview_Large_Round_1_24f-0e00bbe4.png",
-    "sha256": "068b679c2a16ec4c6b38e6f9c892f0045a8bc4df9beb802218c413254ceaecb2",
-    "sourceFile": "src/debug/java/com/example/wear/tiles/golden/Alarm.kt"
-  },
   "app/com.example.wear.tiles.golden.AlarmKt.alarmPreview_Small Round 0.94f": {
     "captureLabel": "",
     "functionName": "alarmPreview",
