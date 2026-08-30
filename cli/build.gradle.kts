@@ -248,18 +248,37 @@ dependencies {
   // preparation item 7. `api` for source-compat with the existing in-package call sites.
   api(project(":bundle-coordinates"))
 
-  // The preview server, now published from yschimke/compose-preview-server (#4732). This module is
-  // a consumer: `ServeCommand.kt` drives `ServeRunner`, and `bundle render` / `history manifest` /
-  // `render matrix` reach the render-host and history types the server still declares.
+  // The render host, the bundle daemon and the git-backed preview history — what the OFFLINE
+  // commands actually use. Split out of the server in compose-preview-server#38 (this repository's
+  // #4832) and first published in 2.2.0.
   //
-  // `api` for source-compat, unchanged from when this was `project(":cli:serve")`: those call sites
-  // reference the types in-package (`ee.schimke.composeai.cli.serve`), which the published artifact
-  // keeps. Eleven main-source symbols cross, and ten of them (`ServeRenderHost`, `RenderOutcome`,
-  // `SvgOutcome`, `RenderFailureFrame`, `ServeBundleDaemon`, `PreviewHistory`,
-  // `PreviewHistoryManifest`, plus `ServeBuildHost` / `ServeCommandOptions` / `ServeDiscovery`)
-  // contain no Ktor at all — they are render-host and history plumbing filed under the serve
-  // package, not server code. Moving those down into a shared module so the CLI stops linking a web
-  // server to render a bundle offline is the follow-up, not part of this swap.
+  // Eight of the twelve serve-package symbols this module's main sources reference live here:
+  // `ServeRenderHost`, `ServeBundleDaemon`, `RenderOutcome`, `SvgOutcome`, `RenderFailureFrame`,
+  // `PreviewHistory`, `PreviewHistoryManifest` and `ServeParameterRows` — `bundle render`,
+  // `history manifest`, `render matrix` and the missing-render report. None of them opens a socket.
+  //
+  // Named here even though `compose-preview-serve` below would drag it in transitively anyway. The
+  // point is that the dependency is REAL and direct: when `serve` eventually stops being a CLI
+  // command (see below), these commands keep compiling and nobody has to work out what they were
+  // depending on through the server.
+  //
+  // `api`, like the server dependency below and for the same reason: the call sites reference these
+  // types in-package (`ee.schimke.composeai.cli.serve`), which the published artifact keeps.
+  api(libs.composeai.preview.render.host)
+
+  // The preview server, published from yschimke/compose-preview-server (#4732).
+  //
+  // Down to FOUR main-source symbols since 2.2.0 — `ServeRunner`, `ServeCommandOptions`,
+  // `ServeDiscovery`, `ServeBuildHost` — and all four are reached from one file, `ServeCommand.kt`,
+  // which backs `compose-preview serve` and its `browse` front-end. That is the whole of what this
+  // module still needs a web server for.
+  //
+  // So the Ktor floor `bundle render` used to carry is NOT gone yet, and this bump does not remove
+  // it: `serve` is still a CLI command, so `ktor-server-*`, `jmdns` and `kotlin-reflect` are still
+  // on the distribution's classpath. What changed is that they are now attributable to one command
+  // instead of being load-bearing for four. Dropping this dependency means deciding where the
+  // `serve` command surface lives (#4832's "Also decide", and compose-preview-server#9) — a product
+  // question, not a build one, and deliberately not answered here.
   //
   // The server's POM depends back on this repository's 1.53.0 contracts. Gradle resolves each of
   // those to the workspace project of the same coordinates (`ee.schimke.composeai:daemon-core` ->
@@ -389,28 +408,28 @@ dependencies {
   // classpath transitively via `common:io`; the fake ships separately.
   testImplementation(libs.okio.fakefilesystem)
 
-  // `FakeRenderSession`, from the server's own published test fixtures. `BundleRenderKnobTest`
-  // drives `bundle render --knob` against a fake render session rather than spawning a daemon; the
-  // fixture lives with the server because that is what defines it, and the fixture variant keeps it
-  // off both modules' runtime classpaths.
+  // `FakeRenderSession`. `BundleRenderKnobTest` drives `bundle render --knob` against a fake render
+  // session rather than spawning a daemon; the fixture lives with `ServeRenderHost`, which is what
+  // it fakes, and the fixture variant keeps it off both modules' runtime classpaths.
   //
-  // Requested by explicit capability rather than `testFixtures(...)`, which does not resolve
-  // against 2.0.0 as published. `java-test-fixtures` derives the fixture capability from the
-  // *Gradle project* name, and the server is `:server` there while it publishes as
-  // `compose-preview-serve` — so the variant advertises `ee.schimke.composeai:server-test-fixtures`
-  // and the `<artifactId>-test-fixtures` name `testFixtures(...)` looks for matches nothing:
+  // Plain `testFixtures(...)` again, and against `render-host` rather than the server. Both halves
+  // of that changed in 2.2.0: the fixture MOVED with `ServeRenderHost` into
+  // `compose-preview-render-host`
+  // (compose-preview-server#38), and that module declares the conventional
+  // `<artifactId>-test-fixtures` capability from its first release.
+  //
+  // What this replaces is a workaround, now retired. `java-test-fixtures` derives the capability
+  // from the *Gradle project* name, and the server is `:server` upstream while it publishes as
+  // `compose-preview-serve`, so 2.0.0 advertised `ee.schimke.composeai:server-test-fixtures` and
+  // `testFixtures(...)` matched nothing:
   //
   //     Unable to find a variant of ee.schimke.composeai:compose-preview-serve:2.0.0 with the
   //     requested capability: feature 'test-fixtures'
   //
-  // The same shape as the `daemon-core` substitution above — a publication artifactId that its
-  // Gradle identity does not follow. The fix belongs upstream (a `capability(...)` on the fixtures
-  // variant, or renaming the project); until it ships, naming the capability the artifact actually
-  // carries is the honest way to consume it, and it keeps working after the upstream fix adds the
-  // conventional name alongside.
-  testImplementation(libs.composeai.preview.serve) {
-    capabilities { requireCapability("ee.schimke.composeai:server-test-fixtures") }
-  }
+  // We consumed it by naming that capability explicitly. Upstream has since fixed the server's
+  // spelling too (keeping the legacy name alongside, so the workaround would still resolve), but
+  // there is no reason to keep it: the fixture is not in that artifact any more.
+  testImplementation(testFixtures(libs.composeai.preview.render.host))
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
   // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
