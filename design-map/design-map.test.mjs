@@ -933,6 +933,28 @@ test("a malformed breakpointKit entry is reported, not silently ignored", () => 
   ]);
 });
 
+test("a typo after the matching entry is still reported, and the match still stands", () => {
+  // The report must not depend on where in the list the typo sits. Returning at the matching entry
+  // left a trailing malformed one unread — and on a component with only ONE non-base breakpoint,
+  // which is the motivating Picker case, no other capture re-reads the list to catch it either. So
+  // the typo was permanently silent, which is the exact failure the diagnostic exists to prevent.
+  const { variants, diagnostics } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, {
+      reference: ref("1:2"),
+      breakpointKit: ["225=Larger Screen (BP)=Yes", "24O=Larger Screen (BP)=Yes"],
+    }),
+  ]);
+  assert.deepEqual(
+    diagnostics.invalidBreakpointKit.map((e) => e.entry),
+    ["24O=Larger Screen (BP)=Yes"],
+  );
+  // The valid mapping ahead of it is unaffected: first match still wins.
+  assert.deepEqual(variants.components[0].renders.find((r) => r.name === "225dp").seeds, [
+    { key: "breakpoint", raw: "225", kitAxis: "Larger Screen (BP)", kitValue: "Yes" },
+  ]);
+});
+
 test("a well-formed entry for another size is not a fault", () => {
   // One declaration serves every size, so it is re-read at each non-base capture. A 240dp capture
   // reading a 225dp declaration is the ordinary case, not a typo.

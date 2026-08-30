@@ -521,8 +521,18 @@ export function declarationMisses(preview) {
  * "Malformed" is only about the entry's *shape*. An entry that is well-formed but names a width
  * this particular capture is not — the common case, since one declaration serves every size — is
  * not a fault and is not reported.
+ *
+ * Every entry is checked, including those after the one that matches: the report must not depend on
+ * where in the list the typo happens to sit. The first matching entry still wins.
  */
 export function breakpointKitNames(entries, widthDp, malformed = []) {
+  // Every entry is inspected before the match is returned, rather than returning at the one that
+  // matches. Returning early made the report ORDER-DEPENDENT: a typo sitting after the matching
+  // entry was never looked at, so it produced no diagnostic on this capture — and on a component
+  // with only ONE non-base breakpoint, which is the motivating Picker case, no other capture
+  // re-reads the list to catch it either. That is exactly the symptomless degradation the
+  // diagnostic exists to prevent. First match still wins.
+  let match = null;
   for (const entry of entries ?? []) {
     if (typeof entry !== "string") {
       malformed.push({ entry: String(entry), reason: "not a string" });
@@ -548,9 +558,9 @@ export function breakpointKitNames(entries, widthDp, malformed = []) {
     }
     // Well-formed but for another size: not a fault, and the overwhelmingly common case.
     if (width !== widthDp) continue;
-    return { kitAxis, kitValue };
+    match ??= { kitAxis, kitValue };
   }
-  return null;
+  return match;
 }
 
 export function variantRendersByComponent(

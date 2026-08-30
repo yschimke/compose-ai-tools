@@ -1123,6 +1123,39 @@ preview server already disambiguates a *colliding* card label on its own
 (`Edgebutton · Small Round`), so the fan-out is for when you want authored ids and
 captions per breakpoint, not merely readable labels.
 
+#### Naming what a folded breakpoint means to the kit (`breakpointKit`)
+
+`perBreakpoint` splits the fan-out into a card per size. The default folds it: every
+render sits on one component, and each non-base size is published as a cell seeded
+with the width it was drawn at — `breakpoint=225`.
+
+That seed is a fact about the Compose render, not a value any kit vocabulary contains,
+so the cell resolves against nothing. For most kits that is the right answer: they draw
+every screen cell at one size and have no size axis at all, and reporting those captures
+as renders with no kit counterpart is honest. Where a kit *does* publish screen size as a
+variant property, the component says which one:
+
+```kotlin
+@CatalogComponent(id = "Picker", breakpointKit = ["225=Larger Screen (BP)=Yes"])
+```
+
+The 225dp cell then carries `kitAxis`/`kitValue` alongside its width and pairs with the
+kit node the picture was always there for. It sits on the component rather than in a
+projector flag because it is a property of one component's kit set, not of the catalog —
+and on the *component* rather than the cell because a breakpoint capture is the one kind
+of cell that cannot carry `@OverrideVariant(kitAxis = …)`: it is not an annotation at
+all, just the same composable drawn wider by a multipreview.
+
+One declaration serves every size, so an entry naming a width this capture is not is the
+ordinary case and is silent. A **malformed** entry falls back to the bare seed — the same
+bytes as declaring nothing — and is reported as `diagnostics.invalidBreakpointKit`, since
+otherwise a typo has no symptom beyond a kit cell that never pairs. The base breakpoint
+still carries the component's matrix, and an `@OverrideVariant` cell of a non-base
+breakpoint stays skipped: the product of two axes would multiply the sheet by every size.
+
+Details of the projection, including how the seeds reach a resolver:
+[`design-map/README.md`](../../design-map/README.md).
+
 ### The render timeout scales with the sheet, not the job
 
 `bundle pack`'s own `--timeout` is separate from the job's `timeout-minutes`, and it is the one a
