@@ -32,6 +32,13 @@ class ServeSpecLaneParallelSourceTest {
   private val siteHost = "m3.example.test"
   private val token = "t0ken"
 
+  private companion object {
+    /** One kit file, two sheets — which is the premise the cell key rests on. */
+    const val KIT = "B24oss2tTeXAFykyeyusz0"
+    const val DEFAULT_CELL = "10:1"
+    const val DISABLED_CELL = "10:2"
+  }
+
   private fun png(): ByteArray =
     ByteArrayOutputStream()
       .also { ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "png", it) }
@@ -158,6 +165,158 @@ class ServeSpecLaneParallelSourceTest {
     try {
       val (_, html) = get(server, "/compose-m3/p/button-filled")
       assertEquals("/wear-m3/render/chip-filled.png", parallelSrc(html))
+    } finally {
+      server.stop()
+    }
+  }
+
+  /**
+   * A catalog whose component draws SEVERAL kit cells: one preview per cell, each naming the kit
+   * node it reproduces. [cells] is `previewId to figmaNode`.
+   *
+   * A null node still emits a reference, just not a Figma-backed one — a checked-in PNG, which is
+   * what a catalog comparing against a hand-drawn mock has. It has to carry SOMETHING: the spec
+   * lane only exists for a preview with a reference, so a preview with none never reaches the
+   * pairing at all and could not exercise its fallback.
+   */
+  private fun cellCatalog(
+    label: String,
+    componentId: String,
+    cells: List<Pair<String, String?>>,
+    compareWith: String? = null,
+    parallel: String? = null,
+  ): ServeBundleHost {
+    val dir = Files.createTempDirectory("cells-$label").toFile().also { it.deleteOnExit() }
+    File(dir, "index.html").writeText("<html></html>")
+    File(dir, "previews").mkdirs()
+    File(dir, ServeDesignReferenceStore.DIRECTORY).mkdirs()
+    val refs = mutableListOf<String>()
+    for ((previewId, node) in cells) {
+      File(dir, "previews/$previewId.png").writeBytes(png())
+      File(dir, "${ServeDesignReferenceStore.DIRECTORY}/$previewId-ref.png").writeBytes(png())
+      val source =
+        if (node == null) """{"provider":"png"}"""
+        else """{"provider":"figma","uri":"figma:$KIT/$node"}"""
+      refs +=
+        """
+        {"id":"$previewId-ref","previewId":"$previewId","label":"$previewId",
+         "source":$source,
+         "raster":{"path":"references/$previewId-ref.png"}}
+        """
+          .trimIndent()
+    }
+    File(dir, "previews/variants.json")
+      .writeText(
+        cells.joinToString(",", "{", "}") { """"${it.first}":{"componentId":"$componentId"}""" }
+      )
+    File(dir, "${ServeDesignReferenceStore.DIRECTORY}/${ServeDesignReferenceStore.INDEX_FILE}")
+      .writeText(
+        """{"schema":"${DesignReferenceManifest.SCHEMA}","references":[${refs.joinToString(",")}]}"""
+      )
+    return ServeBundleHost(
+      dir,
+      label = label,
+      title = label,
+      compareWithSystem = compareWith,
+      parallelByComponentId = parallel?.let { mapOf(componentId to it) } ?: emptyMap(),
+    )
+  }
+
+  /**
+   * Both sheets draw the same component's cells, and the sibling lists its DEFAULT first — which is
+   * what the pairing used to take for every cell.
+   */
+  private fun cellServer(): ServeHttpServer {
+    val registry = ServeSessionRegistry(open = { null })
+    registry.register(
+      "compose-m3",
+      host =
+        cellCatalog(
+          "compose-m3",
+          componentId = "Button/Filled",
+          // `no-cell` carries a PNG reference rather than a Figma one: the fallback case, kept in
+          // the same
+          // fixture so both paths are proved against one sibling rather than two differently-built
+          // ones.
+          cells =
+            listOf(
+              "button-filled" to DEFAULT_CELL,
+              "button-disabled" to DISABLED_CELL,
+              "button-no-cell" to null,
+            ),
+          compareWith = "wear-m3",
+          parallel = "Button/Filled",
+        ),
+      pinned = true,
+    )
+    registry.register(
+      "wear-m3",
+      host =
+        cellCatalog(
+          "wear-m3",
+          componentId = "Button/Filled",
+          cells = listOf("chip-filled" to DEFAULT_CELL, "chip-disabled" to DISABLED_CELL),
+        ),
+      pinned = true,
+    )
+    return ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = token,
+        sessions = registry,
+        defaultSessionId = "compose-m3",
+        isPublic = true,
+        catalogSessions = listOf("compose-m3", "wear-m3"),
+      )
+      .also { it.start() }
+  }
+
+  @Test
+  fun `a variant cell pairs with the same kit cell, not the sibling's canonical sticker`() {
+    val server = cellServer()
+    try {
+      // The default cell pairs with the default cell — true before this change too, because the
+      // sibling happens to list it first.
+      val (_, base) = get(server, "/compose-m3/p/button-filled")
+      assertEquals("/wear-m3/render/chip-filled.png", parallelSrc(base))
+
+      // THE REGRESSION THIS GUARDS. `Disabled=Yes` used to be compared against the sibling's
+      // DEFAULT render, so every disabled cell reported a difference that was really the difference
+      // between an enabled button and a disabled one.
+      val (_, disabled) = get(server, "/compose-m3/p/button-disabled")
+      assertEquals("/wear-m3/render/chip-disabled.png", parallelSrc(disabled))
+      assertTrue(
+        disabled.contains("Paired on the design-kit cell"),
+        "a cell match says so in its provenance: $disabled",
+      )
+    } finally {
+      server.stop()
+    }
+  }
+
+  @Test
+  fun `a preview naming no kit cell still pairs, and says the pairing is weaker`() {
+    val server = cellServer()
+    try {
+      val (code, html) = get(server, "/compose-m3/p/button-no-cell")
+      assertEquals(200, code)
+      // Still offered — the canonical sticker is the floor, so nothing that paired before stops.
+      val src = parallelSrc(html)
+      assertTrue(src != null && src.startsWith("/wear-m3/render/"), "still pairs: $html")
+      // WHICH sibling preview is deliberately not asserted. The fallback takes the manifest's
+      // first,
+      // and the manifest's order is the producer's — here it happens to be alphabetical, which puts
+      // `chip-disabled` ahead of `chip-filled` and makes the "canonical sticker" the disabled cell.
+      // Pinning that would pin an accident of naming, and it is exactly the fragility the cell key
+      // exists to route around: the fallback is a floor to keep old pairings working, not a claim
+      // about which cell you are looking at.
+      //
+      // Which is why the only thing worth asserting is that it does NOT dress itself up as one.
+      assertTrue(
+        html.contains("Paired at component level"),
+        "the fallback declares itself: $html",
+      )
+      assertFalse(html.contains("Paired on the design-kit cell"))
     } finally {
       server.stop()
     }

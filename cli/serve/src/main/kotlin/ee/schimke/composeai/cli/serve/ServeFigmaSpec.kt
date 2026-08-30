@@ -63,6 +63,33 @@ internal object ServeFigmaSpec {
   }
 
   /**
+   * The **kit cell** [reference] names — `<fileKey>/<nodeId>` — or null when it is not a Figma
+   * reference or its handle does not parse.
+   *
+   * Not a link: an identity. Two catalogs reproducing one design kit both point their previews at
+   * that kit's nodes, so this is the one key that means the same thing on both sides without either
+   * catalog knowing how the other names its previews or its components. It is what lets a cell on
+   * one sheet find the SAME cell on the other ([ServeHttpServer.parallelSpecSource]) rather than
+   * whichever preview of the counterpart component the manifest happens to list first.
+   *
+   * Validated exactly as [of] validates it, and for the same reason — a catalog is third-party data
+   * — so a malformed handle yields no key and therefore no pairing, rather than a key that matches
+   * something by accident. The node id is normalised to the `:` form the design map and the API
+   * use, so a producer emitting the `-` URL form still pairs with one emitting `:`.
+   */
+  fun kitCell(reference: DesignReference): String? {
+    val source = reference.source
+    if (!source.provider.trim().equals("figma", ignoreCase = true)) return null
+    val (key, node) = fileKeyAndNode(source) ?: return null
+    if (!FILE_KEY.matches(key) || !NODE_ID.matches(node)) return null
+    return "$key/${node.replace('-', ':')}"
+  }
+
+  /** Every distinct kit cell across [references]; empty when none is Figma-backed. */
+  fun kitCells(references: List<DesignReference>): Set<String> =
+    references.mapNotNullTo(mutableSetOf()) { kitCell(it) }
+
+  /**
    * A deep link to one node of one file, or null when either part is shaped wrong.
    *
    * The same literal-origin reassembly as [of], exposed for the callers that already hold the pair

@@ -4491,6 +4491,14 @@ class ServeHttpServer(
    *    the spec, not a link we can offer);
    * 5. the sibling has a preview for that component id.
    *
+   * Step 5 then picks WHICH of them, and that is the cell question rather than the component one.
+   * Both sheets reproduce one design kit, so a preview's kit node is a key that means the same on
+   * both sides; matching it pairs `Disabled=Yes` with `Disabled=Yes` instead of with whichever
+   * preview of the counterpart component the sibling's manifest lists first. Where no cell matches
+   * — the preview names no node, the sibling publishes no references, or that sheet genuinely does
+   * not draw the cell — the canonical sticker is still offered, and the provenance says which of
+   * the two pairings produced the panel.
+   *
    * [ServeSessionRegistry.peekHost], never `lease`: this is a metadata read while building a page,
    * and standing a suspended sibling's daemon up to decide whether to draw a button would be a
    * daemon per page view. A suspended sibling therefore offers no lane — fail-soft, like the rest
@@ -4510,11 +4518,30 @@ class ServeHttpServer(
     val componentId = preview.componentId?.takeIf { it.isNotBlank() } ?: return null
     val parallelId = bundle.parallelByComponentId[componentId] ?: return null
     val siblingHost = sessions.peekHost(siblingSystem) ?: return null
-    // The sibling's OWN preview for that component. First match, like the design-reference lane
-    // above: a component with several previews has one canonical sticker and the manifest's order
-    // is the producer's.
-    val siblingPreview =
-      siblingHost.previews.firstOrNull { it.componentId == parallelId } ?: return null
+    // The sibling's OWN previews for that component — every one of them, because a component that
+    // draws a kit set exhaustively has one preview per CELL and they are all real comparisons.
+    val siblingPreviews = siblingHost.previews.filter { it.componentId == parallelId }
+    if (siblingPreviews.isEmpty()) return null
+    // MATCH THE CELL, not the component. Both sheets point their previews at the same design kit,
+    // so the kit node is the one key that means the same thing on both sides — neither catalog has
+    // to name its previews or its variants the way the other does, which is what makes this survive
+    // the renames that broke id-matching (`iconbutton-filled` against `button-icon-filled`, and a
+    // breakpoint suffix on one side only).
+    //
+    // Without it this took the first preview listed for the component, so `Disabled=Yes` on one
+    // sheet was compared against the other sheet's DEFAULT render while both sheets drew the
+    // disabled cell — a difference reported on every variant that is really a difference between
+    // two different cells. `@CatalogVariant.parallel` documents the opposite ("a variant is
+    // compared in its own right, not through its parent"), and this is that promise kept.
+    val cells = ServeFigmaSpec.kitCells(host.designReferencesFor(preview.id))
+    val cellMatch = siblingPreviews.firstOrNull { candidate ->
+      cells.isNotEmpty() &&
+        ServeFigmaSpec.kitCells(siblingHost.designReferencesFor(candidate.id)).any { it in cells }
+    }
+    // The canonical sticker stays the FLOOR, so nothing that paired before stops pairing: a preview
+    // naming no kit node, a sibling that publishes no references at all, and a cell the other sheet
+    // genuinely does not draw all land here and get what they got before.
+    val siblingPreview = cellMatch ?: siblingPreviews.first()
     val siblingBundle = catalogBundleHost(siblingHost)
     val siblingLabel =
       siblingBundle?.title?.takeIf { it.isNotBlank() }
@@ -4543,9 +4570,21 @@ class ServeHttpServer(
       // catalog's RENDER, produced under its own theme, knobs and overrides rather than the ones
       // that produced the render beside it. Saying so is the difference between a comparison and an
       // implied equivalence.
+      //
+      // And it now says WHICH pairing you are looking at, because the two are not equally strong. A
+      // cell match is the same kit node on both sheets and a difference in it is a real finding;
+      // the
+      // fallback is the counterpart component's canonical sticker, which for a variant cell is very
+      // likely a different cell — so a difference there may be nothing but that. Reporting both
+      // under one sentence would make the weaker pairing read as the stronger one, which is the
+      // failure this whole change exists to remove rather than relocate.
       provenance =
         "$siblingLabel's own render of ${siblingPreview.componentId ?: parallelId}, " +
-          "under that catalog's theme and knobs — not this page's.",
+          "under that catalog's theme and knobs — not this page's. " +
+          if (cellMatch != null) "Paired on the design-kit cell both sheets name."
+          else
+            "Paired at component level: that catalog's canonical sticker, which may draw a " +
+              "different cell of this component than the render beside it.",
     )
   }
 
