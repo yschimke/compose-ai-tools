@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.56.0](https://github.com/yschimke/compose-ai-tools/compare/v1.55.0...v1.56.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** consume compose-preview-render-host for the offline commands ([#4861](https://github.com/yschimke/compose-ai-tools/issues/4861)) ([050b495](https://github.com/yschimke/compose-ai-tools/commit/050b4959f6c01c526353851532c470673e5b0a6c))
+
+
+### Bug Fixes
+
+* carry breakpointKit through the published manifest reader, and correct its contract ([#4851](https://github.com/yschimke/compose-ai-tools/issues/4851)) ([5843959](https://github.com/yschimke/compose-ai-tools/commit/584395975d90aac8e5b79679120c11597e9a23f2))
+* **ci:** an import renders composables, not the third-party app's activities ([#4862](https://github.com/yschimke/compose-ai-tools/issues/4862)) ([ce62c4a](https://github.com/yschimke/compose-ai-tools/commit/ce62c4a1c0a28dcdcf26fab5ac5b1a793a605742))
+* **ci:** pin download-artifact to a SHA that exists ([#4865](https://github.com/yschimke/compose-ai-tools/issues/4865)) ([9878e11](https://github.com/yschimke/compose-ai-tools/commit/9878e117818328ef006961aed1ca40fdbf6fdda8))
+* **ci:** publish without checking the calling repository out ([#4859](https://github.com/yschimke/compose-ai-tools/issues/4859)) ([c18c387](https://github.com/yschimke/compose-ai-tools/commit/c18c38701264475b464c1844e5856179bbafd974))
+* **ci:** surface the failing render's test results instead of losing them with the runner ([#4860](https://github.com/yschimke/compose-ai-tools/issues/4860)) ([fc0fef5](https://github.com/yschimke/compose-ai-tools/commit/fc0fef5c36320ab4b51b977acf71d6e884251096))
+* **daemon-core:** regenerate the ABI dump after DataExtensionDescriptor moved ([#4854](https://github.com/yschimke/compose-ai-tools/issues/4854)) ([c0c12ae](https://github.com/yschimke/compose-ai-tools/commit/c0c12aeeea5701bc84ea224c0b0b15404ffbaa1e))
+* pin every player coordinate to 1.55.0 and re-arm the staging guards ([#4852](https://github.com/yschimke/compose-ai-tools/issues/4852)) ([4e961c6](https://github.com/yschimke/compose-ai-tools/commit/4e961c6a02dc6acb292d27521b879abbae922675))
+* stop pinning published player coordinates to a version that does not exist ([#4850](https://github.com/yschimke/compose-ai-tools/issues/4850)) ([f14d504](https://github.com/yschimke/compose-ai-tools/commit/f14d5049eb73c885f162395276ae91309038c060))
+
 ## [1.55.0](https://github.com/yschimke/compose-ai-tools/compare/v1.54.0...v1.55.0) (2026-08-30)
 
 
