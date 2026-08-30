@@ -464,10 +464,10 @@ jobs:
           # `docs/design/RC_PLAYER_SWIFT.md` against the assembled framework) went with it, rather
           # than being left in place: it exits 0 when no framework is present, so without the link
           # above it would report green while checking nothing.
-          # `:cli:serve:test`, not `:cli:test` — the serve tests are their own module since
-          # #3824 item 7, and Gradle does not run a dependency project's tests transitively, so
-          # the old target matches nothing and passes vacuously.
-          ./gradlew :cli:serve:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
+          # `ServeWebTest` (which asserted the committed serve-web bundle matched its source) left
+          # with the server in #4732; it now runs in yschimke/compose-preview-server's own CI. What
+          # this job still owns is the vendored Remote Compose player bundle under
+          # `third_party/remote-compose-player/dist/`, exercised by the rc-* browser tests below.
           ./gradlew ktfmtCheck
       - name: Upload player test reports on failure
         if: failure()
@@ -616,7 +616,7 @@ jobs:
           set -euo pipefail
           node rc-compare.mjs \
             --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/cli/serve/src/main/resources/rc-player/bundle.js" \
+            --player "$GITHUB_WORKSPACE/third_party/remote-compose-player/dist/bundle.js" \
             --out "$RUNNER_TEMP/parity-base" \
             --system remote-m3 \
             --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist"
@@ -627,7 +627,7 @@ jobs:
           set -euo pipefail
           node rc-compare.mjs \
             --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/cli/serve/src/main/resources/rc-player/bundle.js" \
+            --player "$GITHUB_WORKSPACE/third_party/remote-compose-player/dist/bundle.js" \
             --out "$RUNNER_TEMP/parity-out" \
             --system remote-m3 \
             --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist"
@@ -1443,7 +1443,7 @@ jobs:
         run: ./.github/scripts/test-refresh-driver-pin.sh
 
   # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
-  # built Remote Compose player bundle (`cli/serve/src/main/resources/rc-player/bundle.js`) in headless
+  # built Remote Compose player bundle (`third_party/remote-compose-player/dist/bundle.js`) in headless
   # Chromium. Those tests existed but nothing ran them, which is how a player bug that renders a
   # whole document as a blank canvas reached a published catalog unnoticed (#2930): the pixels are
   # the only signal — the document parses and warns about nothing — and the weekly render is the
@@ -1562,60 +1562,3 @@ jobs:
             gh pr comment "$PR_NUMBER" --body "$body"
           fi
 
-  serve-web-bundle:
-    name: Serve Web Components
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # `cli/serve-web/`'s bundle is COMMITTED (to `cli/serve/src/main/resources/.../serve/assets/
-      # serve-components.js`) so the Gradle build and the release chain stay node-free. The cost of
-      # a committed artifact is that it goes stale silently: edit a component, forget `npm run
-      # build`, and `:cli:test` and every shipped tarball keep serving the old behaviour while the
-      # source review says otherwise. This job is what makes that impossible — `npm run verify`
-      # typechecks, runs the component tests, rebuilds, and fails if the rebuild differs from what
-      # is committed.
-      #
-      # Step-level path filter rather than a trigger `paths:` filter, and the same fail-open diff as
-      # VS Code Extension Tests above: the job always runs so a required check never sticks pending,
-      # and only the npm steps are conditional.
-      - name: Detect serve-web changes
-        id: changes
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_SHA: ${{ github.sha }}
-        run: |
-          set -uo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" 2>/dev/null); then
-            echo "::warning::Could not diff against base; running Serve Web Components to be safe."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # EVERY committed bundle is in the filter, not just the source, so a hand-edit of a
-          # generated file is caught even when no source changed — that edit is exactly the drift
-          # this guards. The list must stay in step with `tracked` in
-          # cli/serve-web/scripts/check-committed-bundle.mjs: a bundle named there but missing here
-          # is checked on every PR except the one kind that needs it most, and the failure is
-          # silent — the job reports green having skipped its own npm steps.
-          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/(serve-components|serve-chrome|keyboard-navigation|report-capture|format-compare|known-differences|viewer)\.js$'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No cli/serve-web/** changes in this PR — skipping the npm steps (this check still reports)."
-          fi
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        with:
-          node-version: 20
-      - name: Install dependencies
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: cli/serve-web
-        run: npm ci
-      - name: Typecheck, test, and assert the committed bundle is current
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: cli/serve-web
-        run: npm run verify

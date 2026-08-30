@@ -14,15 +14,16 @@
 //
 // `run --patch <file>` swaps in a local `format-compare.js` via request interception, so a scorer
 // change is measured against byte-identical artifacts before and after. That is the whole point:
-// A/B a scoring change without deploying it. The asset is BUILT from `cli/serve-web/src/scorer/`,
-// so run `npm run build` in `cli/serve-web/` first — patching in a stale committed bundle would
+// A/B a scoring change without deploying it. The asset is BUILT from `serve-web/src/scorer/` in
+// yschimke/compose-preview-server, so run `npm run build` in that repository's `serve-web/` first —
+// patching in a stale committed bundle would
 // A/B the change against itself and report no difference.
 //
 // Usage:
 //   node scripts/compare-audit.mjs mirror --all --dir .audit-mirror
 //   node scripts/compare-audit.mjs run --dir .audit-mirror --format reference
 //   node scripts/compare-audit.mjs run --dir .audit-mirror --format reference \
-//     --patch cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js
+//     --patch ../compose-preview-server/server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js
 //
 // Requires `playwright` on NODE_PATH (the preview-server harness dev dependency, or a standalone install).
 

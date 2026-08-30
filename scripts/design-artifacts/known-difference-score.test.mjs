@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -175,14 +175,32 @@ function scoredCount(result, region) {
 // any comparison.
 // -----------------------------------------------------------------------------------------------
 
-test("the offline tuning constants mirror the browser's", () => {
-  // `cli/serve-web/src/scorer/tuning.ts` is what the live scorer imports and where each number's
-  // rationale is written down; `known-difference-tuning.mjs` is what the offline engines read. Every
-  // one of them is load-bearing to the number that comes out, so a value changed on one side and not
-  // the other is a silent divergence between the browser and the offline run — the exact failure
-  // "two engines, one semantics" exists to prevent, and one no fixture can catch, since both engines
-  // would be measured against expectations generated with their own constants.
-  const source = readFileSync(join(HERE, "..", "..", "cli", "serve-web", "src", "scorer", "tuning.ts"), "utf8");
+// The browser half of the mirror moved to yschimke/compose-preview-server with the server (#4732),
+// so this reads an optional sibling checkout (`COMPOSE_PREVIEW_SERVER_ROOT`, else a
+// `compose-preview-server` sibling) and SKIPS with a reason when there is none. Skipping is the
+// honest outcome: the divergence this guards is now cross-repo, and it is residual item 1 on #4732
+// — until a real cross-repo gate exists, a run without the other checkout genuinely cannot answer.
+const TUNING_TS = join(
+  (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||
+    join(HERE, "..", "..", "..", "compose-preview-server"),
+  "serve-web/src/scorer/tuning.ts",
+);
+const NO_SERVER = {
+  skip: existsSync(TUNING_TS)
+    ? false
+    : "no compose-preview-server checkout (set COMPOSE_PREVIEW_SERVER_ROOT) — the browser scorer's " +
+      "tuning.ts lives there since #4732",
+};
+
+test("the offline tuning constants mirror the browser's", NO_SERVER, () => {
+  // `serve-web/src/scorer/tuning.ts` (in the server's repository) is what the live scorer imports
+  // and where each number's rationale is written down; `known-difference-tuning.mjs` is what the
+  // offline engines read. Every one of them is load-bearing to the number that comes out, so a value
+  // changed on one side and not the other is a silent divergence between the browser and the offline
+  // run — the exact failure "two engines, one semantics" exists to prevent, and one no fixture can
+  // catch, since both engines would be measured against expectations generated with their own
+  // constants.
+  const source = readFileSync(TUNING_TS, "utf8");
   const numberOf = (name) => {
     const match = new RegExp(`export const ${name}\\s*=\\s*(-?[0-9.]+)`).exec(source);
     assert.ok(match, `tuning.ts no longer exports ${name}`);

@@ -344,6 +344,18 @@ coil3 = "3.5.0"
 # A point pin, deliberately: a range would let a contract change arrive without a pull request.
 composeai-contracts = "2.1.0"
 
+# The preview server, published from yschimke/compose-preview-server since its 2.0.0 — the
+# extraction #4732 planned. This repository no longer owns `cli/serve`: `compose-preview serve`,
+# `bundle render` and `history manifest` consume the published library, so a server change reaches
+# this build only through a release there. A point pin for the same reason as the contracts above:
+# a range would let the server move under the CLI without a pull request.
+#
+# Note the version lines are independent. `compose-preview-serve` went to 2.0.0 when it left; this
+# repository is still on 1.x. The server's own POM depends back on this repository's 1.53.0
+# contracts, which Gradle resolves to the workspace projects (same coordinates, project wins), so
+# the loop is closed at build time rather than by a version bump on either side.
+composeai-preview-serve = "2.0.0"
+
 [libraries]
 
 # Wire contracts consumed from compose-preview-contracts (see `composeai-contracts`).
@@ -356,6 +368,11 @@ composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layo
 composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core", version.ref = "composeai-contracts" }
 composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core", version.ref = "composeai-contracts" }
 composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref = "composeai-contracts" }
+
+# The preview server (see `composeai-preview-serve`). `-test-fixtures` rides the same coordinates
+# as a Gradle feature variant, so `testFixtures(libs.composeai.preview.serve)` picks it up without
+# a second catalog entry.
+composeai-preview-serve = { module = "ee.schimke.composeai:compose-preview-serve", version.ref = "composeai-preview-serve" }
 # `@com.android.tools.screenshot.PreviewTest` — the marker Google's screenshot plugin requires on a
 # `@Preview` before it will render it (alpha15+ discovers nothing without it). Only the Studio-parity
 # fixtures in `:samples:android-screenshot-test` need it, on the `screenshotTest` classpath; version

@@ -79,7 +79,7 @@ curl -fL "https://raw.githubusercontent.com/yschimke/homeassistant-remotecompose
 npm --prefix scripts/design-artifacts ci
 node scripts/design-artifacts/rc-compare.mjs \
   --bundle /tmp/homeassistant-remotecompose-7d22352e.bundle.png \
-  --player cli/serve/src/main/resources/rc-player/bundle.js \
+  --player third_party/remote-compose-player/dist/bundle.js \
   --out /tmp/rc-lane-ab-stage \
   --stage-embedded /tmp/rc-lane-ab-input
 ```

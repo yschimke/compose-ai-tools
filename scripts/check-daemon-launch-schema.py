@@ -54,7 +54,7 @@ What this checks
 
 Divergences that are correct by design are recorded in
 `daemon-launch-schema-allowlist.json` with a reason, in the debt-register style
-of `serve-seam-allowlist.json`: an entry is a claim someone made on purpose,
+of the retired `serve-seam-allowlist.json`: an entry is a claim someone made on purpose,
 not an exemption to be added when the check goes red.
 
     python3 scripts/check-daemon-launch-schema.py

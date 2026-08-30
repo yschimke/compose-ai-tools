@@ -37,17 +37,32 @@ test("a band is never invented for a number that isn't one", () => {
   assert.equal(matchBand("99"), null);
 });
 
-test("the driver reads the viewer's own comparison asset, not a copy of it", () => {
+// Resolved the same way `design-reference-score.mjs` resolves it: the asset moved to
+// yschimke/compose-preview-server with the server (#4732), so it lives in an optional sibling
+// checkout. Absent ⇒ SKIP with a reason, matching the module's own go-dark behaviour; a silent pass
+// would be the copy-drift this test exists to catch.
+const SERVER_ROOT =
+  (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../compose-preview-server");
+const COMPARE_ASSET = path.join(
+  SERVER_ROOT,
+  "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
+);
+const NO_SERVER = {
+  skip: fs.existsSync(COMPARE_ASSET)
+    ? false
+    : "no compose-preview-server checkout (set COMPOSE_PREVIEW_SERVER_ROOT) — the viewer asset " +
+      "lives there since #4732",
+};
+
+test("the driver reads the viewer's own comparison asset, not a copy of it", NO_SERVER, () => {
   // The single most important property of this module: one scorer, so the number baked onto the
   // chip and the number the lane computes live cannot disagree. If this path ever stops resolving,
   // scoring must go dark rather than fall back to some other implementation of the same question.
-  const asset = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
-  );
+  const asset = COMPARE_ASSET;
   assert.ok(fs.existsSync(asset), `${asset} is where the scorer expects the viewer's asset`);
   const source = fs.readFileSync(asset, "utf8");
-  // The asset is BUILT now (from `cli/serve-web/src/scorer/`), so this is a grep over minified
+  // The asset is BUILT (from the server repo's `serve-web/src/scorer/`), so this is a grep over minified
   // output. Property names survive minification because they are the published contract — that is
   // exactly what is being checked. The build's own type annotation on `window.ComposePreviewCompare`
   // catches a rename inside the repo; this catches the case that annotation cannot see, which is

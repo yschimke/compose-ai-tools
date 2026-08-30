@@ -11,15 +11,39 @@ const PAINT_CONTEXT = path.resolve(
   HERE,
   "../../third_party/remote-compose-player/src/web/CanvasPaintContext.ts",
 );
-/** The served viewer's own copy of the table, and the build wiring that gives it the files. */
-const SERVE_RC_FONTS = path.resolve(
-  HERE,
-  "../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt",
-);
-// The staging task moved to `:cli:serve` with the sources it feeds (#3824 item 7): the
-// faces are the served viewer's, so they are staged into the server module's jar rather
-// than the CLI's.
-const CLI_BUILD = path.resolve(HERE, "../../cli/serve/build.gradle.kts");
+// The served viewer's own copy of the table, and the build wiring that gives it the files. Both
+// left with the server (#4732), so this is now a CROSS-REPO check against an optional sibling
+// checkout of yschimke/compose-preview-server — the same shape `scripts/check-daemon-launch-schema.py`
+// uses for the contracts and VS Code readers, and the residual gate item 1 on that issue asks for.
+//
+// Resolution order: `COMPOSE_PREVIEW_SERVER_ROOT`, else a `compose-preview-server` sibling of this
+// checkout. With neither, the two cross-repo tests SKIP with a notice rather than fail: a developer
+// with one checkout must not be blocked, and a green run that silently checked nothing is worse
+// than a stated skip. CI can set the variable to make them assert.
+function serverRoot() {
+  const explicit = (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim();
+  const marker = "deploy/image/Dockerfile";
+  if (explicit) {
+    if (!fs.existsSync(path.join(explicit, marker))) {
+      throw new Error(`COMPOSE_PREVIEW_SERVER_ROOT=${explicit} does not contain ${marker}`);
+    }
+    return explicit;
+  }
+  const sibling = path.resolve(HERE, "../../../compose-preview-server");
+  return fs.existsSync(path.join(sibling, marker)) ? sibling : null;
+}
+
+const SERVER_ROOT = serverRoot();
+const SERVE_RC_FONTS =
+  SERVER_ROOT &&
+  path.join(SERVER_ROOT, "server/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt");
+const SERVER_BUILD = SERVER_ROOT && path.join(SERVER_ROOT, "server/build.gradle.kts");
+const NO_SERVER = {
+  skip: SERVER_ROOT
+    ? false
+    : "no compose-preview-server checkout (set COMPOSE_PREVIEW_SERVER_ROOT) — the served " +
+      "viewer's face table lives there since #4732",
+};
 
 test("every declared face has a vendored file", () => {
   for (const { file } of FONT_FACES) {
@@ -85,7 +109,7 @@ test("each family's weight ranges are contiguous and cover every usable weight",
 // table (`ServeRcFonts.FACES`, in Kotlin — it has no way to import this module). Two tables, one
 // meaning: if they drift, the offline parity numbers stop describing what a visitor's browser draws,
 // and the disagreement is invisible in both outputs. So parse the Kotlin one and compare.
-test("the serve viewer's face table matches this one", () => {
+test("the serve viewer's face table matches this one", NO_SERVER, () => {
   const src = fs.readFileSync(SERVE_RC_FONTS, "utf8");
   const faces = [...src.matchAll(/Face\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)/g)].map((m) => ({
     family: m[1],
@@ -101,17 +125,18 @@ test("the serve viewer's face table matches this one", () => {
   );
 });
 
-// The faces reach the CLI jar by a `processResources` copy from DEFAULT_FONTS_DIR — the same files
-// this module inlines — rather than a second committed copy. A face the copy doesn't stage is served
-// as nothing at all (`ServeRcFonts.css` omits it) and the lane falls back for that family only, which
-// is the quietest possible half-fix.
-test("the CLI stages every declared face into its jar", () => {
-  const build = fs.readFileSync(CLI_BUILD, "utf8");
+// The faces reach the server jar by a `processResources` copy from DEFAULT_FONTS_DIR — the same
+// files this module inlines — rather than a second committed copy. A face the copy doesn't stage is
+// served as nothing at all (`ServeRcFonts.css` omits it) and the lane falls back for that family
+// only, which is the quietest possible half-fix. The vendored font directory stayed here; the copy
+// that consumes it is in the server's build, which is why this reads across the repository line.
+test("the server stages every declared face into its jar", NO_SERVER, () => {
+  const build = fs.readFileSync(SERVER_BUILD, "utf8");
   const stage = build.slice(build.indexOf("val stageRcFontResources"));
   const block = stage.slice(0, stage.indexOf("sourceSets"));
   assert.ok(block.includes(path.basename(DEFAULT_FONTS_DIR)), "the copy must read the vendored dir");
   for (const { file } of FONT_FACES) {
-    assert.ok(block.includes(`"${file}"`), `${file} is declared but never staged into the CLI jar`);
+    assert.ok(block.includes(`"${file}"`), `${file} is declared but never staged into the server jar`);
   }
 });
 

@@ -37,7 +37,7 @@ stack. The renderer also builds a static `RcComposePlayer` framework with a thin
 
 It predates this CMP/Wasm player and currently supplies the CLI's zero-daemon browser lane. The
 upstream TypeScript library is not published to npm, so its source was vendored and its generated
-IIFE bundle was committed under `cli/serve/src/main/resources/rc-player/`; that keeps Node/npm out of the
+IIFE bundle was committed under `third_party/remote-compose-player/dist/`; that keeps Node/npm out of the
 CLI's pure-JVM Gradle build. It remains during migration because it supports more operations today
 and gives users a fallback. Remove it only after the CMP/Wasm lane passes the replacement gates,
 then remove both the vendored source and committed bundle together. Historical availability is the

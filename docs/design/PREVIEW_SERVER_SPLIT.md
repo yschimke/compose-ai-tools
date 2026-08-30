@@ -8,9 +8,18 @@
 > probe** (`preview-server/`) and the **serve Playwright harness** did their job and were removed
 > from this repository — the probe existed to prove the dependency floor was publishable before the
 > move, and a published 2.0.0 is that proof. The **serve <-> cli seam ratchet**
-> (`scripts/check-serve-seam.py`) is still here and still meaningful, because `cli/serve` has not
-> moved yet: `browse`, `bundle render` and `history manifest` still reach into server types, and
-> untangling those is the remaining work.
+> (`scripts/check-serve-seam.py`) is gone too, along with `cli/serve` and `cli/serve-web`
+> themselves: `:cli` now consumes the published `compose-preview-serve` artifact, and a Maven
+> coordinate is a stronger boundary than a source scanner, so the ratchet had nothing left to
+> measure.
+>
+> Two corrections this document earns, from finishing the job. `browse` no longer touches serve at
+> all — the claim below that it "delegates to `ServeCommand` outright" aged out before the move.
+> And the eleven symbols the seam counted are not eleven server types: **ten of them contain no
+> Ktor**, being the render-host and history plumbing that `bundle render`, `render matrix` and
+> `history manifest` use offline. What the seam measured was a package boundary, not a process
+> boundary. Moving those ten into a shared module is the work that remains, tracked on
+> [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732).
 >
 > Everything below is preserved as written, in the tense it was written in.
 

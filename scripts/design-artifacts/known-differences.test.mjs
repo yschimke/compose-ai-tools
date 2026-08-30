@@ -533,7 +533,7 @@ test("the reader's own refusals reach the result as their proper tokens", () => 
 
 test("a reader that ignores the prefix reaches the same verdict on every case", () => {
   // **The prefix is a resource optimisation, never a verdict.** `{ prefix: N }` is a request, and a
-  // host may not be able to honour it — the browser host in `cli/serve-web/` fetches whole artifacts
+  // host may not be able to honour it — the browser host in the server repository's `serve-web/` fetches whole artifacts
   // and hands them straight over, because `readArtifact` is synchronous and its prefetch cannot know
   // which records will survive the preflight. Left to the reader alone that host would walk a chunk
   // the prefix stops at and reach `decode-failed` where this runner reaches `header-invalid`: one

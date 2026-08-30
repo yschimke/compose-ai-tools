@@ -34,13 +34,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The viewer asset, read from the CLI resources it is served from — NOT a copy. A copy is the
+ * The viewer asset, read from the server resources it is served from — NOT a copy. A copy is the
  * thing this module exists to avoid; if this path ever stops resolving, scoring must go dark
  * rather than fall back to some other implementation of the same question.
+ *
+ * It moved out of this repository with the server (#4732), so the path now resolves into an
+ * optional sibling checkout of yschimke/compose-preview-server (`COMPOSE_PREVIEW_SERVER_ROOT`, else
+ * a `compose-preview-server` sibling). "Go dark" already handles absence: `openScorer` logs
+ * `cannot score references: …` and returns without scoring, which is the stated contract above and
+ * exactly what a missing checkout should produce.
  */
-const COMPARE_ASSET = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
+const SERVER_ROOT = (() => {
+  const explicit = (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim();
+  if (explicit) return explicit;
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../compose-preview-server");
+})();
+const COMPARE_ASSET = path.join(
+  SERVER_ROOT,
+  "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
 );
 
 /**

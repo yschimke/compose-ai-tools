@@ -162,6 +162,34 @@ val composePreviewUsagePsi =
     isCanBeConsumed = false
   }
 
+// Gradle resolves a published `ee.schimke.composeai:<x>` coordinate to the workspace project that
+// publishes it — but it matches on the project's *Gradle* identity (`group:name`), not on the
+// `artifactId` its publication declares. Eight of the nine coordinates the published server pulls
+// back into this build are top-level includes whose project name already equals their artifactId
+// (`:bundle-format` -> `bundle-format`, and so on), so they substitute on their own.
+//
+// `daemon-core` is the one that does not: it is `include(":daemon:core")`, so its Gradle name is
+// `core` and Gradle sees `ee.schimke.composeai:core`, which matches nothing in the server's POM.
+// The
+// result without this rule is both copies on the compile classpath — `project(":daemon:core")` from
+// this file and `ee.schimke.composeai:daemon-core:1.53.0` dragged in by the server — which is a
+// duplicate-class classpath (`composePreview.classpathDuplicates=fail` in gradle.properties exists
+// for exactly this shape) and, worse, silently compiles half the CLI against a released copy of a
+// module the workspace is actively changing.
+//
+// Substituting rather than excluding: an `exclude` would drop the coordinate for `:cli` but leave
+// the server's own resolution unaware that a workspace project should stand in for it. Renaming the
+// project to `daemon-core` in `settings.gradle.kts` would fix it structurally and is the better
+// long-term answer; it moves a path every module and CI path filter names, so it is not part of
+// this swap.
+configurations.configureEach {
+  resolutionStrategy.dependencySubstitution {
+    substitute(module("ee.schimke.composeai:daemon-core"))
+      .using(project(":daemon:core"))
+      .because("published server POM names the artifactId; the project is `:daemon:core` (#4732)")
+  }
+}
+
 dependencies {
   // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
   // `composePreviewBta` configuration above). `kotlin-build-tools-impl` pulls
@@ -220,10 +248,23 @@ dependencies {
   // preparation item 7. `api` for source-compat with the existing in-package call sites.
   api(project(":bundle-coordinates"))
 
-  // The preview server, split out of this module for #3824 preparation item 7. `api` for
-  // source-compat: `ServeCommand.kt` and the bundle/auth commands reference serve types in-package
-  // today, and reducing that surface is the rest of item 7 rather than part of the move.
-  api(project(":cli:serve"))
+  // The preview server, now published from yschimke/compose-preview-server (#4732). This module is
+  // a consumer: `ServeCommand.kt` drives `ServeRunner`, and `bundle render` / `history manifest` /
+  // `render matrix` reach the render-host and history types the server still declares.
+  //
+  // `api` for source-compat, unchanged from when this was `project(":cli:serve")`: those call sites
+  // reference the types in-package (`ee.schimke.composeai.cli.serve`), which the published artifact
+  // keeps. Eleven main-source symbols cross, and ten of them (`ServeRenderHost`, `RenderOutcome`,
+  // `SvgOutcome`, `RenderFailureFrame`, `ServeBundleDaemon`, `PreviewHistory`,
+  // `PreviewHistoryManifest`, plus `ServeBuildHost` / `ServeCommandOptions` / `ServeDiscovery`)
+  // contain no Ktor at all — they are render-host and history plumbing filed under the serve
+  // package, not server code. Moving those down into a shared module so the CLI stops linking a web
+  // server to render a bundle offline is the follow-up, not part of this swap.
+  //
+  // The server's POM depends back on this repository's 1.53.0 contracts. Gradle resolves each of
+  // those to the workspace project of the same coordinates (`ee.schimke.composeai:daemon-core` ->
+  // `project(":daemon:core")`, and so on), so nothing here is built against a stale published copy.
+  api(libs.composeai.preview.serve)
 
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(libs.composeai.common.io)
@@ -348,11 +389,28 @@ dependencies {
   // classpath transitively via `common:io`; the fake ships separately.
   testImplementation(libs.okio.fakefilesystem)
 
-  // `FakeRenderSession`, shared with `:cli:serve`'s own tests. `BundleRenderKnobTest` drives
-  // `bundle render --knob` against a fake render session rather than spawning a daemon; the
-  // fixture lives with the server because that is what defines it, and a fixture configuration
-  // keeps it off both modules' runtime classpaths.
-  testImplementation(testFixtures(project(":cli:serve")))
+  // `FakeRenderSession`, from the server's own published test fixtures. `BundleRenderKnobTest`
+  // drives `bundle render --knob` against a fake render session rather than spawning a daemon; the
+  // fixture lives with the server because that is what defines it, and the fixture variant keeps it
+  // off both modules' runtime classpaths.
+  //
+  // Requested by explicit capability rather than `testFixtures(...)`, which does not resolve
+  // against 2.0.0 as published. `java-test-fixtures` derives the fixture capability from the
+  // *Gradle project* name, and the server is `:server` there while it publishes as
+  // `compose-preview-serve` — so the variant advertises `ee.schimke.composeai:server-test-fixtures`
+  // and the `<artifactId>-test-fixtures` name `testFixtures(...)` looks for matches nothing:
+  //
+  //     Unable to find a variant of ee.schimke.composeai:compose-preview-serve:2.0.0 with the
+  //     requested capability: feature 'test-fixtures'
+  //
+  // The same shape as the `daemon-core` substitution above — a publication artifactId that its
+  // Gradle identity does not follow. The fix belongs upstream (a `capability(...)` on the fixtures
+  // variant, or renaming the project); until it ships, naming the capability the artifact actually
+  // carries is the honest way to consume it, and it keeps working after the upstream fix adds the
+  // conventional name alongside.
+  testImplementation(libs.composeai.preview.serve) {
+    capabilities { requireCapability("ee.schimke.composeai:server-test-fixtures") }
+  }
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
   // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
@@ -613,68 +671,12 @@ tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
 
 tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 
-// The remaining `cli` -> `serve` symbol seam.
-//
-// `:cli:serve:checkServeModuleBoundary` proves the server cannot reach back into the CLI (or a
-// renderer/plugin implementation) through its resolved classpath. The build intentionally permits
-// the other direction, so this symbol ratchet remains for the small public surface the CLI adapter
-// and bundle/history commands consume. It fails when that surface grows or when a removed entry is
-// not pruned from `scripts/serve-seam-allowlist.json`.
-abstract class CheckServeSeam : DefaultTask() {
-  @get:InputFiles
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val serveSources: ConfigurableFileCollection
-
-  @get:InputFile
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val allowlist: RegularFileProperty
-
-  @get:InputFile
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val checker: RegularFileProperty
-
-  /** Nothing to produce — the file just lets Gradle skip the check when nothing moved. */
-  @get:OutputFile abstract val stamp: RegularFileProperty
-
-  @get:Inject abstract val execOps: ExecOperations
-
-  @TaskAction
-  fun checkSeam() {
-    execOps.exec { commandLine("python3", checker.get().asFile.absolutePath) }
-    stamp.get().asFile.writeText("ok\n")
-  }
-}
-
-tasks.register<CheckServeSeam>("checkServeSeam") {
-  description = "Fails if the serve <-> cli symbol surface grows (or its allowlist goes stale)."
-  group = "verification"
-
-  // BOTH trees: `:cli`'s own sources and the extracted server's. The checker reads the serve half
-  // from `cli/serve/src` since #3824 item 7, and declaring only `cli/src` here would leave this
-  // task up-to-date across any change confined to the server — the gate would silently stop
-  // running exactly where the coupling it polices lives.
-  serveSources.from(
-    fileTree(layout.projectDirectory.dir("src")) {
-      include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
-    },
-    fileTree(project(":cli:serve").layout.projectDirectory.dir("src")) {
-      include("*/kotlin/ee/schimke/composeai/cli/**/*.kt")
-    },
-  )
-  allowlist.set(rootProject.layout.projectDirectory.file("scripts/serve-seam-allowlist.json"))
-  checker.set(rootProject.layout.projectDirectory.file("scripts/check-serve-seam.py"))
-  stamp.set(layout.buildDirectory.file("check-serve-seam/ok.txt"))
-}
-
-tasks.named("check") { dependsOn("checkServeSeam") }
-
-// …and the server module's boundary check, which CI would otherwise never run. `:cli:build` (what
-// the Build CLI job invokes) does not execute a dependency project's `check` lifecycle, and the
-// module-test fan-out calls `:cli:serve:test`, not `:cli:serve:check` — so the task that proves
-// nothing forbidden reached the server's classpath was reachable only by someone typing it. A
-// boundary nothing runs is a comment. Verified with `./gradlew :cli:build --dry-run`, which now
-// lists `:cli:serve:checkServeModuleBoundary` and previously did not.
-tasks.named("check") { dependsOn(":cli:serve:checkServeModuleBoundary") }
+// The `cli` -> `serve` seam ratchet and the server's module-boundary check both retired with the
+// extraction (#4732). They existed to keep the coupling measurable while the server was still a
+// module of this build; a published artifact enforces the same thing structurally and in the
+// stronger direction, because nothing in `cli/serve` can reach back into `:cli` from Maven Central.
+// The surviving question — that ten of the eleven crossing symbols are render-host and history
+// plumbing rather than server code — is a design follow-up, not a ratchet this build can express.
 
 // The four representations of `daemon-launch.json`, checked against each other.
 //
@@ -684,10 +686,10 @@ tasks.named("check") { dependsOn(":cli:serve:checkServeModuleBoundary") }
 // a human to keep them in sync — `SubprocessRenderSession.kt`'s "mirrors the gradle plugin's
 // writer" and `McpCommand.kt`'s "Keep in sync — bump together". This is that comment, enforced.
 //
-// It lives on `:cli` for the same reason `checkServeSeam` does: the check spans modules that sit
-// in different builds (the writer is inside the `gradle-plugin` composite) plus a TypeScript file
-// that is in no Gradle build at all, so no single owning module exists. `:cli` runs on every PR,
-// holds one of the four sites itself, and already hosts the sibling repo-wide seam check.
+// It lives on `:cli` because the check spans modules that sit in different builds (the writer is
+// inside the `gradle-plugin` composite) plus a TypeScript file that is in no Gradle build at all,
+// so no single owning module exists. `:cli` runs on every PR and holds one of the four sites
+// itself. (The retired `checkServeSeam` sat here for the same reason.)
 abstract class CheckDaemonLaunchSchema : DefaultTask() {
   /**
    * Every Kotlin/TypeScript source in the repo, not just the seven representations.

@@ -11,8 +11,6 @@
     "contrib/**",
     "renders/**",
     "trust/**",
-    "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
-    "cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/**",
     ".githooks/**",
     ".idea/**",
     ".vscode/**",

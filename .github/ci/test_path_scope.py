@@ -24,7 +24,7 @@ class PathScopeTest(unittest.TestCase):
 
     def test_unions_matching_groups(self):
         self.assertEqual(
-            mod.decide(["cli/src/Main.kt", "cli/serve-web/src/main.ts"], self.config),
+            mod.decide(["cli/src/Main.kt", "third_party/remote-compose-player/src/web/main.ts"], self.config),
             {"jvm": True, "js": True},
         )
 
@@ -56,7 +56,8 @@ class RepositoryConfigsTest(unittest.TestCase):
 
     def test_typescript_only_selects_javascript_codeql(self):
         result = mod.decide(
-            ["cli/serve-web/src/live/framePainter.ts"], self.load("codeql-paths.json")
+            ["third_party/remote-compose-player/src/web/WebFonts.ts"],
+            self.load("codeql-paths.json"),
         )
         self.assertEqual(
             result,
@@ -69,12 +70,16 @@ class RepositoryConfigsTest(unittest.TestCase):
     # the repo's TypeScript and was on every ignorePaths list.
     #
     # It is gone rather than repointed because the extension took its subject with it
-    # (yschimke/compose-preview-vscode). The only TypeScript left here is
-    # `cli/serve-web/**`, which lives *inside* `cli/` and so correctly wakes `build_cli`
-    # and `module_unit_tests`. Repointing the test at it would have asserted the
-    # opposite of the truth and passed only by weakening the claim to nothing.
+    # (yschimke/compose-preview-vscode). `cli/serve-web/**` was the next candidate and was
+    # rejected for living *inside* `cli/`, where it correctly wakes `build_cli` and
+    # `module_unit_tests`; it has since left too, with the server (#4732).
     #
-    # If a TypeScript surface outside the Gradle module tree returns, restore this.
+    # The TypeScript left here is `third_party/remote-compose-player/**`, which IS outside
+    # the Gradle module tree — but it is the source the committed
+    # `third_party/remote-compose-player/dist/bundle.js` is built from, so it deliberately
+    # wakes `rc_player_tests`. That is the behaviour we want, not the one this test asserted.
+    #
+    # If a TypeScript surface that no Gradle group depends on returns, restore this.
 
     def test_driver_pin_bump_runs_only_the_actions_validator(self):
         # The export-driver pin bump is opened unattended after every release and
