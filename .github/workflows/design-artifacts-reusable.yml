@@ -1551,6 +1551,69 @@ jobs:
             "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
+      # A failing render reports only "There were failing tests. See the results at: file:///…",
+      # naming a path inside a runner that is about to be destroyed. The actual reason a preview
+      # would not render — the exception and its stack — is in the JUnit XML at that path, and
+      # without this step it dies with the runner and the failure is undiagnosable from CI.
+      #
+      # That is tolerable for a first-party catalog, whose previews a contributor can run locally.
+      # It is not tolerable for an imported third-party project (`upstream-repository`), where the
+      # render is the ONLY place the build has ever run and there is nothing to reproduce locally
+      # without recreating the whole runner.
+      #
+      # Fail-soft throughout: this is diagnostics for an already-failing job, so it must never be
+      # the thing that decides the job's conclusion, and it must not mask the render's own error.
+      - name: Surface the failing render's test results
+        if: failure()
+        run: |
+          set +e
+          root="${GITHUB_WORKSPACE}/${RENDER_DIR:-.}"
+          # Only the render task's own results: other test tasks in the build are not this failure.
+          mapfile -t xml < <(find "$root" -path '*/build/test-results/composePreviewRender/*.xml' -type f 2>/dev/null)
+          if [ "${#xml[@]}" -eq 0 ]; then
+            echo "No composePreviewRender test results under $root — the render failed before it ran any preview."
+            exit 0
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/render-failure-diagnostics"
+          for f in "${xml[@]}"; do
+            cp "$f" "$GITHUB_WORKSPACE/render-failure-diagnostics/" 2>/dev/null
+          done
+          echo "::group::Failing previews"
+          # Print the <failure>/<error> bodies. Deliberately plain text rather than an XML parser:
+          # this runs in a job that is already failing, so it must not need a tool to be installed.
+          for f in "${xml[@]}"; do
+            echo "--- ${f#"$root"/}"
+            # Name the previews that FAILED and print each one's exception. Attribute order is not
+            # guaranteed, so the name is taken from the <testcase …> tag the failure belongs to
+            # rather than by position, and `classname` is excluded explicitly — a bare `name="`
+            # match picks it up instead and reports every preview as the same class.
+            awk '
+              match($0, /<testcase[^>]*/) {
+                tc = substr($0, RSTART, RLENGTH)
+                name = ""
+                if (match(tc, /(^|[[:space:]])name="[^"]*"/)) {
+                  name = substr(tc, RSTART, RLENGTH)
+                  sub(/^[[:space:]]*name="/, "", name); sub(/"$/, "", name)
+                }
+              }
+              /<(failure|error)/ { printf "FAILED: %s\n", (name == "" ? "(unnamed)" : name); show = 1 }
+              show { print }
+              /<\/(failure|error)>/ { show = 0 }
+            ' "$f" | head -200
+          done
+          echo "::endgroup::"
+          exit 0
+
+      - name: Upload the failing render's test results
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.system }}-render-failure-diagnostics
+          path: render-failure-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+
       # Save the font cache even when a render step FAILED. A cold-cache run that downloaded
       # some faces before a later one failed to resolve must persist what it got, so the
       # rerun self-heals instead of starting cold again — `actions/cache` only saves on job
