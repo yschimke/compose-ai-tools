@@ -551,6 +551,26 @@ jobs:
             "with upload-out: true and publish from a separate job."
           exit 1
 
+      # Sharding an import is refused rather than half-supported. The shard planner partitions
+      # EVERY discovered preview, synthetic activity and app-tour ids included, and writes them into
+      # `shard-plan.json`; the render then drops them by id. The two disagree, and both ways of
+      # disagreeing are bad: a shard handed only synthetic ids excludes its whole set, which
+      # `excludePreviewIds` throws on rather than rendering nothing, and any other shard leaves a
+      # planned preview with no artifact, which `verify-shard-renders.mjs` rejects at merge.
+      #
+      # Teaching the planner the import exclusions would fix it properly. Until then this is a
+      # combination that cannot produce a correct catalog, so it fails fast and says why instead of
+      # failing later somewhere less legible. No import needs it today: `import.yml` renders one
+      # project at the default `render-shards: 1`, and these projects are far too small to shard.
+      - name: Refuse to sharded-render an import
+        if: ${{ inputs.upstream-repository != '' && inputs.render-shards > 1 }}
+        run: |
+          echo "::error::import mode (upstream-repository) cannot be combined with render-shards > 1." \
+            "The shard planner would assign the synthetic activity/app-tour previews that import" \
+            "mode then excludes at render time, so a shard either excludes its entire set or leaves" \
+            "a planned preview unrendered and fails partition verification. Use render-shards: 1."
+          exit 1
+
       # Resolve the upstream ref to ONE immutable commit for the whole run. A branch is a moving
       # target: with render-shards > 1 each shard checks out independently and `generate` again after
       # them, so a push landing mid-run would bake previews from two different revisions into one
@@ -1027,9 +1047,10 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
-          # The shard's own partition, plus the import-wide exclusions. Without the latter the
-          # shard holding an `activity__*` id would launch the imported app — the same failure the
-          # unsharded path guards, reached by the other route.
+          # The shard's own partition, plus the import-wide exclusions. Unreachable today — the
+          # driver refuses import + render-shards > 1, because the planner does not know about
+          # these ids — and kept deliberately so that teaching the planner is the only thing that
+          # combination needs, rather than a second omission to rediscover. Belt to that brace.
           shard_ids=""
           if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
             shard_ids="$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")"
@@ -1246,6 +1267,7 @@ jobs:
             --input "$GITHUB_WORKSPACE/discovered-previews.json" \
             --output "$GITHUB_WORKSPACE/preview-modules.txt" \
             --sources-output "$GITHUB_WORKSPACE/preview-module-sources.txt" \
+            ${IMPORT_EXCLUDE_PREVIEW_IDS:+--ignore-id-prefix activity__,apptour__} \
             "${preferred_args[@]}"
           echo "Publishing $(wc -l < "$GITHUB_WORKSPACE/preview-modules.txt" | tr -d ' ') preview-enabled module(s):"
           sed 's/^/  /' "$GITHUB_WORKSPACE/preview-modules.txt"
@@ -1590,8 +1612,13 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          # An extra module is still the imported project, so the app lanes stay excluded here too.
+          import_exclude=()
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
+          fi
           run compose-preview bundle pack --module "$INPUT_EXTRA_MODULE" --with-semantics --progress \
-            "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
+            "${embed[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
       # A failing render reports only "There were failing tests. See the results at: file:///…",

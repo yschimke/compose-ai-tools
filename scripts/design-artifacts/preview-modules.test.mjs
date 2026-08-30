@@ -63,3 +63,38 @@ test("module sources retain a conventional fallback for pre-field CLI output", (
     ["/workspace/build-root/feature/ui", "/workspace/build-root/app"],
   );
 });
+
+test("a module whose previews are all synthetic drops out when those ids are ignored", () => {
+  // An imported project renders composables only, so the app-launching synthetic previews are
+  // excluded at render time. A module holding nothing else would have its whole set excluded and
+  // throw, sinking the sweep — so it must not reach the render list at all.
+  const response = {
+    previews: [
+      { module: ":app", id: "activity__MainActivity" },
+      { module: ":app", id: "apptour__default" },
+      { module: ":ui", id: "Button_Light" },
+    ],
+  };
+  assert.deepEqual(previewModules(response, null, ["activity__", "apptour__"]), [":ui"]);
+  // First-party runs pass no prefixes and keep the activity-only module: its capture is the point.
+  assert.deepEqual(previewModules(response), [":app", ":ui"]);
+});
+
+test("a module keeps its place when it holds an authored preview alongside synthetic ones", () => {
+  const response = {
+    previews: [
+      { module: ":app", id: "activity__MainActivity" },
+      { module: ":app", id: "PersonView_Light" },
+    ],
+  };
+  assert.deepEqual(previewModules(response, null, ["activity__", "apptour__"]), [":app"]);
+});
+
+test("previews with no id survive an ignore list rather than vanishing", () => {
+  // Defensive: an older CLI's `list --json` may omit `id`. Dropping those would silently thin the
+  // module list, which is the failure mode this whole lane exists to avoid.
+  assert.deepEqual(
+    previewModules({ previews: [{ module: ":ui" }] }, null, ["activity__"]),
+    [":ui"],
+  );
+});
