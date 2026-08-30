@@ -430,6 +430,23 @@ env:
   # `upstream/`, with `working-directory` applied INSIDE it. Computed once here because seven steps
   # ask the same question and answering it seven times is how they drift apart.
   RENDER_DIR: ${{ inputs.upstream-repository != '' && (inputs.working-directory != '' && format('upstream/{0}', inputs.working-directory) || 'upstream') || (inputs.working-directory || '.') }}
+  # An IMPORT renders composables, never the app. Activity and app-tour previews are synthesised
+  # from the merged manifest (`activity__<Activity>`, `apptour__<tour>`) rather than authored, and
+  # rendering one LAUNCHES the app: Robolectric instantiates the manifest `Application` and runs its
+  # `onCreate`, so the project's whole DI graph, and whatever that constructs, executes. For a
+  # first-party catalog that is the point — the launcher activity's capture is the app's hero image.
+  # For a third-party project it runs far more of an unvouched-for build than drawing a composable
+  # does, and it captures the app's own screen rather than the components the catalog exists to show.
+  #
+  # PeopleInSpace is the worked example: both authored @Preview functions rendered clean while the
+  # activity tour died in `initKoin()` with KoinApplicationAlreadyStartedException.
+  #
+  # Empty for a first-party run, so those keep rendering activities exactly as before.
+  #
+  # This is workflow-level, not step-level, because it must reach EVERY render: the primary module,
+  # every later module of a `modules: all` sweep, and each shard of a sharded render. It is
+  # deliberately separate from the per-mode exclusions, which belong to the primary module alone.
+  IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && 'activity__*,apptour__*' || '' }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
@@ -1010,10 +1027,17 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
-          exclude=()
+          # The shard's own partition, plus the import-wide exclusions. Without the latter the
+          # shard holding an `activity__*` id would launch the imported app — the same failure the
+          # unsharded path guards, reached by the other route.
+          shard_ids=""
           if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
-            exclude=(--exclude-preview-id "$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")")
+            shard_ids="$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")"
           fi
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            shard_ids="${shard_ids:+${shard_ids},}${IMPORT_EXCLUDE_PREVIEW_IDS}"
+          fi
+          exclude=(); if [ -n "$shard_ids" ]; then exclude=(--exclude-preview-id "$shard_ids"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
@@ -1431,24 +1455,7 @@ jobs:
           # render and leave that pass at full width, which is half the axis saving. The flag does
           # both — it forwards `-PcomposePreview.idExclude` to the render and skips the same ids in
           # the daemon capture. Empty ⇒ the flag is omitted ⇒ render + capture everything.
-          #
-          # An IMPORT additionally drops the activity and app-tour lanes. Those previews are
-          # synthesised from the merged manifest rather than authored (`activity__<Activity>`,
-          # `apptour__<tour>`), and rendering one LAUNCHES the app: Robolectric instantiates the
-          # manifest `Application` and runs its `onCreate`, so the app's whole DI graph, and
-          # whatever that constructs, executes. For a first-party catalog that is the point — the
-          # launcher activity's capture is the app's hero image. For a third-party project it is
-          # wrong twice over: it runs far more of an unvouched-for build than rendering a
-          # composable does, and it is the app's own screen rather than the components an imported
-          # catalog exists to show.
-          #
-          # It also does not work. PeopleInSpace's `Application.onCreate` calls `initKoin()`, and
-          # the tour died on `KoinApplicationAlreadyStartedException` while BOTH of its authored
-          # @Preview functions rendered clean — an import failing entirely on a lane it never
-          # wanted. `appTourUseConsumerApplication = false` is the wrong lever: it swaps the real
-          # Application for a stub, which just moves the failure into an activity that then has no
-          # Koin at all.
-          EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && format('activity__*,apptour__*{0}{1}', steps.mode-filter.outputs.exclude-ids != '' && ',' || '', steps.mode-filter.outputs.exclude-ids) || steps.mode-filter.outputs.exclude-ids }}
+          EXCLUDE_PREVIEW_IDS: ${{ steps.mode-filter.outputs.exclude-ids }}
           EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
         run: |
           set -euo pipefail
@@ -1461,7 +1468,20 @@ jobs:
             fi
           }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
-          exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
+          # Two scopes, deliberately not one list. IMPORT_EXCLUDE_PREVIEW_IDS is import-wide and
+          # must reach every module; the per-mode ids belong to the PRIMARY module only, for the
+          # same reason its render filter does (see the comment in the loop below). Joined into a
+          # single --exclude-preview-id value rather than passed as a repeated flag, so the
+          # composition is obvious here rather than dependent on how the CLI merges repeats.
+          import_exclude=()
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
+          fi
+          primary_ids="${IMPORT_EXCLUDE_PREVIEW_IDS:-}"
+          if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
+            primary_ids="${primary_ids:+${primary_ids},}${EXCLUDE_PREVIEW_IDS}"
+          fi
+          exclude=(); if [ -n "$primary_ids" ]; then exclude=(--exclude-preview-id "$primary_ids"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           if [ -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
             mkdir -p "$GITHUB_WORKSPACE/module-bundles"
@@ -1477,12 +1497,18 @@ jobs:
               # The authored render filter belongs to the preferred/primary module. Every later
               # module is fallback inventory and must render in full; applying the primary's
               # function names there can fail on no match or silently thin unrelated previews.
+              #
+              # The IMPORT exclusions are the exception, and carry to every module: "render in
+              # full" means every authored preview, not the app-launching synthetic ones. A
+              # `modules: all` import sweeping a project with more than one Android application
+              # module would otherwise launch the app from the second module onwards — the very
+              # failure this guards, reintroduced by the fallback path.
               if [ "$index" -eq 0 ]; then
                 run compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
                   "${embed[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               else
                 run_without_filter compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${embed[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
+                  "${embed[@]}" "${import_exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               fi
               index=$((index + 1))
             done < "$GITHUB_WORKSPACE/preview-modules.txt"
