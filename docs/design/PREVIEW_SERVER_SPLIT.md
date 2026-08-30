@@ -13,12 +13,17 @@
 > coordinate is a stronger boundary than a source scanner, so the ratchet had nothing left to
 > measure.
 >
-> One correction this document earns, from finishing the job. The eleven symbols the seam counted
-> are not eleven server types: **ten of them contain no Ktor**, being the render-host and history
-> plumbing that `bundle render`, `render matrix` and `history manifest` use offline. What the seam
-> measured was a package boundary, not a process boundary. Moving those ten into a shared module is
-> the work that remains, tracked on
-> [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732).
+> One correction this document earns, from finishing the job. The symbols the seam counted are not
+> all server types: most of them contain no Ktor, being the render-host and history plumbing that
+> `bundle render`, `render matrix` and `history manifest` use offline. What the seam measured was a
+> package boundary, not a process boundary.
+>
+> **That has since been acted on.** compose-preview-server 2.2.0 split those into
+> `ee.schimke.composeai:compose-preview-render-host`, and `:cli` depends on it directly. Four
+> symbols still cross into the server proper, all from `ServeCommand.kt`, so the Ktor floor remains
+> until the `serve` command surface itself is decided —
+> [#4832](https://github.com/yschimke/compose-ai-tools/issues/4832) and
+> [compose-preview-server#9](https://github.com/yschimke/compose-preview-server/issues/9).
 >
 > An earlier revision of this note claimed a second correction — that `browse` no longer touches
 > serve. That was wrong, and the sentence it "corrected" was right: `BrowseCommand` still runs

@@ -712,8 +712,12 @@ tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 // extraction (#4732). They existed to keep the coupling measurable while the server was still a
 // module of this build; a published artifact enforces the same thing structurally and in the
 // stronger direction, because nothing in `cli/serve` can reach back into `:cli` from Maven Central.
-// The surviving question — that ten of the eleven crossing symbols are render-host and history
-// plumbing rather than server code — is a design follow-up, not a ratchet this build can express.
+// The surviving question that note used to end on — that most of the crossing symbols were
+// render-host and history plumbing rather than server code — has since been answered upstream:
+// compose-preview-server 2.2.0 split them into `compose-preview-render-host`, which `:cli` now
+// depends on directly (#4832). Four symbols still cross into the server proper, all of them from
+// `ServeCommand.kt`; see the dependency block above for what that still costs and what deciding
+// it would take.
 
 // The four representations of `daemon-launch.json`, checked against each other.
 //
