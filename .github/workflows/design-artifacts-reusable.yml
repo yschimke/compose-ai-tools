@@ -1071,6 +1071,9 @@ jobs:
       # job's environment, and the catalog push needs it to decide whether to carry the served
       # verdict forward. Environment variables do not cross a job boundary; an output does.
       parity-findings-unreadable: ${{ steps.parity-findings-readability.outputs.unreadable }}
+      # The commit the bundle was rendered from. Published here so the publish job does not have to
+      # check the calling repository out merely to read one SHA — the only thing it wanted it for.
+      source-sha: ${{ steps.source-sha.outputs.sha }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2067,6 +2070,15 @@ jobs:
       # A repo that has never heard of the feature has no `design/pages/`, and the emitter is a
       # no-op for it. Fail-soft like the reference lane: a page whose export can't be copied is
       # dropped with a warning rather than costing the catalog its render.
+
+      # The calling repo's checked-out HEAD, NOT $GITHUB_SHA: a caller that passes `ref` checks out
+      # that ref while $GITHUB_SHA still names the triggering event's commit, and recording the
+      # latter would make the publish's traceability actively misleading. Same reasoning the publish
+      # step carried when it computed this itself.
+      - name: Record the rendered source revision
+        id: source-sha
+        run: echo "sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+
       # Reads the emitter's environment export and re-publishes it as a step output, because the
       # step that consumes it now lives in another job. Deliberately unconditional: when the emitter
       # did not run (import mode, or no parity lane) the variable is unset and this yields the empty
@@ -2329,14 +2341,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Check out the calling repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The same ref `generate` rendered, so the HEAD these steps record as the source of the
-          # publish is the commit the bundle actually came from.
-          ref: ${{ inputs.ref }}
-          persist-credentials: false
-
       - name: Check out compose-ai-tools (export driver)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2359,6 +2363,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
+          SOURCE_SHA: ${{ needs.generate.outputs.source-sha }}
           PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
         run: |
           set -euo pipefail
@@ -2368,7 +2373,6 @@ jobs:
           # checks out that ref, while $GITHUB_SHA still names the triggering
           # event's commit. Recording the latter would make the traceability
           # this subject line adds actively misleading.
-          SOURCE_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)
 
           cd "$GITHUB_WORKSPACE/out"
           # Append on top of the existing tip rather than force-pushing an orphan,
@@ -2445,6 +2449,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
+          SOURCE_SHA: ${{ needs.generate.outputs.source-sha }}
           PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
         run: |
           set -euo pipefail
@@ -2461,7 +2466,6 @@ jobs:
           # Runs even when the catalog push skipped as unchanged. "No render changed" does not imply
           # "the manifest is current" on a branch that has never had one — that reading is exactly
           # what would keep a first publish waiting forever for a render to move.
-          SOURCE_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)
           HELPER="$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-history.sh"
 
           # The helper comes from the export-driver checkout, which for an external caller is the
