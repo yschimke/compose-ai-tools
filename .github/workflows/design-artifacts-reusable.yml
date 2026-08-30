@@ -265,6 +265,19 @@ on:
         required: false
         type: string
         default: ''
+      design-map-command:
+        description: >-
+          Shell command that projects THIS system's `design-map.json` into the caller repo root,
+          run once before every step that reads it. Same input name and semantics as design-parity's
+          reusable workflow, and for the same reason: a repo publishing TWO catalogs from two modules
+          has one map PATH and two systems needing different maps, so without this the second system
+          is scored against the first one's map — every entry dangles and coverage publishes as 0%.
+          `system`, `spec` and `module` already vary per call; the map is the fourth thing that does.
+          Empty ⇒ the committed map is used as-is, which is right for the single-catalog repos that
+          are the common case.
+        required: false
+        type: string
+        default: ''
       preview-annotations:
         description: 'Whitespace-separated multipreview annotation names to teach the build-free spec pre-flight (e.g. "WearPreviewDevices WearPreviewFontScales"). Required whenever the previews are annotated with a multipreview declared in ANOTHER module — the source scan cannot see it, so the pre-flight reports "discovered 0 @Preview function(s)" and fails every entry. Wear catalogs always need this.'
         required: false
@@ -1533,6 +1546,64 @@ jobs:
       #
       # Fail-soft on purpose: an unrenderable reference is dropped with a warning
       # rather than costing the catalog its render.
+
+      # ONE MAP PATH, TWO SYSTEMS. Everything below reads `design-map.json` from the caller repo
+      # root, because that is the contract design-parity's action fixes (`<repoRoot>/design-map.json`)
+      # and this lane follows it. That is right for one catalog per repo and wrong the moment there
+      # are two: `wear-m3-catalog` publishes `wear-m3-catalog` from `:catalog` and `remote-m3` from
+      # `:remote-catalog` out of one checkout, so the second system was scored against the first
+      # one's map. It published `coverage.percent: 0` with all 50 gaps `dangling-mapping`, every one
+      # naming a preview from the OTHER module — not a catalog that maps nothing, a catalog compared
+      # against the wrong thing.
+      #
+      # The caller cannot fix that alone, which is the whole reason this input exists: the path is
+      # deliberately not a parameter, and the escape it leaves is that each job regenerates the map
+      # in its own workspace. design-parity's reusable workflow has taken `design-map-command` for
+      # exactly this since the same repo started publishing two sheets — so its hourly comparison
+      # was right while these artifacts were wrong, same repo, same commit.
+      #
+      # Placed here rather than beside the render: it must precede every consumer (design
+      # references, parity activity, parity findings) and nothing before this point reads the map,
+      # so a caller whose command needs a Gradle discovery pays for it only on a publishing run.
+      #
+      # The command is EXECUTED, by design — it is a build step the caller owns, like
+      # `design-map-command` next door. It reaches the shell through the environment rather than
+      # expression interpolation, so the value cannot alter the surrounding script's syntax, and it
+      # runs at the caller repo root because that is where the map it writes is read from (`spec`
+      # stays repo-root-relative for the same reason, even under `working-directory`).
+      - name: Project this system's design map
+        if: ${{ inputs.design-map-command != '' && (inputs.publish || inputs.upload-out) }}
+        env:
+          DESIGN_MAP_COMMAND: ${{ inputs.design-map-command }}
+        run: |
+          set -euo pipefail
+          echo "Projecting design-map.json for '$INPUT_SYSTEM'."
+          # DELETE FIRST, so the check below proves the command RECREATED the map rather than that
+          # a map exists. In the two-catalog repo this input is for, the committed one at this path
+          # belongs to the OTHER system — so a command that succeeds but writes somewhere else (the
+          # `--out-dir` mistake, which `scripts/design-map.sh` makes easy) would leave it standing,
+          # pass a mere existence check, and publish the other system's mappings under this one's
+          # name. That is the exact failure this step exists to stop, and it would sail through.
+          # Safe because the checkout is disposable: nothing later in the job wants the committed
+          # map back, and a command that writes none fails the step anyway.
+          rm -f design-map.json
+          bash -c "$DESIGN_MAP_COMMAND"
+          if [ ! -f design-map.json ]; then
+            echo "::error title=design-map-command wrote no map::The command ran but left no design-map.json at the repo root, which is the only path the lanes below read. Check that it projects to the root rather than to an --out-dir."
+            exit 1
+          fi
+          # Worth printing: the number is what the coverage panel will publish, and a map that is
+          # suddenly a tenth of its usual size is the failure this input exists to prevent, caught
+          # here rather than inferred from a 0% board a day later.
+          node -e '
+            const m = require("./design-map.json");
+            const n = (m.components ?? []).length;
+            console.log(`design-map.json: ${n} component(s) for ${process.argv[1]}`);
+            if (n === 0) {
+              console.log("::warning title=Empty design map::The projected map has no components, so this system will publish 0% coverage.");
+            }
+          ' "$INPUT_SYSTEM"
+
       # The design-parity reference cache, if the caller maintains one. Cloned
       # rather than fetched through the API for the same reason the parity
       # workflow does it: the branch IS the cache, so `git` is the transport and

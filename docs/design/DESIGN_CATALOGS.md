@@ -965,6 +965,47 @@ in this repo, because the consumer is a catalog repo whose `design-map.json` is 
 and CI-checked: with no version to pin, a change here turns that repo red for a change
 nobody there made.
 
+#### Two catalogs in one repo: `design-map-command`
+
+The path is fixed at `<repoRoot>/design-map.json` — design-parity's action reads exactly
+that, and `design-artifacts-reusable.yml` follows it. One catalog per repo is fine. Two are
+not: `wear-m3-catalog` publishes `wear-m3-catalog` from `:catalog` and `remote-m3` from
+`:remote-catalog` out of one checkout, so whichever system does not own the committed map is
+scored against the other one's. It publishes as `coverage.percent: 0` with every gap a
+`dangling-mapping` naming a preview from the other module — which reads like a catalog that
+maps nothing rather than one compared against the wrong file.
+
+The escape the fixed path leaves is that each system is a separate job with its own
+workspace, so it can regenerate the map before anything reads it. Pass the command that does:
+
+```yaml
+  wear:
+    uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
+    with:
+      system: wear-m3-catalog
+      spec: catalog.spec.json
+      module: ':catalog'
+      design-map-command: >
+        ./gradlew :catalog:composePreviewDiscover &&
+        scripts/design-map.sh
+
+  remote:
+    uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
+    with:
+      system: remote-m3
+      spec: remote-catalog/catalog.spec.json
+      module: ':remote-catalog'
+      design-map-command: >
+        ./gradlew :remote-catalog:composePreviewDiscover &&
+        scripts/design-map.sh remote-catalog
+```
+
+Same input name and meaning as design-parity's reusable workflow, which has taken it since
+that repo grew its second sheet — so the hourly parity comparison was already correct while
+the published artifacts were not. It runs at the repo root, before the design-reference and
+parity-emitter steps, and fails the run if it leaves no map there. Omit it and the committed
+map is used unchanged, which is what every single-catalog repo wants.
+
 ### Breakpoints and multipreviews: `select`, not a split `@Preview`
 
 A multipreview annotation (`@WearPreviewDevices`, a local `@CatalogWearBreakpoints`)
