@@ -2491,7 +2491,19 @@ jobs:
   publish-catalog:
     name: ${{ inputs.system }} · publish
     needs: [driver, generate]
-    if: ${{ inputs.publish }}
+    # THE SAME GUARD `generate` CARRIES, and for the same reason: this job is downstream of the same
+    # skipped ones. `shard-matrix` and `render-shard` are gated on `render-shards > 1`, so on the
+    # single-shard path — the default, and what a caller gets unless it opts in — both skip.
+    # `generate` overrides that with `!cancelled()` and runs, but the skip propagates down the whole
+    # chain: a dependent whose own `if` does not override it is skipped too, even though `generate`
+    # succeeded.
+    #
+    # Without this, the job never ran for any single-shard caller. The render succeeded, the bundle
+    # uploaded, and nothing was pushed to `design-artifacts/<system>` — silently, because a skipped
+    # job is not a failed one and the run still reports green.
+    if: >-
+      ${{ inputs.publish && !cancelled() && !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 20
     permissions:
