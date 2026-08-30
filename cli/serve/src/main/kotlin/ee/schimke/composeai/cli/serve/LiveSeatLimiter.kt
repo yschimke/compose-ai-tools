@@ -8,11 +8,11 @@ import java.util.concurrent.atomic.AtomicLong
  * Bounds concurrent **live** (daemon-backed) stream sessions by a *permit budget* rather than a
  * flat session count, so a cheap desktop CMP daemon and a heavy Robolectric Android daemon don't
  * cost the same seat. [totalPermits] is the whole-box budget (memory-derived on the deployed image,
- * see `deploy/image/entrypoint.sh`); each session acquires permits equal to its backend's
- * **weight** — `1` for a desktop CMP daemon, more for a heavier Android one ([ServeBundleDaemon]'s
- * `ANDROID_LIVE_SEAT_WEIGHT]`). A session that can't get its permits is refused (the caller closes
- * the WebSocket with 1013 "Try Again Later") instead of spawning a daemon that would risk the OOM
- * killer.
+ * see compose-preview-server's `deploy/image/entrypoint.sh`); each session acquires permits equal
+ * to its backend's **weight** — `1` for a desktop CMP daemon, more for a heavier Android one
+ * ([ServeBundleDaemon]'s `ANDROID_LIVE_SEAT_WEIGHT]`). A session that can't get its permits is
+ * refused (the caller closes the WebSocket with 1013 "Try Again Later") instead of spawning a
+ * daemon that would risk the OOM killer.
  *
  * Why weighting fixes the reported starvation: with a flat cap of 1, a single heavy `wear-m3`
  * Android daemon holds the only seat and turns away the cheap `compose-m3` CMP daemon even though

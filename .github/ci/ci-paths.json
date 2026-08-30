@@ -105,7 +105,6 @@
       ".github/scripts/**",
       ".github/workflows/**",
       "scripts/design-artifacts/**",
-      "deploy/image/**",
       "gradle/libs.versions.toml",
       "scripts/check-serve-seam.py",
       "scripts/serve-seam-allowlist.json",

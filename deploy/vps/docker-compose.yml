@@ -71,7 +71,7 @@ services:
     volumes:
       # This DEPLOYMENT's published set + trusted producers, kept in version control and mounted
       # read-only (this box doesn't run the admin API, so nothing needs to write them back).
-      # Deliberately deploy/preview.coo.ee/, not deploy/image/: the latter is the generic seed an
+      # Deliberately deploy/preview.coo.ee/, not the image's baked seed: that seed is the generic one an
       # adopter of the prebuilt image inherits, and it carries compose-m3 only so nobody starts out
       # serving — or trusting — another project's repos.
       - ../preview.coo.ee/catalogs.json:/config/catalogs.json:ro

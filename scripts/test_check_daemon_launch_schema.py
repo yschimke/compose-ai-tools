@@ -46,6 +46,14 @@ requires_contracts_checkout = unittest.skipIf(
     "no compose-preview-contracts checkout (set COMPOSE_PREVIEW_CONTRACTS_ROOT)",
 )
 
+# And once more for the production image's Dockerfile, which left with the preview server. It
+# carries the sandbox-count key as a JAVA_TOOL_OPTIONS literal — a mirror no Kotlin scan can see —
+# so without the checkout there is nothing to assert against.
+requires_server_checkout = unittest.skipIf(
+    mod._server_root is None,
+    "no compose-preview-server checkout (set COMPOSE_PREVIEW_SERVER_ROOT)",
+)
+
 class SplitParams(unittest.TestCase):
     def test_a_generic_type_argument_comma_is_not_a_separator(self):
         # The regression that motivated the splitter: `Map<String, String>` was truncated to
@@ -396,8 +404,10 @@ class RealTree(unittest.TestCase):
             for key, expected in assumed.items():
                 self.assertEqual(writer[key][0], expected, f"{rel}: {key}")
 
+    @requires_server_checkout
     def test_a_mirrored_key_that_lives_outside_kotlin_is_registered(self):
-        # The production image passes the sandbox-count key as a literal in JAVA_TOOL_OPTIONS.
+        # The production image passes the sandbox-count key as a literal in JAVA_TOOL_OPTIONS. The
+        # image moved to yschimke/compose-preview-server, so this resolves against that checkout.
         spec = self.allowlist["mirroredConstants"]["SANDBOX_COUNT_PROP"]
         self.assertIn("deploy/image/Dockerfile", spec.get("alsoAppearsIn", []))
         for rel in spec["alsoAppearsIn"]:

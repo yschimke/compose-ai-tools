@@ -29,14 +29,14 @@
       "groupName": "{{manager}} minor/patch"
     },
     {
-      "description": "Never take a `…-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list — rather than disabling the update — keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps.",
+      "description": "Never take a `\u2026-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list \u2014 rather than disabling the update \u2014 keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps.",
       "matchManagers": [
         "gradle"
       ],
       "allowedVersions": "!/-compat$/"
     },
     {
-      "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) — a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
+      "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) \u2014 a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
       "matchManagers": [
         "dockerfile"
       ],
@@ -49,19 +49,6 @@
       "allowedVersions": "/^17\\./"
     },
     {
-      "description": "eclipse-temurin (release image): stay on the JDK 21 line. deploy/image/Dockerfile runs the released CLI and the Android render daemon, which needs JDK 21+ for Robolectric SDK 36 (docs/SDK_COMPATIBILITY.md) and is built against 21. Patch bumps inside 21.x are fine; a major bump has to be validated against Gradle/AGP/Robolectric support first, so it stays manual (#3362).",
-      "matchManagers": [
-        "dockerfile"
-      ],
-      "matchFileNames": [
-        "deploy/image/Dockerfile"
-      ],
-      "matchDepNames": [
-        "eclipse-temurin"
-      ],
-      "allowedVersions": "/^21\\./"
-    },
-    {
       "description": "Freeze the AGP 8.x minimum-supported fixture: every pin here is deliberate and must be bumped by hand.",
       "matchFileNames": [
         ".github/ci/fixtures/agp8-min/**"
@@ -69,7 +56,7 @@
       "enabled": false
     },
     {
-      "description": "compose-bom-compat: pin to the 2025.11.x line (compose-ui 1.9.5) — renderer-android's published bytecode targets the oldest supported Compose. Renovate must not drift this floor higher; bumping the supported-Compose-minimum is a manual decision.",
+      "description": "compose-bom-compat: pin to the 2025.11.x line (compose-ui 1.9.5) \u2014 renderer-android's published bytecode targets the oldest supported Compose. Renovate must not drift this floor higher; bumping the supported-Compose-minimum is a manual decision.",
       "matchManagers": [
         "gradle"
       ],
@@ -80,7 +67,7 @@
       "allowedVersions": "/^2025\\.11\\./"
     },
     {
-      "description": "material-kolor: pin to the 4.0.x line. `:data-wallpaper-connector` is published against the renderer-android Compose floor (`compose-bom-compat`, Compose 1.9.5); 4.1.0 rebuilt against Compose Multiplatform 1.10.0 + Kotlin 2.3.0 and migrated to a Multiplatform Android library, raising the transitive floor above our published surface. See gradle/libs.versions.toml for the full rationale — bumping the floor is a manual decision.",
+      "description": "material-kolor: pin to the 4.0.x line. `:data-wallpaper-connector` is published against the renderer-android Compose floor (`compose-bom-compat`, Compose 1.9.5); 4.1.0 rebuilt against Compose Multiplatform 1.10.0 + Kotlin 2.3.0 and migrated to a Multiplatform Android library, raising the transitive floor above our published surface. See gradle/libs.versions.toml for the full rationale \u2014 bumping the floor is a manual decision.",
       "matchManagers": [
         "gradle"
       ],
@@ -102,7 +89,7 @@
       "allowedVersions": "/^1\\.13\\./"
     },
     {
-      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
+      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml \u2014 raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
       "matchManagers": [
         "gradle"
       ],
@@ -114,7 +101,7 @@
       "allowedVersions": "/^1\\.11\\./"
     },
     {
-      "description": "org.jetbrains.compose.ui:ui-tooling-preview (explicit coords in `samples/cmp-shared` and `samples/cmp-android-only`): pin to the 1.10.x line. These two modules declare the JetBrains-relocated androidx artifact by hand — it ships `androidx.compose.ui.tooling.preview.Preview` on every target, which is the FQN `DiscoverPreviewsTask` scans for, whereas the CMP-bundled `compose.components.uiToolingPreview` republishes the annotation under `org.jetbrains.compose.ui.tooling.preview` and discovery does not recognise it. The explicit coords were renamed in the 1.10 line and are not reliably published to every mirror above it, so they deliberately do NOT track `compose-multiplatform`. Held here because the rule above is scoped by `matchCurrentValue` to the 1.11.x refs and no longer covers them; without this the generic minor/patch group would drift these to a line the preview-discovery contract has not been validated against. See each module's build.gradle.kts.",
+      "description": "org.jetbrains.compose.ui:ui-tooling-preview (explicit coords in `samples/cmp-shared` and `samples/cmp-android-only`): pin to the 1.10.x line. These two modules declare the JetBrains-relocated androidx artifact by hand \u2014 it ships `androidx.compose.ui.tooling.preview.Preview` on every target, which is the FQN `DiscoverPreviewsTask` scans for, whereas the CMP-bundled `compose.components.uiToolingPreview` republishes the annotation under `org.jetbrains.compose.ui.tooling.preview` and discovery does not recognise it. The explicit coords were renamed in the 1.10 line and are not reliably published to every mirror above it, so they deliberately do NOT track `compose-multiplatform`. Held here because the rule above is scoped by `matchCurrentValue` to the 1.11.x refs and no longer covers them; without this the generic minor/patch group would drift these to a line the preview-discovery contract has not been validated against. See each module's build.gradle.kts.",
       "matchManagers": [
         "gradle"
       ],
@@ -125,7 +112,7 @@
       "allowedVersions": "/^1\\.10\\./"
     },
     {
-      "description": "org.slf4j:slf4j-nop: track gradle-tooling-api's bundled slf4j-api. Tooling API declares `slf4j-api {strictly <X>}` and bumping `-nop` past that drags in a newer `slf4j-api` that can't reconcile with the strict constraint. The matching `-nop` version moves whenever the Tooling-API release ships a newer slf4j-api floor — bump this pin in lockstep then.",
+      "description": "org.slf4j:slf4j-nop: track gradle-tooling-api's bundled slf4j-api. Tooling API declares `slf4j-api {strictly <X>}` and bumping `-nop` past that drags in a newer `slf4j-api` that can't reconcile with the strict constraint. The matching `-nop` version moves whenever the Tooling-API release ships a newer slf4j-api floor \u2014 bump this pin in lockstep then.",
       "matchManagers": [
         "gradle"
       ],
@@ -136,7 +123,7 @@
       "allowedVersions": "/^2\\.0\\.17$/"
     },
     {
-      "description": "compottie: pin to the 2.2.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.11.0 (matching `compose-multiplatform = 1.11.x`); a compottie line built against a newer foundation drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
+      "description": "compottie: pin to the 2.2.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.11.0 (matching `compose-multiplatform = 1.11.x`); a compottie line built against a newer foundation drags a newer Compose onto the renderer classpath \u2014 the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
       "matchManagers": [
         "gradle"
       ],
@@ -147,7 +134,7 @@
       "allowedVersions": "/^2\\.2\\./"
     },
     {
-      "description": "coil3: pin to the 3.5.x line. 3.6.0 depends on `org.jetbrains.compose.foundation:foundation-android:1.12.0`, which resolves `androidx.compose.foundation`/`ui` 1.12.0 — the Compose line this repo deliberately does not sit on (see the compose-multiplatform rule above). coil3 is `compileOnly` in `:renderer-android` but `testImplementation` for that module's own unit tests, so the upgrade lands on a test classpath compiled against `compose-bom-compat` and `FigmaSvgRasterizedTextFieldRenderTest` fails with `AbstractMethodError` (#4503). 3.5.0 resolves foundation 1.11.2 and is green. Bump in lockstep with the Compose floor, not on its own.",
+      "description": "coil3: pin to the 3.5.x line. 3.6.0 depends on `org.jetbrains.compose.foundation:foundation-android:1.12.0`, which resolves `androidx.compose.foundation`/`ui` 1.12.0 \u2014 the Compose line this repo deliberately does not sit on (see the compose-multiplatform rule above). coil3 is `compileOnly` in `:renderer-android` but `testImplementation` for that module's own unit tests, so the upgrade lands on a test classpath compiled against `compose-bom-compat` and `FigmaSvgRasterizedTextFieldRenderTest` fails with `AbstractMethodError` (#4503). 3.5.0 resolves foundation 1.11.2 and is green. Bump in lockstep with the Compose floor, not on its own.",
       "matchManagers": [
         "gradle"
       ],
@@ -158,7 +145,7 @@
       "allowedVersions": "/^3\\.5\\./"
     },
     {
-      "description": "robolectric: released versions only. Robolectric publishes a rolling `4.17-SNAPSHOT` to Sonatype and Renovate ranks it above `4.17-beta-2`, but the build declares no snapshot repository — so the bump resolves nowhere and fails every Android configuration. Betas and RCs are still fair game; only `-SNAPSHOT` is excluded.",
+      "description": "robolectric: released versions only. Robolectric publishes a rolling `4.17-SNAPSHOT` to Sonatype and Renovate ranks it above `4.17-beta-2`, but the build declares no snapshot repository \u2014 so the bump resolves nowhere and fails every Android configuration. Betas and RCs are still fair game; only `-SNAPSHOT` is excluded.",
       "matchManagers": [
         "gradle"
       ],
@@ -168,7 +155,7 @@
       "allowedVersions": "!/-SNAPSHOT$/"
     },
     {
-      "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` — `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
+      "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` \u2014 `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
       "matchManagers": [
         "gradle"
       ],
@@ -191,7 +178,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "The `xr-composite` pin — the compositor's release version in compose-preview-xr. Invisible to the gradle manager: it is a bare `[versions]` entry with no library or plugin declaring `version.ref = \"xr-composite\"`, so there is no coordinate for Renovate to resolve. The CLI and the Gradle plugin both bake it in at build time and resolve the binary by it, so without this it is the one dependency here that could never be offered an update. Anchored to this single entry rather than written generically, because `extractVersionTemplate` below is specific to it: the catalog holds a bare `1.0.0` while the upstream tags are `v1.0.0`.",
+      "description": "The `xr-composite` pin \u2014 the compositor's release version in compose-preview-xr. Invisible to the gradle manager: it is a bare `[versions]` entry with no library or plugin declaring `version.ref = \"xr-composite\"`, so there is no coordinate for Renovate to resolve. The CLI and the Gradle plugin both bake it in at build time and resolve the binary by it, so without this it is the one dependency here that could never be offered an update. Anchored to this single entry rather than written generically, because `extractVersionTemplate` below is specific to it: the catalog holds a bare `1.0.0` while the upstream tags are `v1.0.0`.",
       "managerFilePatterns": [
         "/^gradle/libs\\.versions\\.toml$/"
       ],

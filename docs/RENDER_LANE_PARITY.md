@@ -19,7 +19,7 @@ JAVA_OPTS=-Dcomposeai.cli.libDaemonAndroidDir=/tmp/ad/lib-daemon-android \
 cli/build/install/compose-preview/bin/compose-preview serve \
   --catalogs compose-m3,wear-m3 --allow-render-trusted --live-seats 4 \
   --wasm-dir compose-m3=samples/cmp-wasm-catalog/build/wasmDist \
-  --trust-store deploy/image/trust/producers.json --port 8899
+  --trust-store trust/producers.json --port 8899
 ```
 
 The viewer was then driven through its lane toggles with Playwright, recording each

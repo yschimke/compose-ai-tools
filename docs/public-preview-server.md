@@ -131,7 +131,7 @@ derives its own site-address line from that same list, so there is no second pla
 and no `.env` edit. What stays outside the file is DNS (the name must resolve to the box) and a
 proxy restart (Caddy reads its config at start, so a site is served by the app immediately and
 reachable over TLS after the next `docker compose up -d`). The full runbook is in
-[`deploy/image/README.md`](../deploy/image/README.md#serving-a-catalog-on-its-own-hostname).
+[`deploy/image/README.md`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md#serving-a-catalog-on-its-own-hostname).
 
 **Sign-in works on a site host, given a cookie domain.** `--github-auth-cookie-domain preview.coo.ee`
 writes both auth cookies for the parent domain, so **one sign-in covers the parent host and every
@@ -950,7 +950,7 @@ operator's catalog set and trust store. There is also deliberately **no temp-dir
 cache thrown away with the container costs disk and render time to buy nothing, so where there is no
 durable location the server runs memory-only and says so.
 
-`preview.coo.ee` runs the **prebuilt image** profile, [`deploy/image`](../deploy/image) — not the
+`preview.coo.ee` runs the **prebuilt image** profile, [`deploy/image`](https://github.com/yschimke/compose-preview-server/tree/main/deploy/image) — not the
 from-source `deploy/vps` one. Its compose file mounts a dedicated `preview_theme_cache` volume at
 `/theme-cache`, kept separate from `preview_config` for the reason above, so enabling the cache is a
 one-line `.env` change:
@@ -3312,7 +3312,7 @@ where it is set and `POST /images` still 404s is nobody's intent — and an expl
 the repository named) or `1` (insist without one, and get the server's own refusal) still wins. The
 derivation does not key on `SERVE_GITHUB_AUTH_*`, whose repo the image defaults to
 `yschimke/compose-ai-tools`: that would gate an adopter's upload lane on someone else's
-collaborators. See [deploy/image/README.md](../deploy/image/README.md#image-lane-on-previewcooee).
+collaborators. See [deploy/image/README.md](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md#image-lane-on-previewcooee).
 
 ## Granting an agent temporary access (`--agent-grants`)
 
@@ -3474,7 +3474,7 @@ refusal, deliberately, rather than being quietly downgraded to off. Optional kno
 `SERVE_AGENT_GRANT_SCOPES`, `SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`,
 `SERVE_AGENT_GRANT_RATE_LIMIT` — each rejects a malformed value at startup rather than silently
 falling back to its default. The derivation is pinned by
-[`deploy/image/test-agent-grants-default.sh`](../deploy/image/test-agent-grants-default.sh). The
+[`deploy/image/test-agent-grants-default.sh`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/test-agent-grants-default.sh). The
 design, and why each control is where it is, is in
 [docs/design/AGENT_ACCESS_GRANTS.md](design/AGENT_ACCESS_GRANTS.md).
 
@@ -3817,7 +3817,7 @@ Two different things, kept in two different places on purpose:
 
 | | Lives in | Is |
 |---|---|---|
-| **Image seed** | [`deploy/image/catalogs.json`](../deploy/image/catalogs.json) + [`deploy/image/trust/producers.json`](../deploy/image/trust/producers.json) | Baked into the image; copied to `/config/…` on **first boot only**. What an operator adopting the prebuilt image starts with. |
+| **Image seed** | [`deploy/image/catalogs.json`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/catalogs.json) + [`deploy/image/trust/producers.json`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/trust/producers.json) | Baked into the image; copied to `/config/…` on **first boot only**. What an operator adopting the prebuilt image starts with. |
 | **Deployment config** | `deploy/<deployment>/catalogs.json` + `producers.json` (e.g. [`deploy/preview.coo.ee/`](../deploy/preview.coo.ee)) | One box's published set. Applied over the admin API when config changes on `main`, with image publishes as a fallback; never baked. |
 
 The seed carries **`compose-m3` only**, plus the single producer that publishes it — enough that a
@@ -3835,7 +3835,7 @@ After first boot the operator's `/config` copy always wins and an image pull nev
 
 `SERVE_CATALOGS` / `SERVE_CATALOGS_UNLISTED` still work as **additions** (`<system>@<owner>/<repo>`,
 comma-separated) for a box that wants one extra catalog without editing config; a system named in
-both keeps its config entry. Re-running [`deploy/image/setup.sh`](../deploy/image/setup.sh) removes
+both keeps its config entry. Re-running [`deploy/image/setup.sh`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/setup.sh) removes
 the known legacy `SERVE_CATALOGS` override containing only `jetnews`, `jetchat`, and `jetlagged`, so
 older `preview.coo.ee` deployments fall back to the config file cleanly.
 
@@ -3925,7 +3925,7 @@ saw and no file recorded.
 **Two things this route still does not do**, because they are outside the app: DNS for the name has
 to point at the box, and the reverse proxy has to match the name and hold a certificate for it. On
 this deployment the proxy reads the same `catalogs.json` (see
-[Serving a catalog on its own hostname](../deploy/image/README.md#serving-a-catalog-on-its-own-hostname)),
+[Serving a catalog on its own hostname](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md#serving-a-catalog-on-its-own-hostname)),
 so that half needs no second list — but it is read when Caddy starts, so a site published at runtime
 is served by the app immediately and reachable at the edge after the next `docker compose up -d`.
 
@@ -4008,14 +4008,14 @@ The catalog set works identically — see "Image seed vs deployment config" abov
 from-source path mounts [`deploy/preview.coo.ee/`](../deploy/preview.coo.ee)'s pair read-only rather
 than the image seed, because that box runs *that deployment's* set; an adopter mounts their own.
 
-| | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
+| | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](https://github.com/yschimke/compose-preview-server/tree/main/deploy/image) (prebuilt) |
 |---|---|---|
 | CLI | compiled from this checkout (~8 min build) | the **released** tarball (`docker pull`, no build) + Watchtower auto-update |
 | Has the latest serve features? | **immediately** (built from `main`) | only once they're in a **published CLI release** (bump `CP_VERSION`) |
 | In-browser Wasm tier | local build, `SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist` | branch-fetch: `--catalogs` pulls each system's `web/wasm/` from the trusted branch (needs the branch to carry it) |
 | Picks up a regenerated `design-artifacts/<system>` branch | via the same auto-refresh (rebuild + re-run) | **auto**: the server re-checks each catalog branch head every `SERVE_CATALOG_REFRESH`s (default 600) and re-fetches on change — **no restart**. Watchtower only rolls the *image*; this keeps the *catalog content* current. Set `SERVE_CATALOG_REFRESH=0` to disable. |
 
-`preview.coo.ee` **runs the prebuilt [`deploy/image`](../deploy/image)** — a `docker pull` of the
+`preview.coo.ee` **runs the prebuilt [`deploy/image`](https://github.com/yschimke/compose-preview-server/tree/main/deploy/image)** — a `docker pull` of the
 released `compose-preview-host` image on an **8 GB host**, no build. The **whole deploy chain is
 automatic**, and it is driven from
 [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server) now, not from
@@ -4035,7 +4035,7 @@ Maven-Central propagation can race it (the image workflow builds and seeds its l
 from the release tag). A release-event webhook would fire *before* the image is
 built and roll onto the *old* image. It's gated by a `DEPLOY_HOOK_TOKEN` (fail-closed if unset) and
 can only trigger a rollout *check* of the already-configured tag — see
-[`deploy/image` README → Instant roll on publish](../deploy/image/README.md#instant-roll-on-publish-webhook--skips-the-poll-wait).
+[`deploy/image` README → Instant roll on publish](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md#instant-roll-on-publish-webhook--skips-the-poll-wait).
 
 > **Where to look when diagnosing a rollout.** The image build is a job of
 > compose-preview-server's own release run, so it does not appear in this repository's Actions at
@@ -4152,7 +4152,7 @@ available from the carried documents.
 > (`PixelSystemFontAliases`, so `Font(DeviceFontFamilyName("roboto-flex"))` — Wear Material3's type
 > scale — resolves to Roboto Flex rather than silently falling back to Roboto), and the host has
 > those faces available. The prebuilt `deploy/image` bakes them into the image so neither depends on
-> runtime egress to `fonts.googleapis.com` (see [deploy/image/README.md](../deploy/image/README.md)
+> runtime egress to `fonts.googleapis.com` (see [deploy/image/README.md](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md)
 > § *Fonts*). On a host that has neither the baked cache nor egress, the daemon logs the unseeded
 > slugs once per process and renders those families in Roboto — non-fatal, but visibly different from
 > the PNG.

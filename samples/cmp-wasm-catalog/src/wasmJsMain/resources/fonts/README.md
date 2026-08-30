@@ -30,7 +30,7 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
   license directory** of the [google/fonts](https://github.com/google/fonts) corpus, so its terms
   can't be read off the corpus; the CSS2 endpoint serves it regardless. It is committed because
   the project owner confirmed redistribution is cleared, the same clearance
-  [`deploy/image/README.md`](../../../../../../deploy/image/README.md) records for baking it into
+  [`deploy/image/README.md`](https://github.com/yschimke/compose-preview-server/blob/main/deploy/image/README.md) records for baking it into
   the runtime image. **A fork does not inherit that clearance** — re-check it, or drop this family
   from `fonts.json` and delete the two files. Dropping it only costs the Wasm lane's rendering of
   that one theme.

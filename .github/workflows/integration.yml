@@ -797,7 +797,8 @@ jobs:
       # not by Gradle — so setup-gradle's cache doesn't cover it and every render
       # / daemon cell re-downloads it from Maven Central. That download is the
       # cold half of the daemon's ~141s boot on this leg;
-      # `deploy/image/Dockerfile` prefetches the same coordinate into the image
+      # the preview-host image's Dockerfile (now in yschimke/compose-preview-server)
+      # prefetches the same coordinate into the image
       # for exactly this reason.
       #
       # The exact key is deliberately unmatchable — restore always falls through

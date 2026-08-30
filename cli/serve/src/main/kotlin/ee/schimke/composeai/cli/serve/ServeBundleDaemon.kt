@@ -55,7 +55,7 @@ public object ServeBundleDaemon {
    * boots a sandbox fleet (each `wear-m3` daemon spins ~5 Robolectric sandboxes) and holds ~1.5–2
    * GB RSS, versus ~0.5–1 GB for a desktop CMP daemon — so it consumes two permits where desktop
    * takes one. Tuned for the reference 4 GB box's default budget; a bigger box's budget scales up
-   * (see `deploy/image/entrypoint.sh`), letting more of these run at once.
+   * (see compose-preview-server's `deploy/image/entrypoint.sh`), letting more of these run at once.
    */
   const val ANDROID_LIVE_SEAT_WEIGHT: Int = 2
 

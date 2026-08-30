@@ -99,7 +99,8 @@ fi
 # Bound the live (daemon-backed) tier enabled above: each seat holds a JVM Compose
 # render session, so cap concurrent live streams on a constrained box (over-cap →
 # WS 1013). Unset / 0 = unbounded — so this must be mapped for SERVE_LIVE_SEATS in
-# the deploy/vps compose to actually take effect (matches deploy/image/entrypoint.sh).
+# the deploy/vps compose to actually take effect (matches the prebuilt image's entrypoint,
+# now in yschimke/compose-preview-server).
 [[ -n "${SERVE_LIVE_SEATS:-}" ]] && args+=(--live-seats "${SERVE_LIVE_SEATS}")
 # Client uploads (POST /bundles) — off unless SERVE_ACCEPT_BUNDLES=1; a host
 # allowlist for ?url= fetches is opt-in on top (SSRF stays fail-closed).
