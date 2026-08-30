@@ -38,7 +38,7 @@ class ForkGateTest(unittest.TestCase):
         gate.LOCAL_DIR = self.local
         gate.VENDOR_DIR = self.vendor
         gate.PIN_FILE = self.pin
-        gate.SHARED = [self.rel]
+        gate.NOT_COMPARED = set()
         gate.ALLOWED_DELTAS = []
 
         for base in (self.local, self.vendor):
@@ -68,6 +68,36 @@ class ForkGateTest(unittest.TestCase):
         """A shared file added upstream but never vendored must not pass silently."""
         (self.vendor / self.rel).unlink()
         self.assertEqual(1, gate.main([]))
+
+    def test_file_added_locally_only_fails(self) -> None:
+        """The gap a hard-coded inventory left: a NEW file on one side was invisible, because a
+        list only compares what someone remembered to add to it."""
+        extra = self.local / "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/New.kt"
+        extra.parent.mkdir(parents=True, exist_ok=True)
+        extra.write_text("fun new() = Unit\n")
+        self.assertEqual(1, gate.main([]))
+
+    def test_file_added_upstream_only_fails(self) -> None:
+        extra = self.vendor / "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/New.kt"
+        extra.parent.mkdir(parents=True, exist_ok=True)
+        extra.write_text("fun new() = Unit\n")
+        self.assertEqual(1, gate.main([]))
+
+    def test_not_compared_file_may_differ(self) -> None:
+        """The one escape hatch, and it is by name only."""
+        for base in (self.local, self.vendor):
+            (base / "wasmJsMain/resources").mkdir(parents=True, exist_ok=True)
+        (self.local / "wasmJsMain/resources/js-joda.esm.js").write_text("local\n")
+        (self.vendor / "wasmJsMain/resources/js-joda.esm.js").write_text("upstream\n")
+        gate.NOT_COMPARED = {"wasmJsMain/resources/js-joda.esm.js"}
+        self.assertEqual(0, gate.main([]))
+
+    def test_update_rejects_a_branch_name(self) -> None:
+        """A mutable ref in the pin means the recorded value stops identifying the vendored bytes."""
+        self.assertEqual(1, gate.main(["--update", "main"]))
+
+    def test_update_rejects_a_short_sha(self) -> None:
+        self.assertEqual(1, gate.main(["--update", "e544e22"]))
 
     def test_allowed_delta_is_normalised_away(self) -> None:
         (self.vendor / self.rel).write_text("// upstream path\nfun app() = Unit\n")
@@ -116,23 +146,26 @@ class ForkGateTest(unittest.TestCase):
 class RealTreeTest(unittest.TestCase):
     """The shared list must describe the tree that actually exists."""
 
-    def test_shared_files_all_exist(self) -> None:
+    @staticmethod
+    def fresh():
         spec = importlib.util.spec_from_file_location(
             "fresh", Path(__file__).resolve().parent / "check_serve_wasm_fork.py"
         )
-        fresh = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(fresh)
-        for rel in fresh.SHARED:
-            self.assertTrue((fresh.LOCAL_DIR / rel).is_file(), f"missing locally: {rel}")
-            self.assertTrue((fresh.VENDOR_DIR / rel).is_file(), f"not vendored: {rel}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
-    def test_not_compared_files_are_not_also_shared(self) -> None:
-        spec = importlib.util.spec_from_file_location(
-            "fresh2", Path(__file__).resolve().parent / "check_serve_wasm_fork.py"
-        )
-        fresh = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(fresh)
-        self.assertEqual(set(), set(fresh.SHARED) & set(fresh.NOT_COMPARED))
+    def test_both_inventories_are_non_empty_and_equal(self) -> None:
+        """Against the real trees, so a passing gate cannot mean 'compared nothing'."""
+        fresh = self.fresh()
+        local = fresh.inventory(fresh.LOCAL_DIR)
+        vendor = fresh.inventory(fresh.VENDOR_DIR)
+        self.assertTrue(local, "no local files discovered")
+        self.assertEqual(local, vendor)
+
+    def test_pin_is_a_full_sha(self) -> None:
+        fresh = self.fresh()
+        self.assertRegex(fresh.read_pin(), r"\A[0-9a-f]{40}\Z")
 
 
 if __name__ == "__main__":

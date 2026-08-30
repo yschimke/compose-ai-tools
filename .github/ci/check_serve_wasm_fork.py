@@ -15,11 +15,15 @@ old behaviour inside `compose-preview`'s `preview-ui/` — the wrong picture, pr
 one — while `compose-preview serve` ran the fixed server. Two copies with no gate is how that
 happens quietly.
 
-So this gate holds the shared sources byte-identical. Files that legitimately differ are NOT
-compared at all, rather than compared and excused:
+So this gate holds the shared sources byte-identical. The inventory is DERIVED by walking both
+trees rather than listed in a constant: a hand-maintained list silently ignores whatever nobody
+remembered to add to it, which is the same failure mode the gate exists to close. A file present on
+one side and not the other is drift, not an opt-out.
 
-  * `build.gradle.kts` — the catalog dependency and the font/js-joda source paths are per-repository.
-  * `README.md` — currently identical, but it describes each repository's own build.
+Only `src/` is compared. `build.gradle.kts` and `README.md` are outside it and per-repository by
+design — the catalog dependency, the font/js-joda staging paths, and each repository's own build
+instructions. `js-joda.esm.js` is a 10k-line vendored bundle inside `src/`, byte-identical in both
+and excluded by name to keep the diff output readable.
 
 `ALLOWED_DELTAS` is for the one case that is neither: a shared source file carrying a paragraph that
 is only true in one repository. Each entry states the file, the exact upstream text, the exact local
@@ -35,6 +39,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -49,22 +56,21 @@ PIN_FILE = Path(__file__).resolve().parent / "serve-wasm-upstream-pin.json"
 UPSTREAM_REPO = "yschimke/compose-preview-server"
 UPSTREAM_PREFIX = "wasm-ui/src"
 
-# The shared application sources. Paths are relative to `<repo>/<module>/src`, which is the level at
-# which the two trees are supposed to be identical.
-SHARED = [
-    "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/App.kt",
-    "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/CatalogFonts.kt",
-    "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/Main.kt",
-    "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/NativeCatalog.kt",
-    "wasmJsMain/kotlin/ee/schimke/composeai/servewasm/UiComposer.kt",
-    "wasmJsMain/resources/index.html",
-    "wasmJsTest/kotlin/ee/schimke/composeai/servewasm/NativeCatalogTest.kt",
-    "wasmJsTest/kotlin/ee/schimke/composeai/servewasm/OverrideSeedsTest.kt",
-    "wasmJsTest/kotlin/ee/schimke/composeai/servewasm/UiComposerTest.kt",
-]
+# Files that are per-repository by design and therefore never compared. Everything else under
+# `src/` is shared and MUST match — the inventory is derived, not listed, so a file added on either
+# side cannot slip through by being absent from a hand-maintained list.
+NOT_COMPARED = {"wasmJsMain/resources/js-joda.esm.js"}
 
-# Deliberately NOT compared — see the module docstring.
-NOT_COMPARED = ["build.gradle.kts", "README.md", "wasmJsMain/resources/js-joda.esm.js"]
+
+def inventory(base: Path) -> set[str]:
+    """Every file under `base`, relative and slash-separated, minus the per-repository ones."""
+    if not base.is_dir():
+        return set()
+    found = {
+        path.relative_to(base).as_posix() for path in base.rglob("*") if path.is_file()
+    }
+    return found - NOT_COMPARED
+
 
 ALLOWED_DELTAS = [
     {
@@ -102,9 +108,37 @@ def fetch_upstream(sha: str, rel: str) -> bytes:
         return response.read()
 
 
+SHA_RE = re.compile(r"\A[0-9a-f]{40}\Z")
+
+
 def update(sha: str) -> int:
+    # A full commit hash, not a branch or tag. `--update main` would write "main" into a file the
+    # gate reports as a pinned SHA, and the vendored snapshot would then have no reproducible
+    # provenance: the same recorded value fetches different bytes next week. Rejecting here is the
+    # only place that can tell the difference.
+    if not SHA_RE.match(sha):
+        print(
+            f"error: --update needs a full 40-character commit SHA, not {sha!r}.\n"
+            f"       A branch or tag is mutable, so the pin would stop identifying the bytes that\n"
+            f"       were actually vendored. Resolve it first, e.g.\n"
+            f"         git ls-remote https://github.com/{UPSTREAM_REPO} {sha}"
+        )
+        return 1
     VENDOR_DIR.mkdir(parents=True, exist_ok=True)
-    for rel in SHARED:
+
+    # The upstream inventory comes from the git tree API, not from a list here, so a file ADDED
+    # upstream is vendored on the next pin bump instead of being invisible until someone notices.
+    try:
+        listing = fetch_tree(sha)
+    except urllib.error.HTTPError as error:
+        print(f"error: cannot list {UPSTREAM_REPO}@{sha[:12]} ({error.code})")
+        return 1
+
+    if VENDOR_DIR.is_dir():
+        shutil.rmtree(VENDOR_DIR)
+    VENDOR_DIR.mkdir(parents=True, exist_ok=True)
+
+    for rel in sorted(listing):
         try:
             body = fetch_upstream(sha, rel)
         except urllib.error.HTTPError as error:
@@ -114,8 +148,26 @@ def update(sha: str) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
     PIN_FILE.write_text(json.dumps({"sha": sha}, indent=2) + "\n")
-    print(f"vendored {len(SHARED)} files from {UPSTREAM_REPO}@{sha[:12]}")
+    print(f"vendored {len(listing)} files from {UPSTREAM_REPO}@{sha[:12]}")
     return 0
+
+
+def fetch_tree(sha: str) -> set[str]:
+    """The upstream `wasm-ui/src` inventory at `sha`, relative and slash-separated."""
+    url = f"https://api.github.com/repos/{UPSTREAM_REPO}/git/trees/{sha}?recursive=1"
+    request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        tree = json.loads(response.read())["tree"]
+    prefix = UPSTREAM_PREFIX + "/"
+    found = {
+        node["path"][len(prefix) :]
+        for node in tree
+        if node["type"] == "blob" and node["path"].startswith(prefix)
+    }
+    return found - NOT_COMPARED
 
 
 def normalise(rel: str, text: str) -> str:
@@ -151,16 +203,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {VENDOR_DIR.relative_to(REPO_ROOT)} is missing; run --update <sha>")
         return 1
 
+    local_files = inventory(LOCAL_DIR)
+    vendor_files = inventory(VENDOR_DIR)
+
     drifted: list[str] = []
-    for rel in SHARED:
+    # Inventory first: a file on one side only is drift the content comparison cannot see, and is
+    # exactly the case a hard-coded list used to miss.
+    for rel in sorted(vendor_files - local_files):
+        drifted.append(f"{rel}: upstream has it, cli/serve-wasm does not")
+    for rel in sorted(local_files - vendor_files):
+        drifted.append(
+            f"{rel}: cli/serve-wasm has it, upstream does not "
+            f"(port it, or add it to NOT_COMPARED with a reason)"
+        )
+
+    for rel in sorted(local_files & vendor_files):
         local_path = LOCAL_DIR / rel
         vendor_path = VENDOR_DIR / rel
-        if not local_path.is_file():
-            drifted.append(f"{rel}: missing from cli/serve-wasm")
-            continue
-        if not vendor_path.is_file():
-            drifted.append(f"{rel}: missing from the vendored upstream copy; run --update")
-            continue
         local = normalise(rel, local_path.read_text())
         if local != vendor_path.read_text():
             diff = subprocess.run(
@@ -189,8 +248,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"cli/serve-wasm matches {UPSTREAM_REPO}@{sha[:12]}'s wasm-ui "
-        f"({len(SHARED)} shared files, {len(ALLOWED_DELTAS)} recorded delta(s); "
-        f"{len(NOT_COMPARED)} per-repository files not compared)."
+        f"({len(local_files)} shared files, {len(ALLOWED_DELTAS)} recorded delta(s); "
+        f"{len(NOT_COMPARED)} per-repository file(s) not compared)."
     )
     return 0
 
