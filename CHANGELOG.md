@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.55.0](https://github.com/yschimke/compose-ai-tools/compare/v1.54.0...v1.55.0) (2026-08-30)
+
+
+### Features
+
+* **ci:** let the design-artifacts pipeline render a third-party checkout ([#4846](https://github.com/yschimke/compose-ai-tools/issues/4846)) ([f73bbbf](https://github.com/yschimke/compose-ai-tools/commit/f73bbbf9b1c11a41dc1287bffe4202b5e62edc7d))
+
 ## [1.54.0](https://github.com/yschimke/compose-ai-tools/compare/v1.53.1...v1.54.0) (2026-08-30)
 
 
