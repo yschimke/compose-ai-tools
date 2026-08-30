@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.56.1](https://github.com/yschimke/compose-ai-tools/compare/v1.56.0...v1.56.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **ci:** publish-catalog never ran for a single-shard caller ([#4874](https://github.com/yschimke/compose-ai-tools/issues/4874)) ([4ba2b22](https://github.com/yschimke/compose-ai-tools/commit/4ba2b227ae438b796b04b8bfd612ce11a28a5078))
+* **preview-diff:** stop every XR composite collapsing onto one render path ([#4867](https://github.com/yschimke/compose-ai-tools/issues/4867)) ([2519718](https://github.com/yschimke/compose-ai-tools/commit/2519718c8e81bfc08362833e18dca59d31888343))
+* **serve-wasm:** bump the upstream pin and port the malformed-font-family fix ([#4873](https://github.com/yschimke/compose-ai-tools/issues/4873)) ([9da64a0](https://github.com/yschimke/compose-ai-tools/commit/9da64a06f5883672c63ff80635203b44c0bf50f1))
+* **serve-wasm:** resync the fork with upstream wasm-ui and gate the drift ([#4871](https://github.com/yschimke/compose-ai-tools/issues/4871)) ([67f3a0c](https://github.com/yschimke/compose-ai-tools/commit/67f3a0ce0fbdbf9e6796589fea008786132fc956))
+
 ## [1.56.0](https://github.com/yschimke/compose-ai-tools/compare/v1.55.0...v1.56.0) (2026-08-30)
 
 
