@@ -276,7 +276,9 @@ on:
           a monorepo upstream still resolves. `spec` stays CALLER-relative — the catalog spec
           describing an imported project belongs to whoever imported it, not to the project.
 
-          SECURITY: this executes code from a repository the caller named, so import mode REFUSES to
+          SECURITY: the upstream tree is fetched with plain `git`, with no credential helper and no
+          token — a public clone needs none, and an untrusted fetch should be handed no secret. And
+          this executes code from a repository the caller named, so import mode REFUSES to
           publish. Setting this with `publish: true` fails the run at its first step: the render and
           the force-push would share one job, one workspace and one `GH_TOKEN`, and a build that can
           write the workspace can rewrite the push step out from under it. Import callers pass
@@ -541,14 +543,16 @@ jobs:
           # No credential: import mode is for public repositories, and `ls-remote` against one needs
           # none. A private upstream is a caller-supplied-token feature this does not yet have.
           if [ -n "${UPSTREAM_REF}" ]; then
-            sha=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" \
+            sha=$(git -c credential.helper= ls-remote \
+              "https://github.com/${UPSTREAM_REPOSITORY}.git" \
               "refs/heads/${UPSTREAM_REF}" "refs/tags/${UPSTREAM_REF}" | head -n1 | cut -f1)
             # A 40-hex `upstream-ref` is already immutable and will not appear in ls-remote output.
             if [ -z "$sha" ] && printf '%s' "${UPSTREAM_REF}" | grep -Eq '^[0-9a-f]{40}$'; then
               sha="${UPSTREAM_REF}"
             fi
           else
-            sha=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" HEAD | cut -f1)
+            sha=$(git -c credential.helper= ls-remote \
+              "https://github.com/${UPSTREAM_REPOSITORY}.git" HEAD | cut -f1)
           fi
           [ -n "$sha" ] || {
             echo "::error::could not resolve ${UPSTREAM_REPOSITORY}@${UPSTREAM_REF:-HEAD}"
@@ -767,15 +771,46 @@ jobs:
       # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
       # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
       # if its caller gave it one, out of the imported checkout's git config.
-      - name: Check out the upstream project
+      # Fetched with plain git rather than `actions/checkout`, deliberately and for two reasons.
+      #
+      # The first is that `actions/checkout` sends a credential. Its `token:` input defaults to the
+      # job's `github.token`, so pointing it at `repository:` hands that token to whatever host
+      # serves the request. Nothing here should present a credential to a third-party repository:
+      # imports are public, a public clone needs no authentication, and the correct number of
+      # secrets to expose to an untrusted fetch is zero. `git clone` with no helper configured sends
+      # nothing, which is what this does.
+      #
+      # The second is that a variable `repository:` on `actions/checkout` is exactly CodeQL's
+      # "checkout of untrusted code in a privileged context" pattern, and here it would not be a
+      # false positive — the whole feature is fetching code from a repository the caller named. The
+      # honest response is to remove the credential the rule is warning about rather than to dismiss
+      # the alert.
+      #
+      # Fetched by the SHA the driver resolved once, never the caller's moving ref: see that job.
+      # `--depth 1` of one commit; nothing in the imported history is read.
+      - name: Fetch the upstream project
         if: ${{ inputs.upstream-repository != '' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ inputs.upstream-repository }}
-          # The SHA the driver resolved once, never the caller's moving ref: see that job.
-          ref: ${{ needs.driver.outputs.upstream-sha }}
-          path: upstream
-          persist-credentials: false
+        env:
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_SHA: ${{ needs.driver.outputs.upstream-sha }}
+        run: |
+          set -euo pipefail
+          # Belt and braces: the driver already resolved and validated this, but the value reaches a
+          # command line here, so it is re-checked at the point of use.
+          printf '%s' "${UPSTREAM_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::upstream sha '${UPSTREAM_SHA}' is not a commit"; exit 1; }
+          printf '%s' "${UPSTREAM_REPOSITORY}" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || {
+            echo "::error::'${UPSTREAM_REPOSITORY}' is not an owner/repo"; exit 1; }
+          rm -rf upstream
+          mkdir upstream
+          cd upstream
+          git init --quiet
+          # -c credential.helper=: with an empty value clears any inherited helper, so this fetch
+          # cannot pick up a token from the runner's git config.
+          git -c credential.helper= remote add origin \
+            "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
+          git checkout --quiet FETCH_HEAD
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -1026,15 +1061,46 @@ jobs:
       # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
       # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
       # if its caller gave it one, out of the imported checkout's git config.
-      - name: Check out the upstream project
+      # Fetched with plain git rather than `actions/checkout`, deliberately and for two reasons.
+      #
+      # The first is that `actions/checkout` sends a credential. Its `token:` input defaults to the
+      # job's `github.token`, so pointing it at `repository:` hands that token to whatever host
+      # serves the request. Nothing here should present a credential to a third-party repository:
+      # imports are public, a public clone needs no authentication, and the correct number of
+      # secrets to expose to an untrusted fetch is zero. `git clone` with no helper configured sends
+      # nothing, which is what this does.
+      #
+      # The second is that a variable `repository:` on `actions/checkout` is exactly CodeQL's
+      # "checkout of untrusted code in a privileged context" pattern, and here it would not be a
+      # false positive — the whole feature is fetching code from a repository the caller named. The
+      # honest response is to remove the credential the rule is warning about rather than to dismiss
+      # the alert.
+      #
+      # Fetched by the SHA the driver resolved once, never the caller's moving ref: see that job.
+      # `--depth 1` of one commit; nothing in the imported history is read.
+      - name: Fetch the upstream project
         if: ${{ inputs.upstream-repository != '' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ inputs.upstream-repository }}
-          # The SHA the driver resolved once, never the caller's moving ref: see that job.
-          ref: ${{ needs.driver.outputs.upstream-sha }}
-          path: upstream
-          persist-credentials: false
+        env:
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_SHA: ${{ needs.driver.outputs.upstream-sha }}
+        run: |
+          set -euo pipefail
+          # Belt and braces: the driver already resolved and validated this, but the value reaches a
+          # command line here, so it is re-checked at the point of use.
+          printf '%s' "${UPSTREAM_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::upstream sha '${UPSTREAM_SHA}' is not a commit"; exit 1; }
+          printf '%s' "${UPSTREAM_REPOSITORY}" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || {
+            echo "::error::'${UPSTREAM_REPOSITORY}' is not an owner/repo"; exit 1; }
+          rm -rf upstream
+          mkdir upstream
+          cd upstream
+          git init --quiet
+          # -c credential.helper=: with an empty value clears any inherited helper, so this fetch
+          # cannot pick up a token from the runner's git config.
+          git -c credential.helper= remote add origin \
+            "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
+          git checkout --quiet FETCH_HEAD
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
