@@ -165,8 +165,8 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 | `VideoPlayerMediaTitlePreviewSeriesScreenshot` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/VideoPlayerMediaTitlePreviewSeriesScreenshot_TV_Series-4a8a639f.png" width="150" /> |
 | `VideoPlayerOverlayPreviewForPhone` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/VideoPlayerOverlayPreviewForPhone_Phone-7133c714.png" width="150" /> |
 | `VideoPlayerOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/VideoPlayerOverlayPreview_tv_4k-e715e4d3.png" width="150" /> |
-| `JetStreamSpatialStackPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/composite.png" width="150" /> |
-| `JetStreamSpatialWorkspacePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/composite.png" width="150" /> |
+| `JetStreamSpatialStackPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview__composite.png" width="150" /> |
+| `JetStreamSpatialWorkspacePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview__composite.png" width="150" /> |
 
 
 <!-- xr-spatial-previews -->

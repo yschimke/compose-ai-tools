@@ -1099,7 +1099,7 @@
     "captureLabel": "",
     "functionName": "JetStreamSpatialStackPreview",
     "module": "jetstream",
-    "renderBasename": "composite.png",
+    "renderBasename": "com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview__composite.png",
     "sha256": "85430f63d4c19a50dc51b6d09d7f58e73e35d99992fa8f628269b89163367976",
     "sourceFile": "src/main/java/com/google/jetstream/presentation/xr/SpatialJetStreamPreviews.kt"
   },
@@ -1107,7 +1107,7 @@
     "captureLabel": "",
     "functionName": "JetStreamSpatialWorkspacePreview",
     "module": "jetstream",
-    "renderBasename": "composite.png",
+    "renderBasename": "com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview__composite.png",
     "sha256": "fc0c2a80c3a1c87fb8192533f412c51c1a9a6052f70b9dfe15b7be744d27858a",
     "sourceFile": "src/main/java/com/google/jetstream/presentation/xr/SpatialJetStreamPreviews.kt"
   }
