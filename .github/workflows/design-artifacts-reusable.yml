@@ -265,6 +265,30 @@ on:
         required: false
         type: string
         default: ''
+      upstream-repository:
+        description: |
+          IMPORT MODE. An `owner/repo` to render INSTEAD of the calling repository — a third-party
+          Compose project the caller wants previews for without forking it or asking it to change.
+          Empty (the default) renders the caller's own checkout, which is every existing caller.
+
+          The upstream project is checked out into `upstream/` alongside the caller's checkout, and
+          the render runs there; `working-directory`, if also set, is interpreted relative to it, so
+          a monorepo upstream still resolves. `spec` stays CALLER-relative — the catalog spec
+          describing an imported project belongs to whoever imported it, not to the project.
+
+          SECURITY: this makes the render job execute code from a repository the caller named. A
+          caller that sets this MUST NOT give the render job a writable token — pass `publish: false`
+          with `upload-out: true` and publish from a separate job that runs none of that code. The
+          `permissions:` a reusable workflow runs under are the caller's to set, so this workflow
+          cannot enforce that for you; yschimke/compose-preview-imports is the worked example.
+        required: false
+        type: string
+        default: ''
+      upstream-ref:
+        description: 'Branch, tag or SHA of upstream-repository to render. Empty ⇒ its default branch. Ignored unless upstream-repository is set.'
+        required: false
+        type: string
+        default: ''
       preview-annotations:
         description: 'Whitespace-separated multipreview annotation names to teach the build-free spec pre-flight (e.g. "WearPreviewDevices WearPreviewFontScales"). Required whenever the previews are annotated with a multipreview declared in ANOTHER module — the source scan cannot see it, so the pre-flight reports "discovered 0 @Preview function(s)" and fails every entry. Wear catalogs always need this.'
         required: false
@@ -372,7 +396,17 @@ env:
   # Where the rendered Gradle BUILD sits in the checkout. The plugin records each project's
   # directory relative to its own `rootDir`, which for a separate-build monorepo is the sample's
   # root — so the catalog step lifts those to repository-relative paths with this.
+  #
+  # Deliberately NOT the upstream-prefixed [RENDER_DIR] in import mode: these paths become source
+  # links back to the project the previews came from, and they must be relative to THAT
+  # repository's root. Prefixing them with the `upstream/` checkout directory would point every
+  # link at a path that exists only inside a runner that has since been destroyed.
   INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+  # The directory the render commands actually run in. Normally the caller's checkout (`.`, or its
+  # `working-directory` for a separate-build monorepo); in import mode the upstream checkout under
+  # `upstream/`, with `working-directory` applied INSIDE it. Computed once here because seven steps
+  # ask the same question and answering it seven times is how they drift apart.
+  RENDER_DIR: ${{ inputs.upstream-repository != '' && (inputs.working-directory != '' && format('upstream/{0}', inputs.working-directory) || 'upstream') || (inputs.working-directory || '.') }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
@@ -586,6 +620,19 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      # IMPORT MODE: the third-party project this run renders. Deliberately AFTER the caller's
+      # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
+      # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
+      # if its caller gave it one, out of the imported checkout's git config.
+      - name: Check out the upstream project
+        if: ${{ inputs.upstream-repository != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.upstream-repository }}
+          ref: ${{ inputs.upstream-ref }}
+          path: upstream
+          persist-credentials: false
+
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Security boundary: this privileged reusable workflow must not execute
@@ -657,6 +704,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      # IMPORT MODE: the third-party project this run renders. Deliberately AFTER the caller's
+      # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
+      # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
+      # if its caller gave it one, out of the imported checkout's git config.
+      - name: Check out the upstream project
+        if: ${{ inputs.upstream-repository != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.upstream-repository }}
+          ref: ${{ inputs.upstream-ref }}
+          path: upstream
           persist-credentials: false
 
       - name: Set up JDK 21
@@ -768,7 +828,7 @@ jobs:
       # build, warm caches), so it costs discovery — the same arrangement the single-job pipeline
       # already relies on for `modePriority`.
       - name: Discover previews
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         run: |
           set -euo pipefail
           compose-preview list --json --module "$INPUT_MODULE" \
@@ -824,7 +884,7 @@ jobs:
       # so the right answer is a no-op shard, not a failed one.
       - name: Render shard ${{ matrix.shard }}
         if: ${{ steps.shard-plan.outputs.previews != '0' }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
           EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
@@ -893,6 +953,19 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      # IMPORT MODE: the third-party project this run renders. Deliberately AFTER the caller's
+      # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
+      # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
+      # if its caller gave it one, out of the imported checkout's git config.
+      - name: Check out the upstream project
+        if: ${{ inputs.upstream-repository != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.upstream-repository }}
+          ref: ${{ inputs.upstream-ref }}
+          path: upstream
+          persist-credentials: false
+
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -957,7 +1030,7 @@ jobs:
       # if two modules declare the same preview function.
       - name: Discover preview-enabled modules
         if: ${{ inputs.module == '' || inputs.modules == 'all' }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           SPEC: ${{ inputs.spec }}
           EXTRA_MODULE: ${{ inputs.extra-module }}
@@ -1066,7 +1139,7 @@ jobs:
       - name: Derive per-mode render exclusions
         id: mode-filter
         if: ${{ steps.validate-spec.outputs.deferred-modes != '' && inputs.render-shards < 2 }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           SPEC: ${{ inputs.spec }}
         run: |
@@ -1160,7 +1233,7 @@ jobs:
         if: ${{ inputs.render-shards < 2 }}
         # compose-preview finds the Gradle root by walking up for gradlew, so a
         # monorepo of separate builds must render from the build's own dir.
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         env:
           # Render only the previews this catalog still needs baked, when its spec defers
           # entries to the live preview server (issue #2950). Read by the render task as the
@@ -1288,7 +1361,7 @@ jobs:
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}
-        working-directory: ${{ inputs.working-directory || '.' }}
+        working-directory: ${{ env.RENDER_DIR }}
         run: |
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
