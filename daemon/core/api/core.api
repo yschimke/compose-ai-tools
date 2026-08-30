@@ -442,10 +442,10 @@ public final class ee/schimke/composeai/daemon/InputKeyboardRecordingScriptEvent
 	public static final field INSTANCE Lee/schimke/composeai/daemon/InputKeyboardRecordingScriptEvents;
 	public static final field KEY_DOWN_EVENT Ljava/lang/String;
 	public static final field KEY_UP_EVENT Ljava/lang/String;
-	public final fun descriptor (Z)Lee/schimke/composeai/data/render/extensions/DataExtensionDescriptor;
-	public final fun getDescriptor ()Lee/schimke/composeai/data/render/extensions/DataExtensionDescriptor;
+	public final fun descriptor (Z)Lee/schimke/composeai/daemon/protocol/DataExtensionDescriptor;
+	public final fun getDescriptor ()Lee/schimke/composeai/daemon/protocol/DataExtensionDescriptor;
 	public final fun getDescriptors ()Ljava/util/List;
-	public final fun getSupportedDescriptor ()Lee/schimke/composeai/data/render/extensions/DataExtensionDescriptor;
+	public final fun getSupportedDescriptor ()Lee/schimke/composeai/daemon/protocol/DataExtensionDescriptor;
 }
 
 public final class ee/schimke/composeai/daemon/InputTouchRecordingScriptEvents {
@@ -454,7 +454,7 @@ public final class ee/schimke/composeai/daemon/InputTouchRecordingScriptEvents {
 	public static final field POINTER_DOWN_EVENT Ljava/lang/String;
 	public static final field POINTER_MOVE_EVENT Ljava/lang/String;
 	public static final field POINTER_UP_EVENT Ljava/lang/String;
-	public final fun getDescriptor ()Lee/schimke/composeai/data/render/extensions/DataExtensionDescriptor;
+	public final fun getDescriptor ()Lee/schimke/composeai/daemon/protocol/DataExtensionDescriptor;
 	public final fun getDescriptors ()Ljava/util/List;
 	public final fun getWIRED_EVENTS ()Ljava/util/Set;
 }
