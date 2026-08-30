@@ -430,6 +430,23 @@ env:
   # `upstream/`, with `working-directory` applied INSIDE it. Computed once here because seven steps
   # ask the same question and answering it seven times is how they drift apart.
   RENDER_DIR: ${{ inputs.upstream-repository != '' && (inputs.working-directory != '' && format('upstream/{0}', inputs.working-directory) || 'upstream') || (inputs.working-directory || '.') }}
+  # An IMPORT renders composables, never the app. Activity and app-tour previews are synthesised
+  # from the merged manifest (`activity__<Activity>`, `apptour__<tour>`) rather than authored, and
+  # rendering one LAUNCHES the app: Robolectric instantiates the manifest `Application` and runs its
+  # `onCreate`, so the project's whole DI graph, and whatever that constructs, executes. For a
+  # first-party catalog that is the point — the launcher activity's capture is the app's hero image.
+  # For a third-party project it runs far more of an unvouched-for build than drawing a composable
+  # does, and it captures the app's own screen rather than the components the catalog exists to show.
+  #
+  # PeopleInSpace is the worked example: both authored @Preview functions rendered clean while the
+  # activity tour died in `initKoin()` with KoinApplicationAlreadyStartedException.
+  #
+  # Empty for a first-party run, so those keep rendering activities exactly as before.
+  #
+  # This is workflow-level, not step-level, because it must reach EVERY render: the primary module,
+  # every later module of a `modules: all` sweep, and each shard of a sharded render. It is
+  # deliberately separate from the per-mode exclusions, which belong to the primary module alone.
+  IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && 'activity__*,apptour__*' || '' }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
@@ -532,6 +549,26 @@ jobs:
             "Rendering a third-party repository and force-pushing share one job, one workspace and" \
             "one token, so the imported build could rewrite the publish step. Pass publish: false" \
             "with upload-out: true and publish from a separate job."
+          exit 1
+
+      # Sharding an import is refused rather than half-supported. The shard planner partitions
+      # EVERY discovered preview, synthetic activity and app-tour ids included, and writes them into
+      # `shard-plan.json`; the render then drops them by id. The two disagree, and both ways of
+      # disagreeing are bad: a shard handed only synthetic ids excludes its whole set, which
+      # `excludePreviewIds` throws on rather than rendering nothing, and any other shard leaves a
+      # planned preview with no artifact, which `verify-shard-renders.mjs` rejects at merge.
+      #
+      # Teaching the planner the import exclusions would fix it properly. Until then this is a
+      # combination that cannot produce a correct catalog, so it fails fast and says why instead of
+      # failing later somewhere less legible. No import needs it today: `import.yml` renders one
+      # project at the default `render-shards: 1`, and these projects are far too small to shard.
+      - name: Refuse to sharded-render an import
+        if: ${{ inputs.upstream-repository != '' && inputs.render-shards > 1 }}
+        run: |
+          echo "::error::import mode (upstream-repository) cannot be combined with render-shards > 1." \
+            "The shard planner would assign the synthetic activity/app-tour previews that import" \
+            "mode then excludes at render time, so a shard either excludes its entire set or leaves" \
+            "a planned preview unrendered and fails partition verification. Use render-shards: 1."
           exit 1
 
       # Resolve the upstream ref to ONE immutable commit for the whole run. A branch is a moving
@@ -1010,10 +1047,18 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
-          exclude=()
+          # The shard's own partition, plus the import-wide exclusions. Unreachable today — the
+          # driver refuses import + render-shards > 1, because the planner does not know about
+          # these ids — and kept deliberately so that teaching the planner is the only thing that
+          # combination needs, rather than a second omission to rediscover. Belt to that brace.
+          shard_ids=""
           if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
-            exclude=(--exclude-preview-id "$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")")
+            shard_ids="$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")"
           fi
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            shard_ids="${shard_ids:+${shard_ids},}${IMPORT_EXCLUDE_PREVIEW_IDS}"
+          fi
+          exclude=(); if [ -n "$shard_ids" ]; then exclude=(--exclude-preview-id "$shard_ids"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
@@ -1216,10 +1261,34 @@ jobs:
             exit 1
           fi
           compose-preview list --json > "$GITHUB_WORKSPACE/discovered-previews.json"
+          # An import renders composables only, so the synthetic activity / app-tour previews are
+          # excluded at render time. A module holding NOTHING else would then have its entire set
+          # excluded, and `excludePreviewIds` throws rather than render nothing — sinking the whole
+          # sweep over a module nobody wanted. That shape is the common one, not a corner: an
+          # Android application module with activities but no authored @Preview is what you get
+          # whenever the previews live in feature or design modules.
+          #
+          # So such a module must never reach the render list. Done by thinning the JSON here
+          # rather than by teaching preview-modules.mjs a flag, because THIS FILE reaches external
+          # callers immediately while `scripts/` does not: an external caller runs the export driver
+          # at the pinned commit (see .github/design-artifacts-driver-pin.txt), so a new script
+          # option would not exist for it and Node's strict parseArgs would abort the run on the
+          # unknown argument. Filtering the input keeps the pinned script's contract untouched, and
+          # keeps `--sources-output` in lockstep for free — it is derived from the same records.
+          modules_input="$GITHUB_WORKSPACE/discovered-previews.json"
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            jq '.previews |= map(select((.id // "") | (startswith("activity__") or startswith("apptour__")) | not))' \
+              "$GITHUB_WORKSPACE/discovered-previews.json" \
+              > "$GITHUB_WORKSPACE/discovered-previews-authored.json"
+            modules_input="$GITHUB_WORKSPACE/discovered-previews-authored.json"
+            echo "Import: $(jq '.previews | length' "$modules_input") authored preview(s) of" \
+              "$(jq '.previews | length' "$GITHUB_WORKSPACE/discovered-previews.json") discovered;" \
+              "activity/app-tour previews do not select a module."
+          fi
           preferred="$(node -e 'const fs=require("fs"); try { const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(s.module ?? ""); } catch {}' "$GITHUB_WORKSPACE/$SPEC")"
           preferred_args=(); if [ -n "$preferred" ]; then preferred_args=(--preferred "$preferred"); fi
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/preview-modules.mjs" \
-            --input "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --input "$modules_input" \
             --output "$GITHUB_WORKSPACE/preview-modules.txt" \
             --sources-output "$GITHUB_WORKSPACE/preview-module-sources.txt" \
             "${preferred_args[@]}"
@@ -1444,7 +1513,20 @@ jobs:
             fi
           }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
-          exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
+          # Two scopes, deliberately not one list. IMPORT_EXCLUDE_PREVIEW_IDS is import-wide and
+          # must reach every module; the per-mode ids belong to the PRIMARY module only, for the
+          # same reason its render filter does (see the comment in the loop below). Joined into a
+          # single --exclude-preview-id value rather than passed as a repeated flag, so the
+          # composition is obvious here rather than dependent on how the CLI merges repeats.
+          import_exclude=()
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
+          fi
+          primary_ids="${IMPORT_EXCLUDE_PREVIEW_IDS:-}"
+          if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
+            primary_ids="${primary_ids:+${primary_ids},}${EXCLUDE_PREVIEW_IDS}"
+          fi
+          exclude=(); if [ -n "$primary_ids" ]; then exclude=(--exclude-preview-id "$primary_ids"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           if [ -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
             mkdir -p "$GITHUB_WORKSPACE/module-bundles"
@@ -1460,12 +1542,18 @@ jobs:
               # The authored render filter belongs to the preferred/primary module. Every later
               # module is fallback inventory and must render in full; applying the primary's
               # function names there can fail on no match or silently thin unrelated previews.
+              #
+              # The IMPORT exclusions are the exception, and carry to every module: "render in
+              # full" means every authored preview, not the app-launching synthetic ones. A
+              # `modules: all` import sweeping a project with more than one Android application
+              # module would otherwise launch the app from the second module onwards — the very
+              # failure this guards, reintroduced by the fallback path.
               if [ "$index" -eq 0 ]; then
                 run compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
                   "${embed[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               else
                 run_without_filter compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${embed[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
+                  "${embed[@]}" "${import_exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               fi
               index=$((index + 1))
             done < "$GITHUB_WORKSPACE/preview-modules.txt"
@@ -1547,8 +1635,13 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          # An extra module is still the imported project, so the app lanes stay excluded here too.
+          import_exclude=()
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
+          fi
           run compose-preview bundle pack --module "$INPUT_EXTRA_MODULE" --with-semantics --progress \
-            "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
+            "${embed[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
       # A failing render reports only "There were failing tests. See the results at: file:///…",
