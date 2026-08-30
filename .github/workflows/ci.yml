@@ -1215,6 +1215,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 .github/ci/check_xr_composite_pin.py
 
+  # `cli/serve-wasm` and compose-preview-server's `wasm-ui` are the same Compose/Wasm frontend
+  # compiled twice — each repository against its own M3 catalog, which is why neither can consume
+  # the other's artifact. The duplication is accepted; drifting silently is not. It already happened
+  # once: upstream fixed #4821 and this copy kept drawing an unpressed button labelled "Pressed"
+  # inside the CLI's bundled `preview-ui/`, while `serve` ran the fixed server. Offline and costs a
+  # second, so like the pin gate above it is deliberately NOT behind a path filter — a gate that a
+  # path filter can skip is not a gate.
+  serve-wasm-fork:
+    name: Serve-Wasm Fork Drift
+    if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run fork gate tests
+        run: python3 .github/ci/test_check_serve_wasm_fork.py -v
+      - name: Check cli/serve-wasm matches the pinned upstream wasm-ui
+        run: python3 .github/ci/check_serve_wasm_fork.py
+
   consumer-contract-notice:
     name: Consumer Contract Notice
     # Informational only — see the script's docstring for why this must not gate. It is a

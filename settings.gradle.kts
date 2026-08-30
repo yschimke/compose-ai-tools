@@ -241,9 +241,21 @@ include(":cli")
 // frontend whose bundle was committed into the server's resources, went with it.
 
 // Experimental Compose/Wasm client for the preview server, exercising its public JSON/render/
-// WebSocket contracts as an independent client. It talks to the server over HTTP and shares no
-// code with it, so it stays here for now even though the server itself has moved; the sibling it
-// was designed against (`cli/serve-web`) is now `serve-web/` in the server's repository.
+// WebSocket contracts as an independent client, and staged into the CLI distribution as
+// `preview-ui/`. The sibling it was designed against (`cli/serve-web`) is now `serve-web/` in the
+// server's repository.
+//
+// It is a FORK, not an independent client. An earlier version of this note said it "shares no code
+// with" the server — true of the runtime relationship and false of the source: these are the same
+// app as compose-preview-server's `wasm-ui`, compiled twice. That sentence is how the two drifted
+// for a day with nothing noticing, shipping #4821's wrong picture inside `preview-ui/` while
+// `serve` ran the fixed server.
+//
+// Why two copies rather than one artifact: each repository compiles the app against ITS OWN M3
+// catalog — `:samples:design-catalog-m3-shared` here, `:native-catalog-m3` there — so neither
+// build's output can stand in for the other's. The duplication is accepted and gated:
+// `.github/ci/check_serve_wasm_fork.py` holds the shared sources byte-identical against a pinned
+// upstream SHA. Port a change to both, then bump the pin.
 include(":cli:serve-wasm")
 
 // The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a
