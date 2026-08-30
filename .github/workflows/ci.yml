@@ -319,15 +319,34 @@ jobs:
       # The PUBLISHED bundle, not one built from source: the player lives in yschimke/rc-players
       # now, and what this repo ships in the CLI's `rc-player-wasm/` sidecar is exactly these bytes.
       #
-      # Tolerated for exactly as long as it has to be: `rc-player-wasm-dist` first exists at
-      # rc-players 1.55.0, and until then there is nothing to stage and nothing this repo can do
-      # about it. The `require` flag below is not set unless this step actually produced a
-      # distribution, so the job cannot pass by asserting nothing — and it re-arms itself the first
-      # time staging succeeds, with no second commit and no date to remember.
+      # Tolerated for exactly as long as it has to be, and for exactly one reason:
+      # `rc-player-wasm-dist` first exists at rc-players 1.55.0. The step below distinguishes that
+      # from every other way staging can fail — a bare `continue-on-error` would let an outage or a
+      # broken task disarm the guards and report success having asserted nothing.
+      #
+      # The `require` flag is set only when a distribution actually landed, so the job re-arms itself
+      # the first time staging succeeds: no second commit, no date to remember.
       - name: Stage the published Wasm player distribution
         id: stage-wasm-player
-        continue-on-error: true
-        run: ./gradlew stageVendoredRcPlayerWasm
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/stage-wasm.log"
+          if ./gradlew stageVendoredRcPlayerWasm --quiet >"$log" 2>&1; then
+            echo "staged=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Tolerate EXACTLY ONE failure: the artifact not being published yet. Any other failure —
+          # a repository outage, a Gradle regression, a broken staging task — must redden the job,
+          # because otherwise it silently disarms the guards below and they report success having
+          # asserted nothing. That is the hole `continue-on-error` on its own leaves open.
+          if grep -q "Could not find ee.schimke.composeai:rc-player-wasm-dist:" "$log"; then
+            echo "staged=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::rc-player-wasm-dist is not published yet — the browser guards will skip."
+            exit 0
+          fi
+          echo "::error::Staging rc-player-wasm-dist failed for a reason other than the artifact being absent."
+          cat "$log" >&2
+          exit 1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -345,7 +364,7 @@ jobs:
       - name: Run the browser-level player guards
         working-directory: scripts/design-artifacts
         env:
-          RC_CMP_WASM_REQUIRE: ${{ steps.stage-wasm-player.outcome == 'success' && '1' || '0' }}
+          RC_CMP_WASM_REQUIRE: ${{ steps.stage-wasm-player.outputs.staged == 'true' && '1' || '0' }}
           RC_CMP_WASM_DIST: ${{ github.workspace }}/build/vendored-rc-player-wasm
         run: node --test rc-cmp-wasm-*.test.mjs
 
@@ -1151,11 +1170,12 @@ jobs:
       # it is resolved from yschimke/rc-players now, so it has to be staged before the browser
       # tests that load it can assert anything.
       #
-      # Tolerated, and the `require` flag below is why that is not a hole: this succeeds only once
-      # `remote-compose-player-js-dist` is published (rc-players 1.55.0). While it cannot, the tests
-      # skip with the reason; the moment it can, `RC_PLAYER_JS_BUNDLE_REQUIRE=1` is exported and a
-      # skip becomes a failure. So the staging step's own success is what arms the gate — there is
-      # no date to remember and no second commit to make.
+      # Tolerated for one reason only — `remote-compose-player-js-dist` first exists at rc-players
+      # 1.55.0 — and the step below proves that is the reason before skipping. Any other staging
+      # failure reddens the job rather than quietly disarming the guards.
+      #
+      # `RC_PLAYER_JS_BUNDLE_REQUIRE=1` is exported only when a bundle actually landed, so a skip
+      # becomes a failure the moment the artifact resolves.
       #
       # This is the one Gradle invocation in an otherwise Node-only job, which is why the JDK is set
       # up here rather than at the top: it is needed for this step alone, and a reader looking at
@@ -1166,10 +1186,27 @@ jobs:
           java-version: "17"
       - name: Stage the vendored player bundle
         id: stage-player
-        continue-on-error: true
-        run: ./gradlew stageVendoredRcPlayerJs --quiet
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/stage-js.log"
+          if ./gradlew stageVendoredRcPlayerJs --quiet >"$log" 2>&1; then
+            echo "staged=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Tolerate EXACTLY ONE failure: the artifact not being published yet. Any other failure —
+          # a repository outage, a Gradle regression, a broken staging task — must redden the job,
+          # because otherwise it silently disarms the guards below and they report success having
+          # asserted nothing. That is the hole `continue-on-error` on its own leaves open.
+          if grep -q "Could not find ee.schimke.composeai:remote-compose-player-js-dist:" "$log"; then
+            echo "staged=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::remote-compose-player-js-dist is not published yet — the browser guards will skip."
+            exit 0
+          fi
+          echo "::error::Staging remote-compose-player-js-dist failed for a reason other than the artifact being absent."
+          cat "$log" >&2
+          exit 1
       - name: Require the player bundle once it is resolvable
-        if: ${{ steps.stage-player.outcome == 'success' }}
+        if: ${{ steps.stage-player.outputs.staged == 'true' }}
         run: echo "RC_PLAYER_JS_BUNDLE_REQUIRE=1" >> "$GITHUB_ENV"
 
       - name: Run driver tests
