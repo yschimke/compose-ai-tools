@@ -25,14 +25,23 @@ export const RC_PLAYER_JS_BUNDLE =
 /**
  * The reason the bundle cannot be used, or `null` when it can.
  *
- * Returned rather than thrown so each suite keeps its own skip-or-fail policy — several of these
- * tests self-skip without a bundle, and turning that into a hard throw here would change behaviour
- * in six places at once.
+ * Returned rather than thrown so each suite keeps its own skip-or-fail policy — these tests already
+ * self-skip on a missing playwright or an unlaunchable chromium, and this is the same kind of
+ * missing prerequisite.
+ *
+ * `RC_PLAYER_JS_BUNDLE_REQUIRE=1` turns that skip into a hard failure, the same lever
+ * `RC_CMP_WASM_REQUIRE` is for the Wasm guards. CI sets it **only when staging actually produced a
+ * bundle**, which is what keeps this from rotting: while `remote-compose-player-js-dist` is
+ * unpublished the tests skip and say so, and the moment it resolves a skip becomes a failure again
+ * rather than staying quietly green.
  */
 export function rcPlayerBundleIssue() {
   if (fs.existsSync(RC_PLAYER_JS_BUNDLE)) return null;
-  return (
+  const reason =
     `no player bundle at ${RC_PLAYER_JS_BUNDLE} — run \`./gradlew stageVendoredRcPlayerJs\` ` +
-    `to unpack the published one, or set RC_PLAYER_JS_BUNDLE`
-  );
+    `to unpack the published one, or set RC_PLAYER_JS_BUNDLE`;
+  if (process.env.RC_PLAYER_JS_BUNDLE_REQUIRE === "1") {
+    throw new Error(`RC_PLAYER_JS_BUNDLE_REQUIRE is set but ${reason}`);
+  }
+  return reason;
 }

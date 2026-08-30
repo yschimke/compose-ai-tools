@@ -22,7 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_FONTS_DIR } from "./rc-fonts.mjs";
-import { RC_PLAYER_JS_BUNDLE } from "./rc-player-bundle.mjs";
+import { RC_PLAYER_JS_BUNDLE, rcPlayerBundleIssue } from "./rc-player-bundle.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLE = RC_PLAYER_JS_BUNDLE;
@@ -47,6 +47,11 @@ before(async () => {
     ({ chromium } = await import("playwright"));
   } catch {
     skip = "playwright is not installed";
+    return;
+  }
+  const bundleIssue = rcPlayerBundleIssue();
+  if (bundleIssue) {
+    skip = bundleIssue;
     return;
   }
   const fontPath = path.join(DEFAULT_FONTS_DIR, FIXTURE_FILE);
