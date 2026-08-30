@@ -235,15 +235,15 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
-// The preview server. #3824 preparation item 7: `serve` was a package inside `:cli`, and a package
-// has no boundary — the only thing stopping the server reaching into the CLI was a source scanner.
-// As a module it is a build fact, one-directional by construction (`:cli` depends on this), and
-// `checkServeModuleBoundary` in its build file fails if anyone wires the dependency back.
-include(":cli:serve")
+// The preview server is no longer built here. It lives in yschimke/compose-preview-server and
+// `:cli` consumes it as `ee.schimke.composeai:compose-preview-serve` (see `composeai-preview-serve`
+// in the version catalog) — the extraction #4732 planned, finished. `cli/serve-web`, the Lit/Vue
+// frontend whose bundle was committed into the server's resources, went with it.
 
-// Experimental Compose/Wasm client for the preview server. It is deliberately a sibling of
-// `:cli:serve-web`: the existing frontend can continue its Lit -> Vue migration while this app
-// exercises the server's public JSON/render/WebSocket contracts as an independent client.
+// Experimental Compose/Wasm client for the preview server, exercising its public JSON/render/
+// WebSocket contracts as an independent client. It talks to the server over HTTP and shares no
+// code with it, so it stays here for now even though the server itself has moved; the sibling it
+// was designed against (`cli/serve-web`) is now `serve-web/` in the server's repository.
 include(":cli:serve-wasm")
 
 // The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a

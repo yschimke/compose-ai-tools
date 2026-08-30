@@ -74,12 +74,6 @@
       "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
     },
     {
-      "file": "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
-      "symbol": "DAEMON_LAUNCH_SCHEMA_VERSION",
-      "role": "second writer",
-      "why": "serve stamps this into the catalog and playground bundle descriptors it writes. Named `DAEMON_LAUNCH_\u2026` rather than `\u2026DESCRIPTOR_\u2026`, which is how it sat outside the first cut of this check \u2014 the reason discovery now also works by use (`discover_version_stamps`) and not by name alone. It moves with serve at the split, making it a cross-repo mirror of the plugin's constant."
-    },
-    {
       "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",
       "symbol": "EXPECTED_DESCRIPTOR_SCHEMA_VERSION",
       "role": "doctor",
@@ -151,11 +145,8 @@
         "prettyPrint": "true",
         "encodeDefaults": "true",
         "explicitNulls": "true"
-      },
-      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt": {
-        "encodeDefaults": "true"
       }
     },
-    "why": "Every production writer's `Json`, recorded per file because they are not identical. The two Gradle-plugin writers pretty-print and force explicit nulls; serve writes compact and relies on kotlinx's `explicitNulls = true` default. That divergence is pre-existing and harmless \u2014 whitespace is not wire shape \u2014 but it is recorded rather than assumed, because the settings that DO change the wire (a `namingStrategy`, or `encodeDefaults = false` dropping defaulted fields) live in the same block. Serve was registered as a version-stamping writer from the start; leaving its encoder unchecked while checking the other two was an inconsistency, not a decision."
+    "why": "Every production writer's `Json`, recorded per file because they are not identical. The two Gradle-plugin writers pretty-print and force explicit nulls. The settings that DO change the wire (a `namingStrategy`, or `encodeDefaults = false` dropping defaulted fields) live in the same block, so they are recorded rather than assumed. Serve's writer (`ServeBundleDaemon`, compact, relying on kotlinx's `explicitNulls = true` default) was registered here until the server left the repository in #4732; it is now a cross-repo mirror this check cannot see, which is residual item 1 on that issue \u2014 a `daemon-launch.json` shape change here no longer fails the server's build, and nothing yet makes it."
   }
 }

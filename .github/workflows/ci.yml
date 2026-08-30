@@ -464,10 +464,10 @@ jobs:
           # `docs/design/RC_PLAYER_SWIFT.md` against the assembled framework) went with it, rather
           # than being left in place: it exits 0 when no framework is present, so without the link
           # above it would report green while checking nothing.
-          # `:cli:serve:test`, not `:cli:test` — the serve tests are their own module since
-          # #3824 item 7, and Gradle does not run a dependency project's tests transitively, so
-          # the old target matches nothing and passes vacuously.
-          ./gradlew :cli:serve:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
+          # `ServeWebTest` (which asserted the committed serve-web bundle matched its source) left
+          # with the server in #4732; it now runs in yschimke/compose-preview-server's own CI. What
+          # this job still owns is the vendored Remote Compose player bundle under
+          # `third_party/remote-compose-player/dist/`, exercised by the rc-* browser tests below.
           ./gradlew ktfmtCheck
       - name: Upload player test reports on failure
         if: failure()
@@ -616,7 +616,7 @@ jobs:
           set -euo pipefail
           node rc-compare.mjs \
             --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/cli/serve/src/main/resources/rc-player/bundle.js" \
+            --player "$GITHUB_WORKSPACE/third_party/remote-compose-player/dist/bundle.js" \
             --out "$RUNNER_TEMP/parity-base" \
             --system remote-m3 \
             --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist"
@@ -627,7 +627,7 @@ jobs:
           set -euo pipefail
           node rc-compare.mjs \
             --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/cli/serve/src/main/resources/rc-player/bundle.js" \
+            --player "$GITHUB_WORKSPACE/third_party/remote-compose-player/dist/bundle.js" \
             --out "$RUNNER_TEMP/parity-out" \
             --system remote-m3 \
             --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist"
@@ -1325,13 +1325,10 @@ jobs:
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run per-job path-scope classifier tests
         run: python3 .github/ci/test_path_scope.py -v
-      # The preview-server split's two committed instruments (issue #3824): the serve <-> cli
-      # symbol ratchet and the coupling gate. Both are pure-stdlib and classify real repo paths,
-      # so a layout change that would silently stop the measurement fails here.
-      - name: Run serve seam ratchet tests
-        run: python3 scripts/test_check_serve_seam.py -v
-      - name: Run serve coupling measurement tests
-        run: python3 scripts/test_measure_serve_coupling.py -v
+      # The preview-server split's two committed instruments (issue #3824) — the serve <-> cli
+      # symbol ratchet and the coupling gate — were removed with `cli/serve` itself (#4732). The
+      # boundary they measured is now a Maven coordinate, which cannot be crossed in either
+      # direction, so there is nothing left for a source scanner to classify.
       # `daemon-launch.json` is written by the gradle plugin and read by the daemon JVM, the CLI
       # doctor and the VS Code extension, each with its own copy of the shape and of the schema
       # version. Two of those copies carry a comment asking a human to keep them in sync; this is
@@ -1443,7 +1440,7 @@ jobs:
         run: ./.github/scripts/test-refresh-driver-pin.sh
 
   # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
-  # built Remote Compose player bundle (`cli/serve/src/main/resources/rc-player/bundle.js`) in headless
+  # built Remote Compose player bundle (`third_party/remote-compose-player/dist/bundle.js`) in headless
   # Chromium. Those tests existed but nothing ran them, which is how a player bug that renders a
   # whole document as a blank canvas reached a published catalog unnoticed (#2930): the pixels are
   # the only signal — the document parses and warns about nothing — and the weekly render is the
@@ -1458,6 +1455,45 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Four mirrors this suite checks now live in the preview server's repository (#4732): the
+      # scorer's `tuning.ts`, `ServeRcFonts.FACES` and its staging wiring, and the viewer's
+      # `format-compare.js`. Each test SKIPS without a checkout, and a silent skip is the failure
+      # mode this repository already refuses elsewhere (see the daemon-launch schema step in
+      # Actions Script Tests, which errors on the word "skipped"), so CI supplies one — the same
+      # arrangement the contracts and VS Code readers get.
+      #
+      # PINNED to the release `:cli` actually consumes, read from the version catalog, not the
+      # server's head. `v2.0.0` is the tree the published `compose-preview-serve:2.0.0` was built
+      # from, so the mirror compares against the artifact on the classpath. Against head, a change
+      # merged there but not yet released would fail this PR for a drift that does not exist yet.
+      #
+      # FETCHED, not checked out, and only the four files the mirrors read. `actions/checkout` of
+      # another repository at a ref that comes from `gradle/libs.versions.toml` is a ref a fork's
+      # pull request can edit, in a job that then populates the npm and Playwright caches — which
+      # CodeQL rates high as "cache poisoning via execution of untrusted code", correctly: the
+      # first shape of this step earned three of those alerts. Downloading four text files that
+      # are only ever `readFileSync`-d removes the premise rather than suppressing the finding.
+      # Nothing from that repository is executed here, and the worst a rewritten catalog line can
+      # do is point the mirrors at a different published tag, which fails loudly.
+      - name: Fetch the pinned preview-server mirror sources
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^composeai-preview-serve = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then
+            echo "::error::could not read composeai-preview-serve from gradle/libs.versions.toml"
+            exit 1
+          fi
+          base="https://raw.githubusercontent.com/yschimke/compose-preview-server/v$version"
+          # Each path is the other half of a mirror asserted in scripts/design-artifacts. Adding a
+          # mirror means adding its file here, or the test self-skips and the guard below fires.
+          for rel in \
+            "server/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt" \
+            "server/build.gradle.kts" \
+            "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js" \
+            "serve-web/src/scorer/tuning.ts"; do
+            mkdir -p ".compose-preview-server/$(dirname "$rel")"
+            curl -fsSL --retry 3 -o ".compose-preview-server/$rel" "$base/$rel"
+          done
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -1476,7 +1512,21 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run driver tests
         working-directory: scripts/design-artifacts
-        run: npm test
+        env:
+          COMPOSE_PREVIEW_SERVER_ROOT: ${{ github.workspace }}/.compose-preview-server
+        run: |
+          set -euo pipefail
+          out=$(npm test 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          # The cross-repo mirrors above self-skip when the checkout is missing, and a skip reports
+          # the same green as a pass. The checkout is supplied, so a skip here means it did not
+          # resolve — which must be loud, not silently green. Matched on the mirrors' own skip
+          # reason rather than on a skip COUNT: this suite has ~29 legitimate skips from other
+          # causes (browser-gated cases), so a count check would either never fire or always fire.
+          if grep -q "no compose-preview-server checkout" <<<"$out"; then
+            echo "::error::cross-repo mirror tests SKIPPED — COMPOSE_PREVIEW_SERVER_ROOT did not resolve"
+            exit 1
+          fi
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
@@ -1562,60 +1612,3 @@ jobs:
             gh pr comment "$PR_NUMBER" --body "$body"
           fi
 
-  serve-web-bundle:
-    name: Serve Web Components
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # `cli/serve-web/`'s bundle is COMMITTED (to `cli/serve/src/main/resources/.../serve/assets/
-      # serve-components.js`) so the Gradle build and the release chain stay node-free. The cost of
-      # a committed artifact is that it goes stale silently: edit a component, forget `npm run
-      # build`, and `:cli:test` and every shipped tarball keep serving the old behaviour while the
-      # source review says otherwise. This job is what makes that impossible — `npm run verify`
-      # typechecks, runs the component tests, rebuilds, and fails if the rebuild differs from what
-      # is committed.
-      #
-      # Step-level path filter rather than a trigger `paths:` filter, and the same fail-open diff as
-      # VS Code Extension Tests above: the job always runs so a required check never sticks pending,
-      # and only the npm steps are conditional.
-      - name: Detect serve-web changes
-        id: changes
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_SHA: ${{ github.sha }}
-        run: |
-          set -uo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" 2>/dev/null); then
-            echo "::warning::Could not diff against base; running Serve Web Components to be safe."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # EVERY committed bundle is in the filter, not just the source, so a hand-edit of a
-          # generated file is caught even when no source changed — that edit is exactly the drift
-          # this guards. The list must stay in step with `tracked` in
-          # cli/serve-web/scripts/check-committed-bundle.mjs: a bundle named there but missing here
-          # is checked on every PR except the one kind that needs it most, and the failure is
-          # silent — the job reports green having skipped its own npm steps.
-          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/(serve-components|serve-chrome|keyboard-navigation|report-capture|format-compare|known-differences|viewer)\.js$'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No cli/serve-web/** changes in this PR — skipping the npm steps (this check still reports)."
-          fi
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        with:
-          node-version: 20
-      - name: Install dependencies
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: cli/serve-web
-        run: npm ci
-      - name: Typecheck, test, and assert the committed bundle is current
-        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
-        working-directory: cli/serve-web
-        run: npm run verify

@@ -138,11 +138,19 @@ The CLI ([cli/](../cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code e
 
 The instruments that prepared the move are gone with it. `preview-server/` (the contract probe) and `scripts/check-preview-server-contracts.sh` existed to prove the server's dependency floor was publishable *before* the extraction; a published 2.0.0 is that proof, so do not go looking for the `Preview Server Contracts` CI job — it no longer exists.
 
-One ratchet remains, and it still measures something real:
+**`cli/serve` and `cli/serve-web` are gone too.** They were a fork of the extracted server for a day, already drifting, and `:cli` now consumes the published artifact — `api(libs.composeai.preview.serve)` in [`cli/build.gradle.kts`](../cli/build.gradle.kts), pinned by `composeai-preview-serve` in the version catalog. The last ratchet, `./gradlew :cli:checkServeSeam`, went with them along with `scripts/check-serve-seam.py`, its allowlist and `scripts/measure-serve-coupling.py`: a published artifact enforces the boundary structurally, and in the stronger direction, because nothing in the server can reach back into `:cli` from Maven Central.
 
-- `./gradlew :cli:checkServeSeam` (`scripts/check-serve-seam.py` + `scripts/serve-seam-allowlist.json`) — the symbol surface between `cli.serve` and the rest of `:cli`.
+Two things to know when you touch that dependency:
 
-It remains because **`cli/serve` has not moved yet**. `browse` delegates to `ServeCommand` outright, and `bundle render` and `history manifest` reach into server types, so removing it would take three commands with it. Those dependencies get refactored first; until then the seam is still worth watching.
+- **The seam is not what its name says.** Eleven main-source symbols cross from the server into `:cli`, and **ten of them contain no Ktor at all** — `ServeRenderHost`, `RenderOutcome`, `SvgOutcome`, `RenderFailureFrame`, `ServeBundleDaemon`, `PreviewHistory`, `PreviewHistoryManifest`, plus the `ServeBuildHost` / `ServeCommandOptions` / `ServeDiscovery` trio. They are render-host and history plumbing filed under the `serve` package, reached by `bundle render`, `render matrix` and `history manifest`, all of which are **offline** commands. Only `ServeRunner` is a web server. So `:cli` links a Ktor server to render a bundle with no server running; moving those ten down into a shared module is the follow-up, and delegating them to a running server would be a regression, not a fix.
+- **`ServeBuildHost` points the other way.** The server calls *back* into the CLI for Gradle: `ServeCommand` implements it with real discovery and builds, while the standalone server's `StandaloneBuildHost` stubs every method. `compose-preview serve` is therefore the only Gradle-capable variant, which is why "just run the server binary" does not replace it.
+
+Two consequences of consuming a published artifact are wired into `cli/build.gradle.kts` and worth recognising if you hit them elsewhere — both are the same bug, a publication `artifactId` its Gradle identity does not follow:
+
+- Gradle substitutes a published `ee.schimke.composeai:<x>` coordinate for the workspace project that publishes it, but matches on `group:name`. Eight of the nine coordinates the server drags back substitute on their own; `daemon-core` does not, because it is `include(":daemon:core")` and Gradle sees `ee.schimke.composeai:core`. An explicit `dependencySubstitution` rule covers it — without one, both copies land on the compile classpath.
+- The server's published test fixtures advertise the capability `ee.schimke.composeai:server-test-fixtures` (from its Gradle project name, `:server`), so `testFixtures(...)` — which looks for `<artifactId>-test-fixtures` — cannot resolve them. `:cli` requests the capability by its real name; the fix belongs upstream.
+
+What the swap removed and could not replace: the `daemon-launch.json` writer in `ServeBundleDaemon`, the serve-web scorer `tuning.ts`, `ServeRcFonts.FACES` and the `parity-locators` fixture are all now **cross-repo** mirrors. The checks that policed them either skip with a stated reason when no `compose-preview-server` sibling checkout is present (set `COMPOSE_PREVIEW_SERVER_ROOT`), or no longer exist. That is residual item 1 on [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732) — a real cross-repo contract-drift gate — and it is now the load-bearing gap, not a nice-to-have.
 
 The historical record, preserved in the tense it was written in: [docs/design/PREVIEW_SERVER_SPLIT.md](design/PREVIEW_SERVER_SPLIT.md).
 

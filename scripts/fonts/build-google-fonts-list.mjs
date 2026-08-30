@@ -23,10 +23,20 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
+// The generated list is a SERVER resource — it backs the `serve` font-picker datalist — and the
+// server left this repository in #4732. The generator stayed, because nothing in the server's build
+// fetches from the web and this is where the repo's other fetch-and-commit tooling lives, so `OUT`
+// now writes into an optional sibling checkout of yschimke/compose-preview-server
+// (`COMPOSE_PREVIEW_SERVER_ROOT`, else a `compose-preview-server` sibling). Running it produces a
+// change you commit THERE, not here. Moving this script to that repository outright is the tidier
+// end state and is follow-up, not part of the swap.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const SERVER_ROOT =
+  (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||
+  join(REPO_ROOT, "..", "compose-preview-server");
 const OUT = join(
-  REPO_ROOT,
-  "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/google-fonts.txt",
+  SERVER_ROOT,
+  "server/src/main/resources/ee/schimke/composeai/cli/serve/google-fonts.txt",
 );
 /** Pinned to `main` — the tag export tracks the live catalog; `--check` in CI flags drift. */
 const SOURCE_URL =

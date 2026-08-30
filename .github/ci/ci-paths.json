@@ -38,9 +38,7 @@
     ],
     "rc_player_tests": [
       "rc-player/**",
-      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
-      "cli/serve/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer.js",
-      "cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/**",
+      "third_party/remote-compose-player/**",
       "scripts/design-artifacts/rc-compare*",
       "scripts/design-artifacts/rc-chromium*",
       "scripts/design-artifacts/rc-cmp-wasm-*",
@@ -106,24 +104,17 @@
       ".github/workflows/**",
       "scripts/design-artifacts/**",
       "gradle/libs.versions.toml",
-      "scripts/check-serve-seam.py",
-      "scripts/serve-seam-allowlist.json",
-      "scripts/measure-serve-coupling.py",
-      "scripts/test_check_serve_seam.py",
-      "scripts/test_measure_serve_coupling.py",
       "scripts/check-daemon-launch-schema.py",
       "scripts/daemon-launch-schema-allowlist.json",
       "scripts/test_check_daemon_launch_schema.py",
       "settings.gradle.kts",
       "**/*.kt",
-      "**/*.ts",
-      "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
-      "cli/serve/src/test/kotlin/ee/schimke/composeai/cli/serve/**"
+      "**/*.ts"
     ],
     "design_artifacts": [
       "design-map/**",
       "scripts/design-artifacts/**",
-      "cli/serve/src/main/resources/rc-player/**",
+      "third_party/remote-compose-player/dist/**",
       ".github/actions/lib/**"
     ]
   }

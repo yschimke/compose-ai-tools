@@ -293,15 +293,37 @@ class RealTree(unittest.TestCase):
             self.assertFalse(expr.isdigit(), f"{rel} stamps a bare literal {expr}")
             self.assertIn(expr, known, f"{rel} stamps unregistered {expr}")
 
-    def test_serve_is_registered_as_a_writer(self):
-        # Pinned by name: this is the site the first cut of the check missed entirely.
+    def test_the_second_writer_is_registered(self):
+        # Pinned by name, because a second writer is exactly what the first cut of this check
+        # missed. It used to pin serve's `ServeBundleDaemon.DAEMON_LAUNCH_SCHEMA_VERSION` — a
+        # differently-spelled constant, which is why discovery works by use and not by name alone.
+        # Serve left the repository in #4732, so the site it pins is now the render-session
+        # subprocess writer; serve's copy became a cross-repo mirror nothing here can see (residual
+        # item 1 on that issue).
         self.assertIn(
             (
-                "cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
-                "DAEMON_LAUNCH_SCHEMA_VERSION",
+                "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session"
+                "/subprocess/SubprocessRenderSession.kt",
+                "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
             ),
             {(s["file"], s["symbol"]) for s in self.allowlist["schemaVersionSites"]},
         )
+
+    def test_no_registered_site_names_a_file_that_left_the_repository(self):
+        # The allowlist is only a gate while every path in it resolves: a site whose file is gone is
+        # checked vacuously, which is how serve's entry would have rotted after #4732 had it been
+        # left behind. The two readers that legitimately live in a sibling checkout
+        # (compose-preview-vscode, compose-preview-contracts) are exempt — the check already
+        # resolves those through `ts_root()` / `contracts_root()` and reports them as SKIPPED when
+        # no checkout is present, which is a stated outcome rather than silent rot.
+        external = {mod.TS_READER_REL, mod.JVM_READER_REL}
+        for site in self.allowlist["schemaVersionSites"]:
+            if site["file"] in external:
+                continue
+            self.assertTrue(
+                (mod.REPO_ROOT / site["file"]).is_file(),
+                f"{site['file']} is registered but not in the tree",
+            )
 
     def test_every_raw_key_the_doctor_reads_is_a_writer_field(self):
         writer = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
@@ -337,10 +359,11 @@ class RealTree(unittest.TestCase):
         )
 
     def test_every_writer_encoder_matches_its_recorded_contract(self):
-        # Three writers, recorded per file because they genuinely differ: the plugin's two
-        # pretty-print, serve writes compact.
+        # The plugin's two writers, recorded per file because they genuinely differ in
+        # pretty-printing. Serve's compact writer was the third until #4732 moved it out of this
+        # tree; what is left is what this repository can still read.
         declared = self.allowlist["writerEncoders"]["declaredBy"]
-        self.assertIn("cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt", declared)
+        self.assertTrue(declared, "no writer encoders recorded — the rule went blind")
         for rel, required in declared.items():
             call = mod.ENCODE_CALL.search(mod.stripped(rel))
             self.assertIsNotNone(call, rel)

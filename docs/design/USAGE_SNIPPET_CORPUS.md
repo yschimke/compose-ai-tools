@@ -1,5 +1,11 @@
 # Does the generated usage source actually compile?
 
+> **Moved.** The corpus generator (`UsageSnippetCorpusTest`) and the `scripts/usage-corpus.sh`
+> driver left with the preview server in #4732; both now live in
+> [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server). Run them
+> from a checkout of that repository. This document stays here because the snippet *sources* it
+> describes (`:usage-source-psi`, `:tools:usage-compile-check`) did not move.
+
 The Source panel tells a visitor a snippet is "the plain Compose that produces this render", and the
 playground invites them to press Run on it. Nothing was holding that claim to anything: the cleaner's
 tests feed it source *this* repository wrote, so they prove the rules match the fixtures and nothing
@@ -8,6 +14,7 @@ more.
 This is the loop that checks the claim against real catalogs:
 
 ```sh
+# in a yschimke/compose-preview-server checkout:
 scripts/usage-corpus.sh ~/m3-catalog ~/meshcore-mobile
 ```
 
