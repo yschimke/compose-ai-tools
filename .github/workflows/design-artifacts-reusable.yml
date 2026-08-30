@@ -2070,10 +2070,7 @@ jobs:
       # A repo that has never heard of the feature has no `design/pages/`, and the emitter is a
       # no-op for it. Fail-soft like the reference lane: a page whose export can't be copied is
       # dropped with a warning rather than costing the catalog its render.
-      # Reads the emitter's environment export and re-publishes it as a step output, because the
-      # step that consumes it now lives in another job. Deliberately unconditional: when the emitter
-      # did not run (import mode, or no parity lane) the variable is unset and this yields the empty
-      # string, which is exactly the "branch was readable / nothing to carry" case.
+
       # The calling repo's checked-out HEAD, NOT $GITHUB_SHA: a caller that passes `ref` checks out
       # that ref while $GITHUB_SHA still names the triggering event's commit, and recording the
       # latter would make the publish's traceability actively misleading. Same reasoning the publish
@@ -2082,6 +2079,10 @@ jobs:
         id: source-sha
         run: echo "sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Reads the emitter's environment export and re-publishes it as a step output, because the
+      # step that consumes it now lives in another job. Deliberately unconditional: when the emitter
+      # did not run (import mode, or no parity lane) the variable is unset and this yields the empty
+      # string, which is exactly the "branch was readable / nothing to carry" case.
       - name: Carry the parity-findings readability across the job boundary
         id: parity-findings-readability
         run: echo "unreadable=${PARITY_FINDINGS_UNREADABLE:-}" >> "$GITHUB_OUTPUT"
