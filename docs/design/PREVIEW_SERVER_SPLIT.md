@@ -13,13 +13,20 @@
 > coordinate is a stronger boundary than a source scanner, so the ratchet had nothing left to
 > measure.
 >
-> Two corrections this document earns, from finishing the job. `browse` no longer touches serve at
-> all — the claim below that it "delegates to `ServeCommand` outright" aged out before the move.
-> And the eleven symbols the seam counted are not eleven server types: **ten of them contain no
-> Ktor**, being the render-host and history plumbing that `bundle render`, `render matrix` and
-> `history manifest` use offline. What the seam measured was a package boundary, not a process
-> boundary. Moving those ten into a shared module is the work that remains, tracked on
+> One correction this document earns, from finishing the job. The eleven symbols the seam counted
+> are not eleven server types: **ten of them contain no Ktor**, being the render-host and history
+> plumbing that `bundle render`, `render matrix` and `history manifest` use offline. What the seam
+> measured was a package boundary, not a process boundary. Moving those ten into a shared module is
+> the work that remains, tracked on
 > [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732).
+>
+> An earlier revision of this note claimed a second correction — that `browse` no longer touches
+> serve. That was wrong, and the sentence it "corrected" was right: `BrowseCommand` still runs
+> `ServeCommand(serveArgs(args), browseProject = true)`, delegating outright. What is true, and what
+> the mistaken grep behind that claim actually showed, is narrower: `browse` names no
+> `ee.schimke.composeai.cli.serve` type *directly*. It reaches all of them through `ServeCommand`,
+> so it is still a command the server's command surface has to account for — see
+> [yschimke/compose-preview-server#9](https://github.com/yschimke/compose-preview-server/issues/9).
 >
 > Everything below is preserved as written, in the tense it was written in.
 
