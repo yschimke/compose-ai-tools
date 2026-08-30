@@ -734,16 +734,20 @@ class RenderEngine(
             // rather than extending it — otherwise the same `afterMs` would mean one instant on
             // desktop, another 32ms later here. Auto mode has only a bound to walk, so it keeps
             // the default underneath. Mirrors `RobolectricRenderTest`'s `settleTargetMs`.
-            val settleTargetMs =
-              spec.previewId
-                ?.let { loadPreviewIndexLazily().staticSettleFor(it) }
-                ?.let {
-                  settleCaptureTargetMs(
-                    afterMs = it.afterMs,
-                    maxMs = it.maxMs,
-                    captureAdvanceMs = CAPTURE_ADVANCE_MS,
-                  )
-                }
+            val staticSettle = spec.previewId?.let { loadPreviewIndexLazily().staticSettleFor(it) }
+            val settleTargetMs = staticSettle?.let {
+              settleCaptureTargetMs(
+                afterMs = it.afterMs,
+                maxMs = it.maxMs,
+                captureAdvanceMs = CAPTURE_ADVANCE_MS,
+              )
+            }
+            // Whether that coordinate came from `@SettledPreview(afterMs = …)` rather than auto
+            // mode. `settleCaptureTargetMs` collapses both into one number, so the capture branch
+            // below cannot tell them apart without this — and it must, because an exact coordinate
+            // is a chosen instant the quiescence probe would move off. Mirrors
+            // `RobolectricRenderTest`'s `hasExactSettle` / `shouldAdvanceClockForVisualSettling`.
+            val hasExactSettle = (staticSettle?.afterMs ?: 0) > 0
             // Through the same frame split the batch renderer uses, so a coordinate that is not a
             // multiple of 16ms lands on the coordinate here too rather than a frame past it —
             // otherwise a live `compose-preview serve` frame and the published PNG would disagree
@@ -867,7 +871,16 @@ class RenderEngine(
               // An explicit captureAdvanceMs selects an exact animation phase. Sampling later
               // frames would silently move that snapshot by 16–64ms, so only default-timed daemon
               // stills use adaptive settling.
-              if (spec.captureAdvanceMs == null) {
+              //
+              // `@SettledPreview(afterMs = …)` is the same promise written a different way, and
+              // was missing here (issue #4829): the clock advanced to the declared coordinate
+              // above and then the probe walked up to five more frames off it, so a live daemon
+              // frame disagreed with the published PNG for exactly the previews that named an
+              // exact instant — and an indeterminate animation, which cannot quiesce, was reported
+              // `still_changing` on the lane that serves live catalog renders. Same split as
+              // #4822: the batch renderer had the guard (`shouldAdvanceClockForVisualSettling`),
+              // this lane did not.
+              if (spec.captureAdvanceMs == null && !hasExactSettle) {
                 val visuallySettled =
                   ee.schimke.composeai.renderer.captureVisuallySettledFrame(
                     file = outputFile,
@@ -883,6 +896,17 @@ class RenderEngine(
                 )
               } else {
                 capture(outputFile)
+                // The positive claim, on this lane too. Without it `drainPinned` below is always
+                // empty for a daemon render and a pinned spinner stays indistinguishable from an
+                // ordinary static preview — the gap this issue exists to close.
+                if (spec.captureAdvanceMs == null && hasExactSettle) {
+                  settleTargetMs?.let {
+                    ee.schimke.composeai.renderer.VisualSettleDiagnostics.recordPinnedPhase(
+                      "compose-ai-daemon still '${spec.outputBaseName}'",
+                      it,
+                    )
+                  }
+                }
               }
             }
             System.err.println(
