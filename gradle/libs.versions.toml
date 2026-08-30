@@ -354,7 +354,13 @@ composeai-contracts = "2.1.0"
 # repository is still on 1.x. The server's own POM depends back on this repository's 1.53.0
 # contracts, which Gradle resolves to the workspace projects (same coordinates, project wins), so
 # the loop is closed at build time rather than by a version bump on either side.
-composeai-preview-serve = "2.0.0"
+#
+# 2.2.0 also brought `compose-preview-render-host` — the render host, the bundle daemon and the
+# git-backed preview history, split out of the server so a caller that only renders offline does not
+# link a web server (yschimke/compose-preview-server#38, this repository's #4832). ONE version ref
+# for both, deliberately: they are cut from one build and one tag over there, and a skew between the
+# server and the render host it sits on top of is not a state that repository can produce.
+composeai-preview-serve = "2.2.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
@@ -394,6 +400,12 @@ composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref =
 # as a Gradle feature variant, so `testFixtures(libs.composeai.preview.serve)` picks it up without
 # a second catalog entry.
 composeai-preview-serve = { module = "ee.schimke.composeai:compose-preview-serve", version.ref = "composeai-preview-serve" }
+# The render host and history plumbing, without the web server (see `composeai-preview-serve` for
+# why they share a version ref). `compose-preview-serve` depends on this, so the coordinate would
+# resolve transitively either way; `:cli` names it because `bundle render` and `history manifest`
+# depend on it DIRECTLY and should say so — the day `serve` stops being a CLI command, those
+# commands keep compiling without anyone rediscovering what they were really using.
+composeai-preview-render-host = { module = "ee.schimke.composeai:compose-preview-render-host", version.ref = "composeai-preview-serve" }
 
 # The Remote Compose players (see `rcplayers`).
 rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace", version.ref = "rcplayers" }
