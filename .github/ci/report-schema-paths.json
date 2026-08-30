@@ -18,7 +18,6 @@
     "runtimes/**",
     "samples/**",
     "site/**",
-    "third_party/**",
     "**/*.md",
     "**/*.kt",
     "**/*.kts",

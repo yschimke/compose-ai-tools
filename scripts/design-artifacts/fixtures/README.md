@@ -42,3 +42,17 @@ git show FETCH_HEAD:bundle/ir/Template%2FWatchScreen.rc > \
 
 Keep them small — these are checked-in binaries, and a document big enough to be interesting is
 already only a couple of kilobytes.
+
+## `IndeterminateCircularProgress-400x400.rc`
+
+The oscillating row from the CMP/Wasm parity lane — a document whose arc sweeps continuously, which
+is what makes it the right subject for `rc-cmp-wasm-clock-pin.test.mjs`: two captures taken 1.2 s
+apart must be identical when the clock is pinned, and visibly different when it is not.
+
+It used to be read out of `:rc-player-compose`'s test resources. The players moved to
+[yschimke/rc-players](https://github.com/yschimke/rc-players), so this is a copy rather than a
+cross-repo path — one 1.2 KB document, and a browser test that self-skipped on a missing sibling
+checkout would be a silent hole rather than a gate.
+
+Originally taken from the published `remote-m3` bundle; upstream provenance is in that repository's
+`rc-player/compose/src/jvmTest/resources/rc-fixtures/README.md`.

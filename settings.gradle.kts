@@ -423,31 +423,14 @@ include(":samples:cmp-shared")
 // renderable `@Preview`, so it sits outside the desktop/Android render path.
 include(":samples:cmp-wasm-catalog")
 
-// Original Kotlin Multiplatform Remote Compose player. Unlike the vendored Android/JVM embedded
-// player this implementation owns a platform-neutral wire model and can compile to Kotlin/Wasm.
-include(":rc-player-trace")
-project(":rc-player-trace").projectDir = file("rc-player/trace")
-
-include(":rc-player-protocol")
-project(":rc-player-protocol").projectDir = file("rc-player/protocol")
-
-include(":rc-player-runtime")
-project(":rc-player-runtime").projectDir = file("rc-player/runtime")
-
-include(":rc-player-compose")
-project(":rc-player-compose").projectDir = file("rc-player/compose")
-
-include(":rc-player-wasm")
-project(":rc-player-wasm").projectDir = file("rc-player/wasm")
-
-include(":rc-player-compat-tests")
-project(":rc-player-compat-tests").projectDir = file("rc-player/compat-tests")
-
-include(":rc-player-profile")
-project(":rc-player-profile").projectDir = file("rc-player/profile")
-
-include(":rc-player-metrics")
-project(":rc-player-metrics").projectDir = file("rc-player/metrics")
+// The Remote Compose players — both the Kotlin Multiplatform one written here and the vendored
+// AndroidX embedded player it is compared against — are published by yschimke/rc-players now, along
+// with the Wasm browser bundle, the iOS XCFramework and the lane-comparison recipes. This build
+// consumes them as coordinates: `libs.rcplayer.*` in `gradle/libs.versions.toml`.
+//
+// The dependency runs both ways and neither direction is a build-time cycle. That repository takes
+// `data-fonts-google` and `data-layoutinspector-connector` back from this one, at released
+// coordinates.
 
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
@@ -461,8 +444,8 @@ include(":samples:remotecompose")
 // The Remote Compose **design catalog** used to live here as
 // `:samples:design-catalog-remote-m3`. It is published by yschimke/wear-m3-catalog now
 // (#4588), co-located with the Wear catalog it is compared against and the kit both
-// reproduce. `:samples:remotecompose` (the "how to preview Remote Compose" demo) and
-// `:third-party-rc-embedded-player` stay here — the sheet moved, the player did not.
+// reproduce. `:samples:remotecompose` (the "how to preview Remote Compose" demo) stays here;
+// the players followed it out, into yschimke/rc-players.
 
 include(":renderer-desktop")
 
@@ -706,24 +689,6 @@ project(":data-permissions-connector").projectDir = file("data/permissions/conne
 // `:samples:remotecompose`); the connector ships its alpha-API deps as `compileOnly` so daemon
 // modules at compileSdk 36 can still consume the AAR. The Compose API surface (composition local,
 // data product, override planner) registers on `:daemon:android` only.
-// Vendored snapshot of AndroidX's experimental Compose *embedded* Remote Compose player
-// (`RcPlayer`). AndroidX now also publishes its current implementation inside the androidx.dev
-// `remote-player-compose` snapshot; this independently packaged, locally patched copy backs the
-// vendored Android comparison lane. See `third_party/rc-embedded-player/PROVENANCE.md`.
-include(":third-party-rc-embedded-player")
-
-project(":third-party-rc-embedded-player").projectDir = file("third_party/rc-embedded-player")
-
-// The desktop half of the same player: a plain Kotlin/JVM module that compiles the *platform-neutral
-// subset* of the module above against Compose Desktop instead of the Android artifacts. It shares
-// those sources by path rather than copying them, so there is one copy of each file. This is what
-// makes "platform-neutral" a compiled fact rather than a claim — see the CMP section of
-// `third_party/rc-embedded-player/PROVENANCE.md`.
-include(":third-party-rc-embedded-player-jvm")
-
-project(":third-party-rc-embedded-player-jvm").projectDir =
-  file("third_party/rc-embedded-player-jvm")
-
 include(":data-remotecompose-core")
 
 project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")

@@ -359,7 +359,7 @@ dependencies {
   // for the cmp-jvm chip's one-shot render subprocess. Subprocess-only isolation; the Compose +
   // Skiko runtime is not bundled here (the subprocess joins `lib-rcjvm/*` +
   // `lib-daemon-desktop/*`).
-  add("composePreviewRcJvm", project(":third-party-rc-embedded-player-jvm"))
+  add("composePreviewRcJvm", libs.rcplayer.embedded.jvm)
 
   // `compose-preview bundle daemon` ships the Android (Robolectric) daemon in
   // `lib-daemon-android/`. This resolves `:daemon:android`'s `daemonHarnessClasspathFile`
@@ -453,7 +453,7 @@ val stageDaemonDesktopLibs =
 // [stageDaemonDesktopLibs].
 val stageRcJvmLibs =
   tasks.register<Sync>("stageRcJvmLibs") {
-    description = "Stages :third-party-rc-embedded-player-jvm runtime artifacts for lib-rcjvm/."
+    description = "Stages the vendored JVM player's runtime artifacts for lib-rcjvm/."
     destinationDir = layout.buildDirectory.dir("staged-rcjvm-libs").get().asFile
     val artifactsProvider = composePreviewRcJvm.incoming.artifacts.resolvedArtifacts
     from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
@@ -545,9 +545,27 @@ val stageBtaLibs =
     }
   }
 
-val rcPlayerWasmDist =
-  files(project(":rc-player-wasm").layout.buildDirectory.dir("wasmDist"))
-    .builtBy(":rc-player-wasm:wasmPlayerDist")
+// The CMP/Wasm Remote Compose player bundle, staged into the install dist as `rc-player-wasm/`.
+//
+// This used to be `files(project(":rc-player-wasm")...).builtBy(...)` — a directory produced by a
+// sibling module. The players are published by yschimke/rc-players now, so the bundle arrives as a
+// zip (`rc-player-wasm-dist`, `dist` classifier) and is unpacked here. `zipTree` inside a
+// `provider`
+// keeps resolution lazy, so a build that never assembles the distribution never downloads it.
+//
+// Resolved through its own configuration rather than a plain `dependencies {}` entry for the same
+// reason as the sidecars above: this is not the CLI's own classpath, and nothing here should reach
+// the compile or runtime graph.
+val composePreviewRcPlayerWasm =
+  configurations.create("composePreviewRcPlayerWasm") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+  }
+
+dependencies { add("composePreviewRcPlayerWasm", libs.rcplayer.wasm.dist.map { "$it:dist@zip" }) }
+
+val rcPlayerWasmDist = provider { zipTree(composePreviewRcPlayerWasm.singleFile) }
 
 val previewUiWasmDist =
   files(project(":cli:serve-wasm").layout.buildDirectory.dir("wasmDist"))

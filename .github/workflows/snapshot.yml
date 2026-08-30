@@ -72,50 +72,9 @@ jobs:
           # publish list that previously drifted out of sync (PR #724 added
           # `:data-a11y-hierarchy-android` here but missed adding it to this list, leaving
           # consumers' `renderer-android` POM resolution broken at snapshot time).
-          #
-          # The four `:rc-player-*` modules are excluded and published by `publish-player-snapshot`
-          # on macOS: they declare `iosArm64`/`iosSimulatorArm64`, which Kotlin/Native cannot build
-          # on Linux. Same split as `release.yml`; keep the two exclusion lists in step.
-          ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral \
-            -x :rc-player-trace:publishToMavenCentral \
-            -x :rc-player-protocol:publishToMavenCentral \
-            -x :rc-player-runtime:publishToMavenCentral \
-            -x :rc-player-compose:publishToMavenCentral
+          ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral
           # Note: `--no-configuration-cache` is incompatible with
           # `org.gradle.unsafe.isolated-projects=true` set in gradle.properties
           # (Gradle fails with "Configuration Cache cannot be disabled when
           # Isolated Projects is enabled"). Vanniktech's publish tasks work
           # with config-cache, so just let it run normally.
-
-  # The `:rc-player-*` stack, snapshotted from macOS for the same reason `release.yml` publishes it
-  # there: its Apple klibs only build on a Mac. Kept as its own job rather than moving the whole
-  # snapshot to macOS, so the ordinary Linux publish stays on the cheaper, already-proven runner.
-  publish-player-snapshot:
-    needs: version
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      # See `release.yml`'s `publish-xcframework`: CMP 1.11's `ui-uikit` needs the iOS 26 SDK.
-      - name: Select an Xcode with the iOS 26 SDK
-        run: |
-          set -euo pipefail
-          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
-          if [ -z "$xcode" ]; then
-            echo "No Xcode 26 on this image; Compose Multiplatform's iOS targets need its SDK." >&2
-            exit 1
-          fi
-          sudo xcode-select --switch "$xcode/Contents/Developer"
-      - name: Publish the rc-player stack -SNAPSHOT
-        env:
-          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
-          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-        run: |
-          ./gradlew \
-            :rc-player-trace:publishToMavenCentral \
-            :rc-player-protocol:publishToMavenCentral \
-            :rc-player-runtime:publishToMavenCentral \
-            :rc-player-compose:publishToMavenCentral

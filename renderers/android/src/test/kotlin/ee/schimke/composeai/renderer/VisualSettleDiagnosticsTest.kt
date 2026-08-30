@@ -38,6 +38,54 @@ class VisualSettleDiagnosticsTest {
   }
 
   @Test
+  fun `a phase pin is recorded on its own channel, and drained once`() {
+    // #4829. An exact `@SettledPreview(afterMs = …)` skips the quiescence probe — the coordinate is
+    // the answer — so nothing used to be recorded at all, and a spinner pinned to a deliberate
+    // phase was indistinguishable from an ordinary static preview.
+    VisualSettleDiagnostics.recordPinnedPhase("preview still", 600L)
+    // Not a warning: it must not appear among the unsettled captures a consumer fails its build on.
+    assertTrue(VisualSettleDiagnostics.drainPreview().isEmpty())
+    val drained = VisualSettleDiagnostics.drainPinned()
+    assertEquals(1, drained.size)
+    assertEquals("preview still", drained.single().role)
+    assertEquals(600L, drained.single().atMs)
+    assertTrue(VisualSettleDiagnostics.drainPinned().isEmpty())
+  }
+
+  @Test
+  fun `the sidecar distinguishes a chosen phase from a failed settle`() {
+    // The whole point of the issue: `still_changing` used to mean both "your reveal is broken" and
+    // "this is a spinner, working as designed", so a consumer could act on neither.
+    val json =
+      RenderWarningsSidecar.encode(
+        fallbacks = emptyList(),
+        imageLoads = emptyList(),
+        unsettled = emptyList(),
+        pinned = listOf(VisualSettleDiagnostics.PinnedCapture(role = "preview still", atMs = 600L)),
+      )
+    assertTrue(json, json.contains("\"phasePinnedCaptures\":["))
+    assertTrue(json, json.contains("\"outcome\":\"phase_pinned\""))
+    assertTrue(json, json.contains("\"atMs\":600"))
+    assertTrue(json, json.contains("a chosen coordinate, not a failed settle"))
+    // The warning channel stays empty — a pin is not a warning, and a catalog that fails its build
+    // on `unsettledCaptures` must not go red for a spinner that said where its phase is.
+    assertTrue(json, json.contains("\"unsettledCaptures\":[]"))
+  }
+
+  @Test
+  fun `a clean render with a phase pin still writes the sidecar`() {
+    // Withholding the pin whenever the render was otherwise clean would make it available only on
+    // previews that also had something wrong with them — i.e. never on the spinners it is for.
+    val json =
+      RenderWarningsSidecar.encode(
+        fallbacks = emptyList(),
+        pinned = listOf(VisualSettleDiagnostics.PinnedCapture(role = "preview still", atMs = 250L)),
+      )
+    assertTrue(json, json.contains("\"atMs\":250"))
+    assertTrue(json, json.contains("\"fontFallbacks\":[]"))
+  }
+
+  @Test
   fun `the sidecar carries the outcome and its message`() {
     val json =
       RenderWarningsSidecar.encode(

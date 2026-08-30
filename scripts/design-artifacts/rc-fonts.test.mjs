@@ -7,10 +7,24 @@ import { fileURLToPath } from "node:url";
 import { FONT_FACES, DEFAULT_FONTS_DIR, fontFaceCss } from "./rc-fonts.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PAINT_CONTEXT = path.resolve(
-  HERE,
-  "../../third_party/remote-compose-player/src/web/CanvasPaintContext.ts",
-);
+// The vendored TypeScript player's paint context. It left with the players (yschimke/rc-players),
+// so this is a CROSS-REPO check against an optional sibling checkout — the same shape the
+// preview-server checks below use, and for the same reason: a developer with one checkout must not
+// be blocked, but a green run that silently checked nothing is worse than a stated skip.
+//
+// Resolution order: `RC_PLAYERS_ROOT`, else an `rc-players` sibling of this checkout.
+function rcPlayersRoot() {
+  const explicit = (process.env.RC_PLAYERS_ROOT ?? "").trim();
+  const candidates = explicit
+    ? [explicit]
+    : [path.resolve(HERE, "../../../rc-players")];
+  for (const root of candidates) {
+    if (fs.existsSync(path.join(root, PAINT_CONTEXT_RELATIVE))) return root;
+  }
+  return null;
+}
+
+const PAINT_CONTEXT_RELATIVE = "third_party/remote-compose-player/src/web/CanvasPaintContext.ts";
 // The served viewer's own copy of the table, and the build wiring that gives it the files. Both
 // left with the server (#4732), so this is now a CROSS-REPO check against an optional sibling
 // checkout of yschimke/compose-preview-server — the same shape `scripts/check-daemon-launch-schema.py`
@@ -62,8 +76,15 @@ test("every declared face has a vendored file", () => {
 // drift — a family renamed on one side only — the request no longer matches anything registered and
 // the page quietly reverts to generic families. That reads as a small parity regression spread
 // across every preview containing text, which is exactly the failure mode that hid here before.
-test("every non-generic family the player requests is registered here", () => {
-  const src = fs.readFileSync(PAINT_CONTEXT, "utf8");
+test("every non-generic family the player requests is registered here", (t) => {
+  const root = rcPlayersRoot();
+  if (!root) {
+    t.skip(
+      "no rc-players checkout — set RC_PLAYERS_ROOT or clone yschimke/rc-players beside this one",
+    );
+    return;
+  }
+  const src = fs.readFileSync(path.join(root, PAINT_CONTEXT_RELATIVE), "utf8");
   const body = src.slice(src.indexOf("export function cssFontStackFor"));
   const fn = body.slice(0, body.indexOf("\n}"));
 

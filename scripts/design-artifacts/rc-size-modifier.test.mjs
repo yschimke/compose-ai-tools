@@ -6,7 +6,7 @@
  * Two measure-pass defects made a component render at a size nobody requested, and both were
  * invisible to every other check: the document parses, no opcode is unknown, nothing warns. Only
  * the pixels tell you — which is why this exercises the built bundle
- * (`third_party/remote-compose-player/dist/bundle.js`) in a real browser, the same reason
+ * (`build/vendored-rc-player-js/bundle.js`) in a real browser, the same reason
  * `rc-round-clip.test.mjs` does. A stale bundle beside fixed source is exactly the regression worth
  * catching.
  *
@@ -38,9 +38,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
+import { RC_PLAYER_JS_BUNDLE } from "./rc-player-bundle.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLE = path.resolve(HERE, "../../third_party/remote-compose-player/dist/bundle.js");
+const BUNDLE = RC_PLAYER_JS_BUNDLE;
 const FIXTURE = path.join(HERE, "fixtures", "icon-remote-size.rc");
 const BAKED = path.join(HERE, "fixtures", "icon-remote-size.baked.png");
 // The fixture's own generation size: a 200 dp square sticker at dpi 320 (density 2).

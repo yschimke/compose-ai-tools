@@ -153,6 +153,43 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `breakpointKit round-trips, and is absent for a component that declares none`() {
+    // #4827. A breakpoint capture is the one kind of cell that cannot carry
+    // `@OverrideVariant(kitAxis = …)` — it is not an annotation at all, just the same composable
+    // drawn wider by a multipreview — so the mapping rides on the component and reaches
+    // `design-map.mjs` through here.
+    val declared =
+      PreviewInfo(
+        id = "test.Picker_wearos_225",
+        functionName = "Picker",
+        className = "test.CatalogKt",
+        catalog =
+          CatalogEntry(
+            role = CatalogRole.COMPONENT,
+            componentId = "Picker",
+            breakpointKit = listOf("225=Larger Screen (BP)=Yes"),
+          ),
+      )
+    val undeclared =
+      PreviewInfo(
+        id = "test.Button_wearos_225",
+        functionName = "Button",
+        className = "test.CatalogKt",
+        catalog = CatalogEntry(role = CatalogRole.COMPONENT, componentId = "Button"),
+      )
+    val manifest =
+      PreviewManifest(module = "app", variant = "debug", previews = listOf(declared, undeclared))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews[0].catalog?.breakpointKit)
+      .containsExactly("225=Larger Screen (BP)=Yes")
+    // Empty rather than null, and empty is what keeps the bare `breakpoint=<dp>` seed — the
+    // majority case, where the kit has no size axis and the capture is correctly unresolved.
+    assertThat(decoded.previews[1].catalog?.breakpointKit).isEmpty()
+  }
+
+  @Test
   fun `a whole kit assignment round-trips through the preview manifest`() {
     // The coupled-axis case: the Wear kit's `Button` set has no
     // `Icon=Yes, Icon size=n/a, Alignment=Center` node, so the cell that lands on a real one turns

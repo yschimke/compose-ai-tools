@@ -158,15 +158,15 @@ on:
         type: boolean
         default: false
       rc-embedded-lane:
-        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player from :third-party-rc-embedded-player and the upstream player published in androidx.compose.remote:remote-player-compose. ON by default: rendering the same document through both independently compiled players makes upstream-vs-vendored drift visible. It needs a Gradle/Android toolchain, and either harness may fail-soft independently so the other lane still publishes. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player and the upstream player published in androidx.compose.remote:remote-player-compose. OFF by default since the players moved to yschimke/rc-players: the Robolectric harness that renders these lanes is a test task in that build, so this repository has nothing to run. Enabling it needs the lane driven from there, or an rc-players checkout wired in here — see the step below. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
-        default: true
+        default: false
       rc-embedded-jvm-lane:
-        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through :third-party-rc-embedded-player-jvm (Compose Desktop / Skiko, offscreen). ON by default, for the same attribution reason as rc-embedded-lane, and because it exercises the platform-neutral draw path off Android: a jvm-only divergence points at the desktop seam (text/image/skiko) rather than the shared evaluator. Independent of rc-embedded-lane: either or both can run, and staging happens once for whichever is on. Needs libGL + xvfb, installed just-in-time by the rc-compare step once the bundle is known to carry ir/*.rc. Same tolerance as the Robolectric lane: a harness failure or empty output degrades to a page without the cmp-jvm column rather than failing the render. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through the vendored JVM player (Compose Desktop / Skiko, offscreen). OFF by default for the same reason as rc-embedded-lane: its harness is a test task in yschimke/rc-players now. Needs libGL + xvfb when re-enabled. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
-        default: true
+        default: false
       rc-cmp-wasm-lane:
         description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw, or one that misses the first-frame budgets, fails the step and the catalog does not publish. Opt in per catalog once you know what its documents do in that player."
         required: false
@@ -276,16 +276,30 @@ on:
           a monorepo upstream still resolves. `spec` stays CALLER-relative — the catalog spec
           describing an imported project belongs to whoever imported it, not to the project.
 
-          SECURITY: this makes the render job execute code from a repository the caller named. A
-          caller that sets this MUST NOT give the render job a writable token — pass `publish: false`
-          with `upload-out: true` and publish from a separate job that runs none of that code. The
-          `permissions:` a reusable workflow runs under are the caller's to set, so this workflow
-          cannot enforce that for you; yschimke/compose-preview-imports is the worked example.
+          SECURITY: this executes code from a repository the caller named, so import mode REFUSES to
+          publish. Setting this with `publish: true` fails the run at its first step: the render and
+          the force-push would share one job, one workspace and one `GH_TOKEN`, and a build that can
+          write the workspace can rewrite the push step out from under it. Import callers pass
+          `publish: false` with `upload-out: true` and publish from a separate job that runs none of
+          the imported code — yschimke/compose-preview-imports is the worked example.
         required: false
         type: string
         default: ''
       upstream-ref:
-        description: 'Branch, tag or SHA of upstream-repository to render. Empty ⇒ its default branch. Ignored unless upstream-repository is set.'
+        description: 'Branch, tag or SHA of upstream-repository to render. Empty ⇒ its default branch, resolved to one immutable SHA before any shard checks it out. Ignored unless upstream-repository is set.'
+        required: false
+        type: string
+        default: ''
+      design-map-command:
+        description: >-
+          Shell command that projects THIS system's `design-map.json` into the caller repo root,
+          run once before every step that reads it. Same input name and semantics as design-parity's
+          reusable workflow, and for the same reason: a repo publishing TWO catalogs from two modules
+          has one map PATH and two systems needing different maps, so without this the second system
+          is scored against the first one's map — every entry dangles and coverage publishes as 0%.
+          `system`, `spec` and `module` already vary per call; the map is the fourth thing that does.
+          Empty ⇒ the committed map is used as-is, which is right for the single-catalog repos that
+          are the common case.
         required: false
         type: string
         default: ''
@@ -490,7 +504,59 @@ jobs:
       contents: read
     outputs:
       ref: ${{ steps.driver.outputs.ref }}
+      upstream-sha: ${{ steps.upstream.outputs.sha }}
     steps:
+      # IMPORT MODE is a refusal, not a warning. Rendering a caller-named third-party repository and
+      # force-pushing a branch cannot happen in one job: `generate` runs the imported project's
+      # Gradle and then runs the publish step with a contents-write `GH_TOKEN`, in the same workspace
+      # — so a build that can write files can rewrite `push-branch.sh`, or append to `GITHUB_ENV`,
+      # and have the later step run it with that token. Documentation cannot hold that boundary, so
+      # the combination is rejected here, in the job every other job depends on, before any of the
+      # imported project is fetched.
+      #
+      # The supported shape is `publish: false` + `upload-out: true`, with the caller publishing the
+      # artifact from a job that runs none of the imported code.
+      - name: Refuse to publish from an import
+        if: ${{ inputs.upstream-repository != '' && inputs.publish }}
+        run: |
+          echo "::error::import mode (upstream-repository) cannot be combined with publish: true." \
+            "Rendering a third-party repository and force-pushing share one job, one workspace and" \
+            "one token, so the imported build could rewrite the publish step. Pass publish: false" \
+            "with upload-out: true and publish from a separate job."
+          exit 1
+
+      # Resolve the upstream ref to ONE immutable commit for the whole run. A branch is a moving
+      # target: with render-shards > 1 each shard checks out independently and `generate` again after
+      # them, so a push landing mid-run would bake previews from two different revisions into one
+      # bundle — and if the preview ids happen to match, partition verification passes and the
+      # mismatch ships. Same argument, and same fix, as the driver pin resolved just below.
+      - name: Resolve the upstream revision
+        id: upstream
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_REF: ${{ inputs.upstream-ref }}
+        run: |
+          set -euo pipefail
+          # No credential: import mode is for public repositories, and `ls-remote` against one needs
+          # none. A private upstream is a caller-supplied-token feature this does not yet have.
+          if [ -n "${UPSTREAM_REF}" ]; then
+            sha=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" \
+              "refs/heads/${UPSTREAM_REF}" "refs/tags/${UPSTREAM_REF}" | head -n1 | cut -f1)
+            # A 40-hex `upstream-ref` is already immutable and will not appear in ls-remote output.
+            if [ -z "$sha" ] && printf '%s' "${UPSTREAM_REF}" | grep -Eq '^[0-9a-f]{40}$'; then
+              sha="${UPSTREAM_REF}"
+            fi
+          else
+            sha=$(git ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" HEAD | cut -f1)
+          fi
+          [ -n "$sha" ] || {
+            echo "::error::could not resolve ${UPSTREAM_REPOSITORY}@${UPSTREAM_REF:-HEAD}"
+            exit 1
+          }
+          echo "::notice::importing ${UPSTREAM_REPOSITORY} at ${sha}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
       # Typo'd modes used to be discovered by the `else` branch of the split step — after the render
       # — where an unknown value silently meant `full`. Every job needs this one, so rejecting it
       # here costs seconds and gates the whole pipeline.
@@ -620,19 +686,6 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
-      # IMPORT MODE: the third-party project this run renders. Deliberately AFTER the caller's
-      # checkout (which owns the workspace root) and into a subdirectory, so the caller's spec and
-      # the imported sources never share a tree. `persist-credentials: false` keeps the job's token,
-      # if its caller gave it one, out of the imported checkout's git config.
-      - name: Check out the upstream project
-        if: ${{ inputs.upstream-repository != '' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ inputs.upstream-repository }}
-          ref: ${{ inputs.upstream-ref }}
-          path: upstream
-          persist-credentials: false
-
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Security boundary: this privileged reusable workflow must not execute
@@ -698,7 +751,11 @@ jobs:
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
-      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+      # Withheld in import mode. `secrets: inherit` is the documented way to supply this, and the
+      # imported project's own build scripts and plugins run in this job — handing them a caller
+      # credential would let any of them read it straight out of the environment. A remote cache
+      # miss is the whole cost.
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ inputs.upstream-repository == '' && secrets.buildfetch_ro_token || '' }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -715,7 +772,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.upstream-repository }}
-          ref: ${{ inputs.upstream-ref }}
+          # The SHA the driver resolved once, never the caller's moving ref: see that job.
+          ref: ${{ needs.driver.outputs.upstream-sha }}
           path: upstream
           persist-credentials: false
 
@@ -773,11 +831,18 @@ jobs:
           EXTRA_MODULE: ${{ inputs.extra-module }}
           PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
           WORKDIR: ${{ inputs.working-directory }}
+          SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
           LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
           LIVE_SOURCE: ${{ inputs.live-rerender-source }}
         run: |
           set -euo pipefail
-          to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
+          # Module paths are resolved against the directory the sources were actually checked out
+          # into — `upstream/` in import mode — because that is where the validator has to look for
+          # Kotlin sources. Without the prefix it silently finds none and falls back to
+          # structural-only validation, dropping the pre-render check for missing or renamed
+          # previews; worse, a caller directory that happens to share the path would be scanned
+          # instead. `--spec` stays caller-relative and is deliberately not prefixed.
+          to_dir() { printf '%s' "${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
           if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
           for ann in $PREVIEW_ANNOTATIONS; do args+=(--preview-annotation "$ann"); done
@@ -942,7 +1007,11 @@ jobs:
       LC_ALL: C.UTF-8
       # Read-only BuildFetch cache (safe at job scope): pull task outputs instead
       # of building cold. Empty when the secret isn't provided.
-      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+      # Withheld in import mode. `secrets: inherit` is the documented way to supply this, and the
+      # imported project's own build scripts and plugins run in this job — handing them a caller
+      # credential would let any of them read it straight out of the environment. A remote cache
+      # miss is the whole cost.
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ inputs.upstream-repository == '' && secrets.buildfetch_ro_token || '' }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -962,7 +1031,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.upstream-repository }}
-          ref: ${{ inputs.upstream-ref }}
+          # The SHA the driver resolved once, never the caller's moving ref: see that job.
+          ref: ${{ needs.driver.outputs.upstream-sha }}
           path: upstream
           persist-credentials: false
 
@@ -1074,6 +1144,7 @@ jobs:
           EXTRA_MODULE: ${{ inputs.extra-module }}
           PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
           WORKDIR: ${{ inputs.working-directory }}
+          SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
           LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
           LIVE_SOURCE: ${{ inputs.live-rerender-source }}
           ALL_MODULES: ${{ inputs.module == '' || inputs.modules == 'all' }}
@@ -1082,7 +1153,13 @@ jobs:
           # Single-module callers predate repository-wide discovery and still use the conventional
           # Gradle-path mapping. All-module callers consume BasicGradleProject.projectDirectory
           # captured by discovery; settings.gradle can map :ui to components/ui (or anywhere else).
-          to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
+          # Module paths are resolved against the directory the sources were actually checked out
+          # into — `upstream/` in import mode — because that is where the validator has to look for
+          # Kotlin sources. Without the prefix it silently finds none and falls back to
+          # structural-only validation, dropping the pre-render check for missing or renamed
+          # previews; worse, a caller directory that happens to share the path would be scanned
+          # instead. `--spec` stays caller-relative and is deliberately not prefixed.
+          to_dir() { printf '%s' "${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC")
           if [ "$ALL_MODULES" = "true" ]; then
             while IFS= read -r discovered_source; do
@@ -1411,6 +1488,13 @@ jobs:
           # event ref (a default branch with no catalog) would point live re-render at a
           # revision the catalog doesn't exist on (issue #2963).
           RENDERED_REF: ${{ inputs.ref }}
+          # In import mode the rendered SOURCE is the imported project, not the caller. Source links
+          # and trusted live re-render both resolve `<repo>@<ref>` to fetch and build the module
+          # again; recording the importer would point them at a repository that does not contain the
+          # module at all. The ref recorded is the SHA the driver resolved, not the branch name —
+          # the branch will have moved by the time anyone follows the link.
+          UPSTREAM_REPOSITORY: ${{ inputs.upstream-repository }}
+          UPSTREAM_SHA: ${{ needs.driver.outputs.upstream-sha }}
         run: |
           set -euo pipefail
           extra=()
@@ -1424,12 +1508,18 @@ jobs:
             done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
           fi
           source_args=()
+          # Which repository these previews actually came from: the imported project when there is
+          # one, otherwise the caller.
+          source_repo="${UPSTREAM_REPOSITORY:-$GITHUB_REPOSITORY}"
+          if [ -n "${UPSTREAM_REPOSITORY}" ]; then
+            source_ref="${UPSTREAM_SHA}"
+          else
+            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
+          fi
           if [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] && [ ! -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
-            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
-            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "$INPUT_MODULE")
+            source_args=(--source-repo "${source_repo}" --source-ref "${source_ref}" --source-module "$INPUT_MODULE")
           elif [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ]; then
-            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
-            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}")
+            source_args=(--source-repo "${source_repo}" --source-ref "${source_ref}")
             echo "::notice title=All-module catalog::source modules are recorded per preview; trusted live rendering uses the carried module bundles."
           fi
           incomplete=()
@@ -1606,6 +1696,64 @@ jobs:
       #
       # Fail-soft on purpose: an unrenderable reference is dropped with a warning
       # rather than costing the catalog its render.
+
+      # ONE MAP PATH, TWO SYSTEMS. Everything below reads `design-map.json` from the caller repo
+      # root, because that is the contract design-parity's action fixes (`<repoRoot>/design-map.json`)
+      # and this lane follows it. That is right for one catalog per repo and wrong the moment there
+      # are two: `wear-m3-catalog` publishes `wear-m3-catalog` from `:catalog` and `remote-m3` from
+      # `:remote-catalog` out of one checkout, so the second system was scored against the first
+      # one's map. It published `coverage.percent: 0` with all 50 gaps `dangling-mapping`, every one
+      # naming a preview from the OTHER module — not a catalog that maps nothing, a catalog compared
+      # against the wrong thing.
+      #
+      # The caller cannot fix that alone, which is the whole reason this input exists: the path is
+      # deliberately not a parameter, and the escape it leaves is that each job regenerates the map
+      # in its own workspace. design-parity's reusable workflow has taken `design-map-command` for
+      # exactly this since the same repo started publishing two sheets — so its hourly comparison
+      # was right while these artifacts were wrong, same repo, same commit.
+      #
+      # Placed here rather than beside the render: it must precede every consumer (design
+      # references, parity activity, parity findings) and nothing before this point reads the map,
+      # so a caller whose command needs a Gradle discovery pays for it only on a publishing run.
+      #
+      # The command is EXECUTED, by design — it is a build step the caller owns, like
+      # `design-map-command` next door. It reaches the shell through the environment rather than
+      # expression interpolation, so the value cannot alter the surrounding script's syntax, and it
+      # runs at the caller repo root because that is where the map it writes is read from (`spec`
+      # stays repo-root-relative for the same reason, even under `working-directory`).
+      - name: Project this system's design map
+        if: ${{ inputs.design-map-command != '' && (inputs.publish || inputs.upload-out) }}
+        env:
+          DESIGN_MAP_COMMAND: ${{ inputs.design-map-command }}
+        run: |
+          set -euo pipefail
+          echo "Projecting design-map.json for '$INPUT_SYSTEM'."
+          # DELETE FIRST, so the check below proves the command RECREATED the map rather than that
+          # a map exists. In the two-catalog repo this input is for, the committed one at this path
+          # belongs to the OTHER system — so a command that succeeds but writes somewhere else (the
+          # `--out-dir` mistake, which `scripts/design-map.sh` makes easy) would leave it standing,
+          # pass a mere existence check, and publish the other system's mappings under this one's
+          # name. That is the exact failure this step exists to stop, and it would sail through.
+          # Safe because the checkout is disposable: nothing later in the job wants the committed
+          # map back, and a command that writes none fails the step anyway.
+          rm -f design-map.json
+          bash -c "$DESIGN_MAP_COMMAND"
+          if [ ! -f design-map.json ]; then
+            echo "::error title=design-map-command wrote no map::The command ran but left no design-map.json at the repo root, which is the only path the lanes below read. Check that it projects to the root rather than to an --out-dir."
+            exit 1
+          fi
+          # Worth printing: the number is what the coverage panel will publish, and a map that is
+          # suddenly a tenth of its usual size is the failure this input exists to prevent, caught
+          # here rather than inferred from a 0% board a day later.
+          node -e '
+            const m = require("./design-map.json");
+            const n = (m.components ?? []).length;
+            console.log(`design-map.json: ${n} component(s) for ${process.argv[1]}`);
+            if (n === 0) {
+              console.log("::warning title=Empty design map::The projected map has no components, so this system will publish 0% coverage.");
+            }
+          ' "$INPUT_SYSTEM"
+
       # The design-parity reference cache, if the caller maintains one. Cloned
       # rather than fetched through the API for the same reason the parity
       # workflow does it: the branch IS the cache, so `git` is the transport and
@@ -1842,7 +1990,11 @@ jobs:
           fi
           echo "✓ Chromium ready."
 
-          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/third_party/remote-compose-player/dist/bundle.js"
+          # The vendored TypeScript player, and below the CMP/Wasm one, are published by
+          # yschimke/rc-players now. Both are staged out of their published zips by the root build
+          # rather than read from a path in this checkout.
+          (cd "$GITHUB_WORKSPACE/compose-ai-tools" && ./gradlew stageVendoredRcPlayerJs --quiet)
+          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/build/vendored-rc-player-js/bundle.js"
           EMBEDDED_ARGS=()
 
           # The shared machine-local Google Fonts cache, laid out exactly as `composeAiFontsCacheDir`
@@ -1858,9 +2010,9 @@ jobs:
             mkdir -p "$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors"
             wasm_build_log="$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors/distribution-build.log"
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
-                ./gradlew :rc-player-wasm:wasmPlayerDist --no-daemon --quiet) >"$wasm_build_log" 2>&1; then
+                ./gradlew stageVendoredRcPlayerWasm --no-daemon --quiet) >"$wasm_build_log" 2>&1; then
               EMBEDDED_ARGS+=(
-                --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist"
+                --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/build/vendored-rc-player-wasm"
                 --require-cmp-wasm
                 --cmp-wasm-max-cold-first-frame-ms "$INPUT_RC_CMP_WASM_COLD_MS"
                 --cmp-wasm-max-warm-first-frame-ms "$INPUT_RC_CMP_WASM_WARM_MS"
@@ -1869,7 +2021,7 @@ jobs:
                 EMBEDDED_ARGS+=(--cmp-wasm-allowlist "$GITHUB_WORKSPACE/$RC_CMP_WASM_ALLOWLIST")
               fi
             else
-              echo "::error title=CMP/Wasm distribution failed::The required player distribution did not build; see the uploaded distribution-build.log." >&2
+              echo "::error title=CMP/Wasm distribution failed::The published player distribution could not be staged; see the uploaded distribution-build.log." >&2
               tail -n 80 "$wasm_build_log" >&2
               {
                 echo '### Remote Compose CMP/Wasm'
@@ -1903,6 +2055,13 @@ jobs:
           # Robolectric (Android) embedded lanes. The first is the vendored/local-patch artifact;
           # the second imports AndroidX's implementation from the released remote-player-compose.
           # Separate Gradle invocations make the lanes fail-soft independently.
+          #
+          # Both lanes default OFF now: the harnesses they invoke
+          # (`:third-party-rc-embedded-player:testDebugUnitTest` and the -jvm module's `test`) are
+          # test tasks in yschimke/rc-players, so `./gradlew` here cannot resolve them. The recipe is
+          # kept rather than deleted — the system-property wiring, the `--rerun` reasoning and the
+          # `--tests` filter are the hard-won parts, and re-enabling means pointing these two
+          # invocations at an rc-players checkout, not rediscovering them.
           if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ]; then
             RC_OUT="$RUNNER_TEMP/rc-embedded-out"
             rm -rf "$RC_OUT"

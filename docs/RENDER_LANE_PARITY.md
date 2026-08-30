@@ -276,6 +276,18 @@ daemon rows use their own smaller fixtures (`DesktopCaptureGutterLaneTest`,
 `AndroidCaptureGutterLaneTest`) at density 2 and 1 respectively; each Δ is the declared dp
 resolved at that render's own density, which is the arithmetic every lane shares.
 
+Both daemon rows are measured through a `PreviewManifestRouter`, which is the harness lane. The
+lane production takes is the host-side payload reshape — the Android bundle daemon and
+`compose-preview serve` never mount a router; they resolve `previewId=…` through
+`RobolectricHost.reshapeRenderPayload` (desktop: `DesktopHost.specFromPreviewIdPayload`). That
+distinction is not academic: the Android reshape re-serialises the spec into a payload *string* and
+omitted the `captureGutter=` token, so every override-driven render came back clipped while the
+router fixture stayed green
+([#4822](https://github.com/yschimke/compose-ai-tools/issues/4822)). `AndroidCaptureGutterLaneTest`
+now drives `reshapeRenderPayload` directly as well, so the production lane is under test and not
+only the one the parity table measures. Desktop was never exposed: it does `base.copy(…)` and never
+round-trips through a string.
+
 The motion row is the one that used to disagree. Frame 0 of the fixture's `@AnimatedPreview`,
 before and after, against the guttered still's canvas (pink outline):
 
