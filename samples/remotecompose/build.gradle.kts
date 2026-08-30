@@ -69,7 +69,7 @@ dependencies {
   // supply it — otherwise `RemoteComposeIrReplay`'s classloader gate never finds it and a
   // `renderNow.overrides.remoteCompose.player = "embedded"` request silently falls back to the View
   // player instead of doing what it was asked.
-  implementation(project(":third-party-rc-embedded-player"))
+  implementation(libs.rcplayer.embedded.android)
   debugImplementation(libs.compose.ui.tooling.prerelease)
 
   testImplementation(libs.junit)

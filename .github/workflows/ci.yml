@@ -182,84 +182,6 @@ jobs:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :renderer-android:testDebugUnitTest
-      # `RcFigmaSvgExportTest` pins what a Remote Compose document exports as through each player —
-      # the only coverage of that path anywhere. It rides along here rather than in its own job
-      # because it asserts on the same `compose/figma-svg` producers the renderer tests above cover,
-      # so a change that breaks one usually breaks the other and they're worth failing together.
-      # This module is otherwise unreferenced by CI: every test task in this workflow is invoked
-      # per-module by name, there is no aggregate `check`, so without this line the test would run
-      # only on someone's laptop.
-      - name: Run RC figma-svg export tests
-        run: ./gradlew :third-party-rc-embedded-player:testDebugUnitTest
-      # `:third-party-rc-embedded-player-jvm` was in the same position the note above describes, only
-      # worse: not merely untested by CI but entirely unreferenced, so neither its tests nor even its
-      # *compile* ran anywhere but a laptop. That module is the whole claim that the shared player
-      # sources are platform-neutral — a file that isn't really neutral is supposed to fail to build
-      # there — and a claim nothing on CI evaluates is not a claim.
-      #
-      # `check`, not `test`: compiling is half the point, and the module's ktfmt legs come along.
-      # It rides in this job because it shares the sources with the leg above, so the two fail
-      # together when a shared file changes.
-      # Two things `DesktopTextPlatformTest` needs from the host, both usually already there.
-      #
-      # A loadable GL library: skiko's native library links one even for the raster-only drawing the
-      # test does. The runner image normally carries libglvnd already — the jobs in this repo that
-      # need *real* GL install the drivers (`libgl1-mesa-dri`, `libglx-mesa0`) on top of it.
-      #
-      # A CJK face: `fallsBackToAFaceThatHasTheGlyphs` asserts that text the Latin default cannot
-      # render falls back to a face that can, which needs such a face to exist. It skips itself
-      # otherwise, and a skipped discriminator is not much use — it is one of the two tests standing
-      # between this seam and silently unshaped, un-fallen-back text.
-      - name: Ensure fonts and a GL library for skiko
-        run: |
-          packages=""
-          if ! ldconfig -p | grep -q 'libGL\.so\.1'; then packages="$packages libgl1"; fi
-          # `fc-match` always answers, so compare the family it lands on: a CJK request resolving to
-          # DejaVu means nothing on this host actually has the glyphs.
-          if ! fc-match --format='%{family}' 'WenQuanYi Zen Hei' 2>/dev/null | grep -qi 'wenquanyi\|noto sans cjk\|droid sans fallback'; then
-            packages="$packages fonts-wqy-zenhei"
-          fi
-          if [ -n "$packages" ]; then
-            echo "installing:$packages"
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends $packages
-            fc-cache -f > /dev/null
-          fi
-      - name: Run desktop (jvm) player tests
-        run: ./gradlew :third-party-rc-embedded-player-jvm:check
-      # `DesktopTextPlatformTest` skips its whole class when skiko's natives cannot load, and a skip
-      # still reports green — so a runner image that quietly dropped libGL would turn the jvm text
-      # seam's only verification into eighteen no-ops without failing anything. This turns that into a
-      # build failure. It reads the JUnit XML rather than grepping stderr because the counts are
-      # unambiguous.
-      #
-      # The bar is "did the class run", not "did every test run": individual tests may legitimately
-      # skip on a host that lacks a font they need, and failing on that would make the build hostage
-      # to the runner image's font list. A skip count is still printed, because a *rising* one is
-      # worth noticing even when it isn't fatal.
-      - name: Fail if the skiko text tests did not execute
-        run: |
-          set -euo pipefail
-          xml='third_party/rc-embedded-player-jvm/build/test-results/test/TEST-ee.schimke.composeai.rcembedded.jvm.DesktopTextPlatformTest.xml'
-          if [ ! -f "$xml" ]; then
-            echo "::error::$xml is missing — DesktopTextPlatformTest did not run at all."
-            exit 1
-          fi
-          # Attributes are on one <testsuite> line; take the first match so a nested one can't fool it.
-          tests=$(grep -o 'tests="[0-9]*"' "$xml" | head -1 | tr -dc 0-9)
-          skipped=$(grep -o 'skipped="[0-9]*"' "$xml" | head -1 | tr -dc 0-9)
-          echo "DesktopTextPlatformTest: ${tests} tests, ${skipped} skipped"
-          if [ "${tests:-0}" -eq 0 ] || [ "${skipped:-0}" -ge "${tests:-0}" ]; then
-            echo "::error::The skiko text seam tests did not execute (tests=${tests}," \
-                 "skipped=${skipped}) — the whole class skipped, which means skiko's natives failed" \
-                 "to load. This runner needs a GL library (libgl1 on Ubuntu). See" \
-                 "DesktopTextPlatformTest's KDoc."
-            exit 1
-          fi
-          if [ "${skipped:-0}" -ne 0 ]; then
-            echo "::warning::${skipped} of ${tests} skiko text tests skipped — a host-capability" \
-                 "skip (a missing font), not a failure, but check it is the one you expect."
-          fi
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -267,8 +189,6 @@ jobs:
           name: renderer-android-unit-test-results
           path: |
             renderers/android/build/reports/tests/
-            third_party/rc-embedded-player/build/reports/tests/
-            third_party/rc-embedded-player-jvm/build/reports/tests/
 
   # Every affected module's unit tests on PRs; the full fan-out on main/nightly.
   #
@@ -339,13 +259,6 @@ jobs:
             # trips a global path skips the gate entirely — which is how the gate ends up existing
             # without running, the exact failure this was added to stop.
             #
-            # The four `rc-player-*` modules are excluded because the macOS job below already owns
-            # them: their dumps are klib dumps covering the iOS targets, and that is the repo's one
-            # macOS job. Excluded rather than merely duplicated — this branch runs on
-            # `ubuntu-latest`, and while the checks do pass on Linux (verified with
-            # `--rerun-tasks`), that was in a container with the Kotlin/Native toolchain already
-            # warm, which a fresh runner is not. Their coverage is not weakened: the macOS job runs
-            # exactly these four unconditionally.
             # `jvmTest` and `desktopTest` alongside `test`, for the same reason and by the same
             # mechanism as `checkKotlinAbi`: unqualified, so Gradle runs each in every project
             # that HAS it and does not match the rest.
@@ -357,10 +270,6 @@ jobs:
             # takes (push to main, the nightly cron) and the one a global-path PR resolves to,
             # so it is where the gap mattered most and was least visible.
             ./gradlew test jvmTest desktopTest checkKotlinAbi --continue \
-              -x :rc-player-trace:checkKotlinAbi \
-              -x :rc-player-protocol:checkKotlinAbi \
-              -x :rc-player-runtime:checkKotlinAbi \
-              -x :rc-player-compose:checkKotlinAbi \
               -x :samples:android:test \
               -x :samples:android-alpha:test \
               -x :samples:android-library:test \
@@ -387,98 +296,6 @@ jobs:
             **/build/test-results/**
           retention-days: 7
 
-  rc-player-tests:
-    name: CMP Remote Compose Player
-    needs: changes
-    if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/buildfetch-cache
-        with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
-          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      # Compose Multiplatform 1.11's `ui-uikit` links against iOS 26 SDK symbols — `CMPLayoutRegion`
-      # references `UIViewLayoutRegion`, which does not exist before iOS 26. The `macos-15` image
-      # ships several Xcode 26.x alongside 16.4 but still *defaults* to 16.4 (iOS 18.5 SDK), so
-      # `:rc-player-compose:linkDebugTestIosSimulatorArm64` dies with
-      # `Undefined symbols for architecture arm64: "_OBJC_CLASS_$_UIViewLayoutRegion"` — the whole
-      # job, ~17 min in, on every push since the CMP 1.11.1 bump. Select the newest installed
-      # Xcode 26 rather than pinning one, so an image refresh that retires a point release doesn't
-      # take the job with it.
-      - name: Select an Xcode with the iOS 26 SDK
-        run: |
-          set -euo pipefail
-          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
-          if [ -z "$xcode" ]; then
-            echo "No Xcode 26 on this image; Compose Multiplatform's iOS targets need its SDK." >&2
-            ls -d /Applications/Xcode*.app >&2
-            exit 1
-          fi
-          sudo xcode-select --switch "$xcode/Contents/Developer"
-          xcodebuild -version
-          xcodebuild -showsdks | grep -i iphonesimulator
-      # No `iosX64` anywhere in this list. `:rc-player-compose` never had one — CMP 1.11 dropped
-      # the Intel-iOS-simulator variant (see that module's build.gradle.kts) — and its three
-      # siblings dropped theirs when the stack became publishable, because publishing a stack that
-      # resolves three of four artifacts on one target is worse than not offering it (#4066).
-      # Naming a task that no longer exists fails the whole invocation ("Cannot locate tasks that
-      # match ..."), not just that one target.
-      # `checkKotlinAbi` diffs each library module's real public ABI against the dumps committed
-      # under `rc-player/*/api/` (see #4062). It runs here rather than anywhere else because the
-      # klib dump covers the iOS targets, and those klibs only build on macOS — this is the repo's
-      # one macOS job. `allTests` does not imply `check`, so the gate has to be named explicitly.
-      # Regenerate the dumps with `./gradlew :rc-player-<module>:updateKotlinAbi` when a surface
-      # change is intended.
-      - name: Run shared, Wasm, and iOS player tests
-        run: |
-          ./gradlew \
-            :rc-player-trace:checkKotlinAbi \
-            :rc-player-protocol:checkKotlinAbi \
-            :rc-player-runtime:checkKotlinAbi \
-            :rc-player-compose:checkKotlinAbi \
-            :rc-player-trace:allTests \
-            :rc-player-protocol:allTests \
-            :rc-player-runtime:allTests \
-            :rc-player-compose:allTests \
-            :rc-player-compat-tests:test \
-            :rc-player-wasm:wasmPlayerTestDist \
-            :rc-player-protocol:compileTestKotlinIosArm64 \
-            :rc-player-protocol:compileTestKotlinIosSimulatorArm64 \
-            :rc-player-runtime:compileTestKotlinIosArm64 \
-            :rc-player-runtime:compileTestKotlinIosSimulatorArm64 \
-            :rc-player-compose:compileTestKotlinIosArm64 \
-            :rc-player-compose:compileTestKotlinIosSimulatorArm64
-          # NOTE: `./gradlew :rc-player-compose:rcPlayerXcframeworkChecksum` belongs here — the
-          # only place CI *links* a release framework, every other iOS entry above stopping at
-          # compiling, and the same task `release.yml` runs, so a linker failure surfaces on the PR
-          # rather than mid-release. It is REMOVED pending #4222: the two release links run out of
-          # heap on this runner, and `release.yml`'s `publish-xcframework` is skipped for the same
-          # reason, so CI is pre-flighting a step the release no longer takes. Restore both
-          # together — a green link here is the evidence that re-enabling the release job is safe.
-          #
-          # `scripts/check-swift-sample.sh` (type-checks the Swift sample in
-          # `docs/design/RC_PLAYER_SWIFT.md` against the assembled framework) went with it, rather
-          # than being left in place: it exits 0 when no framework is present, so without the link
-          # above it would report green while checking nothing.
-          # `ServeWebTest` (which asserted the committed serve-web bundle matched its source) left
-          # with the server in #4732; it now runs in yschimke/compose-preview-server's own CI. What
-          # this job still owns is the vendored Remote Compose player bundle under
-          # `third_party/remote-compose-player/dist/`, exercised by the rc-* browser tests below.
-          ./gradlew ktfmtCheck
-      - name: Upload player test reports on failure
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: rc-player-test-reports
-          path: |
-            rc-player/**/build/reports/tests/**
-            rc-player/**/build/test-results/**
-          retention-days: 7
-
   # The CMP/Wasm player's first-frame timing and readiness contract — browser-scheduling properties,
   # so they cannot be asserted anywhere the player is not actually loaded in Chromium. Separate from the driver's
   # `node --test` job because it needs a built `wasmPlayerDist` that job has no Gradle to produce —
@@ -499,8 +316,10 @@ jobs:
         with:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Build the Wasm player distribution
-        run: ./gradlew :rc-player-wasm:wasmPlayerDist
+      # The PUBLISHED bundle, not one built from source: the player lives in yschimke/rc-players
+      # now, and what this repo ships in the CLI's `rc-player-wasm/` sidecar is exactly these bytes.
+      - name: Stage the published Wasm player distribution
+        run: ./gradlew stageVendoredRcPlayerWasm
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -517,203 +336,16 @@ jobs:
         working-directory: scripts/design-artifacts
         env:
           RC_CMP_WASM_REQUIRE: "1"
+          RC_CMP_WASM_DIST: ${{ github.workspace }}/build/vendored-rc-player-wasm
         run: node --test rc-cmp-wasm-*.test.mjs
 
-  # Does this player change make any real document render worse? This is the CMP/Wasm parity guard,
-  # and it lives here — on the pull request — on purpose. It used to be an absolute 1%-per-preview
-  # bar inside the `design-artifacts` publish job, which runs on `main` after the change has already
-  # merged: it could never stop a regression, only stop the delivery branch being republished
-  # afterwards. It did exactly that on 7 Aug 2026, freezing `design-artifacts/remote-m3` for five
-  # days on a render whose CMP/Wasm column predated four days of *fixes*. So: the publish lane now
-  # reports pixels, and the blocking question is asked here instead.
+  # The CMP/Wasm parity job that used to sit here compared a base-revision player build against
+  # this PR's, to answer "does this player change make any real document render worse?". The player
+  # moved to yschimke/rc-players, so on this repo the two revisions are always identical bytes and
+  # the question cannot be asked here any more. It belongs on the repo that can change the answer.
   #
-  # The corpus is the published `design-artifacts/remote-m3` bundle — 27 real documents plus the
-  # baked Android references. It is published by yschimke/wear-m3-catalog rather than by this repo
-  # (the catalog moved there, #4588), so the fetch names that remote explicitly. Nothing else about
-  # the comparison changes: the corpus is a fixed set of documents either way, and both the base and
-  # the proposed player render those same bytes. What DID change is who can move it — a catalog edit
-  # over there re-renders the corpus without this repo's CI seeing the diff, so a sudden shift in
-  # the numbers below is worth checking against that repo's history before blaming the player. Both the comparison base and the proposed player render those exact
-  # same fixed documents. That isolates the player without trusting the summary published beside
-  # the corpus: that summary can legitimately lag `main` after an accepted player change, which
-  # would make every following PR inherit somebody else's pixel movement.
-  #
-  # Measured, because "is this too slow to be worth it" deserves a number rather than a guess: the
-  # render is about a minute for 27 documents, including the JS-player lane and the pixel diffs.
-  # The job builds both player revisions, but the base revision is normally already in the shared
-  # Gradle cache. `buildfetch-cache` is therefore where the caching that matters happens — unchanged
-  # Kotlin/Wasm compilations come back FROM-CACHE.
-  #
-  # `continue-on-error` on the job: this reports rather than blocks. A parity delta is a judgement
-  # call a human should make on a red-but-passable check, so it posts its report as a sticky PR
-  # comment and lets the merge proceed. The step still fails visibly, so the signal is not lost;
-  # promote it to blocking once it has a track record of only going red for real regressions.
-  rc-cmp-wasm-parity:
-    name: CMP/Wasm Parity
-    needs: changes
-    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/buildfetch-cache
-        with:
-          # Read-only: a PR job never writes the shared cache (see functional-tests for the same
-          # reasoning). Reading is what turns the Kotlin/Wasm compile from minutes into seconds.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
-          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Build the proposed Wasm player distribution
-        run: ./gradlew :rc-player-wasm:wasmPlayerDist
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - name: Install driver dependencies
-        working-directory: scripts/design-artifacts
-        run: npm ci
-      - name: Install Chromium
-        working-directory: scripts/design-artifacts
-        run: npx playwright install --with-deps chromium
-      # Anonymous fetches in this public repo, so `persist-credentials: false` above costs nothing.
-      # A pull request compares with its base SHA; a push to main compares with the commit before
-      # the push. Scheduled runs have no meaningful diff and are excluded at the job level.
-      - name: Fetch the published parity corpus and comparison base
-        id: corpus
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/corpus"
-          if ! git fetch --depth=1 https://github.com/yschimke/wear-m3-catalog.git design-artifacts/remote-m3; then
-            echo "::warning::wear-m3-catalog's design-artifacts/remote-m3 is not fetchable; skipping the parity comparison"
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git show FETCH_HEAD:bundle/bundle.png > "$RUNNER_TEMP/corpus/bundle.png"
-          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            echo "::warning::no comparison base SHA is available; skipping the parity comparison"
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git worktree add --detach "$RUNNER_TEMP/parity-base-source" "$BASE_SHA"
-          echo "available=true" >> "$GITHUB_OUTPUT"
-      - name: Build the base Wasm player distribution
-        if: ${{ steps.corpus.outputs.available == 'true' }}
-        run: >-
-          "$RUNNER_TEMP/parity-base-source/gradlew"
-          -p "$RUNNER_TEMP/parity-base-source"
-          :rc-player-wasm:wasmPlayerDist
-      - name: Render the corpus through the base player
-        if: ${{ steps.corpus.outputs.available == 'true' }}
-        working-directory: scripts/design-artifacts
-        run: |
-          set -euo pipefail
-          node rc-compare.mjs \
-            --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/third_party/remote-compose-player/dist/bundle.js" \
-            --out "$RUNNER_TEMP/parity-base" \
-            --system remote-m3 \
-            --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist"
-      - name: Render the corpus through this PR's player
-        if: ${{ steps.corpus.outputs.available == 'true' }}
-        working-directory: scripts/design-artifacts
-        run: |
-          set -euo pipefail
-          node rc-compare.mjs \
-            --bundle "$RUNNER_TEMP/corpus/bundle.png" \
-            --player "$GITHUB_WORKSPACE/third_party/remote-compose-player/dist/bundle.js" \
-            --out "$RUNNER_TEMP/parity-out" \
-            --system remote-m3 \
-            --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist"
-      # `tee` so the same report reaches the log, the job summary (the script appends it itself) and
-      # the PR comment below — one text, three places, no chance of them disagreeing.
-      - name: Compare against the base player
-        id: compare
-        if: ${{ steps.corpus.outputs.available == 'true' }}
-        working-directory: scripts/design-artifacts
-        run: |
-          set -o pipefail
-          node rc-compare-regression.mjs \
-            --baseline "$RUNNER_TEMP/parity-base/rc-compare-summary.json" \
-            --current "$RUNNER_TEMP/parity-out/rc-compare-summary.json" \
-            | tee "$RUNNER_TEMP/parity-report.txt"
-      # Sticky comment, same shape as the serve-preview-diff one: find our marker, PATCH it if it
-      # exists (no reviewer notification on a re-push), post it if it does not. Skipped for forks,
-      # whose GITHUB_TOKEN cannot write — the log and the job summary still carry the report.
-      # `!cancelled()`, not `always()`. A fast-follow push cancels the in-flight run through this
-      # workflow's concurrency group, and under `always()` this step still fired on the corpse:
-      # the base-player build died mid-flight, `compare` never ran, and the PR got a "parity
-      # moved" comment describing a comparison that had not happened. `!cancelled()` keeps the
-      # step for real outcomes and drops it for superseded runs, whose successor posts the
-      # verdict a moment later anyway.
-      - name: Comment the parity report on the PR
-        if: >-
-          ${{ !cancelled() && steps.corpus.outputs.available == 'true'
-              && github.event_name == 'pull_request'
-              && github.event.pull_request.head.repo.full_name == github.repository }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          OUTCOME: ${{ steps.compare.outcome }}
-        run: |
-          set -euo pipefail
-          MARKER="<!-- rc-cmp-wasm-parity -->"
-          # Three outcomes, not two. `compare` is `skipped` when an earlier step in this job failed
-          # — the corpus fetch, either player build, either render — and in that case the parity
-          # verdict is unknown, not adverse. Saying "parity moved" there sends a reviewer hunting a
-          # regression that was never measured; the old two-branch form did exactly that.
-          case "$OUTCOME" in
-            success)
-              HEADLINE="✅ No CMP/Wasm parity regression against the pull request base." ;;
-            skipped)
-              HEADLINE="🚧 CMP/Wasm parity could not be measured — a step before the comparison failed, so this is not a verdict on the diff. See the job log." ;;
-            *)
-              HEADLINE="⚠️ CMP/Wasm parity moved against the pull request base. This check does not block merging — read the rows below and decide." ;;
-          esac
-          {
-            echo "$MARKER"
-            echo "### Remote Compose CMP/Wasm parity"
-            echo
-            echo "$HEADLINE"
-            echo
-            echo '```'
-            cat "$RUNNER_TEMP/parity-report.txt" 2>/dev/null || echo "the comparison did not produce a report"
-            echo '```'
-            echo
-            echo "Renders and pixel diffs are in the \`rc-cmp-wasm-parity\` artifact on [this run](https://github.com/$REPO/actions/runs/${{ github.run_id }})."
-          } > "$RUNNER_TEMP/parity-comment.md"
-          BODY=$(cat "$RUNNER_TEMP/parity-comment.md")
-          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
-          if [ -n "$COMMENT_ID" ]; then
-            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" -X PATCH -f body="$BODY"
-          else
-            gh pr comment "$PR_NUMBER" --body "$BODY"
-          fi
-      # The renders and diffs are the whole answer to "why did that row move", so they must survive
-      # the failure that makes someone ask.
-      - name: Upload parity renders
-        if: ${{ always() && steps.corpus.outputs.available == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: rc-cmp-wasm-parity
-          path: |
-            ${{ runner.temp }}/parity-out/rc-compare.html
-            ${{ runner.temp }}/parity-out/rc-compare-summary.json
-            ${{ runner.temp }}/parity-out/rc-cmp-wasm
-            ${{ runner.temp }}/parity-out/rc-cmp-wasm-diff
-            ${{ runner.temp }}/parity-out/rc-cmp-wasm-errors
-            ${{ runner.temp }}/parity-base/rc-compare-summary.json
-            ${{ runner.temp }}/parity-base/rc-cmp-wasm
-          if-no-files-found: warn
+  # What this repo still guards is the consumer side: `rc-cmp-wasm-frame-pacing` above runs the
+  # browser-level player guards against the PUBLISHED bundle, which is what the CLI actually ships.
 
   functional-tests:
     name: Plugin Functional Tests
@@ -1374,14 +1006,8 @@ jobs:
       # fail silently in production (a delivery branch just stops regenerating).
       - name: Run design-artifacts scope-step tests
         run: scripts/design-artifacts/test-scope-step.sh
-      # Rewrites the two values in `Package.swift` that SPM verifies. A release that silently
-      # left the placeholder checksum in place would publish a package no consumer can resolve,
-      # and the failure would land on them rather than on us.
-      - name: Run Package.swift rewriter tests
-        run: scripts/update-package-swift.sh --self-test
-      # Two snapshot jobs read this — the Linux publish and the macOS `:rc-player-*` publish, which
-      # is split out only because Kotlin/Native Apple klibs cannot be built on Linux. If they ever
-      # computed different versions, half the stack would land on a coordinate nothing resolves.
+      # The `Package.swift` rewriter self-test moved to yschimke/rc-players with the iOS framework
+      # it describes.
       - name: Run snapshot-version tests
         run: scripts/snapshot-version.sh --self-test
       # The reusable catalog workflow and preview-host images share this installer. It must keep

@@ -158,15 +158,15 @@ on:
         type: boolean
         default: false
       rc-embedded-lane:
-        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player from :third-party-rc-embedded-player and the upstream player published in androidx.compose.remote:remote-player-compose. ON by default: rendering the same document through both independently compiled players makes upstream-vs-vendored drift visible. It needs a Gradle/Android toolchain, and either harness may fail-soft independently so the other lane still publishes. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player and the upstream player published in androidx.compose.remote:remote-player-compose. OFF by default since the players moved to yschimke/rc-players: the Robolectric harness that renders these lanes is a test task in that build, so this repository has nothing to run. Enabling it needs the lane driven from there, or an rc-players checkout wired in here — see the step below. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
-        default: true
+        default: false
       rc-embedded-jvm-lane:
-        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through :third-party-rc-embedded-player-jvm (Compose Desktop / Skiko, offscreen). ON by default, for the same attribution reason as rc-embedded-lane, and because it exercises the platform-neutral draw path off Android: a jvm-only divergence points at the desktop seam (text/image/skiko) rather than the shared evaluator. Independent of rc-embedded-lane: either or both can run, and staging happens once for whichever is on. Needs libGL + xvfb, installed just-in-time by the rc-compare step once the bundle is known to carry ir/*.rc. Same tolerance as the Robolectric lane: a harness failure or empty output degrades to a page without the cmp-jvm column rather than failing the render. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through the vendored JVM player (Compose Desktop / Skiko, offscreen). OFF by default for the same reason as rc-embedded-lane: its harness is a test task in yschimke/rc-players now. Needs libGL + xvfb when re-enabled. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
-        default: true
+        default: false
       rc-cmp-wasm-lane:
         description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw, or one that misses the first-frame budgets, fails the step and the catalog does not publish. Opt in per catalog once you know what its documents do in that player."
         required: false
@@ -1840,7 +1840,11 @@ jobs:
           fi
           echo "✓ Chromium ready."
 
-          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/third_party/remote-compose-player/dist/bundle.js"
+          # The vendored TypeScript player, and below the CMP/Wasm one, are published by
+          # yschimke/rc-players now. Both are staged out of their published zips by the root build
+          # rather than read from a path in this checkout.
+          (cd "$GITHUB_WORKSPACE/compose-ai-tools" && ./gradlew stageVendoredRcPlayerJs --quiet)
+          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/build/vendored-rc-player-js/bundle.js"
           EMBEDDED_ARGS=()
 
           # The shared machine-local Google Fonts cache, laid out exactly as `composeAiFontsCacheDir`
@@ -1856,9 +1860,9 @@ jobs:
             mkdir -p "$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors"
             wasm_build_log="$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors/distribution-build.log"
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
-                ./gradlew :rc-player-wasm:wasmPlayerDist --no-daemon --quiet) >"$wasm_build_log" 2>&1; then
+                ./gradlew stageVendoredRcPlayerWasm --no-daemon --quiet) >"$wasm_build_log" 2>&1; then
               EMBEDDED_ARGS+=(
-                --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist"
+                --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/build/vendored-rc-player-wasm"
                 --require-cmp-wasm
                 --cmp-wasm-max-cold-first-frame-ms "$INPUT_RC_CMP_WASM_COLD_MS"
                 --cmp-wasm-max-warm-first-frame-ms "$INPUT_RC_CMP_WASM_WARM_MS"
@@ -1867,7 +1871,7 @@ jobs:
                 EMBEDDED_ARGS+=(--cmp-wasm-allowlist "$GITHUB_WORKSPACE/$RC_CMP_WASM_ALLOWLIST")
               fi
             else
-              echo "::error title=CMP/Wasm distribution failed::The required player distribution did not build; see the uploaded distribution-build.log." >&2
+              echo "::error title=CMP/Wasm distribution failed::The published player distribution could not be staged; see the uploaded distribution-build.log." >&2
               tail -n 80 "$wasm_build_log" >&2
               {
                 echo '### Remote Compose CMP/Wasm'
@@ -1901,6 +1905,13 @@ jobs:
           # Robolectric (Android) embedded lanes. The first is the vendored/local-patch artifact;
           # the second imports AndroidX's implementation from the released remote-player-compose.
           # Separate Gradle invocations make the lanes fail-soft independently.
+          #
+          # Both lanes default OFF now: the harnesses they invoke
+          # (`:third-party-rc-embedded-player:testDebugUnitTest` and the -jvm module's `test`) are
+          # test tasks in yschimke/rc-players, so `./gradlew` here cannot resolve them. The recipe is
+          # kept rather than deleted — the system-property wiring, the `--rerun` reasoning and the
+          # `--tests` filter are the hard-won parts, and re-enabling means pointing these two
+          # invocations at an rc-players checkout, not rediscovering them.
           if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ]; then
             RC_OUT="$RUNNER_TEMP/rc-embedded-out"
             rm -rf "$RC_OUT"

@@ -54,8 +54,8 @@ jobs:
       #
       # `com.ncorti.ktfmt.gradle` fails intermittently on its own scratch files:
       #
-      #   Execution failed for task ':rc-player-trace:ktfmtCheckScripts'
-      #   > Could not read path '…/rc-player/trace/build/tmp/ktfmtCheckKmpWasmJsMain/<uuid>/<uuid>.txt'
+      #   Execution failed for task ':<module>:ktfmtCheckScripts'
+      #   > Could not read path '…/<module>/build/tmp/ktfmtCheckKmpWasmJsMain/<uuid>/<uuid>.txt'
       #
       # Note the mismatch — `ktfmtCheckScripts` naming `ktfmtCheckKmpWasmJsMain`'s directory.
       # Each task writes results under `getTemporaryDir()/<random uuid>` (its OWN directory),

@@ -54,6 +54,74 @@ tasks.register("ktfmtFormatAll") {
   ktfmtProjectPaths.forEach { dependsOn("$it:ktfmtFormat") }
 }
 
+// The vendored TypeScript Remote Compose player's browser bundle, staged to a stable path.
+//
+// The `rc-*` browser tests and the design-artifacts job drive this player by *file path*
+// (`--player <bundle.js>`). That path used to be `third_party/remote-compose-player/dist/bundle.js`
+// in this checkout; the players are published by yschimke/rc-players now, so the bundle arrives as
+// a zip and is unpacked here instead. The staged location is the contract those callers use — see
+// `.github/workflows/ci.yml` and `design-artifacts-reusable.yml`.
+//
+// Its own resolvable configuration, not a `dependencies {}` entry: this is a static asset, and it
+// has no business on any compile or runtime classpath.
+val vendoredRcPlayerJs =
+  configurations.create("vendoredRcPlayerJs") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+  }
+
+dependencies {
+  // The `dist` classifier and `zip` extension as a
+  // notation string: `add(name, provider) { artifact { … } }` has no overload for a
+  // version-catalog provider. `map` keeps it lazy.
+  add("vendoredRcPlayerJs", libs.rcplayer.js.dist.map { "$it:dist@zip" })
+}
+
+// The CMP/Wasm player distribution, staged to a stable path — the same arrangement as the
+// TypeScript bundle above, one layer up the stack.
+//
+// `:rc-player-wasm:wasmPlayerDist` used to produce this directory in-tree. The player is published
+// by yschimke/rc-players now, so the browser guards run against the *released* bundle rather than
+// one built from source here. That is the right subject for this repo: what ships in the CLI's
+// `rc-player-wasm/` sidecar is exactly these bytes, and a guard that rebuilt the player from source
+// would be testing something no consumer ever sees.
+//
+// `scripts/design-artifacts/rc-cmp-wasm-*.test.mjs` finds it through `RC_CMP_WASM_DIST`; see
+// `.github/workflows/ci.yml`.
+val vendoredRcPlayerWasm =
+  configurations.create("vendoredRcPlayerWasm") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+  }
+
+dependencies {
+  // The `dist` classifier and `zip` extension as a
+  // notation string: `add(name, provider) { artifact { … } }` has no overload for a
+  // version-catalog provider. `map` keeps it lazy.
+  add("vendoredRcPlayerWasm", libs.rcplayer.wasm.dist.map { "$it:dist@zip" })
+}
+
+tasks.register<Sync>("stageVendoredRcPlayerWasm") {
+  group = "build"
+  description =
+    "Unpacks the published CMP/Wasm player distribution to build/vendored-rc-player-wasm/, the " +
+      "path the browser guards read through RC_CMP_WASM_DIST."
+  from(provider { zipTree(vendoredRcPlayerWasm.singleFile) })
+  into(layout.buildDirectory.dir("vendored-rc-player-wasm"))
+}
+
+tasks.register<Sync>("stageVendoredRcPlayerJs") {
+  group = "build"
+  description =
+    "Unpacks the vendored TypeScript Remote Compose player bundle to " +
+      "build/vendored-rc-player-js/, the path the browser tests and design-artifacts pass to " +
+      "--player."
+  from(provider { zipTree(vendoredRcPlayerJs.singleFile) })
+  into(layout.buildDirectory.dir("vendored-rc-player-js"))
+}
+
 // Convenience entrypoint for `CliA11yEndToEndFunctionalTest`. The test runs an Android-flavour
 // synthetic project through the CLI's daemon-driven a11y flow, which needs:
 //   1. The `renderer-android` AAR closure published to mavenLocal so the synthetic Android

@@ -32,9 +32,10 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
+import { RC_PLAYER_JS_BUNDLE } from "./rc-player-bundle.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLE = path.resolve(HERE, "../../third_party/remote-compose-player/dist/bundle.js");
+const BUNDLE = RC_PLAYER_JS_BUNDLE;
 const WEIGHT_FIXTURE = path.join(HERE, "fixtures", "typeface-variable-weight.rc");
 const WIDTH_FIXTURE = path.join(HERE, "fixtures", "typeface-variable-width.rc");
 /** The catalog's own variable face — an `fvar` table is what makes the ramp possible at all. */

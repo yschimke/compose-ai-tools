@@ -37,7 +37,7 @@ const DIST = path.resolve(
 // — one copy, provenance recorded in that directory's README.
 const FIXTURE = path.resolve(
   HERE,
-  "../../rc-player/compose/src/jvmTest/resources/rc-fixtures/IndeterminateCircularProgress-400x400.rc",
+  "fixtures/IndeterminateCircularProgress-400x400.rc",
 );
 // The parity lane renders this row at 200×200 dp, dpi 320 (deviceScaleFactor 2).
 const VIEWPORT = { width: 200, height: 200 };
