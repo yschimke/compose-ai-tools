@@ -149,6 +149,13 @@ that identity against the token.
 | `ui-builder-write` | `create_design`, `apply_design_operations` | `createDesign`, `applyOperation` |
 | `ui-builder-export` | `render_design`, `export_svg`, `export_compose` | `exportDesign` with `png`, `svg`, or `compose` |
 
+All three export tools require an explicit committed `revision`; they never
+silently export whichever revision happens to be latest when the request is
+handled. `get_revision_diff` is the authoritative polling path for concurrent
+browser/agent sessions. If the server reports that the cursor needs a snapshot,
+call `open_design` to refresh from the latest committed document before
+continuing.
+
 The three capabilities remain independent: a read-only grant cannot mutate or
 export, and a write grant does not implicitly grant export. The Storybook
 compatibility profile never advertises or dispatches these tools, even when

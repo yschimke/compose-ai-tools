@@ -129,7 +129,7 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
   private fun JsonObject.exportRequest(format: ExportFormatV1): ExportDesignRequestV1 =
     ExportDesignRequestV1(
       designId = requiredString("designId"),
-      revision = optionalLong("revision", minimum = 0),
+      revision = requiredLong("revision", minimum = 0),
       format = format,
     )
 
@@ -152,7 +152,7 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
     const val designIdSchema =
       """{"type":"object","properties":{"designId":{"type":"string"}},"required":["designId"]}"""
     const val revisionSchema =
-      """{"type":"object","properties":{"designId":{"type":"string"},"revision":{"type":"integer","minimum":0}},"required":["designId"]}"""
+      """{"type":"object","properties":{"designId":{"type":"string"},"revision":{"type":"integer","minimum":0}},"required":["designId","revision"]}"""
   }
 }
 
@@ -302,11 +302,6 @@ private fun JsonObject.requiredLong(name: String, minimum: Long? = null): Long {
     throw IllegalArgumentException("'$name' must be at least $minimum")
   }
   return value
-}
-
-private fun JsonObject.optionalLong(name: String, minimum: Long? = null): Long? {
-  if (name !in this) return null
-  return requiredLong(name, minimum)
 }
 
 private fun JsonObject.optionalInt(name: String, range: IntRange): Int? {

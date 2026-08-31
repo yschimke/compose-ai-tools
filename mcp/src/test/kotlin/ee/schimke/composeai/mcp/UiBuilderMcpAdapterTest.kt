@@ -27,6 +27,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -75,6 +76,19 @@ class UiBuilderMcpAdapterTest {
       .inOrder()
     assertThat(tools.map { it.inputSchema.jsonObject["type"]?.jsonPrimitive?.content }.distinct())
       .containsExactly("object")
+    listOf("render_design", "export_svg", "export_compose").forEach { name ->
+      assertThat(
+          tools
+            .single { it.name == name }
+            .inputSchema
+            .jsonObject
+            .getValue("required")
+            .jsonArray
+            .map { it.jsonPrimitive.content }
+        )
+        .containsExactly("designId", "revision")
+        .inOrder()
+    }
   }
 
   @Test
@@ -167,6 +181,9 @@ class UiBuilderMcpAdapterTest {
     val malformed =
       listOf(
         "open_design" to buildJsonObject {},
+        "render_design" to buildJsonObject { put("designId", "design-1") },
+        "export_svg" to buildJsonObject { put("designId", "design-1") },
+        "export_compose" to buildJsonObject { put("designId", "design-1") },
         "render_design" to
           buildJsonObject {
             put("designId", "design-1")
