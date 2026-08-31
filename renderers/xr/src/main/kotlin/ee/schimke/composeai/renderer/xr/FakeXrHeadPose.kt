@@ -19,14 +19,13 @@ import androidx.xr.runtime.math.Vector3
  *   `Session` config has device tracking enabled; the default offline `Session` is created with
  *   `DeviceTrackingMode.DISABLED`, so the node skips initialising `arDevice` and then crashes in
  *   its head-pose job (`UninitializedPropertyAccessException: lateinit property arDevice ...`).
- * - Even configured, the fake `ArDevice` reports an identity pose at the origin, so a panel at the
- *   origin would "look at" itself — a degenerate 180° Y-flip rather than facing the viewer.
+ * - The fake `ArDevice` still needs an explicit, stable pose so every render observes the same
+ *   viewer-relative state before it records layout.
  *
  * [install] fixes both: it pre-creates a `Session` (so `Subspace`'s `getOrCreateSession` reuses it
  * via the decor-view tag rather than building a `DISABLED` one), flips its config to
- * device-tracking, and seeds the fake `ArDevice`'s pose to the viewer's position — by default in
- * front of the panels on +Z, where [SubspaceSceneRecorder.defaultCamera] puts the offline camera.
- * The arcore fake (`FakePerceptionRuntimeFactory`) must be registered for `ServiceLoader`
+ * device-tracking, and seeds the fake `ArDevice`'s pose to the viewer-relative subspace origin. The
+ * arcore fake (`FakePerceptionRuntimeFactory`) must be registered for `ServiceLoader`
  * (`META-INF/services/androidx.xr.runtime.internal.PerceptionRuntimeFactory`) for this to resolve.
  *
  * Both the config flip and the pose seed go in through the runtime **state**, not
@@ -44,12 +43,12 @@ import androidx.xr.runtime.math.Vector3
 public object FakeXrHeadPose {
 
   /**
-   * The viewer/head position used when none is supplied: in front of the panels, pulled back along
-   * +Z (the runtime works in metres; the recorder/compositor work in dp, but only the *direction*
-   * panel→head matters for the look-at rotation, so an order-of-magnitude-correct +Z is enough — it
-   * matches the sign of the offline camera in [SubspaceSceneRecorder.defaultCamera]).
+   * The viewer/head position used when none is supplied: the subspace origin. XR subspace layout is
+   * viewer-relative, so this makes offset panels face inward while the centred panel remains
+   * head-on. Older XR Compose builds produced a degenerate Y-flip for the centred zero-length look
+   * vector; the supported runtime now explicitly resolves it to identity.
    */
-  public val DEFAULT_HEAD_POSE: Pose = Pose(translation = Vector3(0f, 0f, 2f))
+  public val DEFAULT_HEAD_POSE: Pose = Pose.Identity
 
   /**
    * Pre-creates the offline XR [Session] on [rule], enables device tracking on it, and seeds the
@@ -97,6 +96,44 @@ public object FakeXrHeadPose {
     runCatching { seedHeadPose(session, headPose) }
       .onFailure { warnSeedSkipped("seed the viewer head pose", it) }
     return session
+  }
+
+  /**
+   * Replays the seeded pose after the subspace has been placed, then waits for the resulting
+   * placement invalidation to settle.
+   *
+   * `rotateToLookAtUser` starts collecting `ArDevice.state` from `onPlaced`. A render that records
+   * immediately after its first Compose idle can therefore race the collector's initial emission:
+   * the scene may contain either the identity/default head pose or the seeded one. Publish a
+   * deliberately different pose first so `StateFlow` cannot suppress the replay as equal, wait for
+   * that placement, then restore [headPose] and wait again. The final recorded layout is
+   * consequently downstream of an observed seeded-pose emission rather than merely downstream of
+   * composition.
+   *
+   * This is harmless for previews without `rotateToLookAtUser`: their `ArDevice.state` has no
+   * collector, so the two writes only update the offline fake.
+   */
+  public fun settleAfterComposition(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    session: Session,
+    headPose: Pose = DEFAULT_HEAD_POSE,
+  ) {
+    val fartherPose =
+      Pose(
+        translation =
+          Vector3(
+            headPose.translation.x,
+            headPose.translation.y,
+            headPose.translation.z + 1f,
+          ),
+        rotation = headPose.rotation,
+      )
+    runCatching { seedHeadPose(session, fartherPose) }
+      .onFailure { warnSeedSkipped("replay the viewer head pose", it) }
+    rule.waitForIdle()
+    runCatching { seedHeadPose(session, headPose) }
+      .onFailure { warnSeedSkipped("restore the viewer head pose", it) }
+    rule.waitForIdle()
   }
 
   /**

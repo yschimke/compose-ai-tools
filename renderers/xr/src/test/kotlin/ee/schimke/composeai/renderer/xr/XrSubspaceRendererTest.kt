@@ -1,3 +1,5 @@
+@file:OptIn(androidx.xr.compose.subspace.layout.ExperimentalRotateToLookAtUserApi::class)
+
 package ee.schimke.composeai.renderer.xr
 
 import android.content.Context
@@ -16,6 +18,8 @@ import androidx.xr.compose.subspace.SpatialColumn
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SubspaceModifier
 import androidx.xr.compose.subspace.layout.height
+import androidx.xr.compose.subspace.layout.offset
+import androidx.xr.compose.subspace.layout.rotateToLookAtUser
 import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.semantics.testTag
 import com.google.common.truth.Truth.assertThat
@@ -45,6 +49,21 @@ fun SampleSpatialPreview() {
       SpatialPanel(SubspaceModifier.testTag("controls").width(560.dp).height(120.dp)) {
         Box(Modifier.fillMaxSize().background(Color.Blue))
       }
+    }
+  }
+}
+
+@Composable
+fun SampleLookAtUserPreview() {
+  Subspace {
+    SpatialPanel(
+      SubspaceModifier.testTag("look-left")
+        .width(300.dp)
+        .height(200.dp)
+        .offset(x = (-520).dp)
+        .rotateToLookAtUser()
+    ) {
+      Box(Modifier.fillMaxSize().background(Color.Red))
     }
   }
 }
@@ -128,6 +147,36 @@ class XrSubspaceRendererTest {
     val panelNodes = tree.root.children.filter { it.kind == SpatialSemanticsKind.PANEL }
     assertThat(panelNodes.map { it.id }).containsExactly("now-playing", "controls")
   }
+
+  @Test
+  fun settlesSeededHeadPoseBeforeRecordingLookAtUserRotation() {
+    val pm = ApplicationProvider.getApplicationContext<Context>().packageManager
+    shadowOf(pm).setSystemFeature(SubspaceSceneRecorder.XR_SPATIAL_FEATURE, true)
+    val outDir = createOutputDir("xr-look-at-user")
+
+    val sceneFile =
+      XrSubspaceRenderer.render(
+        rule = rule,
+        className = "ee.schimke.composeai.renderer.xr.XrSubspaceRendererTestKt",
+        functionName = "SampleLookAtUserPreview",
+        previewId = "look-at-user-preview",
+        outputDir = outDir,
+      )
+
+    val scene = Json.decodeFromString(SpatialScene.serializer(), sceneFile.readText())
+    val rotation = scene.panels.single().poseInRoot.rotation
+    // The offline viewer is at the subspace origin: an offset panel turns 90 degrees inward. The
+    // old arbitrary +Z seed produced the incorrect near-flat |y| ~= 0.065 baseline.
+    assertThat(rotation.y).isWithin(0.0001).of(0.7071068)
+    assertThat(rotation.w).isWithin(0.0001).of(0.7071068)
+  }
+
+  private fun createOutputDir(prefix: String): File =
+    File.createTempFile(prefix, "").let {
+      it.delete()
+      it.mkdirs()
+      it
+    }
 
   private fun centrePixel(png: File): Triple<Int, Int, Int> {
     val img = ImageIO.read(png)
