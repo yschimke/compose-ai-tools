@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.60.4](https://github.com/yschimke/compose-ai-tools/compare/v1.60.3...v1.60.4) (2026-08-31)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-server to v2.7.0 ([#4923](https://github.com/yschimke/compose-ai-tools/issues/4923)) ([7378bac](https://github.com/yschimke/compose-ai-tools/commit/7378bacb25b8ab2d717f2a73ce5dc36212e3bf29))
+* **deps:** update dependency @design-parity/adapter-figma to v1 ([#4924](https://github.com/yschimke/compose-ai-tools/issues/4924)) ([dd2819d](https://github.com/yschimke/compose-ai-tools/commit/dd2819d5c7d3c44235d0b3f04d7206959af20d6e))
+* **deps:** update dependency @design-parity/candidate to v1 ([#4925](https://github.com/yschimke/compose-ai-tools/issues/4925)) ([dbf20a9](https://github.com/yschimke/compose-ai-tools/commit/dbf20a9ebc08e0ec9dcb842acb78ae8702829284))
+* **deps:** update dependency @design-parity/catalog-export to v1 ([#4926](https://github.com/yschimke/compose-ai-tools/issues/4926)) ([43b511a](https://github.com/yschimke/compose-ai-tools/commit/43b511a1635e9d9970ae5e5be88a26bfb6efe987))
+
 ## [1.60.3](https://github.com/yschimke/compose-ai-tools/compare/v1.60.2...v1.60.3) (2026-08-31)
 
 
