@@ -1409,6 +1409,14 @@ private fun renderBundleWithOverrides(
   verbose: Boolean,
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
+  if (BundleReader.readMetadata(bundleFile).manifest.backend == "desktop") {
+    try {
+      SkikoNativeProvision.prepareInstalledDesktopSidecars()
+    } catch (e: IllegalStateException) {
+      System.err.println("bundle render: ${e.message}")
+      return false
+    }
+  }
   // Materialize the daemon workspace in a private temp dir — NOT under outDir. `materialize`
   // extracts the bundle's classes/libs/manifests here, which are implementation artifacts; the
   // command's contract is that outDir holds only the rendered PNGs, so a `.daemon` tree beside them

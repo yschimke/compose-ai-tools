@@ -442,15 +442,24 @@ dependencies {
 // `components-ui-tooling-preview-desktop`), so a flat copy into `lib-daemon-desktop/` collides on
 // filename. Stage the resolved artifacts to a build directory first, disambiguating colliding
 // filenames by Maven `module-version.jar`, so both end up on the daemon's classpath at runtime.
+// The six Skiko native runtimes remain in daemon-desktop's published POM for Maven consumers, but
+// are excluded from CLI staging: [SkikoNativeProvision] downloads only the current host's jar.
 val stageDaemonDesktopLibs =
   tasks.register<Sync>("stageDaemonDesktopLibs") {
     description = "Stages :daemon:desktop runtime artifacts, renaming filename collisions."
     destinationDir = layout.buildDirectory.dir("staged-daemon-desktop-libs").get().asFile
     val artifactsProvider = composePreviewDaemonDesktop.incoming.artifacts.resolvedArtifacts
-    from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
+    from(
+      artifactsProvider.map { resolved ->
+        resolved
+          .filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
+          .map(ResolvedArtifactResult::getFile)
+      }
+    )
     val nameByPath = artifactsProvider.map { resolved ->
-      val counts = resolved.groupingBy { it.file.name }.eachCount()
-      resolved.associate { artifact ->
+      val staged = resolved.filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
+      val counts = staged.groupingBy { it.file.name }.eachCount()
+      staged.associate { artifact ->
         val original = artifact.file.name
         val mapped =
           if (counts.getValue(original) > 1) {
@@ -467,6 +476,23 @@ val stageDaemonDesktopLibs =
     }
   }
 
+// The renderer configuration currently resolves the build host's Skiko native. Stage it through a
+// filter as well, otherwise a macOS-built release would still embed a macOS native in the portable
+// archive even after the daemon's six-platform closure was cleaned up.
+val stageRendererLibs =
+  tasks.register<Sync>("stageRendererLibs") {
+    description = "Stages the desktop renderer runtime without host-specific Skiko natives."
+    destinationDir = layout.buildDirectory.dir("staged-renderer-libs").get().asFile
+    val artifactsProvider = composePreviewRenderer.incoming.artifacts.resolvedArtifacts
+    from(
+      artifactsProvider.map { resolved ->
+        resolved
+          .filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
+          .map(ResolvedArtifactResult::getFile)
+      }
+    )
+  }
+
 // Stage the JVM embedded player's runtime artifacts for `lib-rcjvm/`, disambiguating any colliding
 // `library-desktop-<version>.jar` filenames by Maven `module-version.jar` — same reasoning as
 // [stageDaemonDesktopLibs].
@@ -475,10 +501,17 @@ val stageRcJvmLibs =
     description = "Stages the vendored JVM player's runtime artifacts for lib-rcjvm/."
     destinationDir = layout.buildDirectory.dir("staged-rcjvm-libs").get().asFile
     val artifactsProvider = composePreviewRcJvm.incoming.artifacts.resolvedArtifacts
-    from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
+    from(
+      artifactsProvider.map { resolved ->
+        resolved
+          .filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
+          .map(ResolvedArtifactResult::getFile)
+      }
+    )
     val nameByPath = artifactsProvider.map { resolved ->
-      val counts = resolved.groupingBy { it.file.name }.eachCount()
-      resolved.associate { artifact ->
+      val staged = resolved.filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
+      val counts = staged.groupingBy { it.file.name }.eachCount()
+      staged.associate { artifact ->
         val original = artifact.file.name
         val mapped =
           if (counts.getValue(original) > 1) {
@@ -593,7 +626,7 @@ val previewUiWasmDist =
 distributions {
   named("main") {
     contents {
-      into("lib-renderer") { from(composePreviewRenderer) }
+      into("lib-renderer") { from(stageRendererLibs) }
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
@@ -606,6 +639,34 @@ distributions {
     }
   }
 }
+
+abstract class CheckCliSkikoNativePackaging : DefaultTask() {
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val stagedJars: ConfigurableFileCollection
+
+  @TaskAction
+  fun checkPackaging() {
+    val jars = stagedJars.files.flatMap { root -> root.listFiles()?.toList().orEmpty() }
+    val nativeJars = jars.filter { it.name.startsWith("skiko-awt-runtime-") }
+    check(nativeJars.isEmpty()) {
+      "Portable CLI contains host-specific Skiko natives: ${nativeJars.joinToString { it.name }}"
+    }
+    check(jars.any { it.name.matches(Regex("skiko-awt-[^-].*\\.jar")) }) {
+      "Portable CLI lost the skiko-awt API jar needed to derive the native version"
+    }
+  }
+}
+
+val checkCliSkikoNativePackaging =
+  tasks.register<CheckCliSkikoNativePackaging>("checkCliSkikoNativePackaging") {
+    description = "Checks that the portable CLI stages no host-specific Skiko native jars."
+    group = "verification"
+    dependsOn(stageRendererLibs, stageDaemonDesktopLibs, stageRcJvmLibs)
+    stagedJars.from(stageRendererLibs, stageDaemonDesktopLibs, stageRcJvmLibs)
+  }
+
+tasks.named("check") { dependsOn(checkCliSkikoNativePackaging) }
 
 // The Android (Robolectric) daemon runtime is ~150-200 MB (Robolectric + the full Compose-Android /
 // AndroidX / Wear-Tiles / Remote-Compose stack). Bundling it into the main CLI tarball ballooned it

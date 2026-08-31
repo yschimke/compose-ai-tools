@@ -61,6 +61,19 @@ view-only, below), but not for live re-render across build systems.
 
 ## 2. What already travels (two existing portability layers)
 
+### CLI desktop native provisioning
+
+The portable `compose-preview` CLI distribution ships the platform-neutral Compose and Skiko
+classes, but not the six `skiko-awt-runtime-*` native jars. On the first desktop render, serve, or
+browse command it derives the Skiko version from the installed `skiko-awt-<version>.jar`, downloads
+only the current host's Maven Central artifact, and caches it under
+`${XDG_CACHE_HOME:-~/.cache}/composeai/skiko/<version>/<platform>/`. Later runs are offline-safe.
+
+For an air-gapped install, copy the matching `skiko-awt-runtime-<platform>-<version>.jar` into a
+directory and launch Java with `-Dcomposeai.cli.skikoDir=<dir>`. Setting
+`-Dcomposeai.bundle.offline=true` or `COMPOSE_PREVIEW_OFFLINE=1` disables fetching and produces an
+actionable error when neither that override nor the cache contains the native.
+
 ### 2a. View-only — universal, zero tooling
 
 Schema v2 bakes a PNG per preview. Reading them needs **none** of the classpath

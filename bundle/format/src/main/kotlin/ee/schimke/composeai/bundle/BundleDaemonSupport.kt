@@ -148,10 +148,21 @@ public fun locateBundleSidecarJars(sidecarName: String): List<File> {
       )
       .distinct()
   val firstExistingDir = candidates.firstOrNull { it.isDirectory } ?: return emptyList()
-  return firstExistingDir
-    .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
-    ?.sortedBy { it.name }
-    .orEmpty()
+  val sidecarJars =
+    firstExistingDir
+      .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
+      ?.sortedBy { it.name }
+      .orEmpty()
+  // The CLI distribution deliberately omits every platform's Skiko native runtime. The CLI
+  // provisioner resolves exactly the current host's matching jar and publishes its directory via
+  // this property before any desktop subprocess is assembled. Append it to the daemon sidecar so
+  // callers compiled in other repositories (serve's bundle daemon and RC JVM renderer) inherit the
+  // native without needing a parallel locator or a release-coupled API change.
+  return if (sidecarName == "lib-daemon-desktop") {
+    (configuredSkikoJars() + sidecarJars).distinctBy { it.absoluteFile.normalize().path }
+  } else {
+    sidecarJars
+  }
 }
 
 /** Human-readable description of where [locateBundleSidecarJars] looked, for error messages. */
@@ -163,8 +174,25 @@ public fun bundleSidecarSearchDescription(sidecarName: String): String {
       override?.let { "-D$sysprop=$it" },
       appHome?.let { "$it/$sidecarName" },
       "<classpath-parent>/../$sidecarName",
+      if (sidecarName == "lib-daemon-desktop") {
+        System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.let { "-D$CLI_SKIKO_DIR_PROPERTY=$it" }
+      } else null,
     )
     .joinToString(" or ")
+}
+
+/** Directory containing the one host-specific Skiko runtime provisioned by the CLI. */
+public const val CLI_SKIKO_DIR_PROPERTY: String = "composeai.cli.skikoDir"
+
+private fun configuredSkikoJars(): List<File> {
+  val dir = System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.takeIf { it.isNotBlank() }?.let(::File)
+  if (dir?.isDirectory != true) return emptyList()
+  return dir
+    .listFiles { file ->
+      file.isFile && file.name.startsWith("skiko-awt-runtime-") && file.name.endsWith(".jar")
+    }
+    ?.sortedBy { it.name }
+    .orEmpty()
 }
 
 private fun bundleSidecarSysprop(sidecarName: String): String =

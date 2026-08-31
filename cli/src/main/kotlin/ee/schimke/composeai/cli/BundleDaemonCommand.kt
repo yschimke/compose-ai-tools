@@ -269,8 +269,20 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       )
       exitProcess(1)
     }
+    val skikoNative =
+      try {
+        SkikoNativeProvision.prepare(daemonJars + rendererJars)
+      } catch (e: IllegalStateException) {
+        System.err.println("bundle daemon: ${e.message}")
+        exitProcess(1)
+      }
     return DaemonLaunch(
-      classpath = (daemonJars + rendererJars).joinToString(File.pathSeparator) { it.absolutePath },
+      classpath =
+        (listOf(skikoNative) + daemonJars + rendererJars).distinct().joinToString(
+          File.pathSeparator
+        ) {
+          it.absolutePath
+        },
       // -Dapple.awt.UIElement=true runs the desktop daemon JVM as a macOS background agent
       // (no Dock icon / focus steal). Launch -D so it lands before AWT inits; macOS-only.
       jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),

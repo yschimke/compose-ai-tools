@@ -24,8 +24,8 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "profile" to { a -> ProfileCommand(a).run() },
     "doctor" to { a -> DoctorCommand(a).run() },
     "devices" to { a -> DevicesCommand(a).run() },
-    "browse" to { a -> BrowseCommand(a).run() },
-    "serve" to { a -> ServeCommand(a).run() },
+    "browse" to { a -> withDesktopSkiko(a) { BrowseCommand(a).run() } },
+    "serve" to { a -> withDesktopSkiko(a) { ServeCommand(a).run() } },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
     "mcp" to { a -> McpCommand(a).run() },
@@ -36,6 +36,23 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "version" to { _ -> println("compose-preview $BUNDLE_VERSION") },
     "help" to { a -> printUsage(full = "--all" in a) },
   )
+
+/** Provision Skiko before the extracted server assembles its lazy desktop subprocess classpaths. */
+private inline fun withDesktopSkiko(args: List<String>, block: () -> Unit) {
+  // Asking how to invoke a command is not a desktop-rendering operation and must remain usable in
+  // an offline or partially installed environment.
+  if ("--help" in args || "-h" in args) {
+    block()
+    return
+  }
+  try {
+    SkikoNativeProvision.prepareInstalledDesktopSidecars()
+  } catch (e: IllegalStateException) {
+    System.err.println("compose-preview: ${e.message}")
+    exitProcess(1)
+  }
+  block()
+}
 
 fun main(args: Array<String>) {
   if (args.isEmpty()) {
