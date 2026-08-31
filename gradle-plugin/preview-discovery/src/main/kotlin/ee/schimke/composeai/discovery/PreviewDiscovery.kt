@@ -1555,7 +1555,8 @@ object PreviewDiscovery {
 
   private fun File.declaresPreviewAnnotation(): Boolean = runCatching {
     PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText().kotlinCodeOnly())
-  }.getOrDefault(false)
+  }
+    .getOrDefault(false)
 
   /**
    * Blank comments and literals while preserving line breaks, so the source-level integrity guard
@@ -1613,8 +1614,7 @@ object PreviewDiscovery {
           blank(c)
           if (!tripleQuoted) {
             if (escaped) escaped = false
-            else if (c == '\\') escaped = true
-            else if (c == quote) quote = null
+            else if (c == '\\') escaped = true else if (c == quote) quote = null
           }
           i++
         }
@@ -2458,6 +2458,12 @@ object PreviewDiscovery {
       // older preview-annotations has no `secondary` parameter, and `getValue` throws for one that
       // is absent rather than answering its default.
       val secondary = (runCatching { pv.getValue("secondary") }.getOrNull() as? Boolean) ?: false
+      // Same compatibility posture as `kitProps` / `secondary`: consumers compiled against an
+      // older annotations artifact have no parameter to read.
+      val noReference =
+        (runCatching { pv.getValue("noReference") }.getOrNull() as? String)?.takeIf {
+          it.isNotBlank()
+        }
       val spec =
         OverrideVariantSpec(
           name = name,
@@ -2467,6 +2473,7 @@ object PreviewDiscovery {
           kitAxis = kitAxis.takeIf { kitProps.isEmpty() },
           kitValue = kitValue.takeIf { kitProps.isEmpty() },
           kitProps = kitProps,
+          noReference = noReference,
           secondary = secondary,
         )
       val existing = specs.putIfAbsent(name, spec)
@@ -3719,7 +3726,8 @@ object PreviewDiscovery {
       (pv.getValue("state") as? AnnotationEnumValue)?.valueName ?: AmbientCaptureState.Ambient.name
     val state = runCatching {
       AmbientCaptureState.valueOf(stateName)
-    }.getOrDefault(AmbientCaptureState.Ambient)
+    }
+      .getOrDefault(AmbientCaptureState.Ambient)
     val burnIn = (pv.getValue("burnInProtectionRequired") as? Boolean) ?: false
     val lowBit = (pv.getValue("deviceHasLowBitAmbient") as? Boolean) ?: false
     return AmbientCapture(
@@ -3966,7 +3974,8 @@ object PreviewDiscovery {
         ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
     val order = runCatching {
       LauncherWidgetCaptureResizeOrder.valueOf(orderName)
-    }.getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    }
+      .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val frameDelay = (pv.getValue("frameDelayMs") as? Int)?.coerceAtLeast(0) ?: 600
     val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetResizeSpec(
@@ -3999,7 +4008,8 @@ object PreviewDiscovery {
         ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
     val order = runCatching {
       LauncherWidgetCaptureResizeOrder.valueOf(orderName)
-    }.getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    }
+      .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetCapture(
       width = width,

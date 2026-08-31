@@ -14,8 +14,8 @@ package ee.schimke.composeai.discovery
  *
  * Three matching styles, chosen per pattern:
  * - **Anchored** — a pattern prefixed with `=` matches that id or FQN and nothing else:
- *   `=FilledButton_Light` will not touch `FilledButton_Light_VARIANT_off`. See [ANCHOR] for why
- *   any generated id list needs this.
+ *   `=FilledButton_Light` will not touch `FilledButton_Light_VARIANT_off`. See [ANCHOR] for why any
+ *   generated id list needs this.
  * - **Glob** — a pattern containing `*` (any run) or `?` (one char) is anchored and full-matched
  *   against either candidate: `*ExportHelpDialogPreview`, `Export*Preview`, `com.example.*.Foo`.
  * - **Plain** — a pattern with no glob chars matches on equality *or substring* against either
@@ -46,7 +46,6 @@ object PreviewNameFilter {
    * and are path-sanitised), so adding this cannot change the meaning of any existing pattern.
    */
   const val ANCHOR: String = "="
-
 
   /**
    * True when [functionName] (owned by [className]) matches at least one of [patterns], or when

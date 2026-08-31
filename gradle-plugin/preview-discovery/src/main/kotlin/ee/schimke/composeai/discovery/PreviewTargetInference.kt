@@ -193,7 +193,8 @@ object PreviewTargetInference {
         signals = best.signals,
         // The target's real Kotlin value parameters (names / types / defaults) for the call site a
         // consumer renders into Code Connect. Best-effort — empty when metadata can't be read.
-        parameters = ComposableSignature.parametersOf(bestCandidate.classInfo, bestCandidate.method),
+        parameters =
+          ComposableSignature.parametersOf(bestCandidate.classInfo, bestCandidate.method),
       )
     )
   }

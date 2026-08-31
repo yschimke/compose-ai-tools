@@ -65,7 +65,7 @@ jobs:
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - uses: anthropics/claude-code-action@dcb57747bfceeaa1fa72638cae52295d1d853d4a # v1.0.199
+      - uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210
         with:
           # Bills the Claude subscription's included usage (shared with
           # interactive Claude Code sessions) rather than per-token API spend.

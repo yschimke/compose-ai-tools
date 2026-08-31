@@ -31,9 +31,35 @@
 # compose-ai-tools' own runs never read this: for that caller the workflow uses
 # the commit the run is on, so a driver fix merged to `main` applies immediately.
 #
-# Maintained by .github/scripts/refresh-driver-pin.sh, which is run for you by
-# .github/workflows/refresh-driver-pin.yml after each release. `--check` (run by
-# ci.yml) enforces the shape below, so keep the three keys and their spelling.
+# Maintained by RENOVATE, via the `design-artifacts-driver-pin` custom manager in
+# .github/renovate.json. It reads the two keys below as one dependency — `tag` is
+# the version, `sha` the digest — and bumps them together against this repo's own
+# GitHub tags, so the pair can never disagree.
+#
+# It used to be maintained by .github/workflows/refresh-driver-pin.yml, which
+# opened the bump PR with `GITHUB_TOKEN`. Pushes made with that token do not start
+# workflow runs, so those PRs arrived with no checks reporting and had to be
+# poked by hand before anyone could see them go green. Renovate is a GitHub App,
+# and App pushes do trigger workflows.
+#
+# `.github/scripts/refresh-driver-pin.sh --check` (run by ci.yml) enforces three
+# things, so keep both keys, their spelling AND their order:
+#   1. the shape of each value;
+#   2. that `sha=` is IMMEDIATELY followed by `tag=` — that adjacency is what the
+#      Renovate manager matches, and read_key is order-agnostic, so without this a
+#      harmless-looking reorder would pass CI while Renovate silently extracted
+#      nothing and stopped refreshing the pin;
+#   3. that the tag is a PUBLISHED release. release-please writes the tag while the
+#      GitHub Release is still a draft, so a stranded draft leaves a real tag whose
+#      artifacts never shipped (v1.55.0 is exactly that). Renovate's github-tags
+#      datasource cannot tell the two apart, so the gate the old workflow applied
+#      before opening its PR lives in the validator now.
+# The same script's `--tag`/`--sha` write mode is still the manual path if the pin
+# ever has to move by hand (docs/RELEASING.md).
+#
+# There is deliberately no `date=` key. Renovate does not maintain one, `--check`
+# only ever validated its SHAPE rather than whether it was true, and a timestamp
+# that quietly stops tracking reality is worse than none: the commit and the PR
+# already record when the pin moved.
 sha=d0fe0ed8a21ddf025d904fd8c103152b2b6d3b64
 tag=v1.56.2
-date=2026-08-31

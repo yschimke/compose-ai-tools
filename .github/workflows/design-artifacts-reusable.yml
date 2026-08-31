@@ -299,6 +299,25 @@ on:
         required: false
         type: string
         default: ''
+      upstream-java-version:
+        description: >-
+          Extra JDK to install for an imported project whose Gradle toolchain asks for one this
+          runner does not have — a major version like `24`. Empty ⇒ only the JDK 21 every render
+          uses. Ignored unless upstream-repository is set.
+
+          A third-party build picks its own toolchain and we do not get to choose it: joreilly's
+          ClimateTraceKMP requests 24, so `:composeApp:compileAndroidMain` could not even have its
+          dependencies resolved on a runner holding 21 alone ("Cannot find a Java installation …
+          matching {languageVersion=24}. Toolchain download repositories have not been
+          configured."). Naming the version here installs it ALONGSIDE 21 and points Gradle's
+          toolchain detection at it; JAVA_HOME stays 21, which is what the CLI itself runs on.
+
+          Deliberately an explicit version rather than turning on toolchain auto-provisioning: an
+          import is somebody else's build, and letting it download an arbitrary JDK mid-render is a
+          larger grant than letting it name one this workflow then installs.
+        required: false
+        type: string
+        default: ''
       design-map-command:
         description: >-
           Shell command that projects THIS system's `design-map.json` into the caller repo root,
@@ -744,7 +763,7 @@ jobs:
         # made a driver fix look like a five-line change; the driver revision is
         # now resolved separately (see DRIVER_PIN_* at the top of this file) and
         # this ref only needs to move when the install action itself changes.
-        uses: yschimke/compose-ai-tools/.github/actions/install@0e55d5d3100aa309b5b755111f9982206666961e # v1.29.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@b3faa210939f1ec59f01f63731b6b29a99c26c5c # v1.46.2
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -865,7 +884,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@0e55d5d3100aa309b5b755111f9982206666961e # v1.29.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@b3faa210939f1ec59f01f63731b6b29a99c26c5c # v1.46.2
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -1174,6 +1193,27 @@ jobs:
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
 
+      # The imported project's OWN toolchain, when it asks for one this runner lacks. Installed
+      # BEFORE JDK 21 on purpose: `setup-java` points JAVA_HOME at whichever it installed last, and
+      # everything else here — the CLI, the export driver — runs on 21. Only Gradle's toolchain
+      # resolution needs the other one, and it finds it through the path recorded below.
+      - name: Set up the imported project's toolchain
+        if: ${{ inputs.upstream-repository != '' && inputs.upstream-java-version != '' }}
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.upstream-java-version }}
+
+      # Gradle does not auto-detect a JDK under the runner's tool cache — its detection looks at
+      # the current JVM and the usual system locations, and `setup-java` installs to neither. So
+      # name the path explicitly; without this the extra JDK is installed and still not found.
+      - name: Point Gradle's toolchain detection at it
+        if: ${{ inputs.upstream-repository != '' && inputs.upstream-java-version != '' }}
+        run: |
+          set -euo pipefail
+          echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME} ${GRADLE_OPTS:-}" \
+            >> "$GITHUB_ENV"
+
       - name: Set up JDK 21
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -1185,7 +1225,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@0e55d5d3100aa309b5b755111f9982206666961e # v1.29.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@b3faa210939f1ec59f01f63731b6b29a99c26c5c # v1.46.2
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}

@@ -185,6 +185,53 @@ test("a folded variant's stated absence is reported under the variant, not its p
   assert.deepEqual(diagnostics.unmapped, []);
 });
 
+test("an OverrideVariant stated absence travels in the sidecar and is reported as a cell", () => {
+  const reason = "the kit publishes determinate progress cells only";
+  const { variants, diagnostics } = projectDesignMap([
+    component("Progress", { reference: ref("1:2") }),
+    overrideVariant("Progress", "indeterminate", {
+      seeds: [{ key: "progress", kind: "STRING", raw: "indeterminate" }],
+      noReference: reason,
+    }),
+  ]);
+
+  assert.deepEqual(variants.components[0].renders, [
+    {
+      previewId: "com.example.CatalogKt.Progress_Light_VARIANT_indeterminate",
+      name: "indeterminate",
+      seeds: [{ key: "progress", raw: "indeterminate" }],
+      noReference: reason,
+    },
+  ]);
+  assert.deepEqual(diagnostics.statedAbsentCells, [
+    {
+      componentId: "Progress [progress=indeterminate]",
+      previewId: "com.example.CatalogKt.Progress_Light_VARIANT_indeterminate",
+      reason,
+    },
+  ]);
+  // It is not a parent/component absence: the parent maps normally, and plain --strict may keep it.
+  assert.deepEqual(diagnostics.statedAbsent, []);
+  assert.deepEqual(diagnostics.unmapped, []);
+});
+
+test("a seedless OverrideVariant can still record that the kit publishes no cell", () => {
+  const { variants } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    overrideVariant("Button", "pressed", {
+      seeds: [],
+      noReference: "the kit has no pressed cell",
+    }),
+  ]);
+
+  assert.deepEqual(variants.components[0].renders[0], {
+    previewId: "com.example.CatalogKt.Button_Light_VARIANT_pressed",
+    name: "pressed",
+    seeds: [],
+    noReference: "the kit has no pressed cell",
+  });
+});
+
 test("two variants sharing a state but differing in props keep both absences", () => {
   // The label is a Map key. `variantName` narrows to the state alone whenever there is one, so
   // building the label from it collided these two and silently dropped one of the reasons --

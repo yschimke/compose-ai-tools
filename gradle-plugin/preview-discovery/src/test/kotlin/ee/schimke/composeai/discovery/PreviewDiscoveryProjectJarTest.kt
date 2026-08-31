@@ -121,7 +121,7 @@ class PreviewDiscoveryProjectJarTest {
   }
 
   @Test
-  fun `an override variant's tier is read off the annotation`() {
+  fun `an override variant's tier and stated absence are read off the annotation`() {
     // The read matters more than the field: discovery has to answer `false` for a catalog compiled
     // against an annotations jar that predates the parameter (ClassGraph throws for one that is
     // absent rather than handing back its default), and `true` for one that declares it.
@@ -144,7 +144,10 @@ class PreviewDiscoveryProjectJarTest {
 
     val variants = outcome.manifest.previews.mapNotNull { it.overrides }.associateBy { it.name }
     assertThat(variants.getValue("segments-13").secondary).isTrue()
+    assertThat(variants.getValue("segments-13").noReference)
+      .isEqualTo("the kit publishes no 13-segment cell")
     assertThat(variants.getValue("disabled").secondary).isFalse()
+    assertThat(variants.getValue("disabled").noReference).isNull()
   }
 
   @Test
@@ -273,6 +276,7 @@ class PreviewDiscoveryProjectJarTest {
     mv.visitAnnotation("Lee/schimke/composeai/preview/OverrideVariant;", false).apply {
       visit("name", "segments-13")
       visit("secondary", true)
+      visit("noReference", "the kit publishes no 13-segment cell")
       visitArray("ints").apply {
         visit(null, "segmentCount=13")
         visitEnd()

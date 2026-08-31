@@ -59,6 +59,17 @@ function run(previews, ...flags) {
 const MAPPED = component("FilledButton", { reference: `figma:${FILE}/1:1` });
 const STATED = component("ButtonGroup", { noReference: "The kit publishes no button-group set." });
 const SILENT = component("Mystery", {});
+const statedCell = {
+  id: "com.example.CatalogKt.FilledButton_VARIANT_pressed",
+  functionName: "FilledButton",
+  sourceFile: "Catalog.kt",
+  catalog: { role: "COMPONENT", componentId: "FilledButton", reference: `figma:${FILE}/1:1` },
+  overrides: {
+    name: "pressed",
+    seeds: [],
+    noReference: "The kit publishes no pressed cell.",
+  },
+};
 
 test("--strict fails on a stated absence, because it says there are no exceptions", () => {
   const { status, all } = run([MAPPED, STATED], "--strict");
@@ -73,6 +84,14 @@ test("--strict --allow-stated-absence accepts an absence somebody wrote down", (
   const { status, all } = run([MAPPED, STATED], "--strict", "--allow-stated-absence");
   assert.equal(status, 0, all);
   assert.match(all, /1 mapped component\(s\)/);
+});
+
+test("--strict accepts a folded cell whose absent kit node is stated", () => {
+  const { status, all, variants } = run([MAPPED, statedCell], "--strict");
+  assert.equal(status, 0, all);
+  assert.match(all, /1 folded cell\(s\) have no design-kit node for a stated reason/);
+  assert.match(all, /FilledButton \[pressed\] — The kit publishes no pressed cell\./);
+  assert.equal(variants.components[0].renders[0].noReference, "The kit publishes no pressed cell.");
 });
 
 test("--allow-stated-absence does NOT excuse silence — that is what strictness is for", () => {

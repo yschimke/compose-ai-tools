@@ -247,6 +247,7 @@ class PreviewDataTest {
                 OverrideSeed(key = "stroke", kind = OverrideSeedKind.STRING, raw = "small"),
               ),
             secondary = true,
+            noReference = "the kit publishes no 13-segment cell",
           ),
       )
     val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
@@ -254,6 +255,8 @@ class PreviewDataTest {
     val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
 
     assertThat(decoded.previews.single().overrides?.secondary).isTrue()
+    assertThat(decoded.previews.single().overrides?.noReference)
+      .isEqualTo("the kit publishes no 13-segment cell")
     // And the seeds are untouched by it: the tier decides the listing, never the render.
     assertThat(decoded.previews.single().overrides?.seeds?.map { it.key })
       .containsExactly("segmentCount", "stroke")
@@ -278,6 +281,7 @@ class PreviewDataTest {
     val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
 
     assertThat(decoded.previews.single().overrides?.secondary).isFalse()
+    assertThat(decoded.previews.single().overrides?.noReference).isNull()
   }
 
   @Test
