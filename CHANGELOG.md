@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.59.0](https://github.com/yschimke/compose-ai-tools/compare/v1.58.0...v1.59.0) (2026-08-31)
+
+
+### Features
+
+* **catalog:** support Remote Compose token catalogs ([#4896](https://github.com/yschimke/compose-ai-tools/issues/4896)) ([040b1cc](https://github.com/yschimke/compose-ai-tools/commit/040b1cc9f847070d2eb6e7aa9b41ecb0da205183))
+* publish daemon launch schema metadata ([#4897](https://github.com/yschimke/compose-ai-tools/issues/4897)) ([cf00023](https://github.com/yschimke/compose-ai-tools/commit/cf00023f77a690f0085e6dea499681b474cd19ab))
+
 ## [1.58.0](https://github.com/yschimke/compose-ai-tools/compare/v1.57.0...v1.58.0) (2026-08-31)
 
 
