@@ -42,10 +42,20 @@
 # poked by hand before anyone could see them go green. Renovate is a GitHub App,
 # and App pushes do trigger workflows.
 #
-# `.github/scripts/refresh-driver-pin.sh --check` (run by ci.yml) still enforces
-# the shape below, so keep both keys and their spelling; the same script's
-# `--tag`/`--sha` write mode is still the manual path if the pin ever has to move
-# by hand (docs/RELEASING.md).
+# `.github/scripts/refresh-driver-pin.sh --check` (run by ci.yml) enforces three
+# things, so keep both keys, their spelling AND their order:
+#   1. the shape of each value;
+#   2. that `sha=` is IMMEDIATELY followed by `tag=` — that adjacency is what the
+#      Renovate manager matches, and read_key is order-agnostic, so without this a
+#      harmless-looking reorder would pass CI while Renovate silently extracted
+#      nothing and stopped refreshing the pin;
+#   3. that the tag is a PUBLISHED release. release-please writes the tag while the
+#      GitHub Release is still a draft, so a stranded draft leaves a real tag whose
+#      artifacts never shipped (v1.55.0 is exactly that). Renovate's github-tags
+#      datasource cannot tell the two apart, so the gate the old workflow applied
+#      before opening its PR lives in the validator now.
+# The same script's `--tag`/`--sha` write mode is still the manual path if the pin
+# ever has to move by hand (docs/RELEASING.md).
 #
 # There is deliberately no `date=` key. Renovate does not maintain one, `--check`
 # only ever validated its SHAPE rather than whether it was true, and a timestamp

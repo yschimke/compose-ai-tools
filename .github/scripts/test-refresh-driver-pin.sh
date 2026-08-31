@@ -51,6 +51,26 @@ for mutate in "s/^sha=.*/sha=c990303/" "s/^sha=.*/sha=$(printf '%040d' 0 | tr 0 
   if "${SCRIPT}" --file "${f2}" --check >/dev/null 2>&1; then bad "accepted: ${mutate}"; else ok "rejected: ${mutate}"; fi
 done
 
+echo "== the layout the Renovate custom manager needs is enforced"
+# .github/renovate.json matches `sha=` IMMEDIATELY followed by `tag=`. read_key is
+# order-agnostic, so without this gate a manual reorder passes every other check
+# while Renovate silently extracts nothing and stops refreshing the pin.
+f3="${tmp}/layout.txt"
+printf '# c\n\ntag=v1.0.0\nsha=%s\n' "${OLD}" > "${f3}"
+if "${SCRIPT}" --file "${f3}" --check >/dev/null 2>&1; then bad "accepted reordered keys"; else ok "rejected reordered keys"; fi
+printf '# c\n\nsha=%s\n# note\ntag=v1.0.0\n' "${OLD}" > "${f3}"
+if "${SCRIPT}" --file "${f3}" --check >/dev/null 2>&1; then bad "accepted a comment between the keys"; else ok "rejected a comment between the keys"; fi
+
+echo "== the published-release gate degrades to a notice without a token"
+# The gate itself needs the network and is exercised by ci's real `--check`; here we
+# only pin that a tokenless run still succeeds rather than failing closed offline.
+fixture "${tmp}/notok.txt"
+if env -u GH_TOKEN -u GITHUB_TOKEN "${SCRIPT}" --file "${tmp}/notok.txt" --check >/dev/null 2>&1; then
+  ok "tokenless --check passes with a notice"
+else
+  bad "tokenless --check failed"
+fi
+
 echo "== a duplicated key is an error, not last-one-wins"
 f2="${tmp}/dup.txt"; fixture "${f2}"; echo "sha=${NEW}" >> "${f2}"
 if "${SCRIPT}" --file "${f2}" --check >/dev/null 2>&1; then bad "duplicate sha accepted"; else ok "duplicate sha rejected"; fi
@@ -66,7 +86,11 @@ fixture "${f}"
 [ "$(sed -nE 's/^sha=(.*)/\1/p' "${f}")" = "${NEW}" ] && ok "sha moved" || bad "sha not moved"
 [ "$(sed -nE 's/^tag=(.*)/\1/p' "${f}")" = "v2.3.4" ] && ok "tag moved" || bad "tag not moved"
 grep -q "^# a comment" "${f}" && ok "comments preserved" || bad "comments lost"
-"${SCRIPT}" --file "${f}" --check >/dev/null && ok "rewritten file passes --check" || bad "rewritten file fails --check"
+# Tokenless: the fixture's tag is synthetic, and this asserts the rewrite's SHAPE,
+# not that v2.3.4 was ever released. The published-release gate is exercised by
+# ci's `--check` against the real pin file.
+env -u GH_TOKEN -u GITHUB_TOKEN "${SCRIPT}" --file "${f}" --check >/dev/null \
+  && ok "rewritten file passes --check" || bad "rewritten file fails --check"
 
 echo "== rewriting to the SHA already pinned is a no-op"
 before="$(cat "${f}")"
