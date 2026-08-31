@@ -112,6 +112,17 @@ layered `compose/figma-svg` export produced per preview; the catalog pipeline
 carries it in the bundle (`previews/<id>.figma.svg`) and copies it onto the
 branch, exactly as it does the schematic `wireframes/`.
 
+A catalog with a trusted executable live lane can instead set `defer-figma-svg: true` alongside
+`publish-live-bundle: true`. CI still captures the vectors transiently, so coverage and the
+PNG↔SVG pairing are validated from the same render, but `catalog.json` publishes each image's
+`figmaSvg` as `/<system>/render/<id>.svg`. After any per-preview split has used the vector bounds to
+crop its cover, the workflow removes `.figma.svg` and `.figma-raster/` sidecars from every
+published executable bundle; the live daemon regenerates and caches the editable vector on its
+first request. Hybrid vectors remain static under `figma/` for now because their `<image>` layers
+need sibling raster crops, which the single-response live SVG route does not yet expose. The mode
+is rejected without `publish-live-bundle`: a static catalog must never publish a link it cannot
+produce.
+
 Components carrying an `@InteractionPreview` or `@AnimatedPreview` also ship the
 animated capture itself, under **`motion/`**. Both renderer backends produce them —
 `@InteractionPreview` used to be desktop-only, and on an Android or Wear catalog it

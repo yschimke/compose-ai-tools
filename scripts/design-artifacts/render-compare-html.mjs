@@ -663,10 +663,13 @@ const SCORER = String.raw`
  */
 function componentSvgPaths(component, figmaSvgSlugs, figmaVariantSvgPaths) {
   const s = slug(component.componentId ?? "(unnamed)");
-  const fallback = figmaSvgSlugs?.has(s) ? `figma/${s}.svg` : null;
+  const fallback =
+    (component.images ?? []).find((image) => image.figmaSvg)?.figmaSvg ??
+    (figmaSvgSlugs?.has(s) ? `figma/${s}.svg` : null);
   const png = comparePng(component);
   const pngDark = compareDarkPng(component);
   const variantPath = (image) => {
+    if (image?.figmaSvg) return image.figmaSvg;
     const path = image && figmaVariantSvgPath(image.path);
     return path && figmaVariantSvgPaths?.has(path) ? path : null;
   };

@@ -38,7 +38,7 @@ test("the gallery carries the hero content-crop script + framed style", () => {
   const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set(["filled-button"]) });
   assert.match(html, /\.shot--framed/);
   assert.match(html, /function parseBox/); // reads translate + viewBox
-  assert.match(html, /a\.wf\[href\^="figma\/"\]/); // finds each card's figma-svg
+  assert.match(html, /a\.figma-svg-link/); // finds each card's figma-svg
 });
 
 test("the crop is a no-op when the render already fills the frame (close-cropped)", () => {
@@ -51,6 +51,18 @@ test("the crop is a no-op when the render already fills the frame (close-cropped
 test("a component with no figma-svg gets no crop wiring (link absent)", () => {
   const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set() });
   assert.doesNotMatch(html, /href="figma\/filled-button\.svg"/);
+});
+
+test("a deferred figma-svg links to the image's live vector route", () => {
+  const deferred = structuredClone(catalog);
+  deferred.components[0].images[0].figmaSvg =
+    "https://preview.coo.ee/wear-m3/render/filled-button__ideal__default__light.svg";
+  const html = renderIndexHtml(deferred, { figmaSvgSlugs: new Set(["filled-button"]) });
+  assert.match(
+    html,
+    /href="https:\/\/preview\.coo\.ee\/wear-m3\/render\/filled-button__ideal__default__light\.svg"/,
+  );
+  assert.match(html, /class="wf figma-svg-link"/);
 });
 
 test("a declared capture gutter rides on the hero as data-gutter, in render pixels", () => {

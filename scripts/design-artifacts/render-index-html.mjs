@@ -42,8 +42,13 @@ function wireframeLink(component, wireframeSlugs) {
  * imports into Figma for an editable component — distinct from the schematic `wireframe ↗`.
  */
 function figmaSvgLink(component, figmaSvgSlugs) {
-  if (!figmaSvgSlugs || !figmaSvgSlugs.has(slug(component.componentId))) return "";
-  return `<a class="wf" href="figma/${slug(component.componentId)}.svg" target="_blank" rel="noopener">figma svg ↗</a>`;
+  const path =
+    (component.images ?? []).find((image) => image.figmaSvg)?.figmaSvg ??
+    (figmaSvgSlugs?.has(slug(component.componentId))
+      ? `figma/${slug(component.componentId)}.svg`
+      : null);
+  if (!path) return "";
+  return `<a class="wf figma-svg-link" href="${esc(path)}" target="_blank" rel="noopener">figma svg ↗</a>`;
 }
 
 /** A component's `ideal` capture images (excludes the `layout` wireframe variant). */
@@ -547,7 +552,7 @@ ${details}
     var edges = declared
       ? declared.split(",").map(function (v) { return Math.max(0, parseInt(v, 10) || 0); })
       : null;
-    var link = card.querySelector('a.wf[href^="figma/"]');
+    var link = card.querySelector('a.figma-svg-link');
     if (!link) {
       if (edges) frameGutter(hero, edges);
       return;

@@ -117,6 +117,8 @@ export function renderCallSite(componentName, importLine, parameters = []) {
  *                     can link its editable vector at `figma/<slug>.svg`.
  * @param figmaSvgSlugs Set of slugs that actually carried a `figma/<slug>.svg` (so only real files
  *                     are linked).
+ * @param figmaSvgBySlug optional Map slug → published vector address. Deferred catalogs use an
+ *                     absolute live-render URL; when absent, figmaSvgSlugs retains the static path.
  * @param sourceByFn   optional Map function → `{ sourceFile }` lifted from the bundle — the preview
  *                     function's own source file, used only for the preview-fallback source.
  * @param system/title system id + title, copied onto the manifest for provenance.
@@ -133,6 +135,7 @@ export function buildCodeConnectManifest({
   targetByFn,
   slug,
   figmaSvgSlugs,
+  figmaSvgBySlug,
   sourceByFn,
   system,
   title,
@@ -201,7 +204,8 @@ export function buildCodeConnectManifest({
       if ((target.parameters?.length ?? 0) > 0) mapping.parameters = target.parameters;
     }
     const s = slug?.(componentId);
-    if (s && figmaSvgSlugs?.has(s)) mapping.figmaSvg = `figma/${s}.svg`;
+    if (s && figmaSvgBySlug?.has(s)) mapping.figmaSvg = figmaSvgBySlug.get(s);
+    else if (s && figmaSvgSlugs?.has(s)) mapping.figmaSvg = `figma/${s}.svg`;
     mappings.push(mapping);
   }
 

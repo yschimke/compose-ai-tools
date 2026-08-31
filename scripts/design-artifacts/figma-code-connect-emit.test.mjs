@@ -115,6 +115,20 @@ test("buildCodeConnectManifest maps each component to its preview function and l
   assert.equal(manifest.mappings[1].figmaSvg, undefined);
 });
 
+test("buildCodeConnectManifest publishes a deferred live vector address", () => {
+  const url =
+    "https://preview.coo.ee/m3-catalog/render/button-filled__ideal__default__light.svg";
+  const manifest = buildCodeConnectManifest({
+    components: [{ componentId: "Button/Filled" }],
+    fnByComponentId: new Map([["Button/Filled", "FilledButtonPreview"]]),
+    slug,
+    figmaSvgSlugs: new Set(["button-filled"]),
+    figmaSvgBySlug: new Map([["button-filled", url]]),
+    system: "m3-catalog",
+  });
+  assert.equal(manifest.mappings[0].figmaSvg, url);
+});
+
 test("buildCodeConnectManifest prefers an inferred target over the preview function", () => {
   const manifest = buildCodeConnectManifest({
     components: [{ componentId: "DeviceSummaryCard/Populated" }],
