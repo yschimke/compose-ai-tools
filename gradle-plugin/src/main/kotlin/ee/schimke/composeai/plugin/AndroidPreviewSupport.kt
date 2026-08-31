@@ -3272,6 +3272,15 @@ internal object AndroidPreviewSupport {
     // render
     // classpath links (`androidLottieResourceDirs`), so the assetPath discovery recorded resolves.
     bundleTask.configure { moduleResourceRoots.from(androidLottieResourceDirs(project)) }
+    if (xrPreviewsEnabled) {
+      // `renderFiles` tracks the shared renders tree, including XR scene directories. Preserve
+      // render-less packing, but order a combined render+bundle invocation after both XR writers
+      // so Gradle never sees the bundle reading their outputs concurrently.
+      bundleTask.configure {
+        mustRunAfter("composePreviewRenderXr")
+        mustRunAfter("composePreviewCompositeXr")
+      }
+    }
 
     // Feed the variant's OWN compiled classes into the bundle packer via AGP's scoped-artifact API,
     // mirroring the identical `forScope(PROJECT).toGet(CLASSES, …)` wiring `composePreviewDiscover`
