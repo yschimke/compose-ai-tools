@@ -12,8 +12,10 @@
 # fixed. Issue #4107 is that loop.
 #
 # The pin can only ever be "the newest release", and resolving a tag to a commit
-# is mechanical, so this script owns the edit and `refresh-driver-pin.yml` runs
-# it on the tail of every release.
+# is mechanical, so RENOVATE owns the routine edit now — see the
+# `design-artifacts-driver-pin` custom manager in .github/renovate.json. This
+# script remains the VALIDATOR (`--check`, run by ci.yml on every PR) and the
+# manual escape hatch (`--tag`/`--sha`) for repairing a pin by hand.
 #
 # The pin lives in a data file rather than in the workflow because `GITHUB_TOKEN`
 # cannot push changes under `.github/workflows/` — see the header of the pin file
@@ -27,7 +29,7 @@
 # USAGE
 #   refresh-driver-pin.sh --check                 verify the pin file's shape
 #   refresh-driver-pin.sh --print                 print the currently pinned SHA
-#   refresh-driver-pin.sh --tag vX.Y.Z --sha <40-hex> [--date YYYY-MM-DD]
+#   refresh-driver-pin.sh --tag vX.Y.Z --sha <40-hex>
 
 set -euo pipefail
 
@@ -41,7 +43,6 @@ die() {
 mode=''
 tag=''
 sha=''
-date="$(date -u +%Y-%m-%d)"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -49,7 +50,6 @@ while [ $# -gt 0 ]; do
     --print) mode=print ;;
     --tag) tag="${2:?--tag needs a value}"; mode="${mode:-write}"; shift ;;
     --sha) sha="${2:?--sha needs a value}"; mode="${mode:-write}"; shift ;;
-    --date) date="${2:?--date needs a value}"; shift ;;
     --file) FILE="${2:?--file needs a value}"; shift ;;
     -h|--help) sed -n '28,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
@@ -73,7 +73,6 @@ read_key() {
 
 current_sha="$(read_key sha)"
 current_tag="$(read_key tag)"
-current_date="$(read_key date)"
 
 validate() {
   printf '%s' "$1" | grep -qE "$2" || die "$3"
@@ -92,8 +91,7 @@ case "${mode}" in
     # Catch the shape here instead, on every PR.
     validate "${current_sha}" '^[0-9a-f]{40}$' "pinned sha is not a lower-case 40-hex commit: '${current_sha}'"
     validate "${current_tag}" '^v[0-9]+\.[0-9]+\.[0-9]+$' "pinned tag is not vX.Y.Z: '${current_tag}'"
-    validate "${current_date}" '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "pin date is not YYYY-MM-DD: '${current_date}'"
-    echo "driver pin OK: ${current_sha} (${current_tag}, pinned ${current_date})"
+    echo "driver pin OK: ${current_sha} (${current_tag})"
     ;;
 
   write)
@@ -101,7 +99,6 @@ case "${mode}" in
     [ -n "${sha}" ] || die "--sha is required to rewrite the pin"
     validate "${tag}" '^v[0-9]+\.[0-9]+\.[0-9]+$' "tag must look like vX.Y.Z, got '${tag}'"
     validate "${sha}" '^[0-9a-f]{40}$' "sha must be a lower-case 40-hex commit, got '${sha}'"
-    validate "${date}" '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "date must be YYYY-MM-DD, got '${date}'"
 
     if [ "${sha}" = "${current_sha}" ]; then
       echo "driver pin already at ${sha} (${current_tag}) — nothing to do"
@@ -111,13 +108,11 @@ case "${mode}" in
     sed -E -i \
       -e "s|^sha=.*$|sha=${sha}|" \
       -e "s|^tag=.*$|tag=${tag}|" \
-      -e "s|^date=.*$|date=${date}|" \
       "${FILE}"
 
     # Re-read rather than trust the substitution: a rewrite that silently missed
     # a key would otherwise ship a pin file whose sha and tag disagree.
     [ "$(read_key sha)" = "${sha}" ] && [ "$(read_key tag)" = "${tag}" ] \
-      && [ "$(read_key date)" = "${date}" ] \
       || die "rewrite did not converge"
 
     echo "driver pin ${current_sha} (${current_tag}) -> ${sha} (${tag})"

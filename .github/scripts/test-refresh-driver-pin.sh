@@ -33,7 +33,6 @@ fixture() {
 
 sha=${OLD}
 tag=v1.0.0
-date=2026-01-01
 EOF
 }
 
@@ -47,7 +46,7 @@ got="$("${SCRIPT}" --file "${f}" --print)"
 [ "${got}" = "${OLD}" ] && ok "--print => ${got}" || bad "--print => ${got}, want ${OLD}"
 
 echo "== --check rejects malformed values"
-for mutate in "s/^sha=.*/sha=c990303/" "s/^sha=.*/sha=$(printf '%040d' 0 | tr 0 A)/" "s/^tag=.*/tag=1.12.0/" "s/^date=.*/date=17-08-2026/"; do
+for mutate in "s/^sha=.*/sha=c990303/" "s/^sha=.*/sha=$(printf '%040d' 0 | tr 0 A)/" "s/^tag=.*/tag=1.12.0/" "/^tag=/d"; do
   f2="${tmp}/bad.txt"; fixture "${f2}"; sed -i "${mutate}" "${f2}"
   if "${SCRIPT}" --file "${f2}" --check >/dev/null 2>&1; then bad "accepted: ${mutate}"; else ok "rejected: ${mutate}"; fi
 done
@@ -60,23 +59,22 @@ echo "== a missing key is an error"
 f2="${tmp}/missing.txt"; fixture "${f2}"; sed -i "/^tag=/d" "${f2}"
 if "${SCRIPT}" --file "${f2}" --check >/dev/null 2>&1; then bad "missing tag accepted"; else ok "missing tag rejected"; fi
 
-echo "== a rewrite moves all three keys and keeps the comments"
+echo "== a rewrite moves both keys and keeps the comments"
 f="${tmp}/write.txt"
 fixture "${f}"
-"${SCRIPT}" --file "${f}" --tag v2.3.4 --sha "${NEW}" --date 2026-05-06 >/dev/null
+"${SCRIPT}" --file "${f}" --tag v2.3.4 --sha "${NEW}" >/dev/null
 [ "$(sed -nE 's/^sha=(.*)/\1/p' "${f}")" = "${NEW}" ] && ok "sha moved" || bad "sha not moved"
 [ "$(sed -nE 's/^tag=(.*)/\1/p' "${f}")" = "v2.3.4" ] && ok "tag moved" || bad "tag not moved"
-[ "$(sed -nE 's/^date=(.*)/\1/p' "${f}")" = "2026-05-06" ] && ok "date moved" || bad "date not moved"
 grep -q "^# a comment" "${f}" && ok "comments preserved" || bad "comments lost"
 "${SCRIPT}" --file "${f}" --check >/dev/null && ok "rewritten file passes --check" || bad "rewritten file fails --check"
 
 echo "== rewriting to the SHA already pinned is a no-op"
 before="$(cat "${f}")"
-"${SCRIPT}" --file "${f}" --tag v2.3.4 --sha "${NEW}" --date 2026-09-09 >/dev/null
+"${SCRIPT}" --file "${f}" --tag v2.3.4 --sha "${NEW}" >/dev/null
 [ "${before}" = "$(cat "${f}")" ] && ok "no-op left the file byte-identical" || bad "no-op modified the file"
 
 echo "== malformed arguments are refused"
-for args in "--tag v1 --sha ${NEW}" "--tag v1.2.3 --sha deadbeef" "--tag v1.2.3 --sha ${NEW} --date 6/5/2026"; do
+for args in "--tag v1 --sha ${NEW}" "--tag v1.2.3 --sha deadbeef" "--tag v1.2.3 --sha ${NEW} --date 2026-05-06"; do
   # shellcheck disable=SC2086
   if "${SCRIPT}" --file "${f}" ${args} >/dev/null 2>&1; then bad "accepted: ${args}"; else ok "refused: ${args}"; fi
 done
