@@ -2,6 +2,17 @@
 
 Auto-generated from `main`. Browse inline or compare against PR branches.
 
+> [!WARNING]
+> 1 preview(s) failed to render in the latest update (1 retained from the prior baseline). See **Render Failures** below.
+
+## Render Failures
+
+The render task completed but no PNG was produced for these previews. Entries with a prior baseline keep their previous image; the rest are absent from the gallery until a successful render lands.
+
+| Preview | Module | Function | Source | Baseline |
+|---------|--------|----------|--------|----------|
+| `samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchAnimatedPreview_Shader Gallery — Raymarch SDF (animated, AGSL)` | samples:android | `ShaderRaymarchAnimatedPreview` | `src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt` | retained |
+
 ## samples:android
 
 | Preview | Image |
@@ -161,7 +172,6 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ShaderFbmPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL-8184d875.png" width="150" /> |
 | `ShaderJuliaAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated_AGSL-840566ec.gif" width="150" /> |
 | `ShaderJuliaPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL-55b455fe.png" width="150" /> |
-| `ShaderRaymarchAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated_AGSL-04c1eeef.gif" width="150" /> |
 | `ShaderRaymarchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL-6476c142.png" width="150" /> |
 | `ShaderRenderEffectPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL-2651ad06.png" width="150" /> |
 | `RuntimeShaderAnimatedBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob_AGSL-d7fdffff.gif" width="150" /> |
@@ -500,120 +510,4 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `SdkMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:sdk-matrix/SdkMatrixPreview_SdkMatrixPreview-79bf257a.png" width="150" /> |
-
-## samples:wear
-
-| Preview | Image |
-|---------|-------|
-| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/activity__MainActivity.png" width="150" /> |
-| `AmbientStatusAmbientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusAmbientPreview_Ambient_body_ambient-47248174.png" width="150" /> |
-| `AmbientStatusInteractivePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusInteractivePreview_Ambient_body_interactive-e608dece.png" width="150" /> |
-| `ActivityListDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x-56fd4ccb.png" width="150" /> |
-| `ActivityListDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListDeviceMatrixPreview_Activity_list_XL_Round_240dp-f001d04a.png" width="150" /> |
-| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_Custom_Round_385dp_2_25x-86a9e950.png" width="150" /> |
-| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_Large_Round_227dp-6e431ca7.png" width="150" /> |
-| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_Small_Round_192dp-ca22fc06.png" width="150" /> |
-| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_XL_Round_240dp-1f5c776d.png" width="150" /> |
-| `MediaGestureScreenHintPreview · 800ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenHintPreview_Media_hints_on-35de4e0d_TIME_800ms.png" width="150" /> |
-| `MediaGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenPreview_Media_hints_off-e089b6a3.png" width="150" /> |
-| `ButtonHintScreenPreview · 800ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonHintScreenPreview_Devices_Large_Round-760620e6_TIME_800ms.png" width="150" /> |
-| `DisabledGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DisabledGestureScreenPreview_Devices_Large_Round-0db487e4.png" width="150" /> |
-| `DismissActionScreenPreview · 800ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DismissActionScreenPreview_Devices_Large_Round-288e3df3_TIME_800ms.png" width="150" /> |
-| `GestureGalleryPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/GestureGalleryPreview_Devices_Large_Round-67656b37.png" width="150" /> |
-| `PageGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PageGestureScreenPreview_Devices_Large_Round-c9dbc2c3.png" width="150" /> |
-| `PageIndicatorStickerPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PageIndicatorStickerPreview-77a9301c.png" width="150" /> |
-| `PrimaryActionScreenPreview · 800ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PrimaryActionScreenPreview_Devices_Large_Round-454385ac_TIME_800ms.png" width="150" /> |
-| `PrimaryActionStickerPreview · 800ms` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PrimaryActionStickerPreview-bde44328_TIME_800ms.png" width="150" /> |
-| `ScrollGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScrollGestureScreenPreview_Devices_Large_Round-940cb46d.png" width="150" /> |
-| `ScrollIndicatorStickerPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScrollIndicatorStickerPreview-836176d6.png" width="150" /> |
-| `PlaceholderCardLoaded` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PlaceholderCardLoaded_wearos_small_round-19b1296d.png" width="150" /> |
-| `PlaceholderCardLoading` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PlaceholderCardLoading_wearos_small_round-636c01fa.png" width="150" /> |
-| `PlaceholderCardOverrideDriven` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PlaceholderCardOverrideDriven_wearos_small_round-c95be631.png" width="150" /> |
-| `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Large-11543d6b.png" width="150" /> |
-| `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Larger-ce47033b.png" width="150" /> |
-| `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Largest-5951aa63.png" width="150" /> |
-| `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Medium-fc79daec.png" width="150" /> |
-| `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Normal-e724390d.png" width="150" /> |
-| `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Small-7c0b58ce.png" width="150" /> |
-| `ActivityListGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListGifPreview_Devices_Large_Round-3c100452.gif" width="150" /> |
-| `ActivityListLongPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListLongPreview_Devices_Large_Round-5304b86a.png" width="150" /> |
-| `ActivityListMotionLongPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_long.png" width="150" /> |
-| `ActivityListMotionLongPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_gif.gif" width="150" /> |
-| `ActivityListPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListPreview_Devices_Large_Round-e1600e4b.png" width="150" /> |
-| `ActivityListPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListPreview_Devices_Small_Round-c156fceb.png" width="150" /> |
-| `BadWearButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/BadWearButtonPreview_Devices_Small_Round-f602a4bd.png" width="150" /> |
-| `ButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonPreview_Devices_Large_Round-d94d0c3c.png" width="150" /> |
-| `ButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonPreview_Devices_Small_Round-5977caf7.png" width="150" /> |
-| `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/CircularProgressIndicatorPreview_Devices_Large_Round-7c93b36b.png" width="150" /> |
-| `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/CircularProgressIndicatorPreview_Devices_Small_Round-39c1ab95.png" width="150" /> |
-| `SettingsMainScreenLongPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/SettingsMainScreenLongPreview_Devices_Large_Round-36703d30.png" width="150" /> |
-| `WearAppSystemClockPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearAppSystemClockPreview_Devices_Large_Round-ec8363cf.png" width="150" /> |
-| `DrawableImageTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/DrawableImageTilePreview_Drawable_Image-811d1710.png" width="150" /> |
-| `InlineImageTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/InlineImageTilePreview_Inline_Image-72f0dbc2.png" width="150" /> |
-| `ScopeImageTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScopeImageTilePreview_Scope_Image-e768729d.png" width="150" /> |
-| `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/HelloTilePreview_Large_Round-2069f80f.png" width="150" /> |
-| `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/HelloTilePreview_Small_Round-0d9ba862.png" width="150" /> |
-| `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Large_Round-c4b69bba.png" width="150" /> |
-| `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Small_Round-72b09514.png" width="150" /> |
-| `ActivityListRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-934d83d6.png" width="150" /> |
-| `ActivityListRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListRealDeviceMatrixPreview_Galaxy_Watch_7_44mm_480px_340dpi_225dp-2cd4c861.png" width="150" /> |
-| `ActivityListRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListRealDeviceMatrixPreview_Pixel_Watch_3_45mm_456px_320dpi_228dp-7763fc86.png" width="150" /> |
-| `ActivityListRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListRealDeviceMatrixPreview_Pixel_Watch_450px_320dpi_225dp-9ca08611.png" width="150" /> |
-| `WearRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-c506752b.png" width="150" /> |
-| `WearRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearRealDeviceMatrixPreview_Galaxy_Watch_7_44mm_480px_340dpi_225dp-27ae9843.png" width="150" /> |
-| `WearRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearRealDeviceMatrixPreview_Pixel_Watch_3_45mm_456px_320dpi_228dp-751d2caf.png" width="150" /> |
-| `WearRealDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearRealDeviceMatrixPreview_Pixel_Watch_450px_320dpi_225dp-925b1f5e.png" width="150" /> |
-
-## samples:wear-widget
-
-| Preview | Image |
-|---------|-------|
-| `ImageWidgetFixedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png" width="150" /> |
-| `ImageWidgetSquircleLargePreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_0.png" width="150" /> |
-| `ImageWidgetSquircleLargePreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_1.png" width="150" /> |
-| `ImageWidgetSquirclePreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_0.png" width="150" /> |
-| `ImageWidgetSquirclePreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_1.png" width="150" /> |
-| `ImageWidgetSquirclePreview · parameter 2` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_2.png" width="150" /> |
-| `ImageWidgetSquirclePreview · parameter 3` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_3.png" width="150" /> |
-
-## samples:xr-glimmer
-
-| Preview | Image |
-|---------|-------|
-| `GlimmerListItemDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemDefault_Glimmer_Default-15e249f5.png" width="150" /> |
-| `GlimmerListItemFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png" width="150" /> |
-| `GlimmerListItemPressed` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed-2221a813.png" width="150" /> |
-| `GlimmerListPressedWalk` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png" width="150" /> |
-| `GlimmerListPressedWalk` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png" width="150" /> |
-| `GlimmerXrMenuAnimated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuAnimated_Animated_Light-cd194fc2.gif" width="150" /> |
-| `GlimmerXrMenuBusy` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuBusy_Busy-67a81f39.gif" width="150" /> |
-| `GlimmerXrMenuDark` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuDark_Dark-3cf9c01e.gif" width="150" /> |
-| `GlimmerXrMenuLight` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuLight_Light-da3d4601.gif" width="150" /> |
-| `GlimmerXrMenuOverlay` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.png" width="150" /> |
-| `GlimmerXrMenuVeniceCanalCats` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuVeniceCanalCats_VeniceCanalCats-5c5dccdc.gif" width="150" /> |
-| `FocusableMenu` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/FocusableMenu_Glimmer_Input-255da5a0.png" width="150" /> |
-| `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Busy-46226e1d.png" width="150" /> |
-| `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Dark-b6e222ed.png" width="150" /> |
-| `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Light-3471cfb3.png" width="150" /> |
-| `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_VeniceCanalCats-5fc45449.png" width="150" /> |
-
-## samples:xr-spatial
-
-| Preview | Image |
-|---------|-------|
-| `NowPlayingPanelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/NowPlayingPanelPreview_Panel_Content-bbdf56ea.png" width="150" /> |
-| `OrbiterControlsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/OrbiterControlsPreview_Orbiter_TopControls-a7f9ee4b.png" width="150" /> |
-| `SpatialElevationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.png" width="150" /> |
-| `MasterDetailPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.MasterDetailPreview__composite.png" width="150" /> |
-| `NestedColumnInRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.NestedColumnInRowPreview__composite.png" width="150" /> |
-| `OrbiterPanelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.OrbiterPanelPreview__composite.png" width="150" /> |
-| `SpatialCurvedRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialCurvedRowPreview__composite.png" width="150" /> |
-| `SpatialDepthPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialDepthPreview__composite.png" width="150" /> |
-| `SpatialRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialRowPreview__composite.png" width="150" /> |
-| `OffsetModifiersPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.OffsetModifiersPreview__composite.png" width="150" /> |
-| `RotateToLookAtUserPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview__composite.png" width="150" /> |
-| `RotatedYawRowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview__composite.png" width="150" /> |
-| `RotationFormsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotationFormsPreview__composite.png" width="150" /> |
-| `SpatialPanelGridPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.XrReferencePreviewsKt.SpatialPanelGridPreview__composite.png" width="150" /> |
-| `NowPlayingSpatialPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/com.example.samplexrspatial.XrSubspacePreviewsKt.NowPlayingSpatialPreview__composite.png" width="150" /> |
 
