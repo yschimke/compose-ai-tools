@@ -479,6 +479,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/activity__MainActivity.png" width="150" /> |
+| `Remote theme colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/colorcatalog__Remote_theme.png" width="150" /> |
 | `RemoteAnimatedCircularProgressIndicatorEmbeddedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png" width="150" /> |
 | `RemoteAnimatedCircularProgressIndicatorStandardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png" width="150" /> |
 | `RemoteButtonEnabledPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonEnabledPreview-23dedf54.png" width="150" /> |
@@ -489,6 +490,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteIndeterminateCircularProgressIndicatorStandardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif" width="150" /> |
 | `RemoteShaderGradientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteShaderGradientPreview-6739688f.png" width="150" /> |
 | `RemoteWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png" width="150" /> |
+| `Remote theme shapes` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/shapecatalog__Remote_theme.png" width="150" /> |
+| `Remote theme type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/typographycatalog__Remote_theme.png" width="150" /> |
 | `Remote Coral theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/wearthemecatalog__Remote_Coral.png" width="150" /> |
 | `Remote Default theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/wearthemecatalog__Remote_Default.png" width="150" /> |
 

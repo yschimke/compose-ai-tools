@@ -244,7 +244,7 @@
     "functionName": "Brand colours",
     "module": "samples:android",
     "renderBasename": "colorcatalog__Brand.png",
-    "sha256": "cfce6bed66cffd09e0072a4cc4bd09a16f09651248baab7ff17b155c92f2eac7",
+    "sha256": "4a1f51d21dcffb1f9bc71885a6e2704d2e82cde0d7e90c2dce9fe3d489dd4ba2",
     "sourceFile": null
   },
   "samples:android/colorcatalog__Semantic": {
@@ -252,7 +252,7 @@
     "functionName": "Semantic colours",
     "module": "samples:android",
     "renderBasename": "colorcatalog__Semantic.png",
-    "sha256": "add332b0ffff3b4b93a7344bfac0ccdcd403dc125d3d3610eb5b5869f6f1d02b",
+    "sha256": "92a91fe1fc678c80c5efd14bbe584ab502b1ab79ef112ef721bfc833e6e01fe6",
     "sourceFile": null
   },
   "samples:android/colorcatalog__all": {
@@ -260,7 +260,7 @@
     "functionName": "All colours",
     "module": "samples:android",
     "renderBasename": "colorcatalog__all.png",
-    "sha256": "77f5e1ad53ffdc4e98271ae5e837b583d77d856c5ae5c8090d945e2507e01060",
+    "sha256": "57c416c463590f331d8d38134a8d90288678c82cc5e5120fc90df40f1d9ad964",
     "sourceFile": null
   },
   "samples:android/com.example.sampleandroid.AnimatedPreviewsKt.FadeInBoxAnimatedPreview": {
@@ -1708,7 +1708,7 @@
     "functionName": "Body type styles",
     "module": "samples:android",
     "renderBasename": "typographycatalog__Body.png",
-    "sha256": "4235e807ab309c77c5b9b06d40537256d44f80696b17a932d9e2c7ecbda45167",
+    "sha256": "7b89f5799172de6f3a8d5d9d475f830627fc7d4a10f144b3fe3899efd934f3b3",
     "sourceFile": null
   },
   "samples:android/typographycatalog__Display": {
@@ -1716,7 +1716,7 @@
     "functionName": "Display type styles",
     "module": "samples:android",
     "renderBasename": "typographycatalog__Display.png",
-    "sha256": "148515c173942cc8e530973122f7ab990407fe72a385d4d48ed27c050e66829a",
+    "sha256": "7cc6c6c544e24b23b403d8cf48abbfa6f4e6b0353311c5337c06d8838dc451a2",
     "sourceFile": null
   },
   "samples:android/typographycatalog__all": {
@@ -1724,7 +1724,7 @@
     "functionName": "All type styles",
     "module": "samples:android",
     "renderBasename": "typographycatalog__all.png",
-    "sha256": "f51e017ff9e22959b0f1ca57bb23c070597e4e9de1849b63e7af77f153bbc6f1",
+    "sha256": "ac4d108800b3e1c05637d78b6685dbfc5e13c2e559e3a0477375960a7c527e6a",
     "sourceFile": null
   },
   "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
@@ -2844,7 +2844,7 @@
     "functionName": "Wear palette colours",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "colorcatalog__Wear_palette.png",
-    "sha256": "1259bb8f3f1d5636def1120220dfb32cc5fe80f1a499e97223921d961f635cff",
+    "sha256": "78e259f53cb58eb12898997aa3623af430d8dc41c534460e1309ce76187a3d32",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round": {
@@ -3164,7 +3164,7 @@
     "functionName": "Wear shapes shapes",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "shapecatalog__Wear_shapes.png",
-    "sha256": "7db9eb012a32a4a9cf3ad1d2d5727217fc7b475cad210042f0be6aaf01baef65",
+    "sha256": "b283d769816a2665effaa49ea0bfd8e60e7e32d010027390799b1045be1c2471",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/typographycatalog__Google_Sans_Flex": {
@@ -3172,7 +3172,7 @@
     "functionName": "Google Sans Flex type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__Google_Sans_Flex.png",
-    "sha256": "1b8229127985d7eb8de300d8f5d0045ad61d30a12a8205af4ab0e17d8c3052b0",
+    "sha256": "804b6c677f54d3de0d25973fe2a562dffff4991cd622e67bd31135d0c1e117ff",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/typographycatalog__Inter": {
@@ -3180,7 +3180,7 @@
     "functionName": "Inter type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__Inter.png",
-    "sha256": "baebeb26f8b7a112e18ec39d33dd6e430dcae19b62ea15ebc667974555918881",
+    "sha256": "40a05afc8e89f80a9772ff0c124995cf776c52dadb26a7d5268eb09190fc6035",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/typographycatalog__JetBrains_Mono": {
@@ -3188,7 +3188,7 @@
     "functionName": "JetBrains Mono type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__JetBrains_Mono.png",
-    "sha256": "8cb8a155cf621779c6518bbf7d0dd799f4a6c9acbc27def46f405d84cb531be3",
+    "sha256": "dfd757feef33c0df0261d01a3844461ef88312da92eb728d5dc6485c6678bf0f",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/typographycatalog__Lobster_Two": {
@@ -3196,7 +3196,7 @@
     "functionName": "Lobster Two type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__Lobster_Two.png",
-    "sha256": "75a4023f1ecfa648d9cd486388b6bf152cdeacef131a3822cf5081831ffeff15",
+    "sha256": "f037334b4d37be2048b62aad344476a53f06f47057330c81c636801ae941b540",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/typographycatalog__Roboto_Flex": {
@@ -3204,7 +3204,7 @@
     "functionName": "Roboto Flex type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__Roboto_Flex.png",
-    "sha256": "ad0cf419691385fa9d39a0647a35e5955374913e347b64febe3490381f6b933f",
+    "sha256": "2bbd93cc159be977299ae4af4d7f4e5b8d80262d2295ca47ed9023eb6fe623e3",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/typographycatalog__all": {
@@ -3212,7 +3212,7 @@
     "functionName": "All type styles",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "typographycatalog__all.png",
-    "sha256": "de639f3cbc044b61f1620d3a0f3c5bfe3bb03826d87a54224fbef2bbc50bf7d5",
+    "sha256": "64a73576224775ebfed0865483b0d5907bd76119bdb41d0921b951928b88b2a8",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/wearthemecatalog__Coral": {
@@ -3303,6 +3303,14 @@
     "sha256": "e9601a16f647da672915004c00851b013307007d258e21021026b891a9b3c46c",
     "sourceFile": null
   },
+  "samples:remotecompose/colorcatalog__Remote_theme": {
+    "captureLabel": "",
+    "functionName": "Remote theme colours",
+    "module": "samples:remotecompose",
+    "renderBasename": "colorcatalog__Remote_theme.png",
+    "sha256": "55c87b9fd173b4a985a95408db559357ba04510303675f36a9345940e251119f",
+    "sourceFile": null
+  },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
     "captureLabel": "",
     "functionName": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
@@ -3382,6 +3390,22 @@
     "renderBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png",
     "sha256": "4a3f034f077deb269708b4871a3313788a3e63e38d806c32ae7a4062447838fb",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/WearWidgetPreviews.kt"
+  },
+  "samples:remotecompose/shapecatalog__Remote_theme": {
+    "captureLabel": "",
+    "functionName": "Remote theme shapes",
+    "module": "samples:remotecompose",
+    "renderBasename": "shapecatalog__Remote_theme.png",
+    "sha256": "6ade14e56c1b480fa5c5e7297d13d4c70900bcb136b62e6454494f6ed543e6bb",
+    "sourceFile": null
+  },
+  "samples:remotecompose/typographycatalog__Remote_theme": {
+    "captureLabel": "",
+    "functionName": "Remote theme type styles",
+    "module": "samples:remotecompose",
+    "renderBasename": "typographycatalog__Remote_theme.png",
+    "sha256": "3eaf0bb197433d80358044e9693f4c3d419ec6c6b6d003046f692b9409c6f1cb",
+    "sourceFile": null
   },
   "samples:remotecompose/wearthemecatalog__Remote_Coral": {
     "captureLabel": "",
@@ -4140,7 +4164,7 @@
     "functionName": "RotateToLookAtUserPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview__composite.png",
-    "sha256": "94db5226ac0d7cd688fd66c5c90190c0b3adfb76750e1a0b2636ca2e5b000a3f",
+    "sha256": "b29a9678e4f647d263b0ef4fc447480f5943a4479fc80852315453db73001c43",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrModifierPreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview": {
