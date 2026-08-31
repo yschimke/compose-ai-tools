@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.3](https://github.com/yschimke/compose-ai-tools/compare/v1.60.2...v1.60.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **design-artifacts:** exempt optional shard captures ([#4920](https://github.com/yschimke/compose-ai-tools/issues/4920)) ([8bdb211](https://github.com/yschimke/compose-ai-tools/commit/8bdb211de2f484c3fc51bf6961ecf50187972b31))
+
 ## [1.60.2](https://github.com/yschimke/compose-ai-tools/compare/v1.60.1...v1.60.2) (2026-08-31)
 
 
