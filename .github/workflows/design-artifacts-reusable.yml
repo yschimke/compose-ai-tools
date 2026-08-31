@@ -763,7 +763,7 @@ jobs:
         # made a driver fix look like a five-line change; the driver revision is
         # now resolved separately (see DRIVER_PIN_* at the top of this file) and
         # this ref only needs to move when the install action itself changes.
-        uses: yschimke/compose-ai-tools/.github/actions/install@0e55d5d3100aa309b5b755111f9982206666961e # v1.29.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@b3faa210939f1ec59f01f63731b6b29a99c26c5c # v1.46.2
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -884,7 +884,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@0e55d5d3100aa309b5b755111f9982206666961e # v1.29.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@b3faa210939f1ec59f01f63731b6b29a99c26c5c # v1.46.2
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -1225,7 +1225,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@0e55d5d3100aa309b5b755111f9982206666961e # v1.29.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@b3faa210939f1ec59f01f63731b6b29a99c26c5c # v1.46.2
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
