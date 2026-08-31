@@ -3308,7 +3308,7 @@
     "functionName": "Remote theme colours",
     "module": "samples:remotecompose",
     "renderBasename": "colorcatalog__Remote_theme.png",
-    "sha256": "6acd09137f59fb088ab28a569035ca0fceee0caa1ff6e4028a692f170d312268",
+    "sha256": "55c87b9fd173b4a985a95408db559357ba04510303675f36a9345940e251119f",
     "sourceFile": null
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
@@ -4108,7 +4108,7 @@
     "functionName": "MasterDetailPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.SpatialShowcasePreviewsKt.MasterDetailPreview__composite.png",
-    "sha256": "ccc2c1003af9c4f203f7286e5604e249fad14f2227f8bf8769a280643ac5b9f9",
+    "sha256": "a37ff9c6757fdf74ab9acfcedecf285a4b1dc45674ae716864f9c7f73d298ac5",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialShowcasePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.NestedColumnInRowPreview": {
@@ -4116,7 +4116,7 @@
     "functionName": "NestedColumnInRowPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.SpatialShowcasePreviewsKt.NestedColumnInRowPreview__composite.png",
-    "sha256": "1f3d98a69ae7f92d30f0758e86322ec5683c26c063a25317c86da1184afaa09d",
+    "sha256": "43f6a8eb72b87c51b3b7dddcfe13bc337bc34bf293a734485974024c0133dbf4",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialShowcasePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.OrbiterPanelPreview": {
@@ -4124,7 +4124,7 @@
     "functionName": "OrbiterPanelPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.SpatialShowcasePreviewsKt.OrbiterPanelPreview__composite.png",
-    "sha256": "cbe8e93984e7a8ff8e5294d232a33a7e721f61a023ff8a1f203247b0fa4bb0ff",
+    "sha256": "593feb95b884b4811d80cc3557f7ad9f0d47f2eb9ed58206568981d257f2989e",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialShowcasePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialCurvedRowPreview": {
@@ -4132,7 +4132,7 @@
     "functionName": "SpatialCurvedRowPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialCurvedRowPreview__composite.png",
-    "sha256": "9eeec89ff0a7d9539513315512e5acb42bef2b8573ef21b939910ea90cddb82f",
+    "sha256": "4cf1faf4d6d06033e4873890f1353e1d6884a28ad54ce95888f918a013948db6",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialShowcasePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialDepthPreview": {
@@ -4140,7 +4140,7 @@
     "functionName": "SpatialDepthPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialDepthPreview__composite.png",
-    "sha256": "9877405e2443459a59ae0fc176645b795a42b7f47e9ecc99af51b6eb620b3478",
+    "sha256": "761adef0ee57a4fa069ba63516e885f767f7ef2beda72ffa2e9c05803a6c2c19",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialShowcasePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialRowPreview": {
@@ -4148,7 +4148,7 @@
     "functionName": "SpatialRowPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialRowPreview__composite.png",
-    "sha256": "868bf77909e4f8db873b2aabb1d00b9ffbfbe335653de1e70ce5d4c6ffe56d7a",
+    "sha256": "4052adbed25c3a2911bd1a939413881f2a6937f0983bb5383bf8784ba2e93bf4",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialShowcasePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.OffsetModifiersPreview": {
@@ -4156,7 +4156,7 @@
     "functionName": "OffsetModifiersPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrModifierPreviewsKt.OffsetModifiersPreview__composite.png",
-    "sha256": "2898c99802e17ad05120cd2a71fdc264c6f3a4036ad015a3510c2c5838c9d3de",
+    "sha256": "f6559b3636a13025e294ffb84291b371e2c36761a685b905b5c7e30b03a03edd",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrModifierPreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview": {
@@ -4164,7 +4164,7 @@
     "functionName": "RotateToLookAtUserPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview__composite.png",
-    "sha256": "b29a9678e4f647d263b0ef4fc447480f5943a4479fc80852315453db73001c43",
+    "sha256": "f3f035c4a061ac22f285cef30567a08c0ffd1b2d636d1f0b6c767fc0c95eb6ec",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrModifierPreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview": {
@@ -4172,7 +4172,7 @@
     "functionName": "RotatedYawRowPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview__composite.png",
-    "sha256": "1c4c270b4e8e3ef2c05ad81849c7082e710b491ab8d40ce7abeb108f54d9fa85",
+    "sha256": "8ecfb68f003f54fd0d655a1652eb5a548a9d4372aa2eb485285ce707f2dce058",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrModifierPreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotationFormsPreview": {
@@ -4180,7 +4180,7 @@
     "functionName": "RotationFormsPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrModifierPreviewsKt.RotationFormsPreview__composite.png",
-    "sha256": "3502ba728c47a2a695d73889dfef1ab0d44251d0ed04d0a79ffc3fab81047648",
+    "sha256": "2f419f89cd6344fdd9bfe2341234b90b7f72cdb4559b627ddd89a58ff71b16bb",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrModifierPreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrReferencePreviewsKt.SpatialPanelGridPreview": {
@@ -4188,7 +4188,7 @@
     "functionName": "SpatialPanelGridPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrReferencePreviewsKt.SpatialPanelGridPreview__composite.png",
-    "sha256": "712947683a329503f8a2b2c3c2508c8e0417e74fe9de8b6d1b6aa2b977806368",
+    "sha256": "a99669b4d1fd7a61f1f1cbf238454a3b25a4e10dfe09bc77ea67537540e92336",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrReferencePreviews.kt"
   },
   "samples:xr-spatial/com.example.samplexrspatial.XrSubspacePreviewsKt.NowPlayingSpatialPreview": {
@@ -4196,7 +4196,7 @@
     "functionName": "NowPlayingSpatialPreview",
     "module": "samples:xr-spatial",
     "renderBasename": "com.example.samplexrspatial.XrSubspacePreviewsKt.NowPlayingSpatialPreview__composite.png",
-    "sha256": "1c765ef8d489485d661a23d217f0d613fc4b32ab01a3c6ba04741cb53799be36",
+    "sha256": "13bba315abea6dd249be5961248c00659c8970703b04494e0ef2f1ce86d09df5",
     "sourceFile": "src/main/kotlin/com/example/samplexrspatial/XrSubspacePreviews.kt"
   }
 }
