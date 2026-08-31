@@ -1,10 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommits"
+    "github>yschimke/renovate-config"
   ],
+  "description": "Extends the shared preset at yschimke/renovate-config, which owns the release-train grouping — including the split of the ee.schimke.composeai group into its separate trains (compose-ai-tools, compose-preview-contracts, compose-preview-server, rc-players), which this repo consumes two of. The rules below are repo-specific and are appended AFTER the preset, so they override it. The preset replaces the config:recommended / :dependencyDashboard / :semanticCommits trio this file used to declare, and the `{{manager}} minor/patch` catch-all group is gone with it: one PR per manager per week overrode every release-train group the preset defines, since the last matching rule wins.",
   "schedule": [
     "before 9am on Monday"
   ],
@@ -22,11 +21,14 @@
       "minimumReleaseAge": "14 days"
     },
     {
+      "description": "Hold the preset's auto-land. github>yschimke/renovate-config automerges minor/patch once CI is green, which suits a leaf repo; this one publishes 91 coordinates that three other repositories resolve from Maven Central, so a bump reaches consumers through a release and a human looks at it first. Overrides the preset because repo-local rules are appended after it.",
       "matchUpdateTypes": [
         "minor",
-        "patch"
+        "patch",
+        "digest",
+        "pin"
       ],
-      "groupName": "{{manager}} minor/patch"
+      "automerge": false
     },
     {
       "description": "Never take a `\u2026-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list \u2014 rather than disabling the update \u2014 keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps.",
