@@ -1,5 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   ANCHOR,
@@ -14,6 +19,46 @@ import {
 } from "./shard-preview-ids.mjs";
 
 const preview = (id) => ({ id, functionName: id.replace(/_(Light|Dark)$/, "") });
+
+test("the reusable workflow passes shard exclusions by file, not through argv", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/design-artifacts-reusable.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /exclude=\(--exclude-preview-id-file "\$GITHUB_WORKSPACE\/shard-exclude\.txt"\)/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /shard_ids="\$\(cat "\$GITHUB_WORKSPACE\/shard-exclude\.txt"\)"/,
+  );
+});
+
+test("the shard planner writes one exclusion per line for the CLI file transport", () => {
+  const dir = mkdtempSync(join(tmpdir(), "shard-exclusions-"));
+  const previews = join(dir, "previews.json");
+  const exclusions = join(dir, "exclude.txt");
+  writeFileSync(previews, JSON.stringify({ previews: ["a", "b", "c", "d"].map(preview) }));
+
+  execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./shard-preview-ids.mjs", import.meta.url)),
+      "--previews",
+      previews,
+      "--shards",
+      "2",
+      "--index",
+      "1",
+      "--out",
+      exclusions,
+    ],
+    { stdio: "pipe" },
+  );
+
+  assert.equal(readFileSync(exclusions, "utf8"), "=b\n=d\n");
+});
 
 test("round-robins the sorted id list so a heavy group is spread, not clustered", () => {
   // Ids sort by group, so contiguous blocks would put every Template preview in one shard.

@@ -361,16 +361,18 @@ on:
           Split the PRIMARY render across this many parallel jobs. 1 (the default) keeps the
           single-job pipeline byte for byte — no extra jobs, no artifacts, no merge.
 
-          Above 1, each shard runs the same `bundle pack` with `--exclude-preview-id` naming every
-          preview that is not its share, which leaves the excluded previews listed in the bundle
-          without a baked PNG. The shards therefore emit structurally identical bundles differing
-          only in which `previews/<id>.*` slots are filled, and `compose-preview bundle merge` unions
-          them back into the bundle one serial render would have produced. Every shard derives its
-          own partition from its own `compose-preview list --json` (deterministic: the id list is
-          sorted, then round-robined), so there is no serial discover-then-fan-out prefix — and the
-          merge cross-checks the shards' plans before trusting them, then checks the merged bundle
-          back against those plans so a shard that lost work fails the run instead of publishing a
-          thinner catalog on a green tick (m3-catalog#15).
+          Above 1, each shard runs the same `bundle pack` with an
+          `--exclude-preview-id-file` naming every preview that is not its share, which leaves the
+          excluded previews listed in the bundle without a baked PNG. The file transport keeps a
+          large generated exclusion set out of argv. The shards therefore emit structurally
+          identical bundles differing only in which `previews/<id>.*` slots are filled, and
+          `compose-preview bundle merge` unions them back into the bundle one serial render would
+          have produced. Every shard derives its own partition from its own
+          `compose-preview list --json` (deterministic: the id list is sorted, then round-robined),
+          so there is no serial discover-then-fan-out prefix — and the merge cross-checks the
+          shards' plans before trusting them, then checks the merged bundle back against those
+          plans so a shard that lost work fails the run instead of publishing a thinner catalog on
+          a green tick (m3-catalog#15).
 
           What this buys, and what it does not: only the MARGINAL cost divides. Re-measured on
           m3-catalog after #3548 (issue #3559), a single-job render is
@@ -770,7 +772,7 @@ jobs:
           catalog-path: ${{ inputs.catalog-path }}
           github-token: ${{ github.token }}
 
-      # Two capabilities, one probe, because a CLI can have the first without the second and each
+      # Three capabilities, one probe, because a CLI can have one without the others and each
       # failure mode is silent in its own way:
       #
       #  - `bundle merge` reassembles the shard bundles. Without it the fan-out runs to completion
@@ -781,6 +783,8 @@ jobs:
       #    captured 267 of 1095 assigned previews that way, on a GREEN run. An old CLI here does not
       #    fail; it silently publishes a three-quarters-empty catalog, which is strictly worse than
       #    refusing to start, hence the hard error rather than a warning.
+      #  - `--exclude-preview-id-file` keeps a generated exclusion set out of argv. Without it a
+      #    large catalog fails with E2BIG before compose-preview or Gradle can start (#4911).
       - name: Check the CLI can shard and merge
         if: ${{ inputs.cli-source == 'released' }}
         run: |
@@ -795,7 +799,11 @@ jobs:
             echo "::error title=CLI too old for render-shards::${version} has no '=<id>' anchored --exclude-preview-id matching, so each shard's exclusion list would also drop the variants of every id it excludes — the shards would publish a fraction of the catalog without failing. Raise cli-version (or, with cli-version: catalog, the $INPUT_CATALOG_KEY pin in $INPUT_CATALOG_PATH) to a release that carries it, or set render-shards: 1."
             exit 1
           fi
-          echo "✓ $version supports 'bundle merge' and anchored '=<id>' exclusions."
+          if ! grep -q -- '--exclude-preview-id-file' <<<"$help"; then
+            echo "::error title=CLI too old for render-shards::${version} has no '--exclude-preview-id-file', so a large shard exclusion set cannot be passed without exceeding the runner's argv limit. Raise cli-version (or, with cli-version: catalog, the $INPUT_CATALOG_KEY pin in $INPUT_CATALOG_PATH) to a release that carries it, or set render-shards: 1."
+            exit 1
+          fi
+          echo "✓ $version supports 'bundle merge', anchored '=<id>' exclusions, and file-based exclusion transport."
 
   render-shard:
     name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
@@ -1070,14 +1078,16 @@ jobs:
           # driver refuses import + render-shards > 1, because the planner does not know about
           # these ids — and kept deliberately so that teaching the planner is the only thing that
           # combination needs, rather than a second omission to rediscover. Belt to that brace.
-          shard_ids=""
-          if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
-            shard_ids="$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")"
-          fi
+          # IMPORT_EXCLUDE_PREVIEW_IDS is the workflow-owned comma-separated pair of glob patterns,
+          # so append each as one line to the same delimiter-free transport the planner produced.
           if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
-            shard_ids="${shard_ids:+${shard_ids},}${IMPORT_EXCLUDE_PREVIEW_IDS}"
+            printf '%s\n' "$IMPORT_EXCLUDE_PREVIEW_IDS" | tr ',' '\n' \
+              >> "$GITHUB_WORKSPACE/shard-exclude.txt"
           fi
-          exclude=(); if [ -n "$shard_ids" ]; then exclude=(--exclude-preview-id "$shard_ids"); fi
+          exclude=()
+          if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
+            exclude=(--exclude-preview-id-file "$GITHUB_WORKSPACE/shard-exclude.txt")
+          fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
