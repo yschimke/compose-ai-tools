@@ -41,6 +41,29 @@ class IncrementalDiscoveryTest {
     )
 
   // -----------------------------------------------------------------------
+  // The mirrored FQN sets
+  // -----------------------------------------------------------------------
+
+  @Test
+  fun `the default annotation set covers every preview flavour the gradle plugin discovers`() {
+    // These sets are a deliberate DUPLICATE of the gradle plugin's, to keep :gradle-plugin off the
+    // daemon classpath, and a duplicate drifts. It did: Compose Multiplatform's own @Preview was
+    // added to the plugin while this mirror still listed only the androidx names, which does not
+    // fail loudly — the full Gradle scan finds a CMP preview and then saving its source makes
+    // scanForFile return nothing for it, so live discovery drops it until the next full scan.
+    assertTrue(
+      "CMP's @Preview must be mirrored here",
+      "org.jetbrains.compose.ui.tooling.preview.Preview" in
+        IncrementalDiscovery.DEFAULT_PREVIEW_ANNOTATION_FQNS,
+    )
+    assertTrue(
+      "androidx's @Preview must be mirrored here",
+      "androidx.compose.ui.tooling.preview.Preview" in
+        IncrementalDiscovery.DEFAULT_PREVIEW_ANNOTATION_FQNS,
+    )
+  }
+
+  // -----------------------------------------------------------------------
   // cheapPrefilter
   // -----------------------------------------------------------------------
 

@@ -76,6 +76,16 @@ object PreviewTargetInference {
   private const val CMP_PREVIEW_FQN = PreviewDiscovery.CMP_PREVIEW_FQN
   private const val COMPOSABLE_FQN = "androidx.compose.runtime.Composable"
 
+  // Every annotation that makes a composable a preview in its own right, so it is a SIBLING of the
+  // preview under inspection rather than the production target that preview renders. The
+  // `Preview$Container` forms matter as much as the direct ones: a composable carrying two
+  // `@Preview`s is annotated with only the synthesised container, so checking the direct names
+  // alone lets a repeated preview through as a render target. Reuses [PreviewDiscovery]'s own
+  // container set rather than restating it, so the two cannot drift.
+  private val SIBLING_PREVIEW_FQNS =
+    setOf(PREVIEW_FQN, DESKTOP_PREVIEW_FQN, CMP_PREVIEW_FQN, TILE_PREVIEW_FQN) +
+      PreviewDiscovery.CONTAINER_FQNS
+
   /** Single bytecode call site, as captured from the preview method body. */
   internal data class Invocation(
     val ownerFqn: String,
@@ -420,12 +430,7 @@ object PreviewTargetInference {
       candidateMethods.firstOrNull { it.hasAnnotation(COMPOSABLE_FQN) } ?: return null
     // Skip composables that themselves carry a @Preview — those are sibling previews, not the
     // production target.
-    if (
-      composable.hasAnnotation(PREVIEW_FQN) ||
-        composable.hasAnnotation(DESKTOP_PREVIEW_FQN) ||
-        composable.hasAnnotation(CMP_PREVIEW_FQN) ||
-        composable.hasAnnotation(TILE_PREVIEW_FQN)
-    ) {
+    if (SIBLING_PREVIEW_FQNS.any { composable.hasAnnotation(it) }) {
       return null
     }
     return ResolvedCandidate(call.ownerFqn, composable, classInfo)

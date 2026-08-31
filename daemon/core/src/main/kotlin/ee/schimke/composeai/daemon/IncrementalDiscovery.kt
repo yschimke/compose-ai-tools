@@ -398,6 +398,11 @@ public class IncrementalDiscovery(
       setOf(
         "androidx.compose.ui.tooling.preview.Preview",
         "androidx.compose.desktop.ui.tooling.preview.Preview",
+        // Compose Multiplatform's own, from `compose.components.uiToolingPreview`. Missing here,
+        // a CMP preview survives the full Gradle scan and then disappears the moment its file is
+        // saved: `scanForFile` returns nothing for it and live discovery drops it until the next
+        // full scan.
+        "org.jetbrains.compose.ui.tooling.preview.Preview",
         "androidx.wear.tiles.tooling.preview.Preview",
       )
 
@@ -421,6 +426,8 @@ public class IncrementalDiscovery(
       setOf(
         "androidx.compose.ui.tooling.preview.Preview\$Container",
         "androidx.compose.ui.tooling.preview.Preview.Container",
+        "org.jetbrains.compose.ui.tooling.preview.Preview\$Container",
+        "org.jetbrains.compose.ui.tooling.preview.Preview.Container",
         "androidx.wear.tiles.tooling.preview.Preview\$Container",
         "androidx.wear.tiles.tooling.preview.Preview.Container",
       )

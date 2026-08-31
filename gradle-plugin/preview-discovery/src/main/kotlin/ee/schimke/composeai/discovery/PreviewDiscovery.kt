@@ -223,7 +223,7 @@ object PreviewDiscovery {
       GLANCE_APPWIDGET_PREVIEW_FQN,
       XR_SUBSPACE_PREVIEW_FQN,
     )
-  private val CONTAINER_FQNS =
+  internal val CONTAINER_FQNS =
     setOf(
       "androidx.compose.ui.tooling.preview.Preview\$Container",
       "androidx.compose.ui.tooling.preview.Preview.Container",
