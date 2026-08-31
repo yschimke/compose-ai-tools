@@ -188,6 +188,16 @@ if (diagnostics.statedAbsent.length) {
   }
 }
 
+if (diagnostics.statedAbsentCells?.length) {
+  console.log(
+    `\n${diagnostics.statedAbsentCells.length} folded cell(s) have no design-kit node for a ` +
+      `stated reason — these are valid renders, not unresolved variant declarations:`,
+  );
+  for (const cell of diagnostics.statedAbsentCells) {
+    console.log(`  - ${cell.componentId} — ${cell.reason}`);
+  }
+}
+
 if (diagnostics.unplacedDeclarations?.length) {
   console.log(
     `\n${diagnostics.unplacedDeclarations.length} variant(s) name a kit axis or value that could ` +

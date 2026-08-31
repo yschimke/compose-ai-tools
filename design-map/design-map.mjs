@@ -460,7 +460,7 @@ export function variantAbsenceId(preview) {
   // may hold a perfectly good reference: it reads as a finding about the parent, and says nothing
   // about which variant the reason belongs to. The function name is what distinguishes such a
   // variant, so it stands in for the axes it did not give.
-  const label = axes || preview.functionName || captureIdentity(preview).subject;
+  const label = axes || preview.overrides?.name || preview.functionName || captureIdentity(preview).subject;
   return label ? `${parent} [${label}]` : parent;
 }
 
@@ -490,6 +490,10 @@ function variantName(preview, seeds) {
  * the exact failure `kitAxis` exists to remove.
  */
 export function declarationMisses(preview) {
+  // This cell declares that the kit publishes nothing for it, so none of its kit names are meant
+  // to enter resolution. Reporting them as unplaced would turn an authored absence back into the
+  // indistinguishable resolution failure `noReference` exists to prevent.
+  if (preview.overrides?.noReference) return [];
   const catalog = preview.catalog;
   const fold = catalog?.role === "VARIANT" ? foldSeeds(catalog).unattached : [];
   const cell = cellSeeds(preview.overrides, catalog).unattached;
@@ -629,9 +633,11 @@ export function variantRendersByComponent(
     if (!selection.participates(preview)) continue;
 
     // A variant that names no axis says only "this is different", which is not enough to look
-    // anything up in a kit. Dropped rather than guessed at from the function name.
+    // anything up in a kit. Dropped rather than guessed at from the function name — unless it
+    // states that the kit publishes no cell for it. That statement itself belongs in the sidecar
+    // even though there is deliberately nothing to resolve.
     const seeds = variantSeeds(preview);
-    if (!seeds.length) continue;
+    if (!seeds.length && !preview.overrides?.noReference) continue;
 
     // A `@CatalogVariant` may state its OWN kit correspondence, and either spelling changes what a
     // resolver should do with this render. Without reading them here a variant's declaration is
@@ -649,6 +655,12 @@ export function variantRendersByComponent(
       previewId: preview.id,
       name: variantName(preview, seeds),
       seeds,
+      // An authored finding about this CELL, not the parent component. A resolver must preserve it
+      // and skip node lookup; without the field a deliberate nodeless render is indistinguishable
+      // from a typo in kitAxis/kitValue/kitProps.
+      ...(isOverrideVariant && preview.overrides?.noReference
+        ? { noReference: preview.overrides.noReference }
+        : {}),
       // `reference` names the variant's own kit cell. Carried onto the render so a resolver pairs
       // that handle instead of deriving one from the parent's by seed. Additive to the sidecar's
       // shape — a resolver that does not read it sees exactly what it saw before, which is why the
@@ -812,6 +824,21 @@ export function projectDesignMap(previews, opts = {}) {
   unmapped.sort();
   statedAbsent.sort((a, b) => a.componentId.localeCompare(b.componentId));
 
+  /** Folded cells that deliberately correspond to nothing the kit published. */
+  const statedAbsentCells = previews
+    .filter(
+      (preview) =>
+        isVariantCapture(preview) &&
+        preview.overrides?.noReference &&
+        selection.participates(preview),
+    )
+    .map((preview) => ({
+      componentId: variantAbsenceId(preview),
+      previewId: preview.id,
+      reason: preview.overrides.noReference,
+    }))
+    .sort((a, b) => a.componentId.localeCompare(b.componentId));
+
   // Only the captures that participate: a variant declares once, and reporting its dark capture
   // beside its light one would double every line of a list that exists to be acted on.
   const unplacedDeclarations = previews
@@ -824,6 +851,10 @@ export function projectDesignMap(previews, opts = {}) {
     diagnostics: {
       unmapped,
       statedAbsent,
+      // Kept apart from component / `@CatalogVariant` absences. A folded cell is still valid
+      // inventory under plain --strict: its parent maps, its render is real, and its whole point is
+      // to record that the kit has no corresponding node.
+      statedAbsentCells,
       unplacedDeclarations,
       // Composables whose captures name no mode a reference could pair with — several modes, none
       // of them light. Reported rather than guessed at: pairing `Dark` when the kit drew `Coral`

@@ -152,6 +152,11 @@ package ee.schimke.composeai.preview
  * instead. Kits couple their axes — turning `Icon` on can drag `Icon size` and `Alignment` with it
  * — so the cell that lands on a node the kit actually drew is often a multi-knob one, and it is
  * [kitProps] that lets it say so. See there.
+ *
+ * Where the kit publishes **no cell at all** for this render, [noReference] records why. This is
+ * distinct from a misspelt [kitAxis], [kitValue] or [kitProps]: the former is an authored finding
+ * about the kit, while the latter is an unresolved declaration worth fixing. The reason travels
+ * with the variant into the design-map sidecar so reports can list intentionally nodeless cells.
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)
@@ -232,6 +237,15 @@ annotation class OverrideVariant(
    * discovery warning and the cell keeps `kitProps`.
    */
   val kitProps: Array<String> = [],
+  /**
+   * Why the design kit publishes no cell corresponding to this render.
+   *
+   * Empty means no absence was stated, so a resolver that finds no node should diagnose the cell's
+   * kit declaration as unresolved. A non-empty reason is authoritative: the render remains a real
+   * folded cell, but downstream must not try to pair it with the parent's reference or treat its
+   * lack of a node as an authoring failure.
+   */
+  val noReference: String = "",
   /**
    * Whether this cell is **second-tier**: rendered, addressable and paired with its kit node as
    * usual, but left out of the component's variant tree and the viewer's subtree.
