@@ -1416,13 +1416,21 @@ class JsonRpcServerIntegrationTest {
     matcher: (JsonObject) -> Boolean,
   ): JsonObject? {
     val deadline = System.currentTimeMillis() + timeoutMs
-    while (System.currentTimeMillis() < deadline) {
-      val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
-      val msg = queue.poll(remaining, TimeUnit.MILLISECONDS) ?: return null
-      if (matcher(msg)) return msg
-      // Otherwise drop (e.g. an interleaved notification we don't care about).
+    val unmatched = mutableListOf<JsonObject>()
+    try {
+      while (System.currentTimeMillis() < deadline) {
+        val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
+        val msg = queue.poll(remaining, TimeUnit.MILLISECONDS) ?: return null
+        if (matcher(msg)) return msg
+        // A response and its render notifications are written by different threads, so either can
+        // arrive first. Keep interleaved messages available for the next assertion instead of
+        // silently consuming the event that assertion is waiting for.
+        unmatched.add(msg)
+      }
+      return null
+    } finally {
+      queue.addAll(unmatched)
     }
-    return null
   }
 }
 
