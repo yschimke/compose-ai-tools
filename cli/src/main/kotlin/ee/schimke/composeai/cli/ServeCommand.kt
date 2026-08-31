@@ -34,6 +34,13 @@ class ServeCommand(args: List<String>, browseProject: Boolean = false) :
       options.printUsage()
       return
     }
+    // The extracted server asks for desktop sidecars only when it assembles a desktop daemon lane.
+    // Registering the bridge is network-free; provisioning remains lazy so view-only and Android
+    // bundle servers continue to start from a cold cache in offline mode.
+    System.setProperty(
+      "composeai.cli.skikoProvisionerClass",
+      "ee.schimke.composeai.cli.SkikoNativeProvisionKt",
+    )
     ServeRunner(options, this).run()
   }
 

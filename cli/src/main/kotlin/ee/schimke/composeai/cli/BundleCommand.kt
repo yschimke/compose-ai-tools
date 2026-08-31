@@ -1409,6 +1409,15 @@ private fun renderBundleWithOverrides(
   verbose: Boolean,
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
+  val backend = readBundleBackendForRender(bundleFile) ?: return false
+  if (backend == "desktop") {
+    try {
+      SkikoNativeProvision.prepareInstalledDesktopSidecars()
+    } catch (e: IllegalStateException) {
+      System.err.println("bundle render: ${e.message}")
+      return false
+    }
+  }
   // Materialize the daemon workspace in a private temp dir — NOT under outDir. `materialize`
   // extracts the bundle's classes/libs/manifests here, which are implementation artifacts; the
   // command's contract is that outDir holds only the rendered PNGs, so a `.daemon` tree beside them
@@ -1475,6 +1484,17 @@ private fun renderBundleWithOverrides(
     workspace.deleteRecursively()
   }
 }
+
+internal fun readBundleBackendForRender(
+  bundleFile: File,
+  report: (String) -> Unit = { System.err.println(it) },
+): String? =
+  try {
+    BundleReader.readMetadata(bundleFile).manifest.backend
+  } catch (e: Exception) {
+    report("bundle render: cannot read bundle metadata from ${bundleFile.path}: ${e.message}")
+    null
+  }
 
 /**
  * Rehydrate [bundleFile]'s externalized resources (fonts lifted out by `bundle externalize`,

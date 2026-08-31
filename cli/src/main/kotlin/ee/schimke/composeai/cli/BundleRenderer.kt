@@ -2,8 +2,10 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.expandZipBytesSafely
+import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
 import ee.schimke.composeai.previewdata.PreviewInfo
@@ -139,13 +141,14 @@ class BundleRenderer(
     manifest: BundleReader.Manifest,
     previews: PreviewManifest,
   ): Result {
-    val rendererJars = locateRendererClasspath()
+    val rendererJars = locateBundleSidecarJars("lib-renderer")
     if (rendererJars.isEmpty()) {
       throw IllegalStateException(
-        "bundle render: no renderer jars found. Looked in `${rendererClasspathSearchDescription()}`; " +
+        "bundle render: no renderer jars found. Looked in `${bundleSidecarSearchDescription("lib-renderer")}`; " +
           "either build the CLI via `./gradlew :cli:installDist` or set `-Dcomposeai.cli.appHome=<install-root>`."
       )
     }
+    val skikoNative = SkikoNativeProvision.prepare(rendererJars)
     // Resolve the bundle's detached `maven` coordinates from local repos, downloading on a miss
     // (Tier 3). Misses and hash mismatches warn but never fail — see CoordinateResolver. Embedded
     // `libs/` jars and
@@ -158,7 +161,7 @@ class BundleRenderer(
         .resolveAll(mavenCoords)
         .mapNotNull { it.file }
     val classpathString =
-      (listOf(classesDir) + libJars + resolvedJars + rendererJars).joinToString(
+      (listOf(classesDir, skikoNative) + libJars + resolvedJars + rendererJars).joinToString(
         File.pathSeparator
       ) {
         it.absolutePath
@@ -504,49 +507,6 @@ class BundleRenderer(
       )
     if (bounds.all { it == null }) return base
     return base + List(14) { "" } + bounds.map { it?.toString() ?: "" }
-  }
-
-  /**
-   * Locate the bundled renderer's classpath. In order:
-   * 1. `-Dcomposeai.cli.libRendererDir=<dir>` — explicit override for tests / dev runs.
-   * 2. `$APP_HOME/lib-renderer/` — the gradle `application` start script exports `APP_HOME`.
-   * 3. `<classpath-jar-parent>/../lib-renderer/` — walking from a CLI jar location for IDE runs.
-   */
-  private fun locateRendererClasspath(): List<File> {
-    val override = System.getProperty("composeai.cli.libRendererDir")
-    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
-    val candidates =
-      listOfNotNull(
-          override?.let { File(it) },
-          appHome?.let { File(it, "lib-renderer") },
-          inferLibRendererFromClasspath(),
-        )
-        .distinct()
-    val firstExistingDir = candidates.firstOrNull { it.isDirectory } ?: return emptyList()
-    return firstExistingDir
-      .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
-      ?.sortedBy { it.name }
-      .orEmpty()
-  }
-
-  private fun rendererClasspathSearchDescription(): String {
-    val override = System.getProperty("composeai.cli.libRendererDir")
-    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
-    return listOfNotNull(
-        override?.let { "-Dcomposeai.cli.libRendererDir=$it" },
-        appHome?.let { "$it/lib-renderer" },
-        "<classpath-parent>/../lib-renderer",
-      )
-      .joinToString(" or ")
-  }
-
-  private fun inferLibRendererFromClasspath(): File? {
-    val cp = System.getProperty("java.class.path") ?: return null
-    val firstEntry = cp.split(File.pathSeparator).firstOrNull { it.endsWith(".jar") } ?: return null
-    val libDir = File(firstEntry).parentFile ?: return null
-    val installRoot = libDir.parentFile ?: return null
-    val candidate = File(installRoot, "lib-renderer")
-    return candidate.takeIf { it.isDirectory }
   }
 
   private fun locateJava(): String {

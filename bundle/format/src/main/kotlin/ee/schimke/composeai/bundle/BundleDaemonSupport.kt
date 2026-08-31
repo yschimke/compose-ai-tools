@@ -3,6 +3,7 @@ package ee.schimke.composeai.bundle
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.lang.reflect.InvocationTargetException
 import java.util.zip.ZipInputStream
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -148,10 +149,28 @@ public fun locateBundleSidecarJars(sidecarName: String): List<File> {
       )
       .distinct()
   val firstExistingDir = candidates.firstOrNull { it.isDirectory } ?: return emptyList()
-  return firstExistingDir
-    .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
-    ?.sortedBy { it.name }
-    .orEmpty()
+  val sidecarJars =
+    firstExistingDir
+      .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
+      ?.sortedBy { it.name }
+      .orEmpty()
+  // A configured native is supplemental; it must never make an empty daemon directory look like a
+  // usable sidecar. Callers rely on an empty result for their actionable missing-daemon error.
+  if (sidecarJars.none { !it.name.startsWith("skiko-awt-runtime-") }) return emptyList()
+  // The portable CLI omits host-specific Skiko runtimes. Ask its registered provisioner only when
+  // a desktop daemon classpath is actually assembled; view-only and Android serve lanes never
+  // reach this branch and therefore remain network-free. Always ask the provisioner when present:
+  // it validates an explicit override against the required host and Skiko version before returning
+  // it. Callers compiled in other repositories (notably the preview server) receive the native
+  // without depending on the CLI module.
+  val provisionedSkiko =
+    if (sidecarName == "lib-daemon-desktop") provisionDesktopNative(sidecarJars) else null
+  return if (sidecarName == "lib-daemon-desktop") {
+    val nativeJars = provisionedSkiko?.let(::listOf) ?: configuredSkikoJars()
+    (nativeJars + sidecarJars).distinctBy { it.absoluteFile.normalize().path }
+  } else {
+    sidecarJars
+  }
 }
 
 /** Human-readable description of where [locateBundleSidecarJars] looked, for error messages. */
@@ -163,8 +182,45 @@ public fun bundleSidecarSearchDescription(sidecarName: String): String {
       override?.let { "-D$sysprop=$it" },
       appHome?.let { "$it/$sidecarName" },
       "<classpath-parent>/../$sidecarName",
+      if (sidecarName == "lib-daemon-desktop") {
+        System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.let { "-D$CLI_SKIKO_DIR_PROPERTY=$it" }
+      } else null,
     )
     .joinToString(" or ")
+}
+
+private const val CLI_SKIKO_DIR_PROPERTY: String = "composeai.cli.skikoDir"
+private const val CLI_SKIKO_PROVISIONER_CLASS_PROPERTY: String =
+  "composeai.cli.skikoProvisionerClass"
+private const val CLI_SKIKO_PROVISIONER_METHOD: String = "provisionSkikoNativeForDesktopSidecar"
+
+private fun provisionDesktopNative(sidecarJars: List<File>): File? {
+  val className = System.getProperty(CLI_SKIKO_PROVISIONER_CLASS_PROPERTY) ?: return null
+  return try {
+    Class.forName(className)
+      .getMethod(CLI_SKIKO_PROVISIONER_METHOD, List::class.java)
+      .invoke(null, sidecarJars) as? File
+  } catch (e: InvocationTargetException) {
+    val cause = e.cause ?: e
+    if (cause is RuntimeException) throw cause
+    throw IllegalStateException("Desktop native provisioning failed: ${cause.message}", cause)
+  } catch (e: ReflectiveOperationException) {
+    throw IllegalStateException(
+      "Cannot invoke desktop native provisioner $className.$CLI_SKIKO_PROVISIONER_METHOD",
+      e,
+    )
+  }
+}
+
+private fun configuredSkikoJars(): List<File> {
+  val dir = System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.takeIf { it.isNotBlank() }?.let(::File)
+  if (dir?.isDirectory != true) return emptyList()
+  return dir
+    .listFiles { file ->
+      file.isFile && file.name.startsWith("skiko-awt-runtime-") && file.name.endsWith(".jar")
+    }
+    ?.sortedBy { it.name }
+    .orEmpty()
 }
 
 private fun bundleSidecarSysprop(sidecarName: String): String =
