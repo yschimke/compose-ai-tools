@@ -70,6 +70,10 @@ object PreviewTargetInference {
   private const val PREVIEW_FQN = "androidx.compose.ui.tooling.preview.Preview"
   private const val DESKTOP_PREVIEW_FQN = "androidx.compose.desktop.ui.tooling.preview.Preview"
   private const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
+  // Compose Multiplatform's own @Preview — see PreviewDiscovery.CMP_PREVIEW_FQN. A CMP project's
+  // previews would otherwise not count as previews here, so a composable called only by them would
+  // look like an ordinary composable and score as a render target.
+  private const val CMP_PREVIEW_FQN = PreviewDiscovery.CMP_PREVIEW_FQN
   private const val COMPOSABLE_FQN = "androidx.compose.runtime.Composable"
 
   /** Single bytecode call site, as captured from the preview method body. */
@@ -419,6 +423,7 @@ object PreviewTargetInference {
     if (
       composable.hasAnnotation(PREVIEW_FQN) ||
         composable.hasAnnotation(DESKTOP_PREVIEW_FQN) ||
+        composable.hasAnnotation(CMP_PREVIEW_FQN) ||
         composable.hasAnnotation(TILE_PREVIEW_FQN)
     ) {
       return null
