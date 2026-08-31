@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.56.2](https://github.com/yschimke/compose-ai-tools/compare/v1.56.1...v1.56.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* restore the Maven Central publish task list in release.yml ([#4880](https://github.com/yschimke/compose-ai-tools/issues/4880)) ([d247f19](https://github.com/yschimke/compose-ai-tools/commit/d247f19834190b95bd2d4f80b9f41c2bb8cdc4b7))
+
 ## [1.56.1](https://github.com/yschimke/compose-ai-tools/compare/v1.56.0...v1.56.1) (2026-08-30)
 
 
