@@ -432,10 +432,10 @@ export function verifyShardRenders(plans, capturedIds, { semanticsRan = true, ex
 //   node shard-preview-ids.mjs --previews discovered.json --shards 6 --index 2 \
 //     [--exclude-file mode-filter.txt] [--render-filter-file render-filter.txt] \
 //     --out exclude.txt --plan-out shard-plan.json
-// Writes the comma-separated `--exclude-preview-id` list this shard passes to `bundle pack`, and a
-// small plan record for the merge-side cross-check. Prints the number of previews this shard renders
-// — 0 means "there was nothing left for you", which a caller should treat as "skip the render", not
-// as an error.
+// Writes the newline-delimited `--exclude-preview-id-file` this shard passes to `bundle pack`, and
+// a small plan record for the merge-side cross-check. Prints the number of previews this shard
+// renders — 0 means "there was nothing left for you", which a caller should treat as "skip the
+// render", not as an error.
 //
 // VERIFY the plans a finished matrix produced, run before merging its bundles:
 //   node shard-preview-ids.mjs --verify shard-plan-1.json shard-plan-2.json …
@@ -525,7 +525,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.error(`shard-preview-ids: shard ${index} of ${plan.total} has no previews to render.`);
       console.log("0");
     } else {
-      writeFileSync(values.out, mine.exclude.join(","));
+      writeFileSync(values.out, `${mine.exclude.join("\n")}\n`);
       if (values["plan-out"]) {
         writeFileSync(
           values["plan-out"],
