@@ -124,6 +124,36 @@ supervisor stops respawning.
 | `get_preview_extras(uri, kind)` | List non-JSON outputs produced alongside a data product. |
 | `record_preview(uri, fps?, scale?, format?, observe?, events, overrides?, emitTest?)` | Record a scripted preview interaction to APNG/MP4/WebM. `observe` defaults to `frames` — the structured per-frame observation (per-frame sha256 + changed-pixel counts, `changedFrameCount`, on-disk paths) with no inline media; `media` also returns the encoded bytes inline (the artifact is on disk at `videoPath` either way). Token-frugal default since recording bytes scale with fps × duration (issue #1860). With `emitTest: true`, also returns a runnable Compose UI test generated from the interaction (issue #1786) — target-bearing events become `onNodeWith…().performClick()` steps, and each `recording.probe` is diffed against the previous probe's captured semantics into `assertExists()` / `assertDoesNotExist()` assertions (falling back to a TODO stub when nothing assertable was captured). |
 
+### Remote UI-builder tools
+
+The native MCP profile can also expose a remote preview-server UI-builder
+session. Start it with a server base URL and an agent grant token (the token is
+environment-only so it never appears in process arguments):
+
+```sh
+COMPOSE_PREVIEW_UI_BUILDER_TOKEN='<grant>' \
+  compose-preview mcp serve --ui-builder-url https://preview.example/
+```
+
+The adapter owns no design state. Every call uses the released
+`ee.schimke.composeai:ui-builder-protocol:2.2.0` HTTP envelope and reaches the
+same authoritative service used by browser sessions. Request ids are checked
+on every response, and the default actor is
+`agent:<12-character grant-token fingerprint>`. `--ui-builder-actor` is
+available for an operator-provided identity; preview-server still authenticates
+that identity against the token.
+
+| Required grant capability | MCP tools | Typed Design API request |
+|---|---|---|
+| `ui-builder-read` | `open_design`, `list_components`, `get_revision_diff` | `openDesign`, `listCatalogs`, `getDelta` |
+| `ui-builder-write` | `create_design`, `apply_design_operations` | `createDesign`, `applyOperation` |
+| `ui-builder-export` | `render_design`, `export_svg`, `export_compose` | `exportDesign` with `png`, `svg`, or `compose` |
+
+The three capabilities remain independent: a read-only grant cannot mutate or
+export, and a write grant does not implicitly grant export. The Storybook
+compatibility profile never advertises or dispatches these tools, even when
+UI-builder environment variables are present.
+
 The daemon's render queue is single-priority FIFO today, so `setVisible` /
 `setFocus` traffic flows through the wire but doesn't yet reorder the queue.
 

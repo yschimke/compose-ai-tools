@@ -134,6 +134,13 @@ class DaemonMcpServerTest {
         sbSupervisor,
         serverInfo = Implementation(name = "compose-preview-storybook", version = "v0"),
         profile = McpToolProfile.STORYBOOK,
+        uiBuilderMcp =
+          UiBuilderMcpAdapter(
+            UiBuilderDesignApiClient(
+              actorId = "agent:0123456789ab",
+              transport = UiBuilderHttpTransport { error("Storybook dispatched a hidden tool") },
+            )
+          ),
       )
     val (c2s, sfc) = pipedPair()
     val (s2c, cfs) = pipedPair()
@@ -154,10 +161,69 @@ class DaemonMcpServerTest {
           "run-story-tests",
         )
       assertThat(tools.tools.map { it.name }).doesNotContain("render_preview")
+      assertThat(tools.tools.map { it.name }).doesNotContain("create_design")
+      val hidden = sbClient.callTool("list_components")
+      assertThat(hidden.raw["isError"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
+      assertThat(hidden.firstTextContent()).isEqualTo("unknown tool: list_components")
     } finally {
       runCatching { sbClient.close() }
       runCatching { sbSession.close() }
       runCatching { sbSupervisor.shutdown() }
+    }
+  }
+
+  @Test
+  fun `native profile advertises and dispatches configured UI builder tools`() {
+    val nativeSupervisor =
+      DaemonSupervisor(
+        descriptorProvider = FakeDescriptorProvider(),
+        clientFactory = FakeDaemonClientFactory(),
+      )
+    val nativeServer =
+      DaemonMcpServer(
+        nativeSupervisor,
+        uiBuilderMcp =
+          UiBuilderMcpAdapter(
+            UiBuilderDesignApiClient(
+              actorId = "agent:0123456789ab",
+              transport =
+                UiBuilderHttpTransport { body ->
+                  val requestId =
+                    json
+                      .parseToJsonElement(body)
+                      .jsonObject
+                      .getValue("requestId")
+                      .jsonPrimitive
+                      .content
+                  UiBuilderHttpResponse(
+                    status = 200,
+                    body =
+                      """{"schemaVersion":1,"requestId":"$requestId","response":{"type":"catalogs","catalogs":[]}}""",
+                  )
+                },
+              requestId = { "native-call-1" },
+            )
+          ),
+      )
+    val (c2s, sfc) = pipedPair()
+    val (s2c, cfs) = pipedPair()
+    val nativeSession = nativeServer.newSession(input = sfc, output = s2c)
+    nativeSession.start()
+    val nativeClient = McpTestClient(input = cfs, output = c2s)
+    try {
+      nativeClient.initialize()
+      val tools = nativeClient.awaitToolsContaining("create_design")
+      assertThat(tools.tools.map { it.name })
+        .containsAtLeast("create_design", "list_components", "export_svg")
+
+      val result = nativeClient.callTool("list_components")
+      assertThat(result.raw["isError"]?.jsonPrimitive?.contentOrNull).isEqualTo("false")
+      assertThat(result.firstTextContent()).contains("native-call-1")
+      assertThat(result.firstTextContent()).contains("catalogs")
+    } finally {
+      runCatching { nativeClient.close() }
+      runCatching { nativeSession.close() }
+      runCatching { nativeSupervisor.shutdown() }
     }
   }
 

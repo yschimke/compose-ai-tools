@@ -166,6 +166,8 @@ internal object CliFlags {
       "--ref",
       "--repo",
       "--replicas-per-daemon",
+      "--ui-builder-url",
+      "--ui-builder-actor",
       "--since",
       "--source",
       "--title",

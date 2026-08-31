@@ -79,6 +79,12 @@ class CliFlagsRegistryTest {
       2,
       CliFlags.findCommandIndex(arrayOf("--replicas-per-daemon", "2", "mcp", "serve")),
     )
+    assertEquals(
+      2,
+      CliFlags.findCommandIndex(
+        arrayOf("--ui-builder-url", "https://preview.example", "mcp", "serve")
+      ),
+    )
     // --force takes a required reason; the space form must skip the reason (ForceFlagTest pins that
     // `--force <reason>` is supported), or the reason is mistaken for the command.
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--force", "edit didn't reflect", "render")))

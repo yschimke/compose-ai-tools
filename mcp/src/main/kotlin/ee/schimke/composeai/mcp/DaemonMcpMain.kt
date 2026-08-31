@@ -13,6 +13,8 @@ import java.io.File
  * ```
  * compose-preview-mcp [--project <path>[:<rootProjectName>]]...
  *                     [--replicas-per-daemon <N>]
+ *                     [--ui-builder-url <URL>]
+ *                     [--ui-builder-actor <ACTOR>]
  *                     [--storybook]
  * ```
  *
@@ -42,6 +44,11 @@ object DaemonMcpMain {
   fun main(args: Array<String>) {
     disableKotlinLoggingStartupMessage()
     val replicasPerDaemon = parseReplicasPerDaemon(args)
+    val storybookProfile = parseStorybookProfile(args)
+    // Storybook compatibility is intentionally a closed tool surface. Do not even construct the
+    // remote adapter in that profile: an ambient UI-builder URL must not add tools or make a token
+    // mandatory for a Storybook-only process.
+    val uiBuilderMcp = if (storybookProfile) null else parseUiBuilderMcp(args)
     val supervisor =
       DaemonSupervisor(
         descriptorProvider = DescriptorProvider.readingFromDisk(),
@@ -49,7 +56,7 @@ object DaemonMcpMain {
         replicasPerDaemon = replicasPerDaemon,
       )
     val server =
-      if (parseStorybookProfile(args)) {
+      if (storybookProfile) {
         // Storybook-compat face: present ONLY the Storybook-MCP tools (native tools hidden) and
         // identify as `compose-preview-storybook`, so a Storybook-MCP-trained agent sees a clean
         // Storybook surface. Same daemon core + handlers underneath.
@@ -59,7 +66,7 @@ object DaemonMcpMain {
           profile = McpToolProfile.STORYBOOK,
         )
       } else {
-        DaemonMcpServer(supervisor)
+        DaemonMcpServer(supervisor, uiBuilderMcp = uiBuilderMcp)
       }
 
     parseProjects(args).forEach { (path, name) ->
@@ -88,6 +95,37 @@ object DaemonMcpMain {
         .getMethod("setLogStartupMessage", java.lang.Boolean.TYPE)
         .invoke(instance, false)
     }
+  }
+
+  private fun parseUiBuilderMcp(args: Array<String>): UiBuilderMcpAdapter? {
+    val url =
+      option(args, "--ui-builder-url")
+        ?: System.getProperty("composeai.uiBuilder.url")
+        ?: System.getenv("COMPOSE_PREVIEW_UI_BUILDER_URL")
+        ?: return null
+    val token =
+      System.getenv("COMPOSE_PREVIEW_UI_BUILDER_TOKEN")
+        ?: error("--ui-builder-url requires COMPOSE_PREVIEW_UI_BUILDER_TOKEN")
+    val actor =
+      option(args, "--ui-builder-actor")
+        ?: System.getProperty("composeai.uiBuilder.actor")
+        ?: System.getenv("COMPOSE_PREVIEW_UI_BUILDER_ACTOR")
+    val client =
+      if (actor == null) UiBuilderDesignApiClient.remote(url, token)
+      else UiBuilderDesignApiClient.remote(url, token, actor)
+    return UiBuilderMcpAdapter(client)
+  }
+
+  private fun option(args: Array<String>, name: String): String? {
+    args
+      .firstOrNull { it.startsWith("$name=") }
+      ?.let {
+        return it.substringAfter('=').takeIf(String::isNotBlank) ?: error("$name requires a value")
+      }
+    val index = args.indexOf(name)
+    if (index < 0) return null
+    return args.getOrNull(index + 1)?.takeUnless { it.startsWith("--") }?.takeIf(String::isNotBlank)
+      ?: error("$name requires a value")
   }
 
   private fun parseProjects(args: Array<String>): List<Pair<String, String?>> {
