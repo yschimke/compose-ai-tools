@@ -11,7 +11,7 @@ The two contracts you implement against:
 
 | Artifact | Schema | Wire-stable | Producer |
 | --- | --- | --- | --- |
-| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 1` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its [`java -cp` CLI](#cli-invocation) |
+| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 2` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its [`java -cp` CLI](#cli-invocation) |
 | `previews.json` | [`PreviewData.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewData.kt) (published as `ee.schimke.composeai:preview-discovery`) | `schema = "compose-previews/v1"` | You — or [`PreviewDiscovery`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) / its [`java -cp` CLI](#cli-invocation) |
 
 The consumer of both is the daemon JVM (`daemon/desktop` or `daemon/android`),
@@ -72,7 +72,7 @@ for the classpath but not the rest):
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "modulePath": ":app",
   "variant": "desktop",
   "enabled": true,
@@ -110,7 +110,7 @@ for the classpath but not the rest):
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `schemaVersion` | yes | Pin to `1`. Bumped on breaking changes; the subprocess factory rejects anything else with a clear error. |
+| `schemaVersion` | yes | Pin to `2`. Bumped on breaking changes; the subprocess factory rejects anything else with a clear error. Non-JVM consumers can read it without inspecting bytecode from the `daemon-launch-builder-<version>-schema.json` Maven artifact (`ee.schimke.composeai:daemon-launch-builder:<version>:schema@json`); the same metadata is packaged at `META-INF/compose-preview/daemon-launch-schema.json` inside the JAR. |
 | `modulePath` | yes | Logical module id. The daemon uses it as a label; for non-Gradle callers, anything stable identifying the module is fine (`":app"`, `"app:debug"`, `"compose-desktop"`). |
 | `variant` | yes | Build variant. `"desktop"` for CMP; `"debug"` / `"release"` for Android. Informational. |
 | `enabled` | yes | Mirror of the user's `composePreview.daemon.enabled` switch. `true` for normal use. `RenderSessionConfig.forceEnabled` overrides on the consumer side. |

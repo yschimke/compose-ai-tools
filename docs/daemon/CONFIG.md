@@ -108,7 +108,7 @@ There is intentionally NO `-PcomposePreview.daemon.enabled=...` property overrid
 
 ## Schema
 
-The descriptor written to `<module>/build/compose-previews/daemon-launch.json` carries the resolved values plus the daemon's spawn parameters (classpath, JVM args, system properties, java launcher path). Schema is versioned via the top-level `schemaVersion` field — VS Code's `daemonProcess.ts` gates on it and forces a re-run on mismatch. See `DaemonClasspathDescriptor` in the Gradle plugin.
+The descriptor written to `<module>/build/compose-previews/daemon-launch.json` carries the resolved values plus the daemon's spawn parameters (classpath, JVM args, system properties, java launcher path). Schema is versioned via the top-level `schemaVersion` field — VS Code's `daemonProcess.ts` gates on it and forces a re-run on mismatch. The published `daemon-launch-builder` coordinate exposes the current value as the plain JSON classifier `daemon-launch-builder-<version>-schema.json`, so non-JVM consumers can validate the release they pin without parsing a class file. See `DaemonClasspathDescriptor` in the Gradle plugin.
 
 The daemon JVM reads the same values back at startup via `composeai.daemon.maxHeapMb` / `composeai.daemon.maxRendersPerSandbox` / `composeai.daemon.warmSpare` / `composeai.daemon.backgroundSandboxBoot` system properties, so a value change requires re-running `composePreviewDaemonStart` to refresh the descriptor.
 
