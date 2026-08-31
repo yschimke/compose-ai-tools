@@ -9,7 +9,8 @@ import org.junit.Test
  * Stem resolution only covers the annotation-derived previews; Lottie/SVG assets, the token
  * catalogs, activities and app tours are all appended afterwards with literal stems, and several
  * land in the same `renders/` directory. These tests pin that the assembled manifest never contains
- * two entries claiming one file — including case-insensitively, which is what APFS and NTFS compare.
+ * two entries claiming one file — including case-insensitively, which is what APFS and NTFS
+ * compare.
  */
 class PreviewDiscoveryOutputUniquenessTest {
 
@@ -26,8 +27,9 @@ class PreviewDiscoveryOutputUniquenessTest {
       dataProducts = dataProducts.map { PreviewDataProduct(kind = "render/test", output = it) },
     )
 
-  private fun outputs(previews: List<PreviewInfo>): List<String> =
-    previews.flatMap { p -> p.captures.map { it.renderOutput } + p.dataProducts.map { it.output } }
+  private fun outputs(previews: List<PreviewInfo>): List<String> = previews.flatMap { p ->
+    p.captures.map { it.renderOutput } + p.dataProducts.map { it.output }
+  }
 
   /** The reported defect: an annotation stem colliding with an appended Lottie asset's stem. */
   @Test
@@ -72,8 +74,7 @@ class PreviewDiscoveryOutputUniquenessTest {
 
     val result = PreviewDiscovery.enforceOutputUniqueness(previews)
 
-    assertThat(result[2].captures.single().renderOutput)
-      .isEqualTo("renders/Untouched-11112222.png")
+    assertThat(result[2].captures.single().renderOutput).isEqualTo("renders/Untouched-11112222.png")
   }
 
   /** Order must not decide who gets renamed — the outcome is a function of the ids. */
@@ -113,7 +114,10 @@ class PreviewDiscoveryOutputUniquenessTest {
     val previews =
       listOf(
         preview("com.example.PreviewsKt.A", "data/render-scroll-gif/Clash.gif"),
-        preview("com.example.PreviewsKt.B", dataProducts = listOf("data/render-scroll-gif/Clash.gif")),
+        preview(
+          "com.example.PreviewsKt.B",
+          dataProducts = listOf("data/render-scroll-gif/Clash.gif"),
+        ),
       )
 
     val result = PreviewDiscovery.enforceOutputUniqueness(previews)
@@ -121,7 +125,10 @@ class PreviewDiscoveryOutputUniquenessTest {
     assertThat(outputs(result).toSet()).hasSize(2)
   }
 
-  /** Every capture of a re-stemmed preview moves together, so its fan-out stays internally consistent. */
+  /**
+   * Every capture of a re-stemmed preview moves together, so its fan-out stays internally
+   * consistent.
+   */
   @Test
   fun `all captures of a colliding preview are retagged consistently`() {
     val previews =

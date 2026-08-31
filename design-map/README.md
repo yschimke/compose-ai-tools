@@ -28,7 +28,7 @@ Every field the projection reads is defined in this repository:
 | `catalog.reference`, `referenceSet`, `noReference`, `referenceContentsOnly`, `kitAxis` | [`@CatalogComponent`](https://github.com/yschimke/compose-ai-tools/blob/main/api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/CatalogComponent.kt) |
 | `catalog.props`, `catalog.state`, `catalog.kitValue` | `@CatalogVariant` |
 | `overrides.seeds`, `overrides.props` | `@OverrideVariant` / `@PreviewAxis` |
-| `overrides.kitAxis`, `overrides.kitValue` | `@OverrideVariant` |
+| `overrides.kitAxis`, `overrides.kitValue`, `overrides.noReference` | `@OverrideVariant` |
 
 Rename one of those and the projection has to change in the same commit. Keeping the two on
 opposite sides of a repo boundary is how a manifest reader goes quietly stale — and the reference
@@ -109,7 +109,10 @@ must match that string before reading it. One entry per component that has varia
       "basePreviewId": "…FilledButton_Light",
       "renders": [
         { "previewId": "…FilledButton_Light_VARIANT_l", "name": "l",
-          "seeds": [{ "key": "size", "raw": "l" }, { "key": "shape", "raw": "round" }] }
+          "seeds": [{ "key": "size", "raw": "l" }, { "key": "shape", "raw": "round" }] },
+        { "previewId": "…FilledButton_Light_VARIANT_indeterminate", "name": "indeterminate",
+          "seeds": [{ "key": "progress", "raw": "indeterminate" }],
+          "noReference": "The kit publishes determinate progress cells only." }
       ]
     }
   ]
@@ -118,7 +121,9 @@ must match that string before reading it. One entry per component that has varia
 
 It is a separate file rather than another key on the map because the design-map schema sets
 `additionalProperties: false` — a map carrying an extra key would fail its own validator. No file is
-written when nothing declares an axis.
+written when nothing declares an axis or a stated cell absence. A render carrying `noReference`
+does not enter kit-node resolution; the reason is the result, and remains reportable alongside the
+cells that do resolve.
 
 ## Two things worth knowing
 

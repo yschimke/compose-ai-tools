@@ -14,7 +14,9 @@ import org.junit.Test
  */
 class PreviewDiscoveryRenderStemTest {
 
-  /** `<readable>-<8 hex>` with the digest delimited by the one character sanitisation can't emit. */
+  /**
+   * `<readable>-<8 hex>` with the digest delimited by the one character sanitisation can't emit.
+   */
   private val stemShape = Regex("[A-Za-z0-9_]+-[0-9a-f]{8}")
 
   /**
@@ -57,23 +59,28 @@ class PreviewDiscoveryRenderStemTest {
     val stems = PreviewDiscovery.resolveRenderStems(previews)
 
     assertThat(stems.map { it.substringBeforeLast('-') })
-      .containsExactly("ActivityListPreview_Devices_Large_Round", "ButtonPreview_Devices_Large_Round")
+      .containsExactly(
+        "ActivityListPreview_Devices_Large_Round",
+        "ButtonPreview_Devices_Large_Round",
+      )
       .inOrder()
   }
 
   @Test
   fun `collapses runs of separator-like characters into a single underscore`() {
     // ` - ` (space-dash-space) is a run of three "separator" characters in the source name.
-    val stems = listOf(preview("com.example.PreviewsKt.Foo_Devices - Large Round")).let(
-      PreviewDiscovery::resolveRenderStems
-    )
+    val stems =
+      listOf(preview("com.example.PreviewsKt.Foo_Devices - Large Round"))
+        .let(PreviewDiscovery::resolveRenderStems)
     assertThat(stems.single().substringBeforeLast('-')).isEqualTo("Foo_Devices_Large_Round")
   }
 
   @Test
   fun `parens, quotes, and other shell-awkward characters all collapse with adjacent runs`() {
     val stems =
-      PreviewDiscovery.resolveRenderStems(listOf(preview("com.example.PreviewsKt.Foo_tile light (light)")))
+      PreviewDiscovery.resolveRenderStems(
+        listOf(preview("com.example.PreviewsKt.Foo_tile light (light)"))
+      )
     assertThat(stems.single().substringBeforeLast('-')).isEqualTo("Foo_tile_light_light")
   }
 
@@ -123,7 +130,8 @@ class PreviewDiscoveryRenderStemTest {
     val stems = PreviewDiscovery.resolveRenderStems(previews)
 
     assertThat(stems.toSet()).hasSize(2)
-    assertThat(stems.map { it.substringBeforeLast('-') }.toSet()).containsExactly("Foo_Pixel_8_light")
+    assertThat(stems.map { it.substringBeforeLast('-') }.toSet())
+      .containsExactly("Foo_Pixel_8_light")
     for (stem in stems) assertThat(stem).matches(stemShape.pattern)
   }
 
@@ -168,7 +176,10 @@ class PreviewDiscoveryRenderStemTest {
   @Test
   fun `a preview named like a structural suffix does not collide with a sibling's sidecar`() {
     val previews =
-      listOf(preview("com.example.PreviewsKt.Logo_animated"), preview("com.example.PreviewsKt.Logo"))
+      listOf(
+        preview("com.example.PreviewsKt.Logo_animated"),
+        preview("com.example.PreviewsKt.Logo"),
+      )
 
     val stems = PreviewDiscovery.resolveRenderStems(previews)
 
@@ -178,8 +189,8 @@ class PreviewDiscoveryRenderStemTest {
   }
 
   /**
-   * `NAME_MAX` is 255 bytes on ext4/APFS/NTFS. An unbounded stem blew straight past it; the readable
-   * part is now capped and the digest keeps the truncated form unique.
+   * `NAME_MAX` is 255 bytes on ext4/APFS/NTFS. An unbounded stem blew straight past it; the
+   * readable part is now capped and the digest keeps the truncated form unique.
    */
   @Test
   fun `an absurdly long preview name is truncated but stays unique`() {
@@ -193,7 +204,9 @@ class PreviewDiscoveryRenderStemTest {
 
     for (stem in stems) {
       assertThat(stem.length)
-        .isAtMost(PreviewDiscovery.MAX_READABLE_STEM + 1 + PreviewDiscovery.RENDER_STEM_DIGEST_CHARS)
+        .isAtMost(
+          PreviewDiscovery.MAX_READABLE_STEM + 1 + PreviewDiscovery.RENDER_STEM_DIGEST_CHARS
+        )
       assertThat(stem).matches(stemShape.pattern)
     }
     assertThat(stems.toSet()).hasSize(2)
@@ -277,8 +290,7 @@ class PreviewDiscoveryRenderStemTest {
   /** An id whose every character sanitises away still needs a filename. */
   @Test
   fun `an id with no alphanumeric characters falls back to a named stem`() {
-    val previews =
-      listOf(PreviewInfo(id = "***", functionName = "***", className = ""))
+    val previews = listOf(PreviewInfo(id = "***", functionName = "***", className = ""))
 
     val stems = PreviewDiscovery.resolveRenderStems(previews)
 
