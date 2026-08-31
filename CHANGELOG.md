@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.59.1](https://github.com/yschimke/compose-ai-tools/compare/v1.59.0...v1.59.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **renderer-xr:** align billboards with reviewer camera ([#4903](https://github.com/yschimke/compose-ai-tools/issues/4903)) ([7b7e69b](https://github.com/yschimke/compose-ai-tools/commit/7b7e69b38a036c0027338e9289e5ccb24c1e3560))
+* **renderer-xr:** settle rotate-to-user bakes ([#4901](https://github.com/yschimke/compose-ai-tools/issues/4901)) ([14ea529](https://github.com/yschimke/compose-ai-tools/commit/14ea529ab453b6a7c354509e2a0a48161650ac4e))
+
+
+### Performance Improvements
+
+* **cli:** fetch Skiko natives on demand ([#4899](https://github.com/yschimke/compose-ai-tools/issues/4899)) ([5cf8bd7](https://github.com/yschimke/compose-ai-tools/commit/5cf8bd713f9c76b9b1756285c134bb75a6241bc6))
+
 ## [1.59.0](https://github.com/yschimke/compose-ai-tools/compare/v1.58.0...v1.59.0) (2026-08-31)
 
 
