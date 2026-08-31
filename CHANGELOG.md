@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.57.0](https://github.com/yschimke/compose-ai-tools/compare/v1.56.2...v1.57.0) (2026-08-31)
+
+
+### Features
+
+* **design-map:** let override variants state absent references ([#4887](https://github.com/yschimke/compose-ai-tools/issues/4887)) ([3ceb188](https://github.com/yschimke/compose-ai-tools/commit/3ceb188a784fad83c47397796a19512b759463e6))
+
 ## [1.56.2](https://github.com/yschimke/compose-ai-tools/compare/v1.56.1...v1.56.2) (2026-08-31)
 
 
