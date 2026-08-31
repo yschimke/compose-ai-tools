@@ -521,8 +521,8 @@ object PreviewDiscovery {
     }
 
     val previews = mutableListOf<PreviewInfo>()
-    // Populated only on the diagnostics path (failOnEmpty + 0 previews)
-    // so we can tell users whether ClassGraph saw any classes at all,
+    // Counted on every scan; read by the diagnostics paths (failOnEmpty, empty compiled outputs,
+    // and the soft 0-previews warnings) so we can tell users whether ClassGraph saw any classes,
     // and which annotation FQNs it did see — which disambiguates
     // "classpath is wrong" from "@Preview FQN doesn't match" in a
     // single run.
@@ -859,12 +859,29 @@ object PreviewDiscovery {
     // invisible to discovery. Surface the diagnostics so the cause is
     // obvious, but don't fail the build — the user can opt in to a
     // hard failure with `composePreview.failOnEmpty=true`.
-    if (normalized.isEmpty() && previewAnnotationsMissing) {
+    //
+    // The same dump, for the same reason, when the module's own SOURCES declare @Preview and
+    // discovery still found none. That state is not "a module with no previews" — something between
+    // the source and the scan lost them — and until #4890 it was reported by saying nothing at all:
+    // an empty previews.json was written, and the first sign of trouble was composePreviewBundle
+    // failing three tasks later with "previews.json is empty", which names no class dir, no jar and
+    // no annotation. [previewSourceFiles] is the same signal the empty-outputs check above trusts,
+    // so a data layer or a utility module — no @Preview in source — stays as quiet as it was.
+    val sourcePreviewsVanished = normalized.isEmpty() && previewSourceFiles.isNotEmpty()
+    if (normalized.isEmpty() && (previewAnnotationsMissing || sourcePreviewsVanished)) {
       warnings.add(
-        "composePreview: discovered 0 previews in module '${input.moduleName}' — " +
-          "the @Preview annotation class is not on the ClassGraph classpath " +
-          "(dependency-jar filter dropped every jar carrying it). " +
-          "Set composePreview.failOnEmpty=true to make this a hard error."
+        if (previewAnnotationsMissing) {
+          "composePreview: discovered 0 previews in module '${input.moduleName}' — " +
+            "the @Preview annotation class is not on the ClassGraph classpath " +
+            "(dependency-jar filter dropped every jar carrying it). " +
+            "Set composePreview.failOnEmpty=true to make this a hard error."
+        } else {
+          "composePreview: discovered 0 previews in module '${input.moduleName}', but " +
+            "${previewSourceFiles.size} of its source file(s) declare @Preview " +
+            "(${previewSourceFiles.joinToString(", ") { it.name }}) — the compiled classes the " +
+            "scan reached do not carry them. Diagnostics below; set " +
+            "composePreview.failOnEmpty=true to make this a hard error."
+        }
       )
       warnings.addAll(
         buildEmptyDiagnostics(
