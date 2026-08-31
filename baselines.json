@@ -1108,7 +1108,7 @@
     "functionName": "JetStreamSpatialWorkspacePreview",
     "module": "jetstream",
     "renderBasename": "com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview__composite.png",
-    "sha256": "fc0c2a80c3a1c87fb8192533f412c51c1a9a6052f70b9dfe15b7be744d27858a",
+    "sha256": "eaf51eea074605b8efddd364011421dd4059999f3bbbdda84802831a242c860f",
     "sourceFile": "src/main/java/com/google/jetstream/presentation/xr/SpatialJetStreamPreviews.kt"
   }
 }
