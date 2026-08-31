@@ -7,6 +7,7 @@ import {
   capturedPreviewIds,
   daemonPreviewCellsByFunction,
   daemonPreviewIdsByFunction,
+  optionalCapturePreviewIds,
 } from "./bundle-previews.mjs";
 
 const enc = (s) => new TextEncoder().encode(s);
@@ -223,6 +224,27 @@ test("capturedPreviewIds still resolves a dotted id's multi-extension sidecar", 
     entries: { "previews/pkg.Screen.semantics.json": enc("{}") },
   };
   assert.deepEqual([...capturedPreviewIds(bundle)], ["pkg.Screen"]);
+});
+
+test("optionalCapturePreviewIds exempts only previews whose captures are all optional", () => {
+  const bundle = {
+    previews: [
+      { id: "colorcatalog__Scheme", captures: [{ optional: true }] },
+      { id: "Card_Light", captures: [{ optional: false }] },
+      { id: "Mixed", captures: [{ optional: true }, { optional: false }] },
+      { id: "NoCaptures", captures: [] },
+      { id: "Theme_Catalog", captures: [{ optional: true }, { optional: true }] },
+    ],
+  };
+  const rawIds = new Map([
+    ["colorcatalog__Scheme", "colorcatalog__Scheme"],
+    ["Theme_Catalog", "Theme Catalog"],
+  ]);
+  const rawIdFor = (_bundle, preview) => rawIds.get(preview.id) ?? preview.id;
+  assert.deepEqual(
+    [...optionalCapturePreviewIds(bundle, rawIdFor)].sort(),
+    ["Theme Catalog", "colorcatalog__Scheme"],
+  );
 });
 
 test("bundleCapturedSemantics reports whether the best-effort semantics pass produced anything", () => {

@@ -25,7 +25,11 @@ import { parseArgs } from "node:util";
 
 import { readPreviewBundle, rawPreviewIdForEntry } from "@design-parity/candidate";
 
-import { bundleCapturedSemantics, capturedPreviewIds } from "./bundle-previews.mjs";
+import {
+  bundleCapturedSemantics,
+  capturedPreviewIds,
+  optionalCapturePreviewIds,
+} from "./bundle-previews.mjs";
 import { noStickerPreviewNames } from "./capture-mode.mjs";
 import { verifyShardRenders } from "./shard-preview-ids.mjs";
 
@@ -50,12 +54,22 @@ const captured = capturedPreviewIds(bundle, rawPreviewIdForEntry);
 // sharding. Tell the check, so it declines to judge rather than crying wolf.
 const semanticsRan = bundleCapturedSemantics(bundle);
 
-// The per-preview version of the same caveat. A `"capture": "none"` entry is the one class with no
-// render-side artifact to fall back on (a GIF capture still leaves its `.gif`, a token sheet its
-// `.catalog.json`), so an individual semantics miss leaves it looking exactly like a preview an
-// exclusion ate. The spec declares them, so exempt them rather than guess. Optional and
-// non-fatal: without a readable spec the check simply keeps its old, slightly noisier reading.
-let exemptIds = [];
+// Discovery's capture contract is authoritative: an all-optional preview is allowed to return no
+// artifact. Desktop catalog sheets are the important case — that backend keeps their metadata but
+// cannot render them, so their sole capture is optional. Do not call their declared absence lost
+// shard work.
+const exemptIds = optionalCapturePreviewIds(bundle, rawPreviewIdForEntry);
+if (exemptIds.size > 0) {
+  console.error(
+    `verify-shard-renders: ${exemptIds.size} preview(s) with only optional captures are exempt.`,
+  );
+}
+
+// The per-preview version of the semantics caveat. A `"capture": "none"` entry also has no
+// render-side artifact to fall back on, so an individual semantics miss leaves it looking exactly
+// like a preview an exclusion ate. The spec declares them, so add them to the exemption set rather
+// than guess. Optional and non-fatal: without a readable spec the check keeps the discovery-derived
+// exemptions above and its old, slightly noisier reading for no-sticker entries.
 if (values.spec) {
   if (existsSync(values.spec)) {
     const noSticker = new Set(noStickerPreviewNames(JSON.parse(readFileSync(values.spec, "utf8"))));
@@ -63,12 +77,13 @@ if (values.spec) {
     // by a filename-safe id while shard plans carry the canonical discovery id, so an id needing
     // sanitising (a space, say) would otherwise be exempted under a name no plan mentions — the
     // exemption would silently do nothing for precisely the ids most likely to need it.
-    exemptIds = bundle.previews
+    const noStickerIds = bundle.previews
       .filter((preview) => noSticker.has(preview.functionName ?? preview.id))
       .map((preview) => rawPreviewIdForEntry(bundle, preview));
-    if (exemptIds.length > 0) {
+    for (const id of noStickerIds) exemptIds.add(id);
+    if (noStickerIds.length > 0) {
       console.error(
-        `verify-shard-renders: ${exemptIds.length} preview(s) declared \`"capture": "none"\` are ` +
+        `verify-shard-renders: ${noStickerIds.length} preview(s) declared \`"capture": "none"\` are ` +
           `exempt — they export no sticker by design.`,
       );
     }

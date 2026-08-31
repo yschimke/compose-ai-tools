@@ -146,6 +146,33 @@ export function capturedPreviewIds(bundle, rawIdFor = (_bundle, entry) => entry.
 }
 
 /**
+ * Preview ids for which discovery declared every capture optional.
+ *
+ * An optional capture is allowed to produce no artifact at all. Desktop catalog sheets are the
+ * important example: discovery retains their metadata in `previews.json`, but marks their sole
+ * capture optional because that backend cannot render the sheet. A shard outcome verifier must not
+ * confuse that declared absence with an exclusion that swallowed required work.
+ *
+ * A preview with no captures is not implicitly optional, and a preview with any required capture
+ * remains required. Results use the caller's canonical id namespace, matching [capturedPreviewIds].
+ *
+ * @param {{previews?: Array<{id: string, captures?: Array<{optional?: boolean}>}>}} bundle
+ * @param {(bundle: object, entry: object) => string} [rawIdFor]
+ * @returns {Set<string>} ids whose captures are all explicitly optional.
+ */
+export function optionalCapturePreviewIds(bundle, rawIdFor = (_bundle, entry) => entry.id) {
+  return new Set(
+    (bundle?.previews ?? [])
+      .filter(
+        (preview) =>
+          preview.captures?.length > 0 &&
+          preview.captures.every((capture) => capture.optional === true),
+      )
+      .map((preview) => rawIdFor(bundle, preview)),
+  );
+}
+
+/**
  * True when [bundle] carries at least one `previews/<id>.semantics.json` — i.e. the semantics pass
  * actually ran and produced something.
  *

@@ -412,14 +412,13 @@ export function verifyShardPlans(plans) {
  * otherwise would spend the operator's trust on a false alarm — the very thing that made the
  * original bug expensive.
  *
- * **[exemptIds] covers the PARTIAL version of the same problem.** [semanticsRan] catches a semantics
- * pass that produced nothing at all; the capture is also best-effort *per preview*, so one id's tree
- * can be missing while the rest carry. That only matters for a preview with no render-side artifact
- * to fall back on — and there is exactly one such class, the spec's `"capture": "none"` entries. A
- * `ScrollMode.GIF` capture still leaves its `.gif` and a token sheet its `.catalog.json`, both
- * written by the render itself, so neither depends on semantics succeeding. Passing the declared
- * no-sticker ids here closes the window without a threshold and without guessing at preview shapes
- * — see `noStickerPreviewNames` in `capture-mode.mjs`.
+ * **[exemptIds] covers declared per-preview absences.** [semanticsRan] catches a semantics pass that
+ * produced nothing at all; the capture is also best-effort *per preview*, so one id's tree can be
+ * missing while the rest carry. This matters for a spec's `"capture": "none"` entries and for
+ * previews whose discovered captures are all `optional` (for example catalog sheets on the desktop
+ * backend, which cannot render them). Passing those ids closes the window without a threshold and
+ * without guessing from their names. Required GIF and token-sheet captures still leave their `.gif`
+ * or `.catalog.json`, so they remain covered by the artifact check.
  *
  * Extra ids are not a problem and are not reported: a merged bundle legitimately carries the whole
  * discovery set (exclusion leaves previews listed), and a shard rendering *more* than its share
