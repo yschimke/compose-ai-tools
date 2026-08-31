@@ -12,6 +12,7 @@ import { test } from "node:test";
 import {
   catalogPreviewId,
   hasWasmTier,
+  liveFigmaSvgUrl,
   liveSessionUrl,
   livePreviewUrl,
   wasmLiveUrl,
@@ -29,6 +30,17 @@ test("livePreviewUrl targets the /<system>/p viewer path with the flattened prev
   assert.equal(
     livePreviewUrl("https://preview.coo.ee///", "compose-m3", "images/fab/ideal__default__dark.png"),
     "https://preview.coo.ee/compose-m3/p/fab__ideal__default__dark",
+  );
+});
+
+test("liveFigmaSvgUrl targets the daemon-backed editable vector route", () => {
+  assert.equal(
+    liveFigmaSvgUrl(
+      "https://preview.coo.ee///",
+      "m3-catalog",
+      "images/button-filled/ideal__default__light.png",
+    ),
+    "https://preview.coo.ee/m3-catalog/render/button-filled__ideal__default__light.svg",
   );
 });
 

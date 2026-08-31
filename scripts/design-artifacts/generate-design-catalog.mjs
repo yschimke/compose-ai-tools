@@ -104,7 +104,11 @@ import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
 import { targetsByFunction } from "./figma-code-connect-target.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
-import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
+import {
+  DEFAULT_PREVIEW_BASE,
+  liveFigmaSvgUrl,
+  livePreviewUrl,
+} from "./live-preview.mjs";
 import { installedPackageVersion } from "./package-version.mjs";
 import {
   buildFontsManifest,
@@ -898,10 +902,14 @@ const { values } = parseArgs({
     // When set, copy the `--renders` executable bundle onto the branch under
     // `out/bundle/<file>` and record `liveBundle: {path, file}` in catalog.json.
     // `compose-preview serve --catalogs --allow-render-trusted` then fetches that
-    // bundle and launches a render daemon straight from it (no source build /
-    // checkout). Only for systems whose bundle is a DESKTOP bundle serve can run
-    // (compose-m3); the Android catalogs (wear/remote) stay baked-PNG.
+    // bundle and launches a render daemon straight from it (no source build / checkout). Both
+    // desktop and Android bundles work when the serve host carries the matching daemon sidecar.
     "publish-live-bundle": { type: "boolean", default: false },
+    // Publish image→SVG links to the trusted serve host instead of copying thousands of editable
+    // vectors onto the delivery branch. The generator still consumes the capture-time sidecars for
+    // coverage checks; only the published copy is removed, after which the live daemon regenerates
+    // the same compose/figma-svg product on first request.
+    "defer-figma-svg": { type: "boolean", default: false },
     // Give `--extra-renders` its own live lane instead of treating it as a
     // pixels-only supplement.
     //
@@ -941,6 +949,14 @@ const { values } = parseArgs({
 if (!values.spec || !values.renders || !values.out) {
   console.error(
     "usage: generate-design-catalog --spec <catalog.spec.json> --renders <dir|zip> --out <dir> [--renderer <s>] [--preview-base <url>]",
+  );
+  process.exit(2);
+}
+
+if (values["defer-figma-svg"] && !values["publish-live-bundle"]) {
+  console.error(
+    "--defer-figma-svg requires --publish-live-bundle — a static catalog has no daemon to " +
+      "produce its editable vectors on request.",
   );
   process.exit(2);
 }
@@ -1520,10 +1536,9 @@ if (values["wasm-dist"]) {
 // Carry the executable bundle (the `--renders` portable bundle: minimized module
 // classes + previews.json + classpath manifest) onto the branch so a trusted
 // `serve --catalogs --allow-render-trusted` can fetch it and launch a render
-// daemon straight from it — no source checkout / Gradle build. Only when the
-// caller opts in (`--publish-live-bundle`), which the pipeline sets only for
-// systems whose bundle is a DESKTOP bundle serve can run (compose-m3); the
-// Android catalogs stay baked-PNG.
+// daemon straight from it — no source checkout / Gradle build. Only when the caller opts in
+// (`--publish-live-bundle`); the serve host must carry the matching desktop or Android daemon
+// sidecar.
 let liveBundle = null;
 const liveBundles = [];
 if (values["publish-live-bundle"]) {
@@ -1960,9 +1975,14 @@ const indexManifest = JSON.parse(
 // component rather than a flat screenshot. Written under figma/<slug>.svg; the
 // index links it. Components whose render produced no drawing layers are skipped.
 const figmaSvgByFn = figmaSvgByFunctions(allBundles);
+const figmaSvgsById = figmaSvgByIds(allBundles);
 const figmaDir = join(outPath, "figma");
-await mkdir(figmaDir, { recursive: true });
+if (!values["defer-figma-svg"]) await mkdir(figmaDir, { recursive: true });
 const figmaSvgSlugs = new Set();
+// Slug → published vector address. Static catalogs point under figma/; deferred catalogs point at
+// the live daemon route. Code Connect consumes the same map, so it cannot claim a local file that
+// this mode deliberately did not publish.
+const figmaSvgBySlug = new Map();
 // Slugs whose figma-svg is a *hybrid* (carries `<image href>` raster crop layers).
 // The compare page flags these: an <img>-loaded SVG renders in secure-static mode,
 // so those raster layers don't draw there (or in its SSIM score).
@@ -1974,17 +1994,34 @@ for (const component of catalog.components) {
   const carried = fn ? figmaSvgByFn.get(fn) : undefined;
   if (!carried) continue;
   const componentSlug = slug(component.componentId);
+  const publishedComponent = (indexManifest.components ?? []).find(
+    (entry) => entry.componentId === component.componentId,
+  );
+  const liveImage = values["defer-figma-svg"]
+    ? (publishedComponent?.images ?? []).find((image) => image.previewId === carried.id)
+    : null;
+  // Hybrid vectors carry relative raster-crop hrefs. Keep those self-contained on the branch until
+  // the HTTP SVG lane has a companion crop route; deferring a hybrid today would return editable
+  // layers around broken <image> references.
+  const rasters = new Map(
+    allBundles.flatMap((renderBundle) => [
+      ...figmaRastersForId(renderBundle, carried.id),
+    ]),
+  );
+  if (liveImage?.path && rasters.size === 0) {
+    const url = liveFigmaSvgUrl(previewBase, spec.system, liveImage.path);
+    liveImage.figmaSvg = url;
+    figmaSvgBySlug.set(componentSlug, url);
+    figmaSvgSlugs.add(componentSlug);
+    figmaSvgCount += 1;
+    continue;
+  }
   let svg = carried.svg;
   // A hybrid sticker's `<image href="figma-raster/<node>.png">` layers reference crops carried in
   // the bundle. Copy them under a per-slug dir and rewrite the href prefix so they resolve next to
   // figma/<slug>.svg (per-slug avoids <node>.png name collisions across components).
   // A hybrid sticker's raster crops live in whichever bundle carried its figma-svg; an id is unique
   // to one bundle, so merging both is safe (the other returns empty).
-  const rasters = new Map(
-    allBundles.flatMap((renderBundle) => [
-      ...figmaRastersForId(renderBundle, carried.id),
-    ]),
-  );
   if (rasters.size) {
     figmaSvgHybridSlugs.add(componentSlug);
     const rasterDir = `${componentSlug}.figma-raster`;
@@ -1995,7 +2032,9 @@ for (const component of catalog.components) {
       figmaRasterCount += 1;
     }
   }
+  await mkdir(figmaDir, { recursive: true });
   await writeFile(join(figmaDir, `${componentSlug}.svg`), svg, "utf8");
+  figmaSvgBySlug.set(componentSlug, `figma/${componentSlug}.svg`);
   figmaSvgSlugs.add(componentSlug);
   figmaSvgCount += 1;
 }
@@ -2034,7 +2073,6 @@ for (const component of catalog.components) {
 // they are, since index.html, compare.html, design-parity's FIGMA_IMPORT.md and the
 // meshcore-mobile seeding runbook all reference that path today. The per-variant set
 // lives in a `figma/<slug>/` *directory*, so the two never collide.
-const figmaSvgsById = figmaSvgByIds(allBundles);
 let figmaVariantSvgCount = 0;
 let figmaVariantGapCount = 0;
 const figmaVariantSvgPaths = new Set();
@@ -2062,6 +2100,22 @@ for (const component of indexManifest.components ?? []) {
       figmaVariantGapCount += 1;
       continue;
     }
+    const rasters = new Map(
+      allBundles.flatMap((renderBundle) => [
+        ...figmaRastersForId(renderBundle, image.previewId),
+      ]),
+    );
+    if (values["defer-figma-svg"] && rasters.size === 0) {
+      image.figmaSvg = liveFigmaSvgUrl(previewBase, spec.system, image.path);
+      const componentSlug = slug(component.componentId);
+      if (!figmaSvgBySlug.has(componentSlug)) {
+        figmaSvgBySlug.set(componentSlug, image.figmaSvg);
+        figmaSvgSlugs.add(componentSlug);
+        figmaSvgCount += 1;
+      }
+      figmaVariantSvgCount += 1;
+      continue;
+    }
     let svg = carried;
     const variantPath = join(outPath, target);
     const variantDir = dirname(variantPath);
@@ -2069,11 +2123,6 @@ for (const component of indexManifest.components ?? []) {
     // Same two-bundle merge as the back-compat loop: a hybrid sticker's crops live in
     // whichever bundle carried its figma-svg, and a preview id belongs to one bundle,
     // so merging is safe (the other side returns empty).
-    const rasters = new Map(
-      allBundles.flatMap((renderBundle) => [
-        ...figmaRastersForId(renderBundle, image.previewId),
-      ]),
-    );
     if (rasters.size) {
       // Hybrid crops get a sibling dir keyed by the *variant* basename, not the slug:
       // a component's light and dark vectors share one `figma/<slug>/` dir and each
@@ -2092,6 +2141,17 @@ for (const component of indexManifest.components ?? []) {
     figmaVariantSvgPaths.add(target);
     figmaVariantSvgCount += 1;
   }
+}
+
+// `indexManifest` was read after the catalog join and is now the authoritative image→live-vector
+// contract. Persist deferred URLs before later workflow steps upload the directory or derive design
+// references from catalog.json.
+if (values["defer-figma-svg"]) {
+  await writeFile(
+    join(outPath, "catalog.json"),
+    `${JSON.stringify(indexManifest, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 // The published tag index (`tags/index.json`) — `served preview id → {testTag: {count, bounds}}`,
@@ -2156,6 +2216,7 @@ const codeConnect = buildCodeConnectManifest({
   targetByFn: combinedBundleMap(allBundles, targetsByFunction),
   slug,
   figmaSvgSlugs,
+  figmaSvgBySlug,
   sourceByFn: combinedBundleMap(allBundles, sourceByFunction),
   system: spec.system,
   title: spec.title,

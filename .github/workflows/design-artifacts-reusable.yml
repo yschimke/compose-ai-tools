@@ -128,6 +128,11 @@ on:
         required: false
         type: boolean
         default: false
+      defer-figma-svg:
+        description: 'Generate pure editable compose/figma-svg vectors on demand through the trusted live daemon instead of publishing one static SVG per rendered variant. Hybrid vectors with raster crops remain static. The capture still produces transient vectors for catalog validation, then strips them from the executable delivery bundle. Requires publish-live-bundle.'
+        required: false
+        type: boolean
+        default: false
       embed-deps:
         description: 'Pass --embed-deps to bundle pack so reachable third-party jars are carried inside the bundle under libs/ instead of referenced as Maven coordinates. Needed with publish-live-bundle when the module depends on artifacts the serve box cannot resolve from Maven Central (e.g. JitPack-only deps): without it the live daemon fails to build its classpath and the catalog silently falls back to baked PNGs (livebundle-unavailable). Larger bundle; leave off when every dep is on Central.'
         required: false
@@ -471,6 +476,7 @@ env:
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+  INPUT_DEFER_FIGMA_SVG: ${{ inputs.defer-figma-svg }}
   INPUT_EXTRA_SPLIT_MODE: ${{ inputs.extra-split-mode }}
   INPUT_SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
   INPUT_SPLIT_MODE: ${{ inputs.split-mode }}
@@ -1294,6 +1300,10 @@ jobs:
             echo "::error title=modules input::modules supports only 'all'; use module for one Gradle path."
             exit 1
           fi
+          if [ "$INPUT_DEFER_FIGMA_SVG" = "true" ] && [ "$INPUT_PUBLISH_LIVE_BUNDLE" != "true" ]; then
+            echo "::error title=defer-figma-svg::defer-figma-svg requires publish-live-bundle: true; otherwise no trusted daemon can produce the vector on request."
+            exit 1
+          fi
 
       # Repository-wide publication keeps one executable bundle per Gradle module. Discover the
       # module set once, order it deterministically, and prefer spec.module as the primary when the
@@ -1849,6 +1859,7 @@ jobs:
           if [ "$INPUT_ALLOW_INCOMPLETE" = "true" ]; then incomplete=(--allow-incomplete); fi
           live=()
           if [ "$INPUT_PUBLISH_LIVE_BUNDLE" = "true" ]; then live=(--publish-live-bundle); fi
+          if [ "$INPUT_DEFER_FIGMA_SVG" = "true" ]; then live+=(--defer-figma-svg); fi
           if [ "$INPUT_EXTRA_SPLIT_MODE" = "full" ]; then
             # The driver checks --extra-renders / --publish-live-bundle itself; the split flag is
             # only knowable here. Without it the extra module's stickers would carry previewIds
@@ -1945,6 +1956,17 @@ jobs:
                 -o "$GITHUB_WORKSPACE/out/bundle/previews"
             fi
           fi
+
+      # The split needs the transient SVG to crop each per-preview cover to the component bounds.
+      # Strip only AFTER it has consumed those bytes; the executable daemon regenerates the same
+      # data product on request, so neither the monolith nor its addressable children need to carry
+      # thousands of capture-time copies.
+      - name: Defer editable Figma SVGs to the live daemon
+        if: ${{ inputs.defer-figma-svg }}
+        run: |
+          set -euo pipefail
+          node compose-ai-tools/scripts/design-artifacts/strip-published-figma-svg.mjs \
+            --root "$GITHUB_WORKSPACE/out/bundle"
 
       # The silent half of #4211. A FULL split pays the shared carriage once per preview, so its
       # cost scales with the preview COUNT — and because any catalog edit rewrites `app.jar`, every

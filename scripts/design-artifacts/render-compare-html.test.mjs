@@ -52,6 +52,21 @@ test("a comparable component wires data-png + data-svg for the scorer", () => {
   assert.match(html, /<img[^>]*src="figma\/button-filled\.svg"/);
 });
 
+test("a deferred vector uses the live image URL instead of a missing static path", () => {
+  const deferred = structuredClone(catalog);
+  deferred.components[0].images[0].figmaSvg =
+    "https://preview.coo.ee/compose-m3/render/button-filled__ideal__default__light.svg";
+  const html = renderCompareHtml(deferred, {
+    figmaSvgSlugs: new Set(["button-filled"]),
+    figmaVariantSvgPaths: new Set(),
+  });
+  assert.match(
+    html,
+    /data-svg="https:\/\/preview\.coo\.ee\/compose-m3\/render\/button-filled__ideal__default__light\.svg"/,
+  );
+  assert.doesNotMatch(html, /data-svg="figma\/button-filled\.svg"/);
+});
+
 test("the design vector column comes before the render column", () => {
   // The house rule: an imported/exported design spec is drawn to the LEFT of the
   // render it is compared against — the same order the viewer's spec lane uses
