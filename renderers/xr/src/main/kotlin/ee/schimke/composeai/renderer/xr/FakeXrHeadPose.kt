@@ -8,6 +8,10 @@ import androidx.xr.runtime.Session
 import androidx.xr.runtime.SessionCreateSuccess
 import androidx.xr.runtime.math.Pose
 import androidx.xr.runtime.math.Vector3
+import androidx.xr.scenecore.scene
+import ee.schimke.composeai.xr.OrbitCamera
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Seeds the offline XR runtime with a **user head pose** so the `rotateToLookAtUser` ("face the
@@ -43,12 +47,31 @@ import androidx.xr.runtime.math.Vector3
 public object FakeXrHeadPose {
 
   /**
-   * The viewer/head position used when none is supplied: the subspace origin. XR subspace layout is
-   * viewer-relative, so this makes offset panels face inward while the centred panel remains
-   * head-on. Older XR Compose builds produced a degenerate Y-flip for the centred zero-length look
-   * vector; the supported runtime now explicitly resolves it to identity.
+   * Bootstrap pose used before layout has supplied enough geometry to choose a reviewer camera.
+   * [XrSubspaceRenderer] replaces it with [headPoseForCamera] before recording the final scene.
    */
   public val DEFAULT_HEAD_POSE: Pose = Pose.Identity
+
+  /** Returns the fake runtime head pose at [camera]'s eye, converted from scene dp to metres. */
+  internal fun headPoseForCamera(session: Session, camera: OrbitCamera): Pose {
+    val pixelsPerMeter = session.scene.virtualPixelDensity.pixelsPerMeter.toDouble()
+    check(pixelsPerMeter > 0.0) { "XR virtual pixel density must be positive" }
+
+    val yaw = Math.toRadians(camera.yawDeg)
+    val pitch = Math.toRadians(camera.pitchDeg)
+    val cosPitch = cos(pitch)
+    val eyeX = camera.target.x + cosPitch * sin(yaw) * camera.distance
+    val eyeY = camera.target.y + sin(pitch) * camera.distance
+    val eyeZ = camera.target.z + cosPitch * cos(yaw) * camera.distance
+    return Pose(
+      translation =
+        Vector3(
+          (eyeX / pixelsPerMeter).toFloat(),
+          (eyeY / pixelsPerMeter).toFloat(),
+          (eyeZ / pixelsPerMeter).toFloat(),
+        )
+    )
+  }
 
   /**
    * Pre-creates the offline XR [Session] on [rule], enables device tracking on it, and seeds the
@@ -88,8 +111,8 @@ public object FakeXrHeadPose {
     // Best-effort: the head-pose seed reaches `androidx.xr.runtime` / `androidx.xr.arcore`
     // internals
     // reflectively, so a version bump that renames/moves/drops one of those symbols (e.g.
-    // `androidx.xr
-    // .runtime.TrackingState` disappearing) must NOT take down the whole XR render — the seed only
+    // `androidx.xr.arcore.TrackingState` moving) must NOT take down the whole XR render — the seed
+    // only
     // powers the `rotateToLookAtUser` billboard facing. A reflective/linkage miss logs a warning
     // and
     // the render still produces its scene.json + textures.
@@ -195,14 +218,12 @@ public object FakeXrHeadPose {
 
     // Belt-and-suspenders: also prime ArDevice._state directly so the seed is present immediately
     // on
-    // attach, not only after the first refresh. This reaches `androidx.xr.runtime.TrackingState`
-    // and
-    // the `ArDevice.State` constructor — internals that move between XR versions (alpha16 dropped
-    // `androidx.xr.runtime.TrackingState`), so keep it best-effort: if the shape has shifted, the
-    // runtime-device seed above still carries the pose on the next refresh, so warn and skip rather
-    // than fail the whole render.
+    // attach, not only after the first refresh. This reaches `androidx.xr.arcore.TrackingState` and
+    // the `ArDevice.State` constructor — internals that move between XR versions, so keep it
+    // best-effort: if the shape shifts, the runtime-device seed above still carries the pose on the
+    // next refresh, so warn and skip rather than fail the whole render.
     runCatching {
-      val trackingStateClass = Class.forName("androidx.xr.runtime.TrackingState")
+      val trackingStateClass = Class.forName("androidx.xr.arcore.TrackingState")
       val tracking = trackingStateClass.getField("TRACKING").get(null)
       val stateClass = Class.forName("androidx.xr.arcore.ArDevice\$State")
       val state =

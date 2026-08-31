@@ -38,9 +38,9 @@ import ee.schimke.composeai.preview.XrSubspacePreview
  *
  * `rotateToLookAtUser` (the "face the viewer" / billboard modifier) is here too: it sources the
  * user's head pose from an ARCore `ArDevice`, which the offline render path now supplies via a fake
- * perception runtime seeded at the viewer-relative subspace origin (see `:renderer-xr`'s
- * `FakeXrHeadPose`, and `SubspaceModifierPoseTest` for the empirical recovery). Side panels visibly
- * angle inward to face the viewer.
+ * perception runtime seeded at the generated review camera's eye (see `:renderer-xr`'s
+ * `FakeXrHeadPose`, and `SubspaceModifierPoseTest` for the empirical recovery). Side panels angle
+ * naturally toward the same viewer position used to bake the preview.
  */
 
 /**
@@ -149,11 +149,11 @@ fun OffsetModifiersPreview() {
 /**
  * The "face the viewer" / billboard modifier: three panels offset left / centre / right, each
  * `.rotateToLookAtUser()`. The modifier rotates each panel to face the user's head pose. Offline
- * the render path seeds that head pose at the viewer-relative subspace origin (see `:renderer-xr`'s
- * `FakeXrHeadPose`), so on bake the centre panel faces head-on while the side panels visibly
- * **angle inward** toward the viewer — the billboard behaviour, recovered offline.
- * `SubspaceModifierPoseTest` asserts the recovered rotations (centre ≈ identity, sides turned about
- * the vertical Y axis, never the old 180° flip).
+ * the render path seeds that pose at the generated review camera's eye (see `:renderer-xr`'s
+ * `FakeXrHeadPose`), so the centre panel remains nearly head-on while the side panels **angle
+ * inward** by the amount needed to face the actual bake viewpoint. `SubspaceModifierPoseTest`
+ * asserts the recovered rotations (centre near identity, sides turned about the vertical Y axis,
+ * never the old 180° flip).
  */
 @XrSubspacePreview
 @Composable

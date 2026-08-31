@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#191b24"/>
+      <stop offset="1" stop-color="#29242a"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".45"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#75d6ff"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="800" fill="url(#background)"/>
+  <text x="640" y="68" text-anchor="middle" fill="#f7f5fb" font-family="system-ui, sans-serif" font-size="30" font-weight="700">After: panels face the actual review camera</text>
+  <text x="640" y="104" text-anchor="middle" fill="#aaa8b1" font-family="system-ui, sans-serif" font-size="18">Top view · exact recorded positions and 23° side-panel yaw</text>
+
+  <g stroke="#75d6ff" stroke-width="3" stroke-dasharray="10 10" opacity=".72" marker-end="url(#arrow)">
+    <path d="M640 670 L440 214"/>
+    <path d="M640 670 L640 214"/>
+    <path d="M640 670 L840 214"/>
+  </g>
+
+  <g filter="url(#shadow)" stroke="#777987" stroke-width="3" stroke-linejoin="round">
+    <path d="M382 228 L492 182 L499 199 L389 245 Z" fill="#090a10"/>
+    <path d="M580 183 L700 183 L700 203 L580 203 Z" fill="#090a10"/>
+    <path d="M788 182 L898 228 L891 245 L781 199 Z" fill="#090a10"/>
+  </g>
+
+  <g fill="#f1eef8" font-family="system-ui, sans-serif" font-size="18" text-anchor="middle">
+    <text x="440" y="285">Left · +23°</text>
+    <text x="640" y="246">Center · 0° yaw</text>
+    <text x="840" y="285">Right · −23°</text>
+  </g>
+
+  <g transform="translate(640 670)">
+    <circle r="45" fill="#161923" stroke="#75d6ff" stroke-width="4"/>
+    <circle cy="-6" r="13" fill="#75d6ff"/>
+    <path d="M-24 26 C-20 2 20 2 24 26" fill="none" stroke="#75d6ff" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <text x="640" y="748" text-anchor="middle" fill="#f7f5fb" font-family="system-ui, sans-serif" font-size="20" font-weight="600">Generated compositor camera / offline user pose</text>
+</svg>
