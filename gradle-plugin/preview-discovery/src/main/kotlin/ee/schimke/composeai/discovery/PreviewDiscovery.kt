@@ -217,6 +217,7 @@ object PreviewDiscovery {
     setOf(
       "androidx.compose.ui.tooling.preview.Preview",
       "androidx.compose.desktop.ui.tooling.preview.Preview",
+      CMP_PREVIEW_FQN,
       TILE_PREVIEW_FQN,
       NOTIFICATION_PREVIEW_FQN,
       GLANCE_APPWIDGET_PREVIEW_FQN,
@@ -231,6 +232,10 @@ object PreviewDiscovery {
       // stacked tile preview (e.g. SMALL_ROUND + LARGE_ROUND on one fn).
       "androidx.wear.tiles.tooling.preview.Preview\$Container",
       "androidx.wear.tiles.tooling.preview.Preview.Container",
+      // CMP's @Preview is @Repeatable too, and its Container lives in its own package rather than
+      // collapsing onto the androidx one.
+      "org.jetbrains.compose.ui.tooling.preview.Preview\$Container",
+      "org.jetbrains.compose.ui.tooling.preview.Preview.Container",
     )
   // androidx.compose.ui:ui-tooling-preview 1.11.0+ — wraps each preview in a custom
   // PreviewWrapperProvider. Matched by FQN so older apps (no such class on classpath)
@@ -321,14 +326,35 @@ object PreviewDiscovery {
       PREVIEW_AXIS_FQN,
       PREVIEW_AXIS_CONTAINER_FQN,
     )
-  // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
-  // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
-  // `expect`/`actual` collapses onto the same `androidx...` class name on
-  // every target we care about.
-  private const val PREVIEW_PARAMETER_FQN = "androidx.compose.ui.tooling.preview.PreviewParameter"
+  // Two FQNs, not one. The comment that used to stand here claimed CMP's
+  // `org.jetbrains.compose.components:components-ui-tooling-preview` collapses onto the same
+  // `androidx...` class name via expect/actual. It does not: unzip
+  // `components-ui-tooling-preview-desktop-1.9.0.jar` and every class in it is under
+  // `org.jetbrains.compose.ui.tooling.preview` — Preview, Preview$Container, PreviewParameter and
+  // PreviewParameterProvider. See [CMP_PREVIEW_FQN].
+  private val PREVIEW_PARAMETER_FQNS =
+    setOf(
+      "androidx.compose.ui.tooling.preview.PreviewParameter",
+      "org.jetbrains.compose.ui.tooling.preview.PreviewParameter",
+    )
   private const val COMPOSER_FQN = "androidx.compose.runtime.Composer"
 
   internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
+
+  // Compose Multiplatform's own @Preview, from `compose.components.uiToolingPreview` — the
+  // annotation a commonMain preview gets when the project takes the CMP-bundled artifact rather
+  // than the JetBrains-relocated `org.jetbrains.compose.ui:ui-tooling-preview` (which does ship
+  // the androidx FQN on every target). Same shape as androidx's: BINARY retention so ClassGraph
+  // reads it, @Repeatable so it has a Container, and the same name/group/widthDp/heightDp/
+  // locale/showBackground/backgroundColor attributes — every one of which this file already reads
+  // defensively, so nothing downstream needs to know which of the two it came from.
+  //
+  // Not recognising it made the two most obvious CMP projects unimportable: joreilly/BikeShare's
+  // :common and joreilly/ClimateTraceKMP's :composeApp both author every preview against it, and
+  // discovery reported zero while the source plainly declared eleven. The workaround was to make
+  // the project depend on the relocated coordinate instead — which is fine advice for a project
+  // you own (samples/cmp-shared still does it) and useless for one you are importing.
+  internal const val CMP_PREVIEW_FQN = "org.jetbrains.compose.ui.tooling.preview.Preview"
 
   // Our own opt-in for Android notification previews. Function signature is
   // `(android.content.Context) -> android.app.Notification`; same FQN-match
@@ -3043,7 +3069,7 @@ object PreviewDiscovery {
     val params = method.parameterInfo ?: return null
     for (param in params) {
       val anns = param.annotationInfo ?: continue
-      val ann = anns.firstOrNull { it.name == PREVIEW_PARAMETER_FQN } ?: continue
+      val ann = anns.firstOrNull { it.name in PREVIEW_PARAMETER_FQNS } ?: continue
       val provider =
         when (val value = ann.parameterValues.getValue("provider")) {
           is AnnotationClassRef -> value.name
@@ -4191,7 +4217,7 @@ object PreviewDiscovery {
       LAUNCHER_WIDGET_RESIZE_FQN,
       OVERRIDE_VARIANT_FQN,
       OVERRIDE_VARIANT_CONTAINER_FQN,
-      PREVIEW_PARAMETER_FQN,
+      *PREVIEW_PARAMETER_FQNS.toTypedArray(),
       PREVIEW_WRAPPER_FQN,
       PREVIEW_WRAPPER_CLASS_FQN,
       ROBO_COMPOSE_PREVIEW_OPTIONS_FQN,
