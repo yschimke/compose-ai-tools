@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.61.0](https://github.com/yschimke/compose-ai-tools/compare/v1.60.4...v1.61.0) (2026-08-31)
+
+
+### Features
+
+* **design-artifacts:** defer editable SVG delivery ([#4930](https://github.com/yschimke/compose-ai-tools/issues/4930)) ([8ee669f](https://github.com/yschimke/compose-ai-tools/commit/8ee669f0d3c8b831ab9ef635eb37ad50bad58293))
+* **mcp:** add remote UI builder tools ([#4929](https://github.com/yschimke/compose-ai-tools/issues/4929)) ([4014d09](https://github.com/yschimke/compose-ai-tools/commit/4014d0980764921f3cdc34d2d7979f89b46b2e0e))
+
 ## [1.60.4](https://github.com/yschimke/compose-ai-tools/compare/v1.60.3...v1.60.4) (2026-08-31)
 
 
