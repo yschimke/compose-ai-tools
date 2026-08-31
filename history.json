@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "43720116fa23299461094c84ffde5f81072c8976",
+    "generatedFrom": "9da4b7fe605767ce36260a43101524c1beaee86f",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -6961,6 +6961,13 @@
             "path": "renders/samples:remotecompose/colorcatalog__Remote_theme.png",
             "versions": [
                 {
+                    "blob": "c5f597c4295862028f853ead6d4504cf98f477a3",
+                    "commit": "9da4b7fe605767ce36260a43101524c1beaee86f",
+                    "date": "2026-08-31T14:26:45Z",
+                    "sourceSha": "14ea529a",
+                    "commits": 1
+                },
+                {
                     "blob": "c8fc1c6d8c5a537a74705c117b13dec8660eec42",
                     "commit": "43720116fa23299461094c84ffde5f81072c8976",
                     "date": "2026-08-31T13:58:54Z",
@@ -6975,9 +6982,9 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
-            "flapCount": 0
+            "flapCount": 1
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
             "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
@@ -9093,6 +9100,15 @@
             "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview__composite.png",
             "versions": [
                 {
+                    "blob": "df837b84821abb70a4870854b46f14225d2cc513",
+                    "commit": "9da4b7fe605767ce36260a43101524c1beaee86f",
+                    "date": "2026-08-31T14:26:45Z",
+                    "sourceSha": "14ea529a",
+                    "sinceCommit": "c452bfc0f7a67bac20ff5c827765cc602b4af3ee",
+                    "commits": 5,
+                    "occurrences": 5
+                },
+                {
                     "blob": "c738e1fa58e2cb1a25fab6733eb7059a06ca7020",
                     "commit": "43720116fa23299461094c84ffde5f81072c8976",
                     "date": "2026-08-31T13:58:54Z",
@@ -9100,15 +9116,6 @@
                     "sinceCommit": "f3a2eb0f90ea0a2febdf951d4b821edf14b60d69",
                     "commits": 6,
                     "occurrences": 6
-                },
-                {
-                    "blob": "df837b84821abb70a4870854b46f14225d2cc513",
-                    "commit": "9ea5ad594bf36a65371cc85ee9a6267f9e7a0705",
-                    "date": "2026-08-31T13:35:48Z",
-                    "sourceSha": "934e8f26",
-                    "sinceCommit": "c452bfc0f7a67bac20ff5c827765cc602b4af3ee",
-                    "commits": 4,
-                    "occurrences": 4
                 },
                 {
                     "blob": "8fbec99b101596b06dc5676f3cf37681ee689596",
@@ -9120,9 +9127,9 @@
                     "occurrences": 3
                 }
             ],
-            "observations": 13,
+            "observations": 14,
             "unstable": true,
-            "flapCount": 10
+            "flapCount": 11
         },
         "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview": {
             "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview__composite.png",
