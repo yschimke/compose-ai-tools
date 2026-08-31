@@ -63,6 +63,7 @@ public final class ee/schimke/composeai/bundle/BundleDaemonSupportKt {
 	public static final fun extractBundleIrArtifacts ([BLjava/io/File;Ljava/io/File;Ljava/io/File;Lokio/FileSystem;)V
 	public static synthetic fun extractBundleIrArtifacts$default ([BLjava/io/File;Ljava/io/File;Ljava/io/File;Lokio/FileSystem;ILjava/lang/Object;)V
 	public static final fun locateBundleSidecarJars (Ljava/lang/String;)Ljava/util/List;
+	public static final fun setBundleDesktopNativeProvisioner (Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class ee/schimke/composeai/bundle/BundleReader {

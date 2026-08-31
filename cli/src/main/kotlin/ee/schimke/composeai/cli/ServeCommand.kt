@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.setBundleDesktopNativeProvisioner
 import ee.schimke.composeai.cli.serve.ServeBuildHost
 import ee.schimke.composeai.cli.serve.ServeCommandOptions
 import ee.schimke.composeai.cli.serve.ServeDiscovery
@@ -34,6 +35,10 @@ class ServeCommand(args: List<String>, browseProject: Boolean = false) :
       options.printUsage()
       return
     }
+    // The extracted server asks for desktop sidecars only when it assembles a desktop daemon lane.
+    // Registering the callback is network-free; provisioning remains lazy so view-only and Android
+    // bundle servers continue to start from a cold cache in offline mode.
+    setBundleDesktopNativeProvisioner { sidecarJars -> SkikoNativeProvision.prepare(sidecarJars) }
     ServeRunner(options, this).run()
   }
 

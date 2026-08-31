@@ -153,13 +153,19 @@ public fun locateBundleSidecarJars(sidecarName: String): List<File> {
       .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
       ?.sortedBy { it.name }
       .orEmpty()
-  // The CLI distribution deliberately omits every platform's Skiko native runtime. The CLI
-  // provisioner resolves exactly the current host's matching jar and publishes its directory via
-  // this property before any desktop subprocess is assembled. Append it to the daemon sidecar so
-  // callers compiled in other repositories (serve's bundle daemon and RC JVM renderer) inherit the
-  // native without needing a parallel locator or a release-coupled API change.
+  // The portable CLI omits host-specific Skiko runtimes. Ask its registered provisioner only when
+  // a desktop daemon classpath is actually assembled; view-only and Android serve lanes never
+  // reach this branch and therefore remain network-free. The provisioner publishes the resolved
+  // directory through the property below, so callers compiled in other repositories (notably the
+  // preview server) receive the native without depending on the CLI module.
+  val provisionedSkiko =
+    if (sidecarName == "lib-daemon-desktop" && configuredSkikoJars().isEmpty()) {
+      desktopNativeProvisioner?.invoke(sidecarJars)
+    } else null
   return if (sidecarName == "lib-daemon-desktop") {
-    (configuredSkikoJars() + sidecarJars).distinctBy { it.absoluteFile.normalize().path }
+    (configuredSkikoJars() + listOfNotNull(provisionedSkiko) + sidecarJars).distinctBy {
+      it.absoluteFile.normalize().path
+    }
   } else {
     sidecarJars
   }
@@ -181,8 +187,19 @@ public fun bundleSidecarSearchDescription(sidecarName: String): String {
     .joinToString(" or ")
 }
 
-/** Directory containing the one host-specific Skiko runtime provisioned by the CLI. */
-public const val CLI_SKIKO_DIR_PROPERTY: String = "composeai.cli.skikoDir"
+private const val CLI_SKIKO_DIR_PROPERTY: String = "composeai.cli.skikoDir"
+
+@Volatile private var desktopNativeProvisioner: ((List<File>) -> File?)? = null
+
+/**
+ * Register the host application's lazy desktop-native provisioner.
+ *
+ * The callback is invoked by [locateBundleSidecarJars] only when the desktop daemon sidecar is
+ * requested and no native has already been configured. Passing `null` removes the callback.
+ */
+public fun setBundleDesktopNativeProvisioner(provisioner: ((List<File>) -> File?)?) {
+  desktopNativeProvisioner = provisioner
+}
 
 private fun configuredSkikoJars(): List<File> {
   val dir = System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.takeIf { it.isNotBlank() }?.let(::File)

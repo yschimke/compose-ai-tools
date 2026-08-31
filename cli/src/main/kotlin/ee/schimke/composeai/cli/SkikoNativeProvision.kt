@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.bundle.CLI_SKIKO_DIR_PROPERTY
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.io.composeAiCacheDir
 import io.ktor.client.HttpClient
@@ -18,6 +17,7 @@ import kotlinx.coroutines.runBlocking
 
 /** Fetches the single host-specific Skiko native jar omitted from the portable CLI distribution. */
 internal object SkikoNativeProvision {
+  private const val CLI_SKIKO_DIR_PROPERTY = "composeai.cli.skikoDir"
   private const val MAVEN_CENTRAL = "https://repo1.maven.org/maven2"
   private val apiJarPattern = Regex("^skiko-awt-(?!runtime-)(.+)\\.jar$")
 
