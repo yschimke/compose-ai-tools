@@ -78,7 +78,8 @@ class DeviceDimensionsTest {
     // here (only `landscape` was handled), so `@PreviewScreenSizes`' own "Tablet" entry —
     // `spec:width=1280dp,height=800dp,dpi=240,orientation=portrait` — rendered landscape, pixel for
     // pixel identical to its "Tablet - Landscape" sibling.
-    val spec = DeviceDimensions.resolve("spec:width=1280dp,height=800dp,dpi=240,orientation=portrait")
+    val spec =
+      DeviceDimensions.resolve("spec:width=1280dp,height=800dp,dpi=240,orientation=portrait")
     assertThat(spec.widthDp).isEqualTo(800)
     assertThat(spec.heightDp).isEqualTo(1280)
     assertThat(spec.density).isEqualTo(1.5f)

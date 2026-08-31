@@ -299,12 +299,16 @@ class LottieAssetDiscoveryTest {
            * @Preview
            * fun kdocExample() = Unit
            */
-          val sample = """ + "\"\"\"" + """
+          val sample = """ +
+            "\"\"\"" +
+            """
           @Preview
           fun stringExample() = Unit
-          """ + "\"\"\"" + """
-          """
-            .trimIndent()
+          """ +
+            "\"\"\"" +
+            """
+            """
+              .trimIndent()
         )
       }
     val resources = project.resolve("resources").apply { mkdirs() }

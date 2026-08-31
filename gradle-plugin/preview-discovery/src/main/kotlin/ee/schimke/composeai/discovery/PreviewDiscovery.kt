@@ -401,6 +401,11 @@ object PreviewDiscovery {
   private const val COLOR_SCHEME_TYPE = "androidx.compose.material3.ColorScheme"
   private const val TYPOGRAPHY_TYPE = "androidx.compose.material3.Typography"
   private const val SHAPES_TYPE = "androidx.compose.material3.Shapes"
+  private const val REMOTE_COLOR_SCHEME_TYPE =
+    "androidx.wear.compose.remote.material3.RemoteColorScheme"
+  private const val REMOTE_TYPOGRAPHY_TYPE =
+    "androidx.wear.compose.remote.material3.RemoteTypography"
+  private const val REMOTE_SHAPES_TYPE = "androidx.wear.compose.remote.material3.RemoteShapes"
 
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
@@ -1098,9 +1103,12 @@ object PreviewDiscovery {
   ): CatalogTokenKind {
     val type = runCatching { field.typeSignatureOrTypeDescriptor.toString() }.getOrNull()
     return when (type) {
-      COLOR_SCHEME_TYPE -> CatalogTokenKind.COLOR_SCHEME
-      TYPOGRAPHY_TYPE -> CatalogTokenKind.TYPOGRAPHY
-      SHAPES_TYPE -> CatalogTokenKind.SHAPES
+      COLOR_SCHEME_TYPE,
+      REMOTE_COLOR_SCHEME_TYPE -> CatalogTokenKind.COLOR_SCHEME
+      TYPOGRAPHY_TYPE,
+      REMOTE_TYPOGRAPHY_TYPE -> CatalogTokenKind.TYPOGRAPHY
+      SHAPES_TYPE,
+      REMOTE_SHAPES_TYPE -> CatalogTokenKind.SHAPES
       else -> single
     }
   }
@@ -1317,6 +1325,10 @@ object PreviewDiscovery {
         PreviewParams(
           name = displayName,
           kind = PreviewKind.CATALOG,
+          device = CATALOG_SHEET_DEVICE,
+          widthDp = CATALOG_SHEET.widthDp,
+          heightDp = CATALOG_SHEET.heightDp,
+          density = CATALOG_SHEET.density,
           catalogTokens =
             tokens.map {
               CatalogToken(
@@ -1350,7 +1362,7 @@ object PreviewDiscovery {
    * token catalogs.
    */
   /**
-   * Canvas for a synthetic theme sheet: 900x760dp at density 1 (`dpi=160`), so the PNG is
+   * Canvas for a synthetic token or theme sheet: 900x760dp at density 1 (`dpi=160`), so the PNG is
    * 900x760px.
    *
    * These previews have no `@Preview` of their own to size them, so they used to fall back to the
@@ -1367,11 +1379,11 @@ object PreviewDiscovery {
    * capture — the dp figures above are the pixels, which is what keeps the geometry legible here
    * and in the numbers this KDoc quotes.
    */
-  internal const val THEME_CATALOG_SHEET_DEVICE: String = "spec:width=900dp,height=760dp,dpi=160"
+  internal const val CATALOG_SHEET_DEVICE: String = "spec:width=900dp,height=760dp,dpi=160"
 
-  /** [THEME_CATALOG_SHEET_DEVICE] resolved once — 900x760dp at density 1. */
-  internal val THEME_CATALOG_SHEET: DeviceDimensions.DeviceSpec =
-    DeviceDimensions.resolve(THEME_CATALOG_SHEET_DEVICE, null, null)
+  /** [CATALOG_SHEET_DEVICE] resolved once — 900x760dp at density 1. */
+  internal val CATALOG_SHEET: DeviceDimensions.DeviceSpec =
+    DeviceDimensions.resolve(CATALOG_SHEET_DEVICE, null, null)
 
   private fun buildThemeCatalogPreviews(
     themes: List<RawThemeCatalog>,
@@ -1409,10 +1421,10 @@ object PreviewDiscovery {
             // honoured on the `@Preview`-annotation path (which calls `DeviceDimensions.resolve`
             // itself). A synthetic preview that sets the string and nothing else still renders at
             // the 400x800 sandbox default — which is exactly the canvas these sheets outgrew.
-            device = THEME_CATALOG_SHEET_DEVICE,
-            widthDp = THEME_CATALOG_SHEET.widthDp,
-            heightDp = THEME_CATALOG_SHEET.heightDp,
-            density = THEME_CATALOG_SHEET.density,
+            device = CATALOG_SHEET_DEVICE,
+            widthDp = CATALOG_SHEET.widthDp,
+            heightDp = CATALOG_SHEET.heightDp,
+            density = CATALOG_SHEET.density,
           ),
         captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
         // A `@ThemeCatalog` sheet renders ONE named theme as its subject — that is the whole point
@@ -1555,7 +1567,8 @@ object PreviewDiscovery {
 
   private fun File.declaresPreviewAnnotation(): Boolean = runCatching {
     PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText().kotlinCodeOnly())
-  }.getOrDefault(false)
+  }
+    .getOrDefault(false)
 
   /**
    * Blank comments and literals while preserving line breaks, so the source-level integrity guard
@@ -1613,8 +1626,7 @@ object PreviewDiscovery {
           blank(c)
           if (!tripleQuoted) {
             if (escaped) escaped = false
-            else if (c == '\\') escaped = true
-            else if (c == quote) quote = null
+            else if (c == '\\') escaped = true else if (c == quote) quote = null
           }
           i++
         }
@@ -3719,7 +3731,8 @@ object PreviewDiscovery {
       (pv.getValue("state") as? AnnotationEnumValue)?.valueName ?: AmbientCaptureState.Ambient.name
     val state = runCatching {
       AmbientCaptureState.valueOf(stateName)
-    }.getOrDefault(AmbientCaptureState.Ambient)
+    }
+      .getOrDefault(AmbientCaptureState.Ambient)
     val burnIn = (pv.getValue("burnInProtectionRequired") as? Boolean) ?: false
     val lowBit = (pv.getValue("deviceHasLowBitAmbient") as? Boolean) ?: false
     return AmbientCapture(
@@ -3966,7 +3979,8 @@ object PreviewDiscovery {
         ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
     val order = runCatching {
       LauncherWidgetCaptureResizeOrder.valueOf(orderName)
-    }.getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    }
+      .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val frameDelay = (pv.getValue("frameDelayMs") as? Int)?.coerceAtLeast(0) ?: 600
     val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetResizeSpec(
@@ -3999,7 +4013,8 @@ object PreviewDiscovery {
         ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
     val order = runCatching {
       LauncherWidgetCaptureResizeOrder.valueOf(orderName)
-    }.getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    }
+      .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
     val launcherMode = (pv.getValue("launcherMode") as? Boolean) ?: false
     return LauncherWidgetCapture(
       width = width,

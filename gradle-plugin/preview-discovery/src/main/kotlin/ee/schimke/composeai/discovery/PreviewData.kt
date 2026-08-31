@@ -1035,11 +1035,11 @@ enum class CatalogRole {
  *
  * The two [CatalogRole]s reuse one shape: [componentId] is the component's own id for a
  * [CatalogRole.COMPONENT] and the *parent* component id (`@CatalogVariant.of`) for a
- * [CatalogRole.VARIANT]. Fields that only apply to one role are `null`/empty on the other
- * ([group] / [section] are component-only; [state] / [props] are variant-only). The kit
- * correspondence fields — [reference] / [referenceSet] / [noReference] / [referenceContentsOnly] /
- * [parallel] — are carried by **both**: a variant is compared in its own right, so folding a render
- * under a parent does not hand its parity over to that parent.
+ * [CatalogRole.VARIANT]. Fields that only apply to one role are `null`/empty on the other ([group]
+ * / [section] are component-only; [state] / [props] are variant-only). The kit correspondence
+ * fields — [reference] / [referenceSet] / [noReference] / [referenceContentsOnly] / [parallel] —
+ * are carried by **both**: a variant is compared in its own right, so folding a render under a
+ * parent does not hand its parity over to that parent.
  */
 @Serializable
 data class CatalogEntry(
@@ -1055,22 +1055,22 @@ data class CatalogEntry(
   /** Seed-kit handle for the one-off import. */
   val reference: String? = null,
   /**
-   * Handle of the component **family** [reference] is one variant of (a Figma
-   * component set). [reference] must stay one concrete node — that is what a parity run diffs
-   * against — so the family travels separately, for the opposite direction: matching a component
-   * *instance* found on a whole screen, which reports its own variant and its set, back to this
-   * code. A screen rarely uses the exact variant a catalog pictured, so the set is what matches.
+   * Handle of the component **family** [reference] is one variant of (a Figma component set).
+   * [reference] must stay one concrete node — that is what a parity run diffs against — so the
+   * family travels separately, for the opposite direction: matching a component *instance* found on
+   * a whole screen, which reports its own variant and its set, back to this code. A screen rarely
+   * uses the exact variant a catalog pictured, so the set is what matches.
    */
   val referenceSet: String? = null,
   /**
-   * Why there is no [reference], when the absence is a finding rather than a gap. A
-   * null [reference] otherwise means only "nobody has looked yet"; this separates that from "the
-   * kit retired this", which a consumer cannot infer from silence.
+   * Why there is no [reference], when the absence is a finding rather than a gap. A null
+   * [reference] otherwise means only "nobody has looked yet"; this separates that from "the kit
+   * retired this", which a consumer cannot infer from silence.
    */
   val noReference: String? = null,
   /**
-   * Whether a Figma export contains only [reference]'s own content. `false` opts
-   * this one reference into overlapping sheet layers without changing any other preview.
+   * Whether a Figma export contains only [reference]'s own content. `false` opts this one reference
+   * into overlapping sheet layers without changing any other preview.
    */
   val referenceContentsOnly: Boolean = true,
   /** Component id of the counterpart in the `compareWith` sibling system. */

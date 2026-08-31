@@ -27,6 +27,7 @@ import org.junit.Test
 class RemoteWidgetDocCaptureTest {
 
   private val rendersDir = File("build/compose-previews/renders")
+  private val catalogTokensDir = File("build/compose-previews/data/catalog-tokens")
   private val stem = "RemoteWidgetSquirclePreview_Remote_Widget_Squircle"
 
   @Test
@@ -64,5 +65,27 @@ class RemoteWidgetDocCaptureTest {
     val ib = inside and 0xff
     assertThat(ib).isGreaterThan(150)
     assertThat(ib - ir).isGreaterThan(40)
+  }
+
+  @Test
+  fun `remote material catalogs resolve every role and render complete sheets`() {
+    val expected =
+      mapOf(
+        "colorcatalog__Remote_theme" to ("COLOR" to 29),
+        "typographycatalog__Remote_theme" to ("TEXT_STYLE" to 18),
+        "shapecatalog__Remote_theme" to ("SHAPE" to 5),
+      )
+
+    for ((catalog, kindAndCount) in expected) {
+      val (kind, count) = kindAndCount
+      val sidecar = File(catalogTokensDir, "$catalog.catalog.json")
+      assertWithMessage("missing Remote catalog sidecar $sidecar").that(sidecar.exists()).isTrue()
+      assertThat(Regex("\\\"kind\\\":\\\"$kind\\\"").findAll(sidecar.readText()).count())
+        .isEqualTo(count)
+
+      val image = ImageIO.read(File(rendersDir, "$catalog.png"))
+      assertThat(image.width).isEqualTo(900)
+      assertThat(image.height).isEqualTo(760)
+    }
   }
 }
