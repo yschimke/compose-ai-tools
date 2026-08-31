@@ -8,12 +8,14 @@ import { fileURLToPath } from "node:url";
 
 import {
   ANCHOR,
+  SHARD_EXCLUSION_FORMAT,
   anchorExclusions,
   parseIdList,
   partitionPreviewIds,
   previewNameMatches,
   renderableDigest,
   shardRenderPlan,
+  verifyShardExclusionFile,
   verifyShardPlans,
   verifyShardRenders,
 } from "./shard-preview-ids.mjs";
@@ -33,12 +35,15 @@ test("the reusable workflow passes shard exclusions by file, not through argv", 
     workflow,
     /shard_ids="\$\(cat "\$GITHUB_WORKSPACE\/shard-exclude\.txt"\)"/,
   );
+  assert.match(workflow, /--verify-exclusions/);
+  assert.match(workflow, /title=Shard exclusion format skew/);
 });
 
 test("the shard planner writes one exclusion per line for the CLI file transport", () => {
   const dir = mkdtempSync(join(tmpdir(), "shard-exclusions-"));
   const previews = join(dir, "previews.json");
   const exclusions = join(dir, "exclude.txt");
+  const plan = join(dir, "plan.json");
   writeFileSync(previews, JSON.stringify({ previews: ["a", "b", "c", "d"].map(preview) }));
 
   execFileSync(
@@ -53,11 +58,67 @@ test("the shard planner writes one exclusion per line for the CLI file transport
       "1",
       "--out",
       exclusions,
+      "--plan-out",
+      plan,
     ],
     { stdio: "pipe" },
   );
 
   assert.equal(readFileSync(exclusions, "utf8"), "=b\n=d\n");
+  assert.deepEqual(
+    JSON.parse(readFileSync(plan, "utf8")),
+    {
+      index: 1,
+      total: 2,
+      renderable: 4,
+      digest: renderableDigest(["a", "b", "c", "d"]),
+      previews: ["a", "c"],
+      exclusionFormat: SHARD_EXCLUSION_FORMAT,
+      excluded: 2,
+    },
+  );
+});
+
+test("rejects the v1_60_0 comma-line plan before rendering", () => {
+  const oldPlan = {
+    index: 1,
+    total: 4,
+    renderable: 4131,
+    previews: Array.from({ length: 1033 }, (_, i) => `mine-${i}`),
+  };
+  const result = verifyShardExclusionFile(oldPlan, "=other-a,=other-b,=other-c");
+  assert.equal(result.ok, false);
+  assert.match(result.problems.join("\n"), /exclusionFormat/);
+  assert.match(result.problems.join("\n"), /excluded count/);
+});
+
+test("rejects a malformed current exclusion file by count and shape", () => {
+  const plan = {
+    index: 2,
+    exclusionFormat: SHARD_EXCLUSION_FORMAT,
+    excluded: 3,
+  };
+  const result = verifyShardExclusionFile(plan, "=one\nnot-anchored\n");
+  assert.equal(result.ok, false);
+  assert.match(result.problems.join("\n"), /has 2 line\(s\), but the plan declares 3/);
+  assert.match(result.problems.join("\n"), /not one nonblank anchored/);
+});
+
+test("accepts one anchored exclusion per line, including comma-bearing ids", () => {
+  const plan = {
+    index: 3,
+    exclusionFormat: SHARD_EXCLUSION_FORMAT,
+    excluded: 2,
+  };
+  const result = verifyShardExclusionFile(
+    plan,
+    "=a_width=227dp,height=200dp,dpi=320\n=b\n",
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    problems: [],
+    lines: ["=a_width=227dp,height=200dp,dpi=320", "=b"],
+  });
 });
 
 test("round-robins the sorted id list so a heavy group is spread, not clustered", () => {

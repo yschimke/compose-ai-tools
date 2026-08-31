@@ -1059,6 +1059,19 @@ jobs:
             "${exclude_file[@]}" "${filter_file[@]}" \
             --out "$GITHUB_WORKSPACE/shard-exclude.txt" \
             --plan-out "$GITHUB_WORKSPACE/shard-plan.json")
+          # The workflow and export driver are pinned independently. Verify their file-transport
+          # contract before spending tens of minutes rendering: v1.60.0 wrote one comma-separated
+          # line, which v1.60.1's --exclude-preview-id-file correctly treated as one impossible
+          # pattern and therefore baked the full catalog in every shard (#4916).
+          if ! node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs \
+              --verify-exclusions \
+              "$GITHUB_WORKSPACE/shard-plan.json" \
+              "$GITHUB_WORKSPACE/shard-exclude.txt"; then
+            echo "::error title=Shard exclusion format skew::The pinned export driver did not" \
+              "produce the newline-delimited exclusion-file contract this workflow requires." \
+              "Update the export-driver pin before retrying; refusing to render an unfiltered shard."
+            exit 1
+          fi
           echo "previews=$previews" >> "$GITHUB_OUTPUT"
 
       # Skipped when the partition handed this shard nothing — more shards than previews. Its

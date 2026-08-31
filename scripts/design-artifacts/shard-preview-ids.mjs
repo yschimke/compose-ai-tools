@@ -139,6 +139,13 @@ export function previewNameMatches(patterns, functionName, className = "") {
 export const ANCHOR = "=";
 
 /**
+ * Wire-format marker carried by each shard plan and checked before its exclusion file reaches the
+ * CLI. This is deliberately about the produced FORMAT, not the compose-preview version: the
+ * reusable workflow and its separately pinned export driver can resolve at different revisions.
+ */
+export const SHARD_EXCLUSION_FORMAT = "newline-v1";
+
+/**
  * Turn plain preview ids into anchored `--exclude-preview-id` patterns.
  *
  * Applied at the one boundary where an id becomes a CLI pattern. An id that is already anchored is
@@ -151,6 +158,53 @@ export function anchorExclusions(ids) {
   return (ids ?? [])
     .filter((id) => typeof id === "string" && id.length > 0)
     .map((id) => (id.startsWith(ANCHOR) ? id : `${ANCHOR}${id}`));
+}
+
+/**
+ * Validate the planner/file-reader contract before a shard starts its expensive render.
+ *
+ * The v1.60.0 planner wrote every exclusion comma-separated on one line, while the v1.60.1
+ * workflow handed that path to `--exclude-preview-id-file` (one pattern per line). The CLI quite
+ * correctly read the giant line as one anchored pattern, it matched nothing, and every shard baked
+ * the full catalog. Requiring both a format marker and the planner's expected line count catches
+ * that mixed-version window as well as a malformed file produced by a current planner.
+ */
+export function verifyShardExclusionFile(plan, text) {
+  const problems = [];
+  if (plan?.exclusionFormat !== SHARD_EXCLUSION_FORMAT) {
+    problems.push(
+      `plan has exclusionFormat=${JSON.stringify(plan?.exclusionFormat ?? null)}, expected ` +
+        `${JSON.stringify(SHARD_EXCLUSION_FORMAT)}; the export driver and reusable workflow are ` +
+        "not using the same shard exclusion-file contract",
+    );
+  }
+  if (!Number.isInteger(plan?.excluded) || plan.excluded < 0) {
+    problems.push("plan has no non-negative integer excluded count");
+  }
+
+  const raw = String(text ?? "");
+  const physicalLines = raw.length === 0 ? [] : raw.replace(/\n$/, "").split("\n");
+  const lines = physicalLines.map((line) => line.replace(/\r$/, ""));
+  if (lines.some((line) => line.trim().length === 0)) {
+    problems.push("exclusion file contains a blank line");
+  }
+  if (Number.isInteger(plan?.excluded) && lines.length !== plan.excluded) {
+    problems.push(
+      `exclusion file has ${lines.length} line(s), but the plan declares ${plan.excluded}`,
+    );
+  }
+  const invalid = lines.filter(
+    (line) => line !== line.trim() || !line.startsWith(ANCHOR) || line.length === ANCHOR.length,
+  );
+  if (invalid.length > 0) {
+    problems.push(
+      `${invalid.length} exclusion line(s) are not one nonblank anchored (=<id>) pattern each`,
+    );
+  }
+  if (new Set(lines).size !== lines.length) {
+    problems.push("exclusion file contains duplicate patterns");
+  }
+  return { ok: problems.length === 0, problems, lines };
 }
 
 /**
@@ -441,6 +495,12 @@ export function verifyShardRenders(plans, capturedIds, { semanticsRan = true, ex
 //   node shard-preview-ids.mjs --verify shard-plan-1.json shard-plan-2.json …
 // Exits non-zero, naming the disagreement, if the shards did not between them render exactly the
 // discovered set once each.
+//
+// VERIFY one plan's exclusion-file transport before rendering:
+//   node shard-preview-ids.mjs --verify-exclusions shard-plan.json shard-exclude.txt
+// This is intentionally invoked through the pinned driver: an older driver that does not implement
+// the contract fails on the unknown option rather than silently feeding an old file format to a new
+// workflow.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -453,10 +513,35 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       out: { type: "string" },
       "plan-out": { type: "string" },
       verify: { type: "boolean", default: false },
+      "verify-exclusions": { type: "boolean", default: false },
     },
   });
 
-  if (values.verify) {
+  if (values["verify-exclusions"]) {
+    if (positionals.length !== 2) {
+      console.error(
+        "usage: shard-preview-ids.mjs --verify-exclusions <shard-plan.json> <shard-exclude.txt>",
+      );
+      process.exit(2);
+    }
+    const plan = JSON.parse(readFileSync(positionals[0], "utf8"));
+    const result = verifyShardExclusionFile(plan, readFileSync(positionals[1], "utf8"));
+    if (!result.ok) {
+      for (const problem of result.problems) {
+        console.error(`shard-preview-ids: ${problem}`);
+      }
+      console.error(
+        "shard-preview-ids: refusing to render — the planner's exclusion file does not match " +
+          "the workflow's one-pattern-per-line contract. Update the export-driver pin before " +
+          "retrying the shard.",
+      );
+      process.exit(1);
+    }
+    console.error(
+      `shard-preview-ids: verified ${result.lines.length} newline-delimited exclusion(s) for ` +
+        `shard ${plan.index}`,
+    );
+  } else if (values.verify) {
     const plans = positionals.map((f) => JSON.parse(readFileSync(f, "utf8")));
     const { ok, problems } = verifyShardPlans(plans);
     if (!ok) {
@@ -519,7 +604,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (values["plan-out"]) {
         writeFileSync(
           values["plan-out"],
-          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, digest: plan.digest, previews: [] }, null, 2)}\n`,
+          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, digest: plan.digest, previews: [], exclusionFormat: SHARD_EXCLUSION_FORMAT, excluded: 0 }, null, 2)}\n`,
         );
       }
       console.error(`shard-preview-ids: shard ${index} of ${plan.total} has no previews to render.`);
@@ -529,7 +614,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (values["plan-out"]) {
         writeFileSync(
           values["plan-out"],
-          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, digest: plan.digest, previews: mine.previews }, null, 2)}\n`,
+          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, digest: plan.digest, previews: mine.previews, exclusionFormat: SHARD_EXCLUSION_FORMAT, excluded: mine.exclude.length }, null, 2)}\n`,
         );
       }
       console.error(
