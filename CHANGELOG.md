@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.1](https://github.com/yschimke/compose-ai-tools/compare/v1.60.0...v1.60.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **design-artifacts:** pass shard exclusions by file ([#4912](https://github.com/yschimke/compose-ai-tools/issues/4912)) ([dfe60ff](https://github.com/yschimke/compose-ai-tools/commit/dfe60ff6d9e24adb3bfcde7d8112fd7f1bd16300))
+
 ## [1.60.0](https://github.com/yschimke/compose-ai-tools/compare/v1.59.1...v1.60.0) (2026-08-31)
 
 
