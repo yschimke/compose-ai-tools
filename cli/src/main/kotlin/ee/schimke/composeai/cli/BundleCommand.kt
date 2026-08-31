@@ -51,10 +51,10 @@ import okio.source
  *
  * # Subcommands
  *
- * - **`pack`** — runs `composePreviewRender` (for the cover) and `composePreviewBundle` against a
- *   Gradle module and writes the resulting `.png` polyglot. Selection is via repeatable `--id`
- *   flags; the first id becomes the cover. `--no-render` skips the render step and packs with a
- *   stub gray cover.
+ * - **`pack`** — runs `composePreviewRenderAll` (for every renderer family, including XR) and
+ *   `composePreviewBundle` against a Gradle module and writes the resulting `.png` polyglot.
+ *   Selection is via repeatable `--id` flags; the first id becomes the cover. `--no-render` skips
+ *   the render step and packs with a stub gray cover.
  * - **`inspect`** — open a bundle file and print its `bundle.json` + `report.json` summary,
  *   including the minimization report (how many module classes were kept vs total, which Maven
  *   coordinates contribute reachable classes). Read-only.
@@ -387,7 +387,7 @@ private class PackSubcommand(private val args: List<String>) {
               )
             }
             val tasks = buildList {
-              if (!noRender) add(":${target.gradlePath}:composePreviewRender")
+              if (!noRender) add(":${target.gradlePath}:composePreviewRenderAll")
               add(":${target.gradlePath}:composePreviewBundle")
             }
               .toTypedArray()
@@ -541,7 +541,7 @@ private class PackSubcommand(private val args: List<String>) {
               val rendered =
                 runGradle(
                   gradle,
-                  ":${target.gradlePath}:composePreviewRender",
+                  ":${target.gradlePath}:composePreviewRenderAll",
                   arguments = gradleArgsWithForce(sharedArgs),
                 )
               if (!rendered) {

@@ -242,11 +242,12 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Internal abstract val rendersDir: DirectoryProperty
 
   /**
-   * The render PNGs under [rendersDir], tracked as a proper input so up-to-date checks and the
-   * build cache key reflect them. Without this, the bundle could be skipped/restored stale: someone
-   * packs before rendering (or restores such a cached bundle), then renders and re-packs with the
-   * same manifest/classes, and `composePreviewBundle` would otherwise see unchanged inputs and keep
-   * the render-less bundle despite fresh PNGs on disk (Codex review, PR #1627).
+   * The render products under [rendersDir] — PNGs plus portable XR scene directories — tracked as
+   * proper inputs so up-to-date checks and the build cache key reflect them. Without this, the
+   * bundle could be skipped/restored stale: someone packs before rendering (or restores such a
+   * cached bundle), then renders and re-packs with the same manifest/classes, and
+   * `composePreviewBundle` would otherwise see unchanged inputs and keep the render-less bundle
+   * despite fresh PNGs on disk (Codex review, PR #1627).
    *
    * Modelled as an `@InputFiles` collection rather than `@InputDirectory` precisely so an absent
    * `renders/` dir snapshots as empty instead of failing the build — the reason [rendersDir] itself
@@ -592,6 +593,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val overrideFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       val bundleId = bundleIds.getValue(preview.id)
+      overrideFiles.putAll(spatialBundleEntries(rendersDir.orNull?.asFile, preview.id, bundleId))
       resolvePreviewRenderError(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_RENDER_ERROR_SIDECAR_EXT"] = it
       }
@@ -1817,6 +1819,55 @@ internal fun resolveIrSidecar(rendersRoot: File, stem: String, ext: String): Fil
  * keep dot-vs-underscore-distinct ids distinct). Kept top-level + internal so it's unit-testable.
  */
 internal fun sanitizeBundleEntryId(id: String): String = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+/**
+ * Portable WebGL/WebXR scene entries for one XR render. The XR renderer writes a directory named
+ * from the raw preview id under `renders/`; the bundle gives it the collision-safe bundle id and a
+ * `.spatial/` suffix so it cannot be mistaken for an ordinary preview PNG.
+ *
+ * The allowlist mirrors the server's ingestion boundary. A render directory is producer-owned, but
+ * keeping executable or unrelated files out here makes the portable shape explicit and prevents a
+ * future renderer scratch file from silently becoming public bundle content.
+ */
+internal fun spatialBundleEntries(
+  rendersDir: File?,
+  rawPreviewId: String,
+  bundleId: String,
+): Map<String, ByteArray> {
+  val source = rendersDir?.resolve(sanitizeBundleEntryId(rawPreviewId)) ?: return emptyMap()
+  val sceneFile = source.resolve(SPATIAL_SCENE_FILE).takeIf { it.isFile } ?: return emptyMap()
+  val referencedTextures = runCatching {
+    val scene = Json.parseToJsonElement(sceneFile.readText()) as JsonObject
+    sequenceOf("panels", "orbiters")
+      .flatMap { key -> (scene[key] as? JsonArray).orEmpty().asSequence() }
+      .mapNotNull { panel ->
+        (panel as? JsonObject)?.get("texture")?.jsonPrimitive?.content?.takeIf { texture ->
+          texture.isNotBlank() && '/' !in texture && '\\' !in texture
+        }
+      }
+      .toSet()
+  }
+    .getOrDefault(emptySet())
+  return source
+    .listFiles()
+    .orEmpty()
+    .asSequence()
+    .filter { file ->
+      file.isFile &&
+        file.length() > 0 &&
+        (file.name == SPATIAL_SCENE_FILE ||
+          (file.name in referencedTextures &&
+            SPATIAL_IMAGE_SUFFIXES.any { file.name.endsWith(it, ignoreCase = true) }))
+    }
+    .sortedBy { it.name }
+    .associateTo(LinkedHashMap()) { file ->
+      "$BUNDLE_PREVIEWS_DIR/$bundleId$SPATIAL_BUNDLE_SUFFIX/${file.name}" to file.readBytes()
+    }
+}
+
+private const val SPATIAL_BUNDLE_SUFFIX = ".spatial"
+private const val SPATIAL_SCENE_FILE = "scene.json"
+private val SPATIAL_IMAGE_SUFFIXES = listOf(".png", ".jpg", ".jpeg", ".webp")
 
 /**
  * Assign a collision-free bundle-entry id to every preview in [rawIds], preserving order. Preview
