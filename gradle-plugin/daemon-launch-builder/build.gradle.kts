@@ -1,3 +1,5 @@
+import org.gradle.api.publish.maven.MavenPublication
+
 plugins {
   id("composeai.maven-publishing")
   // No version on `kotlin("jvm")` — `kotlin-dsl` in the parent (root) build script of this
@@ -61,5 +63,45 @@ composeAiMavenPublishing {
 tasks.named<Jar>("jar").configure {
   manifest {
     attributes("Main-Class" to "ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli")
+  }
+}
+
+// Publish the descriptor schema version as plain JSON so non-JVM consumers can verify the exact
+// plugin release they pin without parsing a Kotlin class file. The same file rides inside the JAR
+// for classpath consumers and beside it as daemon-launch-builder-<version>-schema.json for tools
+// such as the TypeScript VS Code extension.
+val daemonDescriptorSchemaVersion = 2
+val daemonLaunchSchemaResourcesDir = layout.buildDirectory.dir("generated/daemon-launch-schema")
+val daemonLaunchSchemaMetadata = daemonLaunchSchemaResourcesDir.map {
+  it.file("META-INF/compose-preview/daemon-launch-schema.json")
+}
+val generateDaemonLaunchSchemaMetadata =
+  tasks.register("generateDaemonLaunchSchemaMetadata") {
+    inputs.property("schemaVersion", daemonDescriptorSchemaVersion)
+    outputs.dir(daemonLaunchSchemaResourcesDir)
+    doLast {
+      val output = daemonLaunchSchemaMetadata.get().asFile
+      output.parentFile.mkdirs()
+      output.writeText(
+        """
+        {
+          "schema": "compose-preview-daemon-launch",
+          "schemaVersion": $daemonDescriptorSchemaVersion
+        }
+        """
+          .trimIndent() + "\n"
+      )
+    }
+  }
+
+sourceSets.main.get().resources.srcDir(generateDaemonLaunchSchemaMetadata)
+
+publishing {
+  publications.withType<MavenPublication>().configureEach {
+    artifact(daemonLaunchSchemaMetadata) {
+      classifier = "schema"
+      extension = "json"
+      builtBy(generateDaemonLaunchSchemaMetadata)
+    }
   }
 }

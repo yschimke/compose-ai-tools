@@ -1,6 +1,9 @@
 package ee.schimke.composeai.daemonlaunch
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 class DaemonLaunchBuilderTest {
@@ -69,5 +72,17 @@ class DaemonLaunchBuilderTest {
     // explicitNulls = true on the canonical encoder; readers can distinguish "missing" from
     // "set to null" without inspecting field presence.
     assertThat(DaemonLaunchBuilder.encode(descriptor)).contains("\"javaLauncher\": null")
+  }
+
+  @Test
+  fun `published schema metadata matches the descriptor schema version`() {
+    val resource =
+      checkNotNull(javaClass.getResource("/META-INF/compose-preview/daemon-launch-schema.json"))
+    val metadata = Json.parseToJsonElement(resource.readText()).jsonObject
+
+    assertThat(metadata["schema"]?.jsonPrimitive?.content)
+      .isEqualTo("compose-preview-daemon-launch")
+    assertThat(metadata["schemaVersion"]?.jsonPrimitive?.content?.toInt())
+      .isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
   }
 }
