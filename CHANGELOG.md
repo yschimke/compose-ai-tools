@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.58.0](https://github.com/yschimke/compose-ai-tools/compare/v1.57.0...v1.58.0) (2026-08-31)
+
+
+### Features
+
+* **discovery:** recognise Compose Multiplatform's own @Preview ([#4891](https://github.com/yschimke/compose-ai-tools/issues/4891)) ([a98cbb9](https://github.com/yschimke/compose-ai-tools/commit/a98cbb9392cf8153e78395eb0adf185b5926bcf6))
+
+
+### Bug Fixes
+
+* **discovery:** say something when a module's authored previews vanish ([#4890](https://github.com/yschimke/compose-ai-tools/issues/4890)) ([b561cd4](https://github.com/yschimke/compose-ai-tools/commit/b561cd479c377afabfb71d45f0c8c8312beb6e22))
+
 ## [1.57.0](https://github.com/yschimke/compose-ai-tools/compare/v1.56.2...v1.57.0) (2026-08-31)
 
 
