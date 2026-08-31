@@ -116,7 +116,14 @@ jobs:
           # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
           # includeBuild and needs an explicit address.
           #
-          ./gradlew
+          # Name the tasks explicitly. A bare `./gradlew` is not a no-op that fails loudly —
+          # there is no `defaultTasks` in this build, so it runs `help` and exits 0, and the
+          # job goes green having published nothing. That is how v1.56.0 and v1.56.1 shipped
+          # as public GitHub Releases with no artifacts on Central (#4845 deleted this task
+          # list along with the `-x :rc-player-*` exclusions that used to follow it).
+          ./gradlew \
+            :gradle-plugin:publishAndReleaseToMavenCentral \
+            publishAndReleaseToMavenCentral
 
   # The Remote Compose player stack used to be published from here — a macOS job for its Apple
   # klibs, plus an XCFramework job that rewrote `Package.swift` and cut a bare SwiftPM version tag.
