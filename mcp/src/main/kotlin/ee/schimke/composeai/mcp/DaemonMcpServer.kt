@@ -148,6 +148,8 @@ class DaemonMcpServer(
    * alongside `preview-stories`). Both profiles route through the same handlers.
    */
   private val profile: McpToolProfile = McpToolProfile.NATIVE,
+  /** Optional remote Design API facade; never gives MCP direct reducer or store access. */
+  private val uiBuilderMcp: UiBuilderMcpAdapter? = null,
 ) {
 
   private val fullToolDefsLoader: () -> List<ToolDef> =
@@ -1919,7 +1921,7 @@ class DaemonMcpServer(
               .trimIndent()
           ),
       ),
-    )
+    ) + (uiBuilderMcp?.toolDefs() ?: emptyList())
 
   private fun handleCallTool(
     session: Session,
@@ -1959,7 +1961,12 @@ class DaemonMcpServer(
       "get-documentation-for-story" -> toolStorybookGetDoc(args)
       "preview-stories" -> toolStorybookPreviewStories(args)
       "run-story-tests" -> toolStorybookRunTests(args)
-      else -> errorCallToolResult("unknown tool: $name")
+      else ->
+        if (profile == McpToolProfile.NATIVE) {
+          uiBuilderMcp?.handle(name, args) ?: errorCallToolResult("unknown tool: $name")
+        } else {
+          errorCallToolResult("unknown tool: $name")
+        }
     }
   }
 

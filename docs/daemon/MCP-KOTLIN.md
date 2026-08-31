@@ -32,6 +32,12 @@ HTTP / SSE transports are out of scope. If a remote-agent use case
 materialises, factor `McpSession`'s read/write loops behind a transport
 interface and add an HTTP variant alongside.
 
+The optional UI-builder facade is different: the MCP client still connects to
+this process over stdio, while `UiBuilderMcpAdapter` acts as an authenticated
+HTTP client of preview-server's versioned Design API. It depends only on the
+released protocol artifact and deliberately owns no reducer, persistence,
+catalog, or render implementation.
+
 ## Module layout
 
 ```

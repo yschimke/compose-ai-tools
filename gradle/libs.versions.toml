@@ -342,7 +342,7 @@ coil3 = "3.5.0"
 # here. This repository consumes them; it no longer owns these coordinates. A change to a contract
 # reaches this build only through a release there — see that repository's docs/VERSIONING.md.
 # A point pin, deliberately: a range would let a contract change arrive without a pull request.
-composeai-contracts = "2.1.0"
+composeai-contracts = "2.2.0"
 
 # The preview server, published from yschimke/compose-preview-server since its 2.0.0 — the
 # extraction #4732 planned. This repository no longer owns `cli/serve`: `compose-preview serve`,
@@ -390,6 +390,7 @@ composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol", v
 composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices", version.ref = "composeai-contracts" }
 composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta", version.ref = "composeai-contracts" }
 composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol", version.ref = "composeai-contracts" }
+composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol", version.ref = "composeai-contracts" }
 composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core", version.ref = "composeai-contracts" }
 composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core", version.ref = "composeai-contracts" }
 composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core", version.ref = "composeai-contracts" }

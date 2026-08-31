@@ -68,6 +68,22 @@ long-running calls. Data products are read via `list_data_products`,
 For the full tool surface, URI scheme, and wire protocol see
 [`docs/daemon/MCP.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/MCP.md).
 
+### Connect a remote UI-builder session
+
+The native MCP profile can expose eight additional tools backed by the same
+persisted preview-server UI-builder session a browser is editing. Supply the
+server URL as an argument and the temporary agent grant as an environment
+variable, keeping the secret out of process arguments:
+
+```sh
+COMPOSE_PREVIEW_UI_BUILDER_TOKEN='<grant>' \
+  compose-preview mcp serve --ui-builder-url https://preview.example/
+```
+
+Grants keep `ui-builder-read`, `ui-builder-write`, and `ui-builder-export`
+independent. The adapter is a remote protocol client only: it does not copy the
+server's reducer, catalog, renderer, or persistence into this repository.
+
 ## What we tell agents
 
 Point the agent at the

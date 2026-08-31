@@ -81,6 +81,16 @@ internal class McpCommand(
         --module <gradlePath> Limit to one or more module paths (repeatable)
         --json               Emit a structured envelope on stdout (install, doctor)
 
+      serve: remote UI builder (optional; native MCP profile only):
+        --ui-builder-url <url>
+                             Add the eight UI-builder tools backed by that preview-server URL.
+        --ui-builder-actor <actor>
+                             Override the authenticated actor id. By default it is derived from
+                             the grant token fingerprint.
+        COMPOSE_PREVIEW_UI_BUILDER_TOKEN
+                             Required secret when --ui-builder-url is set. It is read from the
+                             environment and never accepted as an argv value.
+
       install: agent host registration (each defaults to "on" when the host is detected
       locally; opt out with --no-<host>):
         --claude / --no-claude
@@ -577,6 +587,8 @@ internal class McpCommand(
         "--project",
         "--module",
         "--replicas-per-daemon",
+        "--ui-builder-url",
+        "--ui-builder-actor",
         "--antigravity-config",
         "--codex-config",
       )

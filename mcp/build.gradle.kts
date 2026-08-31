@@ -50,6 +50,8 @@ dependencies {
   implementation(libs.mcp.kotlin.sdk.server)
   // Okio-based file IO (`SystemFileSystem`) for descriptor reads + PNG/video byte reads.
   implementation(libs.composeai.common.io)
+  implementation(libs.composeai.agent.grant.protocol)
+  implementation(libs.composeai.ui.builder.protocol)
   // `:daemon:core` and `:render-session-api` are advertised as `api` because `:mcp` exposes
   // their types on its public surface (e.g. `SupervisedDaemon.session: RenderSession`,
   // `DaemonClasspathDescriptor`, the protocol message types reused by

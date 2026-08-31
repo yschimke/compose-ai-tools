@@ -296,6 +296,8 @@ internal object CliFlagValidation {
           "--no-codex",
           "--project",
           "--replicas-per-daemon",
+          "--ui-builder-url",
+          "--ui-builder-actor",
           "--verbose",
           "-v",
         ),
