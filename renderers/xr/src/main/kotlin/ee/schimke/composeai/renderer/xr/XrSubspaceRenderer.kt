@@ -55,6 +55,14 @@ public object XrSubspaceRenderer {
     rule.waitForIdle()
     FakeXrHeadPose.settleAfterComposition(rule, xrSession)
 
+    // Frame the settled layout once, then put the offline user's head at that exact camera eye and
+    // let viewer-facing modifiers react before the final recording. Camera framing uses panel
+    // positions and sizes rather than their rotations, so this pass does not create a feedback
+    // loop: only the billboards' final facing changes.
+    val bootstrap = SubspaceSceneRecorder.recordAllWithViews(rule, previewId = previewId)
+    val reviewerHeadPose = FakeXrHeadPose.headPoseForCamera(xrSession, bootstrap.scene.camera)
+    FakeXrHeadPose.settleAfterComposition(rule, xrSession, reviewerHeadPose)
+
     val recorded = SubspaceSceneRecorder.recordAllWithViews(rule, previewId = previewId)
     SubspaceSceneWriter.captureViewTextures(outputDir, recorded.scene.panels, recorded.panelViews)
     val sceneFile = SubspaceSceneWriter.writeScene(outputDir, recorded.scene)

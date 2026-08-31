@@ -343,10 +343,12 @@ public object SubspaceSceneRecorder {
         target = Vec3(0.0, 0.0, 0.0),
         distance = 1200.0,
         yawDeg = 0.0,
-        pitchDeg = -6.0,
+        pitchDeg = 6.0,
       )
     }
-    // Combined axis-aligned bounds of every panel (centre ± half-size on each axis).
+    // Combined axis-aligned bounds of every panel (centre ± half-size on each axis). Deliberately
+    // independent of panel rotation: the renderer can derive this camera before viewer-facing
+    // modifiers settle without introducing a camera/billboard feedback loop.
     val xs = panels.flatMap {
       listOf(
         it.poseInRoot.translation.x - it.sizeDp.width / 2.0,
@@ -381,8 +383,8 @@ public object SubspaceSceneRecorder {
       target = Vec3(centreX, centreY, 0.0),
       distance = distance,
       yawDeg = 0.0,
-      // Near head-on, with just a hint of downward tilt so panels read as floating in front of you.
-      pitchDeg = -6.0,
+      // Eye slightly above the target, looking down so panels read as floating in front of you.
+      pitchDeg = 6.0,
     )
   }
 

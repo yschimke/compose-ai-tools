@@ -51,7 +51,7 @@ import org.robolectric.annotation.LooperMode
  * runtime (via `ServiceLoader`, see `src/test/resources/META-INF/services`), enables device
  * tracking, and exercises a **custom viewer head pose in front of the panels (+Z)** — so a centred
  * panel ends up facing the viewer (≈ identity) and side panels turn inward toward them. The render
- * path's default origin pose is covered in `:renderer-xr`'s `XrSubspaceRendererTest`.
+ * path's camera-derived default pose is covered in `:renderer-xr`'s `XrSubspaceRendererTest`.
  *
  * Its own class (own Robolectric sandbox + PAUSED looper): the seeding calls `Session.configure` /
  * `ArDevice.update`, each an internal `runBlocking` that deadlocks under Robolectric's default
