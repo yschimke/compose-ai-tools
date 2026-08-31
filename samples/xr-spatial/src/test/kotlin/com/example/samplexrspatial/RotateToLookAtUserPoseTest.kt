@@ -45,14 +45,13 @@ import org.robolectric.annotation.LooperMode
  * [RotateToLookAtUserPreview] `@XrSubspacePreview`.
  *
  * `rotateToLookAtUser` is driven by `RotateToLookAtUserNode`, which reads the user's head pose from
- * an ARCore `ArDevice` perception job. Out of the box offline that's unusable two ways: the default
- * `Session` is created with device tracking `DISABLED`, so the node never initialises `arDevice`
- * and crashes in its head-pose job (`UninitializedPropertyAccessException`); and with no head pose
- * it degenerates to a 180° Y-flip. [seedHeadPose] fixes both — it registers the fake perception
+ * an ARCore `ArDevice` perception job. Out of the box offline the default `Session` is created with
+ * device tracking `DISABLED`, so the node never initialises `arDevice` and crashes in its head-pose
+ * job (`UninitializedPropertyAccessException`). [seedHeadPose] registers the fake perception
  * runtime (via `ServiceLoader`, see `src/test/resources/META-INF/services`), enables device
- * tracking, and seeds a **viewer head pose in front of the panels (+Z)** — so a centred panel ends
- * up facing the viewer (≈ identity) and side panels turn inward toward them. The render path seeds
- * identically via `:renderer-xr`'s `FakeXrHeadPose`.
+ * tracking, and exercises a **custom viewer head pose in front of the panels (+Z)** — so a centred
+ * panel ends up facing the viewer (≈ identity) and side panels turn inward toward them. The render
+ * path's default origin pose is covered in `:renderer-xr`'s `XrSubspaceRendererTest`.
  *
  * Its own class (own Robolectric sandbox + PAUSED looper): the seeding calls `Session.configure` /
  * `ArDevice.update`, each an internal `runBlocking` that deadlocks under Robolectric's default
@@ -80,10 +79,10 @@ class RotateToLookAtUserPoseTest {
 
   /**
    * Makes `rotateToLookAtUser` viable offline: pre-creates a `Session` with **device tracking
-   * enabled** and seeds the fake `ArDevice` with a **viewer head pose** in front of the panels
-   * (+Z). Mirrors `:renderer-xr`'s `FakeXrHeadPose`, inlined so the sample test stays free of a
-   * renderer dependency. The arcore types are reached reflectively so the sample only needs the
-   * `arcore-testing` artifact on its classpath.
+   * enabled** and seeds the fake `ArDevice` with a custom **viewer head pose** in front of the
+   * panels (+Z). It uses the same reflective fake-state seam as `:renderer-xr`'s `FakeXrHeadPose`,
+   * inlined so the sample test stays free of a renderer dependency. The arcore types are reached
+   * reflectively so the sample only needs the `arcore-testing` artifact on its classpath.
    *
    * Call **before** `setContent`, after the spatial feature is enabled.
    */

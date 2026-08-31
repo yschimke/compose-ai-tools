@@ -49,10 +49,11 @@ public object XrSubspaceRenderer {
     // face the viewer instead of crashing on an uninitialised `arDevice`. Harmless for previews
     // that
     // don't use it — it just hands `Subspace` a ready-configured session. See FakeXrHeadPose.
-    FakeXrHeadPose.install(rule)
+    val xrSession = FakeXrHeadPose.install(rule)
 
     rule.setContent { method.invoke(currentComposer, receiver) }
     rule.waitForIdle()
+    FakeXrHeadPose.settleAfterComposition(rule, xrSession)
 
     val recorded = SubspaceSceneRecorder.recordAllWithViews(rule, previewId = previewId)
     SubspaceSceneWriter.captureViewTextures(outputDir, recorded.scene.panels, recorded.panelViews)
