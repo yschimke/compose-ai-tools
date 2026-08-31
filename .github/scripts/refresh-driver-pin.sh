@@ -12,8 +12,10 @@
 # fixed. Issue #4107 is that loop.
 #
 # The pin can only ever be "the newest release", and resolving a tag to a commit
-# is mechanical, so this script owns the edit and `refresh-driver-pin.yml` runs
-# it on the tail of every release.
+# is mechanical, so RENOVATE owns the routine edit now — see the
+# `design-artifacts-driver-pin` custom manager in .github/renovate.json. This
+# script remains the VALIDATOR (`--check`, run by ci.yml on every PR) and the
+# manual escape hatch (`--tag`/`--sha`) for repairing a pin by hand.
 #
 # The pin lives in a data file rather than in the workflow because `GITHUB_TOKEN`
 # cannot push changes under `.github/workflows/` — see the header of the pin file
@@ -27,11 +29,12 @@
 # USAGE
 #   refresh-driver-pin.sh --check                 verify the pin file's shape
 #   refresh-driver-pin.sh --print                 print the currently pinned SHA
-#   refresh-driver-pin.sh --tag vX.Y.Z --sha <40-hex> [--date YYYY-MM-DD]
+#   refresh-driver-pin.sh --tag vX.Y.Z --sha <40-hex>
 
 set -euo pipefail
 
 FILE="${DRIVER_PIN_FILE:-.github/design-artifacts-driver-pin.txt}"
+PIN_REPO="${DRIVER_PIN_REPO:-yschimke/compose-ai-tools}"
 
 die() {
   echo "refresh-driver-pin: $*" >&2
@@ -41,7 +44,6 @@ die() {
 mode=''
 tag=''
 sha=''
-date="$(date -u +%Y-%m-%d)"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -49,7 +51,6 @@ while [ $# -gt 0 ]; do
     --print) mode=print ;;
     --tag) tag="${2:?--tag needs a value}"; mode="${mode:-write}"; shift ;;
     --sha) sha="${2:?--sha needs a value}"; mode="${mode:-write}"; shift ;;
-    --date) date="${2:?--date needs a value}"; shift ;;
     --file) FILE="${2:?--file needs a value}"; shift ;;
     -h|--help) sed -n '28,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
@@ -73,7 +74,6 @@ read_key() {
 
 current_sha="$(read_key sha)"
 current_tag="$(read_key tag)"
-current_date="$(read_key date)"
 
 validate() {
   printf '%s' "$1" | grep -qE "$2" || die "$3"
@@ -92,8 +92,47 @@ case "${mode}" in
     # Catch the shape here instead, on every PR.
     validate "${current_sha}" '^[0-9a-f]{40}$' "pinned sha is not a lower-case 40-hex commit: '${current_sha}'"
     validate "${current_tag}" '^v[0-9]+\.[0-9]+\.[0-9]+$' "pinned tag is not vX.Y.Z: '${current_tag}'"
-    validate "${current_date}" '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "pin date is not YYYY-MM-DD: '${current_date}'"
-    echo "driver pin OK: ${current_sha} (${current_tag}, pinned ${current_date})"
+
+    # The Renovate custom manager (.github/renovate.json) matches `sha=` IMMEDIATELY
+    # followed by `tag=`, as one dependency. read_key above is order-agnostic and
+    # tolerates comments between the keys, so without this a harmless manual reorder
+    # would pass every check here while Renovate silently extracted nothing and
+    # stopped refreshing the pin forever. Fail loudly on the layout instead.
+    # Exact string comparison, not a regex: the tag's dots would otherwise be
+    # metacharacters, and `grep -z` does not interpret a `\n` in an ERE anyway.
+    awk -v s="sha=${current_sha}" -v t="tag=${current_tag}" '
+      $0 == s { if ((getline nxt) > 0 && nxt == t) found = 1 }
+      END { exit(found ? 0 : 1) }
+    ' "${FILE}" \
+      || die "sha= must be immediately followed by tag= (the layout .github/renovate.json matches)"
+
+    # The pin must name a PUBLISHED release, not merely an existing tag.
+    # release-please writes the tag while the GitHub Release is still a draft and
+    # publishes it only once the artifacts are up, so a stranded draft leaves a real
+    # tag behind whose artifacts never shipped — v1.55.0 is exactly that, tagged
+    # cd234ab1 with nothing on Maven Central. Renovate's github-tags datasource
+    # cannot tell the two apart, so the gate the old refresh-driver-pin.yml applied
+    # before opening its PR lives here instead, where it fails the PR rather than
+    # shipping every external caller a driver revision that was never released.
+    #
+    # Needs a token, so it is a hard gate in CI and a notice locally.
+    token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    published='unverified (no token)'
+    if [ -z "${token}" ]; then
+      echo "driver pin: no GH_TOKEN/GITHUB_TOKEN — skipping the published-release check" >&2
+    else
+      code="$(curl -sS -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer ${token}" \
+        -H 'Accept: application/vnd.github+json' \
+        "https://api.github.com/repos/${PIN_REPO}/releases/tags/${current_tag}" || echo 000)"
+      # A draft release is not returned by this endpoint at all, so 404 covers both
+      # "still a draft" and "no such release" — neither may be pinned.
+      [ "${code}" = "200" ] \
+        || die "${current_tag} is not a published release of ${PIN_REPO} (HTTP ${code}) — a draft or missing release must not be pinned"
+      published='published'
+    fi
+
+    echo "driver pin OK: ${current_sha} (${current_tag}, ${published})"
     ;;
 
   write)
@@ -101,7 +140,6 @@ case "${mode}" in
     [ -n "${sha}" ] || die "--sha is required to rewrite the pin"
     validate "${tag}" '^v[0-9]+\.[0-9]+\.[0-9]+$' "tag must look like vX.Y.Z, got '${tag}'"
     validate "${sha}" '^[0-9a-f]{40}$' "sha must be a lower-case 40-hex commit, got '${sha}'"
-    validate "${date}" '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' "date must be YYYY-MM-DD, got '${date}'"
 
     if [ "${sha}" = "${current_sha}" ]; then
       echo "driver pin already at ${sha} (${current_tag}) — nothing to do"
@@ -111,13 +149,11 @@ case "${mode}" in
     sed -E -i \
       -e "s|^sha=.*$|sha=${sha}|" \
       -e "s|^tag=.*$|tag=${tag}|" \
-      -e "s|^date=.*$|date=${date}|" \
       "${FILE}"
 
     # Re-read rather than trust the substitution: a rewrite that silently missed
     # a key would otherwise ship a pin file whose sha and tag disagree.
     [ "$(read_key sha)" = "${sha}" ] && [ "$(read_key tag)" = "${tag}" ] \
-      && [ "$(read_key date)" = "${date}" ] \
       || die "rewrite did not converge"
 
     echo "driver pin ${current_sha} (${current_tag}) -> ${sha} (${tag})"

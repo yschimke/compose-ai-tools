@@ -60,17 +60,20 @@ That pin used to be a standing manual step, and it is the friction [#4107](https
 
 **1. This repo was pinning itself.** `cli-source: build` exists so compose-ai-tools' own catalogs render against HEAD's renderer — but the *driver* beside that CLI still came from the pin, so HEAD's renderer was being driven by a release-old driver. A fix merged to `main` did not reach our own delivery branches until a release cut **and** someone hand-bumped the pin. [#4103](https://github.com/yschimke/compose-ai-tools/pull/4103) fixed a missing import and the very push that landed it still died in `generate`; it took [#4106](https://github.com/yschimke/compose-ai-tools/pull/4106) to move the pin. The driver revision now resolves to **the caller commit when the caller is this repository**, and to the pin for everyone else. `github.repository` is the caller's repo and is not caller-settable, and no `pull_request` trigger exists anywhere in the in-repo call chain, so this does not widen what the workflow will execute.
 
-**2. Moving the pin was a hand-written PR.** [#4079](https://github.com/yschimke/compose-ai-tools/pull/4079), [#4084](https://github.com/yschimke/compose-ai-tools/pull/4084), [#4085](https://github.com/yschimke/compose-ai-tools/pull/4085) and #4106 are four of them, each authored *after* a downstream repo's CI went red on a bug this repo had already fixed. [`refresh-driver-pin.yml`](../.github/workflows/refresh-driver-pin.yml) now opens that PR on the tail of every release: it hangs off the completed `Release PR` run via `workflow_run`, gated on the newest *published* release pointing at the commit that run built (so a draft can't trigger it), resolves the tag to a commit, and runs [`.github/scripts/refresh-driver-pin.sh`](../.github/scripts/refresh-driver-pin.sh). Nothing is left to discover; a diff that was already written is waiting to be reviewed.
+**2. Moving the pin was a hand-written PR.** [#4079](https://github.com/yschimke/compose-ai-tools/pull/4079), [#4084](https://github.com/yschimke/compose-ai-tools/pull/4084), [#4085](https://github.com/yschimke/compose-ai-tools/pull/4085) and #4106 are four of them, each authored *after* a downstream repo's CI went red on a bug this repo had already fixed. **Renovate** now opens that PR, via the `design-artifacts-driver-pin` custom manager in [`.github/renovate.json`](../.github/renovate.json). It reads `sha` and `tag` as ONE dependency — `currentDigest` and `currentValue` on a single match — against this repository's own GitHub tags, so the two keys move together and cannot drift apart.
 
-Three details there are load-bearing and easy to get wrong:
+This replaced a bespoke `refresh-driver-pin.yml`, which hung off the completed `Release PR` run via `workflow_run` and opened the PR with `GITHUB_TOKEN`. That token's pushes **do not start workflow runs**, so every bump PR arrived with no checks reporting and had to be poked by hand before anyone could see it go green. Renovate is a GitHub App and its pushes do trigger workflows, which is the main reason the move was worth making.
 
-- **The generated PR is titled `chore(ci):`, not `fix(ci):`.** A squash merge uses the PR title as the commit headline, and release-please cuts a patch release for `fix:` — so a `fix:`-titled bump would make every release propose another release, whose publish opens another bump. Worth noting that the hand-written bumps this replaces were all titled `fix(ci):` (#4106 and friends), so each of them cut a release of its own.
-- **The gate runs outside the concurrency group.** GitHub keeps only one *pending* run per group and cancels the older one — `cancel-in-progress: false` protects the running run, not the queue. Since `Release PR` completes on every push to `main`, a pending release refresh could otherwise be evicted by a no-op run behind it, and a `workflow_run` fires once, so there is no retry. Only the job that pushes the branch is serialised.
-- **One branch, `agent/refresh-driver-pin`, not one per tag.** Two releases in quick succession would otherwise open two PRs editing the same lines from the same base, each wedging the other in conflict. The newest release supersedes the pending one in place, retitling the open PR rather than opening a second.
+Two details are load-bearing and easy to get wrong:
+
+- **The PR is titled `chore(ci):`, not `fix(ci):`.** A squash merge uses the PR title as the commit headline, and release-please cuts a patch release for `fix:` — so a `fix:`-titled bump would make every release propose another release, whose publish opens another bump. The hand-written bumps this lineage replaces were all titled `fix(ci):` (#4106 and friends), so each of them cut a release of its own. This is pinned in the package rule (`semanticCommitType: chore`, `semanticCommitScope: ci`) rather than left to Renovate's default.
+- **One branch, not one per tag.** Two releases in quick succession must not open two PRs editing the same lines from the same base, each wedging the other in conflict. Renovate gives this for free: it keeps one branch per dependency and rewrites it in place, so the newest release supersedes the pending bump rather than racing it.
+
+The trade accepted here is latency. The old workflow fired on the tail of the release; Renovate polls, so the bump arrives within the hour rather than within the minute. That is well inside the window #4107 was about — a downstream repo running *last release's* driver for days — and it buys a PR whose checks actually run.
 
 ### Why the pin is a data file
 
-`GITHUB_TOKEN` **cannot push changes to anything under `.github/workflows/`** — the App token needs a `workflows` permission that is not one of the scopes a `permissions:` block can request. A pin living in the workflow therefore could not be refreshed by any GITHUB_TOKEN-authenticated automation at all, including release-please. Keeping it in a sibling data file is what makes the automation possible.
+`GITHUB_TOKEN` **cannot push changes to anything under `.github/workflows/`** — the App token needs a `workflows` permission that is not one of the scopes a `permissions:` block can request. A pin living in the workflow therefore could not be refreshed by any GITHUB_TOKEN-authenticated automation at all, including release-please, which is what forced the data file originally. That particular constraint no longer binds now Renovate maintains the pin, but the file stays: the rest of this section — a runtime-read, fail-closed, immutable revision resolved once per run — is why it is shaped this way, and none of that changed.
 
 What the pin still buys is unchanged: the privileged workflow executes an immutable, release-blessed commit rather than a caller-selected ref that can carry fork code. The workflow reads the file over the API, validates a 40-hex commit, and fails closed otherwise; nothing in the file is executed.
 
@@ -84,17 +87,17 @@ Why release-please can't do this either, even setting the token aside: the pin h
 
 Two caveats worth knowing:
 
-- The PR is opened with `GITHUB_TOKEN`, whose pushes **do not start workflow runs**, so its checks won't report until someone pushes to the branch or closes and reopens it. The change is three lines of a data file and `ci` re-runs `refresh-driver-pin.sh --check` on merge to `main`, so this is a merge click, not a review burden.
+- The change is two lines of a data file and `ci` re-runs `refresh-driver-pin.sh --check` on it, so this is a merge click, not a review burden.
 - If the PR sits unmerged, only **external** consumers stay on the older driver. Our own renders no longer read the pin.
 
-To move the pin by hand (or to repair a missed release), run **Refresh driver pin** via `workflow_dispatch` with the tag, or locally:
+To move the pin by hand (or to repair a missed release), run it locally:
 
 ```bash
 .github/scripts/refresh-driver-pin.sh --tag v1.12.0 --sha <40-hex commit>
 .github/scripts/refresh-driver-pin.sh --check
 ```
 
-`--check` runs in `ci` on every PR. It fails on an abbreviated, upper-case or missing SHA, a malformed tag or date, and a duplicated key — all of which otherwise fail *at runtime in a consumer's repo*, after that run has already paid for a checkout and a JDK. It is covered by `.github/scripts/test-refresh-driver-pin.sh`, also run by `ci`, which additionally pins the exact `sed` expression the workflow uses to read the file, so the reader and the validator cannot drift apart. Change either only with those passing.
+`--check` runs in `ci` on every PR. It fails on an abbreviated, upper-case or missing SHA, a malformed tag, and a duplicated key — all of which otherwise fail *at runtime in a consumer's repo*, after that run has already paid for a checkout and a JDK. It is covered by `.github/scripts/test-refresh-driver-pin.sh`, also run by `ci`, which additionally pins the exact `sed` expression the workflow uses to read the file, so the reader and the validator cannot drift apart. Change either only with those passing.
 
 ## Versioning after 1.0.0
 
