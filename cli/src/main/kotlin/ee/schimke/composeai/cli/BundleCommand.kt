@@ -1409,7 +1409,8 @@ private fun renderBundleWithOverrides(
   verbose: Boolean,
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
-  if (BundleReader.readMetadata(bundleFile).manifest.backend == "desktop") {
+  val backend = readBundleBackendForRender(bundleFile) ?: return false
+  if (backend == "desktop") {
     try {
       SkikoNativeProvision.prepareInstalledDesktopSidecars()
     } catch (e: IllegalStateException) {
@@ -1483,6 +1484,17 @@ private fun renderBundleWithOverrides(
     workspace.deleteRecursively()
   }
 }
+
+internal fun readBundleBackendForRender(
+  bundleFile: File,
+  report: (String) -> Unit = { System.err.println(it) },
+): String? =
+  try {
+    BundleReader.readMetadata(bundleFile).manifest.backend
+  } catch (e: Exception) {
+    report("bundle render: cannot read bundle metadata from ${bundleFile.path}: ${e.message}")
+    null
+  }
 
 /**
  * Rehydrate [bundleFile]'s externalized resources (fonts lifted out by `bundle externalize`,

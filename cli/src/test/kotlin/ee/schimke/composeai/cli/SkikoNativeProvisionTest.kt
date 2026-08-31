@@ -112,6 +112,29 @@ class SkikoNativeProvisionTest {
   }
 
   @Test
+  fun `explicit directory rejects a corrupt matching jar`() {
+    val configured = File(tmp, "configured")
+    File(configured, "skiko-awt-runtime-linux-x64-1.0.jar").apply {
+      parentFile.mkdirs()
+      writeText("not a jar")
+    }
+
+    val failure =
+      assertFailsWith<IllegalStateException> {
+        SkikoNativeProvision.ensureAvailable(
+          "1.0",
+          "linux-x64",
+          configured,
+          File(tmp, "cache"),
+          offline = true,
+          fetcher = SkikoNativeProvision.Fetcher { _, _ -> error("must not fetch") },
+        )
+      }
+
+    assertTrue(failure.message.orEmpty().contains("does not contain a valid"))
+  }
+
+  @Test
   fun `offline miss explains prewarming and override`() {
     val failure =
       assertFailsWith<IllegalStateException> {

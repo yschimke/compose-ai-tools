@@ -193,3 +193,8 @@ internal object SkikoNativeProvision {
     if (!isValidNativeJar(file)) error(message())
   }
 }
+
+/** JVM-stable bridge used lazily by bundle-format without introducing a module dependency cycle. */
+@JvmName("provisionSkikoNativeForDesktopSidecar")
+internal fun provisionSkikoNativeForDesktopSidecar(sidecarJars: List<File>): File =
+  SkikoNativeProvision.prepare(sidecarJars)

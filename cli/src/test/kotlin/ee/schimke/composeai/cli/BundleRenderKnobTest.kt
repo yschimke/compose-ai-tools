@@ -82,6 +82,16 @@ class BundleRenderKnobTest {
   }
 
   @Test
+  fun `invalid bundle metadata reports a controlled render error`() {
+    val file = File(tempDir("invalid-bundle"), "truncated.png").apply { writeText("not a bundle") }
+    val messages = mutableListOf<String>()
+
+    assertNull(readBundleBackendForRender(file, messages::add))
+    assertEquals(1, messages.size)
+    assertTrue(messages.single().startsWith("bundle render: cannot read bundle metadata"))
+  }
+
+  @Test
   fun `sanitizeBundleRenderName keeps safe chars and replaces the rest with underscore`() {
     // Preview ids can carry a `@Preview(name = "Phone, dark")` suffix and package dots.
     assertEquals(
