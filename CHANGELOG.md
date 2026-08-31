@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.2](https://github.com/yschimke/compose-ai-tools/compare/v1.60.1...v1.60.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **design-artifacts:** reject shard exclusion format skew ([#4917](https://github.com/yschimke/compose-ai-tools/issues/4917)) ([3234c77](https://github.com/yschimke/compose-ai-tools/commit/3234c77d9636b8dfc8187b1434f696dab54d2bd5))
+
 ## [1.60.1](https://github.com/yschimke/compose-ai-tools/compare/v1.60.0...v1.60.1) (2026-08-31)
 
 
