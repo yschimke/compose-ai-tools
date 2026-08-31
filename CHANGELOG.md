@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.0](https://github.com/yschimke/compose-ai-tools/compare/v1.59.1...v1.60.0) (2026-08-31)
+
+
+### Features
+
+* **bundle:** carry spatial scenes for WebXR previews ([#4907](https://github.com/yschimke/compose-ai-tools/issues/4907)) ([f23acad](https://github.com/yschimke/compose-ai-tools/commit/f23acadf1287906885f5cb9584a98f2c200baf11))
+
 ## [1.59.1](https://github.com/yschimke/compose-ai-tools/compare/v1.59.0...v1.59.1) (2026-08-31)
 
 
