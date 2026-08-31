@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.ColorScheme
@@ -33,8 +34,11 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
@@ -464,17 +468,16 @@ private object CatalogPreviewStrategy : PreviewRenderStrategy {
     // Emit the resolved-token sidecar (issue #2167) once per sheet, alongside the PNG. Keyed by
     // `preview.id` so it fires on first composition only — the render composes exactly once.
     remember(preview.id) { CatalogTokenSidecar.write(preview.id, preview.params.catalogTokens) }
-    Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
-      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        for (row in rows) {
-          when (row) {
-            is CatalogRow.Swatch -> CatalogSwatchRow(label = row.label, color = row.color)
-            is CatalogRow.Type -> CatalogTypeRow(label = row.label, style = row.style)
-            is CatalogRow.ShapeSpec -> CatalogShapeRow(label = row.label, shape = row.shape)
+    CatalogSpecimenSheet(
+      colours =
+        rows.filterIsInstance<CatalogRow.Swatch>().map { row ->
+          SpecimenCell(CATALOG_SWATCH_ROW_HEIGHT) {
+            CatalogSwatchRow(label = row.label, color = row.color)
           }
-        }
-      }
-    }
+        },
+      types = rows.filterIsInstance<CatalogRow.Type>().map { it.label to it.style },
+      shapes = rows.filterIsInstance<CatalogRow.ShapeSpec>().map { it.label to it.shape },
+    )
   }
 }
 
@@ -769,24 +772,231 @@ private fun catalogRowsFor(token: CatalogToken): List<CatalogRow> =
         )
       )
     CatalogTokenKind.COLOR_SCHEME -> {
-      val scheme = CatalogValueReflection.reflectAs<ColorScheme>(token.className, token.member)
-      colorSchemeRoles(scheme).map { (role, color) ->
+      val scheme = CatalogValueReflection.reflectAs<Any>(token.className, token.member)
+      catalogColorSchemeRoles(scheme).map { (role, color) ->
         CatalogRow.Swatch("${token.label} · $role", color)
       }
     }
     CatalogTokenKind.TYPOGRAPHY -> {
-      val typography = CatalogValueReflection.reflectAs<Typography>(token.className, token.member)
-      typographyRoles(typography).map { (role, style) ->
+      val typography = CatalogValueReflection.reflectAs<Any>(token.className, token.member)
+      catalogTypographyRoles(typography).map { (role, style) ->
         CatalogRow.Type("${token.label} · $role", style)
       }
     }
     CatalogTokenKind.SHAPES -> {
-      val shapes = CatalogValueReflection.reflectAs<Shapes>(token.className, token.member)
-      shapesRoles(shapes).map { (role, shape) ->
+      val shapes = CatalogValueReflection.reflectAs<Any>(token.className, token.member)
+      catalogShapesRoles(shapes).map { (role, shape) ->
         CatalogRow.ShapeSpec("${token.label} · $role", shape)
       }
     }
   }
+
+internal fun catalogColorSchemeRoles(scheme: Any): List<Pair<String, Color>> =
+  when (scheme) {
+    is ColorScheme -> colorSchemeRoles(scheme)
+    else -> RemoteCatalogValues.colorSchemeRoles(scheme)
+  }
+
+internal fun catalogTypographyRoles(typography: Any): List<Pair<String, TextStyle>> =
+  when (typography) {
+    is Typography -> typographyRoles(typography)
+    else -> RemoteCatalogValues.typographyRoles(typography)
+  }
+
+internal fun catalogShapesRoles(shapes: Any): List<Pair<String, Shape>> =
+  when (shapes) {
+    is Shapes -> shapesRoles(shapes)
+    else -> RemoteCatalogValues.shapesRoles(shapes)
+  }
+
+/**
+ * Converts Wear Remote Material 3 theme objects into ordinary Compose values for the synthetic
+ * catalog raster and its structured sidecar. Kept reflection-only so the renderer does not add a
+ * production dependency on the fast-moving Remote Compose alpha; the consumer supplies the concrete
+ * classes, and absent or dynamic roles simply shorten the sheet.
+ *
+ * The result deliberately stays a renderer-drawn catalog raster, not a recorded `RemoteDocument`: a
+ * token sheet is inventory rather than a component replay, and its complete resolved values also
+ * travel in [CatalogTokenSidecar]. Live named-value editing continues to apply to actual Remote
+ * previews instead of giving this synthetic sheet a second output contract.
+ */
+internal object RemoteCatalogValues {
+  private const val REMOTE_COLOR_SCHEME = "androidx.wear.compose.remote.material3.RemoteColorScheme"
+  private const val REMOTE_TYPOGRAPHY = "androidx.wear.compose.remote.material3.RemoteTypography"
+  private const val REMOTE_SHAPES = "androidx.wear.compose.remote.material3.RemoteShapes"
+
+  private val colorRoleNames =
+    listOf(
+      "primary",
+      "primaryDim",
+      "primaryContainer",
+      "onPrimary",
+      "onPrimaryContainer",
+      "secondary",
+      "secondaryDim",
+      "secondaryContainer",
+      "onSecondary",
+      "onSecondaryContainer",
+      "tertiary",
+      "tertiaryDim",
+      "tertiaryContainer",
+      "onTertiary",
+      "onTertiaryContainer",
+      "surfaceContainerLow",
+      "surfaceContainer",
+      "surfaceContainerHigh",
+      "onSurface",
+      "onSurfaceVariant",
+      "outline",
+      "outlineVariant",
+      "background",
+      "onBackground",
+      "error",
+      "errorDim",
+      "errorContainer",
+      "onError",
+      "onErrorContainer",
+    )
+
+  private val typographyRoleNames =
+    listOf(
+      "displayLarge",
+      "displayMedium",
+      "displaySmall",
+      "titleLarge",
+      "titleMedium",
+      "titleSmall",
+      "labelLarge",
+      "labelMedium",
+      "labelSmall",
+      "bodyLarge",
+      "bodyMedium",
+      "bodySmall",
+      "bodyExtraSmall",
+      "numeralExtraLarge",
+      "numeralLarge",
+      "numeralMedium",
+      "numeralSmall",
+      "numeralExtraSmall",
+    )
+
+  private val shapeRoleNames = listOf("extraSmall", "small", "medium", "large", "extraLarge")
+
+  fun colorSchemeRoles(scheme: Any): List<Pair<String, Color>> {
+    requireRemoteType(scheme, REMOTE_COLOR_SCHEME)
+    return colorRoleNames.mapNotNull { role ->
+      remoteColorOrNull(propertyOrNull(scheme, role))?.let { role to it }
+    }
+  }
+
+  fun typographyRoles(typography: Any): List<Pair<String, TextStyle>> {
+    requireRemoteType(typography, REMOTE_TYPOGRAPHY)
+    return typographyRoleNames.mapNotNull { role ->
+      propertyOrNull(typography, role)?.let(::textStyleOrNull)?.let { role to it }
+    }
+  }
+
+  fun shapesRoles(shapes: Any): List<Pair<String, Shape>> {
+    requireRemoteType(shapes, REMOTE_SHAPES)
+    return shapeRoleNames.mapNotNull { role ->
+      propertyOrNull(shapes, role)?.let(::shapeOrNull)?.let { role to it }
+    }
+  }
+
+  private fun textStyleOrNull(remote: Any): TextStyle? = runCatching {
+    TextStyle(
+      color = remoteColorOrNull(propertyOrNull(remote, "color")) ?: Color.Unspecified,
+      fontSize = remoteTextUnitOrNull(propertyOrNull(remote, "fontSize")) ?: TextUnit.Unspecified,
+      fontWeight = propertyOrNull(remote, "fontWeight") as? FontWeight,
+      fontStyle = propertyOrNull(remote, "fontStyle") as? FontStyle,
+      fontFamily = remoteFontFamilyOrNull(propertyOrNull(remote, "fontFamily")),
+      letterSpacing =
+        remoteTextUnitOrNull(propertyOrNull(remote, "letterSpacing")) ?: TextUnit.Unspecified,
+      background = remoteColorOrNull(propertyOrNull(remote, "background")) ?: Color.Unspecified,
+      lineHeight =
+        remoteTextUnitOrNull(propertyOrNull(remote, "lineHeight")) ?: TextUnit.Unspecified,
+      textDecoration = propertyOrNull(remote, "textDecoration") as? TextDecoration,
+    )
+  }
+    .getOrNull()
+
+  private fun shapeOrNull(remote: Any): Shape? = runCatching {
+    RoundedCornerShape(
+      topStart = cornerSize(property(remote, "topStart")),
+      topEnd = cornerSize(property(remote, "topEnd")),
+      bottomEnd = cornerSize(property(remote, "bottomEnd")),
+      bottomStart = cornerSize(property(remote, "bottomStart")),
+    )
+  }
+    .getOrNull()
+
+  private fun cornerSize(remote: Any): CornerSize =
+    when {
+      remote.javaClass.name.endsWith(".RemotePercentCornerSize") ->
+        CornerSize(property(remote, "percent") as Int)
+      remote.javaClass.name.endsWith(".RemoteDpCornerSize") -> {
+        val dp = constantOrNull(property(remote, "size")) as? Dp
+        CornerSize(requireNotNull(dp) { "Remote dp corner is not constant" })
+      }
+      else -> error("Unsupported Remote corner size ${remote.javaClass.name}")
+    }
+
+  private fun remoteColorOrNull(remote: Any?): Color? {
+    if (remote == null) return null
+    (constantOrNull(remote) as? Color)?.let {
+      return it
+    }
+    // RemoteColorScheme deliberately exposes every role as a named value so a replay can override
+    // it. The public constant is therefore null even though createNamedRemoteColor captured a
+    // concrete fallback. Its id-provider lambda retains that packed Color long; read the fallback
+    // without invoking the provider (which would require constructing a RemoteDocument writer).
+    return runCatching {
+      val provider = property(remote, "idProvider")
+      val bitsField =
+        requireNotNull(
+          provider.javaClass.declaredFields.firstOrNull { it.type == Long::class.javaPrimitiveType }
+        )
+      bitsField.isAccessible = true
+      Color(bitsField.getLong(provider).toULong())
+    }
+      .getOrNull()
+  }
+
+  private fun remoteTextUnitOrNull(remote: Any?): TextUnit? =
+    remote?.let(::constantOrNull) as? TextUnit
+
+  private fun remoteFontFamilyOrNull(remote: Any?): FontFamily? {
+    val name = remote?.let { propertyOrNull(it, "name") as? String }?.lowercase() ?: return null
+    return when {
+      "mono" in name -> FontFamily.Monospace
+      "serif" in name -> FontFamily.Serif
+      "cursive" in name -> FontFamily.Cursive
+      "sans" in name -> FontFamily.SansSerif
+      else -> FontFamily.Default
+    }
+  }
+
+  private fun constantOrNull(remote: Any): Any? =
+    remote.javaClass.methods
+      .firstOrNull { it.name == "getConstantValueOrNull" && it.parameterCount == 0 }
+      ?.invoke(remote)
+
+  private fun property(receiver: Any, name: String): Any =
+    requireNotNull(propertyOrNull(receiver, name)) { "Missing ${receiver.javaClass.name}.$name" }
+
+  private fun propertyOrNull(receiver: Any, name: String): Any? {
+    val getter = "get" + name.replaceFirstChar { it.uppercase() }
+    return receiver.javaClass.methods
+      .firstOrNull { it.parameterCount == 0 && it.name.startsWith(getter) }
+      ?.invoke(receiver)
+  }
+
+  private fun requireRemoteType(value: Any, expected: String) {
+    require(value.javaClass.name == expected) {
+      "Expected $expected catalog value, got ${value.javaClass.name}"
+    }
+  }
+}
 
 /** The Material 3 colour roles, in specimen order, read off a resolved [ColorScheme]. */
 internal fun colorSchemeRoles(scheme: ColorScheme): List<Pair<String, Color>> =

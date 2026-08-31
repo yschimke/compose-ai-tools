@@ -220,29 +220,29 @@ internal object CatalogTokenSidecar {
           )
         )
       CatalogTokenKind.COLOR_SCHEME ->
-        colorSchemeRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
-          (role, color) ->
-          entryJson(
-            "${token.label} · $role",
-            token.className,
-            token.member,
-            "COLOR",
-            colorJson(color),
-          )
-        }
+        catalogColorSchemeRoles(CatalogValueReflection.reflectAs(token.className, token.member))
+          .map { (role, color) ->
+            entryJson(
+              "${token.label} · $role",
+              token.className,
+              token.member,
+              "COLOR",
+              colorJson(color),
+            )
+          }
       CatalogTokenKind.TYPOGRAPHY ->
-        typographyRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
-          (role, style) ->
-          entryJson(
-            "${token.label} · $role",
-            token.className,
-            token.member,
-            "TEXT_STYLE",
-            textStyleJson(style),
-          )
-        }
+        catalogTypographyRoles(CatalogValueReflection.reflectAs(token.className, token.member))
+          .map { (role, style) ->
+            entryJson(
+              "${token.label} · $role",
+              token.className,
+              token.member,
+              "TEXT_STYLE",
+              textStyleJson(style),
+            )
+          }
       CatalogTokenKind.SHAPES ->
-        shapesRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+        catalogShapesRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
           (role, shape) ->
           entryJson(
             "${token.label} · $role",

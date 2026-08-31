@@ -1344,6 +1344,87 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover recognises Remote Material whole-object catalogs`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "Catalogs.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class ColorCatalog(val name: String = "", val group: String = "")
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class TypographyCatalog(val name: String = "", val group: String = "")
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FIELD)
+        annotation class ShapeCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+
+    val remoteDir =
+      File(projectDir, "src/main/kotlin/androidx/wear/compose/remote/material3").apply { mkdirs() }
+    File(remoteDir, "RemoteThemeObjects.kt")
+      .writeText(
+        """
+        package androidx.wear.compose.remote.material3
+
+        class RemoteColorScheme
+        class RemoteTypography
+        class RemoteShapes
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/RemoteThemeTokens.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.wear.compose.remote.material3.RemoteColorScheme
+        import androidx.wear.compose.remote.material3.RemoteShapes
+        import androidx.wear.compose.remote.material3.RemoteTypography
+        import ee.schimke.composeai.preview.ColorCatalog
+        import ee.schimke.composeai.preview.ShapeCatalog
+        import ee.schimke.composeai.preview.TypographyCatalog
+
+        @ColorCatalog(group = "Remote") val Colors = RemoteColorScheme()
+        @TypographyCatalog(group = "Remote") val Type = RemoteTypography()
+        @ShapeCatalog(group = "Remote") val Shapes = RemoteShapes()
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val byId = manifest.previews.associateBy { it.id }
+    assertThat(byId.getValue("colorcatalog__Remote").params.catalogTokens.single().tokenKind)
+      .isEqualTo(CatalogTokenKind.COLOR_SCHEME)
+    assertThat(byId.getValue("typographycatalog__Remote").params.catalogTokens.single().tokenKind)
+      .isEqualTo(CatalogTokenKind.TYPOGRAPHY)
+    assertThat(byId.getValue("shapecatalog__Remote").params.catalogTokens.single().tokenKind)
+      .isEqualTo(CatalogTokenKind.SHAPES)
+  }
+
+  @Test
   fun `composePreviewDiscover emits a theme catalog sheet per @ThemeCatalog provider`() {
     val projectDir = createCmpTestProject()
 
