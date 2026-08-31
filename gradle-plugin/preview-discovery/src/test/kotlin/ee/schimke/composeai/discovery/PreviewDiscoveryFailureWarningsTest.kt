@@ -316,6 +316,109 @@ class PreviewDiscoveryFailureWarningsTest {
     classFile.writeBytes(cw.toByteArray())
   }
 
+  @Test
+  fun `sources declaring @Preview with zero discovered previews warns instead of saying nothing`() {
+    // Issue #4890. The gap this closes: the @Preview annotation IS on the scan classpath and the
+    // compiled outputs are NOT empty, so neither existing diagnostic path fires — discovery wrote
+    // an empty previews.json and said nothing at all. The first sign of trouble was
+    // composePreviewBundle failing three tasks later with "previews.json is empty", which names no
+    // class dir, no jar and no annotation, and the CI lane runs the CLI without --verbose so even
+    // Gradle's own output is gone. Reproduced by joreilly/BikeShare's :common, whose commonMain
+    // declares @Preview while the classes the scan reached carried none.
+    val classDir = tempDir.newFolder("classes")
+    // Puts the @Preview annotation class itself on the scan classpath, so previewAnnotationsMissing
+    // is false and the OTHER soft-warning branch cannot account for the message.
+    writeAnnotationClass(classDir, internalName = "androidx/compose/ui/tooling/preview/Preview")
+    writeEmptyClass(classDir, internalName = "test/NoPreviewsHere")
+
+    val sourceFile = tempDir.newFile("StationListUI.kt")
+    sourceFile.writeText(
+      """
+      package test
+
+      @Preview
+      @Composable
+      fun StationViewPreview() {}
+      """
+        .trimIndent()
+    )
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classDir),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(sourceFile),
+          moduleName = ":common",
+          variantName = "debug",
+          projectDirectory = classDir,
+          failOnEmpty = false,
+        )
+      )
+
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
+    val success = outcome as PreviewDiscovery.Outcome.Success
+    assertThat(success.manifest.previews).isEmpty()
+    val joined = success.warnings.joinToString("\n")
+    assertThat(joined).contains("discovered 0 previews in module ':common'")
+    // Names the source file, so the reader knows the previews were authored and where.
+    assertThat(joined).contains("StationListUI.kt")
+    // And carries the same diagnostic dump the other zero-preview paths emit.
+    assertThat(joined).contains("0-previews diagnostics for module ':common'")
+    assertThat(joined).contains("classDirs")
+  }
+
+  @Test
+  fun `a module with no @Preview in its sources stays silent`() {
+    // The other half of the guard above: zero previews is NORMAL for a data layer or a utility
+    // module, and those must not start emitting a diagnostic dump. The discriminator is the
+    // module's own sources, the same signal the empty-compiled-outputs check trusts.
+    val classDir = tempDir.newFolder("classes")
+    writeAnnotationClass(classDir, internalName = "androidx/compose/ui/tooling/preview/Preview")
+    writeEmptyClass(classDir, internalName = "test/DataLayer")
+
+    val sourceFile = tempDir.newFile("Repository.kt")
+    sourceFile.writeText("package test\n\nclass Repository\n")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classDir),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(sourceFile),
+          moduleName = ":data",
+          variantName = "debug",
+          projectDirectory = classDir,
+          failOnEmpty = false,
+        )
+      )
+
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
+    val joined = (outcome as PreviewDiscovery.Outcome.Success).warnings.joinToString("\n")
+    assertThat(joined).doesNotContain("0-previews diagnostics")
+  }
+
+  /**
+   * Writes a minimal annotation `.class` file, so `scanResult.getClassInfo(fqn)` resolves it and
+   * `reachablePreviewFqns` is non-empty. No members: the tests using it only need the annotation
+   * CLASS to be reachable, never to read attributes off a usage.
+   */
+  private fun writeAnnotationClass(outDir: File, internalName: String) {
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_INTERFACE or Opcodes.ACC_ABSTRACT or Opcodes.ACC_ANNOTATION,
+      internalName,
+      null,
+      "java/lang/Object",
+      arrayOf("java/lang/annotation/Annotation"),
+    )
+    cw.visitEnd()
+    val classFile = File(outDir, "$internalName.class")
+    classFile.parentFile.mkdirs()
+    classFile.writeBytes(cw.toByteArray())
+  }
+
   /**
    * Writes a minimal empty `.class` file (no methods, no annotations). Used by the soft-warning
    * tests where we want `scanClassCount > 0` but no preview-able methods so discovery returns zero
