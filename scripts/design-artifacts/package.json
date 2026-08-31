@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@design-parity/adapter-figma": "^1.0.0",
-    "@design-parity/candidate": "^0.1.53",
+    "@design-parity/candidate": "^1.0.0",
     "@design-parity/catalog-export": "^1.0.0",
     "fflate": "^0.8.2",
     "pixelmatch": "^7.0.0",
