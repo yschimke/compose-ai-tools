@@ -557,16 +557,42 @@ ${details}
       if (edges) frameGutter(hero, edges);
       return;
     }
-    fetch(link.getAttribute("href"))
-      .then(function (r) { return r.ok ? r.text() : null; })
-      .then(function (txt) {
-        // The vector wins where it applies — it answers the tighter question of where the component
-        // sits on a canvas it was drawn on — and the gutter answers when it does not.
-        var box = txt ? parseBox(txt) : null;
-        if (box) frame(hero, box, edges);
-        else if (edges) frameGutter(hero, edges);
-      })
-      .catch(function () { if (edges) frameGutter(hero, edges); });
+    // Fetch the vector only once the card is actually near the viewport.
+    //
+    // A deferred catalog publishes no static vector: the href is an absolute live-render URL and
+    // the daemon generates the SVG per request, from a small pool of live seats. Fetching every
+    // card's on load would start a render for the whole catalog the instant the gallery opens —
+    // thousands, on the large catalogs deferral exists for — spending the seats on bounding boxes
+    // and answering the visitors who actually asked for a vector with 503s.
+    //
+    // Deferring the same fetch to visibility fixes that without giving up the crop: the vector is
+    // the only source of the content box for a card with no declared gutter (an ordinary 454x454
+    // Wear canvas, say), so skipping it outright would leave those heroes uncropped in the full
+    // device canvas. Only what someone looks at is rendered, at the pace they scroll.
+    var pending = function () {
+      fetch(link.getAttribute("href"))
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (txt) {
+          // The vector wins where it applies — it answers the tighter question of where the
+          // component sits on a canvas it was drawn on — and the gutter answers when it does not.
+          var box = txt ? parseBox(txt) : null;
+          if (box) frame(hero, box, edges);
+          else if (edges) frameGutter(hero, edges);
+        })
+        .catch(function () { if (edges) frameGutter(hero, edges); });
+    };
+    if (typeof IntersectionObserver !== "function") {
+      pending();
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        observer.unobserve(entry.target);
+        pending();
+      });
+    }, { rootMargin: "400px" });
+    observer.observe(card);
   });
 })();
 </script>

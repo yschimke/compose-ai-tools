@@ -121,6 +121,21 @@ test("accepts one anchored exclusion per line, including comma-bearing ids", () 
   });
 });
 
+test("treats an empty file and a lone terminator alike as zero exclusions", () => {
+  // A one-preview catalog sharded into one shard excludes nothing. The planner writes "" today and
+  // an older pinned driver writes "\n"; neither is a blank *pattern*, and reading either as one
+  // would fail the only shard that had anything to render.
+  const plan = {
+    index: 1,
+    exclusionFormat: SHARD_EXCLUSION_FORMAT,
+    excluded: 0,
+  };
+  for (const text of ["", "\n"]) {
+    const result = verifyShardExclusionFile(plan, text);
+    assert.deepEqual(result, { ok: true, problems: [], lines: [] }, `for ${JSON.stringify(text)}`);
+  }
+});
+
 test("round-robins the sorted id list so a heavy group is spread, not clustered", () => {
   // Ids sort by group, so contiguous blocks would put every Template preview in one shard.
   const ids = [

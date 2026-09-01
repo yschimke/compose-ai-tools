@@ -1932,6 +1932,14 @@ jobs:
               --carriage-report "$carriage_report" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           fi
+          # Exactly which bundles the carriage report describes — recorded HERE, before the
+          # additional-module and extra-module splits below, because the extra split writes into
+          # this same directory. The report covers the primary split only, so a later re-measure
+          # that just scans the directory would divide the primary `repeatedBytes` by a
+          # primary-plus-extra denominator and understate the share — the same understatement the
+          # re-measure exists to correct.
+          find "$GITHUB_WORKSPACE/out/bundle/previews" -maxdepth 1 -type f -name '*.png' | sort \
+            > "$GITHUB_WORKSPACE/split-primary-bundles.txt"
           if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
             while IFS= read -r additional_bundle; do
               module_key="$(basename "$additional_bundle" .png)"
@@ -1967,6 +1975,20 @@ jobs:
           set -euo pipefail
           node compose-ai-tools/scripts/design-artifacts/strip-published-figma-svg.mjs \
             --root "$GITHUB_WORKSPACE/out/bundle"
+
+      # The split wrote the carriage report BEFORE the strip above, because it needs the transient
+      # SVGs to crop each cover — so its `totalBytes` still counts thousands of sidecar copies that
+      # are no longer in the published bundles. Those bytes sit in the DENOMINATOR of `sharePercent`,
+      # so leaving them there understates the share and can hold a catalog under the bound whose
+      # published output is almost entirely repeated classpath. Re-measure against what was actually
+      # published, before the gate reads it.
+      - name: Re-measure the carriage against the published bundles
+        if: ${{ inputs.split-per-preview && inputs.defer-figma-svg }}
+        run: |
+          set -euo pipefail
+          node compose-ai-tools/scripts/design-artifacts/recompute-carriage-report.mjs \
+            --report "$GITHUB_WORKSPACE/split-carriage.json" \
+            --bundles-from "$GITHUB_WORKSPACE/split-primary-bundles.txt"
 
       # The silent half of #4211. A FULL split pays the shared carriage once per preview, so its
       # cost scales with the preview COUNT — and because any catalog edit rewrites `app.jar`, every

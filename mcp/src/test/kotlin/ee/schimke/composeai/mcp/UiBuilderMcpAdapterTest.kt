@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -155,6 +156,53 @@ class UiBuilderMcpAdapterTest {
     assertThat(byName.keys.intersect(WRITE_TOOLS)).containsExactlyElementsIn(WRITE_TOOLS)
     assertThat(byName.keys.intersect(EXPORT_TOOLS)).containsExactlyElementsIn(EXPORT_TOOLS)
     assertThat(READ_TOOLS + WRITE_TOOLS + EXPORT_TOOLS).containsExactlyElementsIn(byName.keys)
+  }
+
+  @Test
+  fun `binds the authenticated actor when the submission omits one`() {
+    // The actor is derived from the environment's grant token and is advertised nowhere in
+    // tools/list, so requiring the caller to restate it made the first mutation unauthorable. It is
+    // now optional, and omitting it means "whoever this connection authenticated as".
+    val submission =
+      json.encodeToJsonElement(DesignSubmissionV1.serializer(), command).jsonObject.filterKeys {
+        it != "actorId"
+      }
+
+    val result =
+      requireNotNull(
+        adapter.handle(
+          "apply_design_operations",
+          buildJsonObject { put("submission", JsonObject(submission)) },
+        )
+      )
+
+    assertThat(result.isError).isNull()
+    assertThat(requests.single().request).isEqualTo(ApplyOperationRequestV1(command))
+  }
+
+  @Test
+  fun `binds the authenticated actor over a blank one rather than failing the call`() {
+    val submission =
+      json.encodeToJsonElement(DesignSubmissionV1.serializer(), command).jsonObject.toMutableMap()
+    submission["actorId"] = JsonPrimitive("   ")
+
+    val result =
+      requireNotNull(
+        adapter.handle(
+          "apply_design_operations",
+          buildJsonObject { put("submission", JsonObject(submission)) },
+        )
+      )
+
+    assertThat(result.isError).isNull()
+    assertThat(requests.single().request).isEqualTo(ApplyOperationRequestV1(command))
+  }
+
+  @Test
+  fun `apply_design_operations says the actor is bound rather than caller-supplied`() {
+    val apply = adapter.toolDefs().single { it.name == "apply_design_operations" }
+
+    assertThat(apply.description).contains("Omit the submission's actorId")
   }
 
   @Test

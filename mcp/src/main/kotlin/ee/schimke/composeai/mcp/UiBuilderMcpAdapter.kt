@@ -58,7 +58,9 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
       ),
       tool(
         "apply_design_operations",
-        "Atomically apply a typed v1 operation submission. Returns committed revision, sequence, document hash, and validation/conflict diagnostics.",
+        "Atomically apply a typed v1 operation submission. Omit the submission's actorId — it is " +
+          "bound to this connection's authenticated actor; supplying a different one is refused. " +
+          "Returns committed revision, sequence, document hash, and validation/conflict diagnostics.",
         """{"type":"object","properties":{"submission":{"type":"object"}},"required":["submission"]}""",
       ),
       tool(
@@ -96,7 +98,7 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
           "list_components" -> ListCatalogsRequestV1
           "apply_design_operations" ->
             ApplyOperationRequestV1(
-              json.decodeFromJsonElement<DesignSubmissionV1>(args.required("submission"))
+              json.decodeFromJsonElement<DesignSubmissionV1>(args.boundSubmission())
             )
           "render_design" -> args.exportRequest(ExportFormatV1.PNG)
           "export_svg" -> args.exportRequest(ExportFormatV1.SVG)
@@ -124,6 +126,33 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
     } catch (e: Exception) {
       error(name, e.message ?: "Design API request failed")
     }
+  }
+
+  /**
+   * The caller's submission with `actorId` filled in from the authenticated client.
+   *
+   * Every `DesignSubmissionV1` carries a mandatory `actorId`, and the client refuses to transport
+   * one that disagrees with the actor it authenticated as. That pair is correct but was, on its
+   * own, unusable: the actor is derived from the environment's grant token and appears nowhere in
+   * `tools/list`, so a client had no way to author its FIRST mutation except by guessing or by
+   * deliberately provoking the mismatch error to read the expected value out of it.
+   *
+   * Binding it here closes that: omit `actorId` and the authenticated identity is what gets sent.
+   * The mismatch check stays exactly as strict for a submission that names a DIFFERENT actor — that
+   * is a spoofing attempt, not a convenience — so this widens what a legitimate caller can express
+   * without widening what it can claim.
+   */
+  private fun JsonObject.boundSubmission(): JsonObject {
+    val submission =
+      required("submission") as? JsonObject
+        ?: throw IllegalArgumentException("'submission' must be an object")
+    val declared =
+      (submission["actorId"] as? JsonPrimitive)
+        ?.takeIf(JsonPrimitive::isString)
+        ?.contentOrNull
+        ?.takeIf(String::isNotBlank)
+    return if (declared != null) submission
+    else JsonObject(submission + ("actorId" to JsonPrimitive(client.actorId)))
   }
 
   private fun JsonObject.exportRequest(format: ExportFormatV1): ExportDesignRequestV1 =

@@ -60,6 +60,25 @@ until someone runs the script. `--no-verify` bypasses the local hooks; CI
 still won't. Why the PR body matters and how a trailer reached `main` anyway:
 [`docs/AGENT_GUIDE.md` → Git conventions](docs/AGENT_GUIDE.md#git-conventions).
 
+**Reviewers: run the detector before reporting an attribution finding.** This is
+the most-reported and least-real finding on this repo — 14 PRs drew a P1 "the
+author and committer are both `Codex`" comment over 2026-08-31/09-01 and not one
+was real. An agent reviewing its own or another agent's PR must not infer the
+commit identity from the fact that an agent wrote the code: the identity is
+whatever `git config user.email` held, and here that is the human. Check it, on
+the real range:
+
+```
+git log --format='%h %an <%ae> | %cn <%ce>' <base>..<head>
+.github/scripts/agent-attribution-scan.sh --range '<base>..<head>'
+```
+
+`Yuri Schimke <yuri@schimke.ee>` is this repository's human identity, and
+`github-actions[bot]` / `renovate[bot]` are exempt bot accounts (see above) — none
+of the three is ever a finding. Report only what the scanner exits 1 on, quote its
+output, and if the `Reject agent attribution` check is already green on the head
+commit there is nothing to report.
+
 <!-- invariant: branch-prefix -->
 ### Branch names are always `agent/…`
 

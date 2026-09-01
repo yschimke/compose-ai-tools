@@ -212,6 +212,40 @@ fine; the gate targets AI coding agents only. If you ever see an agent co-author
 an agent commit identity on `main`, treat it as a bug to fix, not a default to
 tolerate.
 
+**The false-positive side, which is now the common one.** The rule that a reviewer
+must run the detector before reporting a finding is in
+[root `AGENTS.md`](../AGENTS.md#the-ci-enforced-invariants); here is why it earned
+its place. Over 2026-08-31/09-01, fourteen PRs — #4912, #4913, #4915, #4917,
+#4920, #4928, #4929, #4930, #4933, #4938, #4939, #4943 (three times), #4944,
+#4945 — each drew a P1 review comment asserting that the reviewed commit recorded
+"both its author and committer as `Codex`", most of them quoting an
+`agent-attribution-scan.sh` invocation and an exit status. Three independent
+checks say otherwise:
+
+* On #4929 the `Reject agent attribution` job ran to completion on the same head
+  the comment flagged and reported **success**.
+* #4943 is the one of the fourteen whose branch still exists, and its head commit
+  is authored by
+  `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>` —
+  not by any agent.
+* Every commit `main` gained over the same window is authored by
+  `Yuri Schimke <yuri@schimke.ee>` or an exempt bot account (`renovate[bot]`,
+  `github-actions[bot]`, `dependabot[bot]`), and running the shared detector over
+  that whole range exits 0: "No agent co-author trailers or agent commit
+  identities found."
+
+(Several of the other thirteen merged while their scan job was still running, so
+it shows `cancelled` rather than a verdict — which is its own problem, and the
+reason the workflow header asks for `Reject agent attribution` to be made a
+*required* status check. A cancelled gate is not evidence for the finding either.)
+
+The failure mode is worth naming because it is easy to repeat: an agent reviewing a
+branch an agent wrote reasons from *who did the work* to *what the commit object
+says*, and those are unrelated — the identity is whatever `git config user.email`
+held, which in these sessions was the human's. Repeated P1s that the scanner
+contradicts cost a reviewer more than they save, and they teach the real finding to
+be read as noise. So: run it, quote its output, or do not file it.
+
 **Formatting detail.** `ktfmtCheck` aborts on the first unformatted file, so a
 single stray file hides every other one. Every module must apply
 `composeai.base-conventions` for `ktfmtCheckAll` to see it at all — see
