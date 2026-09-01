@@ -81,17 +81,15 @@ jobs:
           # hatch — production consumers never set it — so a stable-Robolectric 4.16.1 user can't
           # accidentally turn the clamp-warning behaviour above into a runtime sandbox failure.
           #
-          # `expect: fail` for now: as of this writing the `4.17-SNAPSHOT` build has the popup-
-          # window / `relayout2` code-path fixes for API 37, but Robolectric's
-          # `DefaultSdkProvider` doesn't yet enumerate API 37 as a known SDK (no
-          # `android-all-instrumented-37.jar` ships with the snapshot), so the sandbox boot fails
-          # with `IllegalArgumentException` at `UnknownSdk.java`. We keep the cells in the matrix
-          # specifically to catch the day upstream adds the framework jar — the cells will then
-          # drift to "pass when expected fail" and surface as ❓ in the aggregated report, which
-          # is the exact signal to flip `expect:` to `pass` and bump `libs.robolectric` in
+          # `expect: fail` for now: the `4.17-SNAPSHOT` build now publishes and recognizes the API
+          # 37 framework jar, but sandbox boot reaches an Android 37 InputManager API that the
+          # snapshot shadow does not yet implement. We keep the cells in the matrix specifically
+          # to catch the day upstream completes API 37 support — the cells will then drift to
+          # "pass when expected fail" and surface as ❓ in the aggregated report, which is the
+          # exact signal to flip `expect:` to `pass` and bump `libs.robolectric` in
           # `gradle/libs.versions.toml`.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "UnknownSdk" }
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "UnknownSdk" }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "InputManager.getInstance" }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "InputManager.getInstance" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -151,14 +149,11 @@ jobs:
             # `Execution failed` line, which beats falling back to "see build.log". The pattern
             # set covers the four documented failure shapes (#1248 PackageParser, JDK 21
             # requirement, missing SDK jar, plus a generic Gradle exception fallback).
-            # `UnknownSdk` is the literal Robolectric raises when a sandbox SDK has no
-            # `android-all-instrumented-N.jar` (`IllegalArgumentException at UnknownSdk.java:45`) —
-            # the missing-SDK-jar shape the `robolectric=4.17-SNAPSHOT` API-37 probes hit. Without
-            # it the match falls through to the generic "N tests failed" summary, so the
-            # `expectedReason: UnknownSdk` gate below would flag a correctly-failing cell as
-            # "failed for the wrong reason".
+            # Include both the pre-API-37-jar `UnknownSdk` failure and the current snapshot's
+            # incomplete InputManager shadow so expected-reason gates capture the actual upstream
+            # limitation instead of falling through to Gradle's generic failure summary.
             reason=$(grep -m1 -E \
-              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|UnknownSdk|composeai.matrix" \
+              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|UnknownSdk|InputManager\.getInstance|composeai.matrix" \
               build.log | head -c 400 || true)
             if [ -z "$reason" ]; then
               reason=$(grep -m1 -E "^.*[Ff]ailed|FAILURE: " build.log | head -c 400 || true)
