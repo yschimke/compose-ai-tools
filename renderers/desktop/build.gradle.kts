@@ -154,6 +154,7 @@ dependencies {
   implementation(project(":data-preview-overrides-runtime"))
 
   testImplementation(libs.junit)
+  testImplementation(libs.okio.fakefilesystem)
 
   // Deliberately NOT a test dependency: it is resolved into its own configuration and handed to the
   // test as a path, so `SkikoBridgeShapeTest` can load it in an isolated classloader. Putting it on

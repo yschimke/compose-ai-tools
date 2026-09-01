@@ -335,7 +335,7 @@ class RenderEngine(
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
     // A failed retry, an interactive render, or a preview whose exact settle was removed must not
     // leave an earlier render's phase declaration claiming the new output is pinned.
-    DesktopRenderWarningsSidecar.deleteStale(outputFile)
+    DesktopRenderWarningsSidecar.deleteStale(outputFile, fileSystem)
 
     // kind=LOTTIE has no class to reflect — the asset is rendered directly via Compottie below.
     val isLottie = spec.kind == "LOTTIE"
@@ -899,7 +899,9 @@ class RenderEngine(
     DesktopRenderWarningsSidecar.writePhasePinOrDelete(
       pngFile = state.outputFile,
       role = "compose-ai-daemon still '${state.spec.outputBaseName}'",
-      atMs = state.settleWindowMs.takeIf { state.settleIsExact }?.toLong(),
+      // A scroll or interaction drive clears `pinnedFrameNanos` as soon as it advances past the
+      // declared coordinate. Only the retained pin describes the PNG we just wrote.
+      atMs = state.pinnedFrameNanos?.takeIf { state.settleIsExact }?.let { it / 1_000_000L },
       fileSystem = fileSystem,
     )
 
@@ -1535,6 +1537,7 @@ class RenderEngine(
           "RenderEngine: render mode '${spec.renderMode}' requires a previewId on the RenderSpec"
         )
     val startNs = System.nanoTime()
+    val tmpBase = "$previewId$SCROLL_SVG_TMP_SUFFIX"
 
     val baseHeight = spec.heightPx
     val maxHeight = baseHeight + SCROLL_SVG_MAX_EXTRA_PX
@@ -1544,7 +1547,16 @@ class RenderEngine(
     var iterations = 0
     while (iterations < SCROLL_SVG_MAX_GROW_ITERATIONS) {
       iterations++
-      val probe = spec.copy(renderMode = null, heightPx = probeHeight, wrapHeight = false)
+      // Probes never publish a PNG. Give them the same isolated output base as the final tall
+      // render so `setUp` cannot clear the normal still's warnings sidecar while preparing this
+      // unrelated data product.
+      val probe =
+        spec.copy(
+          renderMode = null,
+          heightPx = probeHeight,
+          wrapHeight = false,
+          outputBaseName = tmpBase,
+        )
       val state = setUp(probe, classLoader, inspectionMode = spec.inspectionMode ?: true)
       val measure =
         try {
@@ -1586,7 +1598,6 @@ class RenderEngine(
     // Final render at the settled height into an isolated base so it can't clobber the preview's
     // normal-size products. `previewId = null` makes renderOnce key the figma-svg dir off the
     // (isolated) outputBaseName.
-    val tmpBase = "$previewId$SCROLL_SVG_TMP_SUFFIX"
     val finalSpec =
       spec.copy(
         renderMode = null,

@@ -133,6 +133,39 @@ class RenderEngineSettleTest {
     assertFalse(revealed(render("ExactEarly").first))
   }
 
+  @Test
+  fun `an exact settle advanced by a later drive does not claim the original phase`() {
+    val previewId = "ExactThenDriven"
+    installPreviewIndex(previewId, """{"afterMs":400,"maxMs":1000}""")
+    val outputDir = tempFolder.newFolder("renders-$previewId")
+    val engine = RenderEngine(outputDir = outputDir)
+    val state =
+      engine.setUp(
+        RenderSpec(
+          previewId = previewId,
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "TimedRevealPreview",
+          widthPx = 100,
+          heightPx = 100,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = previewId,
+        ),
+        classLoader = javaClass.classLoader,
+      )
+    try {
+      engine.applyStaticSettle(state)
+      // END-scroll and static interaction drives advance through this same cursor helper.
+      state.nextVirtualFrameNanos()
+      val result = engine.renderOnce(state, requestId = 1L)
+      val png = File(result.pngPath!!)
+      assertTrue(png.exists())
+      assertFalse(DesktopRenderWarningsSidecar.pathFor(png).exists())
+    } finally {
+      engine.tearDown(state)
+    }
+  }
+
   /** The control, and the regression the fix is measured against: no settle, no reveal. */
   @Test
   fun `a preview with no settle keeps its first frame`() {

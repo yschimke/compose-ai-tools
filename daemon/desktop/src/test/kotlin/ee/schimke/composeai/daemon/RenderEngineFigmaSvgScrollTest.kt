@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.renderer.DesktopRenderWarningsSidecar
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -109,6 +110,14 @@ class RenderEngineFigmaSvgScrollTest {
     val dataDir = tempFolder.newFolder("data-long")
     val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
     val previewId = "scaffold-list"
+    val still = File(outputDir, "$previewId.png")
+    DesktopRenderWarningsSidecar.writePhasePinOrDelete(
+      pngFile = still,
+      role = "compose-ai-daemon still '$previewId'",
+      atMs = 350L,
+    )
+    val stillWarnings = DesktopRenderWarningsSidecar.pathFor(still)
+    assertTrue(stillWarnings.exists())
     engine.render(
       spec =
         RenderSpec(
@@ -126,6 +135,7 @@ class RenderEngineFigmaSvgScrollTest {
 
     val longSvg = File(File(File(dataDir, previewId), "figma-long"), "compose-figma-long.svg")
     assertTrue("full-page SVG must be produced: ${longSvg.absolutePath}", longSvg.exists())
+    assertTrue("long-SVG probes must preserve the still's phase pin", stillWarnings.exists())
     val text = longSvg.readText()
     runCatching {
       val keep = File("build/figma-svg-scroll-experiment").also { it.mkdirs() }
