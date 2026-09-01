@@ -2009,6 +2009,20 @@ abstract class RobolectricRenderTestBase(
             // stream and the ripple's `IndicationNode` to schedule an invalidation
             // before `captureRoboImage` reads back pixels.
             val capture = (job as? CaptureRenderJob)?.capture
+            val scroll = job.scroll
+            // A Dragged END variant targets the semantics tree at the end of the content. Drive
+            // there before resolving the interactive-node index; doing this after the drag can
+            // miss a lazily composed target or address a different node in the pre-scroll tree.
+            val draggedEndScroll = scroll?.takeIf {
+              capture?.drag != null && it.mode == ScrollMode.END
+            }
+            val draggedEndScrollAttempted = draggedEndScroll != null
+            if (draggedEndScroll != null && !driveScrollingPreviewToEnd(rule, draggedEndScroll)) {
+              System.err.println(
+                "@ScrollingPreview on '${preview.id}' but no scrollable composable found on axis " +
+                  "${draggedEndScroll.axis} — dragging the initial frame."
+              )
+            }
             val focus = capture?.focus
             if (focus != null) {
               rule.runOnUiThread {
@@ -2063,7 +2077,6 @@ abstract class RobolectricRenderTestBase(
             // every data product.
             RenderErrorSidecar.deleteStale(outputFile)
 
-            val scroll = job.scroll
             // LONG always flattens Wear motion, even for
             // `reduceMotion = false` annotations (see the
             // [reduceMotionState] doc above). Flip the state on for the
@@ -2369,7 +2382,7 @@ abstract class RobolectricRenderTestBase(
               // drive, just a capture. END mode drives the first
               // scrollable on the requested axis to its content
               // end before capturing.
-              if (scroll != null && scroll.mode == ScrollMode.END) {
+              if (scroll != null && scroll.mode == ScrollMode.END && !draggedEndScrollAttempted) {
                 if (!driveScrollingPreviewToEnd(rule, scroll)) {
                   System.err.println(
                     "@ScrollingPreview on '${preview.id}' but no scrollable " +

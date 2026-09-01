@@ -5,6 +5,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -235,6 +236,31 @@ class DesktopCaptureGutterRendererTest {
     val img = decode(out)
     assertEquals("main() must thread the start/end gutter (args 49/51)", 176 + 32, img.width)
     assertEquals("main() must thread the top/bottom gutter (args 50/52)", 176 + 16 + 20, img.height)
+  }
+
+  @Test
+  fun mainRejectsAnUnavailableDraggedVariantInsteadOfPublishingTheRestingFrame() {
+    val out = File(tempFolder.newFolder("main-invalid-drag"), "sticker.png")
+    val args = MutableList(54) { "" }
+    args[0] = stickerClass
+    args[1] = "WrapContentSticker" // deliberately has no interactive semantics node
+    args[2] = "800"
+    args[3] = "1600"
+    args[4] = "2.0"
+    args[5] = "true"
+    args[6] = "0"
+    args[7] = out.absolutePath
+    args[9] = "true"
+    args[10] = "true"
+    args[12] = "0"
+    args[53] = "0"
+
+    main(args.toTypedArray())
+
+    assertFalse("an unavailable drag must not publish the resting PNG", out.exists())
+    val sidecar = File(out.parentFile, "${out.name}.error.json")
+    assertTrue("an unavailable drag must publish an error sidecar", sidecar.isFile)
+    assertTrue(sidecar.readText().contains("refusing to publish an undriven artifact"))
   }
 
   private companion object {

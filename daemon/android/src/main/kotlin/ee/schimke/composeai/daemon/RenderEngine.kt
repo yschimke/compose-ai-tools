@@ -807,6 +807,10 @@ class RenderEngine(
             environment.staticDrag?.let { dragIndex ->
               trace.section("compose:drag") {
                 ee.schimke.composeai.renderer.driveDragPreview(rule, dragIndex)
+                // The test clock is paused for deterministic rendering. Pointer dispatch and the
+                // Robolectric looper land the gesture, but animated indications and transitions
+                // need a Compose frame before PNG/SVG capture, matching the batch renderer.
+                rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
               }
             }
 

@@ -640,32 +640,39 @@ fun main(args: Array<String>) {
             captureGutter = captureGutter,
           )
         if (!didCapture) {
-          renderPreview(
-            className,
-            functionName,
-            widthPx,
-            heightPx,
-            density,
-            showBackground,
-            backgroundColor,
-            targetFile,
-            wrapperClassName,
-            wrapWidth,
-            wrapHeight,
-            previewArgs,
-            localeTag,
-            fontScale,
-            showSystemUi,
-            uiMode,
-            device,
-            minWidthPx = minWidthPx,
-            minHeightPx = minHeightPx,
-            maxWidthPx = maxWidthPx,
-            maxHeightPx = maxHeightPx,
-            settleAfterMs = settleAfterMs,
-            settleMaxMs = settleMaxMs,
-            captureGutter = captureGutter,
-          )
+          if (dragIndex != null) {
+            error(
+              "@OverrideVariant drag on $className.$functionName: target at index $dragIndex " +
+                "did not produce a dragged frame; refusing to publish an undriven artifact."
+            )
+          } else {
+            renderPreview(
+              className,
+              functionName,
+              widthPx,
+              heightPx,
+              density,
+              showBackground,
+              backgroundColor,
+              targetFile,
+              wrapperClassName,
+              wrapWidth,
+              wrapHeight,
+              previewArgs,
+              localeTag,
+              fontScale,
+              showSystemUi,
+              uiMode,
+              device,
+              minWidthPx = minWidthPx,
+              minHeightPx = minHeightPx,
+              maxWidthPx = maxWidthPx,
+              maxHeightPx = maxHeightPx,
+              settleAfterMs = settleAfterMs,
+              settleMaxMs = settleMaxMs,
+              captureGutter = captureGutter,
+            )
+          }
         } else {
           // The focused renderer is the only successful still path that does not funnel through
           // `renderPreview`, so publish its exact phase declaration here. Motion and scroll

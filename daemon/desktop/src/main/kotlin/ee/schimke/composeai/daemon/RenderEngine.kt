@@ -1951,11 +1951,10 @@ class RenderEngine(
     if (dragIndex != null) {
       val target = interactiveNodes(state).getOrNull(dragIndex)
       if (target == null) {
-        System.err.println(
+        throw IllegalStateException(
           "@OverrideVariant drag on ${state.spec.outputBaseName}: no interactive node at index " +
             "$dragIndex — interaction unavailable."
         )
-        return
       }
       val before = state.scene.render(nanoTime = state.nextVirtualFrameNanos())
       val beforeBytes = before.encodePngData()?.bytes
@@ -1981,7 +1980,7 @@ class RenderEngine(
       val afterBytes = after.encodePngData()?.bytes
       after.close()
       if (beforeBytes == null || afterBytes == null || beforeBytes.contentEquals(afterBytes)) {
-        System.err.println(
+        throw IllegalStateException(
           "@OverrideVariant drag on ${state.spec.outputBaseName}: target at index $dragIndex did " +
             "not produce a dragged frame; interaction unavailable."
         )

@@ -2411,6 +2411,11 @@ object PreviewDiscovery {
               // captures. Variants intentionally do not duplicate those heavy products, but a
               // Dragged variant still needs one addressable still for the held gesture.
               .ifEmpty { listOf(Capture(renderOutput = "renders/${base.id}.png")) }
+              // A held drag mutates remembered state. Android batch rendering reuses one
+              // composition for every capture, so fanning the gesture across a TOP/END or timed
+              // grid would apply the displacement repeatedly and make later stickers cumulative.
+              // An override variant is one resting-state sticker: keep its first usable still.
+              .take(1)
         }
     return base.copy(
       id = base.id + tag,

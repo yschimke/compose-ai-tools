@@ -291,6 +291,14 @@ class DiscoveryFunctionalTest {
         fun ProductOnlyDraggedPreview() {
             Box(modifier = Modifier.size(50.dp)) { Text("Scrolling") }
         }
+
+        @Preview
+        @ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
+        @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
+        @Composable
+        fun MultiCaptureDraggedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Multi") }
+        }
         """
           .trimIndent()
       )
@@ -366,6 +374,13 @@ class DiscoveryFunctionalTest {
     assertThat(productOnlyDragged.captures.single().renderOutput).contains("_VARIANT_dragged")
     assertThat(productOnlyDragged.captures.single().renderOutput).endsWith(".png")
     assertThat(productOnlyDragged.dataProducts).isEmpty()
+
+    val multiCaptureDragged =
+      manifest.previews.single {
+        it.functionName == "MultiCaptureDraggedPreview" && it.overrides?.name == "dragged"
+      }
+    assertThat(multiCaptureDragged.captures).hasSize(1)
+    assertThat(multiCaptureDragged.captures.single().drag).isEqualTo(DragCapture(targetIndex = 0))
   }
 
   /**
