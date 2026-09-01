@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Keep the four representations of `daemon-launch.json` from drifting apart.
+"""Keep this repository's `daemon-launch.json` representations from drifting apart.
 
 `<module>/build/compose-previews/daemon-launch.json` is written by the Gradle
-plugin and read by the daemon JVM, the CLI doctor, and the VS Code extension.
-Nothing in the build knows those are the same file. Each side declares its own
-copy of the shape and its own copy of the schema version, and two of them carry
+plugin and read by the daemon JVM and the CLI doctor. Nothing in the build knows
+those are the same file. Each side declares its own copy of the shape and its
+own copy of the schema version, and two of them carry
 a comment asking a human to remember:
 
     render-session/subprocess/.../SubprocessRenderSession.kt
@@ -17,9 +17,7 @@ a comment asking a human to remember:
         internal const val EXPECTED_DESCRIPTOR_SCHEMA_VERSION: Int = 2
 
 A comment is not a gate. Bumping the writer alone leaves those two writing and
-expecting v2 with nothing failing, and the VS Code reader — the only one that
-checks the version at all — rejecting every descriptor the plugin produces
-(`daemonProcess.ts`: `parsed.schemaVersion !== DAEMON_DESCRIPTOR_SCHEMA_VERSION`).
+expecting v2 with nothing failing.
 
 This matters for the preview-server split (#3824) beyond ordinary tidiness:
 `:render-session-subprocess` is one of the twelve published contract modules an
@@ -35,20 +33,16 @@ What this checks
    registered. An unregistered copy fails: a new mirror must be declared here,
    which is the point at which someone can ask whether it should exist at all.
 
-2. **Structural agreement** — for each reader (`DaemonLaunchDescriptor` in
-   `:daemon:core`, and the TypeScript interface in the extension):
+2. **Structural agreement** — for the JVM reader (`DaemonLaunchDescriptor`):
    every field the reader *requires* is emitted by the writer, shared fields
    carry corresponding types, and any reader-only field is optional. A required
    field the writer never writes is a parse failure at runtime.
 
-3. **`BtaCompileConfig` field-for-field** between Kotlin and TypeScript, which
-   its own KDoc claims and nothing enforced.
-
-4. **Unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`.
+3. **Unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`.
    That is the single line making the writer's `btaCompile` (which the JVM
    reader does not declare) safe rather than fatal.
 
-5. **Sysprop key mirrors** — string constants the descriptor carries that are
+4. **Sysprop key mirrors** — string constants the descriptor carries that are
    re-declared elsewhere, e.g. `SANDBOX_COUNT_PROP`, whose own KDoc says "both
    sides MUST agree".
 
@@ -76,22 +70,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = Path(__file__).resolve().parent / "daemon-launch-schema-allowlist.json"
 
 WRITER = "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt"
-# The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts, and is
-# resolved the same way as the TypeScript one below. Same reasoning: it is one of the three copies
-# of this schema, so dropping it would retire half the check rather than relocate it.
+# The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts. It remains
+# part of this check because this repository resolves that exact published contracts release.
 JVM_READER_REL = (
     "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
 )
-# The TypeScript reader moved to yschimke/compose-preview-vscode with the extension. It is still
-# one of the three copies of this schema — and the only reader that *gates* on the version — so
-# dropping it from this checker would retire the check that matters most, on the copy furthest from
-# the writer.
-#
-# It is resolved from a checkout instead: `COMPOSE_PREVIEW_VSCODE_ROOT` (what CI sets), then a
-# sibling `../compose-preview-vscode`. When neither is present the TypeScript half SKIPS and the
-# Kotlin half still runs, because "the other repository is not checked out" is not a drift signal
-# and this script is wired into `check`, which every contributor runs.
-TS_READER_REL = "src/daemon/daemonProtocol.ts"
 
 
 def contracts_root() -> Path | None:
@@ -108,23 +91,6 @@ def contracts_root() -> Path | None:
     return sibling if (sibling / JVM_READER_REL).is_file() else None
 
 
-def ts_root() -> Path | None:
-    """Root of a compose-preview-vscode checkout, or None when there is none."""
-    explicit = os.environ.get("COMPOSE_PREVIEW_VSCODE_ROOT", "").strip()
-    if explicit:
-        root = Path(explicit).resolve()
-        if not (root / TS_READER_REL).is_file():
-            raise SystemExit(
-                f"COMPOSE_PREVIEW_VSCODE_ROOT={explicit} does not contain {TS_READER_REL}"
-            )
-        return root
-    sibling = REPO_ROOT.parent / "compose-preview-vscode"
-    return sibling if (sibling / TS_READER_REL).is_file() else None
-
-
-_ts_root = ts_root()
-TS_READER = TS_READER_REL if _ts_root is not None else ""
-
 _contracts_root = contracts_root()
 JVM_READER = JVM_READER_REL if _contracts_root is not None else ""
 
@@ -132,16 +98,11 @@ JVM_READER = JVM_READER_REL if _contracts_root is not None else ""
 def resolve(rel: str) -> Path | None:
     """Map a path from this script or the allowlist onto disk.
 
-    Two of the three copies now live elsewhere. A `.ts` path is the VS Code extension's and a
-    `.kt` path is this repository's — except the JVM reader, which moved to
-    compose-preview-contracts with the wire contracts. Each resolves against the checkout its
-    `*_root()` found, and is None when there is none, so a missing sibling SKIPS that half rather
-    than failing: "the other repository is not checked out" is not a drift signal, and this script
-    is wired into `check`, which every contributor runs.
+    The JVM reader moved to compose-preview-contracts with the wire contracts. It resolves against
+    the pinned checkout when present and is unavailable otherwise, so a missing sibling SKIPS that
+    half rather than failing: "the other repository is not checked out" is not a drift signal, and
+    this script is wired into `check`, which every contributor runs.
     """
-    if rel.endswith(".ts"):
-        root = _ts_root
-        return (root / rel) if root is not None else None
     if rel == JVM_READER_REL:
         return (_contracts_root / rel) if _contracts_root is not None else None
     return REPO_ROOT / rel
@@ -150,12 +111,10 @@ def resolve(rel: str) -> Path | None:
 def available(rel: str) -> bool:
     """Whether `rel` is present in this checkout.
 
-    False only for a path that lives in another repository whose checkout is absent — the
-    TypeScript reader without a compose-preview-vscode checkout, or anything under the wire
-    contracts without a compose-preview-contracts one. Callers that walk allowlist-supplied paths
-    use this to skip rather than crash, for the same reason the reader checks are guarded: "the
-    other repository is not checked out" is not a drift signal, and this script runs inside
-    `check`, which every contributor runs.
+    False only for a path under the wire contracts whose compose-preview-contracts checkout is
+    absent. Callers that walk allowlist-supplied paths use this to skip rather than crash, for the
+    same reason the reader checks are guarded: "the other repository is not checked out" is not a
+    drift signal, and this script runs inside `check`, which every contributor runs.
 
     CI is where the cross-repo half must be real, and it checks both repositories out; the
     schema-gate step there fails if any test reports a skip.
@@ -167,18 +126,17 @@ def read(rel: str) -> str:
     path = resolve(rel)
     if path is None:
         raise FileNotFoundError(
-            f"{rel} lives in another repository; set COMPOSE_PREVIEW_VSCODE_ROOT (.ts) or "
-            "COMPOSE_PREVIEW_CONTRACTS_ROOT (the JVM reader)"
+            f"{rel} lives in another repository; set COMPOSE_PREVIEW_CONTRACTS_ROOT"
         )
     return path.read_text(encoding="utf-8")
 
 
 def stripped(rel: str) -> str:
-    """`read` with comments removed under the rules of the file's own language."""
-    return strip_comments(read(rel), nested=not rel.endswith(".ts"))
+    """`read` with comments removed."""
+    return strip_comments(read(rel))
 
 
-def strip_comments(text: str, nested: bool = True) -> str:
+def strip_comments(text: str) -> str:
     """Remove comments, keeping string literals intact.
 
     String-aware on purpose. A stripper that only looks for `//` and `/*` truncates
@@ -187,18 +145,15 @@ def strip_comments(text: str, nested: bool = True) -> str:
     behind an ordinary URL. It keeps the contents because mirrored constants ARE strings
     (`"composeai.daemon.sandboxCount"`), so blanking them would defeat the comparison.
 
-    Handles Kotlin raw strings and char literals and TypeScript template literals. `nested`
-    selects the language's block-comment rule and is not cosmetic: Kotlin's `/*` nests, TypeScript's
-    does not. Applying Kotlin's rule to TypeScript means `/* showing /* */` leaves the scanner
-    inside a comment after the real closer and swallows whatever follows — which for a repo-wide
-    scanner is a place a mirror could hide.
+    Handles Kotlin raw strings and char literals. Kotlin block comments nest, so the scanner tracks
+    their depth rather than stopping at the first closer.
     """
     out: list[str] = []
     i, n, depth = 0, len(text), 0
     while i < n:
         c, two, three = text[i], text[i : i + 2], text[i : i + 3]
         if depth:
-            if two == "/*" and nested:
+            if two == "/*":
                 depth += 1
                 i += 2
             elif two == "*/":
@@ -209,10 +164,6 @@ def strip_comments(text: str, nested: bool = True) -> str:
         elif two == "/*":
             depth = 1
             i += 2
-            if not nested:
-                j = text.find("*/", i)
-                i = len(text) if j < 0 else j + 2
-                depth = 0
         elif two == "//":
             j = text.find("\n", i)
             i = n if j < 0 else j
@@ -388,69 +339,6 @@ def kotlin_consts(rel: str) -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------
-# TypeScript
-# --------------------------------------------------------------------------
-
-TS_FIELD = re.compile(r"(\w+)(\??)\s*:\s*([^;]+?);")
-
-
-def ts_interface(rel: str, name: str) -> dict[str, tuple[str, bool]]:
-    """`{field: (type, optional)}` for a TS interface. `optional` = declared `field?:`."""
-    text = stripped(rel)
-    m = re.search(r"\binterface\s+" + re.escape(name) + r"\s*\{", text)
-    if not m:
-        raise LookupError(f"interface {name} not found in {rel}")
-    body = balanced(text, m.end() - 1, "{", "}")
-    return {f.group(1): (f.group(3).strip(), f.group(2) == "?") for f in TS_FIELD.finditer(body)}
-
-
-# `export` is optional. A module-local `const DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2` is a mirror
-# like any other — it can compare a descriptor against its own stale copy without ever constructing
-# a DTO, so discovery-by-use cannot see it either.
-TS_CONST = re.compile(r"(?:export\s+)?const (\w+)\s*(?::\s*\w+\s*)?=\s*(.+?);", re.M)
-
-
-def ts_consts(rel: str) -> dict[str, str]:
-    return {m.group(1): m.group(2).strip() for m in TS_CONST.finditer(stripped(rel))}
-
-
-# --------------------------------------------------------------------------
-# Kotlin type -> TypeScript type
-# --------------------------------------------------------------------------
-
-
-def kotlin_to_ts(kt: str) -> str:
-    """The TS spelling a Kotlin descriptor field must have. Total over the types in use."""
-    kt = kt.strip()
-    if kt.endswith("?"):
-        return f"{kotlin_to_ts(kt[:-1])} | null"
-    if kt in ("Int", "Long", "Double", "Float"):
-        return "number"
-    if kt == "String":
-        return "string"
-    if kt == "Boolean":
-        return "boolean"
-    m = re.fullmatch(r"List<(.+)>", kt)
-    if m:
-        return f"{kotlin_to_ts(m.group(1))}[]"
-    m = re.fullmatch(r"Map<\s*String\s*,\s*(.+)>", kt)
-    if m:
-        return f"Record<string, {kotlin_to_ts(m.group(1))}>"
-    return kt  # a named type: same name on both sides
-
-
-def ts_types_agree(kt: str, ts: str) -> bool:
-    want = kotlin_to_ts(kt)
-    norm = lambda s: re.sub(r"\s+", " ", s).strip()
-    if norm(want) == norm(ts):
-        return True
-    # `string | null` and `null | string` are the same type.
-    return sorted(p.strip() for p in norm(want).split("|")) == sorted(
-        p.strip() for p in norm(ts).split("|")
-    )
-
-
-# --------------------------------------------------------------------------
 # Checks
 # --------------------------------------------------------------------------
 
@@ -462,9 +350,7 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
 
     for site in sites:
         rel, symbol = site["file"], site["symbol"]
-        if rel.endswith(".ts") and _ts_root is None:
-            continue  # extension not checked out; see `ts_root`
-        consts = ts_consts(rel) if rel.endswith(".ts") else kotlin_consts(rel)
+        consts = kotlin_consts(rel)
         if symbol not in consts:
             failures.append(
                 f"  {rel}: `{symbol}` is registered as a schema-version mirror but no longer "
@@ -499,9 +385,6 @@ def check_versions(allowlist: dict, failures: list[str]) -> None:
     # does (no import needed), or imports it by name.
     by_package: dict[str, set[str]] = {}
     for s in sites:
-        # TypeScript sites have no Kotlin package and, post-split, may not be on disk at all.
-        if s["file"].endswith(".ts"):
-            continue
         by_package.setdefault(s["symbol"], set()).add(package_declared_in(s["file"]))
     # Scoped, not global. Binding `schemaVersionSites` by package while leaving aliases as a bare
     # name set was an inconsistency in my own fix: any writer with a local `schemaVersion` property
@@ -715,7 +598,7 @@ PACKAGE_LINE = re.compile(r"^\s*package\s+([\w.]+)", re.M)
 
 
 def package_declared_in(rel: str) -> str:
-    """The Kotlin package a file declares, or its directory for TypeScript."""
+    """The Kotlin package a file declares."""
     m = PACKAGE_LINE.search(stripped(rel))
     return m.group(1) if m else rel.rsplit("/", 1)[0]
 
@@ -772,43 +655,32 @@ PRUNE = {"build", "node_modules", ".git", ".gradle", "out", "dist", "scripts"}
 
 
 def walk_sources() -> list[tuple[str, str]]:
-    """`(relative path, comment-stripped text)` for every Kotlin/TypeScript source in the repo.
+    """`(relative path, comment-stripped text)` for every Kotlin source in the relevant trees.
 
     Prunes whole directories rather than filtering paths after the walk: `node_modules` and the
     per-module `build/` trees hold far more sources than the repo does, and descending into them
     to discard the results costs more than every other check here put together.
     """
     out: list[tuple[str, str]] = []
-    # Both roots, so the "unregistered mirror" arm still sees TypeScript. The extension's sources
-    # left this repo with it; scanning only REPO_ROOT would let a new TS mirror appear unregistered
-    # and keep reporting green — the exact blindness this discovery exists to prevent. Paths from
-    # the extension are relative to ITS root, which is how the allowlist spells them.
-    # Every root that can hold a copy of this schema. `daemon/protocol` used to be under
+    # Every root that can hold a Kotlin copy of this schema. `daemon/protocol` used to be under
     # REPO_ROOT, so its sources were walked for free; after the cutover they are in the contracts
     # repository and a new production file there could declare an unregistered mirror, or copy a
-    # descriptor with a stale literal, without this gate seeing it — the same blindness the
-    # extension's TypeScript would have had. Paths from an external root are relative to THAT
-    # root, which is how the allowlist spells them.
-    roots = (
-        [REPO_ROOT]
-        + ([_ts_root] if _ts_root is not None else [])
-        + ([_contracts_root] if _contracts_root is not None else [])
-    )
+    # descriptor with a stale literal, without this gate seeing it. Paths from the external root
+    # are relative to that root, which is how the allowlist spells them.
+    roots = [REPO_ROOT] + ([_contracts_root] if _contracts_root is not None else [])
     for root in roots:
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = sorted(
                 d for d in dirnames if d not in PRUNE and not d.startswith(".")
             )
             for filename in sorted(filenames):
-                if not filename.endswith((".kt", ".ts")):
+                if not filename.endswith(".kt"):
                     continue
                 path = Path(dirpath) / filename
                 out.append(
                     (
                         path.relative_to(root).as_posix(),
-                        strip_comments(
-                            path.read_text(encoding="utf-8"), nested=not filename.endswith(".ts")
-                        ),
+                        strip_comments(path.read_text(encoding="utf-8")),
                     )
                 )
     return out
@@ -828,7 +700,6 @@ def check_reader(
     writer: dict[str, tuple[str, bool]],
     allowlist: dict,
     failures: list[str],
-    ts: bool,
 ) -> None:
     reader_only = allowlist["readerOnlyFields"].get(label, {})
 
@@ -860,12 +731,10 @@ def check_reader(
             continue
 
         wtype = writer[field][0]
-        agree = ts_types_agree(wtype, rtype) if ts else wtype == rtype
-        if not agree:
-            want = kotlin_to_ts(wtype) if ts else wtype
+        if wtype != rtype:
             failures.append(
                 f"  {rel}: `{field}` is `{rtype}` in the {label} reader but `{wtype}` in the "
-                f"writer (expected `{want}`)."
+                f"writer (expected `{wtype}`)."
             )
 
     for field, (wtype, has_default) in writer.items():
@@ -1025,24 +894,6 @@ def check() -> int:
             writer,
             allowlist,
             failures,
-            ts=False,
-        )
-    if TS_READER:
-        check_reader(
-            "vscode",
-            TS_READER,
-            ts_interface(TS_READER, "DaemonLaunchDescriptor"),
-            writer,
-            allowlist,
-            failures,
-            ts=True,
-        )
-    else:
-        print(
-            "check-daemon-launch-schema: SKIPPING the TypeScript reader — no "
-            "compose-preview-vscode checkout (set COMPOSE_PREVIEW_VSCODE_ROOT). "
-            "The Kotlin reader is still checked.",
-            file=sys.stderr,
         )
     check_unknown_key_tolerance(allowlist, failures)
     check_mirrored_constants(allowlist, failures)
@@ -1095,26 +946,6 @@ def check() -> int:
                 f"than letting it through unexamined."
             )
 
-    # `BtaCompileConfig` claims to be field-for-field across the two languages. Only checkable
-    # with the extension checked out; see `ts_root`. Guarded with `if`, never an early `return` —
-    # the exit-code handling below has to run either way.
-    if TS_READER:
-        kt_bta = kotlin_data_class(WRITER, "BtaCompileConfig")
-        ts_bta = ts_interface(TS_READER, "BtaCompileConfig")
-        if list(kt_bta) != list(ts_bta):
-            failures.append(
-                f"  BtaCompileConfig is not field-for-field across the two languages.\n"
-                f"    kotlin: {list(kt_bta)}\n    typescript: {list(ts_bta)}"
-            )
-        else:
-            for field, (ktype, _) in kt_bta.items():
-                if not ts_types_agree(ktype, ts_bta[field][0]):
-                    failures.append(
-                        f"  BtaCompileConfig.{field}: `{ktype}` in Kotlin vs "
-                        f"`{ts_bta[field][0]}` in TypeScript "
-                        f"(expected `{kotlin_to_ts(ktype)}`)."
-                    )
-
     if failures:
         print("check-daemon-launch-schema: FAILED", file=sys.stderr)
         for f in failures:
@@ -1125,8 +956,8 @@ def check() -> int:
     # Name the readers actually compared, and say which were skipped. A fixed "2 readers agree"
     # was fine while both lived here; now either can be absent, and a summary that claims two
     # while checking one is the failure this gate exists to prevent, printed in its own output.
-    checked = [name for name, rel in (("jvm", JVM_READER), ("vscode", TS_READER)) if rel]
-    skipped = [name for name, rel in (("jvm", JVM_READER), ("vscode", TS_READER)) if not rel]
+    checked = ["jvm"] if JVM_READER else []
+    skipped = [] if JVM_READER else ["jvm"]
     readers = f"{len(checked)} reader(s) agree ({', '.join(checked) or 'none'})"
     if skipped:
         readers += f", {len(skipped)} SKIPPED ({', '.join(skipped)}) — no checkout"

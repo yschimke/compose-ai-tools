@@ -548,23 +548,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The daemon-launch schema has three copies and one of them — the TypeScript reader, the
-      # only one that GATES on the version — moved to yschimke/compose-preview-vscode. The checker
-      # and its tests SKIP the TypeScript half without a checkout, which is right for a
-      # contributor's `check` and wrong here: CI is where the cross-repo half has to be real.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: yschimke/compose-preview-vscode
-          persist-credentials: false
-          path: .compose-preview-vscode
-          fetch-depth: 1
       # Pinned to the RELEASE this build compiles against, not the contracts repo's default
       # branch. The gate compares a source file there against bytecode resolved from
       # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
       # those diverge, which passes a writer change matching newer source but incompatible with
       # the reader actually on the classpath, and fails unrelated pull requests when external
-      # `main` moves. The extension checkout above is deliberately not pinned the same way:
-      # nothing here resolves it as an artifact, so there is no version to agree with.
+      # `main` moves.
       - id: contracts-ref
         name: Resolve the pinned contracts release
         run: |
@@ -592,11 +581,8 @@ jobs:
       # remove the viewer's only automated coverage.
       - name: Build CLI and bundle viewer
         env:
-          # `:cli:check` runs `checkDaemonLaunchSchema`, whose TypeScript reader lives in the
-          # extension repo. Without this it silently checks only the Kotlin half.
-          COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
-          # And whose JVM reader lives in the contracts repo. Same failure mode: without this it
-          # silently checks one reader instead of two.
+          # `:cli:check` runs `checkDaemonLaunchSchema`, whose JVM reader lives in the contracts
+          # repo. Without this it silently skips the external reader.
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: ./gradlew :cli:build :bundle-viewer:build
 
@@ -907,23 +893,12 @@ jobs:
       # install the way those are: a fallback is right for a diff that can
       # degrade to strict bytes, and wrong for the tests that prove the diff.
       # `PerceptualLibrariesTest` fails the suite if this step is ever dropped.
-      # The daemon-launch schema has three copies and one of them — the TypeScript reader, the
-      # only one that GATES on the version — moved to yschimke/compose-preview-vscode. The checker
-      # and its tests SKIP the TypeScript half without a checkout, which is right for a
-      # contributor's `check` and wrong here: CI is where the cross-repo half has to be real.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: yschimke/compose-preview-vscode
-          persist-credentials: false
-          path: .compose-preview-vscode
-          fetch-depth: 1
       # Pinned to the RELEASE this build compiles against, not the contracts repo's default
       # branch. The gate compares a source file there against bytecode resolved from
       # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
       # those diverge, which passes a writer change matching newer source but incompatible with
       # the reader actually on the classpath, and fails unrelated pull requests when external
-      # `main` moves. The extension checkout above is deliberately not pinned the same way:
-      # nothing here resolves it as an artifact, so there is no version to agree with.
+      # `main` moves.
       - id: contracts-ref
         name: Resolve the pinned contracts release
         run: |
@@ -969,22 +944,21 @@ jobs:
       # symbol ratchet and the coupling gate — were removed with `cli/serve` itself (#4732). The
       # boundary they measured is now a Maven coordinate, which cannot be crossed in either
       # direction, so there is nothing left for a source scanner to classify.
-      # `daemon-launch.json` is written by the gradle plugin and read by the daemon JVM, the CLI
-      # doctor and the VS Code extension, each with its own copy of the shape and of the schema
-      # version. Two of those copies carry a comment asking a human to keep them in sync; this is
-      # the gate that makes it enforceable. Runs the check against the real tree too.
+      # `daemon-launch.json` is written by the gradle plugin and subprocess writer, and read by the
+      # daemon JVM and CLI doctor. Their Kotlin copies carry comments asking a human to keep them in
+      # sync; this is the gate that makes those comments enforceable. The VS Code consumer owns its
+      # separate check against the schema metadata published by the plugin release it pins.
       - name: Run daemon-launch schema gate tests
         env:
-          COMPOSE_PREVIEW_VSCODE_ROOT: ${{ github.workspace }}/.compose-preview-vscode
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: |
           set -euo pipefail
           out=$(python3 scripts/test_check_daemon_launch_schema.py -v 2>&1) || { echo "$out"; exit 1; }
           echo "$out"
-          # A skipped cross-repo test reports the same green as a passing one. Two readers live
-          # outside this repository now, so either checkout failing to resolve has to be loud.
+          # A skipped cross-repo test reports the same green as a passing one. The JVM reader lives
+          # in the contracts repository, so a failed checkout has to be loud.
           if grep -q "skipped" <<<"$out"; then
-            echo "::error::cross-repo schema tests SKIPPED — COMPOSE_PREVIEW_VSCODE_ROOT or COMPOSE_PREVIEW_CONTRACTS_ROOT did not resolve"
+            echo "::error::cross-repo schema tests SKIPPED — COMPOSE_PREVIEW_CONTRACTS_ROOT did not resolve"
             exit 1
           fi
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
@@ -1287,4 +1261,3 @@ jobs:
           else
             gh pr comment "$PR_NUMBER" --body "$body"
           fi
-

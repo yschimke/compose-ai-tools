@@ -780,21 +780,19 @@ tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 // `ServeCommand.kt`; see the dependency block above for what that still costs and what deciding
 // it would take.
 
-// The four representations of `daemon-launch.json`, checked against each other.
+// This repository's representations of `daemon-launch.json`, checked against each other.
 //
 // The descriptor is written by the gradle plugin and read by the daemon JVM, this CLI's `doctor`
-// and the VS Code extension. Each declares its own copy of the shape and of the schema version,
-// and nothing in the build knows they describe one file. Two of the copies carry a comment asking
-// a human to keep them in sync — `SubprocessRenderSession.kt`'s "mirrors the gradle plugin's
-// writer" and `McpCommand.kt`'s "Keep in sync — bump together". This is that comment, enforced.
+// and the subprocess writer. Two copies carry a comment asking a human to keep them in sync —
+// `SubprocessRenderSession.kt`'s "mirrors the gradle plugin's writer" and `McpCommand.kt`'s
+// "Keep in sync — bump together". This is that comment, enforced.
 //
 // It lives on `:cli` because the check spans modules that sit in different builds (the writer is
-// inside the `gradle-plugin` composite) plus a TypeScript file that is in no Gradle build at all,
-// so no single owning module exists. `:cli` runs on every PR and holds one of the four sites
-// itself. (The retired `checkServeSeam` sat here for the same reason.)
+// inside the `gradle-plugin` composite and the JVM reader is in the pinned contracts checkout), so
+// no single owning module exists. `:cli` runs on every PR and holds one of the sites itself.
 abstract class CheckDaemonLaunchSchema : DefaultTask() {
   /**
-   * Every Kotlin/TypeScript source in the repo, not just the seven representations.
+   * Every Kotlin source in the repo, not just the registered representations.
    *
    * The checker's strongest rule is repo-wide: it fails on a schema-version constant, or a
    * descriptor construction stamping one, that is not registered. That rule reads files nobody
@@ -815,16 +813,6 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val checker: RegularFileProperty
 
-  /**
-   * Path to a `compose-preview-vscode` checkout, when there is one.
-   *
-   * An `@Input` in its own right, not just a carrier for [representations]: moving the checkout, or
-   * gaining/losing one, changes what the checker covers even when no file's content differs. The
-   * checker skips its TypeScript half without a checkout, so a run with one and a run without one
-   * are not the same check and must not share an up-to-date stamp.
-   */
-  @get:Input @get:Optional abstract val vscodeRoot: Property<String>
-
   /** Root of a compose-preview-contracts checkout, when one is present. */
   @get:Input @get:Optional abstract val contractsRoot: Property<String>
 
@@ -839,7 +827,6 @@ abstract class CheckDaemonLaunchSchema : DefaultTask() {
       commandLine("python3", checker.get().asFile.absolutePath)
       // Passed explicitly rather than inherited, so what the checker sees is what Gradle
       // fingerprinted above. An inherited value could differ from the declared input.
-      vscodeRoot.orNull?.let { environment("COMPOSE_PREVIEW_VSCODE_ROOT", it) }
       contractsRoot.orNull?.let { environment("COMPOSE_PREVIEW_CONTRACTS_ROOT", it) }
     }
     stamp.get().asFile.writeText("ok\n")
@@ -853,7 +840,7 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
   val repoRoot = rootProject.layout.projectDirectory
   representations.from(
     rootProject.fileTree(repoRoot) {
-      include("**/*.kt", "**/*.ts")
+      include("**/*.kt")
       exclude(
         "**/build/**",
         "**/node_modules/**",
@@ -865,36 +852,9 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       )
     }
   )
-  // The TypeScript reader — the only one that GATES on the schema version — lives in
-  // yschimke/compose-preview-vscode. The checker reads it from `COMPOSE_PREVIEW_VSCODE_ROOT`, else
-  // a sibling checkout, and walks that tree for unregistered mirrors just as it walks this one.
-  // Those files are inputs for the same reason the repo-wide tree above is: without them the first
-  // successful run stamps this task UP-TO-DATE and every later edit or pull of the external reader
-  // is invisible, so the cross-repo drift the gate exists to catch is exactly what it stops seeing.
-  //
-  // Resolved eagerly to a plain String at configuration time, deliberately. Doing it inside a
-  // `map {}` on the provider defers it to execution time, and the lambda then has to capture
-  // `rootProject` to build the file tree — which the configuration cache cannot serialize.
-  val vscodeRootPath: String? =
-    providers.environmentVariable("COMPOSE_PREVIEW_VSCODE_ROOT").orNull?.takeIf { it.isNotBlank() }
-      ?: repoRoot.asFile.parentFile
-        ?.resolve("compose-preview-vscode")
-        ?.takeIf { it.resolve("src/daemon/daemonProtocol.ts").isFile }
-        ?.absolutePath
-  if (vscodeRootPath != null) {
-    vscodeRoot.set(vscodeRootPath)
-    representations.from(
-      rootProject.fileTree(vscodeRootPath) {
-        include("**/*.ts")
-        exclude("**/build/**", "**/node_modules/**", "**/.git/**", "**/out/**", "**/dist/**")
-      }
-    )
-  }
-
   // The JVM reader moved to yschimke/compose-preview-contracts with the wire contracts, so it is
-  // resolved and declared exactly like the TypeScript one above — and for the same reason. Without
-  // it as an input the first successful run stamps this task UP-TO-DATE and every later edit to
-  // the reader is invisible, which is the drift this gate exists to catch.
+  // declared as an input. Without it the first successful run stamps this task UP-TO-DATE and every
+  // later edit to the reader is invisible, which is the drift this gate exists to catch.
   //
   // Eagerly to a String, for the configuration-cache reason given above.
   val contractsRootPath: String? =

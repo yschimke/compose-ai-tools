@@ -3,12 +3,11 @@
 
 Pure stdlib (unittest). Run: python3 scripts/test_check_daemon_launch_schema.py -v
 
-Three things are worth pinning. The parsers, because a parser that silently
+Two things are worth pinning. The parsers, because a parser that silently
 mis-reads a declaration turns this gate into decoration — `Map<String, String>`
 in particular, whose top-level comma broke the first cut of the splitter and
-made an identical pair of declarations compare unequal. The Kotlin-to-TypeScript
-type correspondence, because that is the actual claim the check makes about two
-languages. And the real committed tree, which must be green and must have every
+made an identical pair of declarations compare unequal. And the real committed
+tree, which must be green and must have every
 registered site still present — the allowlist has to keep describing the code.
 """
 
@@ -25,17 +24,6 @@ _spec = importlib.util.spec_from_file_location(
 )
 mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
-
-
-
-# The TypeScript half of this checker reads yschimke/compose-preview-vscode, which is a separate
-# repository. These tests need a checkout; without one they skip rather than fail, since "you have
-# not cloned the other repo" is not a drift signal. CI sets COMPOSE_PREVIEW_VSCODE_ROOT, so the
-# coverage is not lost where it counts.
-requires_ts_checkout = unittest.skipIf(
-    mod._ts_root is None,
-    "no compose-preview-vscode checkout (set COMPOSE_PREVIEW_VSCODE_ROOT)",
-)
 
 # Same again for the JVM reader, which moved to yschimke/compose-preview-contracts. The checker
 # itself skips the JVM half without a checkout; these tests reach past `check()` into
@@ -108,31 +96,6 @@ class StripComments(unittest.TestCase):
         self.assertEqual(list(mod.KT_FIELD.finditer(mod.strip_comments(src)))[0].group(1), "real")
 
 
-class KotlinToTypeScript(unittest.TestCase):
-    def test_scalars(self):
-        self.assertEqual(mod.kotlin_to_ts("Int"), "number")
-        self.assertEqual(mod.kotlin_to_ts("Long"), "number")
-        self.assertEqual(mod.kotlin_to_ts("String"), "string")
-        self.assertEqual(mod.kotlin_to_ts("Boolean"), "boolean")
-
-    def test_nullable_becomes_a_union_with_null(self):
-        self.assertEqual(mod.kotlin_to_ts("String?"), "string | null")
-
-    def test_collections(self):
-        self.assertEqual(mod.kotlin_to_ts("List<String>"), "string[]")
-        self.assertEqual(mod.kotlin_to_ts("Map<String, String>"), "Record<string, string>")
-
-    def test_a_named_type_keeps_its_name(self):
-        self.assertEqual(mod.kotlin_to_ts("BtaCompileConfig?"), "BtaCompileConfig | null")
-
-    def test_union_order_does_not_matter(self):
-        self.assertTrue(mod.ts_types_agree("String?", "null | string"))
-
-    def test_a_genuine_mismatch_is_still_a_mismatch(self):
-        self.assertFalse(mod.ts_types_agree("List<String>", "string"))
-        self.assertFalse(mod.ts_types_agree("String", "string | null"))
-
-
 class Parsers(unittest.TestCase):
     def test_the_writer_parses_to_the_fields_the_descriptor_documents(self):
         w = mod.kotlin_data_class(mod.WRITER, "DaemonClasspathDescriptor")
@@ -140,31 +103,6 @@ class Parsers(unittest.TestCase):
         self.assertEqual(w["javaLauncher"][0], "String?")
         self.assertFalse(w["schemaVersion"][1], "schemaVersion must have no default")
         self.assertTrue(w["btaCompile"][1], "btaCompile must default to null")
-
-    @requires_ts_checkout
-    def test_the_ts_reader_parses_and_marks_required_fields(self):
-        t = mod.ts_interface(mod.TS_READER, "DaemonLaunchDescriptor")
-        self.assertEqual(t["systemProperties"][0], "Record<string, string>")
-        self.assertFalse(t["schemaVersion"][1], "schemaVersion is not declared optional")
-
-
-class CommentNestingIsLanguageAware(unittest.TestCase):
-    """Kotlin's block comments nest; TypeScript's do not. Using one rule for both hides code."""
-
-    def test_typescript_ends_at_the_first_closer(self):
-        self.assertEqual(
-            mod.strip_comments("/* a /* b */ const x = 1", nested=False), " const x = 1"
-        )
-
-    def test_kotlin_needs_the_matching_closer(self):
-        self.assertEqual(
-            mod.strip_comments("/* a /* b */ z */ const x = 1", nested=True), " const x = 1"
-        )
-
-    def test_kotlin_would_swallow_what_typescript_keeps(self):
-        # The concrete hazard: under Kotlin's rule the TS declaration disappears from the scan.
-        self.assertNotIn("const x", mod.strip_comments("/* a /* b */ const x = 1", nested=True))
-
 
 class TestSourceSets(unittest.TestCase):
     """Excluding only `src/test` and `src/functionalTest` missed most of this repo's test trees."""
@@ -184,17 +122,6 @@ class TestSourceSets(unittest.TestCase):
 
     def test_main_is_not_a_test_source(self):
         self.assertFalse(mod.is_test_source("a/src/main/B.kt"))
-
-
-class TypeScriptConstants(unittest.TestCase):
-    def test_a_module_local_const_is_still_a_mirror(self):
-        # `export` is not what makes a constant dangerous; declaring a version is.
-        self.assertIn("X", dict(mod.TS_CONST.findall("const X = 2;")))
-        self.assertIn("Y", dict(mod.TS_CONST.findall("export const Y = 2;")))
-
-    def test_discovery_matches_a_non_exported_version_name(self):
-        found = mod.VERSION_NAME.findall("const ROGUE_DESCRIPTOR_SCHEMA_VERSION = 2;")
-        self.assertEqual(["ROGUE_DESCRIPTOR_SCHEMA_VERSION"], found)
 
 
 class WireFingerprint(unittest.TestCase):
@@ -240,14 +167,11 @@ class RealTree(unittest.TestCase):
     def test_repo_is_green(self):
         self.assertEqual(mod.check(), 0)
 
-    @requires_ts_checkout
     def test_every_registered_version_site_still_declares_its_symbol(self):
         for site in self.allowlist["schemaVersionSites"]:
             rel, symbol = site["file"], site["symbol"]
-            consts = mod.ts_consts(rel) if rel.endswith(".ts") else mod.kotlin_consts(rel)
-            self.assertIn(symbol, consts, f"{rel} no longer declares {symbol}")
+            self.assertIn(symbol, mod.kotlin_consts(rel), f"{rel} no longer declares {symbol}")
 
-    @requires_ts_checkout
     def test_discovery_finds_every_registered_site(self):
         # If discovery stopped seeing a site, rule 1's "unregistered mirror" arm would go blind
         # while everything still reported green.
@@ -266,13 +190,9 @@ class RealTree(unittest.TestCase):
             self.assertIn(field, jvm)
             self.assertTrue(jvm[field][1], f"{field} must default — the plugin never writes it")
 
-    @requires_ts_checkout
     @requires_contracts_checkout
     def test_each_writer_only_field_really_is_absent_from_the_readers_it_claims(self):
-        readers = {
-            "jvm": mod.kotlin_data_class(mod.JVM_READER, "DaemonLaunchDescriptor"),
-            "vscode": mod.ts_interface(mod.TS_READER, "DaemonLaunchDescriptor"),
-        }
+        readers = {"jvm": mod.kotlin_data_class(mod.JVM_READER, "DaemonLaunchDescriptor")}
         for field, spec in self.allowlist["writerOnlyFields"].items():
             for label in spec["invisibleTo"]:
                 self.assertNotIn(
@@ -312,11 +232,10 @@ class RealTree(unittest.TestCase):
     def test_no_registered_site_names_a_file_that_left_the_repository(self):
         # The allowlist is only a gate while every path in it resolves: a site whose file is gone is
         # checked vacuously, which is how serve's entry would have rotted after #4732 had it been
-        # left behind. The two readers that legitimately live in a sibling checkout
-        # (compose-preview-vscode, compose-preview-contracts) are exempt — the check already
-        # resolves those through `ts_root()` / `contracts_root()` and reports them as SKIPPED when
-        # no checkout is present, which is a stated outcome rather than silent rot.
-        external = {mod.TS_READER_REL, mod.JVM_READER_REL}
+        # left behind. The JVM reader legitimately lives in the contracts checkout and is exempt —
+        # the check resolves it through `contracts_root()` and reports it as SKIPPED when no
+        # checkout is present, which is a stated outcome rather than silent rot.
+        external = {mod.JVM_READER_REL}
         for site in self.allowlist["schemaVersionSites"]:
             if site["file"] in external:
                 continue
@@ -419,7 +338,6 @@ class RealTree(unittest.TestCase):
             for key, expected in assumed.items():
                 self.assertEqual(writer[key][0], expected, f"{rel}: {key}")
 
-    @requires_ts_checkout
     def test_a_stamp_resolves_by_package_not_by_bare_name(self):
         # `DaemonLaunchBuilder.kt` stamps a constant declared in a sibling file of the same
         # package, which must pass; a same-named symbol in an unrelated package must not.
