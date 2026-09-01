@@ -60,6 +60,7 @@ import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.preview.lottie.LottiePreview
+import ee.schimke.composeai.renderer.DesktopRenderWarningsSidecar
 import ee.schimke.composeai.renderer.DesktopSettleClock
 import ee.schimke.composeai.renderer.encodePngData
 import ee.schimke.composeai.renderer.settleScene
@@ -332,6 +333,9 @@ class RenderEngine(
     LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
+    // A failed retry, an interactive render, or a preview whose exact settle was removed must not
+    // leave an earlier render's phase declaration claiming the new output is pinned.
+    DesktopRenderWarningsSidecar.deleteStale(outputFile)
 
     // kind=LOTTIE has no class to reflect — the asset is rendered directly via Compottie below.
     val isLottie = spec.kind == "LOTTIE"
@@ -892,6 +896,12 @@ class RenderEngine(
     trace.section("render:writePng") {
       fileSystem.write(state.outputFile.path.toPath()) { write(pngBytes) }
     }
+    DesktopRenderWarningsSidecar.writePhasePinOrDelete(
+      pngFile = state.outputFile,
+      role = "compose-ai-daemon still '${state.spec.outputBaseName}'",
+      atMs = state.settleWindowMs.takeIf { state.settleIsExact }?.toLong(),
+      fileSystem = fileSystem,
+    )
 
     // Display filters — post-capture colour-matrix variants (grayscale/bedtime, invert,
     // daltonizer simulations). Gated on `composeai.displayfilter.filters` being non-empty so the
