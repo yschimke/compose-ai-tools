@@ -4,30 +4,41 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import {
-  publishedBundleBytes,
-  restateCarriage,
-} from "./recompute-carriage-report.mjs";
+import { manifestBundleBytes, restateCarriage } from "./recompute-carriage-report.mjs";
 
 import { evaluateSplitCarriage } from "./split-carriage-gate.mjs";
 
-function bundleDir(sizes) {
+/** A previews/ directory plus the manifest the workflow snapshots after the PRIMARY split. */
+function split(primarySizes, extraSizes = []) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "carriage-"));
-  sizes.forEach((size, i) => fs.writeFileSync(path.join(dir, `p${i}.png`), Buffer.alloc(size)));
-  return dir;
+  const primary = primarySizes.map((size, i) => {
+    const file = path.join(dir, `p${i}.png`);
+    fs.writeFileSync(file, Buffer.alloc(size));
+    return file;
+  });
+  const manifest = path.join(dir, "primary.txt");
+  fs.writeFileSync(manifest, `${primary.join("\n")}\n`);
+  // Written into the SAME directory afterwards, exactly as the extra-module split does.
+  extraSizes.forEach((size, i) =>
+    fs.writeFileSync(path.join(dir, `extra${i}.png`), Buffer.alloc(size)),
+  );
+  return { dir, manifest, primary };
 }
 
-test("sums only the *.png bundles directly in the directory", () => {
-  const dir = bundleDir([100, 250]);
-  fs.writeFileSync(path.join(dir, "manifest.json"), "{}");
-  fs.mkdirSync(path.join(dir, "nested"));
-  fs.writeFileSync(path.join(dir, "nested", "deep.png"), Buffer.alloc(9999));
+test("measures only the manifested primary bundles, not the extra split beside them", () => {
+  // The extra-module split writes into the same previews/ directory, and the carriage report
+  // describes the primary split alone. Counting the extra bundles would inflate the denominator
+  // and understate the share — the same understatement this whole step exists to correct.
+  const { manifest } = split([100, 250], [9000, 9000]);
 
-  assert.deepEqual(publishedBundleBytes(dir), { bytes: 350, files: 2 });
+  assert.deepEqual(manifestBundleBytes(manifest), { bytes: 350, files: 2, missing: 0 });
 });
 
-test("a missing directory measures as nothing rather than throwing", () => {
-  assert.deepEqual(publishedBundleBytes("/definitely/not/here"), { bytes: 0, files: 0 });
+test("a manifested bundle that has vanished is counted as missing, not thrown on", () => {
+  const { manifest, primary } = split([100, 250]);
+  fs.rmSync(primary[1]);
+
+  assert.deepEqual(manifestBundleBytes(manifest), { bytes: 100, files: 2, missing: 1 });
 });
 
 test("restating after a strip raises the share the gate reads", () => {

@@ -65,28 +65,69 @@ test("a deferred figma-svg links to the image's live vector route", () => {
   assert.match(html, /class="wf figma-svg-link"/);
 });
 
-test("the crop script never fetches a deferred (live) vector, only a published file", () => {
-  // #4930: with defer-figma-svg the href is an absolute live-render URL and the daemon renders it
-  // on demand from a small pool of seats. One eager bbox fetch per card would start a render for
-  // every component in the catalog on page load and 503 the visitors who actually wanted a vector,
-  // so the gallery falls back to the declared gutter for those and fetches only same-origin files.
+// Run the gallery's emitted crop script against a minimal fake DOM. It touches only
+// `document.querySelectorAll`, `IntersectionObserver` and `fetch`, so the whole environment is
+// three stubs — and driving the real emitted source is the point: an earlier version of this fix
+// was dead on arrival because a `\/` escape collapses inside the template literal that emits it,
+// and only executing the shipped text catches that.
+function runCropScript(html, { hasIntersectionObserver = true } = {}) {
+  const script = html.slice(html.lastIndexOf("<script>") + 8, html.lastIndexOf("</script>"));
+  const fetched = [];
+  const observed = [];
+  const hero = { style: {}, classList: { add() {}, remove() {} }, getAttribute: () => null };
+  const link = { getAttribute: () => "https://preview.coo.ee/wear-m3/render/b.svg" };
+  const card = {
+    querySelector: (sel) => (sel === "a.shot" ? hero : sel === "a.figma-svg-link" ? link : null),
+  };
+  const document = { querySelectorAll: (sel) => (sel === ".card" ? [card] : []) };
+  const fetch = (url) => {
+    fetched.push(url);
+    return { then: () => ({ then: () => ({ catch: () => {} }) }) };
+  };
+  class FakeIntersectionObserver {
+    constructor(cb) {
+      this.cb = cb;
+      observed.push(this);
+    }
+    observe(target) {
+      this.target = target;
+    }
+    unobserve() {}
+    trigger() {
+      this.cb([{ isIntersecting: true, target: this.target }]);
+    }
+  }
+  const globals = hasIntersectionObserver
+    ? { document, fetch, IntersectionObserver: FakeIntersectionObserver }
+    : { document, fetch, IntersectionObserver: undefined };
+  new Function(...Object.keys(globals), script)(...Object.values(globals));
+  return { fetched, observers: observed };
+}
+
+test("the crop script fetches no vector until a card is near the viewport", () => {
+  // #4930 asked for no eager render-per-card on load; the follow-up asked that deferred cards keep
+  // their crop, since the vector is the only content box a card without a declared gutter has.
+  // Lazy-loading is what satisfies both: nothing on load, the real fetch once it is looked at.
   const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set(["filled-button"]) });
 
-  // Pull the guard out of the SHIPPED script rather than restating it, so the two cannot drift.
-  const guard = html.match(/if \((\/\^\[a-z\][^\n]*?)\.test\(href\)\) \{/);
-  assert.ok(guard, "the crop script carries an absolute-URL guard before fetching");
-  const isDeferred = new Function("re", "u", "return re.test(u)").bind(null, eval(guard[1]));
+  const { fetched, observers } = runCropScript(html);
+  assert.deepEqual(fetched, [], "no vector is fetched while the card is off-screen");
+  assert.equal(observers.length, 1, "the card is observed instead");
 
-  for (const live of [
-    "https://preview.coo.ee/wear-m3/render/filled-button.svg",
-    "http://localhost:8080/render/filled-button.svg",
-    "//cdn.example/filled-button.svg",
-  ]) {
-    assert.equal(isDeferred(live), true, live);
-  }
-  for (const published of ["figma/filled-button.svg", "figma/a_width=227dp,dpi=320.svg"]) {
-    assert.equal(isDeferred(published), false, published);
-  }
+  observers[0].trigger();
+  assert.deepEqual(
+    fetched,
+    ["https://preview.coo.ee/wear-m3/render/b.svg"],
+    "the same fetch happens once the card comes into view, so the crop is not lost",
+  );
+});
+
+test("the crop script still fetches where IntersectionObserver is unavailable", () => {
+  const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set(["filled-button"]) });
+
+  const { fetched } = runCropScript(html, { hasIntersectionObserver: false });
+
+  assert.equal(fetched.length, 1, "no observer means the old eager behaviour, not a lost crop");
 });
 
 test("a declared capture gutter rides on the hero as data-gutter, in render pixels", () => {

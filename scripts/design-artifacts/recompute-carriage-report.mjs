@@ -24,24 +24,37 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 
-/** Sum the on-disk size of every `*.png` bundle directly in [dir]. Missing dir → 0 bytes, 0 files. */
-export function publishedBundleBytes(dir, { readdir = fs.readdirSync, stat = fs.statSync } = {}) {
+/**
+ * Sum the current on-disk size of exactly the bundles named in [manifest], one path per line.
+ *
+ * A manifest rather than a directory scan, and that is load-bearing. The primary split, the
+ * additional-module splits and the extra-module split all run in one workflow step, and the EXTRA
+ * split writes into the same `previews/` directory as the primary one — while the carriage report
+ * describes the primary split alone. Scanning the directory afterwards would therefore divide the
+ * primary `repeatedBytes` by a primary-plus-extra denominator and understate the share, which is
+ * the very understatement this re-measure exists to correct. The workflow snapshots the primary
+ * file list before those later splits run; this reads it back.
+ *
+ * A path that has since vanished counts as zero rather than throwing — the strip rewrites bundles
+ * in place and never removes them, so a missing entry is a real anomaly that the caller's count
+ * check below will catch and report, not something to crash on here.
+ */
+export function manifestBundleBytes(manifest, { read = fs.readFileSync, stat = fs.statSync } = {}) {
   let bytes = 0;
   let files = 0;
-  let entries;
-  try {
-    entries = readdir(dir, { withFileTypes: true });
-  } catch {
-    return { bytes, files };
-  }
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".png")) continue;
-    bytes += stat(path.join(dir, entry.name)).size;
+  let missing = 0;
+  for (const line of String(read(manifest, "utf8")).split("\n")) {
+    const file = line.trim();
+    if (file.length === 0) continue;
     files += 1;
+    try {
+      bytes += stat(file).size;
+    } catch {
+      missing += 1;
+    }
   }
-  return { bytes, files };
+  return { bytes, files, missing };
 }
 
 /**
@@ -81,10 +94,11 @@ function flag(argv, name, fallback = "") {
 
 function main(argv) {
   const reportPath = flag(argv, "--report");
-  const bundlesDir = flag(argv, "--bundles-dir");
-  if (!reportPath || !bundlesDir) {
+  const manifest = flag(argv, "--bundles-from");
+  if (!reportPath || !manifest) {
     console.error(
-      "usage: recompute-carriage-report.mjs --report <split-carriage.json> --bundles-dir <dir>",
+      "usage: recompute-carriage-report.mjs --report <split-carriage.json> " +
+        "--bundles-from <primary-bundle-list.txt>",
     );
     return 2;
   }
@@ -102,14 +116,36 @@ function main(argv) {
     console.error(`carriage report ${reportPath} is not valid JSON: ${e.message}`);
     return 1;
   }
-  const { bytes, files } = publishedBundleBytes(bundlesDir);
+  let measured;
+  try {
+    measured = manifestBundleBytes(manifest);
+  } catch (e) {
+    console.error(`cannot read the primary bundle manifest ${manifest}: ${e.message}`);
+    return 1;
+  }
+  const { bytes, files, missing } = measured;
   if (files === 0) {
-    console.error(`no published *.png bundles under ${bundlesDir}; leaving the report as written`);
+    console.error(`the primary bundle manifest ${manifest} is empty; leaving the report as written`);
     return 0;
+  }
+  // Fail closed rather than restate against a set that is not what the report measured. A count
+  // that disagrees with `bundles` means the manifest and the report describe different splits, and
+  // silently dividing by the wrong denominator is precisely the failure this step exists to fix.
+  const declared = Number(report?.bundles ?? 0);
+  if (Number.isInteger(declared) && declared > 0 && declared !== files) {
+    console.error(
+      `the manifest names ${files} primary bundle(s) but the carriage report declares ${declared}; ` +
+        "refusing to restate the share against a different set of files",
+    );
+    return 1;
+  }
+  if (missing > 0) {
+    console.error(`${missing} of ${files} manifested bundle(s) are gone; refusing to restate`);
+    return 1;
   }
   const { report: restated, note } = restateCarriage(report, bytes);
   fs.writeFileSync(reportPath, `${JSON.stringify(restated, null, 2)}\n`);
-  console.log(`${note} (measured across ${files} published bundle(s))`);
+  console.log(`${note} (measured across ${files} primary bundle(s))`);
   return 0;
 }
 
