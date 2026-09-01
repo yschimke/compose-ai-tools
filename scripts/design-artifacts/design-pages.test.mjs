@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  MAX_NODES_PER_PAGE,
   PAGES_VERSION,
   catalogOwnsNode,
   declaringClassOf,
@@ -133,6 +134,30 @@ test("an unlinked node is kept, without a preview id", () => {
   assert.equal(nodes[1].link, "unlinked");
   assert.equal(nodes[1].previewId, undefined);
   assert.equal(nodes[1].code, undefined);
+});
+
+test("the published node cap is inclusive at 500", () => {
+  for (const input of [499, 500, 501]) {
+    const nodes = Array.from({ length: input }, (_, index) => ({
+      ...statusBar,
+      nodeId: `1:${index + 1}`,
+    }));
+    const plan = planDesignPages({
+      manifest: manifest([page(nodes)]),
+      spec,
+      catalog,
+    });
+    assert.equal(
+      plan.manifest.pages[0].nodes.length,
+      Math.min(input, MAX_NODES_PER_PAGE),
+      `input node count ${input}`,
+    );
+    assert.equal(
+      plan.warnings.some((warning) => warning.includes("exceed the supported maximum")),
+      input > MAX_NODES_PER_PAGE,
+      `input node count ${input}`,
+    );
+  }
 });
 
 test("a linked node the catalog publishes no sticker for keeps its mapping and warns", () => {

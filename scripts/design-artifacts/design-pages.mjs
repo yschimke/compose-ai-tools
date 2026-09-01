@@ -48,6 +48,9 @@ export const PAGES_INDEX = "index.json";
 /** The `DESIGN_PAGES_VERSION` this producer emits. */
 export const PAGES_VERSION = 2;
 
+/** `ServeDesignPageStore.MAX_NODES_PER_PAGE` — inclusive, after unusable nodes are removed. */
+export const MAX_NODES_PER_PAGE = 500;
+
 /** `ServeDesignPageStore.SAFE_ID` — a page id is a URL path segment on `/{system}/pages/{id}`. */
 const SAFE_ID = /^[A-Za-z0-9._-]{1,160}$/;
 
@@ -533,8 +536,16 @@ export function planDesignPages({ manifest, spec, catalog }) {
     let unresolved = 0;
     let foreign = 0;
     const nodes = [];
-    for (const node of Array.isArray(page.nodes) ? page.nodes : []) {
-      if (!isDrawableNode(node)) continue;
+    const drawableNodes = (Array.isArray(page.nodes) ? page.nodes : []).filter(
+      isDrawableNode,
+    );
+    if (drawableNodes.length > MAX_NODES_PER_PAGE) {
+      warnings.push(
+        `page ${id}: ${drawableNodes.length} usable nodes exceed the supported maximum of ` +
+          `${MAX_NODES_PER_PAGE}; publishing the first ${MAX_NODES_PER_PAGE}`,
+      );
+    }
+    for (const node of drawableNodes.slice(0, MAX_NODES_PER_PAGE)) {
       const declaredLink = LINK_METHODS.has(node?.link)
         ? node.link
         : "unlinked";
