@@ -1554,6 +1554,89 @@ class OverrideIntegrationTest {
     }
   }
 
+  /** Regression for #4937: opening a focused variant in Live must keep its focus ring/state. */
+  @Test
+  fun heldSessionDrivesFocusedOverrideVariant() {
+    val outputDir = tempFolder.newFolder("renders-held-focused-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseId = "InteractionSquare_Light"
+    val focusedId = "InteractionSquare_Light_VARIANT_focused"
+    fun info(id: String, overrides: OverrideVariantSpec? = null) =
+      PreviewInfoDto(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        methodName = "InteractionStateSquare",
+        params = PreviewParamsDto(widthDp = 32, heightDp = 32, density = 1.0f),
+        overrides = overrides,
+      )
+    val infos =
+      listOf(
+        info(baseId),
+        info(
+          focusedId,
+          OverrideVariantSpec(
+            name = "focused",
+            interaction = OverrideVariantInteraction.Focused,
+          ),
+        ),
+      )
+    val previewsJson = tempFolder.newFile("previews-held-focused.json")
+    previewsJson.writeText(
+      """
+      {"previews":[
+        {"id":"$baseId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt"},
+        {"id":"$focusedId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"focused","seeds":[],"interaction":"Focused"}}
+      ]}
+      """
+        .trimIndent()
+    )
+    val previousPreviewsJson = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+    System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previewsJson.absolutePath)
+    val byId = infos.associate { it.id to renderSpecFromInfo(it) }
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            outputDir = outputDir,
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(FocusPreviewOverrideExtension())),
+          ),
+        previewSpecResolver = byId::get,
+      )
+    host.start()
+    try {
+      val base = heldRender(host, baseId, "held-focus-base")
+      val focused = heldRender(host, focusedId, "held-focus-variant")
+
+      System.getenv("HELD_FOCUS_DEMO_DIR")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { dir ->
+          val target = File(dir).also { it.mkdirs() }
+          ImageIO.write(base, "png", target.resolve("before.png"))
+          ImageIO.write(focused, "png", target.resolve("after.png"))
+        }
+
+      val basePct = pixelMatchPct(base, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue("the base must remain unfocused red", basePct >= 0.95)
+      val focusedPct = pixelMatchPct(focused, expectedRgb = 0xFFA726, perChannelTolerance = 8)
+      assertTrue(
+        "the held focused variant must receive real focus; got " +
+          "${"%.2f".format(focusedPct * 100)}% focused pixels",
+        focusedPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+      if (previousPreviewsJson == null) {
+        System.clearProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+      } else {
+        System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previousPreviewsJson)
+      }
+    }
+  }
+
   /**
    * The reported shape of yschimke/wear-m3-catalog#33, on a fixture whose two states differ
    * *structurally*: [SplittableSwitchRow] draws one tap target unseeded and two when `split` is

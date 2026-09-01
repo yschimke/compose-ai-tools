@@ -1684,6 +1684,13 @@ open class RobolectricHost(
         // get threaded across the sandbox boundary (see the field's doc on
         // `InteractiveCommand.Start`).
         touchOverlay = spec.overrides?.touchOverlay,
+        // Focus has the same split ownership as one-shot rendering: the extension supplies
+        // keyboard input mode from inside composition, then the held host targets the semantics
+        // node once after setContent. Without both halves a focused catalog cell loses its ring
+        // when the viewer switches to Live (#4937).
+        focusTabIndex =
+          spec.overrides?.focus?.takeIf { it.direction == null }?.let { it.tabIndex ?: 0 },
+        focusPressed = spec.overrides?.focus?.pressed == true,
         // …and the author-declared knob seeds, encoded as strings for the same boundary reason
         // (see `InteractiveCommand.Start.namedOverrides`). `applyOverrides` has already layered the
         // live bag over the preview's own `@OverrideVariant` seed, so this is the value the held
@@ -3111,8 +3118,8 @@ open class RobolectricHost(
                         // — they're consulted only inside `RenderEngine.render`'s composition
                         // setup, which the held-rule `setContent` bypasses.
                         //
-                        // The reconstructed `PreviewOverrides(touchOverlay = …)` carries only
-                        // the fields whose planners are exercised on the interactive path
+                        // The reconstructed `PreviewOverrides(touchOverlay = …, focus = …)` carries
+                        // only the fields whose planners are exercised on the interactive path
                         // today; other override-driven planners ride along because their
                         // `plan(request)` returns an extension regardless of input (e.g. the
                         // always-active keyboard band). See `InteractiveCommand.Start.touchOverlay`
@@ -3134,6 +3141,13 @@ open class RobolectricHost(
                           ee.schimke.composeai.daemon.protocol
                             .PreviewOverrides(
                               touchOverlay = start.touchOverlay,
+                              focus =
+                                start.focusTabIndex?.let {
+                                  ee.schimke.composeai.daemon.protocol.FocusOverride(
+                                    tabIndex = it,
+                                    pressed = start.focusPressed,
+                                  )
+                                },
                               namedOverrides = HeldNamedOverrides.decode(start.namedOverrides),
                             )
                             .withPseudolocaleFrom(start.localeTag)
@@ -3257,6 +3271,18 @@ open class RobolectricHost(
             // composition + first LaunchedEffect-equivalent pass to land.
             setupTrace.section("compose:advanceClock") {
               advanceHeldClocks(rule, HELD_CAPTURE_ADVANCE_MS)
+            }
+            start.focusTabIndex?.let { tabIndex ->
+              setupTrace.section("compose:focus") {
+                // The connector's moveFocus walk does not land in this held Robolectric scene.
+                // Address the target through semantics, matching the one-shot daemon renderer,
+                // after its keyboard-input-mode provider has composed.
+                ee.schimke.composeai.renderer.driveFocusPreview(
+                  rule = rule,
+                  tabIndex = tabIndex,
+                  pressed = start.focusPressed,
+                )
+              }
             }
             dataDir?.let(setupTrace::write)
             // Start succeeded — count the latch down before draining further commands so the host
