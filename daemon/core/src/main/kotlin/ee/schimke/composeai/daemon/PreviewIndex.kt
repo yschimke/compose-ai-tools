@@ -110,6 +110,7 @@ public data class PreviewInfoDto(
    * dependency: the type lives in the shared `:data-preview-overrides-core` this module already
    * depends on for `PreviewOverrideValue`.
    */
+  @Serializable(with = CompatibleOverrideVariantSpecSerializer::class)
   val overrides: ee.schimke.composeai.data.overrides.OverrideVariantSpec? = null,
 )
 
@@ -138,7 +139,11 @@ public data class PreviewDataProductDto(val kind: String, val scroll: ScrollCapt
 public data class PreviewCaptureDto(
   val scroll: ScrollCaptureDto? = null,
   val settle: SettleCaptureDto? = null,
+  val drag: DragCaptureDto? = null,
 )
+
+/** Held drag target mirrored from discovery's `DragCapture`. */
+@Serializable public data class DragCaptureDto(val targetIndex: Int = 0)
 
 /**
  * Daemon-side mirror of the gradle plugin's `SettleCapture` — `@SettledPreview`'s pre-capture
@@ -456,6 +461,12 @@ internal constructor(
     val spec = rowResolved(previewId)?.info?.overrides ?: return null
     if (spec.interaction != OverrideVariantInteraction.Hovered) return null
     return spec.interactionIndex.coerceAtLeast(0)
+  }
+
+  /** The interactive-node target for a held `@OverrideVariant(interaction = Dragged)` gesture. */
+  public fun staticDragFor(previewId: String): Int? {
+    val info = rowResolved(previewId)?.info ?: return null
+    return info.captures.firstNotNullOfOrNull { it.drag?.targetIndex }?.coerceAtLeast(0)
   }
 
   /**

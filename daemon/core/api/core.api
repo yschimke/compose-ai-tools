@@ -126,6 +126,15 @@ public final class ee/schimke/composeai/daemon/ClasspathFingerprint$Snapshot {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/daemon/CompatibleOverrideVariantSpecSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/daemon/CompatibleOverrideVariantSpecSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/data/overrides/OverrideVariantSpec;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/data/overrides/OverrideVariantSpec;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+}
+
 public final class ee/schimke/composeai/daemon/CompositeDataProductRegistry : ee/schimke/composeai/daemon/DataProductRegistry {
 	public fun <init> (Ljava/util/List;)V
 	public fun attachmentsFor (Ljava/lang/String;Ljava/util/Set;)Ljava/util/List;
@@ -269,6 +278,35 @@ public final class ee/schimke/composeai/daemon/DiscoveryDiff {
 	public final fun getTotalPreviews ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/daemon/DragCaptureDto {
+	public static final field Companion Lee/schimke/composeai/daemon/DragCaptureDto$Companion;
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/daemon/DragCaptureDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/DragCaptureDto;IILjava/lang/Object;)Lee/schimke/composeai/daemon/DragCaptureDto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTargetIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/daemon/DragCaptureDto$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/daemon/DragCaptureDto$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/daemon/DragCaptureDto;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/daemon/DragCaptureDto;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/daemon/DragCaptureDto$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class ee/schimke/composeai/daemon/EnableOutcome {
@@ -789,13 +827,15 @@ public final class ee/schimke/composeai/daemon/PixelDiffTolerance$Companion {
 public final class ee/schimke/composeai/daemon/PreviewCaptureDto {
 	public static final field Companion Lee/schimke/composeai/daemon/PreviewCaptureDto$Companion;
 	public fun <init> ()V
-	public fun <init> (Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;)V
-	public synthetic fun <init> (Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;Lee/schimke/composeai/daemon/DragCaptureDto;)V
+	public synthetic fun <init> (Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;Lee/schimke/composeai/daemon/DragCaptureDto;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lee/schimke/composeai/daemon/ScrollCaptureDto;
 	public final fun component2 ()Lee/schimke/composeai/daemon/SettleCaptureDto;
-	public final fun copy (Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;)Lee/schimke/composeai/daemon/PreviewCaptureDto;
-	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/PreviewCaptureDto;Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;ILjava/lang/Object;)Lee/schimke/composeai/daemon/PreviewCaptureDto;
+	public final fun component3 ()Lee/schimke/composeai/daemon/DragCaptureDto;
+	public final fun copy (Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;Lee/schimke/composeai/daemon/DragCaptureDto;)Lee/schimke/composeai/daemon/PreviewCaptureDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/PreviewCaptureDto;Lee/schimke/composeai/daemon/ScrollCaptureDto;Lee/schimke/composeai/daemon/SettleCaptureDto;Lee/schimke/composeai/daemon/DragCaptureDto;ILjava/lang/Object;)Lee/schimke/composeai/daemon/PreviewCaptureDto;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDrag ()Lee/schimke/composeai/daemon/DragCaptureDto;
 	public final fun getScroll ()Lee/schimke/composeai/daemon/ScrollCaptureDto;
 	public final fun getSettle ()Lee/schimke/composeai/daemon/SettleCaptureDto;
 	public fun hashCode ()I
@@ -859,6 +899,7 @@ public final class ee/schimke/composeai/daemon/PreviewIndex {
 	public final fun rowResolved (Ljava/lang/String;)Lee/schimke/composeai/daemon/PreviewIndex$Resolved;
 	public final fun scrollCaptureFor (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/daemon/ScrollCaptureDto;
 	public final fun snapshot ()Ljava/util/Map;
+	public final fun staticDragFor (Ljava/lang/String;)Ljava/lang/Integer;
 	public final fun staticHoverFor (Ljava/lang/String;)Ljava/lang/Integer;
 	public final fun staticScrollFor (Ljava/lang/String;)Lee/schimke/composeai/daemon/ScrollCaptureDto;
 	public final fun staticSettleFor (Ljava/lang/String;)Lee/schimke/composeai/daemon/SettleCaptureDto;

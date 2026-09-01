@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
@@ -148,6 +149,7 @@ fun renderFocusPreview(
   localeTag: String?,
   focus: DesktopFocusIntent? = null,
   hoverIndex: Int? = null,
+  dragIndex: Int? = null,
   /**
    * `@ScrollingPreview(END)` on the same capture: drive the scrollable to its content end *before*
    * walking focus, so a capture carrying both intents documents both. Without this the focus branch
@@ -190,7 +192,9 @@ fun renderFocusPreview(
   captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
-  require(focus != null || hoverIndex != null) { "focus or hover intent required" }
+  require(focus != null || hoverIndex != null || dragIndex != null) {
+    "focus, hover, or drag intent required"
+  }
   val clazz = Class.forName(className)
   // Reflection + wrapper resolution are [renderPreview]'s, not near-copies: an overload lookup
   // without its `argsMatch` filter can pick a same-arity-but-wrong-types sibling, and a wrapper
@@ -214,6 +218,7 @@ fun renderFocusPreview(
   val previousDefaultLocale = overrideJvmDefaultLocale(localeTag)
   val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
+  val dragDisplacementPx = DEFAULT_DRAG_DISPLACEMENT_DP * density
   val sizeBounds =
     PreviewSizeBounds(
       minWidthPx = minWidthPx,
@@ -374,18 +379,37 @@ fun renderFocusPreview(
           }
           focusedBounds = focusedNodeBounds(this)
         }
-      } else {
+      } else if (hoverIndex != null) {
         // Hover is positional input, not a focus walk: find the requested interactive semantics
         // node and move a mouse into its centre. This raises HoverInteraction.Enter without also
         // producing FocusInteraction.Focus (or the extra hover a mouse press would add).
         val matcher = interactiveNodeMatcher()
         val targets = onAllNodes(matcher).fetchSemanticsNodes()
-        val index = hoverIndex ?: 0
+        val index = hoverIndex
         if (index in targets.indices) {
           onAllNodes(matcher)[index].performMouseInput { moveTo(center) }
           waitForIdle()
           mainClock.advanceTimeBy(FocusController.SETTLE_MS)
           landed = true
+        }
+      } else {
+        // A drag stays held at a fixed 24 dp horizontal displacement. Capture before and after the
+        // gesture: pointer injection itself cannot expose whether a consumer installed a draggable
+        // handler, so a changed frame is the backend-neutral proof that publishing `Dragged`
+        // pixels is honest.
+        val matcher = interactiveNodeMatcher()
+        val targets = onAllNodes(matcher).fetchSemanticsNodes()
+        val index = dragIndex ?: 0
+        if (index in targets.indices) {
+          val before = captureRootPngBytes(this)
+          onAllNodes(matcher)[index].performTouchInput {
+            down(center)
+            moveBy(Offset(dragDisplacementPx, 0f))
+          }
+          waitForIdle()
+          mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+          mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+          landed = !before.contentEquals(captureRootPngBytes(this))
         }
       }
       if (landed) {
@@ -415,9 +439,12 @@ fun renderFocusPreview(
       if (focus != null) {
         "@FocusedPreview on $className.$functionName: nothing took focus " +
           "(${focus.describe()}) — falling back to the undriven capture."
-      } else {
+      } else if (hoverIndex != null) {
         "@OverrideVariant hover on $className.$functionName: no interactive node at index " +
-          "${hoverIndex ?: 0} — falling back to the undriven capture."
+          "$hoverIndex — falling back to the undriven capture."
+      } else {
+        "@OverrideVariant drag on $className.$functionName: target at index ${dragIndex ?: 0} " +
+          "did not produce a dragged frame; interaction unavailable."
       }
     )
     return false
@@ -548,6 +575,21 @@ private fun captureFocusFrame(
   }
   fileSystem.write(outputFile.path.toPath()) { write(bytes) }
 }
+
+@OptIn(ExperimentalTestApi::class)
+private fun captureRootPngBytes(provider: SemanticsNodeInteractionsProvider): ByteArray {
+  val bitmap = provider.onRoot().captureToImage()
+  val image = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
+  val data = image.encodePngData() ?: error("Failed to encode interaction probe to PNG")
+  return try {
+    data.bytes
+  } finally {
+    data.close()
+    image.close()
+  }
+}
+
+private const val DEFAULT_DRAG_DISPLACEMENT_DP: Float = 24f
 
 @Composable
 private fun InvokeFocusComposable(

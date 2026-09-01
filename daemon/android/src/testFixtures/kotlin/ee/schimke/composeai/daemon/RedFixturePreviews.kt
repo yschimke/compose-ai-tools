@@ -10,9 +10,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -246,8 +250,10 @@ fun InteractionStateSquare() {
   val hovered by interactionSource.collectIsHoveredAsState()
   val pressed by interactionSource.collectIsPressedAsState()
   val focused by interactionSource.collectIsFocusedAsState()
+  val dragged by interactionSource.collectIsDraggedAsState()
   val fill =
     when {
+      dragged -> Color(0xFFAB47BC)
       pressed -> Color(0xFF66BB6A)
       hovered -> Color(0xFF42A5F5)
       focused -> Color(0xFFFFA726)
@@ -255,10 +261,18 @@ fun InteractionStateSquare() {
     }
   Box(
     modifier =
-      Modifier.fillMaxSize().background(fill).hoverable(interactionSource).clickable(
-        interactionSource = interactionSource,
-        indication = null,
-      ) {}
+      Modifier.fillMaxSize()
+        .background(fill)
+        .hoverable(interactionSource)
+        .clickable(
+          interactionSource = interactionSource,
+          indication = null,
+        ) {}
+        .draggable(
+          state = rememberDraggableState {},
+          orientation = Orientation.Horizontal,
+          interactionSource = interactionSource,
+        )
   )
 }
 

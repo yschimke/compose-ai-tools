@@ -1894,15 +1894,22 @@ class RenderEngine(
   )
   internal fun driveStaticInteraction(state: SceneState) {
     val hoverIndex = state.spec.previewId?.let { loadPreviewIndexLazily().staticHoverFor(it) }
+    val dragIndex = state.spec.previewId?.let { loadPreviewIndexLazily().staticDragFor(it) }
     val focus = state.spec.overrides?.focus
     // A direction-addressed override is a traversal script, which is the extension's walk to run
     // and not a target this can name. Left exactly as it was.
     val focusIndex = if (focus != null && focus.direction == null) focus.tabIndex ?: 0 else null
-    if (hoverIndex == null && focusIndex == null) return
+    if (hoverIndex == null && dragIndex == null && focusIndex == null) return
     // Under the same JVM-default-`Locale` override every other frame-driving pass runs in: a press
     // can compose new content, and `rememberResourceEnvironment` caches what it resolves.
     withPreviewLocale(state.spec.localeTag) {
-      driveStaticInteractionLocalized(state, hoverIndex, focusIndex, focus?.pressed == true)
+      driveStaticInteractionLocalized(
+        state,
+        hoverIndex,
+        dragIndex,
+        focusIndex,
+        focus?.pressed == true,
+      )
     }
   }
 
@@ -1913,6 +1920,7 @@ class RenderEngine(
   private fun driveStaticInteractionLocalized(
     state: SceneState,
     hoverIndex: Int?,
+    dragIndex: Int?,
     focusIndex: Int?,
     pressFocused: Boolean,
   ) {
@@ -1937,6 +1945,46 @@ class RenderEngine(
         type = PointerType.Mouse,
       )
       settleInteraction(state)
+      return
+    }
+
+    if (dragIndex != null) {
+      val target = interactiveNodes(state).getOrNull(dragIndex)
+      if (target == null) {
+        throw IllegalStateException(
+          "@OverrideVariant drag on ${state.spec.outputBaseName}: no interactive node at index " +
+            "$dragIndex — interaction unavailable."
+        )
+      }
+      val before = state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+      val beforeBytes = before.encodePngData()?.bytes
+      before.close()
+      val start = target.boundsInRoot.center
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Press,
+        position = start,
+        type = PointerType.Touch,
+      )
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Move,
+        position =
+          start +
+            androidx.compose.ui.geometry.Offset(
+              DEFAULT_DRAG_DISPLACEMENT_DP * state.spec.density,
+              0f,
+            ),
+        type = PointerType.Touch,
+      )
+      settleInteraction(state)
+      val after = state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+      val afterBytes = after.encodePngData()?.bytes
+      after.close()
+      if (beforeBytes == null || afterBytes == null || beforeBytes.contentEquals(afterBytes)) {
+        throw IllegalStateException(
+          "@OverrideVariant drag on ${state.spec.outputBaseName}: target at index $dragIndex did " +
+            "not produce a dragged frame; interaction unavailable."
+        )
+      }
       return
     }
 
@@ -2201,6 +2249,7 @@ class RenderEngine(
      * both standalone renderers give it.
      */
     private const val INTERACTION_SETTLE_FRAMES: Int = 15
+    private const val DEFAULT_DRAG_DISPLACEMENT_DP: Float = 24f
 
     /**
      * Frames [driveStaticScrollToEnd] lets an animated `ScrollBy` run for before re-reading the

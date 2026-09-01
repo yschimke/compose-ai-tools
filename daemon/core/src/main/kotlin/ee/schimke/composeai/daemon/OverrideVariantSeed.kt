@@ -4,6 +4,17 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.overrides.OverrideVariantInteraction
 import ee.schimke.composeai.data.overrides.OverrideVariantSpec
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The **whole** of what a synthetic `_VARIANT_` preview's `@OverrideVariant` asks a daemon render
@@ -34,12 +45,10 @@ import ee.schimke.composeai.data.overrides.OverrideVariantSpec
  *   discovery hands the standalone renderers (`FocusCapture(tabIndex, pressed = true)`): a pressed
  *   sticker is focused *and* pressed, so a press with no focus indication under it would disagree
  *   with the baked PNG beside it.
- * * [OverrideVariantInteraction.Hovered] is **not** here. A hover has no in-composition half at all
- *   — no input-mode flip, no manager to walk — so there is nothing for this bag to carry and each
- *   engine reads the intent off the preview index instead ([PreviewIndex.staticHoverFor]), exactly
- *   as the `@ScrollingPreview(END)` drive already does. Returning a `FocusOverride` for it would
- *   draw a focus indication and call it hover: a plausible picture of the wrong state, which is
- *   worse than the honest duplicate this whole change is about.
+ * * [OverrideVariantInteraction.Hovered] is **not** here. It has no in-composition half — no
+ *   input-mode flip, no manager to walk — so each engine reads its target off the preview index and
+ *   drives pointer input itself. Dragged follows that same host-driven route, but its intent rides
+ *   the capture DTO until the shared contracts artifact grows the matching enum member.
  *
  * What this bag does **not** carry for focus and press is the *targeting*. Both engines address the
  * node themselves, because `FocusOverrideExtension`'s `moveFocus` walk does not land inside a
@@ -64,4 +73,31 @@ public fun OverrideVariantSpec.toPreviewOverrides(): PreviewOverrides? {
     }
   if (named == null && focus == null) return null
   return PreviewOverrides(namedOverrides = named, focus = focus)
+}
+
+/**
+ * Reads a discovery manifest containing the additive `Dragged` interaction with an older shared
+ * contracts artifact. The daemon gets drag intent from `captures[].drag`; removing only this
+ * unknown enum value preserves the variant's named seeds while avoiding a whole-manifest decode
+ * failure. Known interactions delegate byte-for-byte to the canonical serializer.
+ */
+public object CompatibleOverrideVariantSpecSerializer : KSerializer<OverrideVariantSpec> {
+  private val delegate = OverrideVariantSpec.serializer()
+
+  override val descriptor: SerialDescriptor = delegate.descriptor
+
+  override fun deserialize(decoder: Decoder): OverrideVariantSpec {
+    if (decoder !is JsonDecoder) return delegate.deserialize(decoder)
+    val original = decoder.decodeJsonElement()
+    val interaction = original.jsonObject["interaction"]?.jsonPrimitive?.content
+    val compatible =
+      if (interaction == "Dragged") JsonObject(original.jsonObject - "interaction") else original
+    return decoder.json.decodeFromJsonElement(delegate, compatible)
+  }
+
+  override fun serialize(encoder: Encoder, value: OverrideVariantSpec) {
+    if (encoder is JsonEncoder)
+      encoder.encodeJsonElement(encoder.json.encodeToJsonElement(delegate, value))
+    else delegate.serialize(encoder, value)
+  }
 }

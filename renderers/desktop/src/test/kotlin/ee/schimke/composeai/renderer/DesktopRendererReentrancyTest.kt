@@ -151,6 +151,26 @@ class DesktopRendererReentrancyTest {
     )
   }
 
+  @Test
+  fun draggedInteractionDoesNotDiscardNamedSeeds() {
+    val outDir = tempFolder.newFolder("dragged-seed-renders")
+    val baseline = File(outDir, "baseline.png").also { renderOnce(it, overrideFixture = true) }
+    val seeded =
+      File(outDir, "seeded.png").also {
+        withSeed(DRAGGED_SEED_JSON) { renderOnce(it, overrideFixture = true) }
+      }
+
+    val baselinePixels = decode(baseline.readBytes())
+    val seededPixels = decode(seeded.readBytes())
+    val changed =
+      baselinePixels.argb.indices.count { baselinePixels.argb[it] != seededPixels.argb[it] }
+    assertTrue(
+      "Dragged made the complete override seed undecodable, so the named colour stayed at its " +
+        "default",
+      changed > 0,
+    )
+  }
+
   private fun <T> withSeed(seedJson: String, block: () -> T): T {
     System.setProperty(SEED_PROPERTY, seedJson)
     return try {
@@ -210,6 +230,8 @@ class DesktopRendererReentrancyTest {
     /** Seeds [LEAK_KNOB_KEY] to a colour far from the fixture's default green. */
     const val SEED_JSON =
       """{"name":"leak","seeds":[{"key":"$LEAK_KNOB_KEY","kind":"COLOR","raw":"#FFB71C1C"}]}"""
+    const val DRAGGED_SEED_JSON =
+      """{"name":"dragged","seeds":[{"key":"$LEAK_KNOB_KEY","kind":"COLOR","raw":"#FFB71C1C"}],"interaction":"Dragged"}"""
 
     var skikoLoadFailure: String? = null
 

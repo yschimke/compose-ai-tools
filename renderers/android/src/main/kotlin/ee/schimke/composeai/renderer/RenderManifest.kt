@@ -1,7 +1,45 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.scroll.ScrollGifEncoder
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * Reads the additive `Dragged` interaction from a discovery manifest while this renderer still
+ * consumes a shared-contracts version whose interaction enum predates it. The actual gesture intent
+ * is carried by `captures[].drag`; removing only the unknown enum field keeps every named seed.
+ */
+internal object AndroidCompatibleOverrideVariantSpecSerializer : KSerializer<OverrideVariantSpec> {
+  private val delegate = OverrideVariantSpec.serializer()
+
+  override val descriptor: SerialDescriptor = delegate.descriptor
+
+  override fun deserialize(decoder: Decoder): OverrideVariantSpec {
+    if (decoder !is JsonDecoder) return delegate.deserialize(decoder)
+    val original = decoder.decodeJsonElement()
+    val interaction = original.jsonObject["interaction"]?.jsonPrimitive?.content
+    val compatible =
+      if (interaction == "Dragged") JsonObject(original.jsonObject - "interaction") else original
+    return decoder.json.decodeFromJsonElement(delegate, compatible)
+  }
+
+  override fun serialize(encoder: Encoder, value: OverrideVariantSpec) {
+    if (encoder is JsonEncoder)
+      encoder.encodeJsonElement(encoder.json.encodeToJsonElement(delegate, value))
+    else delegate.serialize(encoder, value)
+  }
+}
 
 enum class PreviewKind {
   COMPOSE,
@@ -185,6 +223,9 @@ data class FocusCapture(
 /** Renderer-side mirror of the plugin's `HoverCapture`. */
 @Serializable data class HoverCapture(val targetIndex: Int = 0)
 
+/** Renderer-side mirror of the plugin's `DragCapture`. */
+@Serializable data class DragCapture(val targetIndex: Int = 0)
+
 /** Renderer-side mirror of the plugin's `FocusGifCapture`. */
 @Serializable
 data class FocusGifCapture(
@@ -353,7 +394,8 @@ data class RenderPreviewEntry(
    * resolve). Uses the canonical [ee.schimke.composeai.data.overrides.OverrideVariantSpec] so every
    * backend shares one seed→value mapping.
    */
-  val overrides: ee.schimke.composeai.data.overrides.OverrideVariantSpec? = null,
+  @Serializable(with = AndroidCompatibleOverrideVariantSpecSerializer::class)
+  val overrides: OverrideVariantSpec? = null,
   /**
    * Annotation-sourced *rendered artefacts* for this preview — secondary images (each with a
    * `kind`, an output PNG, and a render cost), as opposed to the primary screenshots in [captures].
@@ -382,6 +424,7 @@ data class RenderPreviewCapture(
   val animation: AnimationCapture? = null,
   val focus: FocusCapture? = null,
   val hover: HoverCapture? = null,
+  val drag: DragCapture? = null,
   val focusGif: FocusGifCapture? = null,
   /**
    * `null` → not an interaction capture. Set when the preview carries `@InteractionPreview`; the

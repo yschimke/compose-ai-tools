@@ -425,6 +425,7 @@ data class PreviewManifestEntry(
    */
   val params: PreviewParamsEntry? = null,
   /** Baked state seed for a synthetic `_VARIANT_` preview emitted by discovery. */
+  @Serializable(with = CompatibleOverrideVariantSpecSerializer::class)
   val overrides: OverrideVariantSpec? = null,
   val widthPx: Int? = null,
   val heightPx: Int? = null,

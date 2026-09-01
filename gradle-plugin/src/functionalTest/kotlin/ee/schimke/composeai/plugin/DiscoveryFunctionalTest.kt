@@ -196,7 +196,48 @@ class DiscoveryFunctionalTest {
             val colors: Array<String> = [],
         )
 
-        enum class VariantInteraction { None, Hovered, Focused, Pressed }
+        enum class VariantInteraction { None, Hovered, Focused, Pressed, Dragged }
+        """
+          .trimIndent()
+      )
+
+    File(annDir, "AnimatedPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class AnimatedPreview(
+            val durationMs: Int = 0,
+            val frameIntervalMs: Int = 33,
+            val showCurves: Boolean = true,
+            val caption: String = "",
+            val format: MotionFormat = MotionFormat.Gif,
+        )
+
+        enum class MotionFormat { Gif, Apng }
+        """
+          .trimIndent()
+      )
+
+    File(annDir, "ScrollingPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class ScrollingPreview(
+            val modes: Array<ScrollMode> = [ScrollMode.END],
+            val maxScrollPx: Int = 0,
+            val reduceMotion: Boolean = true,
+            val axis: ScrollAxis = ScrollAxis.VERTICAL,
+            val frameIntervalMs: Int = 80,
+        )
+
+        enum class ScrollMode { TOP, END, LONG, GIF }
+        enum class ScrollAxis { VERTICAL, HORIZONTAL }
         """
           .trimIndent()
       )
@@ -214,6 +255,9 @@ class DiscoveryFunctionalTest {
         import androidx.compose.ui.tooling.preview.Preview
         import androidx.compose.ui.unit.dp
         import ee.schimke.composeai.preview.OverrideVariant
+        import ee.schimke.composeai.preview.AnimatedPreview
+        import ee.schimke.composeai.preview.ScrollMode
+        import ee.schimke.composeai.preview.ScrollingPreview
         import ee.schimke.composeai.preview.VariantInteraction
 
         @Preview
@@ -226,9 +270,34 @@ class DiscoveryFunctionalTest {
             interactionIndex = 1,
         )
         @OverrideVariant(name = "pressed", interaction = VariantInteraction.Pressed)
+        @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
         @Composable
         fun TogglePreview() {
             Box(modifier = Modifier.size(50.dp)) { Text("Toggle") }
+        }
+
+        @Preview
+        @AnimatedPreview
+        @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
+        @Composable
+        fun AnimatedDraggedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Animated") }
+        }
+
+        @Preview
+        @ScrollingPreview(modes = [ScrollMode.LONG, ScrollMode.GIF])
+        @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
+        @Composable
+        fun ProductOnlyDraggedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Scrolling") }
+        }
+
+        @Preview
+        @ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
+        @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
+        @Composable
+        fun MultiCaptureDraggedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Multi") }
         }
         """
           .trimIndent()
@@ -248,7 +317,7 @@ class DiscoveryFunctionalTest {
       )
     val toggles = manifest.previews.filter { it.functionName == "TogglePreview" }
     // Base preview + one synthetic seeded preview per `@OverrideVariant`.
-    assertThat(toggles).hasSize(6)
+    assertThat(toggles).hasSize(7)
 
     val base = toggles.single { it.overrides == null }
     assertThat(base.captures.single().renderOutput).doesNotContain("_VARIANT_")
@@ -282,6 +351,36 @@ class DiscoveryFunctionalTest {
     val pressed = toggles.single { it.overrides?.name == "pressed" }
     assertThat(pressed.captures.single().focus)
       .isEqualTo(FocusCapture(tabIndex = 0, pressed = true))
+
+    val dragged = toggles.single { it.overrides?.name == "dragged" }
+    assertThat(dragged.overrides!!.interaction).isEqualTo(OverrideVariantInteraction.Dragged)
+    assertThat(dragged.captures.single().drag).isEqualTo(DragCapture(targetIndex = 0))
+    assertThat(dragged.captures.single().focus).isNull()
+
+    val animatedDragged =
+      manifest.previews.single {
+        it.functionName == "AnimatedDraggedPreview" && it.overrides?.name == "dragged"
+      }
+    assertThat(animatedDragged.captures.single().animation).isNull()
+    assertThat(animatedDragged.captures.single().drag).isEqualTo(DragCapture(targetIndex = 0))
+    assertThat(animatedDragged.captures.single().renderOutput).contains("_VARIANT_dragged")
+    assertThat(animatedDragged.captures.single().renderOutput).endsWith(".png")
+
+    val productOnlyDragged =
+      manifest.previews.single {
+        it.functionName == "ProductOnlyDraggedPreview" && it.overrides?.name == "dragged"
+      }
+    assertThat(productOnlyDragged.captures.single().drag).isEqualTo(DragCapture(targetIndex = 0))
+    assertThat(productOnlyDragged.captures.single().renderOutput).contains("_VARIANT_dragged")
+    assertThat(productOnlyDragged.captures.single().renderOutput).endsWith(".png")
+    assertThat(productOnlyDragged.dataProducts).isEmpty()
+
+    val multiCaptureDragged =
+      manifest.previews.single {
+        it.functionName == "MultiCaptureDraggedPreview" && it.overrides?.name == "dragged"
+      }
+    assertThat(multiCaptureDragged.captures).hasSize(1)
+    assertThat(multiCaptureDragged.captures.single().drag).isEqualTo(DragCapture(targetIndex = 0))
   }
 
   /**

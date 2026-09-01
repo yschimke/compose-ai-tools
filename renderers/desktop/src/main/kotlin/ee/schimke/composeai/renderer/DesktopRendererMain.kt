@@ -22,6 +22,7 @@ import ee.schimke.composeai.daemon.DeviceFrameConfig
 import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.extensions.compose.PreviewSystemTheme
 import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
@@ -34,6 +35,10 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -326,6 +331,9 @@ fun main(args: Array<String>) {
       bottomDp = args.getOrNull(52)?.toIntOrNull() ?: 0,
       density = density,
     )
+  // 54th (index 53) — held Dragged override target. Missing keeps older plugin invocations on the
+  // untouched path.
+  val dragIndex = args.getOrNull(53)?.toIntOrNull()?.takeIf { it >= 0 }
   val focusIntent: DesktopFocusIntent? =
     when {
       focusDirections.isNotEmpty() ->
@@ -367,13 +375,7 @@ fun main(args: Array<String>) {
     ?.takeIf { it.isNotBlank() }
     ?.let { seedJson ->
       runCatching {
-        kotlinx.serialization.json
-          .Json { ignoreUnknownKeys = true }
-          .decodeFromString(
-            ee.schimke.composeai.data.overrides.OverrideVariantSpec.serializer(),
-            seedJson,
-          )
-          .toNamedOverrides()
+        decodeDesktopOverrideVariantSpec(seedJson).toNamedOverrides()
       }
         .getOrNull()
         ?.takeIf { it.isNotEmpty() }
@@ -583,7 +585,7 @@ fun main(args: Array<String>) {
           captureGutter = captureGutter,
         )
       } else if (
-        (focusIntent != null || hoverIndex != null) &&
+        (focusIntent != null || hoverIndex != null || dragIndex != null) &&
           scrollDispatchMode != DesktopScrollMode.LONG &&
           scrollDispatchMode != DesktopScrollMode.GIF
       ) {
@@ -616,6 +618,7 @@ fun main(args: Array<String>) {
             localeTag = localeTag,
             focus = focusIntent,
             hoverIndex = hoverIndex,
+            dragIndex = dragIndex,
             scrollToEnd = scrollDispatchMode == DesktopScrollMode.END,
             scrollAxis = scrollAxis,
             scrollMaxScrollPx = scrollMaxScrollPx,
@@ -637,32 +640,39 @@ fun main(args: Array<String>) {
             captureGutter = captureGutter,
           )
         if (!didCapture) {
-          renderPreview(
-            className,
-            functionName,
-            widthPx,
-            heightPx,
-            density,
-            showBackground,
-            backgroundColor,
-            targetFile,
-            wrapperClassName,
-            wrapWidth,
-            wrapHeight,
-            previewArgs,
-            localeTag,
-            fontScale,
-            showSystemUi,
-            uiMode,
-            device,
-            minWidthPx = minWidthPx,
-            minHeightPx = minHeightPx,
-            maxWidthPx = maxWidthPx,
-            maxHeightPx = maxHeightPx,
-            settleAfterMs = settleAfterMs,
-            settleMaxMs = settleMaxMs,
-            captureGutter = captureGutter,
-          )
+          if (dragIndex != null) {
+            error(
+              "@OverrideVariant drag on $className.$functionName: target at index $dragIndex " +
+                "did not produce a dragged frame; refusing to publish an undriven artifact."
+            )
+          } else {
+            renderPreview(
+              className,
+              functionName,
+              widthPx,
+              heightPx,
+              density,
+              showBackground,
+              backgroundColor,
+              targetFile,
+              wrapperClassName,
+              wrapWidth,
+              wrapHeight,
+              previewArgs,
+              localeTag,
+              fontScale,
+              showSystemUi,
+              uiMode,
+              device,
+              minWidthPx = minWidthPx,
+              minHeightPx = minHeightPx,
+              maxWidthPx = maxWidthPx,
+              maxHeightPx = maxHeightPx,
+              settleAfterMs = settleAfterMs,
+              settleMaxMs = settleMaxMs,
+              captureGutter = captureGutter,
+            )
+          }
         } else {
           // The focused renderer is the only successful still path that does not funnel through
           // `renderPreview`, so publish its exact phase declaration here. Motion and scroll
@@ -839,6 +849,20 @@ fun main(args: Array<String>) {
       // Continue with the next value — keep exit code 0 below.
     }
   }
+}
+
+/**
+ * Decodes the additive `Dragged` interaction with the older shared-contracts enum used by the
+ * standalone renderer. Drag targeting arrives separately in argv; removing only that field keeps
+ * all boolean/string/number/colour seeds intact.
+ */
+internal fun decodeDesktopOverrideVariantSpec(seedJson: String): OverrideVariantSpec {
+  val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+  val original = json.parseToJsonElement(seedJson)
+  val interaction = original.jsonObject["interaction"]?.jsonPrimitive?.content
+  val compatible =
+    if (interaction == "Dragged") JsonObject(original.jsonObject - "interaction") else original
+  return json.decodeFromJsonElement(OverrideVariantSpec.serializer(), compatible)
 }
 
 /**

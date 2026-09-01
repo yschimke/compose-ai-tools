@@ -338,6 +338,9 @@ data class FocusCapture(
 /** Hover state driven by a real pointer move without first focusing the target. */
 @Serializable data class HoverCapture(val targetIndex: Int = 0)
 
+/** Pointer drag held at a deterministic horizontal displacement. */
+@Serializable data class DragCapture(val targetIndex: Int = 0)
+
 /**
  * `@FocusedPreview(gif = true)` capture state. Carries the per-step focus instructions discovery
  * built from `[indices]` / `[traverse]`; the renderer drives each step through the same
@@ -870,6 +873,8 @@ data class Capture(
   val focus: FocusCapture? = null,
   /** `null` → no pointer-hover drive. */
   val hover: HoverCapture? = null,
+  /** `null` → no held pointer-drag drive. */
+  val drag: DragCapture? = null,
   /**
    * `null` → no focus-driven GIF. Set when the preview carries `@FocusedPreview(gif = true)`.
    * Mutually exclusive with [focus] on the same capture — the GIF capture owns its steps inline.
@@ -1215,6 +1220,7 @@ enum class OverrideVariantInteraction {
   Hovered,
   Focused,
   Pressed,
+  Dragged,
 }
 
 @Serializable

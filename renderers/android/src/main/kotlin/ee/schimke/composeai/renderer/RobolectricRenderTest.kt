@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -215,6 +216,40 @@ public fun driveFocusPreview(
   }
   return true
 }
+
+/**
+ * Holds a real horizontal drag on the [targetIndex]-th interactive node. The fixed 24 dp
+ * displacement clears platform touch slop without moving beyond an ordinary chip-sized target.
+ *
+ * Returns false, with an explicit diagnostic, when there is no target. The Android capture clock is
+ * paused, so probing pixels from inside this drive would deadlock waiting for an idle frame; the
+ * renderer regression capture verifies the driven result instead.
+ */
+public fun driveDragPreview(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  targetIndex: Int,
+): Boolean {
+  val matcher = interactiveNodeMatcher()
+  val targets = rule.onAllNodes(matcher).fetchSemanticsNodes()
+  if (targetIndex !in targets.indices) {
+    System.err.println(
+      "@OverrideVariant drag: no interactive node at index $targetIndex; interaction unavailable."
+    )
+    return false
+  }
+  val displacementPx = DEFAULT_DRAG_DISPLACEMENT_DP * rule.activity.resources.displayMetrics.density
+  rule.onAllNodes(matcher)[targetIndex].performTouchInput {
+    down(center)
+    moveBy(Offset(displacementPx, 0f))
+  }
+  rule.waitForIdle()
+  org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+    .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+  return true
+}
+
+/** Stable held-drag displacement used by both capture backends. */
+public const val DEFAULT_DRAG_DISPLACEMENT_DP: Float = 24f
 
 /** The `tabIndex` addressing space: every node that can take focus, in traversal order. */
 private fun focusableNodeMatcher() =
@@ -1974,6 +2009,20 @@ abstract class RobolectricRenderTestBase(
             // stream and the ripple's `IndicationNode` to schedule an invalidation
             // before `captureRoboImage` reads back pixels.
             val capture = (job as? CaptureRenderJob)?.capture
+            val scroll = job.scroll
+            // A Dragged END variant targets the semantics tree at the end of the content. Drive
+            // there before resolving the interactive-node index; doing this after the drag can
+            // miss a lazily composed target or address a different node in the pre-scroll tree.
+            val draggedEndScroll = scroll?.takeIf {
+              capture?.drag != null && it.mode == ScrollMode.END
+            }
+            val draggedEndScrollAttempted = draggedEndScroll != null
+            if (draggedEndScroll != null && !driveScrollingPreviewToEnd(rule, draggedEndScroll)) {
+              System.err.println(
+                "@ScrollingPreview on '${preview.id}' but no scrollable composable found on axis " +
+                  "${draggedEndScroll.axis} — dragging the initial frame."
+              )
+            }
             val focus = capture?.focus
             if (focus != null) {
               rule.runOnUiThread {
@@ -2004,6 +2053,12 @@ abstract class RobolectricRenderTestBase(
               currentTime += FocusController.SETTLE_MS
             }
 
+            capture?.drag?.let { drag ->
+              driveDragPreview(rule, drag.targetIndex)
+              rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+              currentTime += FocusController.SETTLE_MS
+            }
+
             // @ScrollingPreview(END): drive the first scrollable on the
             // requested axis to the end of its content before a single
             // capture.
@@ -2022,7 +2077,6 @@ abstract class RobolectricRenderTestBase(
             // every data product.
             RenderErrorSidecar.deleteStale(outputFile)
 
-            val scroll = job.scroll
             // LONG always flattens Wear motion, even for
             // `reduceMotion = false` annotations (see the
             // [reduceMotionState] doc above). Flip the state on for the
@@ -2328,7 +2382,7 @@ abstract class RobolectricRenderTestBase(
               // drive, just a capture. END mode drives the first
               // scrollable on the requested axis to its content
               // end before capturing.
-              if (scroll != null && scroll.mode == ScrollMode.END) {
+              if (scroll != null && scroll.mode == ScrollMode.END && !draggedEndScrollAttempted) {
                 if (!driveScrollingPreviewToEnd(rule, scroll)) {
                   System.err.println(
                     "@ScrollingPreview on '${preview.id}' but no scrollable " +
