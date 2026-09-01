@@ -1,17 +1,27 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.ui.text.font.Font as FileFont
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
+import androidx.compose.ui.text.googlefonts.Font as GoogleFontFactory
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class FontResolverRecorderTest {
+
+  @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
   @Test
   fun `recording resolver preserves reflexive equals`() {
@@ -58,8 +68,25 @@ class FontResolverRecorderTest {
     assertTrue(FigmaSvgRenderedFonts.snapshot().isEmpty())
   }
 
+  @Test
+  fun `publishes a file-backed font's internal family rather than its cache filename`() {
+    val bytes =
+      checkNotNull(javaClass.getResourceAsStream("/composeai-test-fonts/warm-cache-face.ttf")).use {
+        it.readBytes()
+      }
+    val expected = checkNotNull(FigmaResourceFonts.familyName(bytes))
+    val opaqueCacheFile = tempFolder.newFile("7fbd4d8a-cache-entry.ttf").apply { writeBytes(bytes) }
+    val family = FontFamily(FileFont(file = opaqueCacheFile))
+
+    FigmaSvgRenderedFonts.begin()
+    FontResolverRecorder().record(family, FontWeight.Normal, FontStyle.Normal, null)
+
+    assertEquals(setOf(expected), FigmaSvgRenderedFonts.snapshot())
+    FigmaSvgRenderedFonts.begin()
+  }
+
   private fun googleFont(name: String, weight: FontWeight) =
-    Font(
+    GoogleFontFactory(
       googleFont = GoogleFont(name),
       fontProvider =
         GoogleFont.Provider(

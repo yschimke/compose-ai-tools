@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import java.io.ByteArrayInputStream
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -70,11 +71,49 @@ object FigmaResourceFonts {
   fun pathFor(identity: String, weight: Int, italic: Boolean): String? =
     paths[key(identity, weight, italic)] ?: paths[identity]
 
+  /**
+   * The CSS/Figma family declared inside one font file, or null when [bytes] are not a readable
+   * font.
+   *
+   * This is shared by both sides of the SVG font audit: the export uses it to name `@font-face`,
+   * and the Android render recorder uses it to state which family a file-backed Compose font
+   * actually drew. Reading those identities through different mechanisms let an embedded Remote
+   * Compose text run be recorded under its cache filename while the exported bytes correctly said
+   * `Roboto`; the audit treated that spelling difference as a lost face and replaced every text run
+   * with `ComposeAI Missing Font` (issue #4935).
+   *
+   * The typographic/preferred family (`name` ID 16) wins over the legacy family (`name` ID 1),
+   * matching CSS's family + weight model for faces such as Montserrat Medium.
+   */
+  fun familyName(bytes: ByteArray): String? =
+    typographicFamily(bytes)
+      ?: runCatching {
+        java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
+      }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() }
+
   private fun key(identity: String, weight: Int, italic: Boolean): String =
     "$identity|$weight|$italic"
+
+  private fun typographicFamily(bytes: ByteArray): String? = runCatching {
+    val naming =
+      org.apache.fontbox.ttf
+        .TTFParser(true)
+        .parse(org.apache.pdfbox.io.RandomAccessReadBuffer(bytes))
+        .naming ?: return@runCatching null
+    naming.nameRecords
+      .firstOrNull { it.nameId == NAME_ID_TYPOGRAPHIC_FAMILY }
+      ?.string
+      ?.trim()
+      ?.takeIf { it.isNotBlank() }
+  }
+    .getOrNull()
 
   /** Drop every registration. Tests only — production accumulates for the process's life. */
   fun clear() {
     paths.clear()
   }
+
+  private const val NAME_ID_TYPOGRAPHIC_FAMILY = 16
 }

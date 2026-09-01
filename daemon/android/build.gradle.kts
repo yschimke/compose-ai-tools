@@ -239,6 +239,9 @@ dependencies {
   testImplementation("androidx.compose.ui:ui-test-manifest")
   testImplementation(libs.robolectric)
   testImplementation(libs.junit)
+  testImplementation(libs.rcplayer.embedded.android)
+  testImplementation(libs.compose.remote.player.core)
+  testImplementation(libs.compose.remote.core)
 
   // D-harness.v2 — testFixtures source set holds RedFixturePreviews.kt so its `RedSquare`,
   // `BlueSquare`, `GreenSquare`, `SlowSquare`, `BoomComposable` composables are consumable from

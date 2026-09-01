@@ -15,6 +15,7 @@ import java.util.Collections
 
 class FontResolverRecorder(private val context: Context? = null) {
   private val entries = Collections.synchronizedMap(linkedMapOf<String, FontUsedEntry>())
+  private val fileFamilies = Collections.synchronizedMap(linkedMapOf<String, String?>())
 
   fun record(fontFamily: FontFamily?, fontWeight: FontWeight?, fontStyle: Any?, resolved: Any?) {
     val weight = fontWeight?.weight ?: FontWeight.Normal.weight
@@ -42,16 +43,22 @@ class FontResolverRecorder(private val context: Context? = null) {
     // below, which makes the export box the text and write its warning sidecar rather than
     // silently substituting Roboto.
     val resourceFamily = matched?.let(::recoverResourceFont)
+    // A file-backed family is the embedded Remote Compose player's resolved-font shape. Its
+    // Compose identity is an opaque cache path, while the SVG names the same bytes by their
+    // internal typographic family. Record that internal family too, through the exact parser the
+    // exporter uses, so the rendered-font audit compares `Roboto` with `Roboto` rather than a cache
+    // filename with `Roboto` and falsely switches the whole document to tofu (issue #4935).
+    val fileFamily = matched?.let(::recoverFileFontFamily)
     val displayName = matched?.let { displayFamilyName(fontLabel(it)) }
     // A downloadable `Font(GoogleFont("Lato"), …)` resolved to a real TTF in the renderer's font
     // cache for the PNG. Publish that file so the figma-svg export embeds the same bytes rather
     // than re-fetching a WOFF2 by name — a second network hop that silently produced no
     // `@font-face` on an offline or egress-closed catalog render, leaving the SVG on the browser's
     // sans-serif while the PNG had the real face (issue #2906).
-    if (resourceFamily == null && matched != null && displayName != null) {
+    if (resourceFamily == null && fileFamily == null && matched != null && displayName != null) {
       recoverDownloadableFont(matched, displayName, weight, style == "italic")
     }
-    FigmaSvgRenderedFonts.record(resourceFamily ?: displayName)
+    FigmaSvgRenderedFonts.record(resourceFamily ?: fileFamily ?: displayName)
     val key = listOf(requestedFamily, resolvedFamily, weight.toString(), style).joinToString("|")
     entries[key] =
       FontUsedEntry(
@@ -114,7 +121,7 @@ class FontResolverRecorder(private val context: Context? = null) {
     FigmaResourceFonts.pathFor(identity)?.let { cached ->
       val file = java.io.File(cached)
       if (file.isFile && file.length() > 0) {
-        fontFamilyOf(file.readBytes())?.let {
+        FigmaResourceFonts.familyName(file.readBytes())?.let {
           return it
         }
       }
@@ -152,9 +159,22 @@ class FontResolverRecorder(private val context: Context? = null) {
         java.io.File(dir, "$entryName-$resId.$extension").apply { writeBytes(bytes) }
       }
         .getOrNull() ?: return entryName
-    val family = fontFamilyOf(bytes) ?: return entryName
+    val family = FigmaResourceFonts.familyName(bytes) ?: return entryName
     FigmaResourceFonts.register(identity, target.absolutePath)
     return family
+  }
+
+  /** The internal family of a readable file-backed [font], using the export's own parser. */
+  private fun recoverFileFontFamily(font: Font): String? {
+    val file = fileFor(font) ?: return null
+    val path = file.absolutePath
+    synchronized(fileFamilies) {
+      if (fileFamilies.containsKey(path)) return fileFamilies[path]
+      val bytes = runCatching { file.takeIf { it.isFile }?.readBytes() }.getOrNull()
+      val family = bytes?.let(FigmaResourceFonts::familyName)
+      fileFamilies[path] = family
+      return family
+    }
   }
 
   /**
@@ -203,24 +223,14 @@ class FontResolverRecorder(private val context: Context? = null) {
     // pointing at the exact file the matched face resolved to.
     FigmaResourceFonts.register(family, weight, italic, file.absolutePath)
   }
-
-  /**
-   * The font's real family name read out of [bytes] (`"Montserrat"`) — the same read
-   * `ComposeFigmaSvgDataProducer.fontFileFamily` performs, so the name published here is exactly
-   * the one the export emits on the `<text>` and in its `@font-face`. Null when the bytes aren't a
-   * parseable font, which is how an XML font-family descriptor (or any non-font payload) is
-   * rejected rather than registered as an unusable face.
-   */
-  private fun fontFamilyOf(bytes: ByteArray): String? = runCatching {
-    java.awt.Font.createFont(
-        java.awt.Font.TRUETYPE_FONT,
-        java.io.ByteArrayInputStream(bytes),
-      )
-      .family
-  }
-    .getOrNull()
-    ?.takeIf { it.isNotBlank() }
 }
+
+private fun fileFor(font: Font): java.io.File? = runCatching {
+  font.javaClass.methods
+    .firstOrNull { it.name == "getFile" && it.parameterCount == 0 }
+    ?.invoke(font) as? java.io.File
+}
+  .getOrNull()
 
 fun recordingFontFamilyResolver(
   delegate: FontFamily.Resolver,
