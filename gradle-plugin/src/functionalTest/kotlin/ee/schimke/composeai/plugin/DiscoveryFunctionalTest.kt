@@ -196,7 +196,7 @@ class DiscoveryFunctionalTest {
             val colors: Array<String> = [],
         )
 
-        enum class VariantInteraction { None, Hovered, Focused, Pressed }
+        enum class VariantInteraction { None, Hovered, Focused, Pressed, Dragged }
         """
           .trimIndent()
       )
@@ -226,6 +226,7 @@ class DiscoveryFunctionalTest {
             interactionIndex = 1,
         )
         @OverrideVariant(name = "pressed", interaction = VariantInteraction.Pressed)
+        @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
         @Composable
         fun TogglePreview() {
             Box(modifier = Modifier.size(50.dp)) { Text("Toggle") }
@@ -248,7 +249,7 @@ class DiscoveryFunctionalTest {
       )
     val toggles = manifest.previews.filter { it.functionName == "TogglePreview" }
     // Base preview + one synthetic seeded preview per `@OverrideVariant`.
-    assertThat(toggles).hasSize(6)
+    assertThat(toggles).hasSize(7)
 
     val base = toggles.single { it.overrides == null }
     assertThat(base.captures.single().renderOutput).doesNotContain("_VARIANT_")
@@ -282,6 +283,11 @@ class DiscoveryFunctionalTest {
     val pressed = toggles.single { it.overrides?.name == "pressed" }
     assertThat(pressed.captures.single().focus)
       .isEqualTo(FocusCapture(tabIndex = 0, pressed = true))
+
+    val dragged = toggles.single { it.overrides?.name == "dragged" }
+    assertThat(dragged.overrides!!.interaction).isEqualTo(OverrideVariantInteraction.Dragged)
+    assertThat(dragged.captures.single().drag).isEqualTo(DragCapture(targetIndex = 0))
+    assertThat(dragged.captures.single().focus).isNull()
   }
 
   /**

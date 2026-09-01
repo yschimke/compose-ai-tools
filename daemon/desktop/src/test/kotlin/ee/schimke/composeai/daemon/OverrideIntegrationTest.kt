@@ -184,6 +184,7 @@ class OverrideIntegrationTest {
     val hoveredId = "InteractionSquare_Light_VARIANT_hovered"
     val focusedId = "InteractionSquare_Light_VARIANT_focused"
     val pressedId = "InteractionSquare_Light_VARIANT_pressed"
+    val draggedId = "InteractionSquare_Light_VARIANT_dragged"
     // `staticHoverFor` reads the hover intent off the preview index, so the engine needs one on
     // disk — the same sysprop the gradle plugin sets on a production daemon JVM.
     previewsJson.writeText(
@@ -199,7 +200,11 @@ class OverrideIntegrationTest {
          "overrides":{"name":"focused","seeds":[],"interaction":"Focused"}},
         {"id":"$pressedId","functionName":"InteractionStateSquare",
          "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-         "overrides":{"name":"pressed","seeds":[],"interaction":"Pressed"}}
+         "overrides":{"name":"pressed","seeds":[],"interaction":"Pressed"}},
+        {"id":"$draggedId","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"dragged","seeds":[],"interaction":"Dragged"},
+         "captures":[{"drag":{"targetIndex":0}}]}
       ]}
       """
         .trimIndent()
@@ -228,6 +233,7 @@ class OverrideIntegrationTest {
                 entry(hoveredId, OverrideVariantInteraction.Hovered),
                 entry(focusedId, OverrideVariantInteraction.Focused),
                 entry(pressedId, OverrideVariantInteraction.Pressed),
+                entry(draggedId),
               )
           ),
         engine =
@@ -240,7 +246,7 @@ class OverrideIntegrationTest {
       )
     host.start()
     try {
-      for (id in listOf(baseId, hoveredId, focusedId, pressedId)) {
+      for (id in listOf(baseId, hoveredId, focusedId, pressedId, draggedId)) {
         host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
       }
       val dataDir = outputDir.parentFile!!.resolve("data")
@@ -249,6 +255,13 @@ class OverrideIntegrationTest {
       assertTrue("hovered export must be blue", svg(hoveredId).contains("#42A5F5"))
       assertTrue("focused export must be orange", svg(focusedId).contains("#FFA726"))
       assertTrue("pressed export must be green", svg(pressedId).contains("#66BB6A"))
+      assertTrue("dragged export must be purple", svg(draggedId).contains("#AB47BC"))
+      assertNotEquals("dragged SVG must not publish resting vectors", svg(baseId), svg(draggedId))
+      val evidenceDir = File("build/dragged-interaction-evidence").apply { mkdirs() }
+      outputDir.resolve("$baseId.png").copyTo(evidenceDir.resolve("resting.png"), overwrite = true)
+      outputDir
+        .resolve("$draggedId.png")
+        .copyTo(evidenceDir.resolve("dragged.png"), overwrite = true)
     } finally {
       host.shutdown()
       if (previousPreviewsJson == null) {

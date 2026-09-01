@@ -100,7 +100,11 @@ class OverrideIntegrationTest {
       {"previews":[
         {"id":"interaction-hovered","functionName":"InteractionStateSquare",
          "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-         "overrides":{"name":"hovered","seeds":[],"interaction":"Hovered"}}
+         "overrides":{"name":"hovered","seeds":[],"interaction":"Hovered"}},
+        {"id":"interaction-dragged","functionName":"InteractionStateSquare",
+         "className":"ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+         "overrides":{"name":"dragged","seeds":[],"interaction":"Dragged"},
+         "captures":[{"drag":{"targetIndex":0}}]}
       ]}
       """
         .trimIndent()
@@ -129,6 +133,7 @@ class OverrideIntegrationTest {
                 entry("interaction-hovered", OverrideVariantInteraction.Hovered),
                 entry("interaction-focused", OverrideVariantInteraction.Focused),
                 entry("interaction-pressed", OverrideVariantInteraction.Pressed),
+                entry("interaction-dragged"),
               )
           )
       )
@@ -143,6 +148,10 @@ class OverrideIntegrationTest {
         renderedIs("interaction-focused", 0xFFA726) > 0.9,
       )
       assertTrue("pressed render must be green", renderedIs("interaction-pressed", 0x66BB6A) > 0.9)
+      assertTrue(
+        "dragged render must be purple",
+        renderedIs("interaction-dragged", 0xAB47BC) > 0.9,
+      )
     } finally {
       host.shutdown()
       if (previousPreviewsJson == null) {

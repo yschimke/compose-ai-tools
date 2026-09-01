@@ -804,6 +804,12 @@ class RenderEngine(
               }
             }
 
+            environment.staticDrag?.let { dragIndex ->
+              trace.section("compose:drag") {
+                ee.schimke.composeai.renderer.driveDragPreview(rule, dragIndex)
+              }
+            }
+
             // `@OverrideVariant(interaction = Focused | Pressed)`, and every other daemon caller of
             // `renderNow.overrides.focus`. The connector's `FocusOverrideExtension` supplies the
             // half that has to happen inside composition — the `LocalInputModeManager` flip — but
@@ -2342,6 +2348,8 @@ class RenderEngine(
      * composition local, so it could equally be read at the drive site.
      */
     val staticHover: Int?,
+    /** `@OverrideVariant(interaction = Dragged)` interactive-node target. */
+    val staticDrag: Int?,
     val sizeOverrides: PreviewOverrides?,
     val sandboxWidthPx: Int,
     val sandboxHeightPx: Int,
@@ -2374,6 +2382,7 @@ class RenderEngine(
     // `setContent` in the provider.
     val staticScroll = spec.previewId?.let { loadPreviewIndexLazily().staticScrollFor(it) }
     val staticHover = spec.previewId?.let { loadPreviewIndexLazily().staticHoverFor(it) }
+    val staticDrag = spec.previewId?.let { loadPreviewIndexLazily().staticDragFor(it) }
     val wearReduceMotionLocal =
       if (flattenWearScroll || staticScroll?.reduceMotion == true)
         ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
@@ -2436,6 +2445,7 @@ class RenderEngine(
       wearReduceMotionLocal = wearReduceMotionLocal,
       staticScroll = staticScroll,
       staticHover = staticHover,
+      staticDrag = staticDrag,
       sizeOverrides = sizeOverrides,
       sandboxWidthPx = sandboxWidthPx,
       sandboxHeightPx = sandboxHeightPx,

@@ -599,6 +599,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           interaction = capture.interaction,
           focus = capture.focus,
           hover = capture.hover,
+          drag = capture.drag,
           settle = capture.settle,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
           lane = lane,
@@ -644,6 +645,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     interaction: ee.schimke.composeai.discovery.InteractionCapture? = null,
     focus: FocusCapture? = null,
     hover: ee.schimke.composeai.discovery.HoverCapture? = null,
+    drag: ee.schimke.composeai.discovery.DragCapture? = null,
     settle: ee.schimke.composeai.discovery.SettleCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
     lane: RenderLane,
@@ -661,6 +663,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         interaction = interaction,
         focus = focus,
         hover = hover,
+        drag = drag,
         settle = settle,
         fanoutSiblingStems = fanoutSiblingStems,
       )
@@ -896,6 +899,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     interaction: ee.schimke.composeai.discovery.InteractionCapture?,
     focus: FocusCapture?,
     hover: ee.schimke.composeai.discovery.HoverCapture?,
+    drag: ee.schimke.composeai.discovery.DragCapture?,
     settle: ee.schimke.composeai.discovery.SettleCapture?,
     fanoutSiblingStems: List<String>,
   ): List<String> =
@@ -1043,6 +1047,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
       (preview.params.captureGutter?.top ?: 0).toString(),
       (preview.params.captureGutter?.end ?: 0).toString(),
       (preview.params.captureGutter?.bottom ?: 0).toString(),
+      // 54th — addressable `@OverrideVariant(interaction = Dragged)` target. Appended so older
+      // renderer artifacts safely ignore it and every pre-drag capture keeps the old argv prefix.
+      (drag?.targetIndex ?: -1).toString(),
     )
 }
 

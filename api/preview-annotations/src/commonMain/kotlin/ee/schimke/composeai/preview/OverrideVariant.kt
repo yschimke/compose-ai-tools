@@ -53,6 +53,7 @@ package ee.schimke.composeai.preview
  * @OverrideVariant(name = "hovered", interaction = VariantInteraction.Hovered)
  * @OverrideVariant(name = "focused", interaction = VariantInteraction.Focused)
  * @OverrideVariant(name = "pressed", interaction = VariantInteraction.Pressed)
+ * @OverrideVariant(name = "dragged", interaction = VariantInteraction.Dragged)
  * @Composable
  * fun FilledButton() = Button(onClick = {}) { Text("Button") }
  * ```
@@ -173,12 +174,13 @@ annotation class OverrideVariant(
    * Optional real input state to drive before this variant is captured. Unlike a knob seed, this
    * goes through Compose's focus / pointer input paths, so the component's own interaction source
    * and indication produce the pixels. [Focused] and [Pressed] use the same focus walk as
-   * [FocusedPreview]; [Hovered] targets the component without focusing it.
+   * [FocusedPreview]; [Hovered] and [Dragged] target the component without focusing it. [Dragged]
+   * holds a horizontal 24 dp drag so the captured frame remains inside the active gesture.
    */
   val interaction: VariantInteraction = VariantInteraction.None,
   /**
    * Zero-based target: tab order for [VariantInteraction.Focused]/[VariantInteraction.Pressed],
-   * interactive-semantics order for [VariantInteraction.Hovered].
+   * interactive-semantics order for [VariantInteraction.Hovered]/[VariantInteraction.Dragged].
    */
   val interactionIndex: Int = 0,
   /** Boolean knob seeds, each `"key=true"` / `"key=false"` (or `"key#index=…"`). */
@@ -263,4 +265,5 @@ enum class VariantInteraction {
   Hovered,
   Focused,
   Pressed,
+  Dragged,
 }

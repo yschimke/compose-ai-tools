@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -215,6 +216,40 @@ public fun driveFocusPreview(
   }
   return true
 }
+
+/**
+ * Holds a real horizontal drag on the [targetIndex]-th interactive node. The fixed 24 dp
+ * displacement clears platform touch slop without moving beyond an ordinary chip-sized target.
+ *
+ * Returns false, with an explicit diagnostic, when there is no target. The Android capture clock is
+ * paused, so probing pixels from inside this drive would deadlock waiting for an idle frame; the
+ * renderer regression capture verifies the driven result instead.
+ */
+public fun driveDragPreview(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  targetIndex: Int,
+): Boolean {
+  val matcher = interactiveNodeMatcher()
+  val targets = rule.onAllNodes(matcher).fetchSemanticsNodes()
+  if (targetIndex !in targets.indices) {
+    System.err.println(
+      "@OverrideVariant drag: no interactive node at index $targetIndex; interaction unavailable."
+    )
+    return false
+  }
+  val displacementPx = DEFAULT_DRAG_DISPLACEMENT_DP * rule.activity.resources.displayMetrics.density
+  rule.onAllNodes(matcher)[targetIndex].performTouchInput {
+    down(center)
+    moveBy(Offset(displacementPx, 0f))
+  }
+  rule.waitForIdle()
+  org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+    .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+  return true
+}
+
+/** Stable held-drag displacement used by both capture backends. */
+public const val DEFAULT_DRAG_DISPLACEMENT_DP: Float = 24f
 
 /** The `tabIndex` addressing space: every node that can take focus, in traversal order. */
 private fun focusableNodeMatcher() =
@@ -2000,6 +2035,12 @@ abstract class RobolectricRenderTestBase(
             // combine Hovered and Focused.
             capture?.hover?.let { hover ->
               driveHoverPreview(rule, hover.targetIndex)
+              rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+              currentTime += FocusController.SETTLE_MS
+            }
+
+            capture?.drag?.let { drag ->
+              driveDragPreview(rule, drag.targetIndex)
               rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
               currentTime += FocusController.SETTLE_MS
             }

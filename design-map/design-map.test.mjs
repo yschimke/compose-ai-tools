@@ -397,7 +397,7 @@ test("variantSeeds turns an interaction variant into a state seed", () => {
   // against the composed node. A kit models that as a value of the same `State` axis that carries
   // Enabled and Disabled, so it has to enter resolution as a `state` seed or the render declares
   // nothing and is dropped.
-  for (const interaction of ["Hovered", "Focused", "Pressed"]) {
+  for (const interaction of ["Hovered", "Focused", "Pressed", "Dragged"]) {
     assert.deepEqual(
       variantSeeds(overrideVariant("Button", interaction.toLowerCase(), { interaction })),
       [{ key: "state", raw: interaction.toLowerCase() }],

@@ -185,6 +185,9 @@ data class FocusCapture(
 /** Renderer-side mirror of the plugin's `HoverCapture`. */
 @Serializable data class HoverCapture(val targetIndex: Int = 0)
 
+/** Renderer-side mirror of the plugin's `DragCapture`. */
+@Serializable data class DragCapture(val targetIndex: Int = 0)
+
 /** Renderer-side mirror of the plugin's `FocusGifCapture`. */
 @Serializable
 data class FocusGifCapture(
@@ -382,6 +385,7 @@ data class RenderPreviewCapture(
   val animation: AnimationCapture? = null,
   val focus: FocusCapture? = null,
   val hover: HoverCapture? = null,
+  val drag: DragCapture? = null,
   val focusGif: FocusGifCapture? = null,
   /**
    * `null` → not an interaction capture. Set when the preview carries `@InteractionPreview`; the

@@ -2417,6 +2417,13 @@ object PreviewDiscovery {
                   focusGif = null,
                   hover = HoverCapture(targetIndex = spec.interactionIndex),
                 )
+              OverrideVariantInteraction.Dragged ->
+                tagged.copy(
+                  focus = null,
+                  focusGif = null,
+                  hover = null,
+                  drag = DragCapture(targetIndex = spec.interactionIndex),
+                )
               null -> tagged
             }
           },

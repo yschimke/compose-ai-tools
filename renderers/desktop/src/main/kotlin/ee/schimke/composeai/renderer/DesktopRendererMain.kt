@@ -326,6 +326,9 @@ fun main(args: Array<String>) {
       bottomDp = args.getOrNull(52)?.toIntOrNull() ?: 0,
       density = density,
     )
+  // 54th (index 53) — held Dragged override target. Missing keeps older plugin invocations on the
+  // untouched path.
+  val dragIndex = args.getOrNull(53)?.toIntOrNull()?.takeIf { it >= 0 }
   val focusIntent: DesktopFocusIntent? =
     when {
       focusDirections.isNotEmpty() ->
@@ -583,7 +586,7 @@ fun main(args: Array<String>) {
           captureGutter = captureGutter,
         )
       } else if (
-        (focusIntent != null || hoverIndex != null) &&
+        (focusIntent != null || hoverIndex != null || dragIndex != null) &&
           scrollDispatchMode != DesktopScrollMode.LONG &&
           scrollDispatchMode != DesktopScrollMode.GIF
       ) {
@@ -616,6 +619,7 @@ fun main(args: Array<String>) {
             localeTag = localeTag,
             focus = focusIntent,
             hoverIndex = hoverIndex,
+            dragIndex = dragIndex,
             scrollToEnd = scrollDispatchMode == DesktopScrollMode.END,
             scrollAxis = scrollAxis,
             scrollMaxScrollPx = scrollMaxScrollPx,
