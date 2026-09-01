@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.61.2](https://github.com/yschimke/compose-ai-tools/compare/v1.61.1...v1.61.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* act on missed review findings from the last 48h of PRs ([#4946](https://github.com/yschimke/compose-ai-tools/issues/4946)) ([8f3f755](https://github.com/yschimke/compose-ai-tools/commit/8f3f755cc80551fc0001eb5347ccb05793ff6160))
+* **daemon:** preserve focused variants in live mode ([#4939](https://github.com/yschimke/compose-ai-tools/issues/4939)) ([7d02992](https://github.com/yschimke/compose-ai-tools/commit/7d029929c484f972fa23f4c8cc25030b69c06055))
+* **deps:** pin dependencies ([#4940](https://github.com/yschimke/compose-ai-tools/issues/4940)) ([2ac0986](https://github.com/yschimke/compose-ai-tools/commit/2ac09869f7f9e9445cd84a09401d59ec0602fdb6))
+* **deps:** update compose-preview-contracts to v2.3.0 ([#4941](https://github.com/yschimke/compose-ai-tools/issues/4941)) ([ae3c859](https://github.com/yschimke/compose-ai-tools/commit/ae3c8591ff1f09880ea4c3971a8580f4521c148e))
+* **deps:** update compose-preview-server to v2.8.0 ([#4942](https://github.com/yschimke/compose-ai-tools/issues/4942)) ([7cc498a](https://github.com/yschimke/compose-ai-tools/commit/7cc498a2b6a9b844b3e6ff5e53efb53814d6672b))
+* **design-pages:** enforce the published node cap ([#4945](https://github.com/yschimke/compose-ai-tools/issues/4945)) ([8ae2f51](https://github.com/yschimke/compose-ai-tools/commit/8ae2f519472e19f5182529857256e60bb533b8af))
+* **figma-svg:** preserve remote compose font families ([#4944](https://github.com/yschimke/compose-ai-tools/issues/4944)) ([9f1571d](https://github.com/yschimke/compose-ai-tools/commit/9f1571d20cdce882b7e9b1b8ccb33e58da114e79))
+
 ## [1.61.1](https://github.com/yschimke/compose-ai-tools/compare/v1.61.0...v1.61.1) (2026-09-01)
 
 
