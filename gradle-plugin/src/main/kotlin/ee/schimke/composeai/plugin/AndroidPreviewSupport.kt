@@ -10,7 +10,6 @@ import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
 import java.util.Collections
 import java.util.IdentityHashMap
-import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
@@ -680,10 +679,10 @@ internal object AndroidPreviewSupport {
    * instead means the renderer cannot link against it at all — #3590's `NoSuchMethodError`, on
    * every preview, with nothing explaining why.
    *
-   * Both silent outcomes are worse than saying so. `validateExternallyManagedDependencies` cannot:
-   * it checks that coordinates are DECLARED, never what they resolve to, and a BOM consumer
-   * declares no version at all. This fires from the resolution rule, which is the first place the
-   * real version exists.
+   * Both silent outcomes are worse than saying so. [ValidateComposeFloorTask] therefore walks the
+   * resolved render graph at task execution time. It sees Gradle's selected module versions after
+   * platforms, constraints, and conflict resolution have run, including BOM consumers that declare
+   * no versions themselves.
    */
   internal fun composeFloorOptOutMessage(module: String, resolved: String): String =
     """
@@ -732,14 +731,6 @@ internal object AndroidPreviewSupport {
     // exactly the artifact the floor exists to keep off the graph.
     configuration.resolutionStrategy.eachDependency {
       val req = requested
-      // Opt-out: we may not raise this graph, so a below-floor consumer cannot be rendered at all.
-      // Say so here rather than letting every preview die with a Compose-internal stack trace —
-      // resolution is the first point the real version is known (see [composeFloorOptOutMessage]).
-      if (!floorComposeLine && composeLineFloorUpgrade(req.group, req.version) != null) {
-        throw GradleException(
-          composeFloorOptOutMessage("${req.group}:${req.name}", req.version.orEmpty())
-        )
-      }
       val decision = renderGraphTarget(req.group, req.name, req.version, floorComposeLine)
       when {
         decision == null -> Unit
@@ -1929,15 +1920,6 @@ internal object AndroidPreviewSupport {
         // Raising the render graph there would put floor-version classes over the consumer's
         // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
         // line, whatever it is.
-        //
-        // KNOWN GAP: an opt-out consumer whose Compose is BELOW the floor still hits #3590's
-        // NoSuchMethodError, and nothing reports it — `validateExternallyManagedDependencies`
-        // checks that the required coordinates are DECLARED, never what they resolve to. Failing
-        // that validation on a below-floor compose-ui line is the fix, and it wants the resolved
-        // version rather than the declared one (a BOM consumer declares no version at all). Same
-        // root as the `enforcedPlatform` case: whenever the resource graph cannot be moved to the
-        // floor, the honest outcome is a configuration-time failure naming the required version,
-        // not a silently-raised render graph.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
@@ -2064,15 +2046,6 @@ internal object AndroidPreviewSupport {
         // Raising the render graph there would put floor-version classes over the consumer's
         // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
         // line, whatever it is.
-        //
-        // KNOWN GAP: an opt-out consumer whose Compose is BELOW the floor still hits #3590's
-        // NoSuchMethodError, and nothing reports it — `validateExternallyManagedDependencies`
-        // checks that the required coordinates are DECLARED, never what they resolve to. Failing
-        // that validation on a below-floor compose-ui line is the fix, and it wants the resolved
-        // version rather than the declared one (a BOM consumer declares no version at all). Same
-        // root as the `enforcedPlatform` case: whenever the resource graph cannot be moved to the
-        // floor, the honest outcome is a configuration-time failure naming the required version,
-        // not a silently-raised render graph.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
@@ -2102,6 +2075,29 @@ internal object AndroidPreviewSupport {
         "ee.schimke.composeai:daemon-android:${PluginVersion.value}",
       )
     }
+
+    // `eachDependency` exposes every edge's original requested selector, not the version Gradle
+    // selects after constraints, platforms and conflict resolution (issue #4959). Validate the
+    // authoritative resolved graph lazily at task execution instead. The daemon has a strict
+    // superset graph and can select a different version, so it gets its own validator.
+    val validateComposeFloorTask =
+      if (!manageDependencies) {
+        project.tasks.register(
+          "composePreviewValidateComposeFloor",
+          ValidateComposeFloorTask::class.java,
+        ) {
+          runtimeClasspathRoot.set(rendererConfig.incoming.resolutionResult.rootComponent)
+        }
+      } else null
+    val validateDaemonComposeFloorTask =
+      if (!manageDependencies) {
+        project.tasks.register(
+          "composePreviewValidateDaemonComposeFloor",
+          ValidateComposeFloorTask::class.java,
+        ) {
+          runtimeClasspathRoot.set(daemonRendererConfig.incoming.resolutionResult.rootComponent)
+        }
+      } else null
 
     // Classes used for Gradle's test-class scanning. Local mode: the
     // renderer-android project's compiled output directories. External
@@ -2400,6 +2396,7 @@ internal object AndroidPreviewSupport {
           // loads on the (17-or-newer) render test JVM.
           options.release.set(17)
           dependsOn(generateShardsTask)
+          validateComposeFloorTask?.let { dependsOn(it) }
           // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
           dependsOn(unitTestConfigProducer)
           // …and the screenshotTest classes dir, which `sourceClassDirs` adds to the render
@@ -2468,6 +2465,7 @@ internal object AndroidPreviewSupport {
         // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
         // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
         validatePreviewToolingPresentTask?.let { dependsOn(it) }
+        validateComposeFloorTask?.let { dependsOn(it) }
         // Reads AGP's unit-test-config dir via `resolvedClasspath` (see unitTestConfigProducer).
         dependsOn(unitTestConfigProducer)
         // …and the screenshotTest classes dir on the render classpath (see the compile-shards
@@ -2787,6 +2785,7 @@ internal object AndroidPreviewSupport {
           resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
         include("**/ResourcePreviewRenderTest.class")
         useJUnit()
+        validateComposeFloorTask?.let { dependsOn(it) }
         // Same locale exposure as the main render task — resource names reach the report path too.
         configureRenderTaskReporting(this)
 
@@ -2866,6 +2865,7 @@ internal object AndroidPreviewSupport {
       project.tasks.register("composePreviewRenderXr", Test::class.java) {
         group = "compose preview"
         description = "Render XR subspace previews to scene.json via Robolectric"
+        validateComposeFloorTask?.let { dependsOn(it) }
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs = xrRendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
         // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
@@ -3351,6 +3351,7 @@ internal object AndroidPreviewSupport {
       "composePreviewDaemonStart",
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
+      validateDaemonComposeFloorTask?.let { dependsOn(it) }
       // Resolved once when the task is realised — the register {…} block runs lazily at
       // task-graph-resolution time, by which point AGP has registered the unit-test task.
       // Pulling the reference here (rather than wrapping `findByName` in a Provider that
