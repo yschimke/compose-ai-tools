@@ -119,9 +119,9 @@ class ComposeLineFloorTest {
     // androidx.compose.ui:ui is on the main variant"). Raising the render graph there would put
     // floor-version classes over the consumer's older resources — the #3484 R$id NoSuchFieldError.
     //
-    // The DECISION is still "do not raise"; the resolution rule additionally throws
-    // composeFloorOptOutMessage for this case, so the consumer gets told rather than silently
-    // rendering nothing. Kept separate so the pure decision stays testable on its own.
+    // The DECISION is still "do not raise"; ValidateComposeFloorTask checks the selected graph
+    // before rendering and reports composeFloorOptOutMessage for this case. Kept separate so the
+    // pure resolution-rule decision stays testable on its own.
     assertThat(
         AndroidPreviewSupport.renderGraphTarget(
           group = "androidx.compose.ui",

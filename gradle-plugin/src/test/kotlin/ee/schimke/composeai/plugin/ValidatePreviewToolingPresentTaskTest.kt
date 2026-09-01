@@ -11,15 +11,36 @@ import org.gradle.api.artifacts.result.ResolvedVariantResult
 import org.junit.Test
 
 /**
- * Pins the resolved-graph walk used by both the render-path gate
- * ([ValidatePreviewToolingPresentTask.containsPreviewTooling]) and the doctor task's at-action
- * transitive-detection signal.
+ * Pins the resolved-graph walks used by the render-path gates: preview-tooling presence
+ * ([ValidatePreviewToolingPresentTask.containsPreviewTooling]) and the externally managed Compose
+ * floor ([ValidateComposeFloorTask.findBelowFloor]).
  *
  * Hand-rolled stubs for `ResolvedComponentResult` because Gradle's TestKit fixtures don't make
  * isolated graph construction easy. We're only exercising the BFS + coord matching here — the
  * fixture intentionally implements no more than the walk consumes.
  */
 class ValidatePreviewToolingPresentTaskTest {
+
+  @Test
+  fun `compose floor validation uses the selected version rather than the requested edge`() {
+    val selected =
+      moduleNode("androidx.compose.foundation", "foundation", "1.10.2", dependencies = emptyList())
+    val app = moduleNode("com.example", "app", "1.0", dependencies = listOf(resolvedDep(selected)))
+
+    // StubResolvedDependency.requested deliberately throws. A regression to inspecting the
+    // original edge selector (the issue #4959 bug) therefore fails this test, while the selected
+    // 1.10.2 component correctly passes the 1.10.0 floor.
+    assertThat(ValidateComposeFloorTask.findBelowFloor(app)).isNull()
+  }
+
+  @Test
+  fun `compose floor validation reports a selected module below the floor`() {
+    val selected = moduleNode("androidx.compose.ui", "ui", "1.9.5", dependencies = emptyList())
+    val app = moduleNode("com.example", "app", "1.0", dependencies = listOf(resolvedDep(selected)))
+
+    assertThat(ValidateComposeFloorTask.findBelowFloor(app))
+      .isEqualTo(ValidateComposeFloorTask.ResolvedComposeModule("androidx.compose.ui:ui", "1.9.5"))
+  }
 
   @Test
   fun `direct preview tooling coord on the root is detected`() {
