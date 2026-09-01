@@ -1,6 +1,6 @@
 {
   "_doc": [
-    "The four representations of `<module>/build/compose-previews/daemon-launch.json`, and the",
+    "This repository's representations of `<module>/build/compose-previews/daemon-launch.json`,",
     "divergences between them that are correct on purpose. Checked by",
     "`scripts/check-daemon-launch-schema.py`. A debt register, not a config file: an entry is a",
     "claim someone made deliberately, with the reason written down, not an exemption to add when",
@@ -9,14 +9,15 @@
     "schemaVersionSites: every place the descriptor's schema version is declared. The check fails",
     "if any disagrees with the writer, and fails again if a `*DESCRIPTOR_SCHEMA_VERSION` appears",
     "anywhere that is not listed \u2014 a new mirror has to be declared here, which is the moment",
-    "someone can ask whether it should exist at all. The right long-term number of entries is 2",
-    "(the writer, and the TypeScript reader that cannot import Kotlin); the other two are Kotlin",
-    "and could read the writer's constant directly if `:render-session-subprocess` and `:cli`",
+    "someone can ask whether it should exist at all. The extension owns its TypeScript registry",
+    "and checks the published schema metadata for the plugin release it pins. The right long-term",
+    "number of entries here is 1: the other two are Kotlin and could read the writer's constant",
+    "directly if `:render-session-subprocess` and `:cli`",
     "took a dependency on `:gradle-plugin:daemon-launch-builder`. Until then they are mirrors,",
     "and mirrors need a gate rather than a comment asking a human to remember.",
     "",
     "readerOnlyFields: a field a reader declares that the plugin's writer never emits. Each must",
-    "carry a Kotlin default (or be `?:` in TypeScript), because a plugin-written descriptor will",
+    "carry a Kotlin default, because a plugin-written descriptor will",
     "not contain it. The check enforces that.",
     "",
     "writerOnlyFields: a field the writer emits that a reader does not declare. Safe only while",
@@ -62,12 +63,6 @@
       "why": "The source of truth. `DaemonLaunchBuilder` stamps it into every descriptor it writes, and it participates in `DaemonBootstrapTask`'s up-to-date fingerprint."
     },
     {
-      "file": "src/daemon/daemonProtocol.ts",
-      "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
-      "role": "reader",
-      "why": "The only reader that gates on the version: `daemonProcess.ts` refuses a descriptor whose `schemaVersion` differs. Cannot import the Kotlin constant, so this copy is unavoidable \u2014 which is exactly why it needs checking."
-    },
-    {
       "file": "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt",
       "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
       "role": "second writer",
@@ -90,8 +85,7 @@
         "writtenBy": "the CLI's serve path (ServeBundleDaemon.kt, ServeCommand.kt) via DaemonLaunchDescriptor.jailed()",
         "why": "Wall-clock deadline after which the spawner force-kills a sandboxed daemon. Same sandbox-only origin as jailCommand; null by default."
       }
-    },
-    "vscode": {}
+    }
   },
   "writerOnlyFields": {
     "btaCompile": {
