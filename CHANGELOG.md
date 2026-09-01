@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.62.0](https://github.com/yschimke/compose-ai-tools/compare/v1.61.2...v1.62.0) (2026-09-01)
+
+
+### Features
+
+* **catalog:** publish component parameter metadata ([#4952](https://github.com/yschimke/compose-ai-tools/issues/4952)) ([25c45ba](https://github.com/yschimke/compose-ai-tools/commit/25c45bab0ae968e96b679cab2f5e678a17a53f0c))
+* **preview:** support real Dragged interaction variants ([#4953](https://github.com/yschimke/compose-ai-tools/issues/4953)) ([5a8793a](https://github.com/yschimke/compose-ai-tools/commit/5a8793a0209b2d62cc3933cb2bcfb197d48ac257))
+
+
+### Bug Fixes
+
+* **ci:** repair current main build failures ([#4957](https://github.com/yschimke/compose-ai-tools/issues/4957)) ([41da9cc](https://github.com/yschimke/compose-ai-tools/commit/41da9cc0d1429e6e1de10abd9d72bfeba1036c58))
+* **deps:** update compose-preview-server to v2.12.0 ([#4950](https://github.com/yschimke/compose-ai-tools/issues/4950)) ([4a5eaed](https://github.com/yschimke/compose-ai-tools/commit/4a5eaed31a569e598dd1f92c07e604480394b942))
+* **deps:** update design-parity export toolchain to v1.0.4 ([#4948](https://github.com/yschimke/compose-ai-tools/issues/4948)) ([65f1772](https://github.com/yschimke/compose-ai-tools/commit/65f17720b98895c80f0d0268515f674dc7b4ae4c))
+* **deps:** update rc-players ([#4949](https://github.com/yschimke/compose-ai-tools/issues/4949)) ([3a2b6c3](https://github.com/yschimke/compose-ai-tools/commit/3a2b6c3efba86957b9a26050d202eebfd7eb5922))
+* **preview:** preserve accurate desktop phase pins ([#4956](https://github.com/yschimke/compose-ai-tools/issues/4956)) ([3e32fae](https://github.com/yschimke/compose-ai-tools/commit/3e32faec76eb6f86d48a1369d6a703a6d2e4bc6d))
+* **preview:** publish desktop phase pins ([#4951](https://github.com/yschimke/compose-ai-tools/issues/4951)) ([3e28a2d](https://github.com/yschimke/compose-ai-tools/commit/3e28a2d19a47b2160ec769f8f6b2bc3644b07c8f))
+* validate the resolved Compose floor ([#4960](https://github.com/yschimke/compose-ai-tools/issues/4960)) ([10fda16](https://github.com/yschimke/compose-ai-tools/commit/10fda16208b9e3e9da56099e29c5101d350cf218))
+* **wasm:** gate native catalog by published version ([#4954](https://github.com/yschimke/compose-ai-tools/issues/4954)) ([eb52fed](https://github.com/yschimke/compose-ai-tools/commit/eb52fed19c6aab319c9d3acc51e16827d549beac))
+
 ## [1.61.2](https://github.com/yschimke/compose-ai-tools/compare/v1.61.1...v1.61.2) (2026-09-01)
 
 
