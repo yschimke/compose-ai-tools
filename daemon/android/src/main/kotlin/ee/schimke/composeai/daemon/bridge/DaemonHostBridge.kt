@@ -441,10 +441,18 @@ sealed interface InteractiveCommand {
      * frames. Threaded as a primitive (not the full `PreviewOverrides` bag) because the protocol's
      * nested types live in the instrumented daemon package and don't cross the sandbox classloader
      * boundary cleanly — same decomposition pattern the other `spec.*` qualifier fields above use.
-     * Other planner-relevant fields (keyboard, material3Theme, …) can be added the same way when
-     * their interactive use cases need them.
+     * Focus uses the same primitive decomposition in [focusTabIndex] / [focusPressed]. Other
+     * planner-relevant fields (keyboard, material3Theme, …) can be added the same way when their
+     * interactive use cases need them.
      */
     val touchOverlay: Boolean? = null,
+    /**
+     * Target for a discovery-time focused / pressed variant in the held Live composition. The host
+     * passes primitives across the sandbox boundary; the held loop reconstructs the focus override
+     * with its own classloader and performs the matching semantics focus drive once.
+     */
+    val focusTabIndex: Int? = null,
+    val focusPressed: Boolean = false,
     /**
      * `RenderSpec.kind` value (`"TILE"` / `"NOTIFICATION"` / `"GLANCE_APPWIDGET"` / `"COMPOSE"` /
      * `null`). The held-rule loop branches on it exactly like `RenderEngine.render` does so a live

@@ -432,14 +432,26 @@ open class DesktopHost(
       try {
         sceneExecutor
           .submit<RenderEngine.SceneState> {
-            engine.setUp(
-              spec,
-              classLoader,
-              inspectionMode = inspectionMode ?: false,
-              // A held interactive scene runs on wall time; a `DesktopSettleClock` would freeze
-              // every `delay` the user's clicks start. See `RenderEngine.setUp`'s `settleEligible`.
-              settleEligible = false,
-            )
+            engine
+              .setUp(
+                spec,
+                classLoader,
+                inspectionMode = inspectionMode ?: false,
+                // A held interactive scene runs on wall time; a `DesktopSettleClock` would freeze
+                // every `delay` the user's clicks start. See `RenderEngine.setUp`'s
+                // `settleEligible`.
+                settleEligible = false,
+              )
+              .also {
+                // A synthetic `@OverrideVariant(interaction = Focused | Pressed | Hovered)` has
+                // two halves: the around-composable establishes keyboard input mode, while the
+                // host targets the semantics node (or pointer position). The one-shot lane already
+                // performs that host half before capture. Do it once when a held Live scene starts
+                // too; `ImageComposeScene` does not land the focus extension's moveFocus walk by
+                // itself, so preserving `spec.overrides.focus` alone leaves the focus ring absent.
+                // Never repeat this from `render()`: subsequent frames belong to user interaction.
+                engine.driveStaticInteraction(it)
+              }
           }
           .get()
       } catch (e: ExecutionException) {
