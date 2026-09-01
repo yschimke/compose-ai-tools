@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.61.1](https://github.com/yschimke/compose-ai-tools/compare/v1.61.0...v1.61.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **mcp:** require pinned UI builder exports ([#4933](https://github.com/yschimke/compose-ai-tools/issues/4933)) ([1f46f5a](https://github.com/yschimke/compose-ai-tools/commit/1f46f5a67f0dff0e623715ea5128b833e04783c4))
+
 ## [1.61.0](https://github.com/yschimke/compose-ai-tools/compare/v1.60.4...v1.61.0) (2026-08-31)
 
 
