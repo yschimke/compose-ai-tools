@@ -1,5 +1,7 @@
 package ee.schimke.composeai.discovery
 
+import androidx.compose.runtime.Composable
+
 // Fixtures for ComposableSignatureTest. Deliberately NOT @Composable — that would drag the Compose
 // runtime onto the discovery test classpath, and ComposableSignature reads only Kotlin @Metadata,
 // which every Kotlin declaration carries regardless. A top-level function compiles into the file
@@ -12,6 +14,11 @@ fun sampleComponent(
   onClick: () -> Unit,
   note: String? = null,
 ) {}
+
+@Suppress("unused", "UNUSED_PARAMETER")
+fun scopedSlotComponent(content: @Composable TestRowScope.(Int) -> Unit) {}
+
+class TestRowScope
 
 @Suppress("unused") fun noParams() {}
 
