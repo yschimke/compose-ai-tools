@@ -457,34 +457,7 @@ object ComposeFigmaSvgDataProducer {
    * weights of one family share it instead of splitting into pseudo-families (issue #3024).
    */
   private fun fontFileFamily(bytes: ByteArray, path: okio.Path): String =
-    typographicFamily(bytes)
-      ?: runCatching {
-        java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
-      }
-        .getOrNull()
-        ?.takeIf { it.isNotBlank() }
-      ?: path.name.substringBeforeLast('.')
-
-  /**
-   * `name` ID 16 (typographic/preferred family) from an sfnt, or null when the face declares none —
-   * the common case for a plain Regular/Bold, where ID 1 already *is* the typographic family. Read
-   * through FontBox (already the subsetter's parser) rather than by hand.
-   */
-  private fun typographicFamily(bytes: ByteArray): String? = runCatching {
-    val naming =
-      org.apache.fontbox.ttf
-        .TTFParser(true)
-        .parse(org.apache.pdfbox.io.RandomAccessReadBuffer(bytes))
-        .naming ?: return@runCatching null
-    naming.nameRecords
-      .firstOrNull { it.nameId == NAME_ID_TYPOGRAPHIC_FAMILY }
-      ?.string
-      ?.trim()
-      ?.takeIf { it.isNotBlank() }
-  }
-    .getOrNull()
-
-  private const val NAME_ID_TYPOGRAPHIC_FAMILY = 16
+    FigmaResourceFonts.familyName(bytes) ?: path.name.substringBeforeLast('.')
 
   /**
    * Crops each opaque-node [FigmaSvgRasterTarget] out of the captured [frameImage] and writes it to
