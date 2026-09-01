@@ -85,13 +85,10 @@ package ee.schimke.composeai.preview
  * never-ending animation on auto is the case with nowhere to go, and the one this section exists to
  * redirect.
  *
- * **On Android**, both lanes additionally record the capture as a machine-readable **phase pin** —
- * `phasePinnedCaptures` in `<png>.warnings.json` — so a catalog can publish "this still is a
- * deliberately chosen phase" and assert on it, as distinct from `unsettledCaptures`, which is a bug
- * report. The Compose Desktop lanes land on the same instant but emit no such record: they have no
- * `.warnings.json` writer at all today (`RenderWarningsSidecar` is Android-only, and
- * `DesktopRendererMain` only knows the suffix in order to sweep it). A desktop-only catalog
- * therefore gets the correct pixels and no published claim about them.
+ * Both backends and both still-render lanes additionally record the capture as a machine-readable
+ * **phase pin** — `phasePinnedCaptures` in `<png>.warnings.json` — so a catalog can publish "this
+ * still is a deliberately chosen phase" and assert on it, as distinct from `unsettledCaptures`,
+ * which is a bug report.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)

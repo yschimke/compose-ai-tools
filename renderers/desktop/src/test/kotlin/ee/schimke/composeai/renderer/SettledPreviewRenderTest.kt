@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -44,6 +45,12 @@ class SettledPreviewRenderTest {
     val image = render("exact", "DelayedReveal", settleAfterMs = 350, settleMaxMs = 1000)
     val alpha = alphaAt(image)
     assertTrue("expected a mid-fade alpha, got $alpha", alpha in 100..180)
+    val sidecar = DesktopRenderWarningsSidecar.pathFor(outputFile("exact"))
+    assertTrue("exact settle must publish a phase pin", sidecar.exists())
+    val json = sidecar.readText()
+    assertTrue(json.contains("\"outcome\":\"phase_pinned\""))
+    assertTrue(json.contains("\"atMs\":350"))
+    assertTrue(json.contains("\"unsettledCaptures\":[]"))
   }
 
   @Test
@@ -52,6 +59,7 @@ class SettledPreviewRenderTest {
     // silent stretch of the bound the author asked for.
     val image = render("short", "DelayedReveal", settleAfterMs = 0, settleMaxMs = 100)
     assertEquals(0, alphaAt(image))
+    assertFalse(DesktopRenderWarningsSidecar.pathFor(outputFile("short")).exists())
   }
 
   @Test
@@ -68,7 +76,8 @@ class SettledPreviewRenderTest {
     settleAfterMs: Int = -1,
     settleMaxMs: Int = 0,
   ): BufferedImage {
-    val out = File(tempFolder.newFolder(name), "$name.png")
+    val out = outputFile(name)
+    out.parentFile.mkdirs()
     renderPreview(
       className = fixtureClass,
       functionName = function,
@@ -88,6 +97,8 @@ class SettledPreviewRenderTest {
     )
     return ImageIO.read(out)
   }
+
+  private fun outputFile(name: String): File = File(tempFolder.root, "$name/$name.png")
 
   private fun alphaAt(image: BufferedImage): Int =
     (image.getRGB(image.width / 2, image.height / 2) ushr 24) and 0xFF
