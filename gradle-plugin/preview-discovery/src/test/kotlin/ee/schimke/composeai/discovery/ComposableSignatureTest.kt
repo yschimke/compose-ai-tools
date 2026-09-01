@@ -48,13 +48,22 @@ class ComposableSignatureTest {
     assertThat(params.first { it.name == "note" }.hasDefault).isTrue()
     assertThat(params.first { it.name == "state" }.hasDefault).isFalse()
     assertThat(params.first { it.name == "labels" }.hasDefault).isFalse()
-    // The function-typed parameter is flagged as a slot.
-    assertThat(params.first { it.name == "onClick" }.composableSlot).isTrue()
+    // An ordinary callback is not child content merely because it is function typed.
+    assertThat(params.first { it.name == "onClick" }.composableSlot).isFalse()
     assertThat(params.first { it.name == "state" }.composableSlot).isFalse()
   }
 
   @Test
   fun `a no-parameter function yields an empty list`() {
     assertThat(parametersOf("noParams")).isEmpty()
+  }
+
+  @Test
+  fun `renders a scoped slot as an extension function type`() {
+    val content = parametersOf("scopedSlotComponent").single()
+
+    assertThat(content.name).isEqualTo("content")
+    assertThat(content.type).isEqualTo("TestRowScope.(Int) -> Unit")
+    assertThat(content.composableSlot).isTrue()
   }
 }

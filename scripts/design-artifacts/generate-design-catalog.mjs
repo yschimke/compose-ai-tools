@@ -102,6 +102,7 @@ import {
 } from "./variant-render-pairing.mjs";
 import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
 import { targetsByFunction } from "./figma-code-connect-target.mjs";
+import { applyComponentParameters } from "./apply-component-parameters.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import {
@@ -1421,6 +1422,10 @@ const sourceRoot = rendersPath.endsWith(".zip")
   : rendersPath;
 const result = await writeCatalog(catalog, outPath, { sourceRoot });
 
+// Resolve the production composable once for both catalog API metadata and Code Connect. Each
+// entry is keyed by the preview function named by the spec, not by a flattened render id.
+const targetByFn = combinedBundleMap(allBundles, targetsByFunction);
+
 // Inject the live-preview deep links into catalog.json. Done as a post-process
 // (re-read → annotate → re-write) rather than via writeCatalog's options because
 // the pinned `@design-parity/catalog-export` predates `previewServer`; once a
@@ -1657,6 +1662,12 @@ if (values["publish-live-bundle"]) {
   if (stampedSources > 0) {
     console.log(
       `[${spec.system}] stamped sourceFile on ${stampedSources} component(s) from discovery`,
+    );
+  }
+  const stampedParameters = applyComponentParameters(manifest, spec, targetByFn);
+  if (stampedParameters > 0) {
+    console.log(
+      `[${spec.system}] stamped parameters on ${stampedParameters} component(s) from discovery`,
     );
   }
   for (const component of manifest.components ?? []) {
@@ -2213,7 +2224,7 @@ const codeConnect = buildCodeConnectManifest({
   components: catalog.components,
   fnByComponentId,
   componentByComponentId,
-  targetByFn: combinedBundleMap(allBundles, targetsByFunction),
+  targetByFn,
   slug,
   figmaSvgSlugs,
   figmaSvgBySlug,

@@ -10,6 +10,7 @@ import kotlin.metadata.KmValueParameter
 import kotlin.metadata.declaresDefaultValue
 import kotlin.metadata.isNullable
 import kotlin.metadata.jvm.KotlinClassMetadata
+import kotlin.metadata.jvm.annotations
 import kotlin.metadata.jvm.signature
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
@@ -111,28 +112,41 @@ internal object ComposableSignature {
     return renderType(t)
   }
 
-  /** `(A, B) -> R` for a `kotlin/FunctionN` type, using its type arguments (last = return). */
+  /**
+   * `(A, B) -> R`, or `Receiver.(A) -> R` for an extension-function type, using the metadata type
+   * arguments (last = return). Kotlin records the receiver as the first function argument and marks
+   * the type with `kotlin.ExtensionFunctionType`; without reading that marker a slot such as
+   * `RowScope.() -> Unit` misleadingly appears as an ordinary `(RowScope) -> Unit` callback.
+   */
   private fun renderFunctionType(
     type: KmType,
     @Suppress("UNUSED_PARAMETER") simple: String,
   ): String {
     val args = type.arguments
     if (args.isEmpty()) return "() -> Unit"
-    val params = args.dropLast(1).joinToString(", ") { renderProjection(it) }
+    val input = args.dropLast(1)
     val ret = args.last().type?.let { renderType(it) } ?: "Unit"
-    return "($params) -> $ret"
+    val extension =
+      type.annotations.any { it.className == "kotlin/ExtensionFunctionType" } && input.isNotEmpty()
+    if (extension) {
+      val receiver = renderProjection(input.first())
+      val params = input.drop(1).joinToString(", ") { renderProjection(it) }
+      return "$receiver.($params) -> $ret"
+    }
+    return "(${input.joinToString(", ") { renderProjection(it) }}) -> $ret"
   }
 
   private fun isFunctionClassName(name: String): Boolean = name.startsWith("kotlin/Function")
 
   /**
-   * A function-typed parameter — treated as a composable content slot. Metadata doesn't cheaply
-   * expose the `@Composable` *type* annotation here, so this approximates: a `kotlin/FunctionN`
-   * parameter on a composable is, in practice, a `content = { … }` slot. Good enough to let a
-   * consumer render the slot as a trailing-lambda rather than an inline value.
+   * A function-typed parameter annotated `@Composable` — a content slot. Kotlin metadata retains
+   * the type-use annotation, so use it instead of treating every callback (`onClick`,
+   * `onValueChange` and friends) as child content. A consumer can then label and render actual
+   * slots distinctly.
    */
   private fun isComposableFunctionType(type: KmType): Boolean =
-    (type.classifier as? KmClassifier.Class)?.name?.let { isFunctionClassName(it) } == true
+    (type.classifier as? KmClassifier.Class)?.name?.let { isFunctionClassName(it) } == true &&
+      type.annotations.any { it.className == "androidx/compose/runtime/Composable" }
 
   // --- @kotlin.Metadata extraction (ASM, from the class bytes)
   // -------------------------------------
