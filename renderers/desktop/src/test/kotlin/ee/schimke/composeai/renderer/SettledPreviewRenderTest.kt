@@ -3,6 +3,8 @@ package ee.schimke.composeai.renderer
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -68,6 +70,29 @@ class SettledPreviewRenderTest {
     // 200ms into a 400ms linear 0→1 ramp.
     val alpha = alphaAt(image)
     assertTrue("expected a mid-ramp alpha, got $alpha", alpha in 100..160)
+  }
+
+  @Test
+  fun `removing a pin deletes its sidecar through the injected filesystem`() {
+    val fileSystem = FakeFileSystem()
+    val png = File("/renders/fake.png")
+    DesktopRenderWarningsSidecar.writePhasePinOrDelete(
+      pngFile = png,
+      role = "preview still",
+      atMs = 350L,
+      fileSystem = fileSystem,
+    )
+    val sidecar = DesktopRenderWarningsSidecar.pathFor(png).path.toPath()
+    assertTrue(fileSystem.exists(sidecar))
+
+    DesktopRenderWarningsSidecar.writePhasePinOrDelete(
+      pngFile = png,
+      role = "preview still",
+      atMs = null,
+      fileSystem = fileSystem,
+    )
+
+    assertFalse(fileSystem.exists(sidecar))
   }
 
   private fun render(

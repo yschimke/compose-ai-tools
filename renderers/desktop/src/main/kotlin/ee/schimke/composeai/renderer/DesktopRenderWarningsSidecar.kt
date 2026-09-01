@@ -37,13 +37,14 @@ object DesktopRenderWarningsSidecar {
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     if (atMs == null) {
-      deleteStale(pngFile)
+      deleteStale(pngFile, fileSystem)
       return
     }
     try {
       val sidecar = pathFor(pngFile)
-      sidecar.parentFile?.mkdirs()
-      fileSystem.write(sidecar.path.toPath()) { writeUtf8(encodePhasePin(role, atMs)) }
+      val sidecarPath = sidecar.path.toPath()
+      sidecarPath.parent?.let { fileSystem.createDirectories(it) }
+      fileSystem.write(sidecarPath) { writeUtf8(encodePhasePin(role, atMs)) }
     } catch (writeFailure: Throwable) {
       System.err.println(
         "Failed to write render-warnings sidecar for ${pngFile.name}: ${writeFailure.message}"
@@ -52,9 +53,10 @@ object DesktopRenderWarningsSidecar {
   }
 
   /** Remove a sidecar left by an earlier pinned render. */
-  fun deleteStale(pngFile: File) {
-    val sidecar = pathFor(pngFile)
-    if (sidecar.exists()) sidecar.delete()
+  @JvmOverloads
+  fun deleteStale(pngFile: File, fileSystem: FileSystem = SystemFileSystem) {
+    val sidecar = pathFor(pngFile).path.toPath()
+    if (fileSystem.exists(sidecar)) fileSystem.delete(sidecar)
   }
 
   internal fun encodePhasePin(role: String, atMs: Long): String = buildString {
