@@ -1324,7 +1324,8 @@ internal object ComposeLayoutInspector {
               ?.boundsIn(rootCoords)
               ?.takeIf { it.right > it.left && it.bottom > it.top }
               ?.let { resolved.copy(paintBox = it) } ?: resolved
-          },
+          }
+          ?.let { resolved -> applyStateLayers(resolved, LayoutTreeAccess.stateLayers(modifiers)) },
       curvedTexts = curvedTexts,
       vectorGraphic = vectorGraphic,
       // The content-loading placeholder this chain declares, plus whether it is currently visible
@@ -1407,6 +1408,56 @@ internal object ComposeLayoutInspector {
         return null
       }
     return transform.takeIf { it.scaled || it.rotated }
+  }
+
+  /**
+   * Composites the live Material ripple node's settled state layers into the editable container
+   * fill.
+   *
+   * Material's indication is a delegated [androidx.compose.ui.node.DrawModifierNode], not an
+   * inspectable modifier element. The frame therefore draws focus / hover / press correctly while
+   * the token-only SVG keeps the resting fill. A settled opacity indication is still a flat fill:
+   * folding it into [ComposeSemanticsTokens.backgroundColor] preserves the editable shape and its
+   * children instead of rasterising the whole component.
+   */
+  private fun applyStateLayers(
+    tokens: ComposeSemanticsTokens,
+    layers: List<LayoutTreeAccess.StateLayer>,
+  ): ComposeSemanticsTokens {
+    if (layers.isEmpty()) return tokens
+    val destination = parseArgb(tokens.backgroundColor) ?: 0
+    var alpha = ((destination ushr 24) and 0xFF) / 255f
+    var red = ((destination ushr 16) and 0xFF).toFloat()
+    var green = ((destination ushr 8) and 0xFF).toFloat()
+    var blue = (destination and 0xFF).toFloat()
+    for (layer in layers) {
+      val sourceAlpha = ((layer.argb ushr 24) and 0xFF) / 255f * layer.alpha.coerceIn(0f, 1f)
+      val outputAlpha = sourceAlpha + alpha * (1f - sourceAlpha)
+      if (outputAlpha <= 0f) continue
+      fun channel(source: Int, destination: Float): Float =
+        (source * sourceAlpha + destination * alpha * (1f - sourceAlpha)) / outputAlpha
+      red = channel((layer.argb ushr 16) and 0xFF, red)
+      green = channel((layer.argb ushr 8) and 0xFF, green)
+      blue = channel(layer.argb and 0xFF, blue)
+      alpha = outputAlpha
+    }
+    // Skia converts its floating paint result to 8-bit channels by truncation. Keep the whole
+    // stack in float until here (focus + press otherwise rounds twice), then match that conversion.
+    val composited =
+      (alpha * 255f).toInt().coerceIn(0, 255).shl(24) or
+        red.toInt().coerceIn(0, 255).shl(16) or
+        green.toInt().coerceIn(0, 255).shl(8) or
+        blue.toInt().coerceIn(0, 255)
+    return tokens.copy(backgroundColor = "#%08X".format(composited))
+  }
+
+  private fun parseArgb(value: String?): Int? {
+    val hex = value?.removePrefix("#") ?: return null
+    return when (hex.length) {
+      6 -> (0xFF000000L or hex.toLong(16)).toInt()
+      8 -> hex.toLong(16).toInt()
+      else -> null
+    }
   }
 
   private fun ModifierInfo.toWireModifier(
@@ -2355,6 +2406,89 @@ internal object ComposeLayoutInspector {
       (call(node, "getModifierInfo") as? Iterable<*>)?.filterIsInstance<ModifierInfo>()
         ?: emptyList()
 
+    data class StateLayer(val argb: Int, val alpha: Float)
+
+    /**
+     * Reads settled opacity state from Material's delegated ripple node.
+     *
+     * `ModifierInfo` exposes the `ClickableElement`, but the active state lives on a delegate of
+     * the coordinator's modifier-node chain. Reflection keeps this compatible across Compose
+     * versions and makes an unavailable node a no-op. Only the legacy opacity ripple is flattened;
+     * Material 3's inset focus-ring node has non-uniform geometry and must remain outside this
+     * flat-fill path.
+     */
+    fun stateLayers(modifiers: List<ModifierInfo>): List<StateLayer> {
+      val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+      val layers = mutableListOf<StateLayer>()
+      fun visit(candidate: Any?) {
+        if (candidate == null || !seen.add(candidate)) return
+        val className = candidate.javaClass.name
+        if (className == "androidx.compose.material.ripple.CommonRippleNode") {
+          val stateLayer = reflectedField(candidate, "stateLayer")
+          val color = (call(candidate, "getRippleColor-0d7_KjU") as? Long)?.let(::packedColorToArgb)
+          val stateAlpha =
+            stateLayer
+              ?.let { reflectedField(it, "animatedAlpha") }
+              ?.let { call(it, "getValue") as? Float }
+          if (color != null && stateAlpha != null && stateAlpha > 0f) {
+            layers += StateLayer(color, stateAlpha)
+          }
+
+          val rippleAlphaConfig =
+            reflectedField(candidate, "rippleAlpha")?.let { call(it, "invoke") }
+          val pressedAlpha = rippleAlphaConfig?.let { call(it, "getPressedAlpha") as? Float } ?: 0f
+          val ripples = reflectedField(candidate, "ripples")
+          val animations = ripples?.let { call(it, "asMutableMap") as? Map<*, *> }?.values.orEmpty()
+          for (animation in animations) {
+            val animationAlpha =
+              reflectedField(animation ?: continue, "animatedAlpha")?.let {
+                call(it, "getValue") as? Float
+              } ?: continue
+            val radius =
+              reflectedField(animation, "animatedRadiusPercent")?.let {
+                call(it, "getValue") as? Float
+              } ?: continue
+            // Before the ripple reaches its target radius it is a circle, not a flat container
+            // overlay. Static interaction capture settles it to 1; decline anything mid-flight
+            // rather than flattening geometry that is not flat.
+            if (color != null && radius >= 0.999f && animationAlpha > 0f && pressedAlpha > 0f) {
+              layers += StateLayer(color, animationAlpha * pressedAlpha)
+            }
+          }
+        }
+        sequenceOf("getDelegate\$ui_release", "getDelegate\$ui", "getDelegate")
+          .mapNotNull { call(candidate, it) }
+          .firstOrNull()
+          ?.let(::visit)
+        sequenceOf("getParent\$ui_release", "getParent\$ui", "getParent")
+          .mapNotNull { call(candidate, it) }
+          .firstOrNull()
+          ?.let(::visit)
+        sequenceOf("getChild\$ui_release", "getChild\$ui", "getChild")
+          .mapNotNull { call(candidate, it) }
+          .firstOrNull()
+          ?.let(::visit)
+      }
+      modifiers.forEach { info ->
+        val tail = call(info.coordinates, "getTail")
+        tail?.let(::visit)
+      }
+      return layers
+    }
+
+    /** Converts a raw Compose [Color] packed value without routing it through `Color(Long)`. */
+    private fun packedColorToArgb(value: Long): Int = runCatching {
+      val method =
+        Class.forName("androidx.compose.ui.graphics.ColorKt", false, javaClass.classLoader)
+          .declaredMethods
+          .first { it.name.startsWith("toArgb-") && it.parameterCount == 1 }
+      method.isAccessible = true
+      method.invoke(null, value) as Int
+    }
+      // sRGB colours occupy the high 32 bits; this is the representation Material theme colours
+      // use and a safe fallback when a future Compose build renames the mangled helper.
+      .getOrElse { (value ushr 32).toInt() }
+
     /**
      * Whether this layout node's live modifier-node chain draws content.
      *
@@ -2411,6 +2545,19 @@ internal object ComposeLayoutInspector {
             .firstOrNull()
       }
       return false
+    }
+
+    private fun reflectedField(receiver: Any, name: String): Any? {
+      var current: Class<*>? = receiver.javaClass
+      while (current != null) {
+        val field = current.declaredFields.firstOrNull { it.name == name }
+        if (field != null) {
+          field.isAccessible = true
+          return field.get(receiver)
+        }
+        current = current.superclass
+      }
+      return null
     }
 
     fun children(node: Any): List<Any> =

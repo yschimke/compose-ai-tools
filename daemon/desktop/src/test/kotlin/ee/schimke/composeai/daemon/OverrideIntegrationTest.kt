@@ -272,6 +272,95 @@ class OverrideIntegrationTest {
     }
   }
 
+  /** Issue #4639 — the generic fixture must not hide a failure in Material's indication path. */
+  @Test
+  fun materialButtonInteractionVariantsExportTheStateTheyName() {
+    val outputDir = tempFolder.newFolder("renders-material-button-interactions")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseId = "MaterialButton_Light"
+    val focusedId = "MaterialButton_Light_VARIANT_focused"
+    val pressedId = "MaterialButton_Light_VARIANT_pressed"
+    fun entry(id: String, interaction: OverrideVariantInteraction? = null) =
+      PreviewManifestEntry(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "MaterialButtonInteractionState",
+        widthPx = 96,
+        heightPx = 48,
+        density = 1.0f,
+        outputBaseName = id,
+        overrides =
+          interaction?.let { OverrideVariantSpec(name = it.name.lowercase(), interaction = it) },
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                entry(baseId),
+                entry(focusedId, OverrideVariantInteraction.Focused),
+                entry(pressedId, OverrideVariantInteraction.Pressed),
+              )
+          ),
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(FocusPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      for (id in listOf(baseId, focusedId, pressedId)) {
+        host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
+      }
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      fun svg(id: String) = dataDir.resolve(id).resolve("compose-figma.svg").readText()
+      fun png(id: String) = outputDir.resolve("$id.png").readBytes()
+      fun containerPixel(id: String) = ImageIO.read(outputDir.resolve("$id.png")).getRGB(10, 24)
+      fun hasFillNearPixel(svg: String, argb: Int): Boolean {
+        val target = intArrayOf(argb shr 16 and 0xFF, argb shr 8 and 0xFF, argb and 0xFF)
+        return Regex("""fill="(#(?:[0-9A-Fa-f]{6}))""")
+          .findAll(svg)
+          .map { it.groupValues[1].removePrefix("#").toInt(16) }
+          .any { fill ->
+            val actual = intArrayOf(fill shr 16 and 0xFF, fill shr 8 and 0xFF, fill and 0xFF)
+            actual.indices.all { abs(actual[it] - target[it]) <= 1 }
+          }
+      }
+      assertNotEquals(
+        "focused Material button PNG must not stay resting",
+        png(baseId).contentHashCode(),
+        png(focusedId).contentHashCode(),
+      )
+      assertNotEquals(
+        "pressed Material button PNG must not stay resting",
+        png(baseId).contentHashCode(),
+        png(pressedId).contentHashCode(),
+      )
+      assertNotEquals(
+        "focused Material button SVG must not stay resting",
+        svg(baseId),
+        svg(focusedId),
+      )
+      assertNotEquals(
+        "pressed Material button SVG must not stay resting",
+        svg(baseId),
+        svg(pressedId),
+      )
+      assertTrue(
+        "focused SVG fill must match the captured Material state-layer pixel",
+        hasFillNearPixel(svg(focusedId), containerPixel(focusedId)),
+      )
+      assertTrue(
+        "pressed SVG fill must match the captured Material ripple pixel",
+        hasFillNearPixel(svg(pressedId), containerPixel(pressedId)),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun widthPxOverrideChangesRenderedDimensions() {
     val outputDir = tempFolder.newFolder("renders-width")

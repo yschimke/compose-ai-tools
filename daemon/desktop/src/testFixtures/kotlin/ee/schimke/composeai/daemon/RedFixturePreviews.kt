@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -1743,4 +1744,14 @@ fun InteractionStateSquare() {
           interactionSource = interactionSource,
         )
   )
+}
+
+/** A real Material 3 indication target for the interaction-variant SVG regression. */
+@Composable
+fun MaterialButtonInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Button(onClick = {}, modifier = Modifier.fillMaxSize()) {
+      Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.onPrimary))
+    }
+  }
 }
