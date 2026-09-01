@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import java.net.URLClassLoader
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
@@ -29,14 +30,14 @@ class RemoteComposeClasspathDetectionTest {
   }
 
   @Test
-  fun returnsFalseWhenLoaderIsNullAndSystemClasspathLacksRemoteCompose() {
-    // The daemon/android module declares :data-remotecompose-connector as `implementation` and
-    // the connector keeps the alpha compose-remote artifacts as `compileOnly`, so the unit-test
-    // classpath here doesn't include `HostAction`. If that ever changes (a transitive bumps it
-    // onto the test runtime), this test starts failing — at which point the alpha AAR has crept
-    // into the daemon's main runtime classpath and the gating logic needs revisiting.
-    assertFalse(
-      "Daemon test classpath unexpectedly ships androidx.compose.remote.creation",
+  fun nullLoaderUsesSystemClasspath() {
+    // The daemon's test runtime intentionally includes Remote Compose player artifacts, while
+    // published consumers only receive them when their own runtime requests them. Keep this test
+    // focused on the null-loader contract instead of assuming which optional artifacts happen to
+    // be present on the evolving test classpath.
+    assertEquals(
+      "A null loader must delegate Remote Compose detection to the system classloader",
+      isRemoteComposeAvailable(ClassLoader.getSystemClassLoader()),
       isRemoteComposeAvailable(null),
     )
   }

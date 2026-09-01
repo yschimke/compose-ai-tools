@@ -138,6 +138,12 @@ async function playBothDocuments() {
   try {
     await page.goto(`${origin}/`);
     await page.addScriptTag({ path: BUNDLE });
+    await page.evaluate(() => {
+      // rc-players 1.55.1 renamed the IIFE namespace while retaining the same exports. Keep the
+      // browser guards compatible with both published bundle shapes; RcdPlayer itself is still
+      // installed directly on window by either version.
+      globalThis.RC ??= globalThis.RcdPlayerBundle;
+    });
     return await page.evaluate(
       async ({ base, docs, w, h }) => {
         RC.configureWebFonts({ baseUrl: base });

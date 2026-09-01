@@ -125,6 +125,12 @@ async function playerPage() {
   const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
   await page.goto(`${origin}/`);
   await page.addScriptTag({ content: fs.readFileSync(BUNDLE, "utf8") });
+  await page.evaluate(() => {
+    // rc-players 1.55.1 renamed the IIFE namespace while retaining the same exports. Keep the
+    // browser guards compatible with both published bundle shapes; RcdPlayer itself is still
+    // installed directly on window by either version.
+    globalThis.RC ??= globalThis.RcdPlayerBundle;
+  });
   return page;
 }
 
