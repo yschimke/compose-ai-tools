@@ -2381,21 +2381,42 @@ object PreviewDiscovery {
    */
   private fun overrideVariantPreview(base: PreviewInfo, spec: OverrideVariantSpec): PreviewInfo {
     val tag = "_VARIANT_${spec.name}"
+    val variantCaptures =
+      base.captures
+        // An `@InteractionPreview` script does NOT fan out across `@OverrideVariant`s. A variant
+        // exists to document a different *resting* state, and the interaction is the same script
+        // either way — a switch's "off" variant tapped twice records the same two-way travel its
+        // parent already recorded, in a file the catalog has nowhere distinct to show. Since each
+        // recording is a full 60fps frame sequence, letting it multiply across every variant
+        // would be the single most expensive thing in a catalog render, bought for duplicates.
+        //
+        // Dropping the whole capture (rather than clearing the `interaction` field) is what keeps
+        // the variant from writing an undriven still into a filename that claims an interaction.
+        .filter { it.interaction == null }
+        .let { captures ->
+          if (spec.interaction != OverrideVariantInteraction.Dragged) captures
+          else
+            captures
+              .map { capture ->
+                if (capture.animation == null && capture.focusGif == null) capture
+                else
+                  capture.copy(
+                    animation = null,
+                    focusGif = null,
+                    renderOutput = replaceRenderExtension(capture.renderOutput, "png"),
+                    cost = STATIC_COST,
+                  )
+              }
+              // LONG/GIF-only scrolling previews expose data products and have no primary
+              // captures. Variants intentionally do not duplicate those heavy products, but a
+              // Dragged variant still needs one addressable still for the held gesture.
+              .ifEmpty { listOf(Capture(renderOutput = "renders/${base.id}.png")) }
+        }
     return base.copy(
       id = base.id + tag,
       overrides = spec,
       captures =
-        base.captures
-          // An `@InteractionPreview` script does NOT fan out across `@OverrideVariant`s. A variant
-          // exists to document a different *resting* state, and the interaction is the same script
-          // either way — a switch's "off" variant tapped twice records the same two-way travel its
-          // parent already recorded, in a file the catalog has nowhere distinct to show. Since each
-          // recording is a full 60fps frame sequence, letting it multiply across every variant
-          // would be the single most expensive thing in a catalog render, bought for duplicates.
-          //
-          // Dropping the whole capture (rather than clearing the `interaction` field) is what keeps
-          // the variant from writing an undriven still into a filename that claims an interaction.
-          .filter { it.interaction == null }
+        variantCaptures
           .map { capture ->
             val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
             when (spec.interaction) {
@@ -2438,6 +2459,13 @@ object PreviewDiscovery {
     val slash = renderOutput.lastIndexOf('/')
     return if (dot > slash) renderOutput.substring(0, dot) + tag + renderOutput.substring(dot)
     else renderOutput + tag
+  }
+
+  private fun replaceRenderExtension(renderOutput: String, extension: String): String {
+    val dot = renderOutput.lastIndexOf('.')
+    val slash = renderOutput.lastIndexOf('/')
+    return if (dot > slash) renderOutput.substring(0, dot + 1) + extension
+    else "$renderOutput.$extension"
   }
 
   /**

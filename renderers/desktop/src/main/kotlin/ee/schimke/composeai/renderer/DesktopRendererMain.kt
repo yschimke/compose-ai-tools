@@ -22,6 +22,7 @@ import ee.schimke.composeai.daemon.DeviceFrameConfig
 import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.extensions.compose.PreviewSystemTheme
 import ee.schimke.composeai.data.render.extensions.compose.previewSystemThemeValue
@@ -34,6 +35,10 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -370,13 +375,7 @@ fun main(args: Array<String>) {
     ?.takeIf { it.isNotBlank() }
     ?.let { seedJson ->
       runCatching {
-        kotlinx.serialization.json
-          .Json { ignoreUnknownKeys = true }
-          .decodeFromString(
-            ee.schimke.composeai.data.overrides.OverrideVariantSpec.serializer(),
-            seedJson,
-          )
-          .toNamedOverrides()
+        decodeDesktopOverrideVariantSpec(seedJson).toNamedOverrides()
       }
         .getOrNull()
         ?.takeIf { it.isNotEmpty() }
@@ -843,6 +842,20 @@ fun main(args: Array<String>) {
       // Continue with the next value — keep exit code 0 below.
     }
   }
+}
+
+/**
+ * Decodes the additive `Dragged` interaction with the older shared-contracts enum used by the
+ * standalone renderer. Drag targeting arrives separately in argv; removing only that field keeps
+ * all boolean/string/number/colour seeds intact.
+ */
+internal fun decodeDesktopOverrideVariantSpec(seedJson: String): OverrideVariantSpec {
+  val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+  val original = json.parseToJsonElement(seedJson)
+  val interaction = original.jsonObject["interaction"]?.jsonPrimitive?.content
+  val compatible =
+    if (interaction == "Dragged") JsonObject(original.jsonObject - "interaction") else original
+  return json.decodeFromJsonElement(OverrideVariantSpec.serializer(), compatible)
 }
 
 /**
