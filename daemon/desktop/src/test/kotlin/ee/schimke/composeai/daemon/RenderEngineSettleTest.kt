@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.renderer.DesktopRenderWarningsSidecar
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -66,7 +67,7 @@ class RenderEngineSettleTest {
     System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, file.absolutePath)
   }
 
-  private fun render(previewId: String): BufferedImage {
+  private fun render(previewId: String): Pair<BufferedImage, File> {
     val outputDir = tempFolder.newFolder("renders-$previewId")
     val engine = RenderEngine(outputDir = outputDir)
     val result =
@@ -92,7 +93,7 @@ class RenderEngineSettleTest {
       val keep = File("build/settle-daemon-evidence").also { it.mkdirs() }
       png.copyTo(File(keep, "$previewId.png"), overwrite = true)
     }
-    return ImageIO.read(png)
+    return ImageIO.read(png) to png
   }
 
   /** Whether the fixture's green reveal square is painted at the centre of [image]. */
@@ -104,14 +105,21 @@ class RenderEngineSettleTest {
     installPreviewIndex("AutoSettled", """{"afterMs":0,"maxMs":1000}""")
     assertTrue(
       "the auto walk must run the fixture's 200ms delay out before capturing",
-      revealed(render("AutoSettled")),
+      revealed(render("AutoSettled").first),
     )
   }
 
   @Test
   fun `an exact settle past the reveal captures the revealed component`() {
     installPreviewIndex("ExactSettled", """{"afterMs":400,"maxMs":1000}""")
-    assertTrue(revealed(render("ExactSettled")))
+    val (image, png) = render("ExactSettled")
+    assertTrue(revealed(image))
+    val sidecar = DesktopRenderWarningsSidecar.pathFor(png)
+    assertTrue("daemon exact settle must publish a phase pin", sidecar.exists())
+    val json = sidecar.readText()
+    assertTrue(json.contains("\"outcome\":\"phase_pinned\""))
+    assertTrue(json.contains("\"atMs\":400"))
+    assertTrue(json.contains("\"unsettledCaptures\":[]"))
   }
 
   /**
@@ -122,15 +130,16 @@ class RenderEngineSettleTest {
   @Test
   fun `an exact settle short of the reveal captures the frame before it`() {
     installPreviewIndex("ExactEarly", """{"afterMs":100,"maxMs":1000}""")
-    assertFalse(revealed(render("ExactEarly")))
+    assertFalse(revealed(render("ExactEarly").first))
   }
 
   /** The control, and the regression the fix is measured against: no settle, no reveal. */
   @Test
   fun `a preview with no settle keeps its first frame`() {
     installPreviewIndex("Unsettled", settleJson = null)
-    val image = render("Unsettled")
+    val (image, png) = render("Unsettled")
     assertFalse("without a settle the daemon must capture the pre-reveal frame", revealed(image))
+    assertFalse(DesktopRenderWarningsSidecar.pathFor(png).exists())
     // …and that frame is the fixture's black container, not an empty or transparent one — proof
     // the render itself is sound and only the reveal is missing.
     assertEquals(0x000000, image.getRGB(image.width / 2, image.height / 2) and 0xFFFFFF)

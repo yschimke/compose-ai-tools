@@ -525,6 +525,10 @@ fun main(args: Array<String>) {
       // VS Code would surface yesterday's exception as if it were current.
       val sidecar = errorSidecarFor(targetFile)
       if (sidecar.exists()) sidecar.delete()
+      // A render that removed or changed an exact `@SettledPreview(afterMs = …)` must not keep
+      // yesterday's phase declaration beside today's PNG. The successful path below rewrites it
+      // when this capture is still pinned.
+      DesktopRenderWarningsSidecar.deleteStale(targetFile)
       if (interactionSpec != null) {
         // `@InteractionPreview` — dispatch the declared gesture script against the live composition
         // on a paused clock and encode the frames. Checked ahead of the animation branch because a
@@ -658,6 +662,15 @@ fun main(args: Array<String>) {
             settleAfterMs = settleAfterMs,
             settleMaxMs = settleMaxMs,
             captureGutter = captureGutter,
+          )
+        } else {
+          // The focused renderer is the only successful still path that does not funnel through
+          // `renderPreview`, so publish its exact phase declaration here. Motion and scroll
+          // products intentionally do not inherit the still's phase pin.
+          DesktopRenderWarningsSidecar.writePhasePinOrDelete(
+            pngFile = targetFile,
+            role = "Preview '${targetFile.nameWithoutExtension}' still",
+            atMs = settleAfterMs.takeIf { it > 0 }?.toLong(),
           )
         }
       } else if (scrollDispatchMode != null) {
@@ -1008,9 +1021,9 @@ private val NO_PARAM = Any()
  * behind forever (see [deleteStaleFanoutFiles]).
  *
  * `.error.json` is written by [writeErrorSidecar] here and by `RenderErrorSidecar` on the Android
- * side; `.warnings.json` (`RenderWarningsSidecar`) only has an Android writer today, but the sweep
- * covers it on both backends so the cleanup contract doesn't depend on which renderer produced the
- * directory. Kept in sync with `PreviewManifestLoader.RENDER_COMPANION_SUFFIXES`.
+ * side; `.warnings.json` is written by [DesktopRenderWarningsSidecar] here and
+ * `RenderWarningsSidecar` on Android. Kept in sync with
+ * `PreviewManifestLoader.RENDER_COMPANION_SUFFIXES`.
  */
 internal val RENDER_COMPANION_SUFFIXES = listOf(".error.json", ".warnings.json")
 
@@ -1487,6 +1500,13 @@ internal fun renderPreview(
     } else {
       fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
     }
+
+    DesktopRenderWarningsSidecar.writePhasePinOrDelete(
+      pngFile = outputFile,
+      role = "Preview '${outputFile.nameWithoutExtension}' still",
+      atMs = settleAfterMs.takeIf { it > 0 }?.toLong(),
+      fileSystem = fileSystem,
+    )
 
     // Released in the `finally` below rather than here, so a throw between the scene's
     // construction and this point cannot strand its Skia surface.
