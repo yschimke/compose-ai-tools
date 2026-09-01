@@ -13,6 +13,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.io.encoding.Base64
 import kotlin.js.Promise
+import kotlin.math.roundToInt
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -25,21 +26,24 @@ import kotlinx.serialization.json.longOrNull
 import org.jetbrains.skia.Image
 
 fun main() {
-  val config = ClientConfig.fromLocation(locationSearch())
+  val config = ClientConfig.fromLocation(locationSearch(), locationPathname())
   val client = BrowserPreviewClient(config)
-  ComposeViewport(viewportContainerId = "composeApp") { PreviewServerApp(client, config) }
+  ComposeViewport(viewportContainerId = "composeApp") { PreviewServerApp(client) }
 }
 
 data class ClientConfig(
   val session: String?,
   val token: String?,
   val initialPreview: String?,
-  val initialLive: Boolean,
+  /** Null keeps the screen's default; true/false are explicit live/snapshot permalink choices. */
+  val initialLive: Boolean?,
   val initialComposer: Boolean,
+  /** True when `/wasm/<catalog>/` selected [session], rather than the legacy query parameter. */
+  val sessionInPath: Boolean,
 ) {
   fun query(extra: Map<String, String> = emptyMap()): String {
     val values = buildMap {
-      session?.let { put("session", it) }
+      if (!sessionInPath) session?.let { put("session", it) }
       token?.let { put("token", it) }
       putAll(extra)
     }
@@ -51,15 +55,71 @@ data class ClientConfig(
   fun suffix(extra: Map<String, String> = emptyMap()): String =
     query(extra).takeIf { it.isNotEmpty() }?.let { "?$it" } ?: ""
 
+  /** Existing server routes with the catalog promoted into their canonical path form. */
+  fun serverPath(path: String): String =
+    if (sessionInPath && session != null) "/${encodeComponent(session)}$path" else path
+
+  internal fun permalinkQuery(location: AppLocation): String = buildMap {
+    if (!sessionInPath) session?.let { put("session", it) }
+    token?.let { put("token", it) }
+    location.previewId?.let { put("preview", it) }
+    if (location.composing) put("compose", "1")
+    location.live?.let { put("live", if (it) "1" else "0") }
+    location.filter.takeIf { it.isNotBlank() }?.let { put("q", it) }
+    location.uiMode?.let { put("uiMode", it) }
+    if (location.transparent) put("background", "off")
+    location.fontScale?.let { put("fontScale", normalizeFontScale(it).toString()) }
+    location.localeTag.takeIf { it.isNotBlank() }?.let { put("localeTag", it) }
+  }
+    .entries
+    .joinToString("&") { (key, value) -> "${encodeComponent(key)}=${encodeComponent(value)}" }
+
   companion object {
-    fun fromLocation(search: String): ClientConfig {
+    fun fromLocation(search: String, pathname: String = ""): ClientConfig {
       val params = parseQuery(search)
+      val pathSession = catalogFromWasmPath(pathname)
       return ClientConfig(
-        session = params["session"]?.takeIf { it.isNotBlank() },
+        session = pathSession ?: params["session"]?.takeIf { it.isNotBlank() },
         token = params["token"]?.takeIf { it.isNotBlank() },
         initialPreview = params["preview"]?.takeIf { it.isNotBlank() },
-        initialLive = params["live"] == "1" || params["live"] == "true",
+        initialLive = params.booleanChoice("live"),
         initialComposer = params["compose"] == "1" || params["compose"] == "true",
+        sessionInPath = pathSession != null,
+      )
+    }
+  }
+}
+
+/** One navigable screen in the single Wasm document. Encoded in the query, never a server path. */
+data class AppLocation(
+  val previewId: String? = null,
+  val composing: Boolean = false,
+  val live: Boolean? = null,
+  val filter: String = "",
+  val uiMode: String? = null,
+  val transparent: Boolean = false,
+  val fontScale: Float? = null,
+  val localeTag: String = "",
+) {
+  companion object {
+    fun fromSearch(search: String): AppLocation {
+      val params = parseQuery(search)
+      val composing = params["compose"] == "1" || params["compose"] == "true"
+      val previewId = params["preview"]?.takeIf { it.isNotBlank() && !composing }
+      return AppLocation(
+        previewId = previewId,
+        composing = composing,
+        live = params.booleanChoice("live").takeIf { previewId != null },
+        filter = params["q"]?.takeIf { previewId == null && !composing }.orEmpty(),
+        uiMode = params["uiMode"]?.takeIf { previewId != null && (it == "light" || it == "dark") },
+        transparent = previewId != null && params["background"] == "off",
+        fontScale =
+          params["fontScale"]
+            ?.toFloatOrNull()
+            ?.takeIf { previewId != null && it.isFinite() }
+            ?.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE)
+            ?.let(::normalizeFontScale),
+        localeTag = params["localeTag"]?.takeIf { previewId != null }.orEmpty(),
       )
     }
   }
@@ -102,8 +162,12 @@ class BrowserPreviewClient(private val config: ClientConfig) {
   private val json = Json { ignoreUnknownKeys = true }
 
   suspend fun catalog(): Catalog {
-    val root = json.parseToJsonElement(fetchText("/api/previews${config.suffix()}")).jsonObject
+    val root =
+      json
+        .parseToJsonElement(fetchText("${config.serverPath("/api/previews")}${config.suffix()}"))
+        .jsonObject
     val module = root.string("module") ?: config.session ?: "Preview server"
+    val catalogVersion = root.string("catalogVersion")
     val previews =
       root["previews"]?.jsonArray.orEmpty().mapNotNull { value ->
         val item = value as? JsonObject ?: return@mapNotNull null
@@ -118,6 +182,7 @@ class BrowserPreviewClient(private val config: ClientConfig) {
             nativeCatalogTarget(
               system = config.session,
               previewId = id,
+              catalogVersion = catalogVersion,
               knobSeeds = item.overrideSeeds(),
             ),
         )
@@ -136,33 +201,41 @@ class BrowserPreviewClient(private val config: ClientConfig) {
   suspend fun snapshot(previewId: String, overrides: Map<String, String>): ImageBitmap =
     decodeImage(
       fetchBase64(
-        "/render/${encodeComponent(previewId)}${config.suffix(overrides + ("format" to "png"))}"
+        "${config.serverPath("/render/${encodeComponent(previewId)}")}" +
+          config.suffix(overrides + ("format" to "png"))
       )
     )
 
   fun legacyViewerUrl(previewId: String): String =
-    "/p/${encodeComponent(previewId)}${config.suffix()}"
+    "${config.serverPath("/p/${encodeComponent(previewId)}")}${config.suffix()}"
 
-  fun replaceLocation(previewId: String?) {
-    val query = buildMap {
-      config.session?.let { put("session", it) }
-      config.token?.let { put("token", it) }
-      previewId?.let { put("preview", it) }
-    }
-    replaceBrowserQuery(
-      query.entries.joinToString("&") { "${encodeComponent(it.key)}=${encodeComponent(it.value)}" }
-    )
+  /** Push a navigable screen while keeping the one physical `/wasm/<catalog>/` document. */
+  fun pushLocation(location: AppLocation) {
+    writeLocation(location, push = true)
   }
 
-  fun replaceComposerLocation() {
-    val query = buildMap {
-      config.session?.let { put("session", it) }
-      config.token?.let { put("token", it) }
-      put("compose", "1")
-    }
-    replaceBrowserQuery(
-      query.entries.joinToString("&") { "${encodeComponent(it.key)}=${encodeComponent(it.value)}" }
-    )
+  /** Update transient state in the current permalink without adding a Back-button stop. */
+  fun replaceLocation(location: AppLocation) {
+    writeLocation(location, push = false)
+  }
+
+  private fun writeLocation(location: AppLocation, push: Boolean) {
+    writeBrowserQuery(query = config.permalinkQuery(location), push = push)
+  }
+
+  /**
+   * Observe browser Back/Forward. The callback changes Compose state in place; the server is never
+   * asked for another HTML document because every permalink retains the same pathname.
+   */
+  fun observeHistory(onLocation: (AppLocation) -> Unit): () -> Unit {
+    installBrowserHistoryListener { onLocation(AppLocation.fromSearch(locationSearch())) }
+    return ::removeBrowserHistoryListener
+  }
+
+  fun initialLocation(): AppLocation = AppLocation.fromSearch(locationSearch())
+
+  fun setDocumentTitle(title: String) {
+    setBrowserDocumentTitle(title)
   }
 
   fun openStream(previewId: String, overrides: Map<String, String>) {
@@ -171,7 +244,8 @@ class BrowserPreviewClient(private val config: ClientConfig) {
     // stream on its connecting frame.
     val query = config.query(overrides + ("codec" to "png"))
     val path =
-      "/ws/${encodeComponent(previewId)}${query.takeIf { it.isNotEmpty() }?.let { "?$it" } ?: ""}"
+      config.serverPath("/ws/${encodeComponent(previewId)}") +
+        (query.takeIf { it.isNotEmpty() }?.let { "?$it" } ?: "")
     openBrowserStream(path)
   }
 
@@ -278,6 +352,22 @@ internal fun parseQuery(search: String): Map<String, String> {
           decodeComponent(pair.substring(separator + 1))
     }
     .toMap()
+}
+
+private fun Map<String, String>.booleanChoice(key: String): Boolean? =
+  when (this[key]?.lowercase()) {
+    "1",
+    "true" -> true
+    "0",
+    "false" -> false
+    else -> null
+  }
+
+/** `/wasm/<catalog>/...` is the Wasm counterpart of the server's existing `/<catalog>/...`. */
+internal fun catalogFromWasmPath(pathname: String): String? {
+  val segments = pathname.split('/').filter { it.isNotEmpty() }
+  if (segments.size < 2 || segments[0] != "wasm") return null
+  return decodeComponent(segments[1]).takeIf { it.isNotBlank() && it != "preview-ui" }
 }
 
 private fun jsonString(value: String): String = buildString {
@@ -387,10 +477,43 @@ private fun closeBrowserStream(): Unit =
     })()"""
   )
 
-private fun replaceBrowserQuery(query: String): Unit =
-  js("window.history.replaceState(null, '', window.location.pathname + (query ? '?' + query : ''))")
+private fun writeBrowserQuery(query: String, push: Boolean): Unit =
+  js(
+    """(function () {
+      var url = window.location.pathname + (query ? '?' + query : '');
+      if (url === window.location.pathname + window.location.search) return;
+      try {
+        (push ? window.history.pushState : window.history.replaceState)
+          .call(window.history, null, '', url);
+      } catch (_) {}
+    })()"""
+  )
+
+private fun installBrowserHistoryListener(listener: () -> Unit): Unit =
+  js(
+    """(function () {
+      if (window.__cpWasmHistoryListener) {
+        window.removeEventListener('popstate', window.__cpWasmHistoryListener);
+      }
+      window.__cpWasmHistoryListener = function () { listener(); };
+      window.addEventListener('popstate', window.__cpWasmHistoryListener);
+    })()"""
+  )
+
+private fun removeBrowserHistoryListener(): Unit =
+  js(
+    """(function () {
+      if (!window.__cpWasmHistoryListener) return;
+      window.removeEventListener('popstate', window.__cpWasmHistoryListener);
+      window.__cpWasmHistoryListener = null;
+    })()"""
+  )
+
+private fun setBrowserDocumentTitle(title: String): Unit = js("document.title = title")
 
 private fun locationSearch(): String = js("window.location.search")
+
+private fun locationPathname(): String = js("window.location.pathname")
 
 private fun encodeComponent(value: String): String = js("encodeURIComponent(value)")
 
@@ -400,3 +523,8 @@ private fun decodeComponent(value: String): String = runCatching {
   .getOrDefault(value)
 
 private fun decodeComponentUnsafe(value: String): String = js("decodeURIComponent(value)")
+
+private fun normalizeFontScale(value: Float): Float = (value * 100).roundToInt() / 100f
+
+private const val MIN_FONT_SCALE = 0.5f
+private const val MAX_FONT_SCALE = 2f

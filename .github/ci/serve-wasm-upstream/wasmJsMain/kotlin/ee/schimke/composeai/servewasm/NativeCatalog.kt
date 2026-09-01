@@ -31,13 +31,20 @@ data class NativeCatalogTarget(
 internal fun nativeCatalogTarget(
   system: String?,
   previewId: String,
+  catalogVersion: String?,
+  nativeCatalogVersion: String = NATIVE_CATALOG_VERSION,
   knobSeeds: Map<String, String> = emptyMap(),
 ): NativeCatalogTarget? {
+  // The route slug names a moving delivery branch, not immutable content. A host can refresh
+  // `design-artifacts/compose-m3` in place while this frontend still contains the previous
+  // composables. Substituting then would silently draw different pixels under the published
+  // snapshot's id. Unknown provenance is no safer than a known mismatch, so both fail closed.
+  if (catalogVersion == null || catalogVersion != nativeCatalogVersion) return null
   // An explicit session is authoritative: never reinterpret another catalog's similarly named
   // route. The default server feed is different. It can mix application previews with injected
-  // catalog previews while reporting only the application's module name, and the v2 API carries
-  // no per-preview provenance. In that feed, exact membership in the catalog compiled into this
-  // frontend is the provenance signal.
+  // catalog previews while reporting only the application's module name, and the API carries no
+  // per-preview system provenance. In that feed, exact membership in the catalog compiled into
+  // this frontend is the provenance signal.
   if (system != null && system != COMPOSE_M3_SYSTEM) return null
   val axes = previewId.split("__")
   val base = axes.firstOrNull()?.takeIf { it.isNotBlank() } ?: return null

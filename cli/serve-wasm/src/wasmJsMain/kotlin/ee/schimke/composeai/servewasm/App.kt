@@ -78,19 +78,25 @@ private val AppColors =
   )
 
 @Composable
-fun PreviewServerApp(client: BrowserPreviewClient, config: ClientConfig) {
+fun PreviewServerApp(client: BrowserPreviewClient) {
   MaterialTheme(colorScheme = AppColors) {
     Surface(Modifier.fillMaxSize()) {
       var catalog by remember { mutableStateOf<Catalog?>(null) }
       var loadError by remember { mutableStateOf<String?>(null) }
-      var selectedId by remember { mutableStateOf(config.initialPreview) }
-      var composing by remember { mutableStateOf(config.initialComposer) }
-      var filter by remember { mutableStateOf("") }
+      var location by remember { mutableStateOf(client.initialLocation()) }
+      DisposableEffect(client) {
+        val stop = client.observeHistory { location = it }
+        onDispose(stop)
+      }
       LaunchedEffect(Unit) {
         try {
           catalog = client.catalog()
-          if (selectedId != null && catalog?.previews?.none { it.id == selectedId } == true) {
-            selectedId = null
+          if (
+            location.previewId != null &&
+              catalog?.previews?.none { it.id == location.previewId } == true
+          ) {
+            location = AppLocation()
+            client.replaceLocation(location)
           }
         } catch (error: Throwable) {
           loadError = error.message ?: "Could not load the preview catalog"
@@ -102,49 +108,83 @@ fun PreviewServerApp(client: BrowserPreviewClient, config: ClientConfig) {
         loadError != null -> ErrorScreen(loadError!!)
         loaded == null -> LoadingScreen()
         else -> {
-          val selected = loaded.previews.firstOrNull { it.id == selectedId }
+          val selected = loaded.previews.firstOrNull { it.id == location.previewId }
+          LaunchedEffect(loaded.module, selected?.id, location.composing) {
+            client.setDocumentTitle(
+              when {
+                location.composing -> "UI Composer · ${loaded.module}"
+                selected != null -> "${selected.label} · ${loaded.module}"
+                else -> "${loaded.module} · Compose Preview"
+              }
+            )
+          }
           BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = maxWidth < 760.dp
             Column(Modifier.fillMaxSize()) {
               AppHeader(
                 catalog = loaded,
                 selected = selected,
-                composing = composing,
+                composing = location.composing,
                 compact = compact,
                 onCatalog = {
-                  composing = false
-                  selectedId = null
-                  client.replaceLocation(null)
+                  location = AppLocation()
+                  client.pushLocation(location)
                 },
                 onCompose = {
-                  composing = true
-                  selectedId = null
-                  client.replaceComposerLocation()
+                  location = AppLocation(composing = true)
+                  client.pushLocation(location)
                 },
               )
-              if (composing) {
+              if (location.composing) {
                 UiComposer(compact)
               } else if (selected != null) {
                 PreviewDetail(
                   preview = selected,
                   client = client,
                   compact = compact,
-                  initiallyLive = config.initialLive,
+                  initiallyLive = location.live,
+                  initialUiMode = location.uiMode,
+                  initiallyTransparent = location.transparent,
+                  initialFontScale = location.fontScale,
+                  initialLocale = location.localeTag,
+                  onLivePermalink = { enabled ->
+                    location = location.copy(live = enabled)
+                    client.pushLocation(location)
+                  },
+                  onUiModePermalink = { uiMode ->
+                    location = location.copy(uiMode = uiMode)
+                    client.pushLocation(location)
+                  },
+                  onTransparentPermalink = { transparent ->
+                    location = location.copy(transparent = transparent)
+                    client.pushLocation(location)
+                  },
+                  onFontScalePermalink = { fontScale ->
+                    location = location.copy(fontScale = fontScale)
+                    client.replaceLocation(location)
+                  },
+                  onLocalePermalink = { locale ->
+                    location = location.copy(localeTag = locale)
+                    client.replaceLocation(location)
+                  },
                   onBack = {
-                    selectedId = null
-                    client.replaceLocation(null)
+                    location = AppLocation()
+                    client.pushLocation(location)
                   },
                 )
               } else {
                 CatalogBrowser(
                   catalog = loaded,
-                  filter = filter,
+                  filter = location.filter,
                   compact = compact,
                   client = client,
-                  onFilter = { filter = it },
+                  onFilter = {
+                    location = location.copy(filter = it)
+                    client.replaceLocation(location)
+                  },
                   onSelect = {
-                    selectedId = it.id
-                    client.replaceLocation(it.id)
+                    location = AppLocation(previewId = it.id)
+                    client.pushLocation(location)
                   },
                 )
               }
@@ -386,15 +426,32 @@ private fun PreviewDetail(
   preview: PreviewSummary,
   client: BrowserPreviewClient,
   compact: Boolean,
-  initiallyLive: Boolean,
+  initiallyLive: Boolean?,
+  initialUiMode: String?,
+  initiallyTransparent: Boolean,
+  initialFontScale: Float?,
+  initialLocale: String,
+  onLivePermalink: (Boolean) -> Unit,
+  onUiModePermalink: (String) -> Unit,
+  onTransparentPermalink: (Boolean) -> Unit,
+  onFontScalePermalink: (Float) -> Unit,
+  onLocalePermalink: (String) -> Unit,
   onBack: () -> Unit,
 ) {
   val nativeTarget = preview.nativeTarget
-  var live by remember(preview.id) { mutableStateOf(nativeTarget != null || initiallyLive) }
-  var dark by remember(preview.id) { mutableStateOf(nativeTarget?.dark ?: false) }
-  var transparent by remember(preview.id) { mutableStateOf(false) }
-  var fontScale by remember(preview.id) { mutableStateOf(nativeTarget?.fontScale ?: 1f) }
-  var locale by remember(preview.id) { mutableStateOf("") }
+  var live by
+    remember(preview.id, initiallyLive) { mutableStateOf(initiallyLive ?: (nativeTarget != null)) }
+  var dark by
+    remember(preview.id, initialUiMode) {
+      mutableStateOf(initialUiMode?.let { it == "dark" } ?: (nativeTarget?.dark ?: false))
+    }
+  var transparent by
+    remember(preview.id, initiallyTransparent) { mutableStateOf(initiallyTransparent) }
+  var fontScale by
+    remember(preview.id, initialFontScale) {
+      mutableStateOf(initialFontScale ?: (nativeTarget?.fontScale ?: 1f))
+    }
+  var locale by remember(preview.id, initialLocale) { mutableStateOf(initialLocale) }
   var bitmap by remember(preview.id) { mutableStateOf<ImageBitmap?>(null) }
   var frameSize by remember(preview.id) { mutableStateOf(IntSize.Zero) }
   var stageSize by remember { mutableStateOf(IntSize.Zero) }
@@ -479,11 +536,26 @@ private fun PreviewDetail(
       fontScale = fontScale,
       locale = locale,
       client = client,
-      onLive = { live = it },
-      onDark = { dark = it },
-      onTransparent = { transparent = it },
-      onFontScale = { fontScale = it },
-      onLocale = { locale = it },
+      onLive = {
+        live = it
+        onLivePermalink(it)
+      },
+      onDark = {
+        dark = it
+        onUiModePermalink(if (it) "dark" else "light")
+      },
+      onTransparent = {
+        transparent = it
+        onTransparentPermalink(it)
+      },
+      onFontScale = {
+        fontScale = it
+        onFontScalePermalink(it)
+      },
+      onLocale = {
+        locale = it
+        onLocalePermalink(it)
+      },
       onBack = onBack,
     )
   }
