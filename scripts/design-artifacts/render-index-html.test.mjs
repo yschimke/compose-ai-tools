@@ -65,6 +65,30 @@ test("a deferred figma-svg links to the image's live vector route", () => {
   assert.match(html, /class="wf figma-svg-link"/);
 });
 
+test("the crop script never fetches a deferred (live) vector, only a published file", () => {
+  // #4930: with defer-figma-svg the href is an absolute live-render URL and the daemon renders it
+  // on demand from a small pool of seats. One eager bbox fetch per card would start a render for
+  // every component in the catalog on page load and 503 the visitors who actually wanted a vector,
+  // so the gallery falls back to the declared gutter for those and fetches only same-origin files.
+  const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set(["filled-button"]) });
+
+  // Pull the guard out of the SHIPPED script rather than restating it, so the two cannot drift.
+  const guard = html.match(/if \((\/\^\[a-z\][^\n]*?)\.test\(href\)\) \{/);
+  assert.ok(guard, "the crop script carries an absolute-URL guard before fetching");
+  const isDeferred = new Function("re", "u", "return re.test(u)").bind(null, eval(guard[1]));
+
+  for (const live of [
+    "https://preview.coo.ee/wear-m3/render/filled-button.svg",
+    "http://localhost:8080/render/filled-button.svg",
+    "//cdn.example/filled-button.svg",
+  ]) {
+    assert.equal(isDeferred(live), true, live);
+  }
+  for (const published of ["figma/filled-button.svg", "figma/a_width=227dp,dpi=320.svg"]) {
+    assert.equal(isDeferred(published), false, published);
+  }
+});
+
 test("a declared capture gutter rides on the hero as data-gutter, in render pixels", () => {
   // The renderer grew this canvas by 11/11/11/13px so a shadow could fall outside the component's
   // bounds. A card fitting the whole canvas to its column draws the component that much smaller

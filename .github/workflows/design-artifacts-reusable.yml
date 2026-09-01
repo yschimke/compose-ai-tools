@@ -1968,6 +1968,20 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/strip-published-figma-svg.mjs \
             --root "$GITHUB_WORKSPACE/out/bundle"
 
+      # The split wrote the carriage report BEFORE the strip above, because it needs the transient
+      # SVGs to crop each cover — so its `totalBytes` still counts thousands of sidecar copies that
+      # are no longer in the published bundles. Those bytes sit in the DENOMINATOR of `sharePercent`,
+      # so leaving them there understates the share and can hold a catalog under the bound whose
+      # published output is almost entirely repeated classpath. Re-measure against what was actually
+      # published, before the gate reads it.
+      - name: Re-measure the carriage against the published bundles
+        if: ${{ inputs.split-per-preview && inputs.defer-figma-svg }}
+        run: |
+          set -euo pipefail
+          node compose-ai-tools/scripts/design-artifacts/recompute-carriage-report.mjs \
+            --report "$GITHUB_WORKSPACE/split-carriage.json" \
+            --bundles-dir "$GITHUB_WORKSPACE/out/bundle/previews"
+
       # The silent half of #4211. A FULL split pays the shared carriage once per preview, so its
       # cost scales with the preview COUNT — and because any catalog edit rewrites `app.jar`, every
       # publish rewrites all N copies and lays down a fresh delta chain. The delivery branch grows

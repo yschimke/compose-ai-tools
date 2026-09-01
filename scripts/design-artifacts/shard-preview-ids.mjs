@@ -183,7 +183,12 @@ export function verifyShardExclusionFile(plan, text) {
   }
 
   const raw = String(text ?? "");
-  const physicalLines = raw.length === 0 ? [] : raw.replace(/\n$/, "").split("\n");
+  // Strip the trailing terminator FIRST, then decide whether anything is left. Splitting a lone
+  // "\n" yields [""], which is one blank pattern rather than the zero patterns it means — and an
+  // export driver pinned from an older `main` still writes exactly that for an empty shard, so
+  // tolerating it here is what keeps this gate from failing a correct render.
+  const body = raw.replace(/\n$/, "");
+  const physicalLines = body.length === 0 ? [] : body.split("\n");
   const lines = physicalLines.map((line) => line.replace(/\r$/, ""));
   if (lines.some((line) => line.trim().length === 0)) {
     problems.push("exclusion file contains a blank line");
@@ -609,7 +614,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.error(`shard-preview-ids: shard ${index} of ${plan.total} has no previews to render.`);
       console.log("0");
     } else {
-      writeFileSync(values.out, `${mine.exclude.join("\n")}\n`);
+      // `[].join("\n")` is "", so a naive template writes a lone "\n" for a shard that excludes
+      // nothing — one physical blank line where the plan declares zero. The verifier below reads
+      // that as a blank exclusion pattern AND a count mismatch, and the workflow then refuses to
+      // render the single shard that had the whole (one-preview) catalog to itself. Zero exclusions
+      // is an EMPTY file; a terminator only follows a pattern.
+      writeFileSync(values.out, mine.exclude.length === 0 ? "" : `${mine.exclude.join("\n")}\n`);
       if (values["plan-out"]) {
         writeFileSync(
           values["plan-out"],

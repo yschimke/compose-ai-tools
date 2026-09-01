@@ -557,7 +557,21 @@ ${details}
       if (edges) frameGutter(hero, edges);
       return;
     }
-    fetch(link.getAttribute("href"))
+    var href = link.getAttribute("href");
+    // A deferred catalog publishes no static vector: the href is an ABSOLUTE live-render URL and
+    // the daemon generates the SVG per request, from a small pool of live seats. Fetching one per
+    // card to compute a crop box would start a render for every component in the catalog the
+    // instant the gallery loads — thousands, on the large catalogs deferral exists for — spending
+    // the seats on bounding boxes and answering the visitors who actually asked for a vector with
+    // 503s. The declared gutter already answers the same question offline, so use it and leave the
+    // vector to be fetched when someone clicks the link.
+    // Character classes, not \/ — this script is emitted from a template literal, where a
+    // backslash escape collapses and would end the regex literal at the first bare slash.
+    if (/^[a-z][a-z0-9+.-]*:|^[/][/]/i.test(href)) {
+      if (edges) frameGutter(hero, edges);
+      return;
+    }
+    fetch(href)
       .then(function (r) { return r.ok ? r.text() : null; })
       .then(function (txt) {
         // The vector wins where it applies — it answers the tighter question of where the component
