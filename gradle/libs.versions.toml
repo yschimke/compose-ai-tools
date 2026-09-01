@@ -381,7 +381,7 @@ composeai-preview-serve = "2.8.0"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "1.55.0"
+rcplayers = "1.55.1"
 
 [libraries]
 
