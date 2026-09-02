@@ -472,6 +472,110 @@ env:
   # This is workflow-level, not step-level, because it must reach EVERY render: the primary module,
   # every later module of a `modules: all` sweep, and each shard of a sharded render. It is
   # deliberately separate from the per-mode exclusions, which belong to the primary module alone.
+  # The trust step's program, defined ONCE here and used by both the sharded and unsharded lanes.
+  #
+  # It lives in the workflow rather than in scripts/design-artifacts/ deliberately. That directory
+  # is the export DRIVER, executed at the commit named by .github/design-artifacts-driver-pin.txt —
+  # an immutable, release-blessed revision, which is the boundary that pin exists for. A brand-new
+  # script there is therefore invisible to a run until the pin is bumped after a release, which is
+  # exactly how the first cut of this failed: `python3: can't open file .../trust-preview-plugin.py`
+  # (the pin was still on 1.63.0). This is workflow logic, not driver logic, and a caller already
+  # pins the workflow by referencing it.
+  TRUST_PREVIEW_PLUGIN_PY: |
+    #!/usr/bin/env python3
+    """Trust the compose-preview plugin in an imported project's dependency verification metadata.
+
+    An imported project may harden its build against precisely what an import does: resolve a plugin it
+    has never heard of. mullvad/mullvadvpn-app ships ``gradle/verification-metadata.xml`` with
+    ``<verify-metadata>true</verify-metadata>``, so every artifact needs a checksum and the auto-injected
+    preview plugin has none. The render dies during configuration, before a single preview is discovered
+    (yschimke/compose-preview-imports#30)::
+
+        > Dependency verification failed for configuration 'classpath'
+          3 artifacts failed verification: ee.schimke.composeai.preview.gradle.plugin-...pom ...
+
+    The alternative considered and rejected was rendering with ``--dependency-verification=lenient``,
+    which makes verification non-fatal for EVERY artifact in the build for the sake of getting two of
+    ours through. Appending two ``<trust>`` entries leaves every dependency the project actually
+    declares strictly verified, and trusts only the coordinates we are the reason for.
+
+    This edits a THROWAWAY checkout, discarded with the CI job. It is never run against a repository
+    anyone keeps.
+    """
+
+    from __future__ import annotations
+
+    import re
+    import sys
+
+    # Both groups are required, and that is not obvious: the plugin is injected by its MARKER
+    # coordinate (ee.schimke.composeai.preview:...gradle.plugin), whose POM resolves the implementation
+    # from a different group entirely. Trusting the marker alone leaves the implementation unverifiable
+    # and the build still fails.
+    GROUPS = ("ee.schimke.composeai.preview", "ee.schimke.composeai")
+
+    TRUST_TAG = re.compile(r"<trust\b[^>]*>")
+    ATTR = re.compile(r"""\b([A-Za-z]+)\s*=\s*["']([^"']*)["']""")
+
+
+    def trusts_group_unconstrained(text: str, group: str) -> bool:
+        """True only for an entry that trusts the whole group with no further constraint.
+
+        Gradle ANDs the group/name/version/file constraints on a ``<trust>``, so
+        ``<trust group="ee.schimke.composeai" name="something-else"/>`` trusts one artifact and says
+        nothing about ours. Treating that as coverage would skip the append and leave the import failing
+        verification anyway (PR #4990 review).
+        """
+        for tag in TRUST_TAG.findall(text):
+            attrs = dict(ATTR.findall(tag))
+            if attrs.get("group") == group and set(attrs) == {"group"}:
+                return True
+        return False
+
+
+    def add_trust_entries(text: str, groups=GROUPS) -> tuple[str, list[str]]:
+        """Return the metadata with any missing group-wide trust entries added, and which were added."""
+        missing = [g for g in groups if not trusts_group_unconstrained(text, g)]
+        if not missing:
+            return text, []
+
+        entries = "".join('         <trust group="%s"/>\n' % g for g in missing)
+
+        if "</trusted-artifacts>" in text:
+            return re.sub(r"[ \t]*</trusted-artifacts>", entries + "      </trusted-artifacts>", text, count=1), missing
+        if "</configuration>" in text:
+            block = "      <trusted-artifacts>\n" + entries + "      </trusted-artifacts>\n   </configuration>"
+            return re.sub(r"[ \t]*</configuration>", block, text, count=1), missing
+        # A file with neither is not a verification file we understand. Failing here is better than
+        # rendering with the hardening silently unaddressed.
+        raise SystemExit("::error::%s has no <trusted-artifacts> or <configuration> to extend" % PATH_HINT)
+
+
+    PATH_HINT = "verification metadata"
+
+
+    def main(argv: list[str]) -> int:
+        global PATH_HINT
+        if len(argv) != 2:
+            raise SystemExit("usage: trust-preview-plugin.py <path-to-verification-metadata.xml>")
+        path = PATH_HINT = argv[1]
+
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+
+        updated, added = add_trust_entries(text)
+        if not added:
+            print("upstream already trusts the preview plugin coordinates — left as is")
+            return 0
+
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(updated)
+        print("trusted in the throwaway checkout: " + ", ".join(added))
+        return 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main(sys.argv))
   IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && 'activity__*,apptour__*' || '' }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
@@ -889,6 +993,26 @@ jobs:
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
 
+      # An imported project may harden its build against precisely what an import does: resolve a
+      # plugin it has never heard of. Where it ships dependency verification metadata, the
+      # auto-injected preview plugin has no checksum in it and the render dies during configuration
+      # (yschimke/compose-preview-imports#30). Two <trust> entries are appended to the THROWAWAY
+      # checkout, leaving every dependency the project actually declares strictly verified — see
+      # TRUST_PREVIEW_PLUGIN_PY for why that beats --dependency-verification=lenient, and why BOTH
+      # the marker and implementation groups are needed.
+      - name: Trust the preview plugin in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
+        run: |
+          set -euo pipefail
+          if [ ! -f "$METADATA" ]; then
+            echo "no dependency verification in this checkout — nothing to trust"
+            exit 0
+          fi
+          printf '%s' "$TRUST_PREVIEW_PLUGIN_PY" > "${RUNNER_TEMP}/trust-preview-plugin.py"
+          python3 "${RUNNER_TEMP}/trust-preview-plugin.py" "$METADATA"
+
 
       - name: Set up JDK 21
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
@@ -916,28 +1040,6 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-      # An imported project may harden its build against precisely what an import does: resolve a
-      # plugin it has never heard of. Where it ships dependency verification metadata, the
-      # auto-injected preview plugin has no checksum in it and the render dies during configuration
-      # (yschimke/compose-preview-imports#30). Two <trust> entries are appended to the THROWAWAY
-      # checkout, leaving every dependency the project actually declares strictly verified — see the
-      # script for why that is preferred to --dependency-verification=lenient, and why BOTH the
-      # marker and implementation groups are needed.
-      #
-      # Runs after the driver checkout because that is what supplies the script, and before any
-      # render. One script rather than a block inlined per lane: the first version of this was
-      # inline in both, and an edit to one silently missed the other.
-      - name: Trust the preview plugin in the upstream checkout
-        if: ${{ inputs.upstream-repository != '' }}
-        env:
-          METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
-        run: |
-          set -euo pipefail
-          if [ ! -f "$METADATA" ]; then
-            echo "no dependency verification in this checkout — nothing to trust"
-            exit 0
-          fi
-          python3 "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/trust-preview-plugin.py" "$METADATA"
 
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
@@ -1246,6 +1348,26 @@ jobs:
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
 
+      # An imported project may harden its build against precisely what an import does: resolve a
+      # plugin it has never heard of. Where it ships dependency verification metadata, the
+      # auto-injected preview plugin has no checksum in it and the render dies during configuration
+      # (yschimke/compose-preview-imports#30). Two <trust> entries are appended to the THROWAWAY
+      # checkout, leaving every dependency the project actually declares strictly verified — see
+      # TRUST_PREVIEW_PLUGIN_PY for why that beats --dependency-verification=lenient, and why BOTH
+      # the marker and implementation groups are needed.
+      - name: Trust the preview plugin in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
+        run: |
+          set -euo pipefail
+          if [ ! -f "$METADATA" ]; then
+            echo "no dependency verification in this checkout — nothing to trust"
+            exit 0
+          fi
+          printf '%s' "$TRUST_PREVIEW_PLUGIN_PY" > "${RUNNER_TEMP}/trust-preview-plugin.py"
+          python3 "${RUNNER_TEMP}/trust-preview-plugin.py" "$METADATA"
+
 
       # The imported project's OWN toolchain, when it asks for one this runner lacks. Installed
       # BEFORE JDK 21 on purpose: `setup-java` points JAVA_HOME at whichever it installed last, and
@@ -1302,28 +1424,6 @@ jobs:
       # release — so compose-ai-tools' own catalogs render against HEAD's renderer.
       # Its bin/ goes on $GITHUB_PATH, shadowing nothing (the released install step
       # is skipped for cli-source=build).
-      # An imported project may harden its build against precisely what an import does: resolve a
-      # plugin it has never heard of. Where it ships dependency verification metadata, the
-      # auto-injected preview plugin has no checksum in it and the render dies during configuration
-      # (yschimke/compose-preview-imports#30). Two <trust> entries are appended to the THROWAWAY
-      # checkout, leaving every dependency the project actually declares strictly verified — see the
-      # script for why that is preferred to --dependency-verification=lenient, and why BOTH the
-      # marker and implementation groups are needed.
-      #
-      # Runs after the driver checkout because that is what supplies the script, and before any
-      # render. One script rather than a block inlined per lane: the first version of this was
-      # inline in both, and an edit to one silently missed the other.
-      - name: Trust the preview plugin in the upstream checkout
-        if: ${{ inputs.upstream-repository != '' }}
-        env:
-          METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
-        run: |
-          set -euo pipefail
-          if [ ! -f "$METADATA" ]; then
-            echo "no dependency verification in this checkout — nothing to trust"
-            exit 0
-          fi
-          python3 "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/trust-preview-plugin.py" "$METADATA"
 
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
