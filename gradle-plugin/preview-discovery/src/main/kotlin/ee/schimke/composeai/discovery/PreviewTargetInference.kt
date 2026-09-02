@@ -257,15 +257,10 @@ object PreviewTargetInference {
         .filter { it.ownerFqn in projectClassFqns }
         .mapNotNull { resolveCandidate(it, scanResult) }
         .filterNot { candidate ->
-          // Demangled first: a project composable taking a `Dp` compiles to `MyCard-abc123`, which
-          // is not a usable import and was therefore dropped outright — the same value-class
-          // mangling that hid `Text` from the component path, and more common here because `Dp`
-          // and `Color` parameters are ordinary in an app's own composables.
-          val name = sourceFunctionName(candidate.method.name)
-          !isValidKotlinImportIdentifier(name) ||
-            isPreviewOnlyWrapper(name, resolveSourceFile(candidate.ownerFqn))
+          !isValidKotlinImportIdentifier(candidate.method.name) ||
+            isPreviewOnlyWrapper(candidate.method.name, resolveSourceFile(candidate.ownerFqn))
         }
-        .distinctBy { it.ownerFqn to sourceFunctionName(it.method.name) }
+        .distinctBy { it.ownerFqn to it.method.name }
         .toList()
 
     if (candidates.isEmpty()) return emptyList()
@@ -554,18 +549,21 @@ object PreviewTargetInference {
    * `TextUnit`, `Color` and `TextOverflow`. A Kotlin identifier can never contain `-`, so the first
    * one is unambiguously the mangling boundary.
    *
-   * This is load-bearing rather than cosmetic, and it bites on **both** inference paths, because
-   * both reject a name that is not a usable import:
-   * * [inferComponents] dropped **every Material 3 component whose signature mentions `Color`, `Dp`
-   *   or `TextUnit`**, `Text` among them — a preview whose only call was `Text` inferred no
-   *   component at all;
-   * * [infer] dropped any of the project's *own* composables with a value-class parameter, which in
-   *   a typical app means anything taking a `Dp`. `AppTile(padding: Dp)` left its preview with
-   *   `targets = []` for a composable the preview does nothing but render.
+   * This is load-bearing rather than cosmetic: [isComponentLibraryTarget] rejects a name that is
+   * not a usable import, and a mangled name is not — so before this, **every Material 3 component
+   * whose signature mentions `Color`, `Dp` or `TextUnit` was silently dropped from the component
+   * record**, `Text` among them. A preview whose only call was `Text` inferred no component at all.
+   * The functional compile gate is what surfaced it: `Button` and `Card` take no value-class
+   * parameters, so the hand-written unit tests never had a mangled name to trip over.
    *
-   * The functional compile gate is what surfaced it. `Button` and `Card` take no value-class
-   * parameters, so the hand-written unit tests never had a mangled name to trip over — a corpus
-   * chosen by hand is a corpus that agrees with you.
+   * **Applied to [inferComponents] only, deliberately.** [infer] rejects mangled names too, and
+   * `DiscoveryFunctionalTest` pins that with a purpose-built `@JvmInline` fixture, so it is a
+   * decision rather than an oversight. The two paths can differ because they promise different
+   * things: a [ComponentSymbol] separates `callable` (the source-level name an import needs) from
+   * `jvmOwner` (the reflection handle), whereas a `targets` entry has one name that consumers may
+   * be using as a JVM lookup key — and `ComponentsKt.Screen` does not exist at runtime when the
+   * method is `Screen-<hash>`. Whether `targets` should demangle is a question for whoever owns
+   * that contract.
    *
    * Only the `-` mangle, deliberately. Kotlin's other JVM mangle is `name$module` for an `internal`
    * function ([nameMatches] strips that one for its own purposes), but stripping `$` here would
@@ -640,8 +638,7 @@ object PreviewTargetInference {
     }
 
     // +2 if `FooPreview` / `PreviewFoo` / `Foo_*_Preview` strips down to the candidate's name.
-    // Compared against the *source* name: `MyCardPreview` never strips down to `MyCard-abc123`.
-    if (nameMatches(previewMethodName, sourceFunctionName(callerMethod.name))) {
+    if (nameMatches(previewMethodName, callerMethod.name)) {
       score += 2
       signals += TargetSignal.NAME_MATCH
     }
@@ -683,7 +680,7 @@ object PreviewTargetInference {
 
     return ScoredCandidate(
       classFqn = callerOwner,
-      methodName = sourceFunctionName(callerMethod.name),
+      methodName = callerMethod.name,
       sourceFile = resolveSourceFile(callerOwner) ?: packageQualifiedSourcePath(callerClassInfo),
       score = score,
       signals = signals,

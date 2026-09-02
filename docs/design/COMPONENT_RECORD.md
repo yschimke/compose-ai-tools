@@ -737,12 +737,19 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > no component at all. `Button` and `Card` take no value-class parameters, which is
 > exactly why the hand-written unit tests were green and stayed green.
 >
-> The same mangling was dropping the project's *own* composables from `targets`,
-> which is the half a typical app actually hits: `AppTile(padding: Dp)` compiles to
-> `AppTile-<hash>`, so its preview reported `targets = []` for a composable the
-> preview does nothing but render. `Dp` and `Color` parameters are ordinary in app
-> code, so this was not an edge case — it was §1's "detect components from previews
-> in typical projects" quietly failing on the typical projects.
+> The same mangling drops the project's *own* composables from `targets`:
+> `AppTile(padding: Dp)` compiles to `AppTile-<hash>`, so its preview reports
+> `targets = []` for a composable the preview does nothing but render. **That half is
+> deliberately left alone**, because `DiscoveryFunctionalTest` pins it with a
+> purpose-built `@JvmInline` fixture — a decision, not an oversight — and the two
+> paths can legitimately differ: `ComponentSymbol` separates `callable` (the
+> source-level name an import needs) from `jvmOwner` (the reflection handle), while a
+> `targets` entry has a single name that consumers may be using as a JVM lookup key,
+> and `ComponentsKt.Screen` does not exist at runtime when the method is
+> `Screen-<hash>`. Whether `targets` should demangle is a question for whoever owns
+> that contract; if it should, `Dp` and `Color` parameters are ordinary enough in app
+> code that this is §1's "detect components from previews in typical projects"
+> failing on the typical projects.
 >
 > The lesson generalises past this bug: a corpus you chose is a corpus that agrees
 > with you. Both fixtures I picked by hand happened to avoid the one construct that
