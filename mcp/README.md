@@ -117,7 +117,7 @@ later.
 
 ### Shared UI builder over Streamable HTTP
 
-Run the MCP process beside the shared preview server and proxy `/mcp` to it. This mode exposes only
+Run the MCP process beside the shared preview server and proxy `/ui-builder/mcp` to it. This mode exposes only
 the eight remote UI-builder tools; filesystem/project and preview-daemon tools stay on local stdio.
 Each MCP client sends its own preview-server agent grant as `Authorization: Bearer`, and that grant
 is bound to the MCP session id for its lifetime.
@@ -131,7 +131,7 @@ compose-preview mcp serve \
   --http-allowed-host preview.example.com
 ```
 
-The loopback default is intentional: terminate public TLS and route `/mcp` in the same reverse
+The loopback default is intentional: terminate public TLS and route `/ui-builder/mcp` in the same reverse
 proxy that serves the UI builder. Preserve `Authorization`, `Mcp-Session-Id`, `Last-Event-ID`, and
 the response content type; disable proxy buffering for `text/event-stream` responses. Repeat
 `--http-allowed-host` for aliases and `--http-allowed-origin` when browser origins should be
@@ -141,7 +141,7 @@ Codex can then connect directly to the shared endpoint:
 
 ```toml
 [mcp_servers.compose-preview-ui-builder]
-url = "https://preview.example.com/mcp"
+url = "https://preview.example.com/ui-builder/mcp"
 bearer_token_env_var = "COMPOSE_PREVIEW_UI_BUILDER_TOKEN"
 required = true
 ```

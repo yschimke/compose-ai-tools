@@ -180,7 +180,7 @@ object DaemonMcpMain {
       uiBuilderUrl = uiBuilderUrl,
       host = host,
       port = port,
-      path = option(args, "--http-path") ?: "/mcp",
+      path = option(args, "--http-path") ?: "/ui-builder/mcp",
       allowedHosts = allowedHosts,
       allowedOrigins = options(args, "--http-allowed-origin").ifEmpty { null },
     )

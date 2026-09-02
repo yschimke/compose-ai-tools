@@ -28,7 +28,7 @@ internal data class UiBuilderStreamableHttpConfig(
   val uiBuilderUrl: String,
   val host: String = "127.0.0.1",
   val port: Int = 8788,
-  val path: String = "/mcp",
+  val path: String = "/ui-builder/mcp",
   val allowedHosts: List<String>? = null,
   val allowedOrigins: List<String>? = null,
 ) {

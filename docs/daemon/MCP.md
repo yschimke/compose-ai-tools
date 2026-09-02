@@ -169,7 +169,7 @@ compose-preview mcp serve --streamable-http \
   --http-allowed-host preview.example.com
 ```
 
-Proxy the public `https://preview.example.com/mcp` route to the sidecar's loopback port. This mode
+Proxy the public `https://preview.example.com/ui-builder/mcp` route to the sidecar's loopback port. This mode
 is deliberately UI-builder-only and accepts each client's grant in `Authorization: Bearer`; the
 sidecar itself has no operator token. Browser and MCP traffic therefore reaches the same persisted
 Design API while the preview server remains free of MCP transport dependencies.

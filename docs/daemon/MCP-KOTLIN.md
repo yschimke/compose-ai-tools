@@ -22,7 +22,7 @@ cannot race the handler registration.
 The local preview-daemon profile uses **stdio**.
 
 The shared UI-builder profile additionally uses the SDK's stateful **Streamable HTTP** transport at
-`/mcp`. It exposes only the remote UI-builder tools: a hosted service cannot safely make local
+`/ui-builder/mcp`. It exposes only the remote UI-builder tools: a hosted service cannot safely make local
 filesystem paths or project-daemon controls meaningful. POST, GET/SSE and DELETE all require the
 same preview-server agent grant. The first authenticated request validates the grant through the
 Design API, then the MCP session id is bound to its fingerprint so another valid grant cannot take
@@ -47,7 +47,7 @@ mcp/
     ├── DaemonMcpMain.kt        — entry point; arg parsing; supervisor wiring
     ├── DaemonMcpServer.kt      — load-bearing wiring layer
     ├── McpServer.kt            — McpSession + handler interface
-    ├── UiBuilderStreamableHttp.kt — authenticated hosted `/mcp` transport
+    ├── UiBuilderStreamableHttp.kt — authenticated hosted `/ui-builder/mcp` transport
     ├── DaemonClient.kt         — JSON-RPC client of one daemon JVM
     ├── DaemonSupervisor.kt     — owns per-(workspace, module) daemons
     ├── PreviewResource.kt      — URI parsing (PreviewUri / HistoryUri / WorkspaceId / FqnGlob)

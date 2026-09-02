@@ -58,11 +58,11 @@ class UiBuilderStreamableHttpTest {
       )
     }
 
-    val missing = client.post("/mcp") { mcpBody(INITIALIZE) }
+    val missing = client.post("/ui-builder/mcp") { mcpBody(INITIALIZE) }
     assertThat(missing.status).isEqualTo(HttpStatusCode.Unauthorized)
 
     val initialized =
-      client.post("/mcp") {
+      client.post("/ui-builder/mcp") {
         bearer(TOKEN_A)
         mcpBody(INITIALIZE)
       }
@@ -74,7 +74,7 @@ class UiBuilderStreamableHttpTest {
     assertThat(initialized.bodyAsText()).contains("compose-preview-ui-builder")
 
     val tools =
-      client.post("/mcp") {
+      client.post("/ui-builder/mcp") {
         bearer(TOKEN_A)
         header(MCP_SESSION_ID_HEADER, sessionId!!)
         mcpBody(TOOLS_LIST)
@@ -103,7 +103,7 @@ class UiBuilderStreamableHttpTest {
       .inOrder()
 
     val crossedGrant =
-      client.post("/mcp") {
+      client.post("/ui-builder/mcp") {
         bearer(TOKEN_B)
         header(MCP_SESSION_ID_HEADER, sessionId)
         mcpBody(TOOLS_LIST)
@@ -111,7 +111,7 @@ class UiBuilderStreamableHttpTest {
     assertThat(crossedGrant.status).isEqualTo(HttpStatusCode.Forbidden)
 
     val called =
-      client.post("/mcp") {
+      client.post("/ui-builder/mcp") {
         bearer(TOKEN_A)
         header(MCP_SESSION_ID_HEADER, sessionId)
         mcpBody(LIST_COMPONENTS)
@@ -121,7 +121,7 @@ class UiBuilderStreamableHttpTest {
     assertThat(upstreamRequests).hasSize(1)
 
     val deleted =
-      client.delete("/mcp") {
+      client.delete("/ui-builder/mcp") {
         bearer(TOKEN_A)
         header(MCP_SESSION_ID_HEADER, sessionId)
         header(HttpHeaders.Host, "localhost")
@@ -130,7 +130,7 @@ class UiBuilderStreamableHttpTest {
     assertThat(deleted.status.value).isIn(listOf(200, 202, 204))
 
     val afterDelete =
-      client.post("/mcp") {
+      client.post("/ui-builder/mcp") {
         bearer(TOKEN_A)
         header(MCP_SESSION_ID_HEADER, sessionId)
         mcpBody(TOOLS_LIST)

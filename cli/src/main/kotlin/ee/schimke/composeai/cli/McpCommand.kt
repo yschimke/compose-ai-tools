@@ -96,7 +96,7 @@ internal class McpCommand(
                              Each client supplies its preview-server grant as Authorization: Bearer.
         --http-host <host>   Bind host (default 127.0.0.1; use a reverse proxy for public TLS).
         --http-port <port>   Bind port (default 8788).
-        --http-path <path>   MCP endpoint path (default /mcp).
+        --http-path <path>   MCP endpoint path (default /ui-builder/mcp).
         --http-allowed-host <host>
                              Accepted Host header; repeat for aliases. Required for non-loopback
                              binds and normally set to the shared server's public hostname.
