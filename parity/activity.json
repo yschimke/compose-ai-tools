@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T21:21:17.200Z",
+  "generatedAt": "2026-09-02T21:41:36.489Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "780a397a5235ba0b647d120358a2bdb89fca667e",
+        "subject": "fix(import): render a verified upstream with lenient verification (#5016)",
+        "at": "2026-09-02T22:31:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "78e621b36a2e0676cca078f31f8e85aee4b8e97f",
+        "subject": "feat(gradle-plugin): add a renderGraph DSL to exclude modules from the render graph (#5014)",
+        "at": "2026-09-02T22:23:36+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "981e0e15c3afaffe4859eba30ed9ae29a4052a9b",
+        "subject": "fix(bundle): key AAR extraction on content so a snapshot rebuild can't serve stale classes (#5015)",
+        "at": "2026-09-02T22:22:26+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fb33c9dc8b1f5f10af418efc3df9cc56b0576c71",
+        "subject": "chore(main): release 1.65.0 (#5005)",
+        "at": "2026-09-02T22:15:04+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c2ac68d829ec64e403376208bdcd8e9e39aca04f",
+        "subject": "feat(discovery): infer the library components a preview demonstrates (#5010)",
+        "at": "2026-09-02T22:11:51+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "06348d6c18a765bc401f0ef3eb4806654c74f6e2",
         "subject": "feat(import): let an import name the previews it cannot render (#5011)",
@@ -442,46 +482,6 @@
         "sha": "8ae2f519472e19f5182529857256e60bb533b8af",
         "subject": "fix(design-pages): enforce the published node cap (#4945)",
         "at": "2026-09-01T07:28:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9f1571d20cdce882b7e9b1b8ccb33e58da114e79",
-        "subject": "fix(figma-svg): preserve remote compose font families (#4944)",
-        "at": "2026-09-01T07:25:18+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7cc498a2b6a9b844b3e6ff5e53efb53814d6672b",
-        "subject": "fix(deps): update compose-preview-server to v2.8.0 (#4942)",
-        "at": "2026-09-01T07:14:12+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ae3c8591ff1f09880ea4c3971a8580f4521c148e",
-        "subject": "fix(deps): update compose-preview-contracts to v2.3.0 (#4941)",
-        "at": "2026-09-01T07:14:03+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2ac09869f7f9e9445cd84a09401d59ec0602fdb6",
-        "subject": "fix(deps): pin dependencies (#4940)",
-        "at": "2026-09-01T07:13:53+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7d029929c484f972fa23f4c8cc25030b69c06055",
-        "subject": "fix(daemon): preserve focused variants in live mode (#4939)",
-        "at": "2026-09-01T07:13:44+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
