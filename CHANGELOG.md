@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.62.2](https://github.com/yschimke/compose-ai-tools/compare/v1.62.1...v1.62.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-server to v2.14.0 ([#4967](https://github.com/yschimke/compose-ai-tools/issues/4967)) ([1e725a4](https://github.com/yschimke/compose-ai-tools/commit/1e725a4bfa0728760e2613099efc6f7067f1f531))
+* **deps:** update dependency org.checkerframework:checker-qual to v4.2.3 ([#4965](https://github.com/yschimke/compose-ai-tools/issues/4965)) ([6046911](https://github.com/yschimke/compose-ai-tools/commit/6046911212e026304cf9b841b9869cbcb7d27fca))
+* **deps:** update rc-players to v1.56.0 ([#4969](https://github.com/yschimke/compose-ai-tools/issues/4969)) ([66bff88](https://github.com/yschimke/compose-ai-tools/commit/66bff88ab776926a82b33eec9e322137de62e282))
+* **figma-svg:** preserve indication overlay geometry ([#4964](https://github.com/yschimke/compose-ai-tools/issues/4964)) ([eac3f2d](https://github.com/yschimke/compose-ai-tools/commit/eac3f2d2c9398a3da04110d89d55a1c9f22151db))
+
 ## [1.62.1](https://github.com/yschimke/compose-ai-tools/compare/v1.62.0...v1.62.1) (2026-09-02)
 
 
