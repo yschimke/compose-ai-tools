@@ -18,14 +18,8 @@ on:
         type: string
 
 concurrency:
-  # Queue, never cancel. This publishes to a Maven coordinate: a run killed
-  # mid-upload can leave a partially written snapshot, and the next merge is
-  # not a reason to abandon the one in flight. Queueing is bounded — GitHub
-  # keeps at most one *pending* run per group — and the latest merge still
-  # wins, which is what a snapshot coordinate should mean. See
-  # docs/AGENT_GUIDE.md -> "CI concurrency: main runs to completion".
   group: snapshot-${{ github.ref }}-${{ inputs.suffix || 'auto' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 # Snapshot publish only reads repo contents; auth for Central is via
 # env-based credentials, not GITHUB_TOKEN.
