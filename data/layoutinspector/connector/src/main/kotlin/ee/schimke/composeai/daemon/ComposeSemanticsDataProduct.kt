@@ -1384,8 +1384,17 @@ internal object ComposeLayoutInspector {
       // NodeElement may delegate its entire draw to a CacheDrawModifierNode while exposing no
       // `onDraw` lambda for the vector/raster replay tiers (Material 3 wavy progress indicators).
       drawsContent = drawsContent,
+      // `modifiesDrawnContent` asks FigmaSvgModel to flatten this node to a raster, because a draw
+      // modifier alters content the structured children cannot express. With an indication present
+      // that is no longer true: `indicationForegrounds` above captures each after-content pass as
+      // its own child, at the modifier's real paint position, which is exactly the decomposition
+      // the flag exists to fall back from. Leaving both on means the flatten wins and the model
+      // returns a leaf before it reads those children — a `drawWithContent` + `clickable` chain
+      // then exports its focus state layer baked into the capture instead of as an editable
+      // overlay, which is what `OverrideIntegrationTest` catches.
       modifiesDrawnContent =
-        DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
+        indications.isEmpty() &&
+          DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
       transform = ownerTransform,
       // A Material indication draws after its inner content but before the foreground of any outer
       // drawWithContent modifier. ModifierInfo is outer-to-inner, so sorting descending
