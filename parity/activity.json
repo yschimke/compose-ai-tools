@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T22:11:19.394Z",
+  "generatedAt": "2026-09-02T22:32:10.679Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "90f633616334ebc3cfef04823c6e6d5f7737252b",
+        "subject": "chore(main): release 1.66.1 (#5024)",
+        "at": "2026-09-02T23:17:03+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "51fa6c76115db94fdd4f03863af72501ecf4ca60",
+        "subject": "ci: reinstate cancellation of superseded main runs (#5023)",
+        "at": "2026-09-02T23:14:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "37db480edc41cd60850623b95f37d5cd5f4bfe62",
         "subject": "fix(import): turn Isolated Projects off for the throwaway render (#5022)",
@@ -467,22 +483,6 @@
         "subject": "fix(preview): preserve accurate desktop phase pins (#4956)",
         "at": "2026-09-01T20:50:46+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "25c45bab0ae968e96b679cab2f5e678a17a53f0c",
-        "subject": "feat(catalog): publish component parameter metadata (#4952)",
-        "at": "2026-09-01T20:46:49+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "65f17720b98895c80f0d0268515f674dc7b4ae4c",
-        "subject": "fix(deps): update design-parity export toolchain to v1.0.4 (#4948)",
-        "at": "2026-09-01T20:45:36+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
