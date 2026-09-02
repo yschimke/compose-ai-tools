@@ -2172,6 +2172,44 @@ jobs:
             echo "::notice title=defer-figma-svg::ignored — it needs publish-live-bundle: true so a trusted daemon can produce the vector on request. Static vectors will be published as before."
           fi
 
+          # `variant` is a SINGLE-MODULE input, and the failure mode of ignoring that is silent.
+          #
+          # The plugin matches a target to a variant in two rules (AndroidPreviewSupport
+          # .variantMatchesTarget): a bare build-type like `debug` suffix-matches `demoDebug`,
+          # `prodDebug` and so on, but a target carrying an uppercase segment — every flavored
+          # variant, `fullDebug` included — is EXACT-ONLY, and a module that has no such variant is
+          # skipped rather than failed. Passed to repository-wide discovery, one flavored variant
+          # therefore drops every flavorless module in the repository out of `compose-preview list`,
+          # and the catalog publishes without them, smaller and with nothing in the log to say so.
+          if [ -n "${INPUT_VARIANT:-}" ] && { [ -z "$INPUT_MODULE" ] || [ "$INPUT_MODULES" = "all" ]; }; then
+            echo "::error title=variant input::variant is for a single module: with repository-wide" \
+                 "discovery a flavored variant is matched exactly, so every module without it is" \
+                 "SILENTLY skipped and disappears from the catalog. Name the module with 'module',"\
+                 "or drop 'variant' and let the plugin's default build type suffix-match each module."
+            exit 1
+          fi
+
+          # A variant the SOURCE contract cannot carry is worse than no variant.
+          #
+          # With live-rerender-source and no live bundle, the only live path a serve box has is to
+          # rebuild from source, and the contract it gets is --source-repo / --source-ref /
+          # --source-module. There is no --source-variant: the generator does not accept one, so the
+          # rebuild would use the plugin's default `debug` — for the case this input exists for
+          # (home-assistant/android, where minimalDebug does not compile) that is precisely the
+          # variant that fails, and the failure would surface on the serve box rather than here.
+          #
+          # Refused rather than warned, because the catalog would look complete and re-render wrong.
+          # Lifting this means teaching generate-design-catalog.mjs a --source-variant, recording it
+          # in the catalog's source block, and having serve apply it on a source rebuild.
+          if [ -n "${INPUT_VARIANT:-}" ] && [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] \
+             && [ "$INPUT_PUBLISH_LIVE_BUNDLE" != "true" ]; then
+            echo "::error title=variant input::variant cannot be carried by the source-rebuild live" \
+                 "path — the catalog's source block records repo, ref and module only, so a trusted" \
+                 "serve box would rebuild on the plugin's default variant. Use publish-live-bundle:" \
+                 "true so the executable bundle carries the render, or set live-rerender-source: false."
+            exit 1
+          fi
+
       # Repository-wide publication keeps one executable bundle per Gradle module. Discover the
       # module set once, order it deterministically, and prefer spec.module as the primary when the
       # authored catalog names one — that preserves the historical unqualified function-name winner
