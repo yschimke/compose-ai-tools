@@ -1911,6 +1911,21 @@ internal object ComposeLayoutInspector {
           ?.let { runCatching { call(it, "getTypeface") }.getOrNull() }
           ?.let { tf -> call(tf, "getWeight") as? Int }
           ?.takeIf { it in 1..1000 }
+      // The family the run resolved to. `CurvedTextChild` keeps the *merged* style on its private
+      // `actualStyle` (`DefaultCurvedTextStyles + style()`); the `style` lambda alone reports only
+      // the caller's overrides, so a clock that inherits the theme's face would report nothing.
+      // Labelled through the same `fontFamilyLabel` the straight-text paths use, so the export
+      // can't end up with two spellings of one face (compose-preview-server#201: without a family
+      // the `<textPath>` inherited the document default while every straight run named the
+      // theme's).
+      val style = runCatching { field(child, "actualStyle") }.getOrNull()
+      val family = style?.let {
+        layoutTextFontFamilyLabel(
+          call(it, "getFontFamily") as? FontFamily,
+          call(it, "getFontWeight") as? FontWeight,
+          call(it, "getFontStyle") as? FontStyle,
+        )
+      }
       return LayoutInspectorCurvedText(
         text = text,
         centerXPx = cx,
@@ -1922,6 +1937,7 @@ internal object ComposeLayoutInspector {
         fontSizePx = fontSize,
         fontWeight = weight,
         colorArgb = color,
+        fontFamily = family,
       )
     }
 

@@ -220,13 +220,16 @@ object ComposeFigmaSvgDataProducer {
   /** Sidecar naming the faces the render drew with that the export could not reproduce. */
   const val FILE_FONT_WARNINGS: String = "compose-figma-fonts.warnings.json"
 
-  /** Every family named on a `<text>` in [layer]'s subtree. */
+  /** Every family named on a `<text>` or curved `<textPath>` run in [layer]'s subtree. */
   private fun capturedFamilies(layer: FigmaSvgLayer): Set<String> = buildSet {
     fun walk(node: FigmaSvgLayer) {
       node.text?.let { text ->
         text.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) }
         text.spans?.forEach { span -> span.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) } }
       }
+      // A Wear clock's face counts too: it is drawn text, so leaving it out let the export declare
+      // every face named and embed none of the clock's (compose-preview-server#201).
+      node.curvedTexts.forEach { ct -> ct.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) } }
       node.children.forEach(::walk)
     }
     walk(layer)
@@ -239,6 +242,7 @@ object ComposeFigmaSvgDataProducer {
         t.content.codePoints().toArray().forEach { add(it) }
         t.lines?.forEach { line -> line.content.codePoints().toArray().forEach { add(it) } }
       }
+      node.curvedTexts.forEach { ct -> ct.text.codePoints().toArray().forEach { add(it) } }
       node.children.forEach(::walk)
     }
     walk(layer)
@@ -408,6 +412,15 @@ object ComposeFigmaSvgDataProducer {
             t.content.substring(start, end).codePoints().toArray().forEach { cps.add(it) }
           }
         }
+      }
+      // Curved runs subset like any other: one face key per run, carrying just its digits and
+      // separator. No spans and no italic — a `CurvedTextStyle` run is a single uniform style.
+      layer.curvedTexts.forEach { ct ->
+        val cps =
+          codePointsByFace.getOrPut(Triple(ct.fontFamily, ct.fontWeight ?: 400, false)) {
+            LinkedHashSet()
+          }
+        ct.text.codePoints().toArray().forEach { cps.add(it) }
       }
       layer.children.forEach(::collect)
     }
