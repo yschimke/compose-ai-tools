@@ -3316,7 +3316,7 @@
     "functionName": "Remote theme colours",
     "module": "samples:remotecompose",
     "renderBasename": "colorcatalog__Remote_theme.png",
-    "sha256": "6acd09137f59fb088ab28a569035ca0fceee0caa1ff6e4028a692f170d312268",
+    "sha256": "55c87b9fd173b4a985a95408db559357ba04510303675f36a9345940e251119f",
     "sourceFile": null
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
