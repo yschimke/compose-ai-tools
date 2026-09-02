@@ -4,6 +4,7 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
@@ -213,6 +214,56 @@ class FigmaFontEmbedTest {
     assertFalse(
       "no bare sans-serif default when embedding",
       svg.contains("""font-family="sans-serif""""),
+    )
+  }
+
+  /**
+   * compose-preview-server#201: a Wear clock's face is drawn text like any other, but the export
+   * only looked at `<text>` nodes — so a curved run's family reached neither the "everything the
+   * export can name" set nor the embedder, and the `<textPath>` fell back to the document default.
+   */
+  @Test
+  fun writeSvgEmbedsTheFaceACurvedClockNames() {
+    val clock =
+      LayoutInspectorNode(
+        nodeId = "TimeText",
+        component = "CurvedLayoutKt",
+        bounds = LayoutInspectorBounds(0, 0, 200, 100),
+        size = LayoutInspectorSize(200, 100),
+        curvedTexts =
+          listOf(
+            LayoutInspectorCurvedText(
+              text = "10:10",
+              centerXPx = 100.0,
+              centerYPx = 100.0,
+              radiusPx = 80.0,
+              startAngleRadians = 4.4652,
+              sweepRadians = 0.4944,
+              clockwise = true,
+              fontSizePx = 15.0,
+              fontWeight = 600,
+              fontFamily = "Roboto Flex",
+            )
+          ),
+      )
+    val resolver = FigmaFontResolver { family, weight, italic ->
+      if (family == "Roboto Flex" && weight == 600 && !italic) byteArrayOf(7, 7, 7) else null
+    }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      dir,
+      previewId = "clock",
+      layout = LayoutInspectorPayload(clock),
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("clock").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("the clock's face is embedded", svg.contains("data:font/woff2;base64,BwcH"))
+    assertTrue("at the weight the run draws", svg.contains("font-weight:600"))
+    assertTrue("and the run names it", svg.contains("""font-family="Roboto Flex""""))
+    assertFalse(
+      "so nothing is reported as unnameable",
+      dir.resolve("clock").resolve(ComposeFigmaSvgDataProducer.FILE_FONT_WARNINGS).exists(),
     )
   }
 
