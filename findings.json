@@ -2026,6 +2026,17 @@
     },
     {
       "annotatedBasename": "",
+      "cleanBasename": "ParameterKnobListPreview_Parameter_Knob_List-de590fad.png",
+      "findings": [],
+      "functionName": "ParameterKnobListPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ParameterKnobPreviewsKt.ParameterKnobListPreview_Parameter Knob List",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ParameterKnobPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
       "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom-89759e96.png",
       "findings": [],
       "functionName": "PinchToZoomPreview",
