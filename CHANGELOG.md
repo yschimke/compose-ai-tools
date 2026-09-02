@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.63.0](https://github.com/yschimke/compose-ai-tools/compare/v1.62.2...v1.63.0) (2026-09-02)
+
+
+### Features
+
+* **mcp:** add shared UI builder HTTP transport ([#4975](https://github.com/yschimke/compose-ai-tools/issues/4975)) ([b0186b8](https://github.com/yschimke/compose-ai-tools/commit/b0186b85d419426503deab2407683c645e1d1816))
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-server to v2.15.0 ([#4978](https://github.com/yschimke/compose-ai-tools/issues/4978)) ([6f1c27a](https://github.com/yschimke/compose-ai-tools/commit/6f1c27a8c0029f0b59235726ac1f98eaf8f673ee))
+* **figma-svg:** preserve indication modifier order ([#4973](https://github.com/yschimke/compose-ai-tools/issues/4973)) ([d45341d](https://github.com/yschimke/compose-ai-tools/commit/d45341db16e57bc5bded2c276c482f7e84001cf3))
+
 ## [1.62.2](https://github.com/yschimke/compose-ai-tools/compare/v1.62.1...v1.62.2) (2026-09-02)
 
 
