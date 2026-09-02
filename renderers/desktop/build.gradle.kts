@@ -193,7 +193,27 @@ val forwardComposeSystemThemeTest =
     shouldRunAfter(tasks.test)
   }
 
+// `check` for anyone running it, and `test` because that is what actually runs.
+//
+// CI never invokes `check`. ci.yml's full branch runs `test jvmTest desktopTest checkKotlinAbi`,
+// its scoped branch runs whatever `.github/ci/affected-gradle-tests.py` resolves — `test`/`jvmTest`
+// per project, plus `checkKotlinAbi` where the project has one — and the only `gradlew …build`
+// invocations in the workflows are `:cli:build` and `:bundle-viewer:build`, neither of which
+// reaches this project. So this gate had never run in CI since it was added.
+//
+// That is the failure its own KDoc above is about, one level up: it explains at length why the
+// forward pin must stay strictly ahead of the production one, because a task running on a levelled
+// graph "passes while covering nothing" — and the task was passing while covering nothing for a
+// simpler reason. `affected-gradle-tests.py`'s docstring records the same trap costing three stale
+// ABI dumps in a day, which is why `checkKotlinAbi` is now named per project rather than left to
+// `check`. `finalizedBy` is the equivalent for a task the resolver does not know about.
+//
+// Nothing is excluded from `test` here, unlike `:daemon:desktop`'s forward task:
+// `UiModeSystemThemeTest` is an invariant that has to hold on both Compose lines, so running it
+// once per runtime is the point rather than a duplicate.
 tasks.check { dependsOn(forwardComposeSystemThemeTest) }
+
+tasks.test { finalizedBy(forwardComposeSystemThemeTest) }
 
 composeAiMavenPublishing {
   coordinates(
