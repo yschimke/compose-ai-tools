@@ -50,6 +50,21 @@ on:
         required: false
         type: string
         default: ''
+      variant:
+        description: >
+          Android variant the preview plugin attaches its tasks to, forwarded to the CLI as
+          `--variant` (which becomes `-PcomposePreview.variant=<name>` on every Gradle
+          invocation). Omit for the plugin's own default of `debug`, which is right for any
+          module without product flavors.
+
+          Needed when a module HAS flavors, because there is then no plain `debug` variant and
+          the flavor picked for you may not be the one that builds. home-assistant/android is
+          the case in point: its `app/src/screenshotTest/` source set is flavor-agnostic but
+          references a symbol that exists only in the `full` flavor, so `minimalDebug` fails to
+          compile before a preview is rendered, while `fullDebug` is fine.
+        required: false
+        type: string
+        default: ''
       modules:
         description: 'Set to "all" to discover and publish every preview-enabled Gradle module. Equivalent to omitting module; other values are rejected.'
         required: false
@@ -445,6 +460,7 @@ env:
   INPUT_CATALOG_KEY: ${{ inputs.catalog-key }}
   INPUT_CATALOG_PATH: ${{ inputs.catalog-path }}
   INPUT_MODULE: ${{ inputs.module }}
+  INPUT_VARIANT: ${{ inputs.variant }}
   INPUT_MODULES: ${{ inputs.modules }}
   INPUT_EXTRA_MODULE: ${{ inputs.extra-module }}
   INPUT_RENDER_SHARDS: ${{ inputs.render-shards }}
@@ -1493,7 +1509,12 @@ jobs:
         working-directory: ${{ env.RENDER_DIR }}
         run: |
           set -euo pipefail
-          compose-preview list --json --module "$INPUT_MODULE" \
+          # `--variant` has to be on discovery too, not just the render. The plugin registers its
+          # `composePreview*` tasks against ONE variant, so a list run without it enumerates a
+          # different variant's tasks than the render uses — on a flavored module that means it
+          # enumerates none.
+          variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
+          compose-preview list --json "${variant[@]}" --module "$INPUT_MODULE" \
             > "$GITHUB_WORKSPACE/discovered-previews.json"
 
       - name: Derive per-mode render exclusions
@@ -1567,6 +1588,7 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           # The shard's own partition, plus the import-wide exclusions. Unreachable today — the
           # driver refuses import + render-shards > 1, because the planner does not know about
           # these ids — and kept deliberately so that teaching the planner is the only thing that
@@ -1583,7 +1605,7 @@ jobs:
           fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
-            "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+            "${variant[@]}" "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
       - name: Save downloadable-font cache
@@ -2178,7 +2200,8 @@ jobs:
             echo "::error title=all modules::repository-wide live per-preview splits require publish-live-bundle: true."
             exit 1
           fi
-          compose-preview list --json > "$GITHUB_WORKSPACE/discovered-previews.json"
+          variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
+          compose-preview list --json "${variant[@]}" > "$GITHUB_WORKSPACE/discovered-previews.json"
           # An import renders composables only, so the synthetic activity / app-tour previews are
           # excluded at render time. A module holding NOTHING else would then have its entire set
           # excluded, and `excludePreviewIds` throws rather than render nothing — sinking the whole
@@ -2305,7 +2328,8 @@ jobs:
           if [ -n "$INPUT_MODULE" ] && [ "$INPUT_MODULES" != "all" ]; then
             module_args=(--module "$INPUT_MODULE")
           fi
-          compose-preview list --json "${module_args[@]}" > "$GITHUB_WORKSPACE/discovered-previews.json"
+          variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
+          compose-preview list --json "${variant[@]}" "${module_args[@]}" > "$GITHUB_WORKSPACE/discovered-previews.json"
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
             --spec "$GITHUB_WORKSPACE/$SPEC" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
@@ -2431,6 +2455,7 @@ jobs:
             fi
           }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           # Two scopes, deliberately not one list. IMPORT_EXCLUDE_PREVIEW_IDS is import-wide and
           # must reach every module; the per-mode ids belong to the PRIMARY module only, for the
           # same reason its render filter does (see the comment in the loop below). Joined into a
@@ -2468,17 +2493,17 @@ jobs:
               # failure this guards, reintroduced by the fallback path.
               if [ "$index" -eq 0 ]; then
                 run compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${embed[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
+                  "${variant[@]}" "${embed[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               else
                 run_without_filter compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${embed[@]}" "${import_exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
+                  "${variant[@]}" "${embed[@]}" "${import_exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               fi
               index=$((index + 1))
             done < "$GITHUB_WORKSPACE/preview-modules.txt"
             cp "$GITHUB_WORKSPACE/module-bundles/0000.png" "$GITHUB_WORKSPACE/bundle.png"
           else
             run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
-              "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+              "${variant[@]}" "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
               --timeout "$INPUT_RENDER_TIMEOUT"
           fi
 
@@ -2553,13 +2578,14 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           # An extra module is still the imported project, so the app lanes stay excluded here too.
           import_exclude=()
           if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
             import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
           fi
           run compose-preview bundle pack --module "$INPUT_EXTRA_MODULE" --with-semantics --progress \
-            "${embed[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
+            "${variant[@]}" "${embed[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
       # A failing render reports only "There were failing tests. See the results at: file:///…",
