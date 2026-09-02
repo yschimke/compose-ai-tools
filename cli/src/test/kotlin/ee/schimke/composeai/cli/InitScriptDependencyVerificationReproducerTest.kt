@@ -4,6 +4,8 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
 
@@ -183,6 +185,69 @@ class InitScriptDependencyVerificationReproducerTest {
     assertTrue(
       args("--dependency-verification=off").none { it.contains("lenient") },
       "our lenient default must not be added alongside the caller's own mode",
+    )
+  }
+
+  @Test
+  fun `a caller's mode survives every path that disables auto-inject`() {
+    // The forwarding used to sit only on the injecting path, so `--no-auto-inject
+    // --dependency-verification=off` dropped the mode and ran a manually-applied build under
+    // strict (PR #4988 review). Raw argv never reaches Gradle, so this list is the only carrier.
+    val root = tempDir()
+    File(root, "gradle").mkdirs()
+    File(root, "gradle/verification-metadata.xml").writeText("<verification-metadata/>")
+
+    val viaFlag =
+      autoInjectInitScriptArgs(
+        args = listOf("--no-auto-inject", "--dependency-verification=off"),
+        pluginVersion = "1.0",
+        storageDir = tempDir(),
+        env = { null },
+        projectRoot = root,
+        stderr = {},
+      )
+    assertEquals(listOf("--dependency-verification=off"), viaFlag)
+
+    val viaEnv =
+      autoInjectInitScriptArgs(
+        args = listOf("--dependency-verification=off"),
+        pluginVersion = "1.0",
+        storageDir = tempDir(),
+        env = { if (it == "COMPOSE_PREVIEW_NO_AUTO_INJECT") "1" else null },
+        projectRoot = root,
+        stderr = {},
+      )
+    assertEquals(listOf("--dependency-verification=off"), viaEnv)
+  }
+
+  @Test
+  fun `metadata covering only an older plugin version still relaxes`() {
+    // Gradle verifies components version-specifically, so checksums for 0.9 do not cover the 1.0
+    // being injected. Treating any mention of the group as coverage left the ordinary
+    // upgrade-the-CLI case failing under strict with no relaxation (PR #4988 review).
+    val stale =
+      """
+      <verification-metadata>
+         <components>
+            <component group="ee.schimke.composeai.preview" name="preview" version="0.9"/>
+         </components>
+      </verification-metadata>
+      """
+        .trimIndent()
+    assertFalse(
+      alreadyVerifiable(stale, "1.0"),
+      "checksums for 0.9 must not count as coverage for 1.0",
+    )
+    assertTrue(
+      alreadyVerifiable(stale, "0.9"),
+      "and the version they DO cover must still be recognised",
+    )
+    assertTrue(
+      alreadyVerifiable(
+        """<trust group="ee.schimke.composeai.preview"/>""",
+        "1.0",
+      ),
+      "a trust rule on the group is version-agnostic, so it covers whatever is injected",
     )
   }
 

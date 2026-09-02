@@ -599,42 +599,81 @@ internal fun defaultInitScriptStorageDir(version: String): File =
  *
  * Visible for tests.
  */
+/**
+ * The caller's own `--dependency-verification` mode, as an argument list, or empty when they did
+ * not state one. Both spellings are accepted (`--dependency-verification=off`,
+ * `--dependency-verification off`, `-F off`) and normalised to the attached form.
+ *
+ * This is FORWARDED, never merely suppressed. Raw argv does not reach Gradle — only what
+ * [autoInjectInitScriptArgs] returns lands in `GradleConnection.extraArguments` — so dropping the
+ * caller's flag on the way through leaves the build on Gradle's strict default, which is the exact
+ * failure the flag was passed to avoid (PR #4988 review).
+ *
+ * Visible for tests.
+ */
+internal fun callerDependencyVerificationArg(args: List<String>): List<String> {
+  args
+    .firstOrNull { it.startsWith("--dependency-verification=") }
+    ?.let {
+      return listOf(it)
+    }
+  args
+    .zipWithNext()
+    .firstOrNull { (flag, _) -> flag == "--dependency-verification" || flag == "-F" }
+    ?.let { (_, mode) ->
+      return listOf("--dependency-verification=$mode")
+    }
+  return emptyList()
+}
+
+/**
+ * `--dependency-verification=lenient`, but only for a build that actually verifies AND whose
+ * metadata does not already cover the plugin version being injected.
+ *
+ * A build shipping `gradle/verification-metadata.xml` with `verify-metadata` on refuses any
+ * artifact the file carries no checksum for. Auto-inject resolves a plugin that file has never
+ * heard of, so the run dies during configuration:
+ * ```
+ * > Dependency verification failed for configuration 'classpath'
+ *   3 artifacts failed verification:
+ *     - ee.schimke.composeai.preview.gradle.plugin-1.0.pom ...
+ * ```
+ *
+ * mullvad/mullvadvpn-app is the motivating case (yschimke/compose-preview-imports#30) — a VPN
+ * client verifying every artifact it pulls is the file working as intended, and their checkout is
+ * not ours to edit, so writing our checksums into it is out.
+ *
+ * Unlike the locking shape, the `files(...)` injection route does not help: the resolution that
+ * produces those files is itself verified, so the failure only moves. The lever left is the Gradle
+ * invocation, and `lenient` is the narrow end of it — Gradle still performs verification and still
+ * reports every failure, it just does not abort. Nothing is disabled permanently and nothing in the
+ * checkout changes.
+ *
+ * [alreadyVerifiable] is what keeps this from costing a project that has *already* allowlisted the
+ * plugin its strict guarantee — and it is version-aware on purpose, because Gradle verifies
+ * components version-specifically: metadata carrying checksums for 0.9 does not cover the 1.0 we
+ * are injecting, and treating it as coverage would leave the very common upgrade-the-CLI case
+ * failing under strict with no relaxation applied (PR #4988 review).
+ *
+ * Visible for tests.
+ */
 internal fun dependencyVerificationArgs(
-  args: List<String>,
   projectRoot: File?,
+  pluginVersion: String,
   stderr: (String) -> Unit,
 ): List<String> {
   if (projectRoot == null) return emptyList()
-
-  // A caller who states their own mode gets it FORWARDED, not merely respected. Suppressing ours
-  // and dropping theirs was the worst of both: raw CLI args never reach Gradle — only what this
-  // function returns lands in `GradleConnection.extraArguments` — so the build fell back to strict
-  // and failed, which is exactly what the flag was passed to avoid (PR #4988 review). The flag is
-  // registered in CliFlagValidation.commandBase for the same reason.
-  val attached = args.firstOrNull { it.startsWith("--dependency-verification=") }
-  val spaced =
-    args
-      .zipWithNext()
-      .firstOrNull { (flag, _) -> flag == "--dependency-verification" || flag == "-F" }
-      ?.let { (_, mode) -> "--dependency-verification=$mode" }
-  val callerMode = attached ?: spaced
-  if (callerMode != null) return listOf(callerMode)
-
   val metadata = File(projectRoot, "gradle/verification-metadata.xml")
   if (!metadata.isFile) return emptyList()
 
-  // A build whose metadata ALREADY covers the preview plugin verifies it fine under strict, so
-  // relaxing would cost that project its strict supply-chain guarantee and buy nothing (PR #4988
-  // review). Projects that have deliberately allowlisted the plugin are exactly the ones that
-  // should keep it, so read the file and leave them alone.
   val metadataText = runCatching { metadata.readText() }.getOrDefault("")
-  if (COMPOSE_AI_PREVIEW_GROUP in metadataText) return emptyList()
+  if (alreadyVerifiable(metadataText, pluginVersion)) return emptyList()
 
   stderr(
     "compose-preview: this build verifies its dependencies (${metadata.path}) and its metadata " +
-      "does not cover the auto-injected preview plugin. Running this build with " +
-      "--dependency-verification=lenient so verification reports rather than fails; your " +
-      "verification metadata is not modified. Lenient means OTHER artifacts can now fail " +
+      "does not cover version $pluginVersion of the auto-injected preview plugin. Running this " +
+      "build with --dependency-verification=lenient so verification reports rather than fails; " +
+      "your verification metadata is not modified. Lenient means OTHER artifacts can now fail " +
       "verification without failing the build — Gradle writes every failure to " +
       "build/reports/dependency-verification, and --verbose shows them inline. Pass " +
       "--dependency-verification=strict to keep it fatal, or --no-auto-inject to skip injection " +
@@ -643,7 +682,31 @@ internal fun dependencyVerificationArgs(
   return listOf("--dependency-verification=lenient")
 }
 
-/** The plugin's Maven group; a verification file naming it already knows about the plugin. */
+/**
+ * True when [metadataText] already covers the preview plugin at [pluginVersion], so strict
+ * verification would have succeeded and relaxing it would cost the project its guarantee for
+ * nothing.
+ *
+ * Two shapes count, and the distinction is Gradle's, not ours: a `<trust>` rule naming the group is
+ * version-agnostic and covers whatever we inject, whereas `<component>` checksums are pinned to one
+ * version — so those only count when the version we are about to inject is among them.
+ *
+ * Visible for tests.
+ */
+internal fun alreadyVerifiable(metadataText: String, pluginVersion: String): Boolean {
+  if (COMPOSE_AI_PREVIEW_GROUP !in metadataText) return false
+  val trustsGroup =
+    Regex("""<trust\b[^>]*group\s*=\s*["']${Regex.escape(COMPOSE_AI_PREVIEW_GROUP)}["']""")
+  if (trustsGroup.containsMatchIn(metadataText)) return true
+  val componentAtVersion =
+    Regex(
+      """<component\b[^>]*group\s*=\s*["']${Regex.escape(COMPOSE_AI_PREVIEW_GROUP)}["'][^>]*""" +
+        """version\s*=\s*["']${Regex.escape(pluginVersion)}["']"""
+    )
+  return componentAtVersion.containsMatchIn(metadataText)
+}
+
+/** The plugin's Maven group; a verification file naming it may already know about the plugin. */
 private const val COMPOSE_AI_PREVIEW_GROUP = "ee.schimke.composeai.preview"
 
 /**
@@ -680,16 +743,22 @@ internal fun autoInjectInitScriptArgs(
   stderr: (String) -> Unit = System.err::println,
   fileSystem: FileSystem = SystemFileSystem,
 ): List<String> {
-  if ("--no-auto-inject" in args) return emptyList()
-  if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return emptyList()
-  if (projectRoot != null && hasIncludedPluginBuild(projectRoot)) return emptyList()
+  // A mode the caller stated is theirs whether or not we inject anything. It has to survive every
+  // early return below, or `render --no-auto-inject --dependency-verification=off` silently drops
+  // it and runs a manually-applied build under strict (PR #4988 review) — raw argv never reaches
+  // Gradle, so what this function returns is the only way a mode gets there.
+  val callerVerification = callerDependencyVerificationArg(args)
+
+  if ("--no-auto-inject" in args) return callerVerification
+  if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return callerVerification
+  if (projectRoot != null && hasIncludedPluginBuild(projectRoot)) return callerVerification
   if (projectRoot != null && includedBuildProvidesComposeAiPreviewPlugin(projectRoot)) {
     stderr(
       "compose-preview: auto-inject disabled — an included build supplies the " +
         "ee.schimke.composeai.preview plugin (applied via a convention plugin). The CLI will use " +
         "the plugin your build already applies. Pass --no-auto-inject to silence this note."
     )
-    return emptyList()
+    return callerVerification
   }
   val effectiveVersion =
     pluginVersion
@@ -704,12 +773,14 @@ internal fun autoInjectInitScriptArgs(
   return try {
     val path = materializeInitScript(dir, effectiveVersion, fileSystem)
     listOf("--init-script", path.absolutePath) +
-      dependencyVerificationArgs(args, projectRoot, stderr)
+      (callerVerification.ifEmpty {
+        dependencyVerificationArgs(projectRoot, effectiveVersion, stderr)
+      })
   } catch (e: Exception) {
     stderr(
       "compose-preview: auto-inject disabled — could not materialise init script in $dir: ${e.message}"
     )
-    emptyList()
+    callerVerification
   }
 }
 
