@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 120" width="296" height="120" role="img" aria-label="ColorScheme layout wireframe">
+  <title>ColorScheme — layout wireframe (slots + tokens)</title>
+  <rect width="296" height="120" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="296" height="120" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="296" height="120" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="264" height="88" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="264" height="88" fill="none" fill-opacity="0" stroke="#B0813B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="88" height="88" fill="#E9DDFF" fill-opacity="1" stroke="#3B72A8" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="19" y="28" font-family="system-ui, sans-serif" font-size="9" fill="#3B72A8">#FFE9DDFF</text>
+  </g>
+  <g>
+    <rect x="104" y="16" width="88" height="88" fill="#332E3C" fill-opacity="1" stroke="#3B72A8" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="107" y="28" font-family="system-ui, sans-serif" font-size="9" fill="#3B72A8">#FF332E3C</text>
+  </g>
+  <g>
+    <rect x="192" y="16" width="88" height="88" fill="#FFFFFF" fill-opacity="1" stroke="#3B72A8" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="195" y="28" font-family="system-ui, sans-serif" font-size="9" fill="#3B72A8">#FFFFFFFF</text>
+  </g>
+</svg>

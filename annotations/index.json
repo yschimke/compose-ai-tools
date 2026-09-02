@@ -1,0 +1,2561 @@
+{
+  "schema": "compose-preview-annotations/v1",
+  "previews": {
+    "button-filled__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 133,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 77,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "button-filled__ideal__disabled": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 133,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 77,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "button-filled__ideal__pressed": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 133,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 77,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "button-filled__ideal__focused": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 133,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 77,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "button-tonal__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 133,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 77,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Tonal",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "button-outlined__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 175,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 119,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Outlined",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "button-child__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 129,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 73,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Child",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "edgebutton-smallround__ideal__default__smallround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": -14,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 122,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 282,
+          "width": 480,
+          "height": 192
+        },
+        "label": "pad 3dp/0dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "3",
+          "padding.end": "0",
+          "padding.bottom": "3",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 10,
+          "width": 75,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Yoga",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 52,
+          "width": 95,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "30 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 146,
+          "width": 65,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Row",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 188,
+          "width": 197,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "2.0 km · 9 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 205,
+          "y": 358,
+          "width": 69,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Start",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "edgebutton-largeround__ideal__default__largeround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": -14,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 122,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 282,
+          "width": 480,
+          "height": 192
+        },
+        "label": "pad 3dp/0dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "3",
+          "padding.end": "0",
+          "padding.bottom": "3",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 10,
+          "width": 75,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Yoga",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 52,
+          "width": 95,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "30 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 146,
+          "width": 65,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Row",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 188,
+          "width": 197,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "2.0 km · 9 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 205,
+          "y": 358,
+          "width": 69,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Start",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "edgebutton-xlround__ideal__default__xlround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": -14,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 122,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 282,
+          "width": 480,
+          "height": 192
+        },
+        "label": "pad 3dp/0dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "3",
+          "padding.end": "0",
+          "padding.bottom": "3",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 10,
+          "width": 75,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Yoga",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 52,
+          "width": 95,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "30 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 146,
+          "width": 65,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Row",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 188,
+          "width": 197,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "2.0 km · 9 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 205,
+          "y": 358,
+          "width": 69,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Start",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "iconbutton__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 104,
+          "height": 104
+        },
+        "label": "r 26dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      }
+    ],
+    "compactbutton__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 32,
+          "width": 159,
+          "height": 64
+        },
+        "label": "pad 8dp/0dp · r 18dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "8",
+          "padding.end": "0",
+          "padding.bottom": "8",
+          "cornerRadius": "18",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 48,
+          "width": 111,
+          "height": 32
+        },
+        "label": "text 13sp/16",
+        "role": "Compact",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "13",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "buttongroup__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 40,
+          "y": 16,
+          "width": 374,
+          "height": 104
+        },
+        "label": "pad 0dp/11.8dp",
+        "detail": {
+          "padding.start": "11.8",
+          "padding.top": "0",
+          "padding.end": "11.8",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 40,
+          "y": 16,
+          "width": 183,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 231,
+          "y": 16,
+          "width": 183,
+          "height": 104
+        },
+        "label": "pad 6dp/14dp · r 26dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "6",
+          "padding.end": "14",
+          "padding.bottom": "6",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 68,
+          "y": 50,
+          "width": 50,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Yes",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 259,
+          "y": 50,
+          "width": 41,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "No",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "switchbutton-on__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 185,
+          "height": 104
+        },
+        "label": "pad 8dp/14dp · r 26dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "8",
+          "padding.end": "14",
+          "padding.bottom": "8",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 53,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Wifi",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "switchbutton-on__ideal__off": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 185,
+          "height": 104
+        },
+        "label": "pad 8dp/14dp · r 26dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "8",
+          "padding.end": "14",
+          "padding.bottom": "8",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 44,
+          "y": 50,
+          "width": 53,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Wifi",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "card__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 422,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 40,
+          "width": 71,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Card",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "card-outlined__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 422,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 40,
+          "width": 71,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Card",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "titlecard__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 422,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 40,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 82,
+          "width": 225,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "appcard__ideal__default": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 422,
+          "height": 173
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 80,
+          "y": 40,
+          "width": 53,
+          "height": 33
+        },
+        "label": "text 14sp/16",
+        "role": "App",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "16",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 85,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 40,
+          "y": 127,
+          "width": 225,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "transforminglazycolumn-smallround__ideal__default__smallround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "pad t 16dp e 14dp b 12dp s 14dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "16",
+          "padding.end": "14",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 141,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 29,
+          "y": 277,
+          "width": 421,
+          "height": 125
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 92,
+          "y": 411,
+          "width": 295,
+          "height": 88
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "text 16sp/18",
+        "role": "Activity",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 165,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 207,
+          "width": 212,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 300,
+          "width": 147,
+          "height": 37
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 341,
+          "width": 98,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 427,
+          "width": 58,
+          "height": 26
+        },
+        "label": "text 16sp/18",
+        "role": "Sleep",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 456,
+          "width": 65,
+          "height": 25
+        },
+        "label": "text 15sp/18",
+        "role": "7h 14m",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "transforminglazycolumn-largeround__ideal__default__largeround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "pad t 16dp e 14dp b 12dp s 14dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "16",
+          "padding.end": "14",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 141,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 29,
+          "y": 277,
+          "width": 421,
+          "height": 125
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 92,
+          "y": 411,
+          "width": 295,
+          "height": 88
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "text 16sp/18",
+        "role": "Activity",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 165,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 207,
+          "width": 212,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 300,
+          "width": 147,
+          "height": 37
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 341,
+          "width": 98,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 427,
+          "width": 58,
+          "height": 26
+        },
+        "label": "text 16sp/18",
+        "role": "Sleep",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 456,
+          "width": 65,
+          "height": 25
+        },
+        "label": "text 15sp/18",
+        "role": "7h 14m",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "transforminglazycolumn-xlround__ideal__default__xlround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "pad t 16dp e 14dp b 12dp s 14dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "16",
+          "padding.end": "14",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 141,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 29,
+          "y": 277,
+          "width": 421,
+          "height": 125
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 92,
+          "y": 411,
+          "width": 295,
+          "height": 88
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "text 16sp/18",
+        "role": "Activity",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 165,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 207,
+          "width": 212,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 300,
+          "width": 147,
+          "height": 37
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 341,
+          "width": 98,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 427,
+          "width": 58,
+          "height": 26
+        },
+        "label": "text 16sp/18",
+        "role": "Sleep",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 456,
+          "width": 65,
+          "height": 25
+        },
+        "label": "text 15sp/18",
+        "role": "7h 14m",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "template-timetext-smallround__ideal__default__smallround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "pad t 16dp e 14dp b 12dp s 14dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "16",
+          "padding.end": "14",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 141,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 29,
+          "y": 277,
+          "width": 421,
+          "height": 125
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 92,
+          "y": 411,
+          "width": 295,
+          "height": 88
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "text 16sp/18",
+        "role": "Activity",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 165,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 207,
+          "width": 212,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 300,
+          "width": 147,
+          "height": 37
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 341,
+          "width": 98,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 427,
+          "width": 58,
+          "height": 26
+        },
+        "label": "text 16sp/18",
+        "role": "Sleep",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 456,
+          "width": 65,
+          "height": 25
+        },
+        "label": "text 15sp/18",
+        "role": "7h 14m",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "template-timetext-largeround__ideal__default__largeround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "pad t 16dp e 14dp b 12dp s 14dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "16",
+          "padding.end": "14",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 141,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 29,
+          "y": 277,
+          "width": 421,
+          "height": 125
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 92,
+          "y": 411,
+          "width": 295,
+          "height": 88
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "text 16sp/18",
+        "role": "Activity",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 165,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 207,
+          "width": 212,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 300,
+          "width": 147,
+          "height": 37
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 341,
+          "width": 98,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 427,
+          "width": 58,
+          "height": 26
+        },
+        "label": "text 16sp/18",
+        "role": "Sleep",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 456,
+          "width": 65,
+          "height": 25
+        },
+        "label": "text 15sp/18",
+        "role": "7h 14m",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "template-timetext-xlround__ideal__default__xlround": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "pad t 16dp e 14dp b 12dp s 14dp",
+        "detail": {
+          "padding.start": "14",
+          "padding.top": "16",
+          "padding.end": "14",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 26,
+          "y": 141,
+          "width": 428,
+          "height": 128
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 29,
+          "y": 277,
+          "width": 421,
+          "height": 125
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 92,
+          "y": 411,
+          "width": 295,
+          "height": 88
+        },
+        "label": "pad 12dp · r 26dp",
+        "detail": {
+          "padding.start": "12",
+          "padding.top": "12",
+          "padding.end": "12",
+          "padding.bottom": "12",
+          "cornerRadius": "26",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "label": "text 16sp/18",
+        "role": "Activity",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 165,
+          "width": 183,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 50,
+          "y": 207,
+          "width": 212,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km · 28 min",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 300,
+          "width": 147,
+          "height": 37
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 53,
+          "y": 341,
+          "width": 98,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 427,
+          "width": 58,
+          "height": 26
+        },
+        "label": "text 16sp/18",
+        "role": "Sleep",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 108,
+          "y": 456,
+          "width": 65,
+          "height": 25
+        },
+        "label": "text 15sp/18",
+        "role": "7h 14m",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "template-pageindicator-smallround__ideal__default__smallround": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 190,
+          "y": 221,
+          "width": 100,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Page 2",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "template-pageindicator-largeround__ideal__default__largeround": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 190,
+          "y": 221,
+          "width": 100,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Page 2",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "template-pageindicator-xlround__ideal__default__xlround": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 190,
+          "y": 221,
+          "width": 100,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Page 2",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "text-maxlines-truncated__ideal__default": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 280,
+          "height": 74
+        },
+        "label": "text 16sp/18",
+        "role": "This body text is long enough to overflow two lines and truncate.",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ],
+    "typography__ideal__default": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 16,
+          "y": 16,
+          "width": 168,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Body Large",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 16,
+          "y": 54,
+          "width": 200,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Label Medium",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 16,
+          "y": 90,
+          "width": 143,
+          "height": 32
+        },
+        "label": "text 13sp/16",
+        "role": "Label Small",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "13",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "Roboto Flex"
+        }
+      }
+    ]
+  },
+  "references": {}
+}

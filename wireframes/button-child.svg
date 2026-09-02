@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 161 136" width="161" height="136" role="img" aria-label="Button/Child layout wireframe">
+  <title>Button/Child — layout wireframe (slots + tokens)</title>
+  <rect width="161" height="136" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="161" height="136" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="161" height="136" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="129" height="104" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <path d="M80.5,28 H80.5 A36.5,36.5 0 0 1 117,64.5 V71.5 A36.5,36.5 0 0 1 80.5,108 H80.5 A36.5,36.5 0 0 1 44,71.5 V64.5 A36.5,36.5 0 0 1 80.5,28 Z" fill="none" fill-opacity="0" stroke="#B0813B" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="47" y="40" font-family="system-ui, sans-serif" font-size="9" fill="#B0813B">pad ·</text>
+  </g>
+  <g>
+    <rect x="44" y="50" width="73" height="36" fill="none" fill-opacity="0" stroke="#3B72A8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+</svg>

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://github.com/yschimke/design-parity/schema/dtcg-tokens.schema.json",
+  "color": {
+    "primary": {
+      "$type": "color",
+      "$value": "#aecbfaff"
+    },
+    "secondary": {
+      "$type": "color",
+      "$value": "#a8dab5ff"
+    },
+    "surface": {
+      "$type": "color",
+      "$value": "#202124ff"
+    },
+    "error": {
+      "$type": "color",
+      "$value": "#f28b82ff"
+    }
+  },
+  "type": {
+    "Display": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "FontListFontFamily(fonts=[Font(GoogleFont(\"Inter",
+        "fontSize": 40,
+        "fontWeight": 400
+      }
+    },
+    "Title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "FontListFontFamily(fonts=[Font(GoogleFont(\"Inter",
+        "fontSize": 20,
+        "fontWeight": 500
+      }
+    },
+    "Body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "FontListFontFamily(fonts=[Font(GoogleFont(\"Inter",
+        "fontSize": 15,
+        "fontWeight": 400
+      }
+    },
+    "Label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "FontListFontFamily(fonts=[Font(GoogleFont(\"Roboto Flex",
+        "fontSize": 12,
+        "fontWeight": 500
+      }
+    }
+  }
+}

@@ -1,0 +1,4258 @@
+{
+  "schema": "design-parity-catalog/v1",
+  "system": "wear-m3",
+  "title": "Wear Compose Material 3",
+  "components": [
+    {
+      "componentId": "Button/Filled",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-filled/ideal__default.png",
+          "state": "default",
+          "width": 165,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-filled__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Filled"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Filled"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "enabled",
+              "type": "bool",
+              "label": "enabled",
+              "default": {
+                "kind": "bool",
+                "value": true
+              },
+              "current": {
+                "kind": "bool",
+                "value": true
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-filled__ideal__default.svg"
+        },
+        {
+          "variant": "ideal",
+          "path": "images/button-filled/ideal__disabled.png",
+          "state": "disabled",
+          "width": 165,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-filled__ideal__disabled",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_VARIANT_disabled",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Filled"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Filled"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "enabled",
+              "type": "bool",
+              "label": "enabled",
+              "default": {
+                "kind": "bool",
+                "value": true
+              },
+              "current": {
+                "kind": "bool",
+                "value": false
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-filled__ideal__disabled.svg"
+        },
+        {
+          "variant": "ideal",
+          "path": "images/button-filled/ideal__pressed.png",
+          "state": "pressed",
+          "width": 200,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-filled__ideal__pressed",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Pressed"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Pressed"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "supportsFocus": true,
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-filled__ideal__pressed.svg"
+        },
+        {
+          "variant": "ideal",
+          "path": "images/button-filled/ideal__focused.png",
+          "state": "focused",
+          "width": 208,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-filled__ideal__focused",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Focused"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Focused"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "supportsFocus": true,
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-filled__ideal__focused.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 16,
+              "y": 16,
+              "width": 133,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 133,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 133,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 14,
+            "top": 6,
+            "end": 14,
+            "bottom": 6
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Buttons",
+      "wireframe": "wireframes/button-filled.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 82,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "FilledButton",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Button/Tonal",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-tonal/ideal__default.png",
+          "state": "default",
+          "width": 165,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-tonal__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Tonal"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Tonal"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-tonal__ideal__default.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 16,
+              "y": 16,
+              "width": 133,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 133,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 133,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 14,
+            "top": 6,
+            "end": 14,
+            "bottom": 6
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Buttons",
+      "wireframe": "wireframes/button-tonal.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 91,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "FilledTonalButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Button/Outlined",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-outlined/ideal__default.png",
+          "state": "default",
+          "width": 207,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-outlined__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Outlined"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Outlined"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-outlined__ideal__default.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 16,
+              "y": 16,
+              "width": 175,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 175,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 175,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 14,
+            "top": 6,
+            "end": 14,
+            "bottom": 6
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Buttons",
+      "wireframe": "wireframes/button-outlined.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 100,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "OutlinedButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Button/Child",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-child/ideal__default.png",
+          "state": "default",
+          "width": 161,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/button-child__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Child"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Child"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-child__ideal__default.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 16,
+              "y": 16,
+              "width": 129,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 129,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 129,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 14,
+            "top": 6,
+            "end": 14,
+            "bottom": 6
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Buttons",
+      "wireframe": "wireframes/button-child.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 109,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "ChildButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "EdgeButton/smallRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/edgebutton-smallround/ideal__default__smallround.png",
+          "state": "default",
+          "width": 384,
+          "height": 384,
+          "size": "smallRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/edgebutton-smallround__ideal__default__smallround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "edgeLabel",
+              "type": "string",
+              "label": "edgeLabel",
+              "default": {
+                "kind": "string",
+                "value": "Start"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Start"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Workout"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Workout"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_small_round",
+            "widthDp": 192,
+            "heightDp": 192
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 282,
+              "width": 480,
+              "height": 192
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 282,
+            "width": 480,
+            "height": 192
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 26,
+            "y": -14,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 122,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 0,
+            "y": 282,
+            "width": 480,
+            "height": 192
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 3,
+            "end": 0,
+            "bottom": 3
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Screen-hugging bottom action unique to Wear.",
+      "wireframe": "wireframes/edgebutton-smallround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 156,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "EdgeButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "EdgeButton/largeRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/edgebutton-largeround/ideal__default__largeround.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "largeRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/edgebutton-largeround__ideal__default__largeround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "edgeLabel",
+              "type": "string",
+              "label": "edgeLabel",
+              "default": {
+                "kind": "string",
+                "value": "Start"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Start"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Workout"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Workout"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_large_round",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 282,
+              "width": 480,
+              "height": 192
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 282,
+            "width": 480,
+            "height": 192
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 26,
+            "y": -14,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 122,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 0,
+            "y": 282,
+            "width": 480,
+            "height": 192
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 3,
+            "end": 0,
+            "bottom": 3
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Screen-hugging bottom action unique to Wear.",
+      "wireframe": "wireframes/edgebutton-largeround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 156,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "EdgeButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "EdgeButton/xlRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/edgebutton-xlround/ideal__default__xlround.png",
+          "state": "default",
+          "width": 480,
+          "height": 480,
+          "size": "xlRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/edgebutton-xlround__ideal__default__xlround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "edgeLabel",
+              "type": "string",
+              "label": "edgeLabel",
+              "default": {
+                "kind": "string",
+                "value": "Start"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Start"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Workout"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Workout"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_xl_round",
+            "widthDp": 240,
+            "heightDp": 240
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 282,
+              "width": 480,
+              "height": 192
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 282,
+            "width": 480,
+            "height": 192
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 26,
+            "y": -14,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 122,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 0,
+            "y": 282,
+            "width": 480,
+            "height": 192
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 3,
+            "end": 0,
+            "bottom": 3
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Screen-hugging bottom action unique to Wear.",
+      "wireframe": "wireframes/edgebutton-xlround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 156,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "EdgeButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "IconButton",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/iconbutton/ideal__default.png",
+          "state": "default",
+          "width": 136,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/iconbutton__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/iconbutton__ideal__default.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 16,
+              "y": 16,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 104,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 104,
+            "height": 104
+          },
+          "role": "Button",
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Round icon button.",
+      "wireframe": "wireframes/iconbutton.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 653,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "IconButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "CompactButton",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/compactbutton/ideal__default.png",
+          "state": "default",
+          "width": 191,
+          "height": 128,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/compactbutton__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Compact"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Compact"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/compactbutton__ideal__default.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 16,
+              "y": 32,
+              "width": 159,
+              "height": 64
+            }
+          },
+          "bounds": {
+            "x": 16,
+            "y": 32,
+            "width": 159,
+            "height": 64
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 32,
+            "width": 159,
+            "height": 64
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 8,
+            "end": 0,
+            "bottom": 8
+          },
+          "cornerRadius": 18
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Compact single-line button.",
+      "wireframe": "wireframes/compactbutton.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 670,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "CompactButtonSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "ButtonGroup",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/buttongroup/ideal__default.png",
+          "state": "default",
+          "width": 454,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/buttongroup__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/buttongroup__ideal__default.svg"
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 40,
+              "y": 16,
+              "width": 183,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 40,
+            "y": 16,
+            "width": 183,
+            "height": 104
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 231,
+              "y": 16,
+              "width": 183,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 231,
+            "y": 16,
+            "width": 183,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 40,
+            "y": 16,
+            "width": 374,
+            "height": 104
+          },
+          "padding": {
+            "start": 11.803999,
+            "top": 0,
+            "end": 11.803999,
+            "bottom": 0
+          }
+        },
+        {
+          "bounds": {
+            "x": 40,
+            "y": 16,
+            "width": 183,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 14,
+            "top": 6,
+            "end": 14,
+            "bottom": 6
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 231,
+            "y": 16,
+            "width": 183,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 14,
+            "top": 6,
+            "end": 14,
+            "bottom": 6
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Two buttons laid out edge-to-edge.",
+      "wireframe": "wireframes/buttongroup.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 682,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "ButtonGroupSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "SwitchButton/On",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/switchbutton-on/ideal__default.png",
+          "state": "default",
+          "width": 217,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/switchbutton-on__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "checked",
+              "type": "bool",
+              "label": "checked",
+              "default": {
+                "kind": "bool",
+                "value": true
+              },
+              "current": {
+                "kind": "bool",
+                "value": true
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Wifi"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Wifi"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2
+        },
+        {
+          "variant": "ideal",
+          "path": "images/switchbutton-on/ideal__off.png",
+          "state": "off",
+          "width": 217,
+          "height": 136,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/switchbutton-on__ideal__off",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "checked",
+              "type": "bool",
+              "label": "checked",
+              "default": {
+                "kind": "bool",
+                "value": true
+              },
+              "current": {
+                "kind": "bool",
+                "value": false
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Wifi"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Wifi"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "switch",
+          "detail": {
+            "role": "switch",
+            "bounds": {
+              "x": 109,
+              "y": 44,
+              "width": 64,
+              "height": 44
+            }
+          },
+          "bounds": {
+            "x": 109,
+            "y": 44,
+            "width": 64,
+            "height": 44
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 185,
+            "height": 104
+          },
+          "padding": {
+            "start": 14,
+            "top": 8,
+            "end": 14,
+            "bottom": 8
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "motion": [
+        {
+          "path": "motion/switchbutton-on/ideal__default.apng",
+          "kind": "interaction",
+          "caption": "Toggle off and back on. The thumb rides Wear Material 3's own spatial spec — the travel and its settle are what a still frame of either end state cannot show."
+        }
+      ],
+      "group": "Selection",
+      "caption": "On state; the off state folds in as an @OverrideVariant (checked = false).",
+      "wireframe": "wireframes/switchbutton-on.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 370,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "SwitchButtonOn",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Card",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/card/ideal__default.png",
+          "state": "default",
+          "width": 454,
+          "height": 160,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/card__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Card"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Card"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/card__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 422,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Containment",
+      "wireframe": "wireframes/card.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 392,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "CardSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Card/Outlined",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/card-outlined/ideal__default.png",
+          "state": "default",
+          "width": 454,
+          "height": 160,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/card-outlined__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "label",
+              "type": "string",
+              "label": "label",
+              "default": {
+                "kind": "string",
+                "value": "Card"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Card"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/card-outlined__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 422,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Containment",
+      "caption": "Outlined card variant (OutlinedCard).",
+      "wireframe": "wireframes/card-outlined.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 409,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "OutlinedCardSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "TitleCard",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/titlecard/ideal__default.png",
+          "state": "default",
+          "width": 454,
+          "height": 160,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/titlecard__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "title",
+              "type": "string",
+              "label": "title",
+              "default": {
+                "kind": "string",
+                "value": "Morning run"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Morning run"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "subtitle",
+              "type": "string",
+              "label": "subtitle",
+              "default": {
+                "kind": "string",
+                "value": "5.2 km · 28 min"
+              },
+              "current": {
+                "kind": "string",
+                "value": "5.2 km · 28 min"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/titlecard__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 422,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Containment",
+      "wireframe": "wireframes/titlecard.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 420,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "TitleCardSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "AppCard",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/appcard/ideal__default.png",
+          "state": "default",
+          "width": 454,
+          "height": 205,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/appcard__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "title",
+              "type": "string",
+              "label": "title",
+              "default": {
+                "kind": "string",
+                "value": "Morning run"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Morning run"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/appcard__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 16,
+            "y": 16,
+            "width": 422,
+            "height": 173
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Containment",
+      "caption": "Card with app name, icon, title and content slots.",
+      "wireframe": "wireframes/appcard.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 699,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "AppCardSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "TransformingLazyColumn/smallRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/transforminglazycolumn-smallround/ideal__default__smallround.png",
+          "state": "default",
+          "width": 384,
+          "height": 384,
+          "size": "smallRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/transforminglazycolumn-smallround__ideal__default__smallround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_small_round",
+            "widthDp": 192,
+            "heightDp": 192
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 192,
+            "y": 76,
+            "width": 96,
+            "height": 34
+          },
+          "padding": {
+            "start": 14,
+            "top": 16,
+            "end": 14,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 141,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 29,
+            "y": 277,
+            "width": 421,
+            "height": 125
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 92,
+            "y": 411,
+            "width": 295,
+            "height": 88
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Lists",
+      "caption": "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation).",
+      "wireframe": "wireframes/transforminglazycolumn-smallround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 218,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "ScalingListSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "TransformingLazyColumn/largeRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/transforminglazycolumn-largeround/ideal__default__largeround.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "largeRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/transforminglazycolumn-largeround__ideal__default__largeround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_large_round",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 192,
+            "y": 76,
+            "width": 96,
+            "height": 34
+          },
+          "padding": {
+            "start": 14,
+            "top": 16,
+            "end": 14,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 141,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 29,
+            "y": 277,
+            "width": 421,
+            "height": 125
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 92,
+            "y": 411,
+            "width": 295,
+            "height": 88
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Lists",
+      "caption": "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation).",
+      "wireframe": "wireframes/transforminglazycolumn-largeround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 218,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "ScalingListSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "TransformingLazyColumn/xlRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/transforminglazycolumn-xlround/ideal__default__xlround.png",
+          "state": "default",
+          "width": 480,
+          "height": 480,
+          "size": "xlRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/transforminglazycolumn-xlround__ideal__default__xlround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_xl_round",
+            "widthDp": 240,
+            "heightDp": 240
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 192,
+            "y": 76,
+            "width": 96,
+            "height": 34
+          },
+          "padding": {
+            "start": 14,
+            "top": 16,
+            "end": 14,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 141,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 29,
+            "y": 277,
+            "width": 421,
+            "height": 125
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 92,
+            "y": 411,
+            "width": 295,
+            "height": 88
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Lists",
+      "caption": "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation).",
+      "wireframe": "wireframes/transforminglazycolumn-xlround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 218,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "ScalingListSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Template/TimeText/smallRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-timetext-smallround/ideal__default__smallround.png",
+          "state": "default",
+          "width": 384,
+          "height": 384,
+          "size": "smallRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/template-timetext-smallround__ideal__default__smallround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_small_round",
+            "widthDp": 192,
+            "heightDp": 192
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 192,
+            "y": 76,
+            "width": 96,
+            "height": 34
+          },
+          "padding": {
+            "start": 14,
+            "top": 16,
+            "end": 14,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 141,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 29,
+            "y": 277,
+            "width": 421,
+            "height": 125
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 92,
+            "y": 411,
+            "width": 295,
+            "height": 88
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Scaffold templates",
+      "caption": "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
+      "wireframe": "wireframes/template-timetext-smallround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 282,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "TimeTextScaffoldTemplate",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Template/TimeText/largeRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-timetext-largeround/ideal__default__largeround.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "largeRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/template-timetext-largeround__ideal__default__largeround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_large_round",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 192,
+            "y": 76,
+            "width": 96,
+            "height": 34
+          },
+          "padding": {
+            "start": 14,
+            "top": 16,
+            "end": 14,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 141,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 29,
+            "y": 277,
+            "width": 421,
+            "height": 125
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 92,
+            "y": 411,
+            "width": 295,
+            "height": 88
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Scaffold templates",
+      "caption": "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
+      "wireframe": "wireframes/template-timetext-largeround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 282,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "TimeTextScaffoldTemplate",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Template/TimeText/xlRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-timetext-xlround/ideal__default__xlround.png",
+          "state": "default",
+          "width": 480,
+          "height": 480,
+          "size": "xlRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/template-timetext-xlround__ideal__default__xlround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "header",
+              "type": "string",
+              "label": "header",
+              "default": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Activity"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_xl_round",
+            "widthDp": 240,
+            "heightDp": 240
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 192,
+            "y": 76,
+            "width": 96,
+            "height": 34
+          },
+          "padding": {
+            "start": 14,
+            "top": 16,
+            "end": 14,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 26,
+            "y": 141,
+            "width": 428,
+            "height": 128
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 29,
+            "y": 277,
+            "width": 421,
+            "height": 125
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        },
+        {
+          "bounds": {
+            "x": 92,
+            "y": 411,
+            "width": 295,
+            "height": 88
+          },
+          "padding": {
+            "start": 12,
+            "top": 12,
+            "end": 12,
+            "bottom": 12
+          },
+          "cornerRadius": 26
+        }
+      ],
+      "group": "Scaffold templates",
+      "caption": "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
+      "wireframe": "wireframes/template-timetext-xlround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 282,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "TimeTextScaffoldTemplate",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Template/PageIndicator/smallRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-pageindicator-smallround/ideal__default__smallround.png",
+          "state": "default",
+          "width": 384,
+          "height": 384,
+          "size": "smallRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/template-pageindicator-smallround__ideal__default__smallround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "page",
+              "type": "string",
+              "label": "page",
+              "default": {
+                "kind": "string",
+                "value": "Page 2"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Page 2"
+              },
+              "index": 1,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_small_round",
+            "widthDp": 192,
+            "heightDp": 192
+          },
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/template-pageindicator-smallround__ideal__default__smallround.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Scaffold templates",
+      "caption": "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText strip.",
+      "wireframe": "wireframes/template-pageindicator-smallround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 326,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "PageIndicatorScaffoldTemplate",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Template/PageIndicator/largeRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-pageindicator-largeround/ideal__default__largeround.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "largeRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/template-pageindicator-largeround__ideal__default__largeround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "page",
+              "type": "string",
+              "label": "page",
+              "default": {
+                "kind": "string",
+                "value": "Page 2"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Page 2"
+              },
+              "index": 1,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_large_round",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/template-pageindicator-largeround__ideal__default__largeround.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Scaffold templates",
+      "caption": "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText strip.",
+      "wireframe": "wireframes/template-pageindicator-largeround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 326,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "PageIndicatorScaffoldTemplate",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Template/PageIndicator/xlRound",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-pageindicator-xlround/ideal__default__xlround.png",
+          "state": "default",
+          "width": 480,
+          "height": 480,
+          "size": "xlRound",
+          "livePreview": "https://preview.coo.ee/wear-m3/p/template-pageindicator-xlround__ideal__default__xlround",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "page",
+              "type": "string",
+              "label": "page",
+              "default": {
+                "kind": "string",
+                "value": "Page 2"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Page 2"
+              },
+              "index": 1,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "previewParams": {
+            "showBackground": true,
+            "backgroundColor": 4278190080,
+            "device": "id:wearos_xl_round",
+            "widthDp": 240,
+            "heightDp": 240
+          },
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/template-pageindicator-xlround__ideal__default__xlround.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Scaffold templates",
+      "caption": "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText strip.",
+      "wireframe": "wireframes/template-pageindicator-xlround.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 326,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "PageIndicatorScaffoldTemplate",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Progress/Circular",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/progress-circular/ideal__default.png",
+          "state": "default",
+          "width": 176,
+          "height": 176,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/progress-circular__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/progress-circular__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Communication",
+      "wireframe": "wireframes/progress-circular.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 440,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "CircularProgressSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Progress/Circular/Indeterminate",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/progress-circular-indeterminate/ideal__default.png",
+          "state": "default",
+          "width": 176,
+          "height": 176,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/progress-circular-indeterminate__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "motion": [
+        {
+          "path": "motion/progress-circular-indeterminate/com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressGif.gif",
+          "kind": "animation"
+        }
+      ],
+      "group": "Communication",
+      "caption": "Indeterminate (animated) progress ring — the no-progress overload sweeps continuously; animates in the live preview.",
+      "wireframe": "wireframes/progress-circular-indeterminate.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 471,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "IndeterminateCircularProgressSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Text/MaxLines-Truncated",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/text-maxlines-truncated/ideal__default.png",
+          "state": "default",
+          "width": 312,
+          "height": 106,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/text-maxlines-truncated__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "text",
+              "type": "string",
+              "label": "text",
+              "default": {
+                "kind": "string",
+                "value": "This body text is long enough to overflow two lines and truncate."
+              },
+              "current": {
+                "kind": "string",
+                "value": "This body text is long enough to overflow two lines and truncate."
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/text-maxlines-truncated__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Text options",
+      "caption": "maxLines=2 + ellipsis on a round screen.",
+      "wireframe": "wireframes/text-maxlines-truncated.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 505,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "TextMaxLinesTruncated",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Icon",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/icon/ideal__default.png",
+          "state": "default",
+          "width": 128,
+          "height": 128,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/icon__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/icon__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Iconography",
+      "caption": "The standalone Icon primitive.",
+      "wireframe": "wireframes/icon.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 715,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "IconSticker",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "Typography",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/typography/ideal__default.png",
+          "state": "default",
+          "width": 232,
+          "height": 138,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/typography__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/typography__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Theme",
+      "caption": "A type ramp read from MaterialTheme.typography.",
+      "wireframe": "wireframes/typography.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 726,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "TypographySpecimen",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    },
+    {
+      "componentId": "ColorScheme",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/colorscheme/ideal__default.png",
+          "state": "default",
+          "width": 296,
+          "height": 120,
+          "livePreview": "https://preview.coo.ee/wear-m3/p/colorscheme__ideal__default",
+          "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen",
+          "overrides": [
+            {
+              "key": "theme.font",
+              "type": "string",
+              "label": "theme.font",
+              "default": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "current": {
+                "kind": "string",
+                "value": "Roboto Flex"
+              },
+              "index": null,
+              "suggestions": [
+                "Roboto Flex",
+                "Google Sans Flex",
+                "Lobster Two",
+                "JetBrains Mono",
+                "Inter"
+              ],
+              "googleFonts": true,
+              "options": [],
+              "optionsExhaustive": false
+            },
+            {
+              "key": "theme.colors",
+              "type": "string",
+              "label": "theme.colors",
+              "default": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "current": {
+                "kind": "string",
+                "value": "M3"
+              },
+              "index": null,
+              "suggestions": [],
+              "googleFonts": false,
+              "options": [],
+              "optionsExhaustive": false
+            }
+          ],
+          "density": 2,
+          "figmaSvg": "https://preview.coo.ee/wear-m3/render/colorscheme__ideal__default.svg"
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Theme",
+      "caption": "Colour-scheme swatches read from MaterialTheme.colorScheme.",
+      "wireframe": "wireframes/colorscheme.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-wear-m3",
+      "bodyLine": 741,
+      "sourceDirectory": "samples/design-catalog-wear-m3",
+      "sourceFunction": "ColorSchemeSpecimen",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "composableSlot": true
+        }
+      ]
+    }
+  ],
+  "library": [
+    "androidx.wear.compose:compose-material3"
+  ],
+  "renderer": "compose-preview 1.62.3-SNAPSHOT",
+  "generatedAt": "2026-09-02T06:57:58.151Z",
+  "display": {
+    "surface": "dark",
+    "hero": "Template/TimeText/largeRound"
+  },
+  "tokensFile": "tokens.dtcg.json",
+  "liveBundle": {
+    "path": "bundle/",
+    "file": "bundle.png"
+  },
+  "liveBundles": [
+    {
+      "path": "bundle/",
+      "file": "bundle.png",
+      "module": ":samples:design-catalog-wear-m3",
+      "previewIdPrefix": ""
+    }
+  ],
+  "source": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "module": "samples:design-catalog-wear-m3"
+  }
+}

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 312 106" width="312" height="106" role="img" aria-label="Text/MaxLines-Truncated layout wireframe">
+  <title>Text/MaxLines-Truncated — layout wireframe (slots + tokens)</title>
+  <rect width="312" height="106" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="312" height="106" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="312" height="106" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="280" height="74" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="280" height="74" fill="none" fill-opacity="0" stroke="#B0813B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+</svg>

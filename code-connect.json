@@ -1,0 +1,673 @@
+{
+  "system": "wear-m3",
+  "title": "Wear Compose Material 3",
+  "label": "Compose",
+  "source": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "module": "samples:design-catalog-wear-m3"
+  },
+  "generatedAt": "2026-09-02T06:57:58.809Z",
+  "mappings": [
+    {
+      "componentId": "Button/Filled",
+      "figmaLayerName": "Button/Filled",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "FilledButton",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-filled__ideal__default.svg"
+    },
+    {
+      "componentId": "Button/Tonal",
+      "figmaLayerName": "Button/Tonal",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "FilledTonalButtonSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-tonal__ideal__default.svg"
+    },
+    {
+      "componentId": "Button/Outlined",
+      "figmaLayerName": "Button/Outlined",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "OutlinedButtonSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-outlined__ideal__default.svg"
+    },
+    {
+      "componentId": "Button/Child",
+      "figmaLayerName": "Button/Child",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ChildButtonSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-child__ideal__default.svg"
+    },
+    {
+      "componentId": "EdgeButton/smallRound",
+      "figmaLayerName": "EdgeButton/smallRound",
+      "componentName": "FullScreenWear",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "EdgeButtonSticker",
+      "codeSnippet": "FullScreenWear(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.FullScreenWear"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/edgebutton-smallround.svg"
+    },
+    {
+      "componentId": "EdgeButton/largeRound",
+      "figmaLayerName": "EdgeButton/largeRound",
+      "componentName": "FullScreenWear",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "EdgeButtonSticker",
+      "codeSnippet": "FullScreenWear(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.FullScreenWear"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/edgebutton-largeround.svg"
+    },
+    {
+      "componentId": "EdgeButton/xlRound",
+      "figmaLayerName": "EdgeButton/xlRound",
+      "componentName": "FullScreenWear",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "EdgeButtonSticker",
+      "codeSnippet": "FullScreenWear(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.FullScreenWear"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/edgebutton-xlround.svg"
+    },
+    {
+      "componentId": "IconButton",
+      "figmaLayerName": "IconButton",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IconButtonSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/iconbutton__ideal__default.svg"
+    },
+    {
+      "componentId": "CompactButton",
+      "figmaLayerName": "CompactButton",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CompactButtonSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/compactbutton__ideal__default.svg"
+    },
+    {
+      "componentId": "ButtonGroup",
+      "figmaLayerName": "ButtonGroup",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ButtonGroupSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/buttongroup__ideal__default.svg"
+    },
+    {
+      "componentId": "SwitchButton/On",
+      "figmaLayerName": "SwitchButton/On",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SwitchButtonOn",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/switchbutton-on.svg"
+    },
+    {
+      "componentId": "Card",
+      "figmaLayerName": "Card",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CardSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/card__ideal__default.svg"
+    },
+    {
+      "componentId": "Card/Outlined",
+      "figmaLayerName": "Card/Outlined",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "OutlinedCardSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/card-outlined__ideal__default.svg"
+    },
+    {
+      "componentId": "TitleCard",
+      "figmaLayerName": "TitleCard",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TitleCardSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/titlecard__ideal__default.svg"
+    },
+    {
+      "componentId": "AppCard",
+      "figmaLayerName": "AppCard",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "AppCardSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/appcard__ideal__default.svg"
+    },
+    {
+      "componentId": "TransformingLazyColumn/smallRound",
+      "figmaLayerName": "TransformingLazyColumn/smallRound",
+      "componentName": "FullScreenWear",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ScalingListSticker",
+      "codeSnippet": "FullScreenWear(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.FullScreenWear"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/transforminglazycolumn-smallround.svg"
+    },
+    {
+      "componentId": "TransformingLazyColumn/largeRound",
+      "figmaLayerName": "TransformingLazyColumn/largeRound",
+      "componentName": "FullScreenWear",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ScalingListSticker",
+      "codeSnippet": "FullScreenWear(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.FullScreenWear"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/transforminglazycolumn-largeround.svg"
+    },
+    {
+      "componentId": "TransformingLazyColumn/xlRound",
+      "figmaLayerName": "TransformingLazyColumn/xlRound",
+      "componentName": "FullScreenWear",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ScalingListSticker",
+      "codeSnippet": "FullScreenWear(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.FullScreenWear"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/transforminglazycolumn-xlround.svg"
+    },
+    {
+      "componentId": "Template/TimeText/smallRound",
+      "figmaLayerName": "Template/TimeText/smallRound",
+      "componentName": "WearScaffoldTemplate",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TimeTextScaffoldTemplate",
+      "codeSnippet": "WearScaffoldTemplate(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearScaffoldTemplate"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-timetext-smallround.svg"
+    },
+    {
+      "componentId": "Template/TimeText/largeRound",
+      "figmaLayerName": "Template/TimeText/largeRound",
+      "componentName": "WearScaffoldTemplate",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TimeTextScaffoldTemplate",
+      "codeSnippet": "WearScaffoldTemplate(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearScaffoldTemplate"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-timetext-largeround.svg"
+    },
+    {
+      "componentId": "Template/TimeText/xlRound",
+      "figmaLayerName": "Template/TimeText/xlRound",
+      "componentName": "WearScaffoldTemplate",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TimeTextScaffoldTemplate",
+      "codeSnippet": "WearScaffoldTemplate(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearScaffoldTemplate"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-timetext-xlround.svg"
+    },
+    {
+      "componentId": "Template/PageIndicator/smallRound",
+      "figmaLayerName": "Template/PageIndicator/smallRound",
+      "componentName": "WearScaffoldTemplate",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "PageIndicatorScaffoldTemplate",
+      "codeSnippet": "WearScaffoldTemplate(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearScaffoldTemplate"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-pageindicator-smallround.svg"
+    },
+    {
+      "componentId": "Template/PageIndicator/largeRound",
+      "figmaLayerName": "Template/PageIndicator/largeRound",
+      "componentName": "WearScaffoldTemplate",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "PageIndicatorScaffoldTemplate",
+      "codeSnippet": "WearScaffoldTemplate(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearScaffoldTemplate"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-pageindicator-largeround.svg"
+    },
+    {
+      "componentId": "Template/PageIndicator/xlRound",
+      "figmaLayerName": "Template/PageIndicator/xlRound",
+      "componentName": "WearScaffoldTemplate",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "PageIndicatorScaffoldTemplate",
+      "codeSnippet": "WearScaffoldTemplate(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearScaffoldTemplate"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/template-pageindicator-xlround__ideal__default__xlround.svg"
+    },
+    {
+      "componentId": "Progress/Circular",
+      "figmaLayerName": "Progress/Circular",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CircularProgressSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/progress-circular__ideal__default.svg"
+    },
+    {
+      "componentId": "Progress/Circular/Indeterminate",
+      "figmaLayerName": "Progress/Circular/Indeterminate",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IndeterminateCircularProgressSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/progress-circular-indeterminate.svg"
+    },
+    {
+      "componentId": "Text/MaxLines-Truncated",
+      "figmaLayerName": "Text/MaxLines-Truncated",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TextMaxLinesTruncated",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/text-maxlines-truncated__ideal__default.svg"
+    },
+    {
+      "componentId": "Icon",
+      "figmaLayerName": "Icon",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IconSticker",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/icon__ideal__default.svg"
+    },
+    {
+      "componentId": "Typography",
+      "figmaLayerName": "Typography",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TypographySpecimen",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/typography__ideal__default.svg"
+    },
+    {
+      "componentId": "ColorScheme",
+      "figmaLayerName": "ColorScheme",
+      "componentName": "WearSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ColorSchemeSpecimen",
+      "codeSnippet": "WearSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogwearm3.WearSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "https://preview.coo.ee/wear-m3/render/colorscheme__ideal__default.svg"
+    }
+  ]
+}

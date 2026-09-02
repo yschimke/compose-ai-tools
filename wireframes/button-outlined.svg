@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 207 136" width="207" height="136" role="img" aria-label="Button/Outlined layout wireframe">
+  <title>Button/Outlined — layout wireframe (slots + tokens)</title>
+  <rect width="207" height="136" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="207" height="136" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="207" height="136" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="175" height="104" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <path d="M84,28 H123 A40,40 0 0 1 163,68 V68 A40,40 0 0 1 123,108 H84 A40,40 0 0 1 44,68 V68 A40,40 0 0 1 84,28 Z" fill="none" fill-opacity="0" stroke="#948F9A" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="47" y="40" font-family="system-ui, sans-serif" font-size="9" fill="#948F9A">◻ #FF948F9A  pad ·</text>
+  </g>
+  <g>
+    <rect x="44" y="50" width="119" height="36" fill="none" fill-opacity="0" stroke="#3B72A8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+</svg>

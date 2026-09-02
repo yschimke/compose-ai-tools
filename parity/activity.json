@@ -1,0 +1,491 @@
+{
+  "schema": "compose-preview-activity/v1",
+  "generatedAt": "2026-09-02T06:58:04.371Z",
+  "windowDays": 30,
+  "code": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "events": [
+      {
+        "sha": "19ae6a4d097d3facc24e85c80db4cdc84b362012",
+        "subject": "ci: stop publishing per-preview bundles for wear-m3 (#4981)",
+        "at": "2026-09-02T07:49:31+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d2753b8a970fd4fcb404ecd70371ccce671d1c56",
+        "subject": "chore(deps): update dependency yschimke/compose-preview-xr to v2 (#4979)",
+        "at": "2026-09-02T04:41:13+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6f1c27a8c0029f0b59235726ac1f98eaf8f673ee",
+        "subject": "fix(deps): update compose-preview-server to v2.15.0 (#4978)",
+        "at": "2026-09-02T04:37:07+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ca8e18c6e0aa6a8540b39450b799fef5eda6e798",
+        "subject": "chore(xr): adopt renderer-xr 2.0.0 (#4977)",
+        "at": "2026-09-02T04:31:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e8cd1d3ecd6c18d3de22f3fdc4244c041c53888a",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.62.2 (#4976)",
+        "at": "2026-09-02T04:28:21+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b0186b85d419426503deab2407683c645e1d1816",
+        "subject": "feat(mcp): add shared UI builder HTTP transport (#4975)",
+        "at": "2026-09-02T04:28:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "802b84b87fb52b1ce9be38776f15c82b84380c96",
+        "subject": "refactor(xr): move renderer to compose-preview-xr (#4972)",
+        "at": "2026-09-02T04:13:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d45341db16e57bc5bded2c276c482f7e84001cf3",
+        "subject": "fix(figma-svg): preserve indication modifier order (#4973)",
+        "at": "2026-09-02T04:13:22+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "71616b54ad5ee3ecd35b3d1d8cff4d17b3dd0359",
+        "subject": "chore(deps): update dependency com.android.library to v9.4.0 (#4966)",
+        "at": "2026-09-02T04:12:18+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "73b07547423fa0e9a4b91e07219819b73cfab904",
+        "subject": "chore(main): release 1.62.2 (#4970)",
+        "at": "2026-09-02T04:03:47+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "eac3f2d2c9398a3da04110d89d55a1c9f22151db",
+        "subject": "fix(figma-svg): preserve indication overlay geometry (#4964)",
+        "at": "2026-09-02T04:01:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3686b81a719bf1be0136bfa35141dd68656f6af7",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.62.1 (#4971)",
+        "at": "2026-09-02T03:51:27+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1e725a4bfa0728760e2613099efc6f7067f1f531",
+        "subject": "fix(deps): update compose-preview-server to v2.14.0 (#4967)",
+        "at": "2026-09-02T03:32:35+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6046911212e026304cf9b841b9869cbcb7d27fca",
+        "subject": "fix(deps): update dependency org.checkerframework:checker-qual to v4.2.3 (#4965)",
+        "at": "2026-09-02T03:32:30+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "66bff88ab776926a82b33eec9e322137de62e282",
+        "subject": "fix(deps): update rc-players to v1.56.0 (#4969)",
+        "at": "2026-09-02T03:32:23+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a6c2a9cae1654f52964b85d0c6817446a3338819",
+        "subject": "chore(main): release 1.62.1 (#4963)",
+        "at": "2026-09-02T03:11:17+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1b76108a07a93c0aa43bd849848675d5b487e51b",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.62.0 (#4962)",
+        "at": "2026-09-02T03:09:24+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "23a2235dcf9aac02055282f563b7df700871ca53",
+        "subject": "fix(figma-svg): preserve Material interaction states (#4961)",
+        "at": "2026-09-02T03:08:39+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f7d82ec4edfa0b687e5c4386227af985d20ad18c",
+        "subject": "chore(main): release 1.62.0 (#4955)",
+        "at": "2026-09-01T22:14:30+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "10fda16208b9e3e9da56099e29c5101d350cf218",
+        "subject": "fix: validate the resolved Compose floor (#4960)",
+        "at": "2026-09-01T22:10:48+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5a8793a0209b2d62cc3933cb2bcfb197d48ac257",
+        "subject": "feat(preview): support real Dragged interaction variants (#4953)",
+        "at": "2026-09-01T21:55:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5c485e66f4abcbee8662b4c79f58d76a79a7e11e",
+        "subject": "test: move VS Code schema gate to its consumer (#4958)",
+        "at": "2026-09-01T21:38:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "41da9cc0d1429e6e1de10abd9d72bfeba1036c58",
+        "subject": "fix(ci): repair current main build failures (#4957)",
+        "at": "2026-09-01T21:14:08+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "eb52fed19c6aab319c9d3acc51e16827d549beac",
+        "subject": "fix(wasm): gate native catalog by published version (#4954)",
+        "at": "2026-09-01T20:51:08+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3e32faec76eb6f86d48a1369d6a703a6d2e4bc6d",
+        "subject": "fix(preview): preserve accurate desktop phase pins (#4956)",
+        "at": "2026-09-01T20:50:46+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "25c45bab0ae968e96b679cab2f5e678a17a53f0c",
+        "subject": "feat(catalog): publish component parameter metadata (#4952)",
+        "at": "2026-09-01T20:46:49+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "65f17720b98895c80f0d0268515f674dc7b4ae4c",
+        "subject": "fix(deps): update design-parity export toolchain to v1.0.4 (#4948)",
+        "at": "2026-09-01T20:45:36+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4a5eaed31a569e598dd1f92c07e604480394b942",
+        "subject": "fix(deps): update compose-preview-server to v2.12.0 (#4950)",
+        "at": "2026-09-01T20:45:28+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3a2b6c3efba86957b9a26050d202eebfd7eb5922",
+        "subject": "fix(deps): update rc-players (#4949)",
+        "at": "2026-09-01T20:45:11+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3e28a2d19a47b2160ec769f8f6b2bc3644b07c8f",
+        "subject": "fix(preview): publish desktop phase pins (#4951)",
+        "at": "2026-09-01T20:44:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e7a2c01f15684ad5f37edc140d135a14e12baf08",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.61.2 (#4947)",
+        "at": "2026-09-01T11:28:08+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "93715d3ed6e893d318c00dea7d70b0cff8983827",
+        "subject": "chore(main): release 1.61.2 (#4943)",
+        "at": "2026-09-01T09:20:50+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8f3f755cc80551fc0001eb5347ccb05793ff6160",
+        "subject": "fix: act on missed review findings from the last 48h of PRs (#4946)",
+        "at": "2026-09-01T09:19:55+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8ae2f519472e19f5182529857256e60bb533b8af",
+        "subject": "fix(design-pages): enforce the published node cap (#4945)",
+        "at": "2026-09-01T07:28:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9f1571d20cdce882b7e9b1b8ccb33e58da114e79",
+        "subject": "fix(figma-svg): preserve remote compose font families (#4944)",
+        "at": "2026-09-01T07:25:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7cc498a2b6a9b844b3e6ff5e53efb53814d6672b",
+        "subject": "fix(deps): update compose-preview-server to v2.8.0 (#4942)",
+        "at": "2026-09-01T07:14:12+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ae3c8591ff1f09880ea4c3971a8580f4521c148e",
+        "subject": "fix(deps): update compose-preview-contracts to v2.3.0 (#4941)",
+        "at": "2026-09-01T07:14:03+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2ac09869f7f9e9445cd84a09401d59ec0602fdb6",
+        "subject": "fix(deps): pin dependencies (#4940)",
+        "at": "2026-09-01T07:13:53+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7d029929c484f972fa23f4c8cc25030b69c06055",
+        "subject": "fix(daemon): preserve focused variants in live mode (#4939)",
+        "at": "2026-09-01T07:13:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1a9b065374c6214d3afb5f9dfd4c0d6e57638e82",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.61.1 (#4938)",
+        "at": "2026-09-01T07:08:10+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "426de9e5758e28e7e3e352347f3cf6765ad18417",
+        "subject": "chore(main): release 1.61.1 (#4934)",
+        "at": "2026-09-01T06:35:31+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1f46f5a67f0dff0e623715ea5128b833e04783c4",
+        "subject": "fix(mcp): require pinned UI builder exports (#4933)",
+        "at": "2026-09-01T06:13:53+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d28c9decc4082d466e68f6641541711c3b306586",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.61.0 (#4932)",
+        "at": "2026-08-31T22:59:27+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e934a5da6367f106e78b0d52ef7d50b1fba93b63",
+        "subject": "chore(main): release 1.61.0 (#4931)",
+        "at": "2026-08-31T22:33:33+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4014d0980764921f3cdc34d2d7979f89b46b2e0e",
+        "subject": "feat(mcp): add remote UI builder tools (#4929)",
+        "at": "2026-08-31T22:31:37+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8ee669f0d3c8b831ab9ef635eb37ad50bad58293",
+        "subject": "feat(design-artifacts): defer editable SVG delivery (#4930)",
+        "at": "2026-08-31T22:30:38+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0a2e08ff45e6741cdf5e82fce20e4b9d043a2532",
+        "subject": "chore(main): release 1.60.4 (#4927)",
+        "at": "2026-08-31T22:05:02+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "dbf20a9ebc08e0ec9dcb842acb78ae8702829284",
+        "subject": "fix(deps): update dependency @design-parity/candidate to v1 (#4925)",
+        "at": "2026-08-31T22:03:25+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bdfae9788f3b517e70b54ae38a9a69ae0b7dd764",
+        "subject": "chore(deps): group design-parity updates (#4928)",
+        "at": "2026-08-31T22:03:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7378bacb25b8ab2d717f2a73ce5dc36212e3bf29",
+        "subject": "fix(deps): update compose-preview-server to v2.7.0 (#4923)",
+        "at": "2026-08-31T21:48:59+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "dd2819d5c7d3c44235d0b3f04d7206959af20d6e",
+        "subject": "fix(deps): update dependency @design-parity/adapter-figma to v1 (#4924)",
+        "at": "2026-08-31T21:48:30+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "43b511a1635e9d9970ae5e5be88a26bfb6efe987",
+        "subject": "fix(deps): update dependency @design-parity/catalog-export to v1 (#4926)",
+        "at": "2026-08-31T21:48:12+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0f28884eb27aaf10cc1a562763a406a396719a30",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.60.3 (#4922)",
+        "at": "2026-08-31T21:34:20+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5793a199b3ab67195894783614a690cfc63522f8",
+        "subject": "chore(main): release 1.60.3 (#4921)",
+        "at": "2026-08-31T20:59:15+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8bdb211de2f484c3fc51bf6961ecf50187972b31",
+        "subject": "fix(design-artifacts): exempt optional shard captures (#4920)",
+        "at": "2026-08-31T20:57:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7df2dc4d38b42d10efee1ed1975b681f2c3ad7b9",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.60.2 (#4919)",
+        "at": "2026-08-31T20:40:27+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "970ad3f5062c894e2d40a5c65a55ae608b2c2b75",
+        "subject": "chore(main): release 1.60.2 (#4918)",
+        "at": "2026-08-31T20:23:04+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3234c77d9636b8dfc8187b1434f696dab54d2bd5",
+        "subject": "fix(design-artifacts): reject shard exclusion format skew (#4917)",
+        "at": "2026-08-31T20:18:30+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "37f209f647550740e7ead5ca0d7c8a2bbb2e5afe",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.60.1 (#4915)",
+        "at": "2026-08-31T18:30:21+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c7cb3106a7b891007a5b86f9467e0922da93a8f1",
+        "subject": "chore(main): release 1.60.1 (#4914)",
+        "at": "2026-08-31T17:22:42+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      }
+    ]
+  }
+}

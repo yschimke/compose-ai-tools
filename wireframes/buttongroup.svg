@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 454 136" width="454" height="136" role="img" aria-label="ButtonGroup layout wireframe">
+  <title>ButtonGroup — layout wireframe (slots + tokens)</title>
+  <rect width="454" height="136" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="454" height="136" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="454" height="136" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="422" height="104" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="40" y="16" width="374" height="104" fill="none" fill-opacity="0" stroke="#B0813B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <path d="M108,28 H155 A40,40 0 0 1 195,68 V68 A40,40 0 0 1 155,108 H108 A40,40 0 0 1 68,68 V68 A40,40 0 0 1 108,28 Z" fill="#E9DDFF" fill-opacity="1" stroke="#3B72A8" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="71" y="40" font-family="system-ui, sans-serif" font-size="9" fill="#3B72A8">#FFE9DDFF  pad ·</text>
+  </g>
+  <g>
+    <rect x="68" y="50" width="50" height="36" fill="none" fill-opacity="0" stroke="#A85B6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <path d="M299,28 H346 A40,40 0 0 1 386,68 V68 A40,40 0 0 1 346,108 H299 A40,40 0 0 1 259,68 V68 A40,40 0 0 1 299,28 Z" fill="#E9DDFF" fill-opacity="1" stroke="#3B72A8" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="262" y="40" font-family="system-ui, sans-serif" font-size="9" fill="#3B72A8">#FFE9DDFF  pad ·</text>
+  </g>
+  <g>
+    <rect x="259" y="50" width="41" height="36" fill="none" fill-opacity="0" stroke="#A85B6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+</svg>

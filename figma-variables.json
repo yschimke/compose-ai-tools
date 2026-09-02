@@ -1,0 +1,37 @@
+{
+  "name": "Wear Compose Material 3",
+  "modes": {
+    "value": "Value"
+  },
+  "defaultModeId": "value",
+  "variables": [
+    {
+      "name": "color/primary",
+      "resolvedType": "COLOR",
+      "valuesByMode": {
+        "value": "#aecbfaff"
+      }
+    },
+    {
+      "name": "color/secondary",
+      "resolvedType": "COLOR",
+      "valuesByMode": {
+        "value": "#a8dab5ff"
+      }
+    },
+    {
+      "name": "color/surface",
+      "resolvedType": "COLOR",
+      "valuesByMode": {
+        "value": "#202124ff"
+      }
+    },
+    {
+      "name": "color/error",
+      "resolvedType": "COLOR",
+      "valuesByMode": {
+        "value": "#f28b82ff"
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 454 160" width="454" height="160" role="img" aria-label="Card/Outlined layout wireframe">
+  <title>Card/Outlined — layout wireframe (slots + tokens)</title>
+  <rect width="454" height="160" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="454" height="160" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="454" height="160" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="16" y="16" width="422" height="128" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <path d="M80,40 H374 A40,40 0 0 1 414,80 V80 A40,40 0 0 1 374,120 H80 A40,40 0 0 1 40,80 V80 A40,40 0 0 1 80,40 Z" fill="none" fill-opacity="0" stroke="#948F9A" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="43" y="52" font-family="system-ui, sans-serif" font-size="9" fill="#948F9A">◻ #FF948F9A  pad 12.0dp</text>
+  </g>
+  <g>
+    <rect x="40" y="40" width="374" height="38" fill="none" fill-opacity="0" stroke="#3B72A8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="40" y="40" width="71" height="38" fill="none" fill-opacity="0" stroke="#A85B6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+</svg>

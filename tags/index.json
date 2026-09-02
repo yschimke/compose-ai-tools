@@ -1,0 +1,51 @@
+{
+  "schema": "compose-preview-tags/v1",
+  "previews": {
+    "card__ideal__default": {
+      "dp-slot:content;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 40,
+          "y": 40,
+          "width": 374,
+          "height": 38
+        },
+        "space": "render-pixels"
+      }
+    },
+    "card-outlined__ideal__default": {
+      "dp-slot:content;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 40,
+          "y": 40,
+          "width": 374,
+          "height": 38
+        },
+        "space": "render-pixels"
+      }
+    },
+    "titlecard__ideal__default": {
+      "dp-slot:title;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 40,
+          "y": 40,
+          "width": 366,
+          "height": 38
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:subtitle": {
+        "count": 1,
+        "bounds": {
+          "x": 40,
+          "y": 82,
+          "width": 374,
+          "height": 38
+        },
+        "space": "render-pixels"
+      }
+    }
+  }
+}
