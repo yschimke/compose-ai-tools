@@ -2978,8 +2978,8 @@ private class WrapperStack(
  * shadow the chosen one). Two exceptions keep the declared wrapper:
  * - the override doesn't load. On a stale / misspelled FQN `loadWrapperByFqnOrNull` logs and
  *   returns null; falling back to the declared wrapper beats stripping it and misrendering.
- * - the declared wrapper is **structural** ([isStructuralPreviewWrapper]) — it installs the surface
- *   the body composes against, not a look. Replacing `@PreviewWrapper(RemotePreviewWrapper::class)`
+ * - the declared wrapper is **structural** ([isStructuralWrapperFqn]) — it installs the surface the
+ *   body composes against, not a look. Replacing `@PreviewWrapper(RemotePreviewWrapper::class)`
  *   leaves a `RemoteBox` / `RemoteColumn` / `RemoteRow` body on the plain UI applier and throws
  *   `IllegalStateException: Invalid applier`. Here the theme nests OUTSIDE the structural wrapper
  *   rather than replacing it, so the request is honoured as far as it can be and the render stands
@@ -2994,13 +2994,25 @@ private fun resolveWrapperStack(
 ): WrapperStack {
   val declaredFqn = declaredWrapperFqnOrNull(composableMethod, wrapperFqnFromSpec)
   val theme = themeProviderFqn?.takeIf { it.isNotBlank() }?.let { loadWrapperByFqnOrNull(it) }
-  val keepDeclared =
-    theme == null || (declaredFqn != null && isStructuralPreviewWrapper(declaredFqn))
+  val keepDeclared = theme == null || (declaredFqn != null && isStructuralWrapperFqn(declaredFqn))
   return WrapperStack(
     theme = theme,
     declared = if (keepDeclared) declaredFqn?.let { loadWrapperByFqnOrNull(it) } else null,
   )
 }
+
+private const val REMOTE_PREVIEW_WRAPPER_FQN =
+  "androidx.compose.remote.tooling.preview.RemotePreviewWrapper"
+
+/**
+ * Recognises wrappers that establish the preview's composition surface rather than merely styling
+ * it. Remote Compose's upstream wrapper must remain structural even when the optional connector is
+ * absent, because replacing it with a theme provider puts remote layout nodes on the UI applier.
+ * The connector SPI remains responsible for substitutions, recording `.rc` documents, and any
+ * additional structural wrappers.
+ */
+internal fun isStructuralWrapperFqn(wrapperFqn: String): Boolean =
+  wrapperFqn == REMOTE_PREVIEW_WRAPPER_FQN || isStructuralPreviewWrapper(wrapperFqn)
 
 /**
  * Resolves the `@PreviewWrapper`'s `PreviewWrapperProvider` to a `Wrap(content)` method plus an

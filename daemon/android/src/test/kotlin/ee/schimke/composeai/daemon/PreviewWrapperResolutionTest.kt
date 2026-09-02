@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -32,6 +33,13 @@ import org.junit.Test
  * (see [RenderEngine] kdoc) eventually folds back into a shared helper.
  */
 class PreviewWrapperResolutionTest {
+
+  @Test
+  fun `upstream Remote Compose wrapper is structural without connector discovery`() {
+    assertTrue(
+      isStructuralWrapperFqn("androidx.compose.remote.tooling.preview.RemotePreviewWrapper")
+    )
+  }
 
   @Test
   fun `resolveWrapperOrNull with spec FQN returns wrapper Wrap method`() {
