@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T21:09:04.763Z",
+  "generatedAt": "2026-09-02T21:21:17.200Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "06348d6c18a765bc401f0ef3eb4806654c74f6e2",
+        "subject": "feat(import): let an import name the previews it cannot render (#5011)",
+        "at": "2026-09-02T22:11:17+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8644e721103b34735b274b5543419ed452dd1b13",
+        "subject": "ci(mcp): run checkMcpToolingApiBoundary from `test`, not only `check` (#5009)",
+        "at": "2026-09-02T22:09:11+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cf28a17c06f36c4c8e62a53b077b93d0839e518f",
+        "subject": "docs: correct the component-record plan's identity and inference claims (#5008)",
+        "at": "2026-09-02T22:00:22+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "6cee9cf812de3820715ec29669b0e1759e2d77db",
         "subject": "fix(ci): run the embedded player lanes from rc-players (#5006)",
@@ -458,30 +482,6 @@
         "sha": "7d029929c484f972fa23f4c8cc25030b69c06055",
         "subject": "fix(daemon): preserve focused variants in live mode (#4939)",
         "at": "2026-09-01T07:13:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1a9b065374c6214d3afb5f9dfd4c0d6e57638e82",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.61.1 (#4938)",
-        "at": "2026-09-01T07:08:10+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "426de9e5758e28e7e3e352347f3cf6765ad18417",
-        "subject": "chore(main): release 1.61.1 (#4934)",
-        "at": "2026-09-01T06:35:31+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1f46f5a67f0dff0e623715ea5128b833e04783c4",
-        "subject": "fix(mcp): require pinned UI builder exports (#4933)",
-        "at": "2026-09-01T06:13:53+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
