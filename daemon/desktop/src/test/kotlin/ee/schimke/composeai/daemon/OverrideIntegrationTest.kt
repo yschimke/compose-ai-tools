@@ -447,6 +447,88 @@ class OverrideIntegrationTest {
   }
 
   @Test
+  fun capturedVectorLeafRetainsItsIndicationOverlay() {
+    val svg = renderFocusedSvg("VectorIndication", "VectorIndicationInteractionState", 96, 48)
+    assertTrue("captured vector path must remain editable", svg.contains("<path"))
+    assertTrue(
+      "vector leaf must retain its final indication child",
+      svg.contains("Material State Layer"),
+    )
+    assertTrue(
+      "indication must paint after the captured vector",
+      svg.lastIndexOf("Material State Layer") > svg.lastIndexOf("<path"),
+    )
+  }
+
+  @Test
+  fun nonUniformScaleTransformsRippleIntoAnEllipse() {
+    val svg = renderFocusedSvg("ScaledIndication", "ScaledIndicationInteractionState", 128, 64)
+    val stateLayer = svg.substringAfter("id=\"Material State Layer\"").substringBefore("</g>")
+    val points =
+      Regex("""[ML](-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)""")
+        .findAll(stateLayer)
+        .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
+        .toList()
+    assertTrue(
+      "20px radius at scaleX=2 must become 80px wide: $stateLayer",
+      abs(points.maxOf { it.first } - points.minOf { it.first } - 80.0) < 0.01,
+    )
+    assertTrue(
+      "20px radius at scaleY=0.5 must become 20px high: $stateLayer",
+      abs(points.maxOf { it.second } - points.minOf { it.second } - 20.0) < 0.01,
+    )
+    assertTrue(
+      "non-uniformly scaled circle must export an ellipse contour",
+      stateLayer.contains("<path"),
+    )
+  }
+
+  private fun renderFocusedSvg(
+    id: String,
+    functionName: String,
+    widthPx: Int,
+    heightPx: Int,
+  ): String {
+    val outputDir = tempFolder.newFolder("renders-$id")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                PreviewManifestEntry(
+                  id = id,
+                  className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+                  functionName = functionName,
+                  widthPx = widthPx,
+                  heightPx = heightPx,
+                  density = 1.0f,
+                  outputBaseName = id,
+                  overrides =
+                    OverrideVariantSpec(
+                      name = "focused",
+                      interaction = OverrideVariantInteraction.Focused,
+                    ),
+                )
+              )
+          ),
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(FocusPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    return try {
+      host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
+      outputDir.parentFile!!.resolve("data").resolve(id).resolve("compose-figma.svg").readText()
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun widthPxOverrideChangesRenderedDimensions() {
     val outputDir = tempFolder.newFolder("renders-width")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)

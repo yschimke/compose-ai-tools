@@ -46,7 +46,12 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.lang.reflect.Method
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import okio.FileSystem
@@ -1275,6 +1280,10 @@ internal object ComposeLayoutInspector {
       } else null
     val ownerId = semanticsId?.toString() ?: identityId
     val indications = LayoutTreeAccess.indications(modifiers, rootCoords)
+    val ownerTransform = coordinates.scaleIn(rootCoords)
+    val wireModifiers = modifiers.mapNotNull { info ->
+      info.toWireModifier(rootCoords, density, fontScale)
+    }
     val resolvedTokens =
       ModifierTokenResolver.resolve(
           modifierInfo = modifiers,
@@ -1321,15 +1330,17 @@ internal object ComposeLayoutInspector {
       placed = placed,
       attached = attached,
       zIndex = zIndex,
-      modifiers =
-        modifiers.mapNotNull { info -> info.toWireModifier(rootCoords, density, fontScale) },
+      modifiers = wireModifiers,
       // Resolved tokens are computed by the shared resolver (issue #1903) from the same modifier
       // chain + measure policy + measured size this node already carries — `layout/inspector` is
       // the
       // canonical home for the modifier-derived token projection.
       tokens = resolvedTokens,
       curvedTexts = curvedTexts,
-      vectorGraphic = vectorGraphic,
+      // A captured vector is normally a leaf in FigmaSvgModel. When an indication is active, move
+      // the vector into a synthetic first child so the model's leaf return cannot discard the
+      // overlay that must paint after it.
+      vectorGraphic = vectorGraphic.takeIf { indications.isEmpty() },
       // The content-loading placeholder this chain declares, plus whether it is currently visible
       // (issue #2646). Resolved from the same modifier chain + measured size as `tokens`, by the
       // same resolver — the placeholder's own shape/colour, which `tokens` deliberately refuses as
@@ -1348,11 +1359,26 @@ internal object ComposeLayoutInspector {
       drawsContent = drawsContent,
       modifiesDrawnContent =
         DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
-      transform = coordinates.scaleIn(rootCoords),
+      transform = ownerTransform,
       // A Material indication is a draw-over operation: `RippleNode.draw` calls `drawContent()`
       // before its focus state layer and press ripple. Keep it as the final child so gradients,
       // icons, images and tokenless custom content are tinted in the same order as the real frame.
-      children = children + indications.mapIndexed { index, it -> it.toWireNode(ownerId, index) },
+      children =
+        children +
+          vectorGraphic
+            ?.takeIf { indications.isNotEmpty() }
+            ?.let {
+              LayoutInspectorNode(
+                nodeId = "$ownerId-indication-content",
+                component = "$ownComponent Graphic",
+                bounds = placedBounds,
+                size = LayoutInspectorSize(width = width, height = height),
+                vectorGraphic = it,
+                transform = ownerTransform,
+              )
+            }
+            .let(::listOfNotNull) +
+          indications.mapIndexed { index, it -> it.toWireNode(ownerId, index) },
     )
   }
 
@@ -1420,15 +1446,28 @@ internal object ComposeLayoutInspector {
     ownerId: String,
     index: Int,
   ): LayoutInspectorNode {
-    val centerX = (bounds.left + bounds.right) / 2f
-    val centerY = (bounds.top + bounds.bottom) / 2f
+    val centerX = (bounds.left + bounds.right) / 2.0
+    val centerY = (bounds.top + bounds.bottom) / 2.0
+    val scaleX = abs(transform?.scaleX?.toDouble() ?: 1.0)
+    val scaleY = abs(transform?.scaleY?.toDouble() ?: 1.0)
+    val angle = Math.toRadians((transform?.rotationDegrees ?: 0f).toDouble())
+    // The circle is measured in the ripple node's local pixels. Map its two axes into root space
+    // before constructing the captured AABB; FigmaSvgModel uses the local size + transform below
+    // to recover and rotate the actual ellipse from this box.
+    val halfWidth =
+      radiusPx.toDouble() *
+        sqrt((scaleX * cos(angle)).let { it * it } + (scaleY * sin(angle)).let { it * it })
+    val halfHeight =
+      radiusPx.toDouble() *
+        sqrt((scaleX * sin(angle)).let { it * it } + (scaleY * cos(angle)).let { it * it })
     val circleBounds =
       LayoutInspectorBounds(
-        left = (centerX - radiusPx).roundToInt(),
-        top = (centerY - radiusPx).roundToInt(),
-        right = (centerX + radiusPx).roundToInt(),
-        bottom = (centerY + radiusPx).roundToInt(),
+        left = (centerX - halfWidth).roundToInt(),
+        top = (centerY - halfHeight).roundToInt(),
+        right = (centerX + halfWidth).roundToInt(),
+        bottom = (centerY + halfHeight).roundToInt(),
       )
+    val nonUniformScale = abs(scaleX - scaleY) > 0.001
     val circle =
       LayoutInspectorNode(
         nodeId = "$ownerId-indication-$index-circle",
@@ -1436,14 +1475,18 @@ internal object ComposeLayoutInspector {
         bounds = circleBounds,
         size =
           LayoutInspectorSize(
-            width = circleBounds.right - circleBounds.left,
-            height = circleBounds.bottom - circleBounds.top,
+            width = (radiusPx * 2f).roundToInt(),
+            height = (radiusPx * 2f).roundToInt(),
           ),
         tokens =
           ComposeSemanticsTokens(
             backgroundColor = colorWithOpacity(argb, alpha),
-            shape = "circle",
+            shape = "circle".takeUnless { nonUniformScale },
+            // A non-uniformly scaled circle is an ellipse, not the capsule produced by applying
+            // CircleShape to a rectangular box. The unit contour scales with the recovered box.
+            shapePath = UNIT_CIRCLE_PATH.takeIf { nonUniformScale },
           ),
+        transform = transform,
       )
     return LayoutInspectorNode(
       nodeId = "$ownerId-indication-$index",
@@ -1451,13 +1494,27 @@ internal object ComposeLayoutInspector {
       bounds = bounds,
       size =
         LayoutInspectorSize(
-          width = bounds.right - bounds.left,
-          height = bounds.bottom - bounds.top,
+          width = localWidthPx,
+          height = localHeightPx,
         ),
       tokens = ComposeSemanticsTokens(clipsContent = true).takeIf { bounded },
       children = listOf(circle),
+      transform = transform,
     )
   }
+
+  private val UNIT_CIRCLE_PATH: String =
+    (0 until 48)
+      .joinToString(" ") { index ->
+        val angle = 2.0 * PI * index / 48.0
+        val x = (0.5 + 0.5 * cos(angle)).roundedPathCoordinate()
+        val y = (0.5 + 0.5 * sin(angle)).roundedPathCoordinate()
+        "${if (index == 0) 'M' else 'L'}$x,$y"
+      }
+      .plus(" Z")
+
+  private fun Double.roundedPathCoordinate(): Double =
+    kotlin.math.round(this * 1_000_000.0) / 1_000_000.0
 
   private fun colorWithOpacity(argb: Int, opacity: Float): String {
     val sourceAlpha = (argb ushr 24 and 0xFF) / 255f
@@ -2418,6 +2475,9 @@ internal object ComposeLayoutInspector {
       val radiusPx: Float,
       val bounded: Boolean,
       val pressed: Boolean,
+      val localWidthPx: Int,
+      val localHeightPx: Int,
+      val transform: LayoutInspectorTransform?,
     )
 
     /**
@@ -2454,6 +2514,7 @@ internal object ComposeLayoutInspector {
               .mapNotNull { call(candidate, it) as? LayoutCoordinates }
               .firstOrNull() ?: fallbackCoordinates
           val bounds = coordinates.boundsIn(rootCoordinates)
+          val transform = coordinates.scaleIn(rootCoordinates)
           val targetRadius = reflectedField(candidate, "targetRadius") as? Float
           val bounded = reflectedField(candidate, "bounded") as? Boolean ?: true
           val stateLayer = reflectedField(candidate, "stateLayer")
@@ -2471,7 +2532,18 @@ internal object ComposeLayoutInspector {
               bounds.right > bounds.left &&
               bounds.bottom > bounds.top
           ) {
-            layers += Indication(color, stateAlpha, bounds, targetRadius, bounded, pressed = false)
+            layers +=
+              Indication(
+                color,
+                stateAlpha,
+                bounds,
+                targetRadius,
+                bounded,
+                pressed = false,
+                coordinates.size.width,
+                coordinates.size.height,
+                transform,
+              )
           }
 
           val rippleAlphaConfig =
@@ -2506,17 +2578,26 @@ internal object ComposeLayoutInspector {
                     targetRadius,
                     bounded,
                     pressed = true,
+                    coordinates.size.width,
+                    coordinates.size.height,
+                    transform,
                   )
               }
             }
           }
 
           // Android keeps the active press in a platform RippleDrawable rather than the common
-          // animation map. A non-null host is the active pressed state; its draw path receives the
-          // same target radius, colour and pressed alpha immediately before capture.
+          // animation map. The host survives release for the exit animation and reuse, so gate on
+          // the drawable's actual pressed state rather than host allocation.
+          val androidHost =
+            if (candidate.javaClass.name == "androidx.compose.material.ripple.AndroidRippleNode")
+              reflectedField(candidate, "rippleHostView")
+            else null
+          val androidRipple = androidHost?.let { reflectedField(it, "ripple") }
+          val androidPressed =
+            (androidRipple?.let { call(it, "getState") } as? IntArray)?.contains(16842919) == true
           if (
-            candidate.javaClass.name == "androidx.compose.material.ripple.AndroidRippleNode" &&
-              reflectedField(candidate, "rippleHostView") != null &&
+            androidPressed &&
               color != null &&
               pressedAlpha > 0f &&
               targetRadius != null &&
@@ -2524,7 +2605,18 @@ internal object ComposeLayoutInspector {
               bounds.right > bounds.left &&
               bounds.bottom > bounds.top
           ) {
-            layers += Indication(color, pressedAlpha, bounds, targetRadius, bounded, pressed = true)
+            layers +=
+              Indication(
+                color,
+                pressedAlpha,
+                bounds,
+                targetRadius,
+                bounded,
+                pressed = true,
+                coordinates.size.width,
+                coordinates.size.height,
+                transform,
+              )
           }
         }
         sequenceOf("getDelegate\$ui_release", "getDelegate\$ui", "getDelegate")

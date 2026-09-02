@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1779,6 +1780,38 @@ fun CustomIndicationInteractionState() {
       ) {
         Box(modifier = Modifier.fillMaxSize().background(Color.Green))
       }
+    }
+  }
+}
+
+/** A clickable Canvas whose ordinary captured-vector leaf must retain its indication above it. */
+@Composable
+fun VectorIndicationInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Canvas(modifier = Modifier.size(32.dp).clickable {}) { drawRect(Color.Green) }
+    }
+  }
+}
+
+/** An unbounded ripple transformed to 2× horizontally and 0.5× vertically. */
+@Composable
+fun ScaledIndicationInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Box(
+        modifier =
+          Modifier.size(width = 32.dp, height = 24.dp)
+            .graphicsLayer {
+              scaleX = 2f
+              scaleY = 0.5f
+            }
+            .clickable(
+              interactionSource = remember { MutableInteractionSource() },
+              indication = ripple(bounded = false, radius = 20.dp),
+            ) {}
+            .background(Color.Green)
+      )
     }
   }
 }

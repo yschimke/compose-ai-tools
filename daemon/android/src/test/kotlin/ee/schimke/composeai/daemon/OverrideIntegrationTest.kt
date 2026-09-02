@@ -172,6 +172,7 @@ class OverrideIntegrationTest {
     val baseId = "MaterialButton_Light"
     val focusedId = "MaterialButton_Light_VARIANT_focused"
     val pressedId = "MaterialButton_Light_VARIANT_pressed"
+    val restingAfterPressId = "MaterialButton_Light_AFTER_pressed"
     fun entry(id: String, interaction: OverrideVariantInteraction? = null) =
       PreviewManifestEntry(
         id = id,
@@ -193,12 +194,13 @@ class OverrideIntegrationTest {
                 entry(baseId),
                 entry(focusedId, OverrideVariantInteraction.Focused),
                 entry(pressedId, OverrideVariantInteraction.Pressed),
+                entry(restingAfterPressId),
               )
           )
       )
     host.start()
     try {
-      for (id in listOf(baseId, focusedId, pressedId)) {
+      for (id in listOf(baseId, focusedId, pressedId, restingAfterPressId)) {
         host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
       }
       val dataDir = outputDir.parentFile!!.resolve("data")
@@ -223,6 +225,10 @@ class OverrideIntegrationTest {
       assertTrue(
         "pressed SVG emits Android's platform ripple above content",
         svg(pressedId).contains("id=\"Material Press Ripple\""),
+      )
+      assertTrue(
+        "a retained Android ripple host must not create a press overlay after release",
+        !svg(restingAfterPressId).contains("id=\"Material Press Ripple\""),
       )
       assertNotEquals("focused SVG must not stay resting", svg(baseId), svg(focusedId))
       assertNotEquals("pressed SVG must not stay resting", svg(baseId), svg(pressedId))
