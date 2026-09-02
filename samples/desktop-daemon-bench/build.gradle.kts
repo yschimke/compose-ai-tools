@@ -954,6 +954,17 @@ tasks.register<BenchCompileStagesTask>("benchCompileStages") {
 
 // --- CI smoke (issue #1586) -----------------------------------------------------------------
 // The full benches are deliberately slow (run on the reference machine, not per-PR). To keep this
-// module from bit-rotting, `check` renders the five trivial previews — a cheap proof the module
+// module from bit-rotting, the five trivial previews are rendered — a cheap proof the module
 // builds, discovery wires up, and the renderer path is intact.
+//
+// CI does that by **naming `composePreviewRender` directly**, in ci.yml's `build-samples-full`
+// job, which is gated `if: github.event_name != 'pull_request'` because these render-heavy checks
+// "routinely make Build Samples the slowest CI leg". It is not reached through `check`: nothing in
+// CI invokes `check` at all (see `:mcp` and `:renderer-desktop` for the two guards that had to be
+// moved onto `test` for exactly that reason), and this module has no `test` task to move it to —
+// only a `main` source set, and `affected-gradle-tests.py` ignores `samples/**` outright.
+//
+// So the hook below is a local convenience: `./gradlew :samples:<this>:check` renders. Deliberately
+// NOT wired onto a PR-path task — that would drag a Robolectric/Compose-Desktop render onto every
+// pull request, which is the cost `build-samples-full` exists to keep off it.
 tasks.named("check") { dependsOn("composePreviewRender") }

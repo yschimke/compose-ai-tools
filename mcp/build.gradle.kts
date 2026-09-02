@@ -130,4 +130,20 @@ val checkMcpToolingApiBoundary =
     runtimeClasspath.from(configurations.named("runtimeClasspath"))
   }
 
+// `check` for anyone running it, and `test` because that is what actually runs.
+//
+// CI never invokes `check`. ci.yml's full branch runs `test jvmTest desktopTest checkKotlinAbi`,
+// its scoped branch runs whatever `.github/ci/affected-gradle-tests.py` resolves — `test`/`jvmTest`
+// per project, plus `checkKotlinAbi` where the project has one — and the only `gradlew …build`
+// invocations in the workflows are `:cli:build` and `:bundle-viewer:build`. `:cli` does depend on
+// this project, but `build` runs the *calling* project's `check`, not its dependencies', so that
+// does not reach here either. Nothing named this guard, so it had never run in CI.
+//
+// `affected-gradle-tests.py`'s own docstring records the same trap costing three stale ABI dumps
+// in a single day, which is why `checkKotlinAbi` is emitted per project now rather than left to
+// `check`; `finalizedBy` is the equivalent for a guard that resolver does not know about. Ordering
+// is deliberate: a boundary violation and a test failure surface in the same run rather than
+// costing two cycles.
 tasks.named("check") { dependsOn(checkMcpToolingApiBoundary) }
+
+tasks.named("test") { finalizedBy(checkMcpToolingApiBoundary) }
