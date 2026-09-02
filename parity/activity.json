@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T19:18:13.389Z",
+  "generatedAt": "2026-09-02T19:33:41.046Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "8f1d170dcb8917d117b2e1c77da54c12e2a05d2d",
+        "subject": "fix(import): carry --write-locks and the plugin's dep groups into the render (#4994)",
+        "at": "2026-09-02T20:26:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "bcacbf96a363af8250dcf65799252f2943fb1898",
         "subject": "fix(import): render a locked upstream with --write-locks (#4992)",
@@ -474,14 +482,6 @@
         "sha": "dd2819d5c7d3c44235d0b3f04d7206959af20d6e",
         "subject": "fix(deps): update dependency @design-parity/adapter-figma to v1 (#4924)",
         "at": "2026-08-31T21:48:30+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "43b511a1635e9d9970ae5e5be88a26bfb6efe987",
-        "subject": "fix(deps): update dependency @design-parity/catalog-export to v1 (#4926)",
-        "at": "2026-08-31T21:48:12+01:00",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
