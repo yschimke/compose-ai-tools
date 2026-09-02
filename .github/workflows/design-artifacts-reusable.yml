@@ -169,12 +169,12 @@ on:
         type: boolean
         default: false
       rc-embedded-lane:
-        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player and the upstream player published in androidx.compose.remote:remote-player-compose. OFF by default since the players moved to yschimke/rc-players: the Robolectric harness that renders these lanes is a test task in that build, so this repository has nothing to run. Enabling it needs the lane driven from there, or an rc-players checkout wired in here — see the step below. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add both Android embedded-player lanes to rc-compare.html: the vendored/local-patch player and the upstream player published in androidx.compose.remote:remote-player-compose. The Robolectric harness that renders them is a test task in yschimke/rc-players, which this workflow checks out — pinned to the `rcplayers` version compose-ai-tools consumes — when either embedded lane is on. Opt-in rather than default: the checkout, an extra JDK and two Gradle runs are minutes a caller who does not want the columns should not pay. Entirely skipped for a catalog that ships no ir/*.rc, and fail-soft — a harness that cannot run drops its column rather than the publish."
         required: false
         type: boolean
         default: false
       rc-embedded-jvm-lane:
-        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through the vendored JVM player (Compose Desktop / Skiko, offscreen). OFF by default for the same reason as rc-embedded-lane: its harness is a test task in yschimke/rc-players now. Needs libGL + xvfb when re-enabled. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through the vendored JVM player (Compose Desktop / Skiko, offscreen). Its harness is a test task in yschimke/rc-players, checked out and pinned exactly as rc-embedded-lane describes; the step installs libGL + xvfb for it. Opt-in and fail-soft for the same reasons. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
         default: false
@@ -663,6 +663,12 @@ env:
   #    `github.sha` is always a revision a repo writer put there.
   DRIVER_PIN_REPO: yschimke/compose-ai-tools
   DRIVER_PIN_PATH: .github/design-artifacts-driver-pin.txt
+  # Where the Android and cmp-jvm player harnesses live since the player stack was extracted.
+  # A CONSTANT for the same reason `DRIVER_PIN_REPO` is one — see the long note above: a variable
+  # `repository:` on `actions/checkout` hands this job's `github.token` to whatever host serves the
+  # request. The REF is pinned separately, per run, to the version this repo consumes the players
+  # at; only these two lanes check it out, and only when a caller opts into them.
+  RC_PLAYERS_REPO: yschimke/rc-players
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -1461,6 +1467,81 @@ jobs:
           ref: ${{ needs.driver.outputs.ref }}
           path: compose-ai-tools
           persist-credentials: false
+
+      # ---- The two embedded player lanes' harness, when a caller asked for them ----------------
+      #
+      # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and
+      # `:third-party-rc-embedded-player-jvm` (Compose Desktop / Skiko) live in yschimke/rc-players
+      # since the player stack was extracted. The rc-compare step below used to run them out of the
+      # compose-ai-tools checkout, where they have not existed for some time — so both lanes could
+      # only ever log a warning and drop their column, which is what left a catalog's wall three
+      # columns wide with nothing saying why (#4998).
+      #
+      # Pinned to the version this repository CONSUMES the players at, read out of the pinned driver
+      # checkout rather than written here a second time. A harness rendering through a different
+      # player build than the one the catalog's own capture went through makes every number in the
+      # wall unattributable — the skew `gradle/libs.versions.toml` keeps one `rcplayers` ref for, and
+      # the failure this repo already paid for once with the AndroidX alphas.
+      - name: Resolve the rc-players pin
+        id: rc-players-pin
+        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        run: |
+          set -euo pipefail
+          catalog="$GITHUB_WORKSPACE/compose-ai-tools/gradle/libs.versions.toml"
+          # One `sed` that quits at the first hit rather than `sed … | head -1`: this step runs
+          # under `pipefail`, and `head` closing the pipe early would SIGPIPE `sed` into failing it.
+          version="$(sed -n '/^rcplayers = /{s/^rcplayers = "\([^"]*\)".*/\1/p;q;}' "$catalog")"
+          if [ -z "$version" ]; then
+            echo "::error title=rc-players pin missing::no 'rcplayers' entry in the driver checkout's gradle/libs.versions.toml; the embedded lanes have no version to render through" >&2
+            exit 1
+          fi
+          echo "ref=v${version}" >> "$GITHUB_OUTPUT"
+          echo "embedded player harnesses pinned to rc-players v${version}"
+
+      - name: Check out rc-players (embedded player harnesses)
+        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.RC_PLAYERS_REPO }}
+          # A release tag resolved from the pinned driver checkout above, never a caller input.
+          ref: ${{ steps.rc-players-pin.outputs.ref }}
+          path: rc-players
+          persist-credentials: false
+
+      # rc-players pins a Java 17 toolchain. Everything else in this job runs on 21 and JAVA_HOME
+      # must stay there, so this is the same two-step the imported project's toolchain gets above:
+      # install it, then name its path, because Gradle's toolchain detection looks at the current
+      # JVM and the usual system locations and `setup-java` installs to neither.
+      - name: Set up the rc-players toolchain
+        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up JDK 21 (restore JAVA_HOME)
+        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Point Gradle's toolchain detection at every installed JDK
+        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        run: |
+          set -euo pipefail
+          # Built from every `JAVA_HOME_*` the job has — `setup-java` exports one per JDK it
+          # installed, and the runner image exports its preinstalled ones — rather than appending a
+          # second `-D` flag. A repeated system property does not merge: the last one wins, so
+          # appending would silently drop whatever path the imported project's toolchain step
+          # recorded. Comma-separated, and any earlier copy of the flag is stripped first.
+          paths="$(env | sed -n 's/^JAVA_HOME_[0-9A-Za-z_]*=//p' | sort -u | paste -sd, -)"
+          if [ -z "$paths" ]; then
+            echo "::warning::no JAVA_HOME_* on this runner; the embedded lanes will fall back to Gradle's own toolchain detection"
+            exit 0
+          fi
+          rest="$(printf '%s' "${GRADLE_OPTS:-}" | sed 's/-Dorg\.gradle\.java\.installations\.paths=[^ ]*//g')"
+          echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${paths} ${rest}" >> "$GITHUB_ENV"
 
       # Build the CLI from the compose-ai-tools checkout instead of installing a
       # release — so compose-ai-tools' own catalogs render against HEAD's renderer.
@@ -2645,7 +2726,17 @@ jobs:
           # Deliberately tolerant: the render this job exists to publish must not be lost because a
           # harness died or the runner lacks a toolchain. Either lane logs loudly and falls through
           # to a page without its column — the lanes are enrichment, not the product.
+
+          # Where the harnesses live, bound once for the three invocations below.
+          RC_PLAYERS="$GITHUB_WORKSPACE/rc-players"
+
           if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ] || [ "$INPUT_RC_EMBEDDED_JVM_LANE" = "true" ]; then
+            if [ ! -x "$RC_PLAYERS/gradlew" ]; then
+              # The checkout is guarded on the same two inputs as this block, so this is only
+              # reachable if that step failed or was skipped. Loud, and still fail-soft: the lanes
+              # below drop their columns rather than losing the publish this job exists for.
+              echo "::warning::no rc-players checkout at $RC_PLAYERS; both embedded player lanes will be skipped"
+            fi
             RC_IN="$RUNNER_TEMP/rc-embedded-in"
             rm -rf "$RC_IN"
             node rc-compare.mjs \
@@ -2659,12 +2750,10 @@ jobs:
           # the second imports AndroidX's implementation from the released remote-player-compose.
           # Separate Gradle invocations make the lanes fail-soft independently.
           #
-          # Both lanes default OFF now: the harnesses they invoke
-          # (`:third-party-rc-embedded-player:testDebugUnitTest` and the -jvm module's `test`) are
-          # test tasks in yschimke/rc-players, so `./gradlew` here cannot resolve them. The recipe is
-          # kept rather than deleted — the system-property wiring, the `--rerun` reasoning and the
-          # `--tests` filter are the hard-won parts, and re-enabling means pointing these two
-          # invocations at an rc-players checkout, not rediscovering them.
+          # `$RC_PLAYERS`, not this checkout: both harnesses are test tasks in yschimke/rc-players,
+          # checked out and pinned by the steps of that name above. They were pointed at
+          # `compose-ai-tools` until #4998 — long after the modules left it — which is why a caller
+          # that switched these lanes on got a warning and no column instead of the players.
           if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ]; then
             RC_OUT="$RUNNER_TEMP/rc-embedded-out"
             rm -rf "$RC_OUT"
@@ -2674,7 +2763,7 @@ jobs:
             # task "succeeds" having written nothing. Verified: a third identical run reports
             # `testDebugUnitTest UP-TO-DATE` and leaves RC_OUT empty. Ephemeral GitHub runners never
             # hit it, but `runs-on` is an input, so self-hosted callers would.
-            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+            if (cd "$RC_PLAYERS" && \
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
                   --tests ee.schimke.composeai.rcembedded.RcEmbeddedRenderHarness \
                   -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT" \
@@ -2690,7 +2779,7 @@ jobs:
 
             RC_ANDROIDX_OUT="$RUNNER_TEMP/rc-androidx-embedded-out"
             rm -rf "$RC_ANDROIDX_OUT"
-            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+            if (cd "$RC_PLAYERS" && \
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
                   --tests ee.schimke.composeai.rcembedded.RcAndroidxEmbeddedRenderHarness \
                   -Prc.androidx.embedded.input="$RC_IN" \
@@ -2703,8 +2792,9 @@ jobs:
             fi
           fi
 
-          # cmp-jvm (Compose Desktop / Skiko) embedded lane. Same three moves, different harness:
-          # the jvm player links libGL and draws offscreen, so its Gradle test runs under xvfb-run.
+          # cmp-jvm (Compose Desktop / Skiko) embedded lane. Same three moves, same rc-players
+          # checkout, different harness: the jvm player links libGL and draws offscreen, so its
+          # Gradle test runs under xvfb-run.
           # The deps are installed here rather than by the desktop-render step above: that step runs
           # long before the bundle exists, so with this lane defaulting to true it would charge an
           # apt round-trip to every caller, including the ones whose bundles carry no ir/*.rc and
@@ -2726,7 +2816,7 @@ jobs:
             fi
             RC_JVM_OUT="$RUNNER_TEMP/rc-embedded-jvm-out"
             rm -rf "$RC_JVM_OUT"
-            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+            if (cd "$RC_PLAYERS" && \
                 xvfb-run -a -s "-screen 0 2000x1400x24" \
                   ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun --quiet \
                     -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT" \
