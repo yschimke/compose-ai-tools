@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T23:22:15.539Z",
+  "generatedAt": "2026-09-02T23:31:31.655Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "60c45e280c5525ce6065104e02d57048e3b96fc6",
+        "subject": "fix(import): surface the renderer's .error.json sidecars when a render fails (#5035)",
+        "at": "2026-09-03T00:18:23+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "02a435245167a14f9836f5959c7fca4150d8ce4b",
+        "subject": "feat(import): let a caller name the Android variant to render (#5037)",
+        "at": "2026-09-03T00:18:17+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "92efd7ea195a58ea3daf66b1880130693e1fea18",
         "subject": "chore(main): release 1.67.0 (#5032)",
@@ -467,22 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v1.62.0 (#4962)",
         "at": "2026-09-02T03:09:24+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "23a2235dcf9aac02055282f563b7df700871ca53",
-        "subject": "fix(figma-svg): preserve Material interaction states (#4961)",
-        "at": "2026-09-02T03:08:39+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f7d82ec4edfa0b687e5c4386227af985d20ad18c",
-        "subject": "chore(main): release 1.62.0 (#4955)",
-        "at": "2026-09-01T22:14:30+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
