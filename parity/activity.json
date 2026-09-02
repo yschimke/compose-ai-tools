@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T23:06:55.217Z",
+  "generatedAt": "2026-09-02T23:22:15.539Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "92efd7ea195a58ea3daf66b1880130693e1fea18",
+        "subject": "chore(main): release 1.67.0 (#5032)",
+        "at": "2026-09-02T23:54:21+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "03fbd761587468964b48fbab5ea793a3257642f4",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.66.1 (#5025)",
+        "at": "2026-09-02T23:54:08+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "65b5e4b1db2a465fc9843947003feeb1817246b7",
         "subject": "fix(import): render the nested build an import named, not its enclosing repo (#5030)",
@@ -467,22 +483,6 @@
         "subject": "chore(main): release 1.62.0 (#4955)",
         "at": "2026-09-01T22:14:30+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "10fda16208b9e3e9da56099e29c5101d350cf218",
-        "subject": "fix: validate the resolved Compose floor (#4960)",
-        "at": "2026-09-01T22:10:48+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5a8793a0209b2d62cc3933cb2bcfb197d48ac257",
-        "subject": "feat(preview): support real Dragged interaction variants (#4953)",
-        "at": "2026-09-01T21:55:52+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
