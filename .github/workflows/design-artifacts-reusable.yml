@@ -1257,9 +1257,15 @@ jobs:
             dir=$(dirname "$dir")
           done
           if [ -z "$found" ]; then
-            echo "::warning::no Gradle wrapper above ${RENDER_DIR} — the render will use whatever" \
-                 "distribution the Tooling API defaults to"
-            exit 0
+            # Failing here rather than continuing. There is no benign outcome further on: the
+            # walk-up does not stop at `upstream`, so it either leaves the checkout entirely and
+            # lands on some unrelated `gradlew` in the runner workspace, or finds none and the CLI
+            # exits with "Cannot find Gradle project root" — a message that says nothing about the
+            # nested build being the reason. Neither is a Tooling-API default worth waiting for.
+            echo "::error::${RENDER_DIR} is a Gradle build root but neither it nor any directory" \
+                 "up to the upstream checkout has a Gradle wrapper, so the render has no" \
+                 "distribution to run and would silently target some other build"
+            exit 1
           fi
           mkdir -p "${RENDER_DIR}/gradle/wrapper"
           cp "$found/gradlew" "${RENDER_DIR}/gradlew"
@@ -1268,6 +1274,35 @@ jobs:
             cp "$found/gradlew.bat" "${RENDER_DIR}/gradlew.bat"
           fi
           cp "$found"/gradle/wrapper/gradle-wrapper.* "${RENDER_DIR}/gradle/wrapper/"
+
+          # A `distributionUrl` with no scheme is resolved RELATIVE TO the directory holding
+          # gradle-wrapper.properties, so copying the file further down the tree silently repoints
+          # it — a repository vendoring its distribution at `gradle/wrapper/gradle-x.y-bin.zip`
+          # would have the nested copy look for it under the nested build instead, and fail. Re-
+          # anchor it against the wrapper's original directory so it names the same file the
+          # ancestor's wrapper named. A value with a scheme (`https\://…`, the overwhelmingly common case) and
+          # an absolute path are both already location-independent and are left alone.
+          wrapper_properties="${RENDER_DIR}/gradle/wrapper/gradle-wrapper.properties"
+          url=$(sed -n -E 's/^[[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*//p' \
+                  "$wrapper_properties" | head -1)
+          case "$url" in
+            "" | /*) ;;
+            *)
+              if printf '%s' "$url" | grep -qE '^[A-Za-z][A-Za-z0-9+.-]*\\?:'; then
+                :
+              else
+                # The base is the directory holding the PROPERTIES FILE, not the build directory,
+                # so the hop is from `<found>/gradle/wrapper` to `<render>/gradle/wrapper` — one
+                # `../` per level of the nesting does NOT reach it. Let the path library say it.
+                prefix=$(python3 -c \
+                  'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]) + "/")' \
+                  "$found/gradle/wrapper" "${RENDER_DIR}/gradle/wrapper")
+                sed -i -E "s#^([[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*)#\\1${prefix}#" \
+                  "$wrapper_properties"
+                echo "re-anchored the relative distributionUrl '$url' as '${prefix}${url}'"
+              fi
+              ;;
+          esac
           echo "copied $found's wrapper into ${RENDER_DIR} so the render targets that build"
 
       - name: Disable Isolated Projects in the upstream checkout
@@ -1834,9 +1869,15 @@ jobs:
             dir=$(dirname "$dir")
           done
           if [ -z "$found" ]; then
-            echo "::warning::no Gradle wrapper above ${RENDER_DIR} — the render will use whatever" \
-                 "distribution the Tooling API defaults to"
-            exit 0
+            # Failing here rather than continuing. There is no benign outcome further on: the
+            # walk-up does not stop at `upstream`, so it either leaves the checkout entirely and
+            # lands on some unrelated `gradlew` in the runner workspace, or finds none and the CLI
+            # exits with "Cannot find Gradle project root" — a message that says nothing about the
+            # nested build being the reason. Neither is a Tooling-API default worth waiting for.
+            echo "::error::${RENDER_DIR} is a Gradle build root but neither it nor any directory" \
+                 "up to the upstream checkout has a Gradle wrapper, so the render has no" \
+                 "distribution to run and would silently target some other build"
+            exit 1
           fi
           mkdir -p "${RENDER_DIR}/gradle/wrapper"
           cp "$found/gradlew" "${RENDER_DIR}/gradlew"
@@ -1845,6 +1886,35 @@ jobs:
             cp "$found/gradlew.bat" "${RENDER_DIR}/gradlew.bat"
           fi
           cp "$found"/gradle/wrapper/gradle-wrapper.* "${RENDER_DIR}/gradle/wrapper/"
+
+          # A `distributionUrl` with no scheme is resolved RELATIVE TO the directory holding
+          # gradle-wrapper.properties, so copying the file further down the tree silently repoints
+          # it — a repository vendoring its distribution at `gradle/wrapper/gradle-x.y-bin.zip`
+          # would have the nested copy look for it under the nested build instead, and fail. Re-
+          # anchor it against the wrapper's original directory so it names the same file the
+          # ancestor's wrapper named. A value with a scheme (`https\://…`, the overwhelmingly common case) and
+          # an absolute path are both already location-independent and are left alone.
+          wrapper_properties="${RENDER_DIR}/gradle/wrapper/gradle-wrapper.properties"
+          url=$(sed -n -E 's/^[[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*//p' \
+                  "$wrapper_properties" | head -1)
+          case "$url" in
+            "" | /*) ;;
+            *)
+              if printf '%s' "$url" | grep -qE '^[A-Za-z][A-Za-z0-9+.-]*\\?:'; then
+                :
+              else
+                # The base is the directory holding the PROPERTIES FILE, not the build directory,
+                # so the hop is from `<found>/gradle/wrapper` to `<render>/gradle/wrapper` — one
+                # `../` per level of the nesting does NOT reach it. Let the path library say it.
+                prefix=$(python3 -c \
+                  'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]) + "/")' \
+                  "$found/gradle/wrapper" "${RENDER_DIR}/gradle/wrapper")
+                sed -i -E "s#^([[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*)#\\1${prefix}#" \
+                  "$wrapper_properties"
+                echo "re-anchored the relative distributionUrl '$url' as '${prefix}${url}'"
+              fi
+              ;;
+          esac
           echo "copied $found's wrapper into ${RENDER_DIR} so the render targets that build"
 
       - name: Disable Isolated Projects in the upstream checkout
