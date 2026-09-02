@@ -162,10 +162,9 @@ xr-runtime-testing = "1.0.0-beta02"
 xr-scenecore-testing = "1.0.0-beta02"
 xr-arcore-testing = "1.0.0-beta02"
 # The XR renderer moved to yschimke/compose-preview-xr and now releases on that repository's
-# cadence. This starts at the last artifact published from this repository, making the source move
-# and the first external cutover independent; bump to the first compose-preview-xr release after
-# its release PR lands.
-xr-renderer = "1.62.1"
+# cadence. Bump this only after the corresponding compose-preview-xr release is publicly available
+# from Maven Central.
+xr-renderer = "2.0.0"
 # The published `xr-composite` native compositor the CLI provisions on demand and
 # the Gradle plugin reads from the shared cache. Deliberately a PIN, not the repo's
 # own version: the compositor's C++ changed 13 times in this repo's life while 226
