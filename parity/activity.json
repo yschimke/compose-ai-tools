@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T21:41:36.489Z",
+  "generatedAt": "2026-09-02T21:58:28.467Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e0d33b8cacbd91005079a04711693f1cfe91e9ce",
+        "subject": "feat(import): stub google-services.json for an upstream that requires one (#5017)",
+        "at": "2026-09-02T22:43:25+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e0e4f8b112cc1f97cc0e8e2d50f7277cb726a540",
+        "subject": "fix(discovery): declare, package and correct the component record (#5021)",
+        "at": "2026-09-02T22:41:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2f745ed9e509f139decb1ac6aeaa6b6113fe98ee",
+        "subject": "ci: let main CI runs finish instead of cancelling them on the next merge (#5020)",
+        "at": "2026-09-02T22:40:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "244a15c66edec8bfb2580be6173ed90619cb63f6",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.65.0 (#5018)",
+        "at": "2026-09-02T22:36:34+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "aa636c7dec67fbff25b1d8442ae0fe2a9fdfe679",
+        "subject": "feat(discovery): publish components.json beside previews.json (#5013)",
+        "at": "2026-09-02T22:35:42+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "780a397a5235ba0b647d120358a2bdb89fca667e",
         "subject": "fix(import): render a verified upstream with lenient verification (#5016)",
@@ -443,46 +483,6 @@
         "subject": "fix(deps): update rc-players (#4949)",
         "at": "2026-09-01T20:45:11+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3e28a2d19a47b2160ec769f8f6b2bc3644b07c8f",
-        "subject": "fix(preview): publish desktop phase pins (#4951)",
-        "at": "2026-09-01T20:44:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e7a2c01f15684ad5f37edc140d135a14e12baf08",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.61.2 (#4947)",
-        "at": "2026-09-01T11:28:08+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "93715d3ed6e893d318c00dea7d70b0cff8983827",
-        "subject": "chore(main): release 1.61.2 (#4943)",
-        "at": "2026-09-01T09:20:50+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8f3f755cc80551fc0001eb5347ccb05793ff6160",
-        "subject": "fix: act on missed review findings from the last 48h of PRs (#4946)",
-        "at": "2026-09-01T09:19:55+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8ae2f519472e19f5182529857256e60bb533b8af",
-        "subject": "fix(design-pages): enforce the published node cap (#4945)",
-        "at": "2026-09-01T07:28:41+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
