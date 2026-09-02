@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.62.1](https://github.com/yschimke/compose-ai-tools/compare/v1.62.0...v1.62.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **figma-svg:** preserve Material interaction states ([#4961](https://github.com/yschimke/compose-ai-tools/issues/4961)) ([23a2235](https://github.com/yschimke/compose-ai-tools/commit/23a2235dcf9aac02055282f563b7df700871ca53))
+
 ## [1.62.0](https://github.com/yschimke/compose-ai-tools/compare/v1.61.2...v1.62.0) (2026-09-01)
 
 
