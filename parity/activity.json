@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T20:50:49.323Z",
+  "generatedAt": "2026-09-02T20:59:14.214Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "51e531315485de8d4f99b6a0c561836ee77ea195",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.64.0 (#5003)",
+        "at": "2026-09-02T21:40:36+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4af4fe27adcdb25f8be84d7f32b1ea1ffadb7f94",
+        "subject": "test(figma-svg): run the export's interaction states on the forked-ripple material3 (#5002)",
+        "at": "2026-09-02T21:40:30+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "d7fd54907bc921a376e6a194171abb42f1536903",
         "subject": "fix(rc-compare): name the players a catalog's parity run left out (#5004)",
@@ -467,22 +483,6 @@
         "subject": "chore(main): release 1.61.0 (#4931)",
         "at": "2026-08-31T22:33:33+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4014d0980764921f3cdc34d2d7979f89b46b2e0e",
-        "subject": "feat(mcp): add remote UI builder tools (#4929)",
-        "at": "2026-08-31T22:31:37+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8ee669f0d3c8b831ab9ef635eb37ad50bad58293",
-        "subject": "feat(design-artifacts): defer editable SVG delivery (#4930)",
-        "at": "2026-08-31T22:30:38+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
