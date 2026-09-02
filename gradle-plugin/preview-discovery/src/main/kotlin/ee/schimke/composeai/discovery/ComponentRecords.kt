@@ -56,15 +56,29 @@ object ComponentRecords {
                 name = target.functionName,
                 origin = origin,
                 sourceFile = target.sourceFile,
+                receiver = target.receiver,
               ),
             parameters = target.parameters,
+            signatureKnown = target.signatureKnown,
           )
         }
       // One component, many previews: keep the richest signature seen. A target resolved through a
       // path that could not read metadata reports no parameters, and letting that overwrite a
       // populated signature would lose the API for everyone.
-      if (target.parameters.size > existing.parameters.size) {
+      //
+      // A read signature always beats an unread one, even when the read one has fewer parameters:
+      // "no arguments, and we checked" is strictly more information than "we could not look", and
+      // it is the only form a code generator is allowed to act on.
+      if (target.signatureKnown && !existing.signatureKnown) {
         existing.parameters = target.parameters
+        existing.receiver = target.receiver
+        existing.signatureKnown = true
+      } else if (
+        target.signatureKnown == existing.signatureKnown &&
+          target.parameters.size > existing.parameters.size
+      ) {
+        existing.parameters = target.parameters
+        existing.receiver = target.receiver
       }
       existing.bindings +=
         ComponentBinding(
@@ -128,7 +142,10 @@ object ComponentRecords {
     val canonicalId: String,
     val symbol: ComponentSymbol,
     var parameters: List<TargetParameter>,
+    var signatureKnown: Boolean = false,
   ) {
+    var receiver: String? = symbol.receiver
+
     var bindings: List<ComponentBinding> = emptyList()
 
     fun toRecord(): ComponentRecord {
@@ -139,10 +156,11 @@ object ComponentRecords {
         // first — a shared component such as `Card` is rendered by several previews and would
         // otherwise take an arbitrary, order-dependent id.
         componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted(),
-        symbol = symbol,
+        symbol = symbol.copy(receiver = receiver),
         parameters = parameters,
         slots = slotsOf(parameters),
         bindings = resolvedBindings,
+        signatureKnown = signatureKnown,
       )
     }
   }

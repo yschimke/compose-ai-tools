@@ -686,6 +686,38 @@ then m3-catalog's ambient helpers.
 **Phase 3 — print, and gate.** Snippet generation by projection; Tier 2 as a CI
 gate over the corpora; retire the cleaner for migrated catalogs.
 
+> **Started.** `ComponentSnippets.callSite` prints the *unbound* call site — the
+> component's own API, with required arguments filled from a placeholder table and
+> defaulted ones omitted — from `symbol` + `parameters` alone. It has no argument
+> binding yet (that is Phase 2's wire shape) and no compile gate yet (the second
+> half of this phase), so what it currently earns is narrower than "the snippet is
+> right": it is *this call site type-checks*. The discipline that makes even that
+> claim honest is that it **refuses** rather than guesses — see below.
+>
+> Three record fields exist only to make refusal possible, and are worth naming
+> because each closes a way the generator could otherwise emit plausible source
+> that does not build:
+>
+> * `ComponentRecord.signatureKnown` — `parameters` degrades an unreadable
+>   `@kotlin.Metadata` to an empty list, which reads exactly like a genuinely
+>   parameterless composable. Printing `Button()` from the first case is a
+>   compile error; printing it from the second is correct. Nothing else in the
+>   record tells them apart.
+> * `ComponentSymbol.receiver` — `AnimatedVisibility` is declared on `ColumnScope`,
+>   so it resolves only inside a `Column`. Without the receiver the generator
+>   cannot tell a top-level composable from a scoped one, and would print an
+>   unresolved reference for every scoped component in the corpus.
+> * the `…Kt`-facade evidence already in `symbol.callable` — an unwrapped callable
+>   is proof the symbol is a top-level function, and therefore importable and
+>   callable on its own. A member of a class needs an instance the generator has
+>   no way to obtain.
+>
+> What is still refused, and is the honest measure of how far this reaches: any
+> required parameter whose type has no unambiguous literal (`ImageVector`,
+> `Shape`, a domain type), any callback of arity two or more, any callback with a
+> non-`Unit` return. Widening the placeholder table is the obvious next increment
+> and should be paid for by the compile gate, not by confidence.
+
 **Phase 4 — the builder on the record.** Generate the capability catalog;
 generate `UiBuilderRenderer` / `CapabilityComposeCodeExporter` for the Wasm tier
 and CI-diff them; reflective invocation on the daemon tier; export through the

@@ -33,6 +33,20 @@ import org.objectweb.asm.Opcodes
  * to a parameterless call. Read leniently so a class compiled by a newer Kotlin than the bundled
  * `kotlin-metadata-jvm` still parses instead of throwing.
  */
+/**
+ * A composable's source signature as metadata recorded it: its value parameters and, when it is an
+ * extension, the receiver it is declared on.
+ *
+ * The receiver is what a printed call site cannot do without. `AnimatedVisibility` is declared on
+ * `ColumnScope`, so it resolves only inside a `Column` — printing it at file scope yields an
+ * unresolved reference. A generator that has no receiver field can only guess; one that has it can
+ * refuse.
+ */
+internal data class ComposableSignatureInfo(
+  val parameters: List<TargetParameter>,
+  val receiver: String?,
+)
+
 internal object ComposableSignature {
 
   /**
@@ -55,6 +69,38 @@ internal object ComposableSignature {
     } catch (_: Throwable) {
       // Metadata unreadable / newer format / API mismatch — degrade to no parameters.
       emptyList()
+    }
+  }
+
+  /**
+   * Everything a printed call site needs from [method]'s Kotlin metadata, or **null when the
+   * metadata could not be read**.
+   *
+   * The null is the point. [parametersOf] degrades an unreadable signature to an empty parameter
+   * list, which is indistinguishable from a genuinely parameterless composable — fine for
+   * scaffolding a call site a human completes, wrong for a generator that claims its output
+   * compiles. A consumer that must not guess reads this instead and refuses on null.
+   */
+  fun signatureOf(classInfo: ClassInfo, method: MethodInfo): ComposableSignatureInfo? {
+    return try {
+      val metadata = readClassMetadata(classInfo) ?: return null
+      val functions =
+        when (val parsed = KotlinClassMetadata.readLenient(metadata)) {
+          is KotlinClassMetadata.Class -> parsed.kmClass.functions
+          is KotlinClassMetadata.FileFacade -> parsed.kmPackage.functions
+          is KotlinClassMetadata.MultiFileClassPart -> parsed.kmPackage.functions
+          else -> return null
+        }
+      val fn = matchFunction(functions, method) ?: return null
+      ComposableSignatureInfo(
+        parameters = fn.valueParameters.map { it.toTargetParameter() },
+        receiver =
+          fn.receiverParameterType?.let { receiver ->
+            (receiver.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.')
+          },
+      )
+    } catch (_: Throwable) {
+      null
     }
   }
 
