@@ -3441,39 +3441,6 @@
       "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
-    },
-    {
-      "annotatedBasename": "NowPlayingPanelPreview_Panel_Content-bbdf56ea.a11y.png",
-      "cleanBasename": "NowPlayingPanelPreview_Panel_Content-bbdf56ea.png",
-      "findings": [],
-      "functionName": "NowPlayingPanelPreview",
-      "module": "xr-spatial",
-      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.NowPlayingPanelPreview_Panel \u00b7 Content",
-      "rendersDir": "xr-spatial",
-      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
-      "variant": "spec:width=1280,height=720,dpi=160"
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "OrbiterControlsPreview_Orbiter_TopControls-a7f9ee4b.png",
-      "findings": [],
-      "functionName": "OrbiterControlsPreview",
-      "module": "xr-spatial",
-      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.OrbiterControlsPreview_Orbiter \u00b7 TopControls",
-      "rendersDir": "xr-spatial",
-      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
-      "variant": "spec:width=1280,height=720,dpi=160"
-    },
-    {
-      "annotatedBasename": "SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.a11y.png",
-      "cleanBasename": "SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.png",
-      "findings": [],
-      "functionName": "SpatialElevationPreview",
-      "module": "xr-spatial",
-      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.SpatialElevationPreview_SpatialElevation \u00b7 Panel",
-      "rendersDir": "xr-spatial",
-      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
-      "variant": "spec:width=1280,height=720,dpi=160"
     }
   ]
 }
