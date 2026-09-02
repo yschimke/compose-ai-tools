@@ -7,6 +7,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -159,6 +160,74 @@ class OverrideIntegrationTest {
       } else {
         System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previousPreviewsJson)
       }
+    }
+  }
+
+  /** The Android platform-ripple half of #4639's cross-backend acceptance criteria. */
+  @Test
+  fun materialButtonInteractionVariantsExportTheStateTheyName() {
+    val outputDir = tempFolder.newFolder("renders-material-button-interactions")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val baseId = "MaterialButton_Light"
+    val focusedId = "MaterialButton_Light_VARIANT_focused"
+    val pressedId = "MaterialButton_Light_VARIANT_pressed"
+    fun entry(id: String, interaction: OverrideVariantInteraction? = null) =
+      PreviewManifestEntry(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "MaterialButtonInteractionState",
+        widthPx = 96,
+        heightPx = 48,
+        density = 1.0f,
+        outputBaseName = id,
+        overrides =
+          interaction?.let { OverrideVariantSpec(name = it.name.lowercase(), interaction = it) },
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                entry(baseId),
+                entry(focusedId, OverrideVariantInteraction.Focused),
+                entry(pressedId, OverrideVariantInteraction.Pressed),
+              )
+          )
+      )
+    host.start()
+    try {
+      for (id in listOf(baseId, focusedId, pressedId)) {
+        host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
+      }
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      fun svg(id: String) = dataDir.resolve(id).resolve("compose-figma.svg").readText()
+      fun png(id: String) = outputDir.resolve("$id.png").readBytes()
+
+      assertNotEquals(
+        "focused Material button PNG must not stay resting",
+        png(baseId).contentHashCode(),
+        png(focusedId).contentHashCode(),
+      )
+      assertNotEquals(
+        "pressed Material button PNG must not stay resting",
+        png(baseId).contentHashCode(),
+        png(pressedId).contentHashCode(),
+      )
+      assertTrue("focused SVG keeps the editable base fill", svg(focusedId).contains("#6750A4"))
+      assertTrue(
+        "focused SVG emits Android's inherited state layer above content",
+        svg(focusedId).contains("id=\"Material State Layer\""),
+      )
+      assertTrue(
+        "pressed SVG emits Android's platform ripple above content",
+        svg(pressedId).contains("id=\"Material Press Ripple\""),
+      )
+      assertNotEquals("focused SVG must not stay resting", svg(baseId), svg(focusedId))
+      assertNotEquals("pressed SVG must not stay resting", svg(baseId), svg(pressedId))
+    } finally {
+      host.shutdown()
     }
   }
 

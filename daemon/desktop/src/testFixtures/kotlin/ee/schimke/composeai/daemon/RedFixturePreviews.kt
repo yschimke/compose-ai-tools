@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
@@ -1752,6 +1754,31 @@ fun MaterialButtonInteractionState() {
   MaterialTheme(colorScheme = lightColorScheme()) {
     Button(onClick = {}, modifier = Modifier.fillMaxSize()) {
       Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.onPrimary))
+    }
+  }
+}
+
+/**
+ * An unbounded, tokenless indication above coloured content and a gradient ancestor. This pins the
+ * indication's geometry and draw order without relying on a Material component container fill.
+ */
+@Composable
+fun CustomIndicationInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Box(
+      modifier =
+        Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Red, Color.Blue))),
+      contentAlignment = Alignment.Center,
+    ) {
+      Box(
+        modifier =
+          Modifier.size(width = 32.dp, height = 24.dp).clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = ripple(bounded = false, radius = 20.dp),
+          ) {}
+      ) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Green))
+      }
     }
   }
 }
