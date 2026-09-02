@@ -256,6 +256,36 @@ test("the reference picker offers every lane the run produced, and only those", 
   );
 });
 
+test("the page names the players the run did not include", () => {
+  // #4998: a wall three columns wide reads as a page that lost its players unless it says which
+  // lanes the run skipped. The note is a caveat, so a run that covered everything carries none.
+  const absent = (html) => [
+    ...(html.match(/<p class="lede absent">[\s\S]*?<\/p>/) ?? [""])[0].matchAll(
+      /<strong>([^<]+)<\/strong>/g,
+    ),
+  ].map((m) => m[1]);
+
+  assert.deepEqual(absent(renderRcCompareHtml(model)), [
+    "AndroidX Embedded · vendored Android",
+    "AndroidX Embedded · androidx.dev",
+    "RC · cmp-jvm player",
+    "RC · cmp-wasm player",
+  ]);
+  // The shape wear-m3-catalog publishes: baked + JS + CMP/Wasm, so the two Android players and the
+  // desktop one are what the reader is missing.
+  assert.deepEqual(absent(renderRcCompareHtml(withCmpWasm(model))), [
+    "AndroidX Embedded · vendored Android",
+    "AndroidX Embedded · androidx.dev",
+    "RC · cmp-jvm player",
+  ]);
+  assert.deepEqual(
+    absent(
+      renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withAndroidxEmbedded(withEmbedded(model))))),
+    ),
+    [],
+  );
+});
+
 test("the inlined row model carries each lane's render, build-time diff and score", () => {
   const html = renderRcCompareHtml(withEmbedded(model));
   const client = clientModel(html);
@@ -281,8 +311,11 @@ test("a model with no embedded results renders the JS-only page — no empty emb
   const html = renderRcCompareHtml(model);
   assert.equal(hasEmbeddedLane(model.rows), false);
   assert.equal(hasAndroidxEmbeddedLane(model.rows), false);
-  assert.doesNotMatch(html, /AndroidX Embedded · vendored Android/);
-  assert.doesNotMatch(html, /AndroidX Embedded · androidx.dev/);
+  // Absent from the TABLE, not from the page: since #4998 an absent player is named once in the
+  // lede's "Not in this run" note, which is the whole point — a missing column now says so.
+  const table = html.slice(html.indexOf('<div class="wrap">'));
+  assert.doesNotMatch(table, /AndroidX Embedded · vendored Android/);
+  assert.doesNotMatch(table, /AndroidX Embedded · androidx.dev/);
   // exactly the baked + JS columns
   assert.match(
     html,

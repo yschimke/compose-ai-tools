@@ -14,11 +14,17 @@
  * The fixture deliberately covers the cases that make the page's rules visible at a glance: a close
  * match, a badly diverging one (every player, scored independently), a document only some players
  * could decode, and a **blank baked reference** — the row that must read `no reference` rather than
- * a perfect score. It carries **every** player lane, so the page's default all-players wall and its
- * `Diff against` picker (which only lists lanes the run produced) are both exercised.
+ * a perfect score. It carries **every** player lane the driver writes, so the page's default
+ * all-players wall and its `Diff against` picker (which only lists lanes the run produced) are both
+ * exercised; `--omit-lanes` narrows it to the partial-run case.
  *
  * Usage:
  *   node rc-compare-fixture.mjs --out <dir>      # writes <dir>/rc-compare.html + fixture images
+ *   node rc-compare-fixture.mjs --out <dir> --omit-lanes cmp-jvm,embedded
+ *
+ * `--omit-lanes` drops those players from the model, which is how the page's **partial run** shape
+ * gets a screenshot: a catalog opts each optional lane into its publishing workflow, so most walls
+ * are narrower than this fixture, and the "Not in this run" note is only emitted for one of those.
  *
  * Open the emitted `rc-compare.html`, or screenshot it (the design-artifacts driver already ships
  * Playwright) to attach before/after evidence to a PR that touches the page.
@@ -37,8 +43,52 @@ function arg(name, def) {
 }
 const OUT = arg("out");
 if (!OUT) {
-  console.error("usage: rc-compare-fixture.mjs --out <dir>");
+  console.error("usage: rc-compare-fixture.mjs --out <dir> [--omit-lanes <ids>]");
   process.exit(2);
+}
+
+/**
+ * The row fields each optional player lane is detected by. Deleting a lane's fields is what makes
+ * the emitter treat it as a lane the run never included — the same state a catalog that never
+ * opted the lane in publishes.
+ */
+const OMITTABLE = {
+  embedded: [
+    "embedded",
+    "embeddedDiff",
+    "embeddedRendered",
+    "embeddedMismatchPct",
+    "embeddedMismatchPx",
+    "embeddedNote",
+  ],
+  "cmp-jvm": [
+    "embeddedJvm",
+    "embeddedJvmDiff",
+    "embeddedJvmRendered",
+    "embeddedJvmMismatchPct",
+    "embeddedJvmMismatchPx",
+    "embeddedJvmNote",
+  ],
+  "cmp-wasm": [
+    "cmpWasm",
+    "cmpWasmDiff",
+    "cmpWasmRendered",
+    "cmpWasmMismatchPct",
+    "cmpWasmMismatchPx",
+    "cmpWasmNote",
+  ],
+};
+const OMIT = (arg("omit-lanes", "") ?? "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+for (const id of OMIT) {
+  if (!(id in OMITTABLE)) {
+    console.error(
+      `rc-compare-fixture: unknown lane '${id}' — omittable lanes are ${Object.keys(OMITTABLE).join(", ")}`,
+    );
+    process.exit(2);
+  }
 }
 
 const LANES = [
@@ -228,9 +278,22 @@ const rows = [
   },
 ];
 
+// The images for an omitted lane are still written — the model just stops pointing at them, which
+// is cheaper than threading the omission through every `write()` above and keeps a re-run with a
+// different `--omit-lanes` from needing a clean output directory.
+const published = rows.map((row) => {
+  const trimmed = { ...row };
+  for (const id of OMIT) for (const field of OMITTABLE[id]) delete trimmed[field];
+  return trimmed;
+});
+
 const html = renderRcCompareHtml(
-  { system: "fixture", title: "rc-compare fixture", rows },
-  { generatedNote: `${rows.length} fixture preview(s) · synthetic model, no browser render` },
+  { system: "fixture", title: "rc-compare fixture", rows: published },
+  {
+    generatedNote:
+      `${published.length} fixture preview(s) · synthetic model, no browser render` +
+      (OMIT.length === 0 ? "" : ` · lanes omitted: ${OMIT.join(", ")}`),
+  },
 );
 fs.writeFileSync(path.join(OUT, "rc-compare.html"), html);
 console.log(`rc-compare-fixture: wrote ${path.join(OUT, "rc-compare.html")} (${rows.length} rows)`);

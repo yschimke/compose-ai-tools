@@ -688,6 +688,18 @@ export function renderRcCompareHtml(model, opts = {}) {
   const withEmbeddedJvm = hasEmbeddedJvmLane(allRows);
   const withCmpWasm = hasCmpWasmLane(allRows);
   const lanes = activeLanes(allRows);
+  // The players this page does NOT show, named out loud rather than left as an absence. A reader
+  // who knows the vocabulary counts the columns and asks where the rest went (#4998); "that lane
+  // wasn't part of this run" is an answer no arrangement of the columns that ARE here can give,
+  // and a column of empty cells per absent player would spend the width saying nothing.
+  const absentLanes = LANES.filter((lane) => !lanes.includes(lane));
+  const absentNote =
+    absentLanes.length === 0
+      ? ""
+      : `<p class="lede absent">Not in this run: ${absentLanes
+          .map((lane) => `<strong>${esc(lane.label)}</strong>`)
+          .join(", ")}. A player earns a column only where the run recorded a verdict for it, so ` +
+        `these are absent rather than empty — the publishing workflow opts each lane in per catalog.</p>`;
   // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually shows.
   const laneNames = [
     "JS",
@@ -786,6 +798,9 @@ ${rows.map((r, i) => rowHtml(r, lanes, i)).join("\n")}
   .toolbar select { font:inherit; padding:3px 6px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); }
   .refstatus { color:var(--muted); font-size:12px; }
   .lede { padding:12px 20px; color:var(--muted); max-width:70ch; }
+  /* The players this run did not include, set right under the lede that describes the ones it did. */
+  .lede.absent { padding-top:0; }
+  .lede.absent strong { color:var(--fg); white-space:nowrap; }
   .wrap { overflow-x:auto; padding:0 20px 40px; }
   table.grid { border-collapse:collapse; width:100%; min-width:720px; }
   /* Not sticky: the .wrap overflow-x makes it the scrollport these cells would stick to, and it
@@ -865,6 +880,7 @@ players directly. Rows sort worst-match-first${
 <strong>fully transparent</strong> is shown but not scored against it: with nothing in the reference, a
 player that draws nothing would score a perfect 0% — so those rows read <code>no reference</code> and
 stay out of the means.</p>
+${absentNote}
 <div class="wrap">
 ${body}
 </div>
