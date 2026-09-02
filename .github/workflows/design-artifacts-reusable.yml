@@ -129,10 +129,10 @@ on:
         type: boolean
         default: false
       defer-figma-svg:
-        description: 'Generate pure editable compose/figma-svg vectors on demand through the trusted live daemon instead of publishing one static SVG per rendered variant. Hybrid vectors with raster crops remain static. The capture still produces transient vectors for catalog validation, then strips them from the executable delivery bundle. Requires publish-live-bundle.'
+        description: 'Generate pure editable compose/figma-svg vectors on demand through the trusted live daemon instead of publishing one static SVG per rendered variant. Hybrid vectors with raster crops remain static. The capture still produces transient vectors for catalog validation, then strips them from the executable delivery bundle. DEFAULTS ON: publishing one static SVG per variant is the second-largest thing a delivery branch carries, and every one of them is rewritten whenever an otherwise identical render packs in a different order. Meaningless without a daemon to regenerate them, so it is ignored (with a notice) when publish-live-bundle is false rather than failing the run — set it false to keep publishing static vectors from a live catalog.'
         required: false
         type: boolean
-        default: false
+        default: true
       embed-deps:
         description: 'Pass --embed-deps to bundle pack so reachable third-party jars are carried inside the bundle under libs/ instead of referenced as Maven coordinates. Needed with publish-live-bundle when the module depends on artifacts the serve box cannot resolve from Maven Central (e.g. JitPack-only deps): without it the live daemon fails to build its classpath and the catalog silently falls back to baked PNGs (livebundle-unavailable). Larger bundle; leave off when every dep is on Central.'
         required: false
@@ -1300,9 +1300,12 @@ jobs:
             echo "::error title=modules input::modules supports only 'all'; use module for one Gradle path."
             exit 1
           fi
+          # defer-figma-svg defaults ON, so a baked-only catalog reaches here with it set without
+          # having asked for it. Deferring needs a daemon to regenerate the vector on request, so
+          # for those catalogs it is simply inapplicable — say so and carry on. Failing here would
+          # break every caller that never opted in.
           if [ "$INPUT_DEFER_FIGMA_SVG" = "true" ] && [ "$INPUT_PUBLISH_LIVE_BUNDLE" != "true" ]; then
-            echo "::error title=defer-figma-svg::defer-figma-svg requires publish-live-bundle: true; otherwise no trusted daemon can produce the vector on request."
-            exit 1
+            echo "::notice title=defer-figma-svg::ignored — it needs publish-live-bundle: true so a trusted daemon can produce the vector on request. Static vectors will be published as before."
           fi
 
       # Repository-wide publication keeps one executable bundle per Gradle module. Discover the
@@ -1859,7 +1862,12 @@ jobs:
           if [ "$INPUT_ALLOW_INCOMPLETE" = "true" ]; then incomplete=(--allow-incomplete); fi
           live=()
           if [ "$INPUT_PUBLISH_LIVE_BUNDLE" = "true" ]; then live=(--publish-live-bundle); fi
-          if [ "$INPUT_DEFER_FIGMA_SVG" = "true" ]; then live+=(--defer-figma-svg); fi
+          # Gated on the live bundle as well: the driver rejects --defer-figma-svg without
+          # --publish-live-bundle, and with the default now ON that would sink every baked-only
+          # catalog. Matches the notice in "Validate module selector" above.
+          if [ "$INPUT_DEFER_FIGMA_SVG" = "true" ] && [ "$INPUT_PUBLISH_LIVE_BUNDLE" = "true" ]; then
+            live+=(--defer-figma-svg)
+          fi
           if [ "$INPUT_EXTRA_SPLIT_MODE" = "full" ]; then
             # The driver checks --extra-renders / --publish-live-bundle itself; the split flag is
             # only knowable here. Without it the extra module's stickers would carry previewIds
@@ -1970,7 +1978,7 @@ jobs:
       # data product on request, so neither the monolith nor its addressable children need to carry
       # thousands of capture-time copies.
       - name: Defer editable Figma SVGs to the live daemon
-        if: ${{ inputs.defer-figma-svg }}
+        if: ${{ inputs.defer-figma-svg && inputs.publish-live-bundle }}
         run: |
           set -euo pipefail
           node compose-ai-tools/scripts/design-artifacts/strip-published-figma-svg.mjs \
@@ -1983,7 +1991,7 @@ jobs:
       # published output is almost entirely repeated classpath. Re-measure against what was actually
       # published, before the gate reads it.
       - name: Re-measure the carriage against the published bundles
-        if: ${{ inputs.split-per-preview && inputs.defer-figma-svg }}
+        if: ${{ inputs.split-per-preview && inputs.defer-figma-svg && inputs.publish-live-bundle }}
         run: |
           set -euo pipefail
           node compose-ai-tools/scripts/design-artifacts/recompute-carriage-report.mjs \
