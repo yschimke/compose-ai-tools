@@ -341,6 +341,11 @@ on:
         required: false
         type: string
         default: ''
+      exclude-preview-ids:
+        description: 'IMPORT MODE ONLY. Extra comma-separated preview-id glob patterns to leave unrendered, appended to the ones this workflow always applies. For the preview an import cannot render standalone — one wanting a CompositionLocal, a Hilt entry point or a process-wide singleton that only the host application installs — where the alternative is failing the whole run over a handful of them. Name the ids rather than reaching for allow-incomplete: this leaves every OTHER render failure fatal, so a real regression still stops the run.'
+        required: false
+        type: string
+        default: ''
       commit-user-name:
         description: 'Author/committer name for the generated delivery-branch commit.'
         required: false
@@ -618,7 +623,16 @@ env:
   # with the job; a developer's working tree is never rewritten because we noticed they lock.
   # A build with no locking resolves this to a no-op.
   COMPOSE_PREVIEW_WRITE_LOCKS: ${{ inputs.upstream-repository != '' && '1' || '' }}
-  IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && 'activity__*,apptour__*' || '' }}
+  # The two patterns this workflow always applies in import mode, plus whatever the import itself
+  # named. The always-on pair drops the synthetic app-launching previews; the caller's half is for
+  # the preview that cannot render outside its host application — a missing CompositionLocal, a Hilt
+  # entry point, a singleton already installed — which without this fails the ENTIRE run for want of
+  # one render out of fifty-six (bitwarden's BitwardenBasicDialog_preview was exactly that).
+  #
+  # Appended rather than replacing, so an import that names its own ids does not silently lose the
+  # app-launching guard. The comma is the delimiter both consumers below already split on, and an
+  # empty caller input leaves the value byte-identical to what it was before this existed.
+  IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && (inputs.exclude-preview-ids != '' && format('activity__*,apptour__*,{0}', inputs.exclude-preview-ids) || 'activity__*,apptour__*') || '' }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
