@@ -232,16 +232,22 @@ convention `previews/<id>.overrides.json` already uses).
 
 ```jsonc
 {
-  "componentId": "Button/Filled",              // catalog identity, when published
+  "schemaVersion": 1,                          // see §3.1 — a published data product needs one
+  "componentId": "Button/Filled",              // catalog identity, when published — may be absent
+  "canonicalId": "samples:cmp/androidx.compose.material3.Button(String,Boolean)",
   "symbol": {
-    // Two names, deliberately. `jvmOwner` is the reflection handle — for a top-level
-    // function that is the synthetic file facade — and `callable` is the source-level
-    // FQN that generated Kotlin imports. Deriving `code.imports` from the facade would
-    // print `import androidx.compose.material3.ButtonKt`, which does not resolve.
+    // Three names, deliberately. `jvmOwner` is the reflection handle — for a top-level
+    // function that is the synthetic file facade — `callable` is the source-level FQN
+    // that generated Kotlin imports, and `descriptor` is what actually disambiguates.
+    // Deriving `code.imports` from the facade would print
+    // `import androidx.compose.material3.ButtonKt`, which does not resolve.
     "jvmOwner": "androidx.compose.material3.ButtonKt",
     "callable": "androidx.compose.material3.Button",
     "name": "Button",
-    "sourceFile": null,                        // null ⇒ library, not project-local
+    "jvmName": "Button",                       // differs from `name` under value-class mangling
+    "descriptor": "(Lkotlin/jvm/functions/Function0;…)V",
+    "origin": "library",                       // "project" | "library" | "generated"
+    "sourceFile": null,                        // availability only — NOT a proxy for origin
     "library": "androidx.compose.material3:material3:1.5.0",
     "docs": "sources-jar"                      // where kdoc/defaults below came from; see §3
   },
@@ -267,12 +273,43 @@ convention `previews/<id>.overrides.json` already uses).
     { "previewId": "…FilledButton", "arguments": {
         "onClick": {"kind":"literal","source":"{}"},
         "enabled": {"kind":"parameter","name":"enabled"},
-        "content": {"kind":"lambda","source":"{ Text(label) }"} },
+        // A raw source fragment is not a standalone call site: `label` here is the
+        // WRAPPER's parameter, neither a target parameter nor a fixture, so printing
+        // this verbatim emits an unresolved identifier. Every binding therefore
+        // records the free variables its expression closes over, and generation
+        // either substitutes their selected values or declares them above the call.
+        "content": {"kind":"lambda","source":"{ Text(label) }",
+                    "freeVariables":[{"name":"label","from":"previewParameter"}]} },
       "renders": ["…FilledButton_Light", "…FilledButton_Dark"] } ],
   "fixtures": [ ],                               // referenced non-literal values + their source
   "conformance": { "tier": 3, "provenAt": "…", "checks": ["compiles","renders","roundTrips"] }
 }
 ```
+
+### 3.1 Identity, versioning and origin — three things the first draft left implicit
+
+* **`schemaVersion` is mandatory.** `components.json` is meant to persist in bundles and
+  be read by the browser, the builder and MCP clients, so an old bundle and a detached
+  consumer must be able to tell an additive record from an incompatible future one.
+  `docs/API_STABILITY.md` records the same lesson for `previews.json`. Evolution rules
+  travel with it: additive fields bump nothing, a removal or a changed meaning bumps the
+  major, and a reader refuses a major it does not know rather than guessing.
+* **`componentId` cannot be the identity.** It comes from `@CatalogComponent`, which an
+  ordinary application preview does not carry — so it is absent for exactly the
+  typical-app records Phase 1 promises to publish, and several null ids would collide as
+  a key. The record therefore carries a `canonicalId` (module + callable + descriptor)
+  that is always present, with the catalog id as an optional alias. Bindings,
+  per-component sidecars, MCP lookups and persisted builder references all address the
+  canonical one.
+* **A name is not a reflection handle.** Overloads need a descriptor, and a composable
+  with value-class parameters gets a mangled JVM method name that differs from its Kotlin
+  callable name. This repository already knows it: `findDefaultedComposableMethod`'s KDoc
+  in `:renderer-android` explains that a manifest entry carries "only the class and the
+  function NAME — discovery records no JVM descriptor", refuses to guess between two
+  fully-defaulted overloads, and names the fix as "threading the descriptor from
+  discovery through the manifest". The record is where that lands. (The desktop renderer
+  had the narrower version of the same bug — a defaulted preview it could not resolve at
+  all — fixed in #4993.)
 
 **Where each field comes from**, most-trusted first:
 
@@ -280,6 +317,29 @@ convention `previews/<id>.overrides.json` already uses).
    (`ComposableSignature` → `TargetParameter`). Gives parameter names, types,
    *whether* a default exists, `@Composable`-lambda-ness, and works for **library**
    symbols, which is what m3-catalog previews actually demonstrate.
+
+   **But nothing currently *names* a library target, and that blocks the primary
+   corpus.** Reading a signature presupposes knowing which symbol to read.
+   `PreviewTargetInference` cannot supply it for a library component: it drops every
+   candidate whose owner matches `WRAPPER_FQN_PREFIXES` — which lists
+   `androidx.compose.material3.` explicitly, alongside `material.`, `foundation.`,
+   `ui.`, `animation.` and the Wear equivalents — and then keeps only owners that are
+   `in projectClassFqns`. Both filters are right for the job that inference was built
+   for ("which of *my* composables does this preview render?") and both make
+   `androidx.compose.material3.Button` unreachable, which is exactly the component
+   m3-catalog's 59 entries exist to show.
+
+   `:usage-source-psi` cannot close it either: it is deliberately parse-only, so it
+   sees the call `Button(...)` as a name and cannot resolve it to a coordinate.
+
+   So Phase 1 needs a **second, explicitly dependency-facing inference path** that
+   keeps the bytecode invocation's exact owner and descriptor rather than filtering it
+   out — a different question from the existing one, and one that should stay a
+   separate signal so a consumer can tell "this preview renders my `HomeScreen`" from
+   "this sticker demonstrates the library's `Button`". Until it exists, the record and
+   the API panel cover project-local targets (Confetti's shape) and **not** the
+   library-wrapping catalogs, which is the opposite of what the phase order above
+   implies.
 2. **A parse of the source** — [`:usage-source-psi`](../../usage-source-psi) already
    exists, already parses Kotlin with no classpath and no resolution at ~3 ms/file,
    and already runs inside an isolated classloader off the CLI's classpath. It
@@ -400,9 +460,20 @@ standing unknown. Tier 3 can require the delta to be empty or explicitly waived.
   args and `ComposableMethod` fills every one from Kotlin's synthetic `$default`
   bridge. So a fully-defaulted knob preview is discovered and rendered *today*, with
   no change at all. That is the floor this format stands on.
-* **Reflective `@Composable` lambda arguments already work.**
+* **Reflective `@Composable` lambda arguments work — for the *unscoped* shape only.**
   `InvokeWithOptionalWrapper` hands the preview body to a wrapper as exactly such an
-  argument, which is what makes builder slot-filling feasible later.
+  argument, which is what makes builder slot-filling feasible at all. It proves less than
+  the earlier draft claimed: that lambda is a zero-receiver `@Composable () -> Unit`,
+  while the record's primary slot shape is `@Composable RowScope.() -> Unit` — a
+  different compiled arity that must be handed the scope instance. A receiver-scoped slot
+  therefore needs a receiver-aware adapter (or a generated invocation path), with its own
+  conformance coverage, rather than being assumed to ride the wrapper mechanism.
+
+  Treat the whole reflective seam as *proven only where a test exercises it*. #4993 is the
+  cautionary case: the plan asserted "nothing new is needed at the render seam", and
+  building it surfaced two real defects — a defaulted preview the desktop renderer could
+  not resolve, and `ComposableMethod.invoke` forwarding a null into a primitive parameter
+  — neither visible from reading the code.
 * **But nothing seeds a *subset* of arguments.** `PreviewParameterSupport.resolve`
   returns `emptyList()` for a non-`@PreviewParameter` preview — it invokes the
   all-defaults path, it does not bind chosen values. Seeding `enabled = false` while
@@ -477,13 +548,28 @@ what was invoked.
   renderer cannot reflectively invoke an arbitrary jar, so it needs a compiled-in
   component set. The answer is not to keep hand-writing `UiBuilderRenderer.kt`: it
   is to **generate** that `when` from the record, check it in, and have CI fail on
-  a diff. Same for `CapabilityComposeCodeExporter.kt`. Two tiers — daemon-backed
-  (any opted-in catalog, authoritative) and browser-only (the generated set) —
-  with the record as the single input to both.
+  a diff. Same for the exporters. Two tiers — daemon-backed (any opted-in catalog,
+  authoritative) and browser-only (the generated set) — with the record as the
+  single input to both.
+
+  **Membership of the browser set is itself a gate.** An Android- or JVM-only catalog
+  can pass every Tier 3 check on the daemon and still break the Wasm build the moment
+  its symbols are generated into common source, because they have no Wasm actual. So a
+  record enters the generated set only after a Wasm compile/conformance check; anything
+  that fails stays daemon-only rather than failing the browser build.
 * **Export goes through the oracle.** A Compose export is not returned until it has
   been compiled and rendered and pixel-compared against the builder's own render
-  of that revision. `ALMOST_COMPILING_PROJECTION` is deleted rather than reworded:
-  either the round trip passes, or the export returns the failure.
+  of that revision: either the round trip passes, or the export returns the failure.
+
+  That does **not** retire `ALMOST_COMPILING_PROJECTION`'s warning wholesale, and the
+  earlier draft was wrong to say it deletes it. A compile plus a single-frame pixel
+  comparison passes happily with `onClick = {}` — the export can be visually perfect and
+  behaviourally inert, which is precisely what the existing diagnostic warns about
+  ("project-specific state and event adapters may require edits"). So either model and
+  test interactions and state as part of the oracle, or keep a diagnostic that states the
+  narrower guarantee the oracle actually earns: *this compiles and its first frame
+  matches*. Replacing a vague warning with a precise one is the improvement; removing it
+  is an overstatement.
 * **Remote Compose keeps its own lane.** `remote-compose/document` is a nested
   *player*, not a composable, and its document-authored slot names are a different
   model. Do not force it into the component record: keep it as an explicitly
@@ -580,9 +666,13 @@ the target's (§4). Every later
 phase is sized by these numbers, and Phase 0 can be wrong cheaply.
 
 **Phase 1 — the record.** `components.json` as a data product (bundle sidecar +
-manifest pointer), built from metadata + PSI. Preview browser API panel.
-Delivers "detect components from previews", "learn the API", "explain the API" on
-its own, for every catalog *and* for typical apps, with no source change anywhere.
+manifest pointer, `schemaVersion` from the start), built from metadata + PSI. Preview
+browser API panel. Delivers "detect components from previews", "learn the API",
+"explain the API" with no source change anywhere — but **for project-local targets
+first**. The library-wrapping catalogs (m3-catalog, wear-m3) need the
+dependency-facing inference path of §3 before their components can be named at all, so
+that is Phase 1's first piece of work rather than an afterthought: the corpus the plan
+leans on hardest is the one the existing inference deliberately filters out.
 
 **Phase 2 — parameters as the override format.** The parameter convention; the
 argument wire shape; the `$default`-mask invoker merging provider values, named
