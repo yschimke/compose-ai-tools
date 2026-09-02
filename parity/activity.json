@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T19:07:22.586Z",
+  "generatedAt": "2026-09-02T19:18:13.389Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "bcacbf96a363af8250dcf65799252f2943fb1898",
+        "subject": "fix(import): render a locked upstream with --write-locks (#4992)",
+        "at": "2026-09-02T20:09:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a37a39f101a7011e4dde5dba8e6f9387f3295a82",
+        "subject": "fix(import): keep the trust step out of the pinned driver checkout (#4991)",
+        "at": "2026-09-02T20:03:47+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "a3bbff4730a204e01d3af3bdb44c6d53a6ed5e40",
         "subject": "fix(import): trust the preview plugin in the upstream checkout, not lenient verification (#4990)",
@@ -467,22 +483,6 @@
         "subject": "fix(deps): update dependency @design-parity/catalog-export to v1 (#4926)",
         "at": "2026-08-31T21:48:12+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0f28884eb27aaf10cc1a562763a406a396719a30",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.60.3 (#4922)",
-        "at": "2026-08-31T21:34:20+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5793a199b3ab67195894783614a690cfc63522f8",
-        "subject": "chore(main): release 1.60.3 (#4921)",
-        "at": "2026-08-31T20:59:15+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
