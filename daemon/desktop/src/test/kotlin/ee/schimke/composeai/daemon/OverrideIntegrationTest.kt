@@ -461,6 +461,40 @@ class OverrideIntegrationTest {
   }
 
   @Test
+  fun outerDrawWithContentForegroundRemainsAboveIndication() {
+    val svg =
+      renderFocusedSvg(
+        "ForegroundIndication",
+        "ForegroundIndicationInteractionState",
+        96,
+        48,
+      )
+    assertTrue("focused state layer must be exported", svg.contains("Material State Layer"))
+    assertTrue("outer foreground must be exported", svg.contains("Foreground"))
+    assertTrue(
+      "outer drawWithContent foreground must paint after the inner indication",
+      svg.lastIndexOf("Foreground") > svg.lastIndexOf("Material State Layer"),
+    )
+  }
+
+  @Test
+  fun innerDrawWithContentForegroundRemainsBelowIndication() {
+    val svg =
+      renderFocusedSvg(
+        "InnerForegroundIndication",
+        "InnerForegroundIndicationInteractionState",
+        96,
+        48,
+      )
+    assertTrue("focused state layer must be exported", svg.contains("Material State Layer"))
+    assertTrue("inner foreground must be exported", svg.contains("Foreground"))
+    assertTrue(
+      "outer indication must paint after the inner drawWithContent foreground",
+      svg.lastIndexOf("Material State Layer") > svg.lastIndexOf("Foreground"),
+    )
+  }
+
+  @Test
   fun nonUniformScaleTransformsRippleIntoAnEllipse() {
     val svg = renderFocusedSvg("ScaledIndication", "ScaledIndicationInteractionState", 128, 64)
     val stateLayer = svg.substringAfter("id=\"Material State Layer\"").substringBefore("</g>")

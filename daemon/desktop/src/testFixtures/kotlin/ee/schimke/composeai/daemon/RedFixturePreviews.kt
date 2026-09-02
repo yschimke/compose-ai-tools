@@ -54,6 +54,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
@@ -1790,6 +1791,46 @@ fun VectorIndicationInteractionState() {
   MaterialTheme(colorScheme = lightColorScheme()) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
       Canvas(modifier = Modifier.size(32.dp).clickable {}) { drawRect(Color.Green) }
+    }
+  }
+}
+
+/** An outer foreground must unwind above the clickable's indication, not below it. */
+@Composable
+fun ForegroundIndicationInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Canvas(
+        modifier =
+          Modifier.size(32.dp)
+            .drawWithContent {
+              drawContent()
+              drawRect(Color.Blue.copy(alpha = 0.01f))
+            }
+            .clickable {}
+      ) {
+        drawRect(Color.Green)
+      }
+    }
+  }
+}
+
+/** The inverse chain: a clickable outside the foreground must draw its indication last. */
+@Composable
+fun InnerForegroundIndicationInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Canvas(
+        modifier =
+          Modifier.size(32.dp)
+            .clickable {}
+            .drawWithContent {
+              drawContent()
+              drawRect(Color.Blue.copy(alpha = 0.01f))
+            }
+      ) {
+        drawRect(Color.Green)
+      }
     }
   }
 }
