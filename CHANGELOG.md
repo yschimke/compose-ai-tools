@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.66.1](https://github.com/yschimke/compose-ai-tools/compare/v1.66.0...v1.66.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **import:** turn Isolated Projects off for the throwaway render ([#5022](https://github.com/yschimke/compose-ai-tools/issues/5022)) ([37db480](https://github.com/yschimke/compose-ai-tools/commit/37db480edc41cd60850623b95f37d5cd5f4bfe62))
+
 ## [1.66.0](https://github.com/yschimke/compose-ai-tools/compare/v1.65.0...v1.66.0) (2026-09-02)
 
 
