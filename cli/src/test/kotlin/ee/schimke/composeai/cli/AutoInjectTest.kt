@@ -806,7 +806,7 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "val composeAiPreviewBuildscriptClasspathIsLocked =\n        java.io.File(projectDir, \"buildscript-gradle.lockfile\").isFile ||\n            java.io.File(rootDir, \"gradle/dependency-locks\").isDirectory"
+        "java.io.File(projectDir, \"gradle/dependency-locks/buildscript-classpath.lockfile\")"
       ),
       "expected the locked-buildscript detection that routes a locked build down the files() " +
         "branch (see InitScriptDependencyLockingReproducerTest)",

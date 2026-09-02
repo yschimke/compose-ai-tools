@@ -460,11 +460,18 @@ allprojects {
     //
     // Detection is by lockfile on disk, matching how the rest of this script reads a build it does
     // not control: Gradle's per-project buildscript lock state is `buildscript-gradle.lockfile`
-    // beside the build script (bitwarden's shape), and the pre-6.0 layout is a
-    // `gradle/dependency-locks/` directory.
+    // beside the build script (bitwarden's shape), and the pre-6.0 layout is a per-configuration
+    // file under `gradle/dependency-locks/`.
+    //
+    // Name that legacy file exactly, rather than testing for the directory. A build can lock
+    // `runtimeClasspath` and nothing else, and the directory alone would then route every project
+    // down the files() branch on false pretences — and that branch degrades to a no-op when it
+    // cannot resolve, so the cost of a false positive is a silently plugin-less module, which is
+    // the failure mode this whole change exists to remove (PR #4987 review).
     val composeAiPreviewBuildscriptClasspathIsLocked =
         java.io.File(projectDir, "buildscript-gradle.lockfile").isFile ||
-            java.io.File(rootDir, "gradle/dependency-locks").isDirectory
+            java.io.File(projectDir, "gradle/dependency-locks/buildscript-classpath.lockfile")
+                .isFile
 
     // In the exclusiveContent shape Gradle 9.3+ rejects adding to buildscript.repositories from
     // any project (issues #1470, #1482), so a project without its own `buildscript { repositories
@@ -502,7 +509,21 @@ allprojects {
             // not in the consumer's repos) — degrade to a no-op, exactly as this branch did before
             // it learned to inject.
             val composeAiPreviewClasspath = composeAiPreviewResolvePluginClasspath()
-            if (composeAiPreviewClasspath.isEmpty()) return@allprojects
+            if (composeAiPreviewClasspath.isEmpty()) {
+                // This branch resolves through the PROJECT's repositories, so a build that
+                // publishes the plugin only into `buildscript.repositories` cannot be served here
+                // and lands in this no-op. Silence would surface as an empty catalog with no
+                // explanation — the exact shape of yschimke/compose-preview-imports#30 — so say
+                // which module was skipped and what would fix it (PR #4987 review).
+                logger.warn(
+                    "compose-preview: could not resolve the preview plugin through ${'$'}path's " +
+                        "repositories, so it was not injected there. Declare the plugin's " +
+                        "repository in settings (dependencyResolutionManagement or " +
+                        "pluginManagement) so a build that locks or verifies its buildscript " +
+                        "classpath can still resolve it."
+                )
+                return@allprojects
+            }
             val composeAiPreviewClasspathFiles = files(composeAiPreviewClasspath)
             buildscript {
                 dependencies {
