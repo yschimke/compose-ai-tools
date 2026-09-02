@@ -320,7 +320,13 @@ abstract class Command(
     val extensionArgs = extensionGradleArgs()
     val missingRendersArgs = missingRendersGradleArgs()
     val permutationsArgs = permutationsGradleArgs()
-    val withExtras = extra + extensionArgs + missingRendersArgs + permutationsArgs
+    // --write-locks has to be here, not only on the discovery connection: `bundle pack` runs its
+    // Gradle tasks through THIS helper, so wiring it to extraArguments alone left the render still
+    // failing with "Resolved 'ee.schimke.composeai:preview-discovery:…' which is not part of the
+    // dependency lock state" on bitwarden/android, even with COMPOSE_PREVIEW_WRITE_LOCKS=1 set
+    // (yschimke/compose-preview-imports#30).
+    val withExtras =
+      extra + extensionArgs + missingRendersArgs + permutationsArgs + gradleWriteLocksArgs()
     val reason = forceReason ?: return withExtras
     if (forceNoticePrinted.compareAndSet(false, true)) {
       System.err.println(

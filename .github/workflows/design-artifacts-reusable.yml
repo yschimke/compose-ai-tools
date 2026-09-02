@@ -512,7 +512,35 @@ env:
     # coordinate (ee.schimke.composeai.preview:...gradle.plugin), whose POM resolves the implementation
     # from a different group entirely. Trusting the marker alone leaves the implementation unverifiable
     # and the build still fails.
-    GROUPS = ("ee.schimke.composeai.preview", "ee.schimke.composeai")
+    # Our own two groups, plus the groups our plugin DRAGS IN. The first mullvad run proved the
+    # distinction: with only the first two trusted, verification still failed on nine artifacts,
+    # none of them ours —
+    #
+    #   asm-9.10.1.jar (org.ow2.asm), classgraph-4.8.194.jar (io.github.classgraph),
+    #   kotlin-metadata-jvm-2.4.10.jar (org.jetbrains.kotlin), okhttp / okhttp-jvm
+    #   (com.squareup.okhttp3), okio / okio-jvm (com.squareup.okio)
+    #
+    # — the preview plugin's transitive closure, which the imported project has no checksums for
+    # because it never asked for them. They are as much "the coordinates we are the reason for" as
+    # the plugin itself.
+    #
+    # Trusted by GROUP rather than by exact version on purpose: a version list rots at every plugin
+    # bump and fails closed in a way that is tedious to chase, and this edit lives for one render of
+    # a throwaway clone and goes nowhere else. The cost, stated plainly: for that one run the
+    # imported project also stops verifying ITS OWN uses of these groups — Kotlin and okio in
+    # particular are ones it certainly uses. That is the trade being made, deliberately.
+    #
+    # If a future plugin dependency arrives from a group not listed here, the render fails with the
+    # same "N artifacts failed verification" list, which names exactly what to add.
+    GROUPS = (
+        "ee.schimke.composeai.preview",
+        "ee.schimke.composeai",
+        "org.ow2.asm",
+        "io.github.classgraph",
+        "org.jetbrains.kotlin",
+        "com.squareup.okhttp3",
+        "com.squareup.okio",
+    )
 
     TRUST_TAG = re.compile(r"<trust\b[^>]*>")
     ATTR = re.compile(r"""\b([A-Za-z]+)\s*=\s*["']([^"']*)["']""")
