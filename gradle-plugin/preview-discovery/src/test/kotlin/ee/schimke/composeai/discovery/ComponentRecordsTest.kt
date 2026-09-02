@@ -46,7 +46,8 @@ class ComponentRecordsTest {
           ),
           preview(
             "p2",
-            targets = listOf(target("com.example.HomeKt", "HomeScreen", sourceFile = "src/Home.kt")),
+            targets =
+              listOf(target("com.example.HomeKt", "HomeScreen", sourceFile = "src/Home.kt")),
           ),
         )
       )
@@ -140,20 +141,60 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `every catalog id a preview published the symbol under is kept`() {
+    // A shared component is rendered by several previews. Freezing the alias from whichever the
+    // manifest listed first would give it an arbitrary, order-dependent id — or none at all, when
+    // an uncatalogued preview happened to come first.
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    fun catalogued(id: String, componentId: String) =
+      preview(id, componentTargets = listOf(card))
+        .copy(catalog = CatalogEntry(role = CatalogRole.COMPONENT, componentId = componentId))
+
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview("plain", componentTargets = listOf(card)),
+          catalogued("b", "Containment/Card"),
+          catalogued("a", "Media/Card"),
+        )
+      )
+
+    val record = file.components.single()
+    assertThat(record.componentIds).containsExactly("Containment/Card", "Media/Card").inOrder()
+    assertThat(record.bindings.first { it.previewId == "plain" }.componentId).isNull()
+  }
+
+  @Test
+  fun `a nested owner is emitted as a source-level callable`() {
+    // `com.example.Controls${'$'}Companion.Button` is a JVM binary name; no Kotlin import accepts
+    // it.
+    assertThat(
+        ComponentRecords.callableFqn(target("com.example.Controls\u0024Companion", "Button"))
+      )
+      .isEqualTo("com.example.Controls.Companion.Button")
+  }
+
+  @Test
   fun `a composable lambda parameter becomes a slot, carrying its receiver scope`() {
     val slots =
       ComponentRecords.slotsOf(
         listOf(
           TargetParameter("onClick", "() -> Unit"),
           TargetParameter("modifier", "Modifier", hasDefault = true),
-          TargetParameter("content", "RowScope.() -> Unit", composableSlot = true),
+          TargetParameter(
+            "content",
+            "RowScope.() -> Unit",
+            composableSlot = true,
+            composableSlotReceiver = "androidx.compose.foundation.layout.RowScope",
+          ),
           TargetParameter("footer", "() -> Unit", hasDefault = true, composableSlot = true),
         )
       )
 
     // `onClick` is function-typed but not `@Composable`: a callback, not a slot.
     assertThat(slots.map { it.name }).containsExactly("content", "footer").inOrder()
-    assertThat(slots[0].receiverScope).isEqualTo("RowScope")
+    // The QUALIFIED name: `RowScope` alone cannot be imported, and two libraries can define it.
+    assertThat(slots[0].receiverScope).isEqualTo("androidx.compose.foundation.layout.RowScope")
     // Requiredness is about the LAMBDA argument, never about how many children it may emit.
     assertThat(slots[0].required).isTrue()
     // An unscoped slot records no receiver rather than an empty string.

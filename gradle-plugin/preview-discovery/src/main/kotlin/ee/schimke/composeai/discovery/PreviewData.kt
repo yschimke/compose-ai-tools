@@ -1410,6 +1410,16 @@ data class TargetParameter(
    * True when the parameter is a `@Composable` function-typed slot (a `content = { … }` lambda).
    */
   val composableSlot: Boolean = false,
+  /**
+   * For a [composableSlot], the **fully-qualified** receiver type of the lambda
+   * (`androidx.compose.foundation.layout.RowScope`), or null when it has none.
+   *
+   * Separate from [type], which renders simple classifier names for readability — a scaffolding
+   * hint, not a resolvable reference. A consumer deciding which scoped modifier APIs are legal
+   * inside a slot, or generating an import for the scope, needs the qualified name: two libraries
+   * can define the same simple `RowScope`, and `RowScope` alone cannot be imported.
+   */
+  val composableSlotReceiver: String? = null,
 )
 
 @Serializable

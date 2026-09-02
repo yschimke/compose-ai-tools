@@ -131,13 +131,32 @@ internal object ComposableSignature {
     return byName.firstOrNull { it.signature?.descriptor == descriptor } ?: byName.first()
   }
 
-  private fun KmValueParameter.toTargetParameter(): TargetParameter =
-    TargetParameter(
+  private fun KmValueParameter.toTargetParameter(): TargetParameter {
+    val slot = isComposableFunctionType(type)
+    return TargetParameter(
       name = name,
       type = renderType(type),
       hasDefault = declaresDefaultValue,
-      composableSlot = isComposableFunctionType(type),
+      composableSlot = slot,
+      composableSlotReceiver = if (slot) receiverFqnOf(type) else null,
     )
+  }
+
+  /**
+   * The fully-qualified receiver of an extension-function type, or null when it has none.
+   *
+   * Kotlin records the receiver as the first function type argument and marks the type with
+   * `kotlin.ExtensionFunctionType` — the same pair [renderFunctionType] reads to print `RowScope.()
+   * -> Unit`. This keeps the *qualified* classifier rather than the simple name that rendering
+   * deliberately reduces to, because a consumer generating an import or deciding which scoped
+   * modifier APIs are legal cannot use `RowScope` on its own.
+   */
+  private fun receiverFqnOf(type: KmType): String? {
+    if (type.annotations.none { it.className == "kotlin/ExtensionFunctionType" }) return null
+    val receiver = type.arguments.firstOrNull()?.type ?: return null
+    val classifier = (receiver.classifier as? KmClassifier.Class)?.name ?: return null
+    return classifier.replace('/', '.').replace('$', '.')
+  }
 
   /**
    * A short, readable type: the classifier's simple name, a trailing `?` when nullable, and a

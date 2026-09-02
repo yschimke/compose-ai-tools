@@ -1761,6 +1761,7 @@ internal object ComposePreviewTasks {
       // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`
       // task writes an empty `dataExtensionReports` map.
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
+      componentsFile.set(previewOutputDir.map { it.file("components.json") })
       group = "compose preview"
       description = "Discover @Preview annotations in compiled classes"
       configureDeps()
