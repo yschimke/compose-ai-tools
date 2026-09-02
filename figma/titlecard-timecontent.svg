@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="400" viewBox="0 0 454 400" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <clipPath id="clip-0"><rect x="0" y="40" width="454" height="320" rx="104" ry="104"/></clipPath>
+    <g id="Column">
+      <image href="titlecard-timecontent.figma-raster/355.png" x="0" y="40" width="454" height="320" clip-path="url(#clip-0)"/>
+      <g clip-path="url(#clip-0)">
+        <g id="Row">
+          <g id="Empty">
+            <text font-size="32" font-family="default, sans-serif" font-weight="550" letter-spacing="0.8" fill="#F6EDFF"><tspan x="48" y="118" textLength="276" lengthAdjust="spacing">Title card title text</tspan><tspan x="48" y="154" textLength="273" lengthAdjust="spacing">lorem ipsum dolor</tspan><tspan x="48" y="190" textLength="123" lengthAdjust="spacing">sit amet</tspan></text>
+          </g>
+          <g id="Box">
+          </g>
+          <g id="Empty">
+            <text x="342" y="114.04" font-size="28" font-family="default, sans-serif" font-weight="450" letter-spacing="0.8" fill="#CAC4D0">XXm</text>
+          </g>
+        </g>
+        <g id="Box">
+        </g>
+        <g id="Empty">
+          <text font-size="32" font-family="default, sans-serif" font-weight="450" letter-spacing="0.8" fill="#CAC4D0"><tspan x="48" y="232" textLength="313" lengthAdjust="spacing">Content lorem ipsum</tspan><tspan x="48" y="268" textLength="301" lengthAdjust="spacing">dolor sit amet lorem</tspan><tspan x="48" y="304" textLength="308" lengthAdjust="spacing">ipsum dolor sit amet</tspan></text>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

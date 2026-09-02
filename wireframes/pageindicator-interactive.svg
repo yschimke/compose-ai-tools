@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 279 279" width="279" height="279" role="img" aria-label="PageIndicator/Interactive wireframe">
+  <title>PageIndicator/Interactive — layout wireframe</title>
+  <rect width="279" height="279" fill="none" stroke="#888" stroke-dasharray="4 4"/>
+  <g>
+    <rect x="175" y="175" width="104" height="104" rx="4" fill="#4f8cff" fill-opacity="0.08" stroke="#4f8cff" stroke-width="2"/>
+    <text x="179" y="170" font-family="system-ui, sans-serif" font-size="12" fill="#4f8cff">button</text>
+  </g>
+</svg>

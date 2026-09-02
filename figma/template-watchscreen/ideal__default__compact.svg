@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="454" viewBox="0 0 454 454" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <clipPath id="clip-0"><rect x="0" y="0" width="454" height="454" rx="227" ry="227"/></clipPath>
+    <g id="Box">
+      <image href="ideal__default__compact.figma-raster/56.png" x="0" y="0" width="454" height="454" clip-path="url(#clip-0)"/>
+      <g clip-path="url(#clip-0)">
+        <g id="Column">
+          <g id="Empty">
+            <text x="187" y="31.35" font-size="30" font-family="default, sans-serif" font-weight="500" letter-spacing="0.8" fill="#FFFFFF">10:10</text>
+          </g>
+          <clipPath id="clip-1"><rect x="77" y="71" width="300" height="174" rx="87" ry="87"/></clipPath>
+          <g id="Column">
+            <image href="ideal__default__compact.figma-raster/59.png" x="77" y="71" width="300" height="174" clip-path="url(#clip-1)"/>
+            <g clip-path="url(#clip-1)">
+              <g id="Empty">
+                <text x="125" y="148.76" font-size="32" font-family="default, sans-serif" font-weight="550" letter-spacing="0.8" fill="#F6EDFF">Morning run</text>
+              </g>
+              <g id="Box">
+              </g>
+              <g id="Empty">
+                <text x="125" y="189.35" font-size="30" font-family="default, sans-serif" font-weight="500" letter-spacing="0.8" fill="#FFDCC2">5.2 km</text>
+              </g>
+            </g>
+          </g>
+          <clipPath id="clip-2"><rect x="77" y="277" width="300" height="174" rx="87" ry="87"/></clipPath>
+          <g id="Column">
+            <image href="ideal__default__compact.figma-raster/65.png" x="77" y="277" width="300" height="174" clip-path="url(#clip-2)"/>
+            <g clip-path="url(#clip-2)">
+              <g id="Empty">
+                <text x="125" y="354.76" font-size="32" font-family="default, sans-serif" font-weight="550" letter-spacing="0.8" fill="#F6EDFF">Heart rate</text>
+              </g>
+              <g id="Box">
+              </g>
+              <g id="Empty">
+                <text x="125" y="395.35" font-size="30" font-family="default, sans-serif" font-weight="500" letter-spacing="0.8" fill="#FFDCC2">72 bpm</text>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

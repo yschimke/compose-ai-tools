@@ -1,0 +1,3004 @@
+{
+  "schema": "design-parity-catalog/v1",
+  "system": "remote-m3",
+  "title": "Remote Compose Material 3",
+  "components": [
+    {
+      "componentId": "Button/Filled",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-filled/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-filled__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 48,
+              "width": 301,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Remote Material 3 filled button — the primary action.",
+      "wireframe": "wireframes/button-filled.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 184
+    },
+    {
+      "componentId": "Button/Tonal",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-tonal/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-tonal__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TonalRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 48,
+              "width": 301,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Tonal button using the theme's secondary-container emphasis.",
+      "wireframe": "wireframes/button-tonal.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 50
+    },
+    {
+      "componentId": "Button/Outlined",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-outlined/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-outlined__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 48,
+              "width": 301,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Remote Material 3 outlined-emphasis button (RemoteButton with an explicit border + border colour).",
+      "wireframe": "wireframes/button-outlined.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 208
+    },
+    {
+      "componentId": "Button/Disabled",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-disabled/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-disabled__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 133,
+              "y": 72,
+              "width": 189,
+              "height": 56
+            }
+          },
+          "bounds": {
+            "x": 133,
+            "y": 72,
+            "width": 189,
+            "height": 56
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 133,
+            "y": 72,
+            "width": 189,
+            "height": 56
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Filled button with the library's disabled container and content colours.",
+      "wireframe": "wireframes/button-disabled.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 102
+    },
+    {
+      "componentId": "Button/IconLabel",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-iconlabel/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-iconlabel__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelRemoteButton_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 45,
+              "y": 148,
+              "width": 365,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 45,
+            "y": 148,
+            "width": 365,
+            "height": 104
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 101,
+              "y": 174,
+              "width": 52,
+              "height": 52
+            }
+          },
+          "bounds": {
+            "x": 101,
+            "y": 174,
+            "width": 52,
+            "height": 52
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 45,
+            "y": 148,
+            "width": 365,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Opinionated RemoteButton overload with its recommended icon and label slots.",
+      "wireframe": "wireframes/button-iconlabel.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 67
+    },
+    {
+      "componentId": "Button/IconLabelSecondary",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-iconlabelsecondary/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-iconlabelsecondary__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelSecondaryRemoteButton_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 33,
+              "y": 141,
+              "width": 388,
+              "height": 118
+            }
+          },
+          "bounds": {
+            "x": 33,
+            "y": 141,
+            "width": 388,
+            "height": 118
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 89,
+              "y": 168,
+              "width": 64,
+              "height": 64
+            }
+          },
+          "bounds": {
+            "x": 89,
+            "y": 168,
+            "width": 64,
+            "height": 64
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 33,
+            "y": 141,
+            "width": 388,
+            "height": 118
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Two-line RemoteButton with a large icon, primary label and secondary label.",
+      "wireframe": "wireframes/button-iconlabelsecondary.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 84
+    },
+    {
+      "componentId": "Button/Text",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-text/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-text__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TextRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 48,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 48,
+            "width": 104,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Low-emphasis round text button (RemoteTextButton).",
+      "wireframe": "wireframes/button-text.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 264
+    },
+    {
+      "componentId": "Button/Text-Small",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-text-small/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-text-small__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteTextButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 179,
+              "y": 52,
+              "width": 96,
+              "height": 96
+            }
+          },
+          "bounds": {
+            "x": 179,
+            "y": 52,
+            "width": 96,
+            "height": 96
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Small RemoteTextButton at the defined 48dp size.",
+      "wireframe": "wireframes/button-text-small.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 243
+    },
+    {
+      "componentId": "Button/Text-Large",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-text-large/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-text-large__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteTextButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 167,
+              "y": 40,
+              "width": 120,
+              "height": 120
+            }
+          },
+          "bounds": {
+            "x": 167,
+            "y": 40,
+            "width": 120,
+            "height": 120
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Large RemoteTextButton at the defined 60dp size and labelLarge typography.",
+      "wireframe": "wireframes/button-text-large.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 253
+    },
+    {
+      "componentId": "Button/Text-Filled",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-text-filled/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-text-filled__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteTextButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 48,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 48,
+            "width": 104,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Round text button with a filled primary container.",
+      "wireframe": "wireframes/button-text-filled.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 294
+    },
+    {
+      "componentId": "Button/Text-Outlined",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-text-outlined/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-text-outlined__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteTextButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 48,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 48,
+            "width": 104,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Round text button with an explicit outline treatment.",
+      "wireframe": "wireframes/button-text-outlined.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 316
+    },
+    {
+      "componentId": "Button/Icon",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-icon/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-icon__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 48,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 48,
+            "width": 104,
+            "height": 104
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 203,
+              "y": 76,
+              "width": 48,
+              "height": 48
+            }
+          },
+          "bounds": {
+            "x": 203,
+            "y": 76,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Round icon button (RemoteIconButton) carrying a single RemoteIcon.",
+      "wireframe": "wireframes/button-icon.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 289
+    },
+    {
+      "componentId": "Button/Icon-ExtraSmall",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-icon-extrasmall/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-icon-extrasmall__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.ExtraSmallRemoteIconButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 195,
+              "y": 68,
+              "width": 64,
+              "height": 64
+            }
+          },
+          "bounds": {
+            "x": 195,
+            "y": 68,
+            "width": 64,
+            "height": 64
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 203,
+              "y": 76,
+              "width": 48,
+              "height": 48
+            }
+          },
+          "bounds": {
+            "x": 203,
+            "y": 76,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Extra-small RemoteIconButton at the defined 32dp size.",
+      "wireframe": "wireframes/button-icon-extrasmall.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 152
+    },
+    {
+      "componentId": "Button/Icon-Small",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-icon-small/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-icon-small__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteIconButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 179,
+              "y": 52,
+              "width": 96,
+              "height": 96
+            }
+          },
+          "bounds": {
+            "x": 179,
+            "y": 52,
+            "width": 96,
+            "height": 96
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 203,
+              "y": 76,
+              "width": 48,
+              "height": 48
+            }
+          },
+          "bounds": {
+            "x": 203,
+            "y": 76,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Small RemoteIconButton at the defined 48dp size.",
+      "wireframe": "wireframes/button-icon-small.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 158
+    },
+    {
+      "componentId": "Button/Icon-Large",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-icon-large/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-icon-large__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteIconButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 167,
+              "y": 40,
+              "width": 120,
+              "height": 120
+            }
+          },
+          "bounds": {
+            "x": 167,
+            "y": 40,
+            "width": 120,
+            "height": 120
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 197,
+              "y": 70,
+              "width": 60,
+              "height": 60
+            }
+          },
+          "bounds": {
+            "x": 197,
+            "y": 70,
+            "width": 60,
+            "height": 60
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "Large RemoteIconButton at the defined 60dp size.",
+      "wireframe": "wireframes/button-icon-large.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 164
+    },
+    {
+      "componentId": "Button/Icon-Filled",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-icon-filled/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-icon-filled__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteIconButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 48,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 48,
+            "width": 104,
+            "height": 104
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 203,
+              "y": 76,
+              "width": 48,
+              "height": 48
+            }
+          },
+          "bounds": {
+            "x": 203,
+            "y": 76,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "RemoteIconButton with a filled primary container.",
+      "wireframe": "wireframes/button-icon-filled.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 197
+    },
+    {
+      "componentId": "Button/Icon-Outlined",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-icon-outlined/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-icon-outlined__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteIconButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 48,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 48,
+            "width": 104,
+            "height": 104
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 203,
+              "y": 76,
+              "width": 48,
+              "height": 48
+            }
+          },
+          "bounds": {
+            "x": 203,
+            "y": 76,
+            "width": 48,
+            "height": 48
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Buttons",
+      "caption": "RemoteIconButton with an explicit outline treatment.",
+      "wireframe": "wireframes/button-icon-outlined.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 222
+    },
+    {
+      "componentId": "Button/Compact",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-compact/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-compact__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CompactRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 96,
+              "y": 52,
+              "width": 262,
+              "height": 96
+            }
+          },
+          "bounds": {
+            "x": 96,
+            "y": 52,
+            "width": 262,
+            "height": 96
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 144,
+              "y": 84,
+              "width": 166,
+              "height": 32
+            }
+          },
+          "bounds": {
+            "x": 144,
+            "y": 84,
+            "width": 166,
+            "height": 32
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 96,
+            "y": 52,
+            "width": 262,
+            "height": 96
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 16,
+            "end": 0,
+            "bottom": 16
+          }
+        },
+        {
+          "bounds": {
+            "x": 144,
+            "y": 84,
+            "width": 166,
+            "height": 32
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 0,
+            "end": 24,
+            "bottom": 0
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Compact single-line button (RemoteCompactButton).",
+      "wireframe": "wireframes/button-compact.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 309
+    },
+    {
+      "componentId": "Button/Compact-IconLabel",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-compact-iconlabel/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-compact-iconlabel__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconLabelRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 72,
+              "y": 52,
+              "width": 310,
+              "height": 96
+            }
+          },
+          "bounds": {
+            "x": 72,
+            "y": 52,
+            "width": 310,
+            "height": 96
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 120,
+              "y": 84,
+              "width": 214,
+              "height": 32
+            }
+          },
+          "bounds": {
+            "x": 120,
+            "y": 84,
+            "width": 214,
+            "height": 32
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 120,
+              "y": 84,
+              "width": 40,
+              "height": 32
+            }
+          },
+          "bounds": {
+            "x": 120,
+            "y": 84,
+            "width": 40,
+            "height": 32
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 72,
+            "y": 52,
+            "width": 310,
+            "height": 96
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 16,
+            "end": 0,
+            "bottom": 16
+          }
+        },
+        {
+          "bounds": {
+            "x": 120,
+            "y": 84,
+            "width": 214,
+            "height": 32
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 0,
+            "end": 24,
+            "bottom": 0
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Compact button with the defined extra-small icon plus a label.",
+      "wireframe": "wireframes/button-compact-iconlabel.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 112
+    },
+    {
+      "componentId": "Button/Compact-IconOnly",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-compact-icononly/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-compact-icononly__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconOnlyRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 52,
+              "width": 104,
+              "height": 96
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 52,
+            "width": 104,
+            "height": 96
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 223,
+              "y": 84,
+              "width": 8,
+              "height": 32
+            }
+          },
+          "bounds": {
+            "x": 223,
+            "y": 84,
+            "width": 8,
+            "height": 32
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Favourite\"",
+          "detail": {
+            "role": "button",
+            "label": "Favourite",
+            "bounds": {
+              "x": 223,
+              "y": 84,
+              "width": 8,
+              "height": 32
+            }
+          },
+          "bounds": {
+            "x": 223,
+            "y": 84,
+            "width": 8,
+            "height": 32
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 175,
+            "y": 52,
+            "width": 104,
+            "height": 96
+          },
+          "role": "Button",
+          "padding": {
+            "start": 0,
+            "top": 16,
+            "end": 0,
+            "bottom": 16
+          }
+        },
+        {
+          "bounds": {
+            "x": 223,
+            "y": 84,
+            "width": 8,
+            "height": 32
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 0,
+            "end": 24,
+            "bottom": 0
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Icon-only compact button using its dedicated 52dp visible width.",
+      "wireframe": "wireframes/button-compact-icononly.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 129
+    },
+    {
+      "componentId": "Button/Group",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-group/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-group__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 44,
+              "y": 148,
+              "width": 175,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 44,
+            "y": 148,
+            "width": 175,
+            "height": 104
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 235,
+              "y": 148,
+              "width": 175,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 235,
+            "y": 148,
+            "width": 175,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 44,
+            "y": 148,
+            "width": 175,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        },
+        {
+          "bounds": {
+            "x": 235,
+            "y": 148,
+            "width": 175,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Two buttons laid out edge-to-edge by RemoteButtonGroup.",
+      "wireframe": "wireframes/button-group.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 318
+    },
+    {
+      "componentId": "Button/CustomShape",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-customshape/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-customshape__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 48,
+              "width": 301,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Filled button with a RemoteRoundedCornerShape override.",
+      "wireframe": "wireframes/button-customshape.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 226
+    },
+    {
+      "componentId": "Button/NamedLabel",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/button-namedlabel/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/button-namedlabel__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton_width_227dp_height_100dp_dpi_320",
+          "remoteComposeKnobs": [
+            {
+              "name": "label",
+              "default": {
+                "kind": "string",
+                "value": "Primary label"
+              }
+            }
+          ],
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 48,
+              "width": 301,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 77,
+            "y": 48,
+            "width": 301,
+            "height": 104
+          },
+          "role": "Button",
+          "padding": {
+            "start": 28,
+            "top": 12,
+            "end": 28,
+            "bottom": 12
+          }
+        }
+      ],
+      "group": "Buttons",
+      "caption": "Filled button whose label is bound to a Remote Compose named value — the connector flips it live (default render shows \"Tap me\").",
+      "wireframe": "wireframes/button-namedlabel.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 247
+    },
+    {
+      "componentId": "Card",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/card/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/card__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 97,
+              "width": 454,
+              "height": 206
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 97,
+            "width": 454,
+            "height": 206
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 97,
+            "width": 454,
+            "height": 206
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "Remote Material 3 card.",
+      "wireframe": "wireframes/card.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 334
+    },
+    {
+      "componentId": "Card/Outlined",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/card-outlined/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/card-outlined__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 97,
+              "width": 454,
+              "height": 206
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 97,
+            "width": 454,
+            "height": 206
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 97,
+            "width": 454,
+            "height": 206
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "Outlined card variant (RemoteOutlinedCard).",
+      "wireframe": "wireframes/card-outlined.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 341
+    },
+    {
+      "componentId": "TitleCard",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/titlecard/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/titlecard__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TitleCardRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 77,
+              "width": 454,
+              "height": 246
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 77,
+            "width": 454,
+            "height": 246
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 77,
+            "width": 454,
+            "height": 246
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "Card with title, subtitle and supporting text slots.",
+      "wireframe": "wireframes/titlecard.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 355
+    },
+    {
+      "componentId": "TitleCard/TitleOnly",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/titlecard-titleonly/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/titlecard-titleonly__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TitleOnlyRemoteTitleCard_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 97,
+              "width": 454,
+              "height": 206
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 97,
+            "width": 454,
+            "height": 206
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 97,
+            "width": 454,
+            "height": 206
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "Minimal title-card layout with no optional time, subtitle or body slots.",
+      "wireframe": "wireframes/titlecard-titleonly.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 339
+    },
+    {
+      "componentId": "TitleCard/TimeContent",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/titlecard-timecontent/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/titlecard-timecontent__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeContentRemoteTitleCard_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 40,
+              "width": 454,
+              "height": 320
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 40,
+            "width": 454,
+            "height": 320
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 40,
+            "width": 454,
+            "height": 320
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "Title card with time and supporting content, exercising the alternate title-row layout.",
+      "wireframe": "wireframes/titlecard-timecontent.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 346
+    },
+    {
+      "componentId": "AppCard",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/appcard/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/appcard__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.AppCardRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 18,
+              "width": 454,
+              "height": 365
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 18,
+            "width": 454,
+            "height": 365
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 48,
+              "y": 67,
+              "width": 32,
+              "height": 32
+            }
+          },
+          "bounds": {
+            "x": 48,
+            "y": 67,
+            "width": 32,
+            "height": 32
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 18,
+            "width": 454,
+            "height": 365
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "App card with app name, icon and content slots.",
+      "wireframe": "wireframes/appcard.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 366
+    },
+    {
+      "componentId": "AppCard/Time",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/appcard-time/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/appcard-time__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeRemoteAppCard_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 0,
+              "y": 18,
+              "width": 454,
+              "height": 365
+            }
+          },
+          "bounds": {
+            "x": 0,
+            "y": 18,
+            "width": 454,
+            "height": 365
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 0,
+            "y": 18,
+            "width": 454,
+            "height": 365
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Containment",
+      "caption": "App card with the optional time slot and no app image.",
+      "wireframe": "wireframes/appcard-time.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 358
+    },
+    {
+      "componentId": "Template/WatchScreen",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/template-watchscreen/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/template-watchscreen__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width_227dp_height_227dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 71,
+              "width": 300,
+              "height": 174
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 71,
+            "width": 300,
+            "height": 174
+          }
+        },
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 77,
+              "y": 277,
+              "width": 300,
+              "height": 174
+            }
+          },
+          "bounds": {
+            "x": 77,
+            "y": 277,
+            "width": 300,
+            "height": 174
+          }
+        }
+      ],
+      "redlines": [
+        {
+          "bounds": {
+            "x": 77,
+            "y": 71,
+            "width": 300,
+            "height": 174
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        },
+        {
+          "bounds": {
+            "x": 77,
+            "y": 277,
+            "width": 300,
+            "height": 174
+          },
+          "role": "Button",
+          "padding": {
+            "start": 24,
+            "top": 24,
+            "end": 24,
+            "bottom": 24
+          }
+        }
+      ],
+      "group": "Scaffold templates",
+      "caption": "Full-screen Remote Compose watch screen — a status clock, a list header and a stack of RemoteTitleCards on the theme's own background fill. The catalog's hero: a RemoteDocument driving a whole surface, not a single sticker.",
+      "wireframe": "wireframes/template-watchscreen.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 407
+    },
+    {
+      "componentId": "Progress/Circular",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/progress-circular/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/progress-circular__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote_width_227dp_height_227dp_dpi_320",
+          "remoteComposeKnobs": [
+            {
+              "name": "progress",
+              "default": {
+                "kind": "float",
+                "value": 0.66
+              }
+            }
+          ],
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Communication",
+      "caption": "Determinate circular progress indicator at a fixed 66%.",
+      "wireframe": "wireframes/progress-circular.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 447
+    },
+    {
+      "componentId": "Progress/Circular-Disabled",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/progress-circular-disabled/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/progress-circular-disabled__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledCircularProgressRemote_width_227dp_height_227dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Communication",
+      "caption": "Determinate progress using the component's disabled indicator and track brushes.",
+      "wireframe": "wireframes/progress-circular-disabled.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 371
+    },
+    {
+      "componentId": "Progress/Circular-Indeterminate",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/progress-circular-indeterminate/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/progress-circular-indeterminate__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width_227dp_height_227dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "motion": [
+        {
+          "path": "motion/progress-circular-indeterminate/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressMotionRemote_width_227dp_height_227dp_dpi_320.gif",
+          "kind": "animation",
+          "caption": "The indeterminate arc rotates and changes sweep continuously on the remote clock."
+        }
+      ],
+      "group": "Communication",
+      "caption": "Indeterminate circular progress; its motion capture records the continuous remote-clock animation.",
+      "wireframe": "wireframes/progress-circular-indeterminate.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 381
+    },
+    {
+      "componentId": "PageIndicator/Horizontal",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/pageindicator-horizontal/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/pageindicator-horizontal__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.HorizontalPageIndicatorRemote_width_227dp_height_227dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Communication",
+      "caption": "Five-page horizontal indicator curved along the bottom edge.",
+      "wireframe": "wireframes/pageindicator-horizontal.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 399
+    },
+    {
+      "componentId": "PageIndicator/Vertical",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/pageindicator-vertical/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/pageindicator-vertical__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.VerticalPageIndicatorRemote_width_227dp_height_227dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Communication",
+      "caption": "Eight-page vertical indicator exercising the scrolling-dot window.",
+      "wireframe": "wireframes/pageindicator-vertical.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 408
+    },
+    {
+      "componentId": "PageIndicator/Interactive",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/pageindicator-interactive/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 454,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/pageindicator-interactive__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width_227dp_height_227dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=227dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 227
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button",
+          "detail": {
+            "role": "button",
+            "bounds": {
+              "x": 175,
+              "y": 175,
+              "width": 104,
+              "height": 104
+            }
+          },
+          "bounds": {
+            "x": 175,
+            "y": 175,
+            "width": 104,
+            "height": 104
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Communication",
+      "caption": "Interactive page indicator: tapping Next animates the worm between adjacent pages inside the RemoteDocument.",
+      "wireframe": "wireframes/pageindicator-interactive.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 417
+    },
+    {
+      "componentId": "Icon",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/icon/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/icon__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote_width_227dp_height_100dp_dpi_320",
+          "remoteComposeKnobs": [
+            {
+              "name": "iconSize",
+              "default": {
+                "kind": "dp",
+                "value": 48
+              }
+            }
+          ],
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [
+        {
+          "kind": "a11y",
+          "severity": "info",
+          "message": "button \"Star\"",
+          "detail": {
+            "role": "button",
+            "label": "Star",
+            "bounds": {
+              "x": 131,
+              "y": 4,
+              "width": 192,
+              "height": 192
+            }
+          },
+          "bounds": {
+            "x": 131,
+            "y": 4,
+            "width": 192,
+            "height": 192
+          }
+        }
+      ],
+      "redlines": [],
+      "group": "Iconography",
+      "caption": "The standalone RemoteIcon primitive.",
+      "wireframe": "wireframes/icon.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 464
+    },
+    {
+      "componentId": "Text/Body",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/text-body/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/text-body__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker_width_227dp_height_100dp_dpi_320",
+          "remoteComposeKnobs": [
+            {
+              "name": "text",
+              "default": {
+                "kind": "string",
+                "value": "Body text lorem ipsum dolor sit amet"
+              }
+            }
+          ],
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Text",
+      "caption": "The Remote Material 3 text primitive on its own.",
+      "wireframe": "wireframes/text-body.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 480
+    },
+    {
+      "componentId": "Text/MaxLines-Truncated",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/text-maxlines-truncated/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/text-maxlines-truncated__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Text",
+      "caption": "maxLines=2 + ellipsis on a narrow column.",
+      "wireframe": "wireframes/text-maxlines-truncated.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 493
+    },
+    {
+      "componentId": "Text/Branded",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/text-branded/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/text-branded__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Text",
+      "caption": "Text in a named font family (RemoteFontFamily.Named(\"google:Orbitron\")) rather than a generic typeface — the google: namespace marks it a Google Fonts family, which the browser lane fetches and the snapshot renderer resolves from its vendored copy.",
+      "wireframe": "wireframes/text-branded.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 523
+    },
+    {
+      "componentId": "Typeface/Specimen",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/typeface-specimen/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/typeface-specimen__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Typeface",
+      "caption": "Four branded Google Fonts families, each drawing its own name — geometric, script, grotesk, monospace. A lane that cannot resolve a named family renders four identical-looking lines.",
+      "wireframe": "wireframes/typeface-specimen.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 547
+    },
+    {
+      "componentId": "Typeface/VariableWeight",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/typeface-variableweight/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/typeface-variableweight__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Typeface",
+      "caption": "One variable font (Roboto Flex) at wght 100/400/700/1000, written into the document as font-variation settings. A lane that resolves the family but drops the axes renders four lines in one weight.",
+      "wireframe": "wireframes/typeface-variableweight.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 585
+    },
+    {
+      "componentId": "Typeface/VariableWidth",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/typeface-variablewidth/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/typeface-variablewidth__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Typeface",
+      "caption": "The same variable font at wdth 25/100/151 — the axis nothing can fake, since no text API asks for a narrower face. Either the set widths differ or the axes were dropped.",
+      "wireframe": "wireframes/typeface-variablewidth.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 608
+    },
+    {
+      "componentId": "Theme/Typography",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/theme-typography/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/theme-typography__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Theme",
+      "caption": "A type ramp read from RemoteMaterialTheme.typography.",
+      "wireframe": "wireframes/theme-typography.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 639
+    },
+    {
+      "componentId": "Theme/ColorScheme",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/theme-colorscheme/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/theme-colorscheme__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote_width_227dp_height_200dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=200dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Theme",
+      "caption": "Colour-scheme swatches read from RemoteMaterialTheme.colorScheme.",
+      "wireframe": "wireframes/theme-colorscheme.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 649
+    },
+    {
+      "componentId": "Theme/SystemThemeSwatches",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/theme-systemthemeswatches/ideal__default__compact.png",
+          "state": "default",
+          "width": 454,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/theme-systemthemeswatches__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.SystemThemePreviewsKt.SystemThemeSwatchesRemote_width_227dp_height_100dp_dpi_320",
+          "previewParams": {
+            "device": "spec:width=227dp,height=100dp,dpi=320",
+            "widthDp": 227,
+            "heightDp": 100
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Theme",
+      "caption": "System-theme swatches — the catalog's only document carrying ColorTheme operations, where a light and a dark colour live in the document and the player selects between them.",
+      "wireframe": "wireframes/theme-systemthemeswatches.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/SystemThemePreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 83
+    },
+    {
+      "componentId": "Shader/LinearGradient",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/shader-lineargradient/ideal__default__compact.png",
+          "state": "default",
+          "width": 400,
+          "height": 400,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/shader-lineargradient__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker_width_200dp_height_200dp_dpi_320",
+          "remoteComposeKnobs": [
+            {
+              "name": "shaderColor",
+              "default": {
+                "kind": "color",
+                "argb": "#FF7DE2FF"
+              }
+            }
+          ],
+          "previewParams": {
+            "device": "spec:width=200dp,height=200dp,dpi=320",
+            "widthDp": 200,
+            "heightDp": 200
+          },
+          "density": 2
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Shaders",
+      "caption": "Document-level gradient shader fill; the middle stop is a named value the connector can recolour live. A remote-creation-compose primitive with no Wear Material 3 component peer.",
+      "wireframe": "wireframes/shader-lineargradient.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 682
+    },
+    {
+      "componentId": "WidgetContainer/Small",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/widgetcontainer-small/ideal__default__compact.png",
+          "state": "default",
+          "width": 567,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/widgetcontainer-small__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerSmallRemote",
+          "density": 2.625
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Widget Container",
+      "caption": "The Small (200×60dp) squircle widget container the Wear widget host draws around widget content — default surfaceContainerLow fill, 8dp padding, 26dp corners — rendered through the glance-wear WearWidgetPreview tooling wrapper.",
+      "wireframe": "wireframes/widgetcontainer-small.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 140
+    },
+    {
+      "componentId": "WidgetContainer/Large",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/widgetcontainer-large/ideal__default__compact.png",
+          "state": "default",
+          "width": 567,
+          "height": 326,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/widgetcontainer-large__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerLargeRemote",
+          "density": 2.625
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Widget Container",
+      "caption": "The Large (200×108dp) squircle widget container with the host's default background, carrying a title + supporting line.",
+      "wireframe": "wireframes/widgetcontainer-large.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 149
+    },
+    {
+      "componentId": "WidgetContainer/GradientBackground",
+      "images": [
+        {
+          "variant": "ideal",
+          "path": "images/widgetcontainer-gradientbackground/ideal__default__compact.png",
+          "state": "default",
+          "width": 567,
+          "height": 200,
+          "size": "compact",
+          "livePreview": "https://preview.coo.ee/remote-m3/p/widgetcontainer-gradientbackground__ideal__default__compact",
+          "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerGradientRemote",
+          "density": 2.625
+        }
+      ],
+      "greenlines": [],
+      "redlines": [],
+      "group": "Widget Container",
+      "caption": "A Small container whose widget declares its own WearWidgetBrush background (vertical gradient) — the corner clipping over the brush is the point.",
+      "wireframe": "wireframes/widgetcontainer-gradientbackground.svg",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "sourceModule": ":samples:design-catalog-remote-m3",
+      "bodyLine": 168
+    }
+  ],
+  "library": [
+    "androidx.wear.compose.remote:remote-material3",
+    "androidx.compose.remote:remote-creation-compose",
+    "androidx.glance.wear:wear"
+  ],
+  "renderer": "compose-preview 1.38.1-SNAPSHOT",
+  "generatedAt": "2026-08-27T18:57:37.663Z",
+  "display": {
+    "surface": "dark",
+    "hero": "Template/WatchScreen"
+  },
+  "themes": [
+    {
+      "id": "com.example.designcatalogremotem3.RemoteCoralThemeCatalog",
+      "tokensFile": "themes/com.example.designcatalogremotem3.remotecoralthemecatalog.dtcg.json",
+      "name": "Coral",
+      "group": "Wear",
+      "dark": true
+    },
+    {
+      "id": "com.example.designcatalogremotem3.RemoteGoogleSansFlexThemeCatalog",
+      "tokensFile": "themes/com.example.designcatalogremotem3.remotegooglesansflexthemecatalog.dtcg.json",
+      "name": "Google Sans Flex",
+      "group": "Wear",
+      "dark": true
+    },
+    {
+      "id": "com.example.designcatalogremotem3.RemoteKotlinConfThemeCatalog",
+      "tokensFile": "themes/com.example.designcatalogremotem3.remotekotlinconfthemecatalog.dtcg.json",
+      "name": "KotlinConf",
+      "group": "Confetti Wear",
+      "dark": true
+    },
+    {
+      "id": "com.example.designcatalogremotem3.RemoteM3ThemeCatalog",
+      "tokensFile": "themes/com.example.designcatalogremotem3.remotem3themecatalog.dtcg.json",
+      "name": "M3",
+      "group": "Wear",
+      "dark": true
+    },
+    {
+      "id": "com.example.designcatalogremotem3.RemoteTealThemeCatalog",
+      "tokensFile": "themes/com.example.designcatalogremotem3.remotetealthemecatalog.dtcg.json",
+      "name": "Teal",
+      "group": "Wear",
+      "dark": true
+    }
+  ],
+  "liveBundle": {
+    "path": "bundle/",
+    "file": "bundle.png"
+  },
+  "liveBundles": [
+    {
+      "path": "bundle/",
+      "file": "bundle.png",
+      "module": ":samples:design-catalog-remote-m3",
+      "previewIdPrefix": ""
+    }
+  ],
+  "source": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "module": "samples:design-catalog-remote-m3"
+  }
+}

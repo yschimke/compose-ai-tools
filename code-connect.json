@@ -1,0 +1,1099 @@
+{
+  "system": "remote-m3",
+  "title": "Remote Compose Material 3",
+  "label": "Compose",
+  "source": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "module": "samples:design-catalog-remote-m3"
+  },
+  "generatedAt": "2026-08-27T18:57:38.503Z",
+  "mappings": [
+    {
+      "componentId": "Button/Filled",
+      "figmaLayerName": "Button/Filled",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "FilledRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-filled.svg"
+    },
+    {
+      "componentId": "Button/Tonal",
+      "figmaLayerName": "Button/Tonal",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TonalRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-tonal.svg"
+    },
+    {
+      "componentId": "Button/Outlined",
+      "figmaLayerName": "Button/Outlined",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "OutlinedRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-outlined.svg"
+    },
+    {
+      "componentId": "Button/Disabled",
+      "figmaLayerName": "Button/Disabled",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "DisabledRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-disabled.svg"
+    },
+    {
+      "componentId": "Button/IconLabel",
+      "figmaLayerName": "Button/IconLabel",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IconLabelRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-iconlabel.svg"
+    },
+    {
+      "componentId": "Button/IconLabelSecondary",
+      "figmaLayerName": "Button/IconLabelSecondary",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IconLabelSecondaryRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-iconlabelsecondary.svg"
+    },
+    {
+      "componentId": "Button/Text",
+      "figmaLayerName": "Button/Text",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TextRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-text.svg"
+    },
+    {
+      "componentId": "Button/Text-Small",
+      "figmaLayerName": "Button/Text-Small",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SmallRemoteTextButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-text-small.svg"
+    },
+    {
+      "componentId": "Button/Text-Large",
+      "figmaLayerName": "Button/Text-Large",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "LargeRemoteTextButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-text-large.svg"
+    },
+    {
+      "componentId": "Button/Text-Filled",
+      "figmaLayerName": "Button/Text-Filled",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "FilledRemoteTextButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-text-filled.svg"
+    },
+    {
+      "componentId": "Button/Text-Outlined",
+      "figmaLayerName": "Button/Text-Outlined",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "OutlinedRemoteTextButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-text-outlined.svg"
+    },
+    {
+      "componentId": "Button/Icon",
+      "figmaLayerName": "Button/Icon",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IconRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-icon.svg"
+    },
+    {
+      "componentId": "Button/Icon-ExtraSmall",
+      "figmaLayerName": "Button/Icon-ExtraSmall",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ExtraSmallRemoteIconButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-icon-extrasmall.svg"
+    },
+    {
+      "componentId": "Button/Icon-Small",
+      "figmaLayerName": "Button/Icon-Small",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SmallRemoteIconButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-icon-small.svg"
+    },
+    {
+      "componentId": "Button/Icon-Large",
+      "figmaLayerName": "Button/Icon-Large",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "LargeRemoteIconButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-icon-large.svg"
+    },
+    {
+      "componentId": "Button/Icon-Filled",
+      "figmaLayerName": "Button/Icon-Filled",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "FilledRemoteIconButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-icon-filled.svg"
+    },
+    {
+      "componentId": "Button/Icon-Outlined",
+      "figmaLayerName": "Button/Icon-Outlined",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "OutlinedRemoteIconButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-icon-outlined.svg"
+    },
+    {
+      "componentId": "Button/Compact",
+      "figmaLayerName": "Button/Compact",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CompactRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-compact.svg"
+    },
+    {
+      "componentId": "Button/Compact-IconLabel",
+      "figmaLayerName": "Button/Compact-IconLabel",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CompactIconLabelRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-compact-iconlabel.svg"
+    },
+    {
+      "componentId": "Button/Compact-IconOnly",
+      "figmaLayerName": "Button/Compact-IconOnly",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CompactIconOnlyRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-compact-icononly.svg"
+    },
+    {
+      "componentId": "Button/Group",
+      "figmaLayerName": "Button/Group",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ButtonGroupRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-group.svg"
+    },
+    {
+      "componentId": "Button/CustomShape",
+      "figmaLayerName": "Button/CustomShape",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CustomShapeRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-customshape.svg"
+    },
+    {
+      "componentId": "Button/NamedLabel",
+      "figmaLayerName": "Button/NamedLabel",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "NamedLabelRemoteButton",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/button-namedlabel.svg"
+    },
+    {
+      "componentId": "Card",
+      "figmaLayerName": "Card",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CardRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/card.svg"
+    },
+    {
+      "componentId": "Card/Outlined",
+      "figmaLayerName": "Card/Outlined",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "OutlinedCardRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/card-outlined.svg"
+    },
+    {
+      "componentId": "TitleCard",
+      "figmaLayerName": "TitleCard",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TitleCardRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/titlecard.svg"
+    },
+    {
+      "componentId": "TitleCard/TitleOnly",
+      "figmaLayerName": "TitleCard/TitleOnly",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TitleOnlyRemoteTitleCard",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/titlecard-titleonly.svg"
+    },
+    {
+      "componentId": "TitleCard/TimeContent",
+      "figmaLayerName": "TitleCard/TimeContent",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TimeContentRemoteTitleCard",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/titlecard-timecontent.svg"
+    },
+    {
+      "componentId": "AppCard",
+      "figmaLayerName": "AppCard",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "AppCardRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/appcard.svg"
+    },
+    {
+      "componentId": "AppCard/Time",
+      "figmaLayerName": "AppCard/Time",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TimeRemoteAppCard",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/appcard-time.svg"
+    },
+    {
+      "componentId": "Template/WatchScreen",
+      "figmaLayerName": "Template/WatchScreen",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "WatchScreenRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-watchscreen.svg"
+    },
+    {
+      "componentId": "Progress/Circular",
+      "figmaLayerName": "Progress/Circular",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CircularProgressRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/progress-circular.svg"
+    },
+    {
+      "componentId": "Progress/Circular-Disabled",
+      "figmaLayerName": "Progress/Circular-Disabled",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "DisabledCircularProgressRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/progress-circular-disabled.svg"
+    },
+    {
+      "componentId": "Progress/Circular-Indeterminate",
+      "figmaLayerName": "Progress/Circular-Indeterminate",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IndeterminateCircularProgressRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/progress-circular-indeterminate.svg"
+    },
+    {
+      "componentId": "PageIndicator/Horizontal",
+      "figmaLayerName": "PageIndicator/Horizontal",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "HorizontalPageIndicatorRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/pageindicator-horizontal.svg"
+    },
+    {
+      "componentId": "PageIndicator/Vertical",
+      "figmaLayerName": "PageIndicator/Vertical",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "VerticalPageIndicatorRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/pageindicator-vertical.svg"
+    },
+    {
+      "componentId": "PageIndicator/Interactive",
+      "figmaLayerName": "PageIndicator/Interactive",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "InteractivePageIndicatorRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/pageindicator-interactive.svg"
+    },
+    {
+      "componentId": "Icon",
+      "figmaLayerName": "Icon",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "IconRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/icon.svg"
+    },
+    {
+      "componentId": "Text/Body",
+      "figmaLayerName": "Text/Body",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "RemoteTextSticker",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/text-body.svg"
+    },
+    {
+      "componentId": "Text/MaxLines-Truncated",
+      "figmaLayerName": "Text/MaxLines-Truncated",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TruncatedTextRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/text-maxlines-truncated.svg"
+    },
+    {
+      "componentId": "Text/Branded",
+      "figmaLayerName": "Text/Branded",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "BrandedTextRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/text-branded.svg"
+    },
+    {
+      "componentId": "Typeface/Specimen",
+      "figmaLayerName": "Typeface/Specimen",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TypefaceSpecimenRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/typeface-specimen.svg"
+    },
+    {
+      "componentId": "Typeface/VariableWeight",
+      "figmaLayerName": "Typeface/VariableWeight",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "VariableWeightRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/typeface-variableweight.svg"
+    },
+    {
+      "componentId": "Typeface/VariableWidth",
+      "figmaLayerName": "Typeface/VariableWidth",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "VariableWidthRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/typeface-variablewidth.svg"
+    },
+    {
+      "componentId": "Theme/Typography",
+      "figmaLayerName": "Theme/Typography",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TypographyRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/theme-typography.svg"
+    },
+    {
+      "componentId": "Theme/ColorScheme",
+      "figmaLayerName": "Theme/ColorScheme",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ColorSchemeRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/theme-colorscheme.svg"
+    },
+    {
+      "componentId": "Theme/SystemThemeSwatches",
+      "figmaLayerName": "Theme/SystemThemeSwatches",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SystemThemeSwatchesRemote",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/theme-systemthemeswatches.svg"
+    },
+    {
+      "componentId": "Shader/LinearGradient",
+      "figmaLayerName": "Shader/LinearGradient",
+      "componentName": "RemoteSticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ShaderGradientSticker",
+      "codeSnippet": "RemoteSticker(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogremotem3.RemoteSticker"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/shader-lineargradient.svg"
+    },
+    {
+      "componentId": "WidgetContainer/Small",
+      "figmaLayerName": "WidgetContainer/Small",
+      "componentName": "WidgetContainerSmallRemote",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "label": "Compose",
+      "confidence": "preview-fallback",
+      "previewName": "WidgetContainerSmallRemote",
+      "figmaSvg": "figma/widgetcontainer-small.svg"
+    },
+    {
+      "componentId": "WidgetContainer/Large",
+      "figmaLayerName": "WidgetContainer/Large",
+      "componentName": "WidgetContainerLargeRemote",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "label": "Compose",
+      "confidence": "preview-fallback",
+      "previewName": "WidgetContainerLargeRemote",
+      "figmaSvg": "figma/widgetcontainer-large.svg"
+    },
+    {
+      "componentId": "WidgetContainer/GradientBackground",
+      "figmaLayerName": "WidgetContainer/GradientBackground",
+      "componentName": "WidgetContainerGradientRemote",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-remote-m3/src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "label": "Compose",
+      "confidence": "preview-fallback",
+      "previewName": "WidgetContainerGradientRemote",
+      "figmaSvg": "figma/widgetcontainer-gradientbackground.svg"
+    }
+  ]
+}

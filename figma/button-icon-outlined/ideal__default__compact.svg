@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="200" viewBox="0 0 454 200" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <clipPath id="clip-0"><rect x="175" y="48" width="104" height="104" rx="52" ry="52"/></clipPath>
+    <g id="Box">
+      <image href="ideal__default__compact.figma-raster/325.png" x="175" y="48" width="104" height="104" clip-path="url(#clip-0)"/>
+      <g clip-path="url(#clip-0)">
+        <g id="Spacer">
+          <image href="ideal__default__compact.figma-raster/328.png" x="203" y="76" width="48" height="48"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

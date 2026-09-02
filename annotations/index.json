@@ -1,0 +1,1577 @@
+{
+  "schema": "compose-preview-annotations/v1",
+  "previews": {
+    "button-filled__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 48,
+          "width": 301,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 133,
+          "y": 82,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-tonal__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 48,
+          "width": 301,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 133,
+          "y": 82,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-outlined__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 48,
+          "width": 301,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 133,
+          "y": 82,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-disabled__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 133,
+          "y": 72,
+          "width": 189,
+          "height": 56
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 133,
+          "y": 82,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-iconlabel__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 45,
+          "y": 148,
+          "width": 365,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 165,
+          "y": 182,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-iconlabelsecondary__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 33,
+          "y": 141,
+          "width": 388,
+          "height": 118
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 165,
+          "y": 165,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 165,
+          "y": 203,
+          "width": 200,
+          "height": 32
+        },
+        "label": "text 13sp/16",
+        "role": "Secondary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "13",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-text__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 187,
+          "y": 82,
+          "width": 81,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "MMM",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-text-small__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 187,
+          "y": 82,
+          "width": 81,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "MMM",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-text-large__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 173,
+          "y": 76,
+          "width": 108,
+          "height": 48
+        },
+        "label": "text 20sp/22",
+        "role": "MMM",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "20",
+          "lineHeight": "22",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-text-filled__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 187,
+          "y": 82,
+          "width": 81,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "MMM",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-text-outlined__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 187,
+          "y": 82,
+          "width": 81,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "MMM",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-compact__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 96,
+          "y": 52,
+          "width": 262,
+          "height": 96
+        },
+        "label": "pad 16dp/0dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "16",
+          "padding.end": "0",
+          "padding.bottom": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 144,
+          "y": 84,
+          "width": 166,
+          "height": 32
+        },
+        "label": "pad 0dp/24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "0",
+          "padding.end": "24",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 144,
+          "y": 84,
+          "width": 166,
+          "height": 32
+        },
+        "label": "text 13sp/16",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "13",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-compact-iconlabel__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 72,
+          "y": 52,
+          "width": 310,
+          "height": 96
+        },
+        "label": "pad 16dp/0dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "16",
+          "padding.end": "0",
+          "padding.bottom": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 120,
+          "y": 84,
+          "width": 214,
+          "height": 32
+        },
+        "label": "pad 0dp/24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "0",
+          "padding.end": "24",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 168,
+          "y": 84,
+          "width": 166,
+          "height": 32
+        },
+        "label": "text 13sp/16",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "13",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-compact-icononly__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 175,
+          "y": 52,
+          "width": 104,
+          "height": 96
+        },
+        "label": "pad 16dp/0dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "16",
+          "padding.end": "0",
+          "padding.bottom": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 223,
+          "y": 84,
+          "width": 8,
+          "height": 32
+        },
+        "label": "pad 0dp/24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "0",
+          "padding.end": "24",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      }
+    ],
+    "button-group__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 44,
+          "y": 148,
+          "width": 175,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 235,
+          "y": 148,
+          "width": 175,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 106,
+          "y": 182,
+          "width": 52,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Yes",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 303,
+          "y": 182,
+          "width": 40,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "No",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-customshape__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 48,
+          "width": 301,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 133,
+          "y": 82,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "button-namedlabel__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 48,
+          "width": 301,
+          "height": 104
+        },
+        "label": "pad 12dp/28dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "28",
+          "padding.top": "12",
+          "padding.end": "28",
+          "padding.bottom": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 133,
+          "y": 82,
+          "width": 189,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Primary label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "card__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 97,
+          "width": 454,
+          "height": 206
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 145,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Content lorem ipsum dolor sit amet lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "card-outlined__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 97,
+          "width": 454,
+          "height": 206
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 145,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Content lorem ipsum dolor sit amet lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "titlecard__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 77,
+          "width": 454,
+          "height": 246
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 125,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Title card title text lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 239,
+          "width": 111,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Subtitle",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "titlecard-titleonly__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 97,
+          "width": 454,
+          "height": 206
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 145,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Title card title text lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "titlecard-timecontent__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 40,
+          "width": 454,
+          "height": 320
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 88,
+          "width": 286,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Title card title text lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 342,
+          "y": 88,
+          "width": 64,
+          "height": 33
+        },
+        "label": "text 14sp/16",
+        "role": "XXm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "16",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 202,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Content lorem ipsum dolor sit amet lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "appcard__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 18,
+          "width": 454,
+          "height": 365
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 88,
+          "y": 66,
+          "width": 131,
+          "height": 33
+        },
+        "label": "text 14sp/16",
+        "role": "Label text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "16",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 111,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Title card title text lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 225,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Content lorem ipsum dolor sit amet lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "appcard-time__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 0,
+          "y": 18,
+          "width": 454,
+          "height": 365
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 66,
+          "width": 131,
+          "height": 33
+        },
+        "label": "text 14sp/16",
+        "role": "Label text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "16",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 342,
+          "y": 66,
+          "width": 64,
+          "height": 33
+        },
+        "label": "text 14sp/16",
+        "role": "XXm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "16",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 111,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Title card title text lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 48,
+          "y": 225,
+          "width": 358,
+          "height": 110
+        },
+        "label": "text 16sp/18",
+        "role": "Content lorem ipsum dolor sit amet lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "template-watchscreen__ideal__default__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 71,
+          "width": 300,
+          "height": 174
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 77,
+          "y": 277,
+          "width": 300,
+          "height": 174
+        },
+        "label": "pad 24dp",
+        "role": "Button",
+        "detail": {
+          "padding.start": "24",
+          "padding.top": "24",
+          "padding.end": "24",
+          "padding.bottom": "24",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 187,
+          "y": 3,
+          "width": 81,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "10:10",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 125,
+          "y": 119,
+          "width": 184,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Morning run",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 125,
+          "y": 161,
+          "width": 96,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "5.2 km",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 125,
+          "y": 325,
+          "width": 152,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Heart rate",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "550",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 125,
+          "y": 367,
+          "width": 106,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "72 bpm",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "pageindicator-interactive__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 194,
+          "y": 209,
+          "width": 66,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Next",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "text-body__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 30,
+          "y": 86,
+          "width": 395,
+          "height": 28
+        },
+        "label": "text 12sp",
+        "role": "Body text lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "fontWeight": "400"
+        }
+      }
+    ],
+    "text-maxlines-truncated__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 77,
+          "y": 172,
+          "width": 300,
+          "height": 56
+        },
+        "label": "text 12sp",
+        "role": "Content lorem ipsum dolor sit amet lorem ipsum dolor sit amet",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "fontWeight": "400"
+        }
+      }
+    ],
+    "text-branded__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 173,
+          "y": 85,
+          "width": 109,
+          "height": 30
+        },
+        "label": "text 12sp",
+        "role": "Orbitron",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "fontWeight": "400"
+        }
+      }
+    ],
+    "typeface-specimen__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 45,
+          "y": 88,
+          "width": 199,
+          "height": 55
+        },
+        "label": "text 22sp",
+        "role": "Orbitron",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 45,
+          "y": 143,
+          "width": 191,
+          "height": 55
+        },
+        "label": "text 22sp",
+        "role": "Lobster Two",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 45,
+          "y": 198,
+          "width": 306,
+          "height": 56
+        },
+        "label": "text 22sp",
+        "role": "Space Grotesk",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 45,
+          "y": 254,
+          "width": 364,
+          "height": 58
+        },
+        "label": "text 22sp",
+        "role": "JetBrains Mono",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      }
+    ],
+    "typeface-variableweight__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 126,
+          "y": 106,
+          "width": 167,
+          "height": 47
+        },
+        "label": "text 20sp",
+        "role": "wght 100",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "20",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 126,
+          "y": 153,
+          "width": 167,
+          "height": 47
+        },
+        "label": "text 20sp",
+        "role": "wght 400",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "20",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 126,
+          "y": 200,
+          "width": 173,
+          "height": 47
+        },
+        "label": "text 20sp",
+        "role": "wght 700",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "20",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 126,
+          "y": 247,
+          "width": 202,
+          "height": 47
+        },
+        "label": "text 20sp",
+        "role": "wght 1000",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "20",
+          "fontWeight": "400"
+        }
+      }
+    ],
+    "typeface-variablewidth__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 2,
+          "y": 122,
+          "width": 336,
+          "height": 52
+        },
+        "label": "text 22sp",
+        "role": "Hamburg · wdth 25",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 2,
+          "y": 174,
+          "width": 399,
+          "height": 52
+        },
+        "label": "text 22sp",
+        "role": "Hamburg · wdth 100",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 2,
+          "y": 226,
+          "width": 451,
+          "height": 52
+        },
+        "label": "text 22sp",
+        "role": "Hamburg · wdth 151",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "fontWeight": "400"
+        }
+      }
+    ],
+    "theme-typography__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 127,
+          "y": 147,
+          "width": 167,
+          "height": 38
+        },
+        "label": "text 16sp/18",
+        "role": "Body Large",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "18",
+          "fontWeight": "450",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 127,
+          "y": 185,
+          "width": 200,
+          "height": 36
+        },
+        "label": "text 15sp/18",
+        "role": "Label Medium",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "15",
+          "lineHeight": "18",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 127,
+          "y": 221,
+          "width": 146,
+          "height": 32
+        },
+        "label": "text 13sp/16",
+        "role": "Label Small",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "13",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "default"
+        }
+      }
+    ],
+    "shader-lineargradient__ideal__default__compact": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 163,
+          "y": 186,
+          "width": 75,
+          "height": 28
+        },
+        "label": "text 12sp",
+        "role": "Shader",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "fontWeight": "400"
+        }
+      }
+    ]
+  },
+  "references": {}
+}

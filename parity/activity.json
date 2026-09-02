@@ -1,0 +1,491 @@
+{
+  "schema": "compose-preview-activity/v1",
+  "generatedAt": "2026-08-27T18:57:53.586Z",
+  "windowDays": 30,
+  "code": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "events": [
+      {
+        "sha": "30de8ddf9cebd259a6318547777d1ad9b119ebff",
+        "subject": "chore(deps): update npm minor/patch (#4585)",
+        "at": "2026-08-27T19:48:01+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3dc34e359d70073eb39edf17278bb3ab20d35e61",
+        "subject": "fix(serve): never schedule two staging writes that land on one file (#4586)",
+        "at": "2026-08-27T19:38:43+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8d8c9896e493964430c09847365c02c1c467067e",
+        "subject": "refactor(cli): extract the preview-bundle format into :bundle-format (#4581)",
+        "at": "2026-08-27T19:02:49+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e5832e032f726879bb618af91659d001425b7775",
+        "subject": "fix(serve): let a crop window shrink with the narrow-viewport thumbnail cap (#4582)",
+        "at": "2026-08-27T19:01:50+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1c2e6ddf436e1e055ec3dda06dcff9b03c282f41",
+        "subject": "chore(ci): refresh the design-artifacts driver pin to v1.38.0 (#4583)",
+        "at": "2026-08-27T19:00:57+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b1d57735f6d83d2a1f1f50e6973ea4637295433c",
+        "subject": "chore(main): release 1.38.0 (#4580)",
+        "at": "2026-08-27T18:37:00+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "461bb60aefe9b2b0a9319e5ba61629c6e0b56b12",
+        "subject": "chore(main): release 1.38.0 (#4557)",
+        "at": "2026-08-27T18:18:10+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9b116e5bcaf767008605b641e635d6f616e52bef",
+        "subject": "docs: correct two claims about what squash-merging keeps (#4579)",
+        "at": "2026-08-27T18:17:47+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c61a4bf4d96e5959d425dd64dcab0845b2bd2844",
+        "subject": "fix(deploy): stop the baked JAVA_TOOL_OPTIONS from hiding every other knob (#4575)",
+        "at": "2026-08-27T20:10:50+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "83ee24191f127bf1fc5a041413be89d46341e577",
+        "subject": "fix(ci): reach the repo-wide schema discovery, and stop a poll budget flaking under load (#4576)",
+        "at": "2026-08-27T20:10:36+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1c0e769f3abbdae61f45b49fa0f1bd58c257da98",
+        "subject": "fix(parity): stop the browser adapter paying for an over-budget document (#4577)",
+        "at": "2026-08-27T20:10:00+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "88df6128f6b30562ca808e782fbf9734062886c9",
+        "subject": "fix(serve): close the convergence and ownership gaps in the dirty model (#4574)",
+        "at": "2026-08-27T16:39:06+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8e42a6b1c81868104ac850182b4fb995217fe278",
+        "subject": "feat(daemon-launch): gate the four representations of the launch descriptor against each other (#4571)",
+        "at": "2026-08-27T16:38:39+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6ade3d40fd30be5bb0ff315df8e9c1cfff1d6db2",
+        "subject": "fix(serve): reject an artifact index naming two spellings of one file (#4572)",
+        "at": "2026-08-27T16:35:45+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6ae8525e10bcd838e9968799392d428c3a277f4a",
+        "subject": "feat(serve): regenerate inherited theme renders instead of trusting them (#4573)",
+        "at": "2026-08-27T16:34:19+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8fb31c19329d166729da4ee088595319eb351fb7",
+        "subject": "fix(cli): restore ktfmt formatting in ServeCatalogStoreTest (#4570)",
+        "at": "2026-08-27T14:46:08+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "aab15bb003325419e3f94a91f1353de8ebf6d115",
+        "subject": "fix(serve): keep the document ceiling and reject a malformed artifact index (#4569)",
+        "at": "2026-08-27T14:44:34+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "eba916b5e41024f1e9994a7ee4fc2766ccdac738",
+        "subject": "test(serve): record fetch byte ceilings in a concurrent map (#4568)",
+        "at": "2026-08-27T14:42:42+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8f5fcce527f40015a2de2ad7d5cfcd6c2b455843",
+        "subject": "chore(ci): refresh the design-artifacts driver pin to v1.37.1 (#4566)",
+        "at": "2026-08-27T12:31:21+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "18ad1fad783da60e09ce1e577d9afd1383c930b4",
+        "subject": "fix(serve): a size refusal is a refusal on the motion route and in telemetry (#4567)",
+        "at": "2026-08-27T14:31:07+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "445ed737296b5d16569c1c88ad1853eea36e6dce",
+        "subject": "feat(data-products): enforce explicit API and gate the ABI on the render and layout-inspector payload schemas (#4565)",
+        "at": "2026-08-27T14:27:04+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7da9bdb871d9fce51e668614ee54e5fc44c0595e",
+        "subject": "fix(serve): keep warmed theme renders across a release (#4564)",
+        "at": "2026-08-27T14:26:55+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "101efb9e4bfbdbcb3479744af9f152125013f7be",
+        "subject": "feat(serve): copy the producer's artifact list instead of deriving one (#4562)",
+        "at": "2026-08-27T14:20:19+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "311c1199ec807cd9887b4657f8661e81094251c1",
+        "subject": "feat(daemon-core): enforce explicit API and gate the protocol ABI (#4563)",
+        "at": "2026-08-27T14:19:58+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6e13bb27a1016ce935965b1d076296804c1123ae",
+        "subject": "feat(contracts): enforce explicit API and gate the ABI on eight contract modules (#4561)",
+        "at": "2026-08-27T14:09:52+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "09c208b70d0d19d3780545e051b084f3ac8237c4",
+        "subject": "feat(serve): let a deployment name its background render lane (#4560)",
+        "at": "2026-08-27T14:03:37+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fe295662f8a7d8b2319f4b3b03aa88710b2c23fc",
+        "subject": "feat(daemon-client): enforce explicit API and gate the published ABI (#4558)",
+        "at": "2026-08-27T13:58:42+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8dbac2d780366b357bf25e26620f67312cde1ee0",
+        "subject": "fix(serve): move the in-browser Wasm registration onto the publishing generation (#4555)",
+        "at": "2026-08-27T13:46:05+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f82b02aa24c6446692a657909a68f24e70bd3113",
+        "subject": "chore(main): release 1.37.1 (#4551)",
+        "at": "2026-08-27T11:45:17+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "72b6215ec57882b7532c791e08c076361fe3b9dc",
+        "subject": "fix(serve): give each catalog load its own generation directory, and keep a size refusal a size refusal (#4552)",
+        "at": "2026-08-27T13:41:09+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3face0e2789c8c3ab48129c8755b7b1066058526",
+        "subject": "chore(ci): refresh the design-artifacts driver pin to v1.37.0 (#4553)",
+        "at": "2026-08-27T11:40:50+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "efa95ad3286cf24b796e4d51f39d2e783e8f1bd5",
+        "subject": "fix(daemon): keep held-session frame timestamps on the simulated clock (#4554)",
+        "at": "2026-08-27T13:40:14+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f5d936128d324ec613cc6e7fbd0628d9d1b215fe",
+        "subject": "fix(deploy): hold warmed theme renders on disk by default (#4550)",
+        "at": "2026-08-27T13:20:11+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "86f6014d741c6eef304c1284b03b876c857490f3",
+        "subject": "chore(main): release 1.37.0 (#4545)",
+        "at": "2026-08-27T10:49:36+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4c29764faf0949fa891326ed48440b79c0f68a91",
+        "subject": "refactor(daemon-client): lift the daemon JSON-RPC client out of :mcp (#4547)",
+        "at": "2026-08-27T12:45:50+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "27225bc1f665e53223f73310e2acebb4214070eb",
+        "subject": "fix(deps): take the rest of the minor/patch group, hold coil3 and robolectric (#4548)",
+        "at": "2026-08-27T12:45:13+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "db0917519041a1501e614dcdc37e29634c9dcd0d",
+        "subject": "fix(ci): schedule the contract probe on the pseudolocale module's own sources (#4546)",
+        "at": "2026-08-27T12:14:51+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6d14063ea8919ee680212606ecf7225019248f38",
+        "subject": "feat(serve): subtract a declared capture gutter when a sheet lays a render out (#4542)",
+        "at": "2026-08-27T12:09:15+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ff5ecd2682f1ba57bd97b72c4e9e4295bbc6b5f4",
+        "subject": "chore(ci): refresh the design-artifacts driver pin to v1.36.0 (#4543)",
+        "at": "2026-08-27T12:08:44+03:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "67c2a1576e5192bf49b086a744d88774d5bcf5e0",
+        "subject": "chore: drop the sticky release-as key now that v1.36.0 has published (#4540)",
+        "at": "2026-08-27T12:08:19+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4cbdb3cf6bd2fcdfe168778ec5a4d0b893784547",
+        "subject": "fix(serve): keep one challenger at the optimizer door so parked catalogs rotate (#4541)",
+        "at": "2026-08-27T12:07:28+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b78dfef622e5d6e726b48b2f505f73a3086dd838",
+        "subject": "chore(main): release 1.36.0 (#4500)",
+        "at": "2026-08-27T09:06:57+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6a80699c3d29a921a29c791375b930f2bfe2a8ed",
+        "subject": "chore: force the next release to 1.36.0 via release-as (TEMPORARY — must be reverted after release) (#4537)",
+        "at": "2026-08-27T11:01:35+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9b48639d588d488ecbab0292f8a84148948ca801",
+        "subject": "fix(daemon): seed a held Android session's knobs from the spec it was given (#4539)",
+        "at": "2026-08-27T11:01:11+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "86c09b1fb580b79027142b0fa662d68b712d86b4",
+        "subject": "perf(serve): release a parked optimizer's daemon so the pressure gate reopens (#4536)",
+        "at": "2026-08-27T11:00:49+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1b70bca30a13d0f5aee514e186aabbdda6a134c5",
+        "subject": "fix(deps): move Remote Compose back to released coordinates (#4538)",
+        "at": "2026-08-27T11:00:39+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "51071ab960a9f5e786791c91e51139ec437b99e8",
+        "subject": "fix(parity): keep a prototype-named tag an own key in the projected index (#4531)",
+        "at": "2026-08-27T10:43:37+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "56f82e44eb18c990c882507be75643ceebc914b1",
+        "subject": "feat(parity): export the alpha normalisation for consumers that decode elsewhere (#4535)",
+        "at": "2026-08-27T10:40:03+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0a073692f47b9732cc79245bc412ef1dd6dfa692",
+        "subject": "chore: release 1.36.0 instead of 2.0.0 (#4532)",
+        "at": "2026-08-27T10:26:45+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2551bd2eec46ebe98356c6c9ac49eac67ea23051",
+        "subject": "refactor(mcp): narrow the daemon client factory port off RegisteredProject (#4528)",
+        "at": "2026-08-27T10:05:41+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "15311486b61b5516073ef019d8bd4d4de4cb7f26",
+        "subject": "feat(parity): bound a document's total compressed artifact bytes (#4529)",
+        "at": "2026-08-27T10:05:27+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5ad68765452ba19d0595a69b3bcb05ffe8a0145a",
+        "subject": "fix(deps): take the gradle minor/patch group, hold compose-multiplatform at 1.11.1 (#4527)",
+        "at": "2026-08-27T10:05:07+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9a8f4724fa0cfcb8d3e45fcf8a1fa998854ef442",
+        "subject": "fix(parity): average premultiplied on the score path (#4526)",
+        "at": "2026-08-27T09:26:30+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9bb7d4e96af1633ca81e81a92aefc3a0aed20efe",
+        "subject": "refactor(daemon): invert the XR renderer behind a port owned by :daemon:core (#4524)",
+        "at": "2026-08-27T07:26:21+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "59a8e28e23c1e724f8e3673da6094262d44d7283",
+        "subject": "fix(serve): retry a catalog revision whose optional assets could not be fetched (#4525)",
+        "at": "2026-08-27T07:25:10+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "640d33bbb1149d6f706bf5461b116db0e51c713d",
+        "subject": "refactor(preview-server): move the serve Playwright harness out of the extension (#4516)",
+        "at": "2026-08-27T00:14:36+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "707f9f223743e5702a7ebfc05412cca2350f372e",
+        "subject": "fix(parity): mirror JavaScript's blank-id test, not the JVM's (#4523)",
+        "at": "2026-08-26T20:56:59+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b2163c606b0ba2f6c660d462d500c4f02b964df9",
+        "subject": "fix(parity): stage a catalog's known differences so a served catalog has them (#4515)",
+        "at": "2026-08-26T20:38:49+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "98259c5a508007d38e6f3f4c4e337767028d8d44",
+        "subject": "perf(parity): fetch no artifacts for a document the engine rejects outright (#4517)",
+        "at": "2026-08-26T20:30:03+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "db76e30e35d9a7e88e4b3614028ec4fde847bd3a",
+        "subject": "feat(parity)!: make the portable kernel the live scorer (#4518)",
+        "at": "2026-08-26T19:56:40+03:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      }
+    ]
+  }
+}

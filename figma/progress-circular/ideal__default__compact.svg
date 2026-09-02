@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="454" viewBox="0 0 454 454" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <g id="Spacer">
+      <g transform="translate(155 155) scale(1 1)">
+        <path d="M13.49,97.94 A64,64 0 0 1 62.55,8.7" fill="none" stroke="#332E3C" stroke-width="16" stroke-linecap="round"/>
+        <path d="M81.45,8.7 A64,64 0 1 1 23.62,113.89" fill="none" stroke="#E9DDFF" stroke-width="16" stroke-linecap="round"/>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="400" viewBox="0 0 454 400" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <clipPath id="clip-0"><rect x="0" y="77" width="454" height="246" rx="104" ry="104"/></clipPath>
+    <g id="Column">
+      <image href="ideal__default__compact.figma-raster/13.png" x="0" y="77" width="454" height="246" clip-path="url(#clip-0)"/>
+      <g clip-path="url(#clip-0)">
+        <g id="Empty">
+          <text font-size="32" font-family="default, sans-serif" font-weight="550" letter-spacing="0.8" fill="#F6EDFF"><tspan x="48" y="155" textLength="276" lengthAdjust="spacing">Title card title text</tspan><tspan x="48" y="191" textLength="320" lengthAdjust="spacing">lorem ipsum dolor sit</tspan><tspan x="48" y="227" textLength="75" lengthAdjust="spacing">amet</tspan></text>
+        </g>
+        <g id="Box">
+        </g>
+        <g id="Empty">
+          <text x="48" y="267.35" font-size="30" font-family="default, sans-serif" font-weight="500" letter-spacing="0.8" fill="#FFDCC2">Subtitle</text>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

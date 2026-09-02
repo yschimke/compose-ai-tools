@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Remote Compose Material 3 ↔ M3 Wear OS Apps Design Kit — component matches</title>
+<style>
+  :root { color-scheme: light dark; --bg:#0f0f10; --panel:#1b1b1d; --fg:#e8e8ea; --muted:#9b9ba1; --line:#2a2a2d;
+    --accent:#7dd87d; --warn:#e0c060; --link:#8ab4f8; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  header.top { padding:24px clamp(16px,4vw,40px); border-bottom:1px solid var(--line); }
+  header.top h1 { margin:0 0 6px; font-size:22px; }
+  header.top .subtitle { color:var(--muted); font-size:13px; display:flex; gap:16px; flex-wrap:wrap; }
+  header.top .arrow { color:var(--accent); }
+  header.top .note { margin-top:10px; color:var(--muted); font-size:12px; max-width:78ch; }
+  header.top code { background:var(--panel); padding:1px 6px; border-radius:5px; }
+  main { padding:8px clamp(16px,4vw,40px) 64px; }
+  table { border-collapse:collapse; width:100%; }
+  thead th { position:sticky; top:0; background:var(--bg); text-align:left; font-size:12px; color:var(--muted);
+    padding:10px 12px; border-bottom:1px solid var(--line); z-index:1; }
+  tbody tr.crow { border-bottom:1px solid var(--line); }
+  th.rowhead { text-align:left; font-weight:600; padding:12px; vertical-align:middle; width:22%; }
+  th.rowhead .cid { display:block; word-break:break-word; }
+  th.rowhead .grp { display:block; margin-top:3px; font-weight:400; font-size:11px; color:var(--muted); }
+  td { padding:10px 12px; vertical-align:middle; }
+
+  .pv-embed { position:relative; display:inline-flex; flex-direction:column; gap:6px; text-decoration:none; color:inherit; }
+  .pv-frame { position:relative; display:inline-grid; place-items:center; min-width:120px; min-height:80px;
+    padding:10px; border-radius:10px; background-color:#161617; }
+  .pv-frame--checker { background-image:
+      linear-gradient(45deg,#202022 25%,transparent 25%),
+      linear-gradient(-45deg,#202022 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#202022 75%),
+      linear-gradient(-45deg,transparent 75%,#202022 75%);
+    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
+  .pv-frame--solid { background-color:#1b1b1d; }
+  .pv-frame--bare { background:none; padding:0; }
+  .pv-img { max-width:var(--pv-max-w,260px); max-height:var(--pv-max-h,200px); height:auto; display:block; }
+  .pv-missing { color:var(--muted); font-style:italic; font-size:12px; text-align:center; padding:0 8px; }
+  .pv-label { font-size:12px; color:var(--muted); }
+  .pv-live { position:absolute; top:6px; right:8px; font-size:11px; color:var(--link);
+    background:rgba(10,10,12,0.72); border-radius:6px; padding:1px 6px; opacity:0; transition:opacity .12s; pointer-events:none; }
+  a.pv-embed:hover .pv-live, a.pv-embed:focus-visible .pv-live { opacity:1; }
+  a.pv-embed:hover .pv-frame, a.pv-embed:focus-visible .pv-frame { outline:1px solid var(--link); outline-offset:1px; }
+  @media (max-width:640px){ .pv-img { max-width:min(var(--pv-max-w,260px),150px); } .pv-live { opacity:1; } }
+
+  .pv-missing code { background:var(--panel); padding:0 4px; border-radius:4px; font-style:normal; }
+  a.pv-open { font-size:11px; color:var(--link); text-decoration:none; }
+  a.pv-open:hover { text-decoration:underline; }
+  .rel code { font-size:12px; }
+  .badge { display:inline-block; margin-left:6px; font-size:10px; padding:0 6px; border-radius:999px;
+    background:rgba(224,192,96,0.12); color:var(--warn); border:1px solid var(--warn); }
+  section.solo { margin-top:36px; }
+  section.solo h2 { font-size:15px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  section.solo h2 span { color:var(--muted); font-weight:400; }
+  section.solo ul { list-style:none; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:6px 20px; }
+  section.solo li { padding:6px 0; border-bottom:1px solid var(--line); }
+  section.solo .cid { font-weight:600; }
+  section.solo .grp { color:var(--muted); font-size:11px; margin-left:8px; }
+  section.solo .cap { display:block; color:var(--muted); font-size:12px; }
+  @media (max-width:640px){ th.rowhead { width:auto; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Remote Compose Material 3 ↔ M3 Wear OS Apps Design Kit</h1>
+  <div class="subtitle"><span>Remote Compose Material 3 <span class="arrow">↔</span> M3 Wear OS Apps Design Kit, both against M3 Wear OS kit</span><span>40 paired</span><span>40 rendered both sides</span><span>19 against a kit reference</span></div>
+  <p class="note">Each row pairs a <strong>remote-m3</strong> component with its declared
+  <strong>wear-m3-catalog</strong> parallel (the <code>parallel</code> field in the catalog spec). Both
+  renders are static thumbnails — the left from this branch, the right baked from the
+  <code>design-artifacts/wear-m3-catalog</code> branch — and each <strong>links to the live preview server</strong> on
+  click, where the component re-renders under other themes / locales / devices. A parallel that isn't
+  catalogued in wear-m3-catalog yet is flagged <span class="badge">unpaired</span>. Components with
+  no parallel on either side are listed below the table. The leading <strong>M3 Wear OS kit</strong> column is the published design reference BOTH
+  implementations are reproducing, which is what lets a divergence be attributed to one of them rather
+  than merely observed between them. It is contributed by whichever catalog carries the
+  <code>figma:</code> mapping; rows where neither does read "no kit reference".</p>
+</header>
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Component</th>
+        <th scope="col">M3 Wear OS kit</th><th scope="col">Remote Compose Material 3</th>
+        <th scope="col">M3 Wear OS Apps Design Kit</th>
+        <th scope="col">Parallel</th>
+      </tr>
+    </thead>
+    <tbody id="rows"><tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Filled</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93092"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled__ideal__default.png" alt="Button/Filled design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-filled__ideal__default__compact" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-filled/ideal__default__compact.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-filled__ideal__default" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-filled/ideal__default.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Tonal</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-tonal__ideal__default__compact" target="_blank" rel="noopener" title="Button/Tonal"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-tonal/ideal__default__compact.png" alt="Button/Tonal" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-tonal__ideal__default" target="_blank" rel="noopener" title="Button/Tonal"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-tonal/ideal__default.png" alt="Button/Tonal" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Tonal</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Outlined</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93116"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-outlined__ideal__default.png" alt="Button/Outlined design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-outlined__ideal__default__compact" target="_blank" rel="noopener" title="Button/Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-outlined/ideal__default__compact.png" alt="Button/Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-outlined__ideal__default" target="_blank" rel="noopener" title="Button/Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-outlined/ideal__default.png" alt="Button/Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Outlined</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Disabled</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93092"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled__ideal__default.png" alt="Button/Disabled design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-disabled__ideal__default__compact" target="_blank" rel="noopener" title="Button/Disabled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-disabled/ideal__default__compact.png" alt="Button/Disabled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-filled__ideal__default" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-filled/ideal__default.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/IconLabel</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93092"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled__ideal__default.png" alt="Button/IconLabel design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-iconlabel__ideal__default__compact" target="_blank" rel="noopener" title="Button/IconLabel"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-iconlabel/ideal__default__compact.png" alt="Button/IconLabel" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-filled__ideal__default" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-filled/ideal__default.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/IconLabelSecondary</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93092"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled__ideal__default.png" alt="Button/IconLabelSecondary design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-iconlabelsecondary__ideal__default__compact" target="_blank" rel="noopener" title="Button/IconLabelSecondary"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-iconlabelsecondary/ideal__default__compact.png" alt="Button/IconLabelSecondary" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-filled__ideal__default" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-filled/ideal__default.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Text</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-text__ideal__default__compact" target="_blank" rel="noopener" title="Button/Text"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-text/ideal__default__compact.png" alt="Button/Text" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/textbutton__ideal__default" target="_blank" rel="noopener" title="TextButton"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/textbutton/ideal__default.png" alt="TextButton" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TextButton</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Text-Small</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-text-small__ideal__default__compact" target="_blank" rel="noopener" title="Button/Text-Small"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-text-small/ideal__default__compact.png" alt="Button/Text-Small" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/textbutton__ideal__default" target="_blank" rel="noopener" title="TextButton"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/textbutton/ideal__default.png" alt="TextButton" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TextButton</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Text-Large</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-text-large__ideal__default__compact" target="_blank" rel="noopener" title="Button/Text-Large"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-text-large/ideal__default__compact.png" alt="Button/Text-Large" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/textbutton__ideal__default" target="_blank" rel="noopener" title="TextButton"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/textbutton/ideal__default.png" alt="TextButton" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TextButton</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Text-Filled</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-text-filled__ideal__default__compact" target="_blank" rel="noopener" title="Button/Text-Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-text-filled/ideal__default__compact.png" alt="Button/Text-Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/textbutton__ideal__default" target="_blank" rel="noopener" title="TextButton"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/textbutton/ideal__default.png" alt="TextButton" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TextButton</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Text-Outlined</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-text-outlined__ideal__default__compact" target="_blank" rel="noopener" title="Button/Text-Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-text-outlined/ideal__default__compact.png" alt="Button/Text-Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/textbutton__ideal__default" target="_blank" rel="noopener" title="TextButton"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/textbutton/ideal__default.png" alt="TextButton" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TextButton</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Icon</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-icon__ideal__default__compact" target="_blank" rel="noopener" title="Button/Icon"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-icon/ideal__default__compact.png" alt="Button/Icon" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/iconbutton-standard__ideal__default" target="_blank" rel="noopener" title="IconButton/Standard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/iconbutton-standard/ideal__default.png" alt="IconButton/Standard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>IconButton/Standard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Icon-ExtraSmall</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-icon-extrasmall__ideal__default__compact" target="_blank" rel="noopener" title="Button/Icon-ExtraSmall"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-icon-extrasmall/ideal__default__compact.png" alt="Button/Icon-ExtraSmall" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/iconbutton-standard__ideal__default" target="_blank" rel="noopener" title="IconButton/Standard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/iconbutton-standard/ideal__default.png" alt="IconButton/Standard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>IconButton/Standard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Icon-Small</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-icon-small__ideal__default__compact" target="_blank" rel="noopener" title="Button/Icon-Small"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-icon-small/ideal__default__compact.png" alt="Button/Icon-Small" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/iconbutton-standard__ideal__default" target="_blank" rel="noopener" title="IconButton/Standard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/iconbutton-standard/ideal__default.png" alt="IconButton/Standard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>IconButton/Standard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Icon-Large</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-icon-large__ideal__default__compact" target="_blank" rel="noopener" title="Button/Icon-Large"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-icon-large/ideal__default__compact.png" alt="Button/Icon-Large" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/iconbutton-standard__ideal__default" target="_blank" rel="noopener" title="IconButton/Standard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/iconbutton-standard/ideal__default.png" alt="IconButton/Standard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>IconButton/Standard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Icon-Filled</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-icon-filled__ideal__default__compact" target="_blank" rel="noopener" title="Button/Icon-Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-icon-filled/ideal__default__compact.png" alt="Button/Icon-Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/iconbutton-filled__ideal__default" target="_blank" rel="noopener" title="IconButton/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/iconbutton-filled/ideal__default.png" alt="IconButton/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>IconButton/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Icon-Outlined</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-icon-outlined__ideal__default__compact" target="_blank" rel="noopener" title="Button/Icon-Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-icon-outlined/ideal__default__compact.png" alt="Button/Icon-Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/iconbutton-outlined__ideal__default" target="_blank" rel="noopener" title="IconButton/Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/iconbutton-outlined/ideal__default.png" alt="IconButton/Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>IconButton/Outlined</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Compact</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35276:87975"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-compact__ideal__default.png" alt="Button/Compact design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-compact__ideal__default__compact" target="_blank" rel="noopener" title="Button/Compact"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-compact/ideal__default__compact.png" alt="Button/Compact" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-compact__ideal__default" target="_blank" rel="noopener" title="Button/Compact"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-compact/ideal__default.png" alt="Button/Compact" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Compact</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Compact-IconLabel</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35276:87975"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-compact__ideal__default.png" alt="Button/Compact-IconLabel design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-compact-iconlabel__ideal__default__compact" target="_blank" rel="noopener" title="Button/Compact-IconLabel"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-compact-iconlabel/ideal__default__compact.png" alt="Button/Compact-IconLabel" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-compact__ideal__default" target="_blank" rel="noopener" title="Button/Compact"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-compact/ideal__default.png" alt="Button/Compact" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Compact</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Compact-IconOnly</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35276:87975"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-compact__ideal__default.png" alt="Button/Compact-IconOnly design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-compact-icononly__ideal__default__compact" target="_blank" rel="noopener" title="Button/Compact-IconOnly"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-compact-icononly/ideal__default__compact.png" alt="Button/Compact-IconOnly" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-compact__ideal__default" target="_blank" rel="noopener" title="Button/Compact"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-compact/ideal__default.png" alt="Button/Compact" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Compact</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/Group</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-group__ideal__default__compact" target="_blank" rel="noopener" title="Button/Group"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-group/ideal__default__compact.png" alt="Button/Group" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/buttongroup__ideal__default" target="_blank" rel="noopener" title="ButtonGroup"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/buttongroup/ideal__default.png" alt="ButtonGroup" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>ButtonGroup</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/CustomShape</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93092"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled__ideal__default.png" alt="Button/CustomShape design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-customshape__ideal__default__compact" target="_blank" rel="noopener" title="Button/CustomShape"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-customshape/ideal__default__compact.png" alt="Button/CustomShape" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-filled__ideal__default" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-filled/ideal__default.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Button/NamedLabel</span><span class="grp">Buttons</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/35239:93092"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/button-filled__ideal__default.png" alt="Button/NamedLabel design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/button-namedlabel__ideal__default__compact" target="_blank" rel="noopener" title="Button/NamedLabel"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/button-namedlabel/ideal__default__compact.png" alt="Button/NamedLabel" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/button-filled__ideal__default" target="_blank" rel="noopener" title="Button/Filled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/button-filled/ideal__default.png" alt="Button/Filled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Button/Filled</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Card</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/card__ideal__default__compact" target="_blank" rel="noopener" title="Card"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/card/ideal__default__compact.png" alt="Card" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/card__ideal__default" target="_blank" rel="noopener" title="Card"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/card/ideal__default.png" alt="Card" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Card</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Card/Outlined</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/card-outlined__ideal__default__compact" target="_blank" rel="noopener" title="Card/Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/card-outlined/ideal__default__compact.png" alt="Card/Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/card-outlined__ideal__default" target="_blank" rel="noopener" title="Card/Outlined"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/card-outlined/ideal__default.png" alt="Card/Outlined" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Card/Outlined</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">TitleCard</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/titlecard__ideal__default__compact" target="_blank" rel="noopener" title="TitleCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/titlecard/ideal__default__compact.png" alt="TitleCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/titlecard__ideal__default" target="_blank" rel="noopener" title="TitleCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/titlecard/ideal__default.png" alt="TitleCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TitleCard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">TitleCard/TitleOnly</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/titlecard-titleonly__ideal__default__compact" target="_blank" rel="noopener" title="TitleCard/TitleOnly"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/titlecard-titleonly/ideal__default__compact.png" alt="TitleCard/TitleOnly" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/titlecard__ideal__default" target="_blank" rel="noopener" title="TitleCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/titlecard/ideal__default.png" alt="TitleCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TitleCard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">TitleCard/TimeContent</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/titlecard-timecontent__ideal__default__compact" target="_blank" rel="noopener" title="TitleCard/TimeContent"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/titlecard-timecontent/ideal__default__compact.png" alt="TitleCard/TimeContent" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/titlecard__ideal__default" target="_blank" rel="noopener" title="TitleCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/titlecard/ideal__default.png" alt="TitleCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>TitleCard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">AppCard</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/appcard__ideal__default__compact" target="_blank" rel="noopener" title="AppCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/appcard/ideal__default__compact.png" alt="AppCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/appcard__ideal__default" target="_blank" rel="noopener" title="AppCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/appcard/ideal__default.png" alt="AppCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>AppCard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">AppCard/Time</span><span class="grp">Containment</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/appcard-time__ideal__default__compact" target="_blank" rel="noopener" title="AppCard/Time"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/appcard-time/ideal__default__compact.png" alt="AppCard/Time" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/appcard__ideal__default" target="_blank" rel="noopener" title="AppCard"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/appcard/ideal__default.png" alt="AppCard" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>AppCard</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Template/WatchScreen</span><span class="grp">Scaffold templates</span></th>
+  <td class="col-d"><span class="pv-embed"><span class="pv-frame pv-frame--solid"><span class="pv-missing">no kit reference</span></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/template-watchscreen__ideal__default__compact" target="_blank" rel="noopener" title="Template/WatchScreen"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/template-watchscreen/ideal__default__compact.png" alt="Template/WatchScreen" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/scaffold__ideal__default__240dp" target="_blank" rel="noopener" title="Scaffold"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/scaffold/ideal__default__240dp.png" alt="Scaffold" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Scaffold</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Progress/Circular</span><span class="grp">Communication</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/41424:58637"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/circularprogressindicator__ideal__default__192dp.png" alt="Progress/Circular design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/progress-circular__ideal__default__compact" target="_blank" rel="noopener" title="Progress/Circular"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/progress-circular/ideal__default__compact.png" alt="Progress/Circular" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/circularprogressindicator__ideal__default__240dp" target="_blank" rel="noopener" title="CircularProgressIndicator"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/circularprogressindicator/ideal__default__240dp.png" alt="CircularProgressIndicator" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>CircularProgressIndicator</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Progress/Circular-Disabled</span><span class="grp">Communication</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/41424:58637"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/circularprogressindicator__ideal__default__192dp.png" alt="Progress/Circular-Disabled design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/progress-circular-disabled__ideal__default__compact" target="_blank" rel="noopener" title="Progress/Circular-Disabled"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/progress-circular-disabled/ideal__default__compact.png" alt="Progress/Circular-Disabled" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/circularprogressindicator__ideal__default__240dp" target="_blank" rel="noopener" title="CircularProgressIndicator"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/circularprogressindicator/ideal__default__240dp.png" alt="CircularProgressIndicator" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>CircularProgressIndicator</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Progress/Circular-Indeterminate</span><span class="grp">Communication</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/41424:58637"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/circularprogressindicator__ideal__default__192dp.png" alt="Progress/Circular-Indeterminate design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/progress-circular-indeterminate__ideal__default__compact" target="_blank" rel="noopener" title="Progress/Circular-Indeterminate"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/progress-circular-indeterminate/ideal__default__compact.png" alt="Progress/Circular-Indeterminate" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/circularprogressindicator__ideal__default__240dp" target="_blank" rel="noopener" title="CircularProgressIndicator"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/circularprogressindicator/ideal__default__240dp.png" alt="CircularProgressIndicator" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>CircularProgressIndicator</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">PageIndicator/Horizontal</span><span class="grp">Communication</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/38684:138301"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/pageindicator-horizontal__ideal__default__192dp.png" alt="PageIndicator/Horizontal design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/pageindicator-horizontal__ideal__default__compact" target="_blank" rel="noopener" title="PageIndicator/Horizontal"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/pageindicator-horizontal/ideal__default__compact.png" alt="PageIndicator/Horizontal" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/pageindicator-horizontal__ideal__default__240dp" target="_blank" rel="noopener" title="PageIndicator/Horizontal"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/pageindicator-horizontal/ideal__default__240dp.png" alt="PageIndicator/Horizontal" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>PageIndicator/Horizontal</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">PageIndicator/Vertical</span><span class="grp">Communication</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/38966:402"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/pageindicator-vertical__ideal__default__192dp.png" alt="PageIndicator/Vertical design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/pageindicator-vertical__ideal__default__compact" target="_blank" rel="noopener" title="PageIndicator/Vertical"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/pageindicator-vertical/ideal__default__compact.png" alt="PageIndicator/Vertical" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/pageindicator-vertical__ideal__default__240dp" target="_blank" rel="noopener" title="PageIndicator/Vertical"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/pageindicator-vertical/ideal__default__240dp.png" alt="PageIndicator/Vertical" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>PageIndicator/Vertical</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">PageIndicator/Interactive</span><span class="grp">Communication</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/38684:138301"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/pageindicator-horizontal__ideal__default__192dp.png" alt="PageIndicator/Interactive design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/pageindicator-interactive__ideal__default__compact" target="_blank" rel="noopener" title="PageIndicator/Interactive"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/pageindicator-interactive/ideal__default__compact.png" alt="PageIndicator/Interactive" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/pageindicator-horizontal__ideal__default__240dp" target="_blank" rel="noopener" title="PageIndicator/Horizontal"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/pageindicator-horizontal/ideal__default__240dp.png" alt="PageIndicator/Horizontal" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>PageIndicator/Horizontal</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Text/Body</span><span class="grp">Text</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/38977:66993"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/text-body__ideal__default.png" alt="Text/Body design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/text-body__ideal__default__compact" target="_blank" rel="noopener" title="Text/Body"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/text-body/ideal__default__compact.png" alt="Text/Body" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/text-body__ideal__default" target="_blank" rel="noopener" title="Text/Body"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/text-body/ideal__default.png" alt="Text/Body" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Text/Body</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Text/MaxLines-Truncated</span><span class="grp">Text</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/38977:66993"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/text-body__ideal__default.png" alt="Text/MaxLines-Truncated design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/text-maxlines-truncated__ideal__default__compact" target="_blank" rel="noopener" title="Text/MaxLines-Truncated"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/text-maxlines-truncated/ideal__default__compact.png" alt="Text/MaxLines-Truncated" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/text-body__ideal__default" target="_blank" rel="noopener" title="Text/Body"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/text-body/ideal__default.png" alt="Text/Body" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Text/Body</code></td>
+</tr>
+<tr class="crow">
+  <th scope="row" class="rowhead"><span class="cid">Text/Branded</span><span class="grp">Text</span></th>
+  <td class="col-d"><span class="pv-embed" title="wear-m3-catalog — figma:B24oss2tTeXAFykyeyusz0/38977:66993"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/references/text-body__ideal__default.png" alt="Text/Branded design reference" loading="lazy" decoding="async" /></span></span></td><td class="col-a"><a class="pv-embed" href="https://preview.coo.ee/remote-m3/p/text-branded__ideal__default__compact" target="_blank" rel="noopener" title="Text/Branded"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="images/text-branded/ideal__default__compact.png" alt="Text/Branded" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="col-b"><a class="pv-embed" href="https://preview.coo.ee/wear-m3-catalog/p/text-body__ideal__default" target="_blank" rel="noopener" title="Text/Body"><span class="pv-frame pv-frame--checker" style="--pv-max-w:260px;--pv-max-h:200px"><img class="pv-img" src="https://raw.githubusercontent.com/yschimke/wear-m3-catalog/design-artifacts/wear-m3-catalog/images/text-body/ideal__default.png" alt="Text/Body" loading="lazy" decoding="async" /></span><span class="pv-live">live ↗</span></a></td>
+  <td class="rel"><code>Text/Body</code></td>
+</tr></tbody>
+  </table>
+  <section class="solo"><h2>Only in remote-m3 <span>11</span></h2>
+       <ul><li><span class="cid">Icon</span><span class="grp">Iconography</span><span class="cap">The standalone RemoteIcon primitive.</span></li>
+<li><span class="cid">Typeface/Specimen</span><span class="grp">Typeface</span><span class="cap">Four branded Google Fonts families, each drawing its own name — geometric, script, grotesk, monospace. A lane that cannot resolve a named family renders four identical-looking lines.</span></li>
+<li><span class="cid">Typeface/VariableWeight</span><span class="grp">Typeface</span><span class="cap">One variable font (Roboto Flex) at wght 100/400/700/1000, written into the document as font-variation settings. A lane that resolves the family but drops the axes renders four lines in one weight.</span></li>
+<li><span class="cid">Typeface/VariableWidth</span><span class="grp">Typeface</span><span class="cap">The same variable font at wdth 25/100/151 — the axis nothing can fake, since no text API asks for a narrower face. Either the set widths differ or the axes were dropped.</span></li>
+<li><span class="cid">Theme/Typography</span><span class="grp">Theme</span><span class="cap">A type ramp read from RemoteMaterialTheme.typography.</span></li>
+<li><span class="cid">Theme/ColorScheme</span><span class="grp">Theme</span><span class="cap">Colour-scheme swatches read from RemoteMaterialTheme.colorScheme.</span></li>
+<li><span class="cid">Theme/SystemThemeSwatches</span><span class="grp">Theme</span><span class="cap">System-theme swatches — the catalog&#39;s only document carrying ColorTheme operations, where a light and a dark colour live in the document and the player selects between them.</span></li>
+<li><span class="cid">Shader/LinearGradient</span><span class="grp">Shaders</span><span class="cap">Document-level gradient shader fill; the middle stop is a named value the connector can recolour live. A remote-creation-compose primitive with no Wear Material 3 component peer.</span></li>
+<li><span class="cid">WidgetContainer/Small</span><span class="grp">Widget Container</span><span class="cap">The Small (200×60dp) squircle widget container the Wear widget host draws around widget content — default surfaceContainerLow fill, 8dp padding, 26dp corners — rendered through the glance-wear WearWidgetPreview tooling wrapper.</span></li>
+<li><span class="cid">WidgetContainer/Large</span><span class="grp">Widget Container</span><span class="cap">The Large (200×108dp) squircle widget container with the host&#39;s default background, carrying a title + supporting line.</span></li>
+<li><span class="cid">WidgetContainer/GradientBackground</span><span class="grp">Widget Container</span><span class="cap">A Small container whose widget declares its own WearWidgetBrush background (vertical gradient) — the corner clipping over the brush is the point.</span></li></ul></section>
+  <section class="solo"><h2>Only in wear-m3-catalog <span>48</span></h2>
+       <ul><li><span class="cid">Auth/SignInButton</span><span class="grp">Sign-in</span><span class="cap">The primary action of a sign-in prompt, with the account glyph Wear&#39;s flow expects.</span></li>
+<li><span class="cid">Auth/GuestModeButton</span><span class="grp">Sign-in</span><span class="cap">The way past the sign-in prompt: continue without an account.</span></li>
+<li><span class="cid">Auth/SelectAccountScreen</span><span class="grp">Sign-in</span><span class="cap">Pick which account to sign in with — avatar, name and address per row.</span></li>
+<li><span class="cid">Auth/SignInPlaceholderScreen</span><span class="grp">Sign-in</span><span class="cap">What the sign-in flow shows while it is still deciding what to show.</span></li>
+<li><span class="cid">Auth/SignedInConfirmationDialog</span><span class="grp">Sign-in</span><span class="cap">The end of the flow: who you signed in as, shown briefly and then dismissed.</span></li>
+<li><span class="cid">Button/FilledVariant</span><span class="grp">Buttons</span><span class="cap">The kit&#39;s highlighted style — a filled button in the variant palette.</span></li>
+<li><span class="cid">Button/Child</span><span class="grp">Buttons</span><span class="cap">Lowest emphasis; no container at all, for a button inside another surface.</span></li>
+<li><span class="cid">Button/ImageBackground</span><span class="grp">Buttons</span><span class="cap">A button over an image, with the scrim that keeps its label legible.</span></li>
+<li><span class="cid">Button/Loading</span><span class="grp">Buttons</span><span class="cap">A button waiting on the work it started — the kit&#39;s loading pattern.</span></li>
+<li><span class="cid">AlertDialog</span><span class="grp">Dialogs</span><span class="cap">Interrupts to ask for a decision; the kit&#39;s button arrangements fold in as cells.</span></li>
+<li><span class="cid">OpenOnPhoneDialog</span><span class="grp">Dialogs</span><span class="cap">Hands the task to the paired phone, with the progress the wait needs.</span></li>
+<li><span class="cid">EdgeButton</span><span class="grp">Edge-hugging buttons</span><span class="cap">The screen-hugging confirm action, curved to the bottom edge of the display.</span></li>
+<li><span class="cid">FastScrollingTransformingLazyColumn</span><span class="grp">Fast scrolling</span><span class="cap">A long list that skims by section when the rotating bezel is spun hard, instead of crawling.</span></li>
+<li><span class="cid">IconButton/FilledVariant</span><span class="grp">Icon buttons</span><span class="cap">The kit&#39;s highlighted style — a filled icon button in the variant palette.</span></li>
+<li><span class="cid">IconButton/Tonal</span><span class="grp">Icon buttons</span><span class="cap">Medium emphasis, on a tonal container.</span></li>
+<li><span class="cid">ScrollIndicator</span><span class="grp">Position indicators</span><span class="cap">Where the screen sits in a scroll, drawn against the right bezel.</span></li>
+<li><span class="cid">LevelIndicator</span><span class="grp">Position indicators</span><span class="cap">The value a rotating side button is setting, while it is being turned.</span></li>
+<li><span class="cid">TransformingLazyColumn</span><span class="grp">Lists and screens</span><span class="cap">The Wear list: rows scale and fade toward the edges of the round display.</span></li>
+<li><span class="cid">Media/PlayerScreen</span><span class="grp">Media controls</span><span class="cap">The media player, whole: track and artist above, transport controls across the middle, the output-device and overflow buttons below.</span></li>
+<li><span class="cid">Media/FooterButtons</span><span class="grp">Media controls</span><span class="cap">The player&#39;s footer: the output-device button with its volume badge, and the overflow. Two 44×32 compact buttons in the kit&#39;s two 68dp sections.</span></li>
+<li><span class="cid">Media/ControlButtons</span><span class="grp">Media controls</span><span class="cap">Previous, play/pause, next — the transport row. The track&#39;s progress ring is under the middle button&#39;s container rather than around it; see the note in this file.</span></li>
+<li><span class="cid">Media/PodcastControlButtons</span><span class="grp">Media controls</span><span class="cap">The spoken-word transport row: seek back and forward by a fixed increment.</span></li>
+<li><span class="cid">Media/PlayPauseProgressButton</span><span class="grp">Media controls</span><span class="cap">The middle button: play or pause. Its progress ring is drawn UNDER the filled container rather than around it, so the kit&#39;s `Progress=` does not read here — an upstream bug, not a seed. See the note in this file.</span></li>
+<li><span class="cid">Media/InfoDisplay</span><span class="grp">Media controls</span><span class="cap">Track and artist, marquee-scrolled when the title outruns the screen.</span></li>
+<li><span class="cid">Media/ShowPlaylistButton</span><span class="grp">Media controls</span><span class="cap">Jump to the playlist this track came from, with its artwork.</span></li>
+<li><span class="cid">DatePicker</span><span class="grp">Pickers</span><span class="cap">Three wheels for a date, with the kit&#39;s field orderings folded in.</span></li>
+<li><span class="cid">TimePicker</span><span class="grp">Pickers</span><span class="cap">Wheels for a time, pinned to midnight; the kit&#39;s clock formats fold in as cells.</span></li>
+<li><span class="cid">Picker</span><span class="grp">Pickers</span><span class="cap">One wheel of options — the primitive the date and time pickers are built from.</span></li>
+<li><span class="cid">Placeholder/Button</span><span class="grp">Placeholders</span><span class="cap">A button whose icon and labels have not arrived yet.</span></li>
+<li><span class="cid">Placeholder/IconButton</span><span class="grp">Placeholders</span><span class="cap">An icon button whose icon has not arrived yet.</span></li>
+<li><span class="cid">Placeholder/Card</span><span class="grp">Placeholders</span><span class="cap">A card whose icon and text have not arrived yet.</span></li>
+<li><span class="cid">SegmentedCircularProgressIndicator</span><span class="grp">Progress indicators</span><span class="cap">The same ring cut into segments, for progress through a countable set of steps.</span></li>
+<li><span class="cid">ArcProgressIndicator</span><span class="grp">Progress indicators</span><span class="cap">An indeterminate arc along the bezel, for a wait with no measurable progress.</span></li>
+<li><span class="cid">LinearProgressIndicator</span><span class="grp">Progress indicators</span><span class="cap">A straight track, for progress inside a component or a list row.</span></li>
+<li><span class="cid">CheckboxButton</span><span class="grp">Selection buttons</span><span class="cap">A labelled row that toggles a checkbox; for a set where any number may be chosen.</span></li>
+<li><span class="cid">SwitchButton</span><span class="grp">Selection buttons</span><span class="cap">A labelled row that flips a switch; for a setting that takes effect immediately.</span></li>
+<li><span class="cid">RadioButton</span><span class="grp">Selection buttons</span><span class="cap">A labelled row in a set where exactly one may be chosen.</span></li>
+<li><span class="cid">Shape/MaterialShapes</span><span class="grp">Shapes</span><span class="cap">The expressive shape library, with each named shape folded in as a variant.</span></li>
+<li><span class="cid">Slider</span><span class="grp">Sliders and steppers</span><span class="cap">A value across a fixed number of steps, with the kit&#39;s levels folded in as cells.</span></li>
+<li><span class="cid">Stepper</span><span class="grp">Sliders and steppers</span><span class="cap">A value moved a step at a time, between buttons at the top and bottom of the screen.</span></li>
+<li><span class="cid">SwipeToReveal/Card</span><span class="grp">Swipe to reveal</span><span class="cap">A card swiped aside to show its actions.</span></li>
+<li><span class="cid">SwipeToReveal/Button</span><span class="grp">Swipe to reveal</span><span class="cap">The same gesture over a button rather than a card.</span></li>
+<li><span class="cid">ListHeader</span><span class="grp">Text</span><span class="cap">Titles the screen a list belongs to; the first thing above the list.</span></li>
+<li><span class="cid">ListSubHeader</span><span class="grp">Text</span><span class="cap">Divides a long list into named runs, without leaving the screen&#39;s title behind.</span></li>
+<li><span class="cid">Text/Caption</span><span class="grp">Text</span><span class="cap">Secondary text at the `labelSmall` role — a timestamp, a unit, a footnote.</span></li>
+<li><span class="cid">TimeText</span><span class="grp">Text</span><span class="cap">The curved status strip every Wear screen carries, pinned to a fixed time.</span></li>
+<li><span class="cid">IconToggleButton</span><span class="grp">Toggle buttons</span><span class="cap">An icon that holds an on/off state, with the kit&#39;s size and state axes folded in.</span></li>
+<li><span class="cid">TextToggleButton</span><span class="grp">Toggle buttons</span><span class="cap">A short label that holds an on/off state.</span></li></ul></section>
+</main>
+</body>
+</html>

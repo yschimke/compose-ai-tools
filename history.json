@@ -1,0 +1,1546 @@
+{
+    "formatVersion": "compose-preview-history/v1",
+    "generatedFrom": "1b855a65f30b6bf71a6a7600053669a42800b7a1",
+    "previews": {
+        "appcard-time__ideal__default__compact": {
+            "path": "images/appcard-time/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "b13e5e1ea09fbc1647a079f7fe621e421af78afc",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "f13f84481f55e38337e2381302494d885b972a3b",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "e7f8f355eeea9f34f97130dbe7fa0d5012b1458d",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "492556ee99e1d4bd7fb88ba3c3835b1197ec0c93",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "appcard__ideal__default__compact": {
+            "path": "images/appcard/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "325e2ceb3a16476d696d669a375765f62a136894",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "7c35f6aa554a72a7130d294ed36dcf0c4e09d307",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "f4e92976d30b832309cbb6d670d8d3c23c4797d8",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-compact-iconlabel__ideal__default__compact": {
+            "path": "images/button-compact-iconlabel/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "0520db9f383b29741ed3543c9eccc6ffb8a21fea",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "51ba897ddd0c3a89d57c4853356db4a0c5b89c55",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "3963a4b64e655a3f1ef8a54003b942451e9d9158",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "40d863154a9703e34a2b906aa6198b0642f9ccf6",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-compact-icononly__ideal__default__compact": {
+            "path": "images/button-compact-icononly/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "88722d2da3823b8b4e36113c844fe64f6eba77ed",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "1fe509cbadb32d01b0530bcbb8b50a4bf3703633",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "fbb4cf2439402f275a54df11c0d8abe9b6f9e2ac",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-compact__ideal__default__compact": {
+            "path": "images/button-compact/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "218a8b72086f8c16c3a7e9a36973ba49724c6c25",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "9793fcdb3bcb5e4cc17dd5cd7ecc734d07682581",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "72ca0c2d7173694ee96ed9032a69c68fc1b0c93f",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "d369be6f67ccf520a1b6b6cefa91933e2c6a0e01",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-customshape__ideal__default__compact": {
+            "path": "images/button-customshape/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "7fb82c0dcfb40f09d832a3d3c4c9f8ab8ff24885",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "83b7cb4b6c68bbeeb5ca70b95cdc19ef70538a21",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "dc386e3c94d06b65fdc60c52fce85df12b893879",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "9c310f80c51e3afcaba5375d0955b452843e57b1",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-disabled__ideal__default__compact": {
+            "path": "images/button-disabled/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "c0f8815aa11e0ff3be6cc956a48e1ada86aa75e1",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "7175d8c2829271d59b5c401615299cb899d2e24a",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "599191ea74ede2faa960ac8e6aa41c9a796eaa90",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "9b0c909e92953bcbcce233eeec064dde8aa330dc",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-filled__ideal__default__compact": {
+            "path": "images/button-filled/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "eb85e7e8d000ff1328ea21eb89a357ed0db11b51",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "fcfe36c3d1c608f166a13a2271894b4ba3fbcc73",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "a94ad8a5d58f6666ca254ca026a12f3a34cc2631",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "e93fb0e6c05268797bb94ccb6337bd07bc7779a3",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-group__ideal__default__compact": {
+            "path": "images/button-group/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "2bf1e8169be4baff59e9f1fead572628229c8cac",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "266183cfee700fd56c7b96f5ff5a4b0a1225fbff",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "4da430ea34a3892c332d21749977453190e3decd",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "3f9e9f79054ea87d71a6d6ea4ea55d52d798e975",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-icon-extrasmall__ideal__default__compact": {
+            "path": "images/button-icon-extrasmall/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "4a9897e4b76e0aadde76d2d179faba793516d127",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "64497fd12754e2ccd521115daae6a9a239c17706",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "b74854cd28153707af1237c70fefa537d7d98535",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-icon-filled__ideal__default__compact": {
+            "path": "images/button-icon-filled/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "5ad0081bd1a7377687496d2ef3cbef388d48c7ba",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "ad9ef1b9b35ee92c0724decc9370deb0adbdf195",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "75ff588d37c64a20abda31079cf0e4acc7591f30",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-icon-large__ideal__default__compact": {
+            "path": "images/button-icon-large/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "4c30e1781b3f365ff7633523a680c118711d1dc1",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "5162cb19ca7cf458cf7f59e34eb551d6a6098fa7",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "a1c65845f4ec36921d7e5d04bdc4ece590298382",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-icon-outlined__ideal__default__compact": {
+            "path": "images/button-icon-outlined/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "be824a64c3dfe9ac67a747a46588196ea7ee3a45",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "f73ad8da71f0166cd49a599845e26d2c79f3b1fc",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "67ef551dfb16d668e32637930450ddb31356d197",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-icon-small__ideal__default__compact": {
+            "path": "images/button-icon-small/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "de511a6243ac5b3d4c33d93431639296b4ba0634",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "eebfe64afcf3ef999b0396627bdb2f398cd24be2",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "df01f72f2bef044c3c82265044818a9f715ccd7d",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-icon__ideal__default__compact": {
+            "path": "images/button-icon/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "25f0449eea5cce1b7c837f9d009a494608f913b8",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "09db1a960ce196c169e1379feb9c8daf34ad290d",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-iconlabel__ideal__default__compact": {
+            "path": "images/button-iconlabel/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "12b547019d8b13d09142fbd38412d6e701da4e9d",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "977c4eba270762058cf55d3185e16c809e6d6e28",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "60ad0c85064818beaf66a21fff4c3da7064d0941",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "531786a06b73714e6dac8ba680454bf7ca60dd94",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-iconlabelsecondary__ideal__default__compact": {
+            "path": "images/button-iconlabelsecondary/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "08a5b0c6ca8c878692bbdf2a1b6ec0890b593821",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "12fba186590682c146df3a65ea99de2e9dc92c27",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "5c11013499fef51290bbc57cdc91940a1529837f",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "29b574a43a921fd9348380f8e321d14342657d03",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-namedlabel__ideal__default__compact": {
+            "path": "images/button-namedlabel/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "eb85e7e8d000ff1328ea21eb89a357ed0db11b51",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "fcfe36c3d1c608f166a13a2271894b4ba3fbcc73",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "a94ad8a5d58f6666ca254ca026a12f3a34cc2631",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "e93fb0e6c05268797bb94ccb6337bd07bc7779a3",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-outlined__ideal__default__compact": {
+            "path": "images/button-outlined/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "ba10ff214cbab7baeca09d60aa630eb552911962",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "db9b9a2db4b1d3cb1fa0e97cf4b75c11bf885639",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "75e7b74e8b548c0b510906e431a69a82dfe34712",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "9b08337de1254ecc5124fbbedaf0f9265792d84e",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-text-filled__ideal__default__compact": {
+            "path": "images/button-text-filled/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "eafa629f59e94a7a6de486ce9e6a414b3e45c329",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "5f2505dc59aa45b80c674d38c260343d9cb32126",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "a20dbb8551e624ab43faac8e3059717ec01363a2",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "2e36c89ac90f6d0da674bc41509d034648e2a76c",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-text-large__ideal__default__compact": {
+            "path": "images/button-text-large/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "4235d2ae2fdb041d66f7faf1e0f5e2b42d8fa896",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "006737c0d12f5acb5be452eea2d08134956c17a1",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "bebd46f35e4c3b2ffa5ba5cfc1dc368c5eb9e46e",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "e01738bdd6f5ecd132c12d263f17036d27fe6a79",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-text-outlined__ideal__default__compact": {
+            "path": "images/button-text-outlined/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "022b20d4640e4e73dca4f1b010d5b33a0806cfd3",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "897e98191bbd58cd11fb2ddca10b07eb84f8f7df",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "f778926ce132e44e6a470867119612a924e1622f",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "262169b889d197c5f45eb0b226f5d8b43ed7e69f",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-text-small__ideal__default__compact": {
+            "path": "images/button-text-small/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "73d310532a6762865086ace204d930edac43a134",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "e02f3abf4f9f20fe0705118255f5a72c8c28ed39",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "4911d6ceb8c11b7acf23fa79064f4b786ac3a0c9",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "78c550863ba1a4c40d8304fedc9c4a5ae4f239ea",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-text__ideal__default__compact": {
+            "path": "images/button-text/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "4005775ec90fab5a5cfda217924710b500fedee9",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "a13933c4e2d781c5c5b07346097d3bf8be3399cd",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "a1a8f3178e838cf59c570a3b94b62bf08438d779",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "dc41942a80a0dff122dfa427ca2554bbe8251c76",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "button-tonal__ideal__default__compact": {
+            "path": "images/button-tonal/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "5df59e5f3ee89f9ebf93b52ee251c6686ca698bf",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "16dc8e3cfa902c30be202facd3bda13dae3af6c2",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "32651d967c8e73101128b0a5534486ca9d811dae",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "d4481f9e43d55173fbe0ba8b7d8817972ba39021",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "card-outlined__ideal__default__compact": {
+            "path": "images/card-outlined/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "2f85f9ffdcd9e23601e658c0810fb7afd102b659",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "3c4383c243f79a01490df4efe368a8e4dcf348a6",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "de928ede29b9fb8e244738d56c5e7f39538f43a6",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "card__ideal__default__compact": {
+            "path": "images/card/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "49df93e996358aa6009ee5b931c0c19f6ee0caff",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "f5f830e5f58754177e02d4fa029591fb1462b1b5",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "icon__ideal__default__compact": {
+            "path": "images/icon/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "26096b47324f0f3163ef10f93b8b67f3b1a5de21",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "5536e578e377b6271f088aa65a1f7c3a3fe0d6a6",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "pageindicator-horizontal__ideal__default__compact": {
+            "path": "images/pageindicator-horizontal/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "d3606191ff39f5dd3c8b3081297d28e3e37f1dc0",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "48c6948a676085c051853e3012f1afdc5d5120b6",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "pageindicator-interactive__ideal__default__compact": {
+            "path": "images/pageindicator-interactive/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "fddbea2fca205569e51a66cffaad26aef59f0aed",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "f47aaaa140f217999355731e136f919b60b418a6",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "0c94e92d0047e1c0f843a8c947ae644c059905bc",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "650b3092a493bf63e0a10bc4778e1e915ac02c88",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "pageindicator-vertical__ideal__default__compact": {
+            "path": "images/pageindicator-vertical/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "a30e86bf1df8c30b3022248976bdab8981814b24",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "38ac9cefc4fe7964bdb799c6ca768ddbcf73e6a0",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "progress-circular-disabled__ideal__default__compact": {
+            "path": "images/progress-circular-disabled/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "df6d524a79055b65178fc518101f19629dbd07a7",
+                    "commit": "1b855a65f30b6bf71a6a7600053669a42800b7a1",
+                    "date": "2026-08-27T08:48:33Z",
+                    "sourceSha": "b78dfef6",
+                    "commits": 1
+                },
+                {
+                    "blob": "dca987b7bef1c28d8d1bb3fa2b874abfbbfd6727",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "887123b5ec22f09e8ec0b96d4890b3f77b6edab5",
+                    "commit": "d72ac7df33b6cf4c228c5641ce9ae1927bd896e5",
+                    "date": "2026-08-20T23:22:41Z",
+                    "sourceSha": "0e98c614",
+                    "commits": 1
+                },
+                {
+                    "blob": "90eaf3f5de2c594421146f36ca0f024bc8cec809",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "progress-circular-indeterminate__ideal__default__compact": {
+            "path": "images/progress-circular-indeterminate/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "3667fa7ed57ee664338418fafec5ed787a786d1f",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "b060cdfdadba1f4b03a30c1c057855780bd37923",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "0e23081b7c6e3653b9fe7a2063ae269fe4db5ab7",
+                    "commit": "d72ac7df33b6cf4c228c5641ce9ae1927bd896e5",
+                    "date": "2026-08-20T23:22:41Z",
+                    "sourceSha": "0e98c614",
+                    "commits": 1
+                },
+                {
+                    "blob": "c840dd59c8c364633e9c23152209c3c86539cceb",
+                    "commit": "03c3d1cdb76c68d76729c511a72dca70c3ff1bb0",
+                    "date": "2026-08-15T20:54:57Z",
+                    "sourceSha": "9dc5c35a",
+                    "commits": 1
+                },
+                {
+                    "blob": "ddb2ab0ec8c29d739b7ab16b622cec47219dc4da",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 5,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "progress-circular__ideal__default__compact": {
+            "path": "images/progress-circular/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "01d1635d8e4480e6b72aa32d1449ef76c0206696",
+                    "commit": "1b855a65f30b6bf71a6a7600053669a42800b7a1",
+                    "date": "2026-08-27T08:48:33Z",
+                    "sourceSha": "b78dfef6",
+                    "commits": 1
+                },
+                {
+                    "blob": "de1dcc7443574a04a41f541ff2d1610538f96bcb",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "c9ade3028543c52169fe63d70223227f7e72388c",
+                    "commit": "d72ac7df33b6cf4c228c5641ce9ae1927bd896e5",
+                    "date": "2026-08-20T23:22:41Z",
+                    "sourceSha": "0e98c614",
+                    "commits": 1
+                },
+                {
+                    "blob": "d8ec2fedb7a804c0c45e0677910440ca5d7507d9",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "shader-lineargradient__ideal__default__compact": {
+            "path": "images/shader-lineargradient/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "d60003be39ff5d6fb30d0e0d0dc16ffd4815cbe2",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "1cecad3deaeb6a18428c6fea894cd895b8349ec3",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "template-watchscreen__ideal__default__compact": {
+            "path": "images/template-watchscreen/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "feb0a116f1eafaff50c1cbb7959a294b4de386ca",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "db096eb4552f1ea723aff553a121e94f509ceadc",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "a6f2bddca459ba0bc7a3b606e6cd7b8cccb6cc3b",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "text-body__ideal__default__compact": {
+            "path": "images/text-body/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "6bc478906b66ed5661574d4fd14daab5a41e8ce7",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "9c2c5527919478ac61f6d6ba31b4ad78871c8bef",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "text-branded__ideal__default__compact": {
+            "path": "images/text-branded/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "77470efd866b0f6cfea995a2df4a626b23e2188a",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "9e7dccbdcce6bfb87b87aa72e569f5d47705f82c",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "cdda98eb5612e792a6dd8cbf7ec5ce7d93649cc6",
+                    "commit": "b6fe804fea2663b634201fdfd4495e8991d30ba8",
+                    "date": "2026-08-08T12:00:30Z",
+                    "sourceSha": "05bbe8fe",
+                    "commits": 1
+                },
+                {
+                    "blob": "9135bc3fda8a30828661b1f2890945b44a7a6d41",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "text-maxlines-truncated__ideal__default__compact": {
+            "path": "images/text-maxlines-truncated/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "e2f8ac84f21bca5eefaf57d00d2a115991898f4d",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "131a1d0cf4a403395aac73637aa3c662f9466943",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "theme-colorscheme__ideal__default__compact": {
+            "path": "images/theme-colorscheme/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "40043e7cbfdf0cac0d8db6d16b9062f77be99194",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "6c9376122ae308f9cc1b3147ddeb811cc1c19020",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "theme-systemthemeswatches__ideal__default__compact": {
+            "path": "images/theme-systemthemeswatches/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "354a2f39d991a93cd474f47eea79165e023a7983",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "282371a84fe5b0cb62543bbdc7c5f04b4c6ff434",
+                    "commit": "1e213ef494823ddbb5b379fb3b45af20df09b2fb",
+                    "date": "2026-08-16T08:48:50Z",
+                    "sourceSha": "f95bd556",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "theme-typography__ideal__default__compact": {
+            "path": "images/theme-typography/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "406125a4c0d8ce0cbde0c1f9d371a651be974083",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "9a6e3b8a9a635bb6e862ad123b595d1e5db7bacc",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "a18939338859fbdc024325989e601e83eb52007b",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "3dd42a4adcfc6f386e8945362f0df9e77a25f029",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "titlecard-timecontent__ideal__default__compact": {
+            "path": "images/titlecard-timecontent/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "1d8ae6445086be3de5a46bdfd53ebce57a0b5a6e",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "531a3ef470dea09dec43128a714a9d972effa25a",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "3515819cd2d0e86e48583848927d9e31fafadf62",
+                    "commit": "35c46e1405269888678dbcf0e424cc1f866367cb",
+                    "date": "2026-08-19T12:33:03Z",
+                    "sourceSha": "a9d76ebd",
+                    "commits": 1
+                },
+                {
+                    "blob": "f8e54b7b866219feda5d2273fa66e00e147148dc",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 4,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "titlecard-titleonly__ideal__default__compact": {
+            "path": "images/titlecard-titleonly/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "69e8b430029cb520bd7e26be39122e9aeaf2f73b",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "6749ed568036429efc1e9f428b536dad1e817f87",
+                    "commit": "3027ac2ed9d48d4c3679688273fdd92015efa6f6",
+                    "date": "2026-08-15T18:57:22Z",
+                    "sourceSha": "96d9ae37",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "titlecard__ideal__default__compact": {
+            "path": "images/titlecard/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "00eec1d171d4508a3540c6bfe8a302874ddd345b",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "8971ac5f29dc3eee6ad1ffea5917cf113bef91da",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "4c8882753e92a16958a17461c0fcb5615408ccfc",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 3,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "typeface-specimen__ideal__default__compact": {
+            "path": "images/typeface-specimen/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "737acd98273930f6b8640dbac3385ab24dfd7002",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "aabb8788934f85aa37e7b4f8ec33dce8426f6e87",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "99fe790be1e467f7ccceedf8e3eb9abe4509d5ce",
+                    "commit": "dab2bb2684c4bdaedeee6ee6e99bac4b0051c05a",
+                    "date": "2026-08-16T09:20:28Z",
+                    "sourceSha": "70c2a72e",
+                    "commits": 1
+                },
+                {
+                    "blob": "50a7ab7d1a240267756dede66f80354c9fabd715",
+                    "commit": "1e213ef494823ddbb5b379fb3b45af20df09b2fb",
+                    "date": "2026-08-16T08:48:50Z",
+                    "sourceSha": "f95bd556",
+                    "commits": 1
+                },
+                {
+                    "blob": "99fe790be1e467f7ccceedf8e3eb9abe4509d5ce",
+                    "commit": "b6fe804fea2663b634201fdfd4495e8991d30ba8",
+                    "date": "2026-08-08T12:00:30Z",
+                    "sourceSha": "05bbe8fe",
+                    "commits": 1
+                }
+            ],
+            "observations": 5,
+            "unstable": false,
+            "flapCount": 1
+        },
+        "typeface-variableweight__ideal__default__compact": {
+            "path": "images/typeface-variableweight/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "8d9436dd145b37f3dcd37c6afac14387892aef25",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "6b52ac9269ed53867083b3bdbef8809fb896d17d",
+                    "commit": "cdce2e80f3493396b99fe25f553c5b8fb159fef5",
+                    "date": "2026-08-08T14:49:40Z",
+                    "sourceSha": "46d2e754",
+                    "sinceCommit": "9b1c428698ce71777a03663be84405e45e75c7b0",
+                    "commits": 2,
+                    "occurrences": 2
+                },
+                {
+                    "blob": "4401f5bcb7a03deddfdd930d6cab98256aa63d87",
+                    "commit": "f2a3f59c3f537bbebcecee133cbcb6e64d994603",
+                    "date": "2026-08-08T13:53:21Z",
+                    "sourceSha": "58281ebb",
+                    "sinceCommit": "b6fe804fea2663b634201fdfd4495e8991d30ba8",
+                    "commits": 2,
+                    "occurrences": 2
+                }
+            ],
+            "observations": 5,
+            "unstable": true,
+            "flapCount": 2
+        },
+        "typeface-variablewidth__ideal__default__compact": {
+            "path": "images/typeface-variablewidth/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "d8d3bf9c6d7cfe9afab123b4e25b615195bf89dc",
+                    "commit": "103376be136b4dade2f6efb49f9d18968731724c",
+                    "date": "2026-08-22T14:54:01Z",
+                    "sourceSha": "23197e7f",
+                    "commits": 1
+                },
+                {
+                    "blob": "d34c371232135f7b9efaf915577e6d4ae2520045",
+                    "commit": "778dacf8991a0f155e0ca0b98b4cded7d16123f9",
+                    "date": "2026-08-22T12:47:22Z",
+                    "sourceSha": "eb290a07",
+                    "commits": 1
+                },
+                {
+                    "blob": "f3cbb9998fba01b258a4ad7d3d9e1bb717783a61",
+                    "commit": "cdce2e80f3493396b99fe25f553c5b8fb159fef5",
+                    "date": "2026-08-08T14:49:40Z",
+                    "sourceSha": "46d2e754",
+                    "sinceCommit": "9b1c428698ce71777a03663be84405e45e75c7b0",
+                    "commits": 2,
+                    "occurrences": 2
+                },
+                {
+                    "blob": "7c76e18da9598e862068e44f369a8583526afb5b",
+                    "commit": "f2a3f59c3f537bbebcecee133cbcb6e64d994603",
+                    "date": "2026-08-08T13:53:21Z",
+                    "sourceSha": "58281ebb",
+                    "sinceCommit": "b6fe804fea2663b634201fdfd4495e8991d30ba8",
+                    "commits": 2,
+                    "occurrences": 2
+                }
+            ],
+            "observations": 6,
+            "unstable": true,
+            "flapCount": 2
+        },
+        "widgetcontainer-gradientbackground__ideal__default__compact": {
+            "path": "images/widgetcontainer-gradientbackground/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "89a28e69aed1851d6acf950c0432596c2d01b848",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "widgetcontainer-large__ideal__default__compact": {
+            "path": "images/widgetcontainer-large/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "14f4ea20be9b91cf698a20956186f80edae0d780",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "widgetcontainer-small__ideal__default__compact": {
+            "path": "images/widgetcontainer-small/ideal__default__compact.png",
+            "versions": [
+                {
+                    "blob": "b90078f611dbb139eaf98dd9763ec382bcfb9638",
+                    "commit": "3d18338d06fdab87dbb2e5cbe9b31c7b53208eee",
+                    "date": "2026-08-03T21:42:53Z",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        }
+    }
+}
