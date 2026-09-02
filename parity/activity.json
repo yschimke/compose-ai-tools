@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T22:32:10.679Z",
+  "generatedAt": "2026-09-02T22:55:26.617Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "db5d96af5b92c994082540c470d0967641d11ac8",
+        "subject": "fix: capture the font family a Wear clock draws with (#5033)",
+        "at": "2026-09-02T23:43:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e277e978a92938651cae558f8a1369a8629537f5",
+        "subject": "ci: give the Maven readiness gate long enough for Central to propagate (#5029)",
+        "at": "2026-09-02T23:24:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "89defc6bcb37418f88036933d19f6fda15545703",
+        "subject": "feat(discovery): print a compiling call site for each component (#5028)",
+        "at": "2026-09-02T23:19:16+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "90f633616334ebc3cfef04823c6e6d5f7737252b",
         "subject": "chore(main): release 1.66.1 (#5024)",
@@ -458,30 +482,6 @@
         "sha": "5c485e66f4abcbee8662b4c79f58d76a79a7e11e",
         "subject": "test: move VS Code schema gate to its consumer (#4958)",
         "at": "2026-09-01T21:38:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "41da9cc0d1429e6e1de10abd9d72bfeba1036c58",
-        "subject": "fix(ci): repair current main build failures (#4957)",
-        "at": "2026-09-01T21:14:08+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "eb52fed19c6aab319c9d3acc51e16827d549beac",
-        "subject": "fix(wasm): gate native catalog by published version (#4954)",
-        "at": "2026-09-01T20:51:08+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3e32faec76eb6f86d48a1369d6a703a6d2e4bc6d",
-        "subject": "fix(preview): preserve accurate desktop phase pins (#4956)",
-        "at": "2026-09-01T20:50:46+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
