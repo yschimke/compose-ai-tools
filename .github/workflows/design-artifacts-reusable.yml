@@ -889,6 +889,77 @@ jobs:
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
 
+      # An imported project may harden its build against precisely what an import does: resolve a
+      # plugin it has never heard of. mullvad/mullvadvpn-app ships
+      # `gradle/verification-metadata.xml` with `<verify-metadata>true</verify-metadata>`, so every
+      # artifact needs a checksum and the auto-injected preview plugin has none — the run dies
+      # during configuration, before a single preview is discovered
+      # (yschimke/compose-preview-imports#30):
+      #
+      #   > Dependency verification failed for configuration 'classpath'
+      #     3 artifacts failed verification: ee.schimke.composeai.preview.gradle.plugin-...pom ...
+      #
+      # Two `<trust>` entries are appended to the THROWAWAY checkout — never to anyone's
+      # repository, and discarded with the clone. The alternative considered and rejected was
+      # rendering with `--dependency-verification=lenient`, which makes verification non-fatal for
+      # EVERY artifact in the build for the sake of getting two of ours through. This leaves every
+      # dependency the project actually declares strictly verified, and trusts only the two
+      # coordinates we are the reason for.
+      #
+      # Both groups are required, and that is not obvious: the plugin is injected by its MARKER
+      # coordinate (`ee.schimke.composeai.preview:...gradle.plugin`), whose POM resolves the
+      # implementation from a different group entirely (`ee.schimke.composeai`). Trusting the
+      # marker alone leaves the implementation unverifiable and the build still fails.
+      #
+      # A project that already trusts these coordinates is left untouched, so its own
+      # (possibly narrower, version-pinned) entries stand rather than being duplicated.
+      - name: Trust the preview plugin in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
+        run: |
+          set -euo pipefail
+          if [ ! -f "$METADATA" ]; then
+            echo "no dependency verification in this checkout — nothing to trust"
+            exit 0
+          fi
+          python3 - "$METADATA" <<'EOF'
+          import re, sys
+
+          path = sys.argv[1]
+          groups = ["ee.schimke.composeai.preview", "ee.schimke.composeai"]
+          text = open(path, encoding="utf-8").read()
+
+          missing = [
+              g for g in groups
+              if not re.search(r'<trust\b[^>]*\bgroup\s*=\s*["\']%s["\']' % re.escape(g), text)
+          ]
+          if not missing:
+              print("upstream already trusts the preview plugin coordinates — left as is")
+              raise SystemExit(0)
+
+          entries = "".join('      <trust group="%s"/>\n' % g for g in missing)
+
+          # Append inside <trusted-artifacts> when the file has one, otherwise open the block
+          # inside <configuration>. A file with neither is not a verification file we understand,
+          # and failing here is better than rendering with the hardening silently unaddressed.
+          if "</trusted-artifacts>" in text:
+              text = re.sub(
+                  r"[ \t]*</trusted-artifacts>", entries + "      </trusted-artifacts>", text, count=1
+              )
+          elif "</configuration>" in text:
+              text = re.sub(
+                  r"[ \t]*</configuration>",
+                  "   <trusted-artifacts>\n" + entries + "      </trusted-artifacts>\n   </configuration>",
+                  1,
+              )
+          else:
+              sys.exit("::error::%s has no <trusted-artifacts> or <configuration> to extend" % path)
+
+          open(path, "w", encoding="utf-8").write(text)
+          print("trusted in the throwaway checkout: " + ", ".join(missing))
+          EOF
+
       - name: Set up JDK 21
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -1221,6 +1292,75 @@ jobs:
             "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git -c credential.helper= fetch --depth 1 --quiet origin "${UPSTREAM_SHA}"
           git checkout --quiet FETCH_HEAD
+
+      # An imported project may harden its build against precisely what an import does: resolve a
+      # plugin it has never heard of. mullvad/mullvadvpn-app ships
+      # `gradle/verification-metadata.xml` with `<verify-metadata>true</verify-metadata>`, so every
+      # artifact needs a checksum and the auto-injected preview plugin has none — the run dies
+      # during configuration, before a single preview is discovered
+      # (yschimke/compose-preview-imports#30):
+      #
+      #   > Dependency verification failed for configuration 'classpath'
+      #     3 artifacts failed verification: ee.schimke.composeai.preview.gradle.plugin-...pom ...
+      #
+      # Two `<trust>` entries are appended to the THROWAWAY checkout — never to anyone's
+      # repository, and discarded with the clone. The alternative considered and rejected was
+      # rendering with `--dependency-verification=lenient`, which makes verification non-fatal for
+      # EVERY artifact in the build for the sake of getting two of ours through. This leaves every
+      # dependency the project actually declares strictly verified, and trusts only the two
+      # coordinates we are the reason for.
+      #
+      # Both groups are required, and that is not obvious: the plugin is injected by its MARKER
+      # coordinate (`ee.schimke.composeai.preview:...gradle.plugin`), whose POM resolves the
+      # implementation from a different group entirely (`ee.schimke.composeai`). Trusting the
+      # marker alone leaves the implementation unverifiable and the build still fails.
+      #
+      # A project that already trusts these coordinates is left untouched, so its own
+      # (possibly narrower, version-pinned) entries stand rather than being duplicated.
+      - name: Trust the preview plugin in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
+        run: |
+          set -euo pipefail
+          if [ ! -f "$METADATA" ]; then
+            echo "no dependency verification in this checkout — nothing to trust"
+            exit 0
+          fi
+          python3 - "$METADATA" <<'EOF'
+          import re, sys
+
+          path = sys.argv[1]
+          groups = ["ee.schimke.composeai.preview", "ee.schimke.composeai"]
+          text = open(path, encoding="utf-8").read()
+
+          missing = [
+              g for g in groups
+              if not re.search(r'<trust\b[^>]*\bgroup\s*=\s*["\']%s["\']' % re.escape(g), text)
+          ]
+          if not missing:
+              print("upstream already trusts the preview plugin coordinates — left as is")
+              raise SystemExit(0)
+
+          entries = "".join('      <trust group="%s"/>\n' % g for g in missing)
+
+          # Append inside <trusted-artifacts> when the file has one, otherwise open the block
+          # inside <configuration>. A file with neither is not a verification file we understand,
+          # and failing here is better than rendering with the hardening silently unaddressed.
+          if "</trusted-artifacts>" in text:
+              text = text.replace("</trusted-artifacts>", entries + "   </trusted-artifacts>", 1)
+          elif "</configuration>" in text:
+              text = text.replace(
+                  "</configuration>",
+                  "   <trusted-artifacts>\n" + entries + "   </trusted-artifacts>\n</configuration>",
+                  1,
+              )
+          else:
+              sys.exit("::error::%s has no <trusted-artifacts> or <configuration> to extend" % path)
+
+          open(path, "w", encoding="utf-8").write(text)
+          print("trusted in the throwaway checkout: " + ", ".join(missing))
+          EOF
 
       # The imported project's OWN toolchain, when it asks for one this runner lacks. Installed
       # BEFORE JDK 21 on purpose: `setup-java` points JAVA_HOME at whichever it installed last, and
