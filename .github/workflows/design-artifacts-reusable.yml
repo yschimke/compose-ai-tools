@@ -1112,14 +1112,39 @@ jobs:
           PACKAGES: ${{ inputs.stub-google-services-packages }}
         run: |
           set -euo pipefail
-          if [ -z "${INPUT_MODULE:-}" ]; then
+          # BOTH have to be checked, not just INPUT_MODULE. The generate job enters repository-wide
+          # discovery on `inputs.module == '' || inputs.modules == 'all'`, so a caller passing
+          # `module: ':app'` AND `modules: all` renders every module while this step, seeing a
+          # non-empty INPUT_MODULE, would stub only `app` — and a second application module needing
+          # Google Services would fail with no stub, from a step that had claimed to refuse exactly
+          # this case.
+          if [ -z "${INPUT_MODULE:-}" ] || [ "${INPUT_MODULES:-}" = "all" ]; then
             echo "::error title=stub-google-services-packages needs one module::The stub is written" \
-              "into the rendered module's directory, which a \`modules: all\` import does not name." \
+              "into the rendered module's directory, which an all-module import does not name." \
               "Split the import so it renders one module, or drop the stub."
             exit 1
           fi
-          # `:app` -> `app`, `:modules:services:compose` -> `modules/services/compose`.
-          module_dir="${RENDER_DIR}/$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          # `:app` -> `app`, `:modules:services:compose` -> `modules/services/compose` — but ONLY
+          # when the project sits where its path says. Gradle lets a settings file put it anywhere:
+          #
+          #     project(":app").projectDir = file("android-app")
+          #
+          # and compose-ai-tools' own settings.gradle.kts does this in several places, so it is not
+          # a hypothetical. Deriving blindly would either reject a real module as nonexistent or —
+          # worse — write the file into a directory that happens to exist and is not the project,
+          # leaving the Google Services task still failing with the stub sitting somewhere it never
+          # looks. So the settings file gets the first word, and the derived path is the fallback.
+          derived="$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${RENDER_DIR}"/settings.gradle "${RENDER_DIR}"/settings.gradle.kts 2>/dev/null |
+              sed -n "s|.*project(['\"]${INPUT_MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then
+            echo "settings remaps ${INPUT_MODULE} to ${remapped} — using that, not ${derived}"
+            derived="$remapped"
+          fi
+          module_dir="${RENDER_DIR}/${derived}"
           target="${module_dir}/google-services.json"
           if [ -f "$target" ]; then
             echo "upstream commits its own ${target#"$RENDER_DIR/"} — left as is"
@@ -1561,14 +1586,39 @@ jobs:
           PACKAGES: ${{ inputs.stub-google-services-packages }}
         run: |
           set -euo pipefail
-          if [ -z "${INPUT_MODULE:-}" ]; then
+          # BOTH have to be checked, not just INPUT_MODULE. The generate job enters repository-wide
+          # discovery on `inputs.module == '' || inputs.modules == 'all'`, so a caller passing
+          # `module: ':app'` AND `modules: all` renders every module while this step, seeing a
+          # non-empty INPUT_MODULE, would stub only `app` — and a second application module needing
+          # Google Services would fail with no stub, from a step that had claimed to refuse exactly
+          # this case.
+          if [ -z "${INPUT_MODULE:-}" ] || [ "${INPUT_MODULES:-}" = "all" ]; then
             echo "::error title=stub-google-services-packages needs one module::The stub is written" \
-              "into the rendered module's directory, which a \`modules: all\` import does not name." \
+              "into the rendered module's directory, which an all-module import does not name." \
               "Split the import so it renders one module, or drop the stub."
             exit 1
           fi
-          # `:app` -> `app`, `:modules:services:compose` -> `modules/services/compose`.
-          module_dir="${RENDER_DIR}/$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          # `:app` -> `app`, `:modules:services:compose` -> `modules/services/compose` — but ONLY
+          # when the project sits where its path says. Gradle lets a settings file put it anywhere:
+          #
+          #     project(":app").projectDir = file("android-app")
+          #
+          # and compose-ai-tools' own settings.gradle.kts does this in several places, so it is not
+          # a hypothetical. Deriving blindly would either reject a real module as nonexistent or —
+          # worse — write the file into a directory that happens to exist and is not the project,
+          # leaving the Google Services task still failing with the stub sitting somewhere it never
+          # looks. So the settings file gets the first word, and the derived path is the fallback.
+          derived="$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${RENDER_DIR}"/settings.gradle "${RENDER_DIR}"/settings.gradle.kts 2>/dev/null |
+              sed -n "s|.*project(['\"]${INPUT_MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then
+            echo "settings remaps ${INPUT_MODULE} to ${remapped} — using that, not ${derived}"
+            derived="$remapped"
+          fi
+          module_dir="${RENDER_DIR}/${derived}"
           target="${module_dir}/google-services.json"
           if [ -f "$target" ]; then
             echo "upstream commits its own ${target#"$RENDER_DIR/"} — left as is"
