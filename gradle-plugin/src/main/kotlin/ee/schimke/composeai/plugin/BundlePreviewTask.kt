@@ -655,6 +655,14 @@ abstract class BundlePreviewTask : DefaultTask() {
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
         previewsJson = JSON.encodeToString(PreviewManifest.serializer(), filteredManifest),
+        // Derived from the FILTERED manifest, not the producer's full one: that filters the records
+        // to the selected previews and makes every binding's previewId one the bundled manifest
+        // actually carries, by construction rather than by a parallel rewrite that could drift.
+        componentsJson =
+          JSON.encodeToString(
+            ComponentRecordFile.serializer(),
+            ComponentRecords.from(filteredManifest),
+          ),
         appJar = appJarBytes,
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
@@ -1541,6 +1549,7 @@ abstract class BundlePreviewTask : DefaultTask() {
   private fun buildZip(
     bundleJson: String,
     previewsJson: String,
+    componentsJson: String,
     appJar: ByteArray,
     inlinedProjectJars: Map<String, File>,
     report: String,
@@ -1555,6 +1564,11 @@ abstract class BundlePreviewTask : DefaultTask() {
     ZipOutputStream(baos).use { zip ->
       zip.writeFile("bundle.json", bundleJson.toByteArray(Charsets.UTF_8))
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
+      // `components.json` travels with the manifest it was derived from. A detached browser,
+      // builder or MCP consumer reads the bundle and nothing else, so a component record that only
+      // existed in the producer's build directory would be unreachable to exactly the readers the
+      // wire contract names.
+      zip.writeFile("components.json", componentsJson.toByteArray(Charsets.UTF_8))
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // Renderer-named APNG/GIF siblings consumed by catalog motion publishing and bundle readers.

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -124,6 +125,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   /**
+   * `components.json` — the components those previews render (see `ComponentRecordFile`).
+   *
+   * A **declared** output, not a file written beside [outputFile]. This task is `@CacheableTask`,
+   * and Gradle restores only declared outputs from the build cache: an undeclared write would
+   * simply be missing on a cache hit while the task still reported success, and deleting the file
+   * by hand would leave the task up to date so it never came back.
+   */
+  @get:OutputFile abstract val componentsFile: RegularFileProperty
+
+  /**
    * Subdirectory for Lottie capture `renderOutput` paths (see
    * [PreviewDiscovery.Input.lottieRenderSubdir]). Defaults to `"renders"`; the Android task sets a
    * disjoint dir so its JVM Lottie render doesn't share the `renders/` output with the Robolectric
@@ -233,6 +244,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val outFile = outputFile.get().asFile
         outFile.parentFile.mkdirs()
         outFile.writeText(json.encodeToString(outcome.manifest))
+        // The components those previews render, rather than the renders themselves. Derived wholly
+        // from the manifest, so it never disagrees with it, and written unconditionally — an empty
+        // component list is a fact worth publishing (it says inference found nothing), not a
+        // reason to omit the file.
+        val componentsOut = componentsFile.get().asFile
+        componentsOut.parentFile.mkdirs()
+        componentsOut.writeText(json.encodeToString(ComponentRecords.from(outcome.manifest)))
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }
       is PreviewDiscovery.Outcome.Failure -> {
