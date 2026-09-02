@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T21:58:28.467Z",
+  "generatedAt": "2026-09-02T22:11:19.394Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "37db480edc41cd60850623b95f37d5cd5f4bfe62",
+        "subject": "fix(import): turn Isolated Projects off for the throwaway render (#5022)",
+        "at": "2026-09-02T22:55:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "294dfd2c9d60d062fa15e318846cfe4410f52889",
+        "subject": "chore(main): release 1.66.0 (#5019)",
+        "at": "2026-09-02T22:45:49+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "e0d33b8cacbd91005079a04711693f1cfe91e9ce",
         "subject": "feat(import): stub google-services.json for an upstream that requires one (#5017)",
@@ -466,22 +482,6 @@
         "sha": "65f17720b98895c80f0d0268515f674dc7b4ae4c",
         "subject": "fix(deps): update design-parity export toolchain to v1.0.4 (#4948)",
         "at": "2026-09-01T20:45:36+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4a5eaed31a569e598dd1f92c07e604480394b942",
-        "subject": "fix(deps): update compose-preview-server to v2.12.0 (#4950)",
-        "at": "2026-09-01T20:45:28+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3a2b6c3efba86957b9a26050d202eebfd7eb5922",
-        "subject": "fix(deps): update rc-players (#4949)",
-        "at": "2026-09-01T20:45:11+01:00",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
