@@ -499,10 +499,22 @@ env:
         > Dependency verification failed for configuration 'classpath'
           3 artifacts failed verification: ee.schimke.composeai.preview.gradle.plugin-...pom ...
 
-    The alternative considered and rejected was rendering with ``--dependency-verification=lenient``,
-    which makes verification non-fatal for EVERY artifact in the build for the sake of getting two of
-    ours through. Appending two ``<trust>`` entries leaves every dependency the project actually
-    declares strictly verified, and trusts only the coordinates we are the reason for.
+    Rendering with ``--dependency-verification=lenient`` was considered and rejected FIRST TIME
+    ROUND, when the failure was three artifacts of ours: making verification non-fatal for every
+    artifact in the build, to get two of ours through, was the wrong trade. Appending ``<trust>``
+    entries left every dependency the project actually declares strictly verified.
+
+    THAT REASONING NO LONGER HOLDS, and the step that runs this now sets lenient as well. Once the
+    plugin's own coordinates were trusted, mullvad failed on 109 artifacts that are NOT ours at all —
+    androidx.activity, org.jetbrains.compose, the project's own declared dependencies — resolved
+    through ``:lib:model:detachedConfiguration1``, a configuration the RENDER creates. The project
+    has no checksums for it because it never resolves it, so no amount of trusting our coordinates
+    can reach it; the only surgical alternative is trusting a hundred-odd third-party groups by hand
+    and re-trusting them at every upstream bump. So lenient it is, for imports only.
+
+    This program is kept because it is still the narrower statement of intent — our coordinates are
+    named, so a reader of the log sees what the import is the reason for — and because it costs
+    nothing. It is no longer what makes a verified project render.
 
     This edits a THROWAWAY checkout, discarded with the CI job. It is never run against a repository
     anyone keeps.
@@ -1070,22 +1082,48 @@ jobs:
       # An imported project may harden its build against precisely what an import does: resolve a
       # plugin it has never heard of. Where it ships dependency verification metadata, the
       # auto-injected preview plugin has no checksum in it and the render dies during configuration
-      # (yschimke/compose-preview-imports#30). Two <trust> entries are appended to the THROWAWAY
-      # checkout, leaving every dependency the project actually declares strictly verified — see
-      # TRUST_PREVIEW_PLUGIN_PY for why that beats --dependency-verification=lenient, and why BOTH
-      # the marker and implementation groups are needed.
-      - name: Trust the preview plugin in the upstream checkout
+      # (yschimke/compose-preview-imports#30). Two things happen to the THROWAWAY checkout here: the
+      # plugin's own groups are trusted, and verification is set to lenient. The second is what
+      # actually makes such a project render — see TRUST_PREVIEW_PLUGIN_PY, which records why the
+      # first was thought sufficient and what disproved it.
+      - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
           METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
         run: |
           set -euo pipefail
           if [ ! -f "$METADATA" ]; then
-            echo "no dependency verification in this checkout — nothing to trust"
+            echo "no dependency verification in this checkout — nothing to relax"
             exit 0
           fi
           printf '%s' "$TRUST_PREVIEW_PLUGIN_PY" > "${RUNNER_TEMP}/trust-preview-plugin.py"
           python3 "${RUNNER_TEMP}/trust-preview-plugin.py" "$METADATA"
+
+          # And then lenient, which is what actually makes a verified project render. See
+          # TRUST_PREVIEW_PLUGIN_PY: trusting our own coordinates left mullvad failing on 109
+          # artifacts that are the PROJECT'S OWN, resolved through a detached configuration the
+          # render creates and the project therefore has no checksums for.
+          #
+          # Set in gradle.properties rather than as a CLI flag on purpose. The flag would have to
+          # travel through the CLI, which is installed from a RELEASE — so it would not take effect
+          # until the next one, exactly the lag that left --write-locks written but unreachable for
+          # hours (#4992, #4994). This file is in the throwaway checkout the workflow already
+          # rewrites, so it applies to the very next run.
+          #
+          # Replaced rather than appended when the key is already there: an upstream that pins
+          # `strict` would otherwise win and the render would fail with the property set, which is
+          # the most confusing possible outcome.
+          if [ -f "$GRADLE_PROPERTIES" ] &&
+             grep -q '^[[:space:]]*org\.gradle\.dependency\.verification[[:space:]]*=' "$GRADLE_PROPERTIES"; then
+            sed -i 's/^[[:space:]]*org\.gradle\.dependency\.verification[[:space:]]*=.*/org.gradle.dependency.verification=lenient/' \
+              "$GRADLE_PROPERTIES"
+            echo "rewrote org.gradle.dependency.verification=lenient in the throwaway checkout"
+          else
+            printf '\n# compose-preview import: verification is lenient for this throwaway render.\norg.gradle.dependency.verification=lenient\n' \
+              >> "$GRADLE_PROPERTIES"
+            echo "set org.gradle.dependency.verification=lenient in the throwaway checkout"
+          fi
 
 
       - name: Set up JDK 21
@@ -1425,22 +1463,48 @@ jobs:
       # An imported project may harden its build against precisely what an import does: resolve a
       # plugin it has never heard of. Where it ships dependency verification metadata, the
       # auto-injected preview plugin has no checksum in it and the render dies during configuration
-      # (yschimke/compose-preview-imports#30). Two <trust> entries are appended to the THROWAWAY
-      # checkout, leaving every dependency the project actually declares strictly verified — see
-      # TRUST_PREVIEW_PLUGIN_PY for why that beats --dependency-verification=lenient, and why BOTH
-      # the marker and implementation groups are needed.
-      - name: Trust the preview plugin in the upstream checkout
+      # (yschimke/compose-preview-imports#30). Two things happen to the THROWAWAY checkout here: the
+      # plugin's own groups are trusted, and verification is set to lenient. The second is what
+      # actually makes such a project render — see TRUST_PREVIEW_PLUGIN_PY, which records why the
+      # first was thought sufficient and what disproved it.
+      - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
           METADATA: ${{ env.RENDER_DIR }}/gradle/verification-metadata.xml
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
         run: |
           set -euo pipefail
           if [ ! -f "$METADATA" ]; then
-            echo "no dependency verification in this checkout — nothing to trust"
+            echo "no dependency verification in this checkout — nothing to relax"
             exit 0
           fi
           printf '%s' "$TRUST_PREVIEW_PLUGIN_PY" > "${RUNNER_TEMP}/trust-preview-plugin.py"
           python3 "${RUNNER_TEMP}/trust-preview-plugin.py" "$METADATA"
+
+          # And then lenient, which is what actually makes a verified project render. See
+          # TRUST_PREVIEW_PLUGIN_PY: trusting our own coordinates left mullvad failing on 109
+          # artifacts that are the PROJECT'S OWN, resolved through a detached configuration the
+          # render creates and the project therefore has no checksums for.
+          #
+          # Set in gradle.properties rather than as a CLI flag on purpose. The flag would have to
+          # travel through the CLI, which is installed from a RELEASE — so it would not take effect
+          # until the next one, exactly the lag that left --write-locks written but unreachable for
+          # hours (#4992, #4994). This file is in the throwaway checkout the workflow already
+          # rewrites, so it applies to the very next run.
+          #
+          # Replaced rather than appended when the key is already there: an upstream that pins
+          # `strict` would otherwise win and the render would fail with the property set, which is
+          # the most confusing possible outcome.
+          if [ -f "$GRADLE_PROPERTIES" ] &&
+             grep -q '^[[:space:]]*org\.gradle\.dependency\.verification[[:space:]]*=' "$GRADLE_PROPERTIES"; then
+            sed -i 's/^[[:space:]]*org\.gradle\.dependency\.verification[[:space:]]*=.*/org.gradle.dependency.verification=lenient/' \
+              "$GRADLE_PROPERTIES"
+            echo "rewrote org.gradle.dependency.verification=lenient in the throwaway checkout"
+          else
+            printf '\n# compose-preview import: verification is lenient for this throwaway render.\norg.gradle.dependency.verification=lenient\n' \
+              >> "$GRADLE_PROPERTIES"
+            echo "set org.gradle.dependency.verification=lenient in the throwaway checkout"
+          fi
 
 
       # The imported project's OWN toolchain, when it asks for one this runner lacks. Installed
