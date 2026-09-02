@@ -663,12 +663,24 @@ env:
   #    `github.sha` is always a revision a repo writer put there.
   DRIVER_PIN_REPO: yschimke/compose-ai-tools
   DRIVER_PIN_PATH: .github/design-artifacts-driver-pin.txt
-  # Where the Android and cmp-jvm player harnesses live since the player stack was extracted.
-  # A CONSTANT for the same reason `DRIVER_PIN_REPO` is one — see the long note above: a variable
-  # `repository:` on `actions/checkout` hands this job's `github.token` to whatever host serves the
-  # request. The REF is pinned separately, per run, to the version this repo consumes the players
-  # at; only these two lanes check it out, and only when a caller opts into them.
+  # Where the Android and cmp-jvm player harnesses live since the player stack was extracted, and
+  # the tag checked out for them. Only the two embedded lanes check this out, and only when a caller
+  # opts into them.
+  #
+  # BOTH are literals, for the same reason `DRIVER_PIN_REPO` is one — see the long note above, and
+  # then one more. A variable `repository:` hands this job's `github.token` to whatever host serves
+  # the request; a variable `ref:` is worse, because what lands is executed moments later by
+  # `./gradlew` with that token in the environment. CodeQL calls that "checkout of untrusted code in
+  # a privileged context" and rates it critical, and it is right to whatever the computation's
+  # inputs happen to be today: this workflow is called by repositories it does not control, so it
+  # cannot lean on each caller's own fork guard. It was a step output until #5006 review.
+  #
+  # The pin is not a second source of truth for the player version — the step below fails the lanes
+  # if it drifts from `rcplayers` in `gradle/libs.versions.toml`, which is what this repo CONSUMES
+  # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
+  # renovate: datasource=github-tags depName=yschimke/rc-players
+  RC_PLAYERS_PIN: v1.56.0
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -1482,7 +1494,15 @@ jobs:
       # player build than the one the catalog's own capture went through makes every number in the
       # wall unattributable — the skew `gradle/libs.versions.toml` keeps one `rcplayers` ref for, and
       # the failure this repo already paid for once with the AndroidX alphas.
-      - name: Resolve the rc-players pin
+      # `RC_PLAYERS_PIN` names the tag; this decides whether it may be used. Reading the version and
+      # CHECKING it, rather than reading it and checking that out, is the whole difference between a
+      # constant `ref:` and an untrusted one — see the env block.
+      #
+      # Fail-soft, like everything else about these lanes: drift skips the columns and says so. A
+      # hard failure here would take the publish down over a version mismatch in an enrichment lane,
+      # and the compare pages name the players a run left out since #5004, so a skipped lane is
+      # visible on the page rather than silent.
+      - name: Check the rc-players pin against the consumed player version
         id: rc-players-pin
         if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
         run: |
@@ -1492,19 +1512,25 @@ jobs:
           # under `pipefail`, and `head` closing the pipe early would SIGPIPE `sed` into failing it.
           version="$(sed -n '/^rcplayers = /{s/^rcplayers = "\([^"]*\)".*/\1/p;q;}' "$catalog")"
           if [ -z "$version" ]; then
-            echo "::error title=rc-players pin missing::no 'rcplayers' entry in the driver checkout's gradle/libs.versions.toml; the embedded lanes have no version to render through" >&2
-            exit 1
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::no 'rcplayers' entry in the driver checkout's gradle/libs.versions.toml; skipping the embedded player lanes"
+            exit 0
           fi
-          echo "ref=v${version}" >> "$GITHUB_OUTPUT"
-          echo "embedded player harnesses pinned to rc-players v${version}"
+          if [ "v${version}" != "$RC_PLAYERS_PIN" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=rc-players pin drift::RC_PLAYERS_PIN is $RC_PLAYERS_PIN but this repo consumes the players at v${version}. Rendering a harness through a different player build than the catalog's own capture makes every column unattributable, so the embedded lanes are skipped. Bump RC_PLAYERS_PIN in this workflow."
+            exit 0
+          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+          echo "embedded player harnesses on rc-players $RC_PLAYERS_PIN, matching the consumed rcplayers=$version"
 
       - name: Check out rc-players (embedded player harnesses)
-        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        if: ${{ steps.rc-players-pin.outputs.ok == 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Both literal, neither computed. See the env block for why that is load-bearing.
           repository: ${{ env.RC_PLAYERS_REPO }}
-          # A release tag resolved from the pinned driver checkout above, never a caller input.
-          ref: ${{ steps.rc-players-pin.outputs.ref }}
+          ref: ${{ env.RC_PLAYERS_PIN }}
           path: rc-players
           persist-credentials: false
 
@@ -1513,21 +1539,21 @@ jobs:
       # install it, then name its path, because Gradle's toolchain detection looks at the current
       # JVM and the usual system locations and `setup-java` installs to neither.
       - name: Set up the rc-players toolchain
-        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        if: ${{ steps.rc-players-pin.outputs.ok == 'true' }}
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up JDK 21 (restore JAVA_HOME)
-        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        if: ${{ steps.rc-players-pin.outputs.ok == 'true' }}
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Point Gradle's toolchain detection at every installed JDK
-        if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        if: ${{ steps.rc-players-pin.outputs.ok == 'true' }}
         run: |
           set -euo pipefail
           # Built from every `JAVA_HOME_*` the job has — `setup-java` exports one per JDK it

@@ -217,6 +217,17 @@
       "depNameTemplate": "yschimke/compose-ai-tools",
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "The rc-players tag `design-artifacts-reusable.yml` checks out for the two embedded player lanes. It is a literal rather than a value the workflow computes, because a computed `ref:` on `actions/checkout` is a checkout of untrusted code in a privileged context — critical, and the code lands somewhere `./gradlew` runs moments later (#5006 review). That leaves a second place holding the player version, so this keeps it in step with `rcplayers` in `gradle/libs.versions.toml`: both resolve against the same tags, so a bump moves them in one Renovate run rather than leaving the lanes skipping themselves on drift. Not a substitute for the workflow's own drift check, which is what catches the window between the two PRs.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/design-artifacts-reusable\\.yml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*RC_PLAYERS_PIN:\\s*(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "versioningTemplate": "semver"
     }
   ]
 }
