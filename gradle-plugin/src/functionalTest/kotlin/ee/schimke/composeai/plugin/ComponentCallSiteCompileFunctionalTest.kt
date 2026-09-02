@@ -36,8 +36,15 @@ class ComponentCallSiteCompileFunctionalTest {
 
   private val json = Json { ignoreUnknownKeys = true }
 
-  /** Components whose call sites this generator is expected to be able to print. */
-  private val expectedEmitted = setOf("Text", "Button", "Card")
+  /**
+   * Components whose call sites this generator is expected to be able to print.
+   *
+   * `Checkbox` and `Switch` are here for their **nullable callback** (`onCheckedChange: ((Boolean)
+   * -> Unit)?`): no lambda-shaped rule accepts a nullable function type, so both were refused until
+   * the generator learned to answer `null` for any nullable parameter. They are what keeps that
+   * answer honest against a real Material 3 signature rather than a hand-written record.
+   */
+  private val expectedEmitted = setOf("Text", "Button", "Card", "Checkbox", "Switch")
 
   private fun createTestProject(): File {
     val projectDir = tempDir.root
@@ -101,6 +108,8 @@ class ComponentCallSiteCompileFunctionalTest {
         import androidx.compose.foundation.layout.padding
         import androidx.compose.material3.Button
         import androidx.compose.material3.Card
+        import androidx.compose.material3.Checkbox
+        import androidx.compose.material3.Switch
         import androidx.compose.material3.Text
         import androidx.compose.runtime.Composable
         import androidx.compose.ui.Modifier
@@ -124,6 +133,13 @@ class ComponentCallSiteCompileFunctionalTest {
         @Composable
         fun ContainerPreview() {
             Card { Text(text = "Inside") }
+        }
+
+        @Preview
+        @Composable
+        fun TogglesPreview() {
+            Checkbox(checked = true, onCheckedChange = {})
+            Switch(checked = true, onCheckedChange = {})
         }
 
         // A project composable whose signature mentions a value class, so its JVM name is

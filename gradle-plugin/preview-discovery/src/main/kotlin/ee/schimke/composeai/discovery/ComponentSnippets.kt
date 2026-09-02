@@ -82,18 +82,20 @@ object ComponentSnippets {
   /**
    * A literal for [parameter] that is guaranteed to type-check, or null to refuse.
    *
-   * Ordered so the function-type cases never fall into the nullable shortcut: the type renderer
-   * appends `?` to the whole rendering, so a nullable `(() -> Unit)?` reads as `() -> Unit?` and is
-   * indistinguishable from a non-null function returning `Unit?`. Refusing anything with an arrow
-   * that [emptyLambda] does not accept keeps that ambiguity from becoming emitted code.
+   * The nullable test comes first and needs no per-type knowledge, because `null` satisfies every
+   * nullable type. It reads [TargetParameter.nullable] rather than looking for a trailing `?` in
+   * the rendered type, because the spelling does not distinguish a nullable parameter (`String?`)
+   * from a non-null function whose *return* is nullable (`(Int) -> String?`) — and `null`
+   * type-checks for the first but not the second. Testing the spelling would emit uncompilable
+   * source for every callback returning a nullable value.
+   *
+   * That test is what lets `Checkbox`, `RadioButton` and `Switch` through: material3 declares their
+   * `onCheckedChange` / `onClick` as `((Boolean) -> Unit)?`, which no lambda-shaped rule accepts.
    */
   private fun placeholderFor(parameter: TargetParameter): String? {
+    if (parameter.nullable) return "null"
     val type = parameter.type
     if (parameter.composableSlot || type.contains("->")) return emptyLambda(type)
-    // `null` satisfies every nullable type, so this needs no per-type knowledge. `List<String?>`
-    // does not reach here looking nullable: the renderer closes type arguments with `>`, and only a
-    // genuinely nullable type ends in `?`.
-    if (type.endsWith("?")) return "null"
     return when (type) {
       "String" -> "\"\""
       "Boolean" -> "false"

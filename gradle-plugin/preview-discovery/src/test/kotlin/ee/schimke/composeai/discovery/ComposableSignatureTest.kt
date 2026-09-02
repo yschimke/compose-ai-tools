@@ -101,6 +101,18 @@ class ComposableSignatureTest {
   }
 
   @Test
+  fun `a nullable function type is parenthesised so the question mark cannot read as the return`() {
+    // `((Boolean) -> Unit)?` rendered as `(Boolean) -> Unit?` says the callback returns `Unit?` and
+    // is nullable nowhere — the opposite of the truth. material3 declares `Checkbox`,
+    // `RadioButton` and `Switch` exactly this way, so every consumer of `TargetParameter.type` was
+    // being handed the wrong reading for three of its most common components.
+    val params = parametersOf("nullableCallbackComponent").associate { it.name to it.type }
+
+    assertThat(params["onCheckedChange"]).isEqualTo("((Boolean) -> Unit)?")
+    assertThat(params["onClick"]).isEqualTo("(() -> Unit)?")
+  }
+
+  @Test
   fun `a nullable parameter is not a knob`() {
     // Passing null is how the renderer says "use the author default", so a knob that can
     // legitimately

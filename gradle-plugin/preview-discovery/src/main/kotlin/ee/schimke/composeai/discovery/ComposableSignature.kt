@@ -185,6 +185,7 @@ internal object ComposableSignature {
       hasDefault = declaresDefaultValue,
       composableSlot = slot,
       composableSlotReceiver = if (slot) receiverFqnOf(type) else null,
+      nullable = type.isNullable,
     )
   }
 
@@ -211,6 +212,7 @@ internal object ComposableSignature {
    * or agent completing the Code Connect mapping supplies the real value.
    */
   private fun renderType(type: KmType): String {
+    val isFunction = (type.classifier as? KmClassifier.Class)?.name?.let { isFunctionClassName(it) }
     val base =
       when (val c = type.classifier) {
         is KmClassifier.Class -> {
@@ -231,6 +233,15 @@ internal object ComposableSignature {
       } else {
         ""
       }
+    // A nullable function type has to be parenthesised or the `?` reads as part of the return type:
+    // material3's `onCheckedChange: ((Boolean) -> Unit)?` rendered as `(Boolean) -> Unit?`, which
+    // says the callback returns `Unit?` and is nullable nowhere — the opposite of the truth, handed
+    // to every consumer of this string.
+    //
+    // This corrects the rendering only. Nullability that a *generator* acts on comes from
+    // `TargetParameter.nullable`, because even parenthesised the spelling stays ambiguous in the
+    // other direction: a non-null `(Int) -> String?` ends in `?` too.
+    if (type.isNullable && isFunction == true) return "($base$args)?"
     return base + args + if (type.isNullable) "?" else ""
   }
 
