@@ -5,6 +5,7 @@ import com.google.common.truth.Truth.assertWithMessage
 import ee.schimke.composeai.discovery.ComponentRecordFile
 import ee.schimke.composeai.discovery.ComponentSnippet
 import ee.schimke.composeai.discovery.ComponentSnippets
+import ee.schimke.composeai.discovery.PreviewManifest
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.testkit.runner.GradleRunner
@@ -97,11 +98,15 @@ class ComponentCallSiteCompileFunctionalTest {
         """
         package test
 
+        import androidx.compose.foundation.layout.padding
         import androidx.compose.material3.Button
         import androidx.compose.material3.Card
         import androidx.compose.material3.Text
         import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
         import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.Dp
+        import androidx.compose.ui.unit.dp
 
         @Preview
         @Composable
@@ -119,6 +124,21 @@ class ComponentCallSiteCompileFunctionalTest {
         @Composable
         fun ContainerPreview() {
             Card { Text(text = "Inside") }
+        }
+
+        // A project composable whose signature mentions a value class, so its JVM name is
+        // mangled (`AppTile-<hash>`) exactly the way `androidx.compose.material3.Text`'s is.
+        // Ordinary app code — `Dp` parameters are not exotic — and the reason the same
+        // demangling has to apply to project-local target inference.
+        @Composable
+        fun AppTile(padding: Dp, label: String) {
+            Card(modifier = Modifier.padding(padding)) { Text(text = label) }
+        }
+
+        @Preview
+        @Composable
+        fun AppTilePreview() {
+            AppTile(padding = 8.dp, label = "Tile")
         }
         """
           .trimIndent()
@@ -175,6 +195,27 @@ class ComponentCallSiteCompileFunctionalTest {
     val compile = runGradle(projectDir, "compileKotlin")
     assertThat(compile.task(":compileKotlin")?.outcome)
       .isIn(listOf(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE))
+  }
+
+  @Test
+  fun `a project composable with a value-class parameter is still inferred as a target`() {
+    // The project-local half of the same mangling bug, and the one a typical app hits: `AppTile`
+    // takes a `Dp`, so it compiles to `AppTile-<hash>`, which is not a usable Kotlin import. The
+    // filter that rejects unusable names dropped it outright, leaving `AppTilePreview` with no
+    // target at all — for a composable the preview does nothing but render.
+    val projectDir = createTestProject()
+
+    val discover = runGradle(projectDir, "composePreviewDiscover")
+    assertThat(discover.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifestFile = File(projectDir, "build/compose-previews/previews.json")
+    assertThat(manifestFile.exists()).isTrue()
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
+
+    val tilePreview = manifest.previews.single { it.functionName == "AppTilePreview" }
+    assertWithMessage("targets were %s", tilePreview.targets)
+      .that(tilePreview.targets.map { it.functionName })
+      .contains("AppTile")
   }
 
   /**

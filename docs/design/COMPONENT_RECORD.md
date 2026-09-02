@@ -737,6 +737,13 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > no component at all. `Button` and `Card` take no value-class parameters, which is
 > exactly why the hand-written unit tests were green and stayed green.
 >
+> The same mangling was dropping the project's *own* composables from `targets`,
+> which is the half a typical app actually hits: `AppTile(padding: Dp)` compiles to
+> `AppTile-<hash>`, so its preview reported `targets = []` for a composable the
+> preview does nothing but render. `Dp` and `Color` parameters are ordinary in app
+> code, so this was not an edge case — it was §1's "detect components from previews
+> in typical projects" quietly failing on the typical projects.
+>
 > The lesson generalises past this bug: a corpus you chose is a corpus that agrees
 > with you. Both fixtures I picked by hand happened to avoid the one construct that
 > breaks the path, and only compiling something real found it.
