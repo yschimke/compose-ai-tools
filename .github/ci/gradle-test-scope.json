@@ -23,8 +23,7 @@
     ":samples:remotecompose",
     ":samples:wear",
     ":samples:wear-widget",
-    ":samples:xr-glimmer",
-    ":samples:xr-spatial"
+    ":samples:xr-glimmer"
   ],
   "globalPaths": [
     "build-logic/**",

@@ -586,20 +586,17 @@ jobs:
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: ./gradlew :cli:build :bundle-viewer:build
 
-  # End-to-end gate for the XR composite still: fetch the PINNED compositor release, then run the
-  # xr-spatial sample's full render so composePreviewRenderXr writes scene.json + panel textures
-  # and composePreviewCompositeXr bakes composite.png from them — headless, no GPU. This is
-  # otherwise only exercised by hand, so without a gate the binary↔plugin contract (CLI flags,
-  # sanitised composite path, the optional capture in previews.json) can silently rot. The
-  # graceful no-binary path is covered by the plugin unit/functional tests.
+  # Cross-repository gate for the native XR service client: fetch the PINNED compositor release
+  # and exercise this repository's JVM client against the artifact users actually provision.
   #
   # It downloads rather than builds because the compositor now ships from
   # yschimke/compose-preview-xr. That is a strictly better test than the one it replaces: it
   # exercises the artifact a user's CLI actually provisions, at the version this repository
-  # actually pins, so a pin pointing at a release whose binary no longer speaks this plugin's
-  # contract fails here instead of degrading into a silent "no composite" for every user.
+  # actually pins, so a binary↔client protocol drift fails here instead of reaching users.
   # Building the C++ and proving it renders is compose-preview-xr's own build + serve smoke.
   render-xr-composite:
+    # Historical required-check name retained through the source move; this job now covers the JVM
+    # client half of the native boundary, while compose-preview-xr owns the renderer/sample E2E.
     name: Render XR composite (sample)
     # Heavy (Xvfb software-GL render, several minutes). Drift detector, not a PR
     # gate — runs on push-to-main + nightly, skipped on PRs (a skipped required
@@ -645,48 +642,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
-      # Run the whole render under Xvfb (so DISPLAY is set) with --no-daemon (so the composite
-      # task's subprocess inherits the software-GL env from this step rather than a stale daemon).
-      - name: Render xr-spatial sample (bake composite)
-        shell: bash
-        env:
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          GALLIUM_DRIVER: llvmpipe
-        run: |
-          xvfb-run -a -s "-screen 0 2000x1400x24" \
-            ./gradlew --no-daemon :samples:xr-spatial:composePreviewRenderAll \
-              -PcomposePreview.xrCompositeBinary="$PWD/dist/xr-composite" \
-              -PcomposePreview.xrCompositeMaterials="$PWD/dist/materials" \
-              --stacktrace
-      - name: Assert composite baked + referenced in the manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          base=samples/xr-spatial/build/compose-previews
-          png="$(find "$base/renders" -name composite.png -print -quit)"
-          if [ -z "$png" ] || [ ! -s "$png" ]; then
-            echo "::error::no non-empty composite.png under $base/renders"
-            find "$base/renders" -maxdepth 2 -type f | sort || true
-            exit 1
-          fi
-          file "$png" | grep -q 'PNG image data' || { echo "::error::$png is not a PNG"; exit 1; }
-          grep -q 'composite.png' "$base/previews.json" \
-            || { echo "::error::previews.json has no composite capture"; exit 1; }
-          echo "OK: baked $png ($(du -h "$png" | cut -f1)), referenced in previews.json"
-      # Two things that used to run here no longer do, for unrelated reasons.
-      #
-      # The spatial webview capture rendered the real XR scene through the VS Code extension's
-      # Playwright harness. The extension now lives in yschimke/compose-preview-vscode, which
-      # cannot build the XR renderer, so the capture has no home on either side and is gone
-      # rather than stubbed.
-      #
-      # The python `serve_smoke.py` moved with the compositor: it is the server's own smoke, it
-      # lives beside the C++ it drives, and compose-preview-xr runs it on every change.
-      # Duplicating it against a pinned binary would re-test upstream's code, not this
-      # repository's. What is genuinely cross-boundary is the JVM client below — this
-      # repository's code talking to that pinned binary — so that one stays, and the scene is
-      # exercised through it.
-      #
       # Exercise the JVM client (:renderer-xr-client) against the real native server: unit tests
       # plus the XR_COMPOSITE_BIN-gated XrRenderServerIntegrationTest, which spawns the dist binary
       # and asserts a per-frame panel update changes the image. Mirrors the python smoke from Kotlin.
@@ -700,14 +655,6 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 2000x1400x24" \
             ./gradlew --no-daemon :renderer-xr-client:test --stacktrace
-      - name: Upload XR composite
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: xr-spatial-composite
-          path: samples/xr-spatial/build/compose-previews/renders/**/composite.png
-          if-no-files-found: warn
-
   spatial-scene-codegen:
     name: SpatialScene codegen up to date
     needs: changes
@@ -1181,6 +1128,8 @@ jobs:
           persist-credentials: false
       - name: Run pin gate tests
         run: python3 .github/ci/test_check_xr_composite_pin.py -v
+      - name: Run renderer pin gate tests
+        run: python3 .github/ci/test_check_xr_renderer_pin.py -v
       - name: Check the pin resolves to a complete release
         env:
           # Authenticated so the releases API answers from a shared runner IP rather than
@@ -1188,6 +1137,8 @@ jobs:
           # pass — which is correct but useless. Read-only; the token needs nothing else.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 .github/ci/check_xr_composite_pin.py
+      - name: Check the renderer pin resolves on Maven Central
+        run: python3 .github/ci/check_xr_renderer_pin.py
 
   # `cli/serve-wasm` and compose-preview-server's `wasm-ui` are the same Compose/Wasm frontend
   # compiled twice — each repository against its own M3 catalog, which is why neither can consume

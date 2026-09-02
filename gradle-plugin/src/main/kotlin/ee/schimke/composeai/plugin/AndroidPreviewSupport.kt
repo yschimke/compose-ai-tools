@@ -1957,8 +1957,12 @@ internal object AndroidPreviewSupport {
     // `RenderingRuntimeFactory` ServiceLoader registration ships in `:renderer-xr`'s main
     // resources.
     val xrPreviewsEnabled = extension.enableXrPreviews.get() || moduleDeclaresXrCompose(project)
+    val xrRendererProjectDir = project.rootDir.resolve("renderers/xr")
+    val useLocalXrRenderer =
+      xrRendererProjectDir.resolve("build.gradle.kts").exists() ||
+        xrRendererProjectDir.resolve("build.gradle").exists()
     if (xrPreviewsEnabled) {
-      if (useLocalRenderer) {
+      if (useLocalXrRenderer) {
         try {
           addRenderGraphDependency(
             project,
@@ -1980,7 +1984,7 @@ internal object AndroidPreviewSupport {
         addRenderGraphDependency(
           project,
           rendererConfig.name,
-          "ee.schimke.composeai:renderer-xr:${PluginVersion.value}",
+          "ee.schimke.composeai:renderer-xr:${XrFakeVersions.renderer}",
         )
         addRenderGraphDependency(
           project,
@@ -2148,9 +2152,8 @@ internal object AndroidPreviewSupport {
     // as
     // [rendererClassDirs] above (the lazy `elements.map { zipTree }` keeps the config off the
     // configuration-time resolution path). Only `composePreviewRenderXr` reads this.
-    val xrRendererProjectDir = project.rootDir.resolve("renderers/xr")
     val xrRendererClassDirs =
-      if (useLocalRenderer) {
+      if (useLocalXrRenderer) {
         project.files(
           xrRendererProjectDir.resolve(
             "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
@@ -2979,7 +2982,7 @@ internal object AndroidPreviewSupport {
 
         dependsOn(discoverTask)
         dependsOn(generateRobolectricPropertiesTask)
-        if (useLocalRenderer) {
+        if (useLocalXrRenderer) {
           dependsOn(":renderer-xr:compile${capVariant}Kotlin")
         }
         dependsOn(

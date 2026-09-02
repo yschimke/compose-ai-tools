@@ -150,21 +150,14 @@ jobs:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
-      - name: Publish plugin + renderer-android + renderer-xr + data-* + daemon-* to mavenLocal
+      - name: Publish plugin + renderer-android + data-* + daemon-* to mavenLocal
         # Both `gradle-plugin` and `renderer-android` are needed end-to-end:
         # the plugin resolves through the init script's buildscript classpath
         # injection from mavenLocal, and at render time it wires
         # `ee.schimke.composeai:renderer-android:<version>` into the consumer's
         # `composePreviewAndroidRenderer<Variant>` configuration.
-        # `renderer-xr` rides the same fan-out: the plugin wires it onto the
-        # same render configuration when it auto-enables the XR path for a
-        # consumer that depends on `androidx.xr.compose` (the jetstream-xr cell),
-        # so it must resolve from mavenLocal too — otherwise the XR render fails
-        # with `Could not find ee.schimke.composeai:renderer-xr`.
-        # Publishing only the plugin here would mean the render path silently
-        # falls back to whatever's on the consumer's remote repos (or fails
-        # resolution) — exactly the kind of release-vs-source drift these tests
-        # are supposed to catch.
+        # `renderer-xr` is deliberately absent: it now resolves from Maven Central at the
+        # independent `xr-renderer` pin, exactly as an external consumer sees it.
         #
         # `daemon-core` / `daemon-desktop` / `daemon-android` join the publish
         # so the new daemon round-trip step (further down the matrix) can
@@ -172,7 +165,6 @@ jobs:
         # back to remote (where the SNAPSHOT version doesn't exist).
         #
         # Root-level abbreviation fans out to every subproject applying
-        # `composeai.maven-publishing` (same pattern as snapshot.yml /
         # release.yml — see #766). `:gradle-plugin` is an `includeBuild` and
         # needs an explicit address. Without the abbreviation each new
         # publishable module (e.g. `:data-a11y-hierarchy-android`,

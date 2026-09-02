@@ -38,6 +38,10 @@ internal object XrFakeVersions {
   val arcoreTesting: String
     get() = get("arcoreTesting")
 
+  /** Pinned `ee.schimke.composeai:renderer-xr` release from compose-preview-xr. */
+  val renderer: String
+    get() = get("renderer")
+
   /**
    * Pinned release of the native `xr-composite` compositor — the `<version>` segment of the shared
    * cache the CLI populates and [AndroidPreviewSupport.xrCompositeCacheBinaryPath] reads.

@@ -1,6 +1,7 @@
 # SpatialScene contract
 
-The wire format that decouples the **producer** — the offline renderer (`:renderer-xr`, Phase A) that
+The wire format that decouples the **producer** — the offline renderer
+([`:renderer-xr`](https://github.com/yschimke/compose-preview-xr/tree/main/renderers/xr), Phase A) that
 recovers a Compose-XR subspace layout and renders each panel's 2D content to a PNG — from the
 **consumer** — the VS Code webview's WebGL 3D spatial-layout viewer. Both sides build to this shape so
 they can be developed in parallel and meet here.
@@ -10,7 +11,9 @@ they can be developed in parallel and meet here.
 - **TypeScript mirror:** [`src/webview/shared/spatialScene.ts`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/webview/shared/spatialScene.ts), in the extension repository. Generated from the same schema but **not** covered by `--check` here — this repo cannot write into that one. Regenerate it from an extension checkout with `node ../compose-ai-tools/scripts/codegen/gen-spatial-scene.mjs --emit-typescript > src/webview/shared/spatialScene.ts`.
 - **Sample fixture:** [`schema/fixtures/spatial-scene/`](../../schema/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`) — the canonical copy, consumed by `SpatialSceneTest` and `XrRenderServerIntegrationTest`, and vendored into compose-preview-xr for its `serve_smoke.py` (its `contract drift` job diffs the vendored copy against this one). Edit this one.
   The extension keeps a [consumer mirror](https://github.com/yschimke/compose-preview-vscode/blob/main/preview-harness/fixtures/spatial-scene/) for its webview harness; changing that copy moves no gate here.
-- **Background:** how poses are recovered offline — see the `SubspaceSceneRecorder` KDoc (`:renderer-xr`).
+- **Background:** how poses are recovered offline — see the
+  [`SubspaceSceneRecorder`](https://github.com/yschimke/compose-preview-xr/blob/main/renderers/xr/src/main/kotlin/ee/schimke/composeai/renderer/xr/SubspaceSceneRecorder.kt)
+  KDoc.
 - **Still-image consumer:** [`yschimke/compose-preview-xr`](https://github.com/yschimke/compose-preview-xr) — the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free. Provisioned by the `xr-composite` pin in [`gradle/libs.versions.toml`](../../gradle/libs.versions.toml), so it deliberately lags this repository and a change here must stay backward-compatible with the pinned build.
 
 This is a **WebGL** viewer contract (Three.js/Babylon), **not** WebXR — VS Code ships stock Electron

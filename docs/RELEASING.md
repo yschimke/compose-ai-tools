@@ -183,7 +183,10 @@ Decoupling the version was the necessary half; moving the code out was the suffi
 1. Point `xr-composite` in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml) at the version compose-preview-xr released.
 2. That is all. The `XR Composite Pin` CI job checks the pin names a Release that exists on `XR_COMPOSITE_REPO` **with all three platform tarballs attached** — a pin naming a half-published or nonexistent release is the one failure this side can still cause, and it is invisible without a gate, because a 404 on download is a graceful skip and the render succeeds without a composite.
 
-Nightly, `Render XR composite (sample)` downloads the pinned tarball and drives the xr-spatial sample and the `:renderer-xr-client` integration test against it — so the binary↔plugin contract is proven against the artifact users actually provision, at the version this repository actually pins.
+Nightly, `Render XR composite (sample)` downloads the pinned tarball and drives the
+`:renderer-xr-client` integration test against it, so the native service contract is proven against
+the artifact users actually provision. The moved renderer and xr-spatial sample are tested in
+compose-preview-xr.
 
 **Changing the compositor itself** happens in compose-preview-xr: land the change there with a conventional-commit subject, merge its release PR (which builds the three platforms, attaches them, and fails loudly if any is missing), then do step 1 above. Its `AGENTS.md` has the detail, including the contract-drift gate that keeps its generated headers matching this repository's schemas.
 

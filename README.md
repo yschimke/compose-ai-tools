@@ -91,9 +91,9 @@ more than a PNG.
 Rendered baselines (PNGs and animation GIFs, regenerated on every push to
 `main`) are browsable inline on the
 [`compose-preview/main`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main)
-branch — `samples:android`, `samples:wear`, `samples:cmp`,
-`samples:remotecompose`, `samples:xr-spatial`. Source under
-[`samples/`](samples/). The
+branch — `samples:android`, `samples:wear`, `samples:cmp`, and
+`samples:remotecompose`. Source under [`samples/`](samples/). The XR renderer and its spatial
+sample live in [`compose-preview-xr`](https://github.com/yschimke/compose-preview-xr). The
 [integration matrix](.github/workflows/integration.yml) also renders the
 plugin against real-world external Compose projects on every push.
 

@@ -27,8 +27,9 @@ import androidx.compose.runtime.ProvidedValue
  * - `renderer-android` must not gain a compile dependency on `androidx.xr.*`; the overwhelming
  *   majority of consumers have no XR artifacts at all, and for them every lookup here misses and
  *   the whole thing is a no-op (the normal case, not an error).
- * - A consumer using `androidx.xr.compose` without our `:renderer-xr` module gets the same repair,
- *   because this reaches the XR runtime directly rather than through that module.
+ * - A consumer using `androidx.xr.compose` without the separately released `:renderer-xr` module
+ *   gets the same repair, because this reaches the XR runtime directly rather than through that
+ *   module.
  * - Session creation needs a `PerceptionRuntimeFactory` on the classpath (the `*-testing` fakes,
  *   registered for `ServiceLoader`). Where that's absent, creation fails, this returns null and the
  *   preview behaves exactly as it does today rather than crashing differently.
