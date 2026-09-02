@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "9453c777543a8c96a224fbc51ad9f29be02c16f3",
+    "generatedFrom": "ed728a2cf101452eca88c0614d903d9aec4886ec",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -6961,6 +6961,15 @@
             "path": "renders/samples:remotecompose/colorcatalog__Remote_theme.png",
             "versions": [
                 {
+                    "blob": "c8fc1c6d8c5a537a74705c117b13dec8660eec42",
+                    "commit": "ed728a2cf101452eca88c0614d903d9aec4886ec",
+                    "date": "2026-09-02T03:45:52Z",
+                    "sourceSha": "802b84b8",
+                    "sinceCommit": "43720116fa23299461094c84ffde5f81072c8976",
+                    "commits": 3,
+                    "occurrences": 3
+                },
+                {
                     "blob": "c5f597c4295862028f853ead6d4504cf98f477a3",
                     "commit": "9453c777543a8c96a224fbc51ad9f29be02c16f3",
                     "date": "2026-09-01T21:10:54Z",
@@ -6975,20 +6984,11 @@
                     "date": "2026-09-01T20:46:50Z",
                     "sourceSha": "41da9cc0",
                     "commits": 1
-                },
-                {
-                    "blob": "c8fc1c6d8c5a537a74705c117b13dec8660eec42",
-                    "commit": "ba54f47b294528696f7e94aaaa5e668ca936adda",
-                    "date": "2026-08-31T14:49:26Z",
-                    "sourceSha": "5cf8bd71",
-                    "sinceCommit": "43720116fa23299461094c84ffde5f81072c8976",
-                    "commits": 2,
-                    "occurrences": 2
                 }
             ],
-            "observations": 7,
+            "observations": 8,
             "unstable": true,
-            "flapCount": 4
+            "flapCount": 5
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
             "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
@@ -8581,343 +8581,6 @@
             "versions": [
                 {
                     "blob": "5a3064786b14e1180c297f0285f209f8f29a0a6d",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialPreviewsKt.NowPlayingPanelPreview_Panel · Content": {
-            "path": "renders/samples:xr-spatial/NowPlayingPanelPreview_Panel_Content-bbdf56ea.png",
-            "versions": [
-                {
-                    "blob": "43f071bf86624ff772871cb21747c4be98acaa97",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialPreviewsKt.OrbiterControlsPreview_Orbiter · TopControls": {
-            "path": "renders/samples:xr-spatial/OrbiterControlsPreview_Orbiter_TopControls-a7f9ee4b.png",
-            "versions": [
-                {
-                    "blob": "9a6b85208b27725d2adaaa3fb0bd675c5c2f6701",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialPreviewsKt.SpatialElevationPreview_SpatialElevation · Panel": {
-            "path": "renders/samples:xr-spatial/SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.png",
-            "versions": [
-                {
-                    "blob": "4b682b99b369b42e64aa437a8961a5ea44df7d2c",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.MasterDetailPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.MasterDetailPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "e6407083f48f34a384a1f9f47a81c2a5a598b8c0",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "7d3ff814d622ecef709899437e2c758bdda0a42a",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "e6407083f48f34a384a1f9f47a81c2a5a598b8c0",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.NestedColumnInRowPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.NestedColumnInRowPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "ab0a974bb30931ca4795266f650946ba93198c1f",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.OrbiterPanelPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.OrbiterPanelPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "9fa316b1cf2249a163b2c8907d173b9ed4b7bfd6",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialCurvedRowPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialCurvedRowPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "8e043daad2d14cd93db5f0d2047067e415b4660b",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "925b988592c91ad00aeae61c4564c3e739a8b474",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "8e043daad2d14cd93db5f0d2047067e415b4660b",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialDepthPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialDepthPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "d3a7328ce1a80b6f79227ac641193d0da2a16516",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialRowPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.SpatialShowcasePreviewsKt.SpatialRowPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "ac80e6f391dfcd190d94f393e6eb91298b9bf0b0",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "8221a30bf68a7fe7e0380a6801e8514c09465b3a",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "ac80e6f391dfcd190d94f393e6eb91298b9bf0b0",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.OffsetModifiersPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.OffsetModifiersPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "de834c1bb2e8080869f67deaf214d892b326deed",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "fa7057932caac9c37b9c00f946c208e307f96164",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "de834c1bb2e8080869f67deaf214d892b326deed",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotateToLookAtUserPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "af7c217fd4b75ddc67392a51ea0d7294be44b742",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "2b5e4425712f0635155ae62b4237ab12cc3a3d53",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "af7c217fd4b75ddc67392a51ea0d7294be44b742",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotatedYawRowPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "e10224e1fc97a09a04af2eb6fbbabec072e3d926",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "30fac363c3e1442001687827998fdfd22eaca68f",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "e10224e1fc97a09a04af2eb6fbbabec072e3d926",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotationFormsPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrModifierPreviewsKt.RotationFormsPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "ebc11b5562e2204df08a73420bf32382ea218ed5",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "0a8f533c7207ddff968715ceff18e592a35c26cc",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "ebc11b5562e2204df08a73420bf32382ea218ed5",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.XrReferencePreviewsKt.SpatialPanelGridPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrReferencePreviewsKt.SpatialPanelGridPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "6f01a757be0f6485759e70b6511e4197802891e4",
-                    "commit": "49ffd102ab062a6f6b8c2699dd4a6b890eebd135",
-                    "date": "2026-09-01T06:20:35Z",
-                    "sourceSha": "1a9b0653",
-                    "commits": 1
-                },
-                {
-                    "blob": "c52de3e1bf1f0d73068ad3a09ee7e6736e0d17c1",
-                    "commit": "34c428efda2721a898dbf21309044f7dacb8e50f",
-                    "date": "2026-09-01T05:54:58Z",
-                    "sourceSha": "426de9e5",
-                    "commits": 1
-                },
-                {
-                    "blob": "6f01a757be0f6485759e70b6511e4197802891e4",
-                    "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
-                    "date": "2026-08-31T22:33:22Z",
-                    "sourceSha": "d28c9dec",
-                    "commits": 1
-                }
-            ],
-            "observations": 3,
-            "unstable": false,
-            "flapCount": 1
-        },
-        "samples:xr-spatial/com.example.samplexrspatial.XrSubspacePreviewsKt.NowPlayingSpatialPreview": {
-            "path": "renders/samples:xr-spatial/com.example.samplexrspatial.XrSubspacePreviewsKt.NowPlayingSpatialPreview__composite.png",
-            "versions": [
-                {
-                    "blob": "cddfa037e59aaa99eed86d7aca20995ada52e2f5",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
                     "date": "2026-08-31T22:33:22Z",
                     "sourceSha": "d28c9dec",
