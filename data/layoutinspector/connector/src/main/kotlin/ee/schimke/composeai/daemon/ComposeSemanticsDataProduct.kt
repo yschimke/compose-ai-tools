@@ -1280,6 +1280,33 @@ internal object ComposeLayoutInspector {
       } else null
     val ownerId = semanticsId?.toString() ?: identityId
     val indications = LayoutTreeAccess.indications(modifiers, rootCoords)
+    // A drawWithContent outside clickable paints its foreground after the ripple; one inside it
+    // paints before the ripple. Capture each after-content pass separately so it can be interleaved
+    // with indications by modifier position instead of flattening every indication to the end.
+    val indicationForegrounds =
+      if (indications.isEmpty()) emptyList()
+      else
+        modifiers.mapIndexedNotNull { modifierIndex, info ->
+          DrawRasterCapture.captureForeground(listOf(info), density, fontScale) { candidate ->
+              candidate.coordinates.boundsIn(rootCoords)
+            }
+            ?.let { raster ->
+              val rasterBounds =
+                LayoutInspectorBounds(raster.left, raster.top, raster.right, raster.bottom)
+              modifierIndex to
+                LayoutInspectorNode(
+                  nodeId = "$ownerId-indication-foreground-$modifierIndex",
+                  component = "$ownComponent Foreground",
+                  bounds = rasterBounds,
+                  size =
+                    LayoutInspectorSize(
+                      width = rasterBounds.right - rasterBounds.left,
+                      height = rasterBounds.bottom - rasterBounds.top,
+                    ),
+                  drawRaster = raster,
+                )
+            }
+        }
     val ownerTransform = coordinates.scaleIn(rootCoords)
     val wireModifiers = modifiers.mapNotNull { info ->
       info.toWireModifier(rootCoords, density, fontScale)
@@ -1360,9 +1387,10 @@ internal object ComposeLayoutInspector {
       modifiesDrawnContent =
         DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
       transform = ownerTransform,
-      // A Material indication is a draw-over operation: `RippleNode.draw` calls `drawContent()`
-      // before its focus state layer and press ripple. Keep it as the final child so gradients,
-      // icons, images and tokenless custom content are tinted in the same order as the real frame.
+      // A Material indication draws after its inner content but before the foreground of any outer
+      // drawWithContent modifier. ModifierInfo is outer-to-inner, so sorting descending
+      // reconstructs
+      // the unwind order: deepest foreground/indication first, outermost last.
       children =
         children +
           vectorGraphic
@@ -1378,7 +1406,14 @@ internal object ComposeLayoutInspector {
               )
             }
             .let(::listOfNotNull) +
-          indications.mapIndexed { index, it -> it.toWireNode(ownerId, index) },
+          buildList<Pair<Int, LayoutInspectorNode>> {
+              indications.forEachIndexed { index, indication ->
+                add(indication.modifierIndex to indication.toWireNode(ownerId, index))
+              }
+              addAll(indicationForegrounds)
+            }
+            .sortedByDescending { it.first }
+            .map { it.second },
     )
   }
 
@@ -2478,6 +2513,7 @@ internal object ComposeLayoutInspector {
       val localWidthPx: Int,
       val localHeightPx: Int,
       val transform: LayoutInspectorTransform?,
+      val modifierIndex: Int,
     )
 
     /**
@@ -2499,7 +2535,7 @@ internal object ComposeLayoutInspector {
     ): List<Indication> {
       val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
       val layers = mutableListOf<Indication>()
-      fun visit(candidate: Any?, fallbackCoordinates: LayoutCoordinates) {
+      fun visit(candidate: Any?, fallbackCoordinates: LayoutCoordinates, fallbackIndex: Int) {
         if (candidate == null || !seen.add(candidate)) return
         val rippleClass =
           generateSequence(candidate.javaClass as Class<*>?) { it.superclass }
@@ -2513,6 +2549,9 @@ internal object ComposeLayoutInspector {
               )
               .mapNotNull { call(candidate, it) as? LayoutCoordinates }
               .firstOrNull() ?: fallbackCoordinates
+          val modifierIndex =
+            modifiers.indexOfFirst { it.coordinates === coordinates }.takeIf { it >= 0 }
+              ?: fallbackIndex
           val bounds = coordinates.boundsIn(rootCoordinates)
           val transform = coordinates.scaleIn(rootCoordinates)
           val targetRadius = reflectedField(candidate, "targetRadius") as? Float
@@ -2543,6 +2582,7 @@ internal object ComposeLayoutInspector {
                 coordinates.size.width,
                 coordinates.size.height,
                 transform,
+                modifierIndex,
               )
           }
 
@@ -2581,6 +2621,7 @@ internal object ComposeLayoutInspector {
                     coordinates.size.width,
                     coordinates.size.height,
                     transform,
+                    modifierIndex,
                   )
               }
             }
@@ -2616,25 +2657,26 @@ internal object ComposeLayoutInspector {
                 coordinates.size.width,
                 coordinates.size.height,
                 transform,
+                modifierIndex,
               )
           }
         }
         sequenceOf("getDelegate\$ui_release", "getDelegate\$ui", "getDelegate")
           .mapNotNull { call(candidate, it) }
           .firstOrNull()
-          ?.let { visit(it, fallbackCoordinates) }
+          ?.let { visit(it, fallbackCoordinates, fallbackIndex) }
         sequenceOf("getParent\$ui_release", "getParent\$ui", "getParent")
           .mapNotNull { call(candidate, it) }
           .firstOrNull()
-          ?.let { visit(it, fallbackCoordinates) }
+          ?.let { visit(it, fallbackCoordinates, fallbackIndex) }
         sequenceOf("getChild\$ui_release", "getChild\$ui", "getChild")
           .mapNotNull { call(candidate, it) }
           .firstOrNull()
-          ?.let { visit(it, fallbackCoordinates) }
+          ?.let { visit(it, fallbackCoordinates, fallbackIndex) }
       }
-      modifiers.forEach { info ->
+      modifiers.forEachIndexed { index, info ->
         val tail = call(info.coordinates, "getTail")
-        tail?.let { visit(it, info.coordinates) }
+        tail?.let { visit(it, info.coordinates, index) }
       }
       return layers
     }

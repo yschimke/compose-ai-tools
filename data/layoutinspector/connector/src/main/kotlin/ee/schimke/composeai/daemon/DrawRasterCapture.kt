@@ -71,6 +71,30 @@ internal object DrawRasterCapture {
     density: Float,
     fontScale: Float = 1f,
     boundsOf: (ModifierInfo) -> LayoutInspectorBounds?,
+  ): LayoutInspectorDrawRaster? =
+    capture(modifiers, density, fontScale, boundsOf, CapturePass.BEHIND_CONTENT)
+
+  /**
+   * Captures only paint emitted after `drawContent()`.
+   *
+   * This is kept separate from [capture] because an outer `drawWithContent` foreground belongs
+   * above an inner indication in the modifier chain. The caller can therefore insert this raster at
+   * the modifier's actual paint position instead of flattening it into the node's background.
+   */
+  fun captureForeground(
+    modifiers: List<ModifierInfo>,
+    density: Float,
+    fontScale: Float = 1f,
+    boundsOf: (ModifierInfo) -> LayoutInspectorBounds?,
+  ): LayoutInspectorDrawRaster? =
+    capture(modifiers, density, fontScale, boundsOf, CapturePass.AFTER_CONTENT)
+
+  private fun capture(
+    modifiers: List<ModifierInfo>,
+    density: Float,
+    fontScale: Float,
+    boundsOf: (ModifierInfo) -> LayoutInspectorBounds?,
+    pass: CapturePass,
   ): LayoutInspectorDrawRaster? {
     val draws = modifiers.mapNotNull { info ->
       // A `Modifier.placeholder`'s own draw is not the node's art (issue #2646): loaded, it is a
@@ -118,7 +142,9 @@ internal object DrawRasterCapture {
     if (width <= 0 || height <= 0 || width.toLong() * height > MAX_PIXELS) return null
 
     val pixels =
-      runCatching { render(draws, left, top, scaleX, scaleY, width, height, density, fontScale) }
+      runCatching {
+        render(draws, left, top, scaleX, scaleY, width, height, density, fontScale, pass)
+      }
         .getOrNull() ?: return null
     if (pixels.none { (it ushr 24) != 0 }) return null
     val png = runCatching { encodePng(pixels, width, height) }.getOrNull() ?: return null
@@ -129,6 +155,11 @@ internal object DrawRasterCapture {
       bottom = bottom,
       pngBase64 = Base64.getEncoder().encodeToString(png),
     )
+  }
+
+  private enum class CapturePass {
+    BEHIND_CONTENT,
+    AFTER_CONTENT,
   }
 
   /**
@@ -170,6 +201,7 @@ internal object DrawRasterCapture {
     height: Int,
     density: Float,
     fontScale: Float,
+    pass: CapturePass,
   ): IntArray {
     val target = ImageBitmap(width, height)
     val canvas = Canvas(target)
@@ -188,7 +220,10 @@ internal object DrawRasterCapture {
       canvas.translate(dx, dy)
       scope.draw(densityScope, LayoutDirection.Ltr, canvas, size) {
         val lambda = draw.lambda
-        IsolatedContentDrawScope(this, scratch).lambda()
+        when (pass) {
+          CapturePass.BEHIND_CONTENT -> IsolatedContentDrawScope(this, scratch).lambda()
+          CapturePass.AFTER_CONTENT -> ForegroundContentDrawScope(this, scratch).lambda()
+        }
       }
       canvas.restore()
     }
@@ -217,6 +252,22 @@ internal object DrawRasterCapture {
   ) : ContentDrawScope, DrawScope by delegate {
     override fun drawContent() {
       delegate.drawContext.canvas = scratch
+    }
+  }
+
+  /** The inverse isolation: discard pre-content paint and retain only the foreground pass. */
+  private class ForegroundContentDrawScope(
+    private val delegate: DrawScope,
+    scratch: Canvas,
+  ) : ContentDrawScope, DrawScope by delegate {
+    private val target = delegate.drawContext.canvas
+
+    init {
+      delegate.drawContext.canvas = scratch
+    }
+
+    override fun drawContent() {
+      delegate.drawContext.canvas = target
     }
   }
 }
