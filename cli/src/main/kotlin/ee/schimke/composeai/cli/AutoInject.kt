@@ -568,6 +568,37 @@ internal fun defaultInitScriptStorageDir(version: String): File =
   File(composeAiCacheDir("init"), version)
 
 /**
+ * `--write-locks` when `COMPOSE_PREVIEW_WRITE_LOCKS=1` is set, otherwise nothing.
+ *
+ * A build that LOCKS its buildscript classpath rejects every module its lock state does not name,
+ * and auto-inject's whole job is to add one it does not name:
+ * ```
+ * > Could not resolve all artifacts for configuration 'classpath'.
+ *    > Resolved 'ee.schimke.composeai.preview:...' which is not part of the dependency lock state
+ * ```
+ *
+ * That fires while the buildscript classpath resolves, so it takes the build out before discovery
+ * runs — bitwarden/android hit it with 51 previews it could never reach
+ * (yschimke/compose-preview-imports#30).
+ *
+ * `--write-locks` is Gradle's own answer: the lock state is regenerated to describe what was
+ * actually resolved, rather than the injected module being smuggled past validation. It is the
+ * mechanism and not a bypass, and it works whatever lock mode the project chose — bitwarden uses
+ * `LockMode.STRICT` with `lockAllConfigurations()`, where simply deleting the lockfile FAILS
+ * instead of relaxing.
+ *
+ * It is deliberately **not** inferred from a lockfile on disk. `--write-locks` rewrites files in
+ * the project, and doing that to a developer's working tree because we noticed they lock is not
+ * ours to decide. The environment variable is set by the import pipeline, where the checkout is a
+ * throwaway clone and the rewrite is discarded with it; everywhere else the caller opts in
+ * explicitly or the build is left exactly as it is.
+ *
+ * Visible for tests.
+ */
+internal fun gradleWriteLocksArgs(env: (String) -> String? = System::getenv): List<String> =
+  if (env("COMPOSE_PREVIEW_WRITE_LOCKS") == "1") listOf("--write-locks") else emptyList()
+
+/**
  * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation, or an empty
  * list when auto-inject is disabled. Materialises the script on first call.
  *

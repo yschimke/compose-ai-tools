@@ -350,7 +350,12 @@ abstract class Command(
         // task runs use. Without this, a flavored `:app` would still be
         // invisible to `findPreviewModules()` because its task only registers
         // when `-PcomposePreview.variant=demoDebug` is on the model query too.
-        GradleConnection(root, verbose, progress, extraArguments = injectArgs + variantGradleArgs())
+        GradleConnection(
+          root,
+          verbose,
+          progress,
+          extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
+        )
       }
     connection.use(block)
   }
