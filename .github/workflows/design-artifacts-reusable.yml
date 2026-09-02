@@ -2605,13 +2605,60 @@ jobs:
         run: |
           set +e
           root="${GITHUB_WORKSPACE}/${RENDER_DIR:-.}"
+          mkdir -p "$GITHUB_WORKSPACE/render-failure-diagnostics"
+
+          # The renderer writes a `.error.json` beside where each PNG would have gone, on BOTH
+          # lanes. Collect those first, because on the desktop lane they are the ONLY per-preview
+          # evidence that exists: `composePreviewRenderAll` (Robolectric) reads its sidecars back
+          # into the Gradle failure message, but `composePreviewRender` (desktop) only points at
+          # them —
+          #
+          #   composePreviewRender: 90 capture(s) were drawn and none produced a file. … check the
+          #   `Render failed for …` lines above and the `.error.json` sidecars beside the expected
+          #   outputs
+          #
+          # — and neither the `Render failed for …` lines (they need --verbose) nor the sidecars
+          # reach CI. A desktop-lane render that fails wholesale therefore leaves a log saying only
+          # that it failed, which is what made DroidKaigi's :core:ui undiagnosable from a CI run.
+          #
+          # Printed as well as uploaded: an artifact is the wrong place for the one fact a reader
+          # needs, and downloading one is not always possible from where the log is being read.
+          mapfile -t sidecars < <(find "$root" -name '*.error.json' -type f 2>/dev/null | sort)
+          if [ "${#sidecars[@]}" -gt 0 ]; then
+            echo "::group::Per-preview render errors (${#sidecars[@]} .error.json sidecar(s))"
+            for f in "${sidecars[@]}"; do
+              rel="${f#"$root"/}"
+              mkdir -p "$GITHUB_WORKSPACE/render-failure-diagnostics/$(dirname "$rel")"
+              cp "$f" "$GITHUB_WORKSPACE/render-failure-diagnostics/$rel" 2>/dev/null
+            done
+            # Bounded on purpose: one wholesale failure produces one sidecar per preview, all
+            # saying the same thing, and 300 copies of it buries the rest of the log. The upload
+            # above keeps every one of them.
+            for f in "${sidecars[@]:0:25}"; do
+              echo "--- ${f#"$root"/}"
+              head -c 4000 "$f"
+              echo
+            done
+            if [ "${#sidecars[@]}" -gt 25 ]; then
+              echo "… and $(( ${#sidecars[@]} - 25 )) more, in the uploaded diagnostics artifact"
+            fi
+            echo "::endgroup::"
+          fi
+
           # Only the render task's own results: other test tasks in the build are not this failure.
           mapfile -t xml < <(find "$root" -path '*/build/test-results/composePreviewRender/*.xml' -type f 2>/dev/null)
           if [ "${#xml[@]}" -eq 0 ]; then
-            echo "No composePreviewRender test results under $root — the render failed before it ran any preview."
+            # Two very different situations, and saying the wrong one sends the reader off in the
+            # wrong direction. JUnit results exist only on the Robolectric lane, so their absence
+            # beside sidecars is expected rather than evidence of anything.
+            if [ "${#sidecars[@]}" -gt 0 ]; then
+              echo "No composePreviewRender JUnit results under $root — expected on the desktop lane," \
+                   "which writes none. The per-preview errors are the sidecars above."
+            else
+              echo "No composePreviewRender test results under $root — the render failed before it ran any preview."
+            fi
             exit 0
           fi
-          mkdir -p "$GITHUB_WORKSPACE/render-failure-diagnostics"
           for f in "${xml[@]}"; do
             cp "$f" "$GITHUB_WORKSPACE/render-failure-diagnostics/" 2>/dev/null
           done
