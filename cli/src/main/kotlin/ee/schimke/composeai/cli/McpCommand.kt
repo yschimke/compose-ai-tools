@@ -159,7 +159,10 @@ internal class McpCommand(
     val driver =
       GradlePreviewDriver(
         projectDir,
-        DriverOptions(verbose = "--verbose" in args || "-v" in args, extraArguments = injectArgs),
+        DriverOptions(
+          verbose = "--verbose" in args || "-v" in args,
+          extraArguments = injectArgs + gradleWriteLocksArgs(),
+        ),
       )
     driver.use {
       val allModules = driver.discoverModules()
@@ -394,7 +397,10 @@ internal class McpCommand(
 
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val driver =
-      GradlePreviewDriver(projectDir, DriverOptions(verbose = false, extraArguments = injectArgs))
+      GradlePreviewDriver(
+        projectDir,
+        DriverOptions(verbose = false, extraArguments = injectArgs + gradleWriteLocksArgs()),
+      )
     driver.use {
       val allModules = driver.discoverModules()
       val modules =

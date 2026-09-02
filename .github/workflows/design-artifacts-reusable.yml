@@ -576,6 +576,20 @@ env:
 
     if __name__ == "__main__":
         sys.exit(main(sys.argv))
+  # An imported project may LOCK its buildscript classpath (bitwarden/android does, with
+  # lockAllConfigurations() and LockMode.STRICT), in which case it rejects every module its lock
+  # state does not name — including the preview plugin auto-inject adds, so the render dies during
+  # configuration before discovery runs (yschimke/compose-preview-imports#30).
+  #
+  # --write-locks is Gradle's own answer: the lock state is REGENERATED to describe what actually
+  # resolved, rather than the injected module being smuggled past validation. Under STRICT mode it
+  # is also the only thing that works — deleting the lockfile makes a strict build fail, not relax.
+  #
+  # Set only in import mode, and read from the environment rather than inferred from a lockfile,
+  # because it rewrites files in the checkout. Here that checkout is a throwaway clone discarded
+  # with the job; a developer's working tree is never rewritten because we noticed they lock.
+  # A build with no locking resolves this to a no-op.
+  COMPOSE_PREVIEW_WRITE_LOCKS: ${{ inputs.upstream-repository != '' && '1' || '' }}
   IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && 'activity__*,apptour__*' || '' }}
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}

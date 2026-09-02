@@ -351,7 +351,7 @@ class DoctorCommand(
         GradleConnection(
             projectDir,
             verbose = verbose,
-            extraArguments = injectArgs + variantGradleArgs(),
+            extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
           )
           .use { gc ->
             // Daemon-JVM + Gradle-version snapshot. Runs first so other
