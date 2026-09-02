@@ -1,0 +1,116 @@
+package ee.schimke.composeai.renderer
+
+/**
+ * Binds seeded knob values to a preview's **value parameters** — the secondary override format.
+ *
+ * ### Why an argument array rather than a controller
+ *
+ * The original override surface (`previewOverride*`) declares a knob by *executing a lookup inside
+ * the composable body*, so a renderer seeds it by writing into a process-static controller before
+ * composing. A parameter knob is declared by the function signature instead, so seeding it is
+ * ordinary argument passing: the value goes to the composable the same way a caller would pass it,
+ * and the body contains no harness call at all.
+ *
+ * ### How a subset is seeded
+ *
+ * `ComposableMethod.invoke` treats a **null or absent** argument as "use this parameter's default":
+ * it sets that parameter's bit in Kotlin's synthetic `$default` mask and passes a zero value, so
+ * the compiled default expression runs. That is exactly the behaviour a partial seed needs, and it
+ * is already what makes an all-defaults preview render from a zero-length argument list today.
+ *
+ * So [bind] returns an array as long as the preview's parameter list, holding `null` everywhere
+ * except the positions a seed named. Nothing else about the render seam changes.
+ *
+ * ### What it deliberately does not do
+ *
+ * * **No coercion across kinds.** A seed whose text is not a valid value for the knob's declared
+ *   type is *dropped*, not guessed at — that position stays null and the author default renders.
+ *   Coercing `"yes"` to `true`, or truncating `"1.5"` to an `Int`, would publish a capture that
+ *   silently disagrees with the value the client asked for, which is worse than visibly ignoring
+ *   it.
+ * * **No null seeding.** Null is the channel's "use the default" signal, so it cannot also mean
+ *   "set this to null". Nullable parameters are therefore not knobs (see `ComposableSignature`),
+ *   and a seed naming one has nothing to bind to.
+ * * **No unknown keys.** A seed whose name matches no declared knob is ignored here; it may still
+ *   be a `previewOverride*` key, which the controller-backed extension seeds separately. One seed
+ *   map serves both formats, so each side takes only what it recognises.
+ */
+object PreviewKnobArguments {
+
+  /** One editable value parameter of a preview, as discovery recorded it. */
+  data class Knob(val name: String, val index: Int, val type: Type)
+
+  /** The value kinds a [Knob] can carry — mirrors discovery's `PreviewKnobType`. */
+  enum class Type {
+    STRING,
+    BOOLEAN,
+    INT,
+    LONG,
+    FLOAT,
+    DOUBLE,
+  }
+
+  /**
+   * The argument array to invoke a preview declaring [knobs] with, given the raw [seeds] a client
+   * sent (knob name → verbatim text).
+   *
+   * Returns an empty list when nothing can be bound — no knobs, no seeds, or no seed that names a
+   * knob and parses — so a caller can keep its existing zero-argument invoke rather than
+   * constructing an all-null array that means the same thing.
+   *
+   * The array is sized by the highest knob index plus one rather than by [knobs].size: a knob's
+   * index is its position in the *full* parameter list, which may include parameters that are
+   * defaulted but not seedable (`modifier: Modifier = Modifier`). Those positions stay null and
+   * take their defaults.
+   */
+  fun bind(knobs: List<Knob>, seeds: Map<String, String>): List<Any?> {
+    if (knobs.isEmpty() || seeds.isEmpty()) return emptyList()
+    val byName = knobs.associateBy { it.name }
+    val bound = seeds.mapNotNull { (name, raw) ->
+      val knob = byName[name] ?: return@mapNotNull null
+      parse(knob.type, raw)?.let { knob.index to it }
+    }
+    if (bound.isEmpty()) return emptyList()
+    val size = knobs.maxOf { it.index } + 1
+    val args = arrayOfNulls<Any?>(size)
+    bound.forEach { (index, value) -> if (index in 0 until size) args[index] = value }
+    return args.toList()
+  }
+
+  /**
+   * The typed value for [raw] under [type], or null when it is not one — an unparseable seed is
+   * dropped rather than coerced.
+   *
+   * `toBooleanStrictOrNull` rather than `toBoolean`: the lenient form maps every non-`"true"`
+   * string to `false`, so a malformed seed would silently render the opposite of a `true` default
+   * instead of the default itself.
+   */
+  private fun parse(type: Type, raw: String): Any? =
+    when (type) {
+      Type.STRING -> raw
+      Type.BOOLEAN -> raw.toBooleanStrictOrNull()
+      Type.INT -> raw.toIntOrNull()
+      Type.LONG -> raw.toLongOrNull()
+      Type.FLOAT -> raw.toFloatOrNull()
+      Type.DOUBLE -> raw.toDoubleOrNull()
+    }
+
+  /**
+   * Parses the `knobs=<name>:<index>:<TYPE>,…` render-payload token discovery threads through
+   * `previews.json`. An entry that is malformed — wrong arity, a non-numeric index, a type name
+   * this renderer does not know — is skipped rather than failing the render: a newer plugin may
+   * name a knob kind an older renderer cannot bind, and dropping just that knob degrades to the
+   * author default while the rest of the preview still seeds.
+   */
+  fun parseToken(token: String?): List<Knob> {
+    if (token.isNullOrBlank()) return emptyList()
+    return token.split(',').mapNotNull { entry ->
+      val parts = entry.split(':')
+      if (parts.size != 3) return@mapNotNull null
+      val index = parts[1].toIntOrNull() ?: return@mapNotNull null
+      if (index < 0) return@mapNotNull null
+      val type = Type.entries.firstOrNull { it.name == parts[2] } ?: return@mapNotNull null
+      parts[0].takeIf { it.isNotBlank() }?.let { Knob(it, index, type) }
+    }
+  }
+}

@@ -1127,6 +1127,53 @@ data class CatalogEntry(
   val kitValue: String? = null,
 )
 
+/**
+ * One editable knob a preview declares as **its own value parameter**, recovered from the
+ * function's `@kotlin.Metadata` rather than from a `previewOverride*` call in its body.
+ *
+ * This is the *secondary* override format ([docs/design/COMPONENT_RECORD.md]). Where
+ * `previewOverride*` declares a knob by executing a lookup — so the set is only knowable by
+ * rendering, and a knob behind an `if` is invisible until that branch runs — a parameter is
+ * declared by the signature and is therefore enumerable statically, typed by Kotlin, and already
+ * carries its default. The body stays plain Compose with no harness call in it at all:
+ * ```kotlin
+ * @Preview @Composable
+ * fun FilledButton(label: String = "Filled", enabled: Boolean = true) {
+ *   Button(onClick = {}, enabled = enabled) { Text(label) }
+ * }
+ * ```
+ *
+ * **Nothing new is required to render one.** A preview whose parameters all declare defaults is
+ * already a supported shape (`hasUnsupportedPreviewParameters`), and the renderer invokes it with
+ * no arguments while `ComposableMethod` fills each one from Kotlin's synthetic `$default` bridge.
+ * What this record adds is the ability to *seed* a subset: [index] is the parameter's position, so
+ * a renderer can pass an argument array of `null`s with only the seeded positions filled — a null
+ * entry sets that parameter's default-mask bit, so everything unseeded still takes its author
+ * default.
+ *
+ * Only parameters whose type the harness can construct from a seed string become knobs; a
+ * `modifier: Modifier = Modifier` on a production composable annotated `@Preview` in place is
+ * correctly not one. [OverrideSeed.key] resolves against [name] for a preview that declares these,
+ * so `@OverrideVariant(booleans = ["enabled=false"])` seeds the *parameter* here and the
+ * `previewOverride*` controller elsewhere — one variant surface over both formats.
+ *
+ * @property name the Kotlin parameter name, and the seed key that addresses it.
+ * @property index the parameter's zero-based position in the function's value-parameter list.
+ * @property type which seed kind can be bound to it.
+ */
+@Serializable data class PreviewKnob(val name: String, val index: Int, val type: PreviewKnobType)
+
+/** The value kinds a [PreviewKnob] can carry — the types the harness can build from a seed. */
+@Serializable
+enum class PreviewKnobType {
+  STRING,
+  BOOLEAN,
+  INT,
+  LONG,
+  FLOAT,
+  DOUBLE,
+}
+
 /** Kind of a seeded `previewOverride*` value — mirrors `PreviewOverrideValue`'s subtypes. */
 @Serializable
 enum class OverrideSeedKind {
@@ -1295,6 +1342,13 @@ data class PreviewInfo(
    * accessibility pipeline must not audit. True for ordinary previews and older manifests.
    */
   val includeInA11y: Boolean = true,
+  /**
+   * Editable knobs this preview declares as its own defaulted value parameters — the secondary
+   * override format. Empty for a preview that declares none (every preview written against
+   * `previewOverride*`, and every parameterless one), so older manifests and unmigrated modules are
+   * unchanged. See [PreviewKnob].
+   */
+  val knobs: List<PreviewKnob> = emptyList(),
 )
 
 /**

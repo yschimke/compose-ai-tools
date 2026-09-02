@@ -2421,38 +2421,37 @@ object PreviewDiscovery {
       id = base.id + tag,
       overrides = spec,
       captures =
-        variantCaptures
-          .map { capture ->
-            val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
-            when (spec.interaction) {
-              OverrideVariantInteraction.Focused ->
-                tagged.copy(
-                  focus = FocusCapture(tabIndex = spec.interactionIndex),
-                  focusGif = null,
-                  hover = null,
-                )
-              OverrideVariantInteraction.Pressed ->
-                tagged.copy(
-                  focus = FocusCapture(tabIndex = spec.interactionIndex, pressed = true),
-                  focusGif = null,
-                  hover = null,
-                )
-              OverrideVariantInteraction.Hovered ->
-                tagged.copy(
-                  focus = null,
-                  focusGif = null,
-                  hover = HoverCapture(targetIndex = spec.interactionIndex),
-                )
-              OverrideVariantInteraction.Dragged ->
-                tagged.copy(
-                  focus = null,
-                  focusGif = null,
-                  hover = null,
-                  drag = DragCapture(targetIndex = spec.interactionIndex),
-                )
-              null -> tagged
-            }
-          },
+        variantCaptures.map { capture ->
+          val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
+          when (spec.interaction) {
+            OverrideVariantInteraction.Focused ->
+              tagged.copy(
+                focus = FocusCapture(tabIndex = spec.interactionIndex),
+                focusGif = null,
+                hover = null,
+              )
+            OverrideVariantInteraction.Pressed ->
+              tagged.copy(
+                focus = FocusCapture(tabIndex = spec.interactionIndex, pressed = true),
+                focusGif = null,
+                hover = null,
+              )
+            OverrideVariantInteraction.Hovered ->
+              tagged.copy(
+                focus = null,
+                focusGif = null,
+                hover = HoverCapture(targetIndex = spec.interactionIndex),
+              )
+            OverrideVariantInteraction.Dragged ->
+              tagged.copy(
+                focus = null,
+                focusGif = null,
+                hover = null,
+                drag = DragCapture(targetIndex = spec.interactionIndex),
+              )
+            null -> tagged
+          }
+        },
       dataProducts = emptyList(),
     )
   }
@@ -4643,6 +4642,11 @@ object PreviewDiscovery {
         method.annotationInfo
           .firstOrNull { it.name == PREVIEW_HELPER_FQN }
           ?.let { annBoolean(it, "includeInA11y", default = true) } ?: true,
+      // The secondary override format: knobs the preview declares as its own defaulted value
+      // parameters. Read off the METHOD, like `fixedTheme` above, so every expansion of a
+      // multi-preview carries the same signature-derived set. Empty for every preview that declares
+      // none, which is every `previewOverride*` preview and every parameterless one.
+      knobs = ComposableSignature.knobsOf(classInfo, method),
     )
   }
 
