@@ -2634,10 +2634,43 @@ jobs:
             # Bounded on purpose: one wholesale failure produces one sidecar per preview, all
             # saying the same thing, and 300 copies of it buries the rest of the log. The upload
             # above keeps every one of them.
+            # NOT `head -c` on the raw JSON, which was the first attempt and threw away the one
+            # part that matters: a sidecar's `stackTrace` is long and its `Caused by:` — the actual
+            # fault — sits at the END of it, so a leading byte cap prints frame after frame of the
+            # renderer's own call stack and cuts the cause off. DroidKaigi's :core:ui produced 450
+            # sidecars that every one read `InvocationTargetException` with an empty message under
+            # that cap, which says no more than the failure line already did.
+            #
+            # python3 rather than jq: the runner has it, this workflow already runs it elsewhere,
+            # and the field is JSON carrying embedded newlines that a line-oriented tool mangles.
+            #
+            # The heredoc terminator sits at this block scalar's own indent, because YAML strips
+            # exactly that much and the shell needs the terminator at column 0; the body is
+            # indented four further, which sed takes back off before python sees an
+            # IndentationError. Indent either one differently and the step dies at parse time.
+            cat > "${RUNNER_TEMP}/sidecar-cause.py" <<'SIDECAR_PY'
+              import json, sys
+              try:
+                  d = json.load(open(sys.argv[1]))
+              except Exception as exc:
+                  print("  (unparseable sidecar: %s)" % exc)
+                  raise SystemExit
+              print("  %s: %s" % (d.get("exception", "?"), (d.get("message") or "").strip()))
+              lines = (d.get("stackTrace") or "").splitlines()
+              causes = [i for i, l in enumerate(lines) if l.lstrip().startswith("Caused by:")]
+              for i in causes:
+                  print("  " + lines[i].strip())
+                  for frame in lines[i + 1 : i + 3]:
+                      print("    " + frame.strip())
+              if not causes:
+                  # No cause chain, so the top frames are all there is to show.
+                  for frame in lines[1:6]:
+                      print("    " + frame.strip())
+          SIDECAR_PY
+            sed -i 's/^    //' "${RUNNER_TEMP}/sidecar-cause.py"
             for f in "${sidecars[@]:0:25}"; do
               echo "--- ${f#"$root"/}"
-              head -c 4000 "$f"
-              echo
+              python3 "${RUNNER_TEMP}/sidecar-cause.py" "$f"
             done
             if [ "${#sidecars[@]}" -gt 25 ]; then
               echo "… and $(( ${#sidecars[@]} - 25 )) more, in the uploaded diagnostics artifact"
