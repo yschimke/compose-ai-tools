@@ -123,6 +123,42 @@ class PreviewTargetInferenceTest {
   }
 
   @Test
+  fun `an inline-class-mangled JVM name demangles to the source name`() {
+    // `androidx.compose.material3.Text` compiles to `Text-Nvy7gAk` because its `fontSize`, `color`
+    // and `overflow` parameters are value classes. Taken verbatim the name is not a usable import,
+    // so it was rejected — which silently dropped every Material 3 component whose signature
+    // mentions `Color`, `Dp` or `TextUnit`, `Text` included.
+    assertThat(PreviewTargetInference.sourceFunctionName("Text-Nvy7gAk")).isEqualTo("Text")
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.TextKt",
+          PreviewTargetInference.sourceFunctionName("Text-Nvy7gAk"),
+          returnsUnit = true,
+        )
+      )
+      .isTrue()
+  }
+
+  @Test
+  fun `an unmangled name is returned unchanged`() {
+    assertThat(PreviewTargetInference.sourceFunctionName("Card")).isEqualTo("Card")
+  }
+
+  @Test
+  fun `demangling does not rescue a synthetic lambda name`() {
+    // Demangling only strips the value-class hash; a synthetic member is still not an import, and
+    // the `$` rule that rejects it must keep applying after the strip.
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.CardKt",
+          PreviewTargetInference.sourceFunctionName("Card\u0024lambda\u00240"),
+          returnsUnit = true,
+        )
+      )
+      .isFalse()
+  }
+
+  @Test
   fun `a name that is not a usable Kotlin import is rejected`() {
     assertThat(
         PreviewTargetInference.isComponentLibraryTarget(

@@ -717,6 +717,29 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > `Shape`, a domain type), any callback of arity two or more, any callback with a
 > non-`Unit` return. Widening the placeholder table is the obvious next increment
 > and should be paid for by the compile gate, not by confidence.
+>
+> **The gate is in, and it paid for itself on the first run.**
+> `ComponentCallSiteCompileFunctionalTest` builds a real Compose Multiplatform
+> project, discovers its `androidx.compose.material3` components, prints their call
+> sites, writes them into that project and compiles them — so the Kotlin compiler,
+> not an argument in a code review, decides whether a snippet is real. Its
+> load-bearing assertion is the vacuity guard: a generator that refused everything
+> would emit an empty file that compiles perfectly, so the test names components it
+> insists were emitted.
+>
+> That guard failed immediately, on `Text`. Kotlin mangles the JVM name of any
+> function whose signature mentions a value class, so `androidx.compose.material3.Text`
+> compiles to `TextKt."Text-Nvy7gAk"` — its `fontSize`, `color` and `overflow`
+> parameters are `TextUnit`, `Color` and `TextOverflow`. `isComponentLibraryTarget`
+> rejects a name that is not a usable Kotlin import, and a mangled name is not, so
+> **every Material 3 component whose signature mentions `Color`, `Dp` or `TextUnit`
+> was being dropped from the record**. A preview whose only call was `Text` inferred
+> no component at all. `Button` and `Card` take no value-class parameters, which is
+> exactly why the hand-written unit tests were green and stayed green.
+>
+> The lesson generalises past this bug: a corpus you chose is a corpus that agrees
+> with you. Both fixtures I picked by hand happened to avoid the one construct that
+> breaks the path, and only compiling something real found it.
 
 **Phase 4 — the builder on the record.** Generate the capability catalog;
 generate `UiBuilderRenderer` / `CapabilityComposeCodeExporter` for the Wasm tier
