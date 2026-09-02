@@ -49,7 +49,6 @@ object ComponentRecords {
         into.getOrPut(id) {
           MutableComponent(
             canonicalId = id,
-            componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
             symbol =
               ComponentSymbol(
                 jvmOwner = target.className,
@@ -67,7 +66,11 @@ object ComponentRecords {
       if (target.parameters.size > existing.parameters.size) {
         existing.parameters = target.parameters
       }
-      existing.bindings += ComponentBinding(previewId = preview.id)
+      existing.bindings +=
+        ComponentBinding(
+          previewId = preview.id,
+          componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
+        )
     }
   }
 
@@ -94,7 +97,10 @@ object ComponentRecords {
    * for a case nobody has hit. Recorded as a known limit rather than hidden.
    */
   internal fun callableFqn(target: PreviewTarget): String {
-    val owner = target.className
+    // A nested class, object or companion arrives with the JVM binary separator
+    // (`com.example.Controls$Companion`). Emitting that verbatim would print an import no Kotlin
+    // compiler accepts, which is the one thing this field exists to avoid.
+    val owner = target.className.replace('$', '.')
     val simpleName = owner.substringAfterLast('.')
     if (!simpleName.endsWith("Kt") || simpleName.length == 2) return "$owner.${target.functionName}"
     val packageName = owner.substringBeforeLast('.', missingDelimiterValue = "")
@@ -102,8 +108,8 @@ object ComponentRecords {
   }
 
   /**
-   * A `@Composable` lambda parameter is a slot. The receiver, when the rendered type carries one,
-   * is everything before the `.(` — `RowScope.() -> Unit` yields `RowScope`.
+   * A `@Composable` lambda parameter is a slot, carrying the qualified receiver
+   * ([TargetParameter.composableSlotReceiver]) when it has one.
    */
   internal fun slotsOf(parameters: List<TargetParameter>): List<ComponentSlot> =
     parameters
@@ -112,27 +118,32 @@ object ComponentRecords {
         ComponentSlot(
           name = parameter.name,
           required = !parameter.hasDefault,
-          receiverScope =
-            parameter.type.substringBefore(".(", missingDelimiterValue = "").ifEmpty { null },
+          // The QUALIFIED receiver recorded from metadata, not a slice of the human-readable
+          // rendered type: `RowScope` alone cannot be imported, and two libraries can define it.
+          receiverScope = parameter.composableSlotReceiver,
         )
       }
 
   private class MutableComponent(
     val canonicalId: String,
-    val componentId: String?,
     val symbol: ComponentSymbol,
     var parameters: List<TargetParameter>,
   ) {
     var bindings: List<ComponentBinding> = emptyList()
 
-    fun toRecord(): ComponentRecord =
-      ComponentRecord(
+    fun toRecord(): ComponentRecord {
+      val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
+      return ComponentRecord(
         canonicalId = canonicalId,
-        componentId = componentId,
+        // Every alias any preview published this symbol under, not whichever the manifest listed
+        // first — a shared component such as `Card` is rendered by several previews and would
+        // otherwise take an arbitrary, order-dependent id.
+        componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted(),
         symbol = symbol,
         parameters = parameters,
         slots = slotsOf(parameters),
-        bindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId },
+        bindings = resolvedBindings,
       )
+    }
   }
 }

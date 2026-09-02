@@ -48,13 +48,17 @@ data class ComponentRecordFile(
  *   overloads. [ComponentSymbol.descriptor] is where it lands; until then a reader that finds two
  *   records with one id should treat the pair as unresolved rather than pick one.
  *
- * @property componentId the published catalog identity, when the preview carried one. An alias, not
- *   the key.
+ * @property componentIds every published catalog identity associated with this symbol, deduplicated
+ *   and ordered. A **list**, not a scalar: one symbol is routinely rendered by several catalog
+ *   entries, and keeping only the first would hand the component an arbitrary,
+ *   manifest-order-dependent alias — or none at all, when an ordinary preview happened to come
+ *   first. Aliases, never the key; [ComponentBinding.componentId] says which preview contributed
+ *   which.
  */
 @Serializable
 data class ComponentRecord(
   val canonicalId: String,
-  val componentId: String? = null,
+  val componentIds: List<String> = emptyList(),
   val symbol: ComponentSymbol,
   val parameters: List<TargetParameter> = emptyList(),
   val slots: List<ComponentSlot> = emptyList(),
@@ -125,5 +129,10 @@ data class ComponentSlot(
  * The render filenames are deliberately not repeated here: they are derived from the preview id by
  * the same rule every consumer already applies to `previews.json`, and duplicating a derived value
  * into a second file is how the two start disagreeing.
+ *
+ * @property componentId the catalog identity *this* preview published the symbol under, when it
+ *   carried one. Per binding rather than per component, because the association belongs to the
+ *   preview: the same `Card` can be one catalog's `Containment/Card` and another preview's
+ *   incidental container.
  */
-@Serializable data class ComponentBinding(val previewId: String)
+@Serializable data class ComponentBinding(val previewId: String, val componentId: String? = null)
