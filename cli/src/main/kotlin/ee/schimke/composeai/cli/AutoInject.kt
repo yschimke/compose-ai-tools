@@ -568,6 +568,57 @@ internal fun defaultInitScriptStorageDir(version: String): File =
   File(composeAiCacheDir("init"), version)
 
 /**
+ * `--dependency-verification=lenient`, but only for a build that actually verifies its dependencies
+ * and only when the caller has not already decided the question themselves.
+ *
+ * A build shipping `gradle/verification-metadata.xml` with
+ * `<verify-metadata>true</verify-metadata>` refuses any artifact the file carries no checksum for.
+ * Auto-inject resolves a plugin that file has never heard of, so the run dies during configuration:
+ * ```
+ * > Dependency verification failed for configuration 'classpath'
+ *   3 artifacts failed verification:
+ *     - ee.schimke.composeai.preview.gradle.plugin-1.0.pom ...
+ * ```
+ *
+ * mullvad/mullvadvpn-app is the motivating case (yschimke/compose-preview-imports#30) — a VPN
+ * client verifying every artifact it pulls is the file working as intended, and their checkout is
+ * not ours to edit, so writing our checksums into it is out.
+ *
+ * Unlike the locking shape, the `files(...)` injection route does not help: the resolution that
+ * produces those files is itself verified, so the failure only moves. The lever left is the Gradle
+ * invocation, and `lenient` is the narrow end of it — Gradle still performs verification and still
+ * reports every failure, it just does not abort. Nothing is disabled permanently, nothing in the
+ * checkout changes, and the relaxation lasts exactly one throwaway build driven to draw pictures.
+ *
+ * Three things keep it honest:
+ * - it applies only where a verification file exists, so an ordinary build is invoked as before;
+ * - an explicit `--dependency-verification=…` from the caller always wins — someone who has stated
+ *   their own answer does not get ours; and
+ * - it is announced on stderr. Quietly relaxing somebody else's security control would be the wrong
+ *   shape even when the result is right.
+ *
+ * Visible for tests.
+ */
+internal fun dependencyVerificationArgs(
+  args: List<String>,
+  projectRoot: File?,
+  stderr: (String) -> Unit,
+): List<String> {
+  if (projectRoot == null) return emptyList()
+  if (args.any { it.startsWith("--dependency-verification") || it == "-F" }) return emptyList()
+  val metadata = File(projectRoot, "gradle/verification-metadata.xml")
+  if (!metadata.isFile) return emptyList()
+  stderr(
+    "compose-preview: this build verifies its dependencies (${'$'}{metadata.path}), and the " +
+      "auto-injected preview plugin is not in that file. Running this build with " +
+      "--dependency-verification=lenient so verification reports rather than fails; your " +
+      "verification metadata is not modified. Pass --no-auto-inject, or your own " +
+      "--dependency-verification=…, to decide this yourself."
+  )
+  return listOf("--dependency-verification=lenient")
+}
+
+/**
  * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation, or an empty
  * list when auto-inject is disabled. Materialises the script on first call.
  *
@@ -624,7 +675,8 @@ internal fun autoInjectInitScriptArgs(
   val dir = storageDir ?: defaultInitScriptStorageDir(effectiveVersion)
   return try {
     val path = materializeInitScript(dir, effectiveVersion, fileSystem)
-    listOf("--init-script", path.absolutePath)
+    listOf("--init-script", path.absolutePath) +
+      dependencyVerificationArgs(args, projectRoot, stderr)
   } catch (e: Exception) {
     stderr(
       "compose-preview: auto-inject disabled — could not materialise init script in $dir: ${e.message}"
