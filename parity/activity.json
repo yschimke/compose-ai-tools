@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T19:33:41.046Z",
+  "generatedAt": "2026-09-02T20:50:49.323Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "d7fd54907bc921a376e6a194171abb42f1536903",
+        "subject": "fix(rc-compare): name the players a catalog's parity run left out (#5004)",
+        "at": "2026-09-02T21:39:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "84d9c904617e93b2ed9669e9dbc670469391b67e",
+        "subject": "test(samples): add a parameter-knob preview beside its previewOverride twin (#5001)",
+        "at": "2026-09-02T21:19:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b8edcc0da9d6d361d5169dfb37623f5d9c95ebfa",
+        "subject": "chore(main): release 1.64.0 (#4986)",
+        "at": "2026-09-02T21:15:08+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d8956b9b5274f65f0b26b12c7fca56c0573ae990",
+        "subject": "fix(figma-svg): export the focus ring and state layer on material3's forked ripple node (#4999)",
+        "at": "2026-09-02T21:05:01+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "eec05e914db1e792f8702183e1786ada6ed0f347",
+        "subject": "docs: plan a derived component record for previews, playground and the UI builder (#4993)",
+        "at": "2026-09-02T20:58:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "8f1d170dcb8917d117b2e1c77da54c12e2a05d2d",
         "subject": "fix(import): carry --write-locks and the plugin's dep groups into the render (#4994)",
@@ -443,46 +483,6 @@
         "subject": "feat(design-artifacts): defer editable SVG delivery (#4930)",
         "at": "2026-08-31T22:30:38+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0a2e08ff45e6741cdf5e82fce20e4b9d043a2532",
-        "subject": "chore(main): release 1.60.4 (#4927)",
-        "at": "2026-08-31T22:05:02+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "dbf20a9ebc08e0ec9dcb842acb78ae8702829284",
-        "subject": "fix(deps): update dependency @design-parity/candidate to v1 (#4925)",
-        "at": "2026-08-31T22:03:25+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bdfae9788f3b517e70b54ae38a9a69ae0b7dd764",
-        "subject": "chore(deps): group design-parity updates (#4928)",
-        "at": "2026-08-31T22:03:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7378bacb25b8ab2d717f2a73ce5dc36212e3bf29",
-        "subject": "fix(deps): update compose-preview-server to v2.7.0 (#4923)",
-        "at": "2026-08-31T21:48:59+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "dd2819d5c7d3c44235d0b3f04d7206959af20d6e",
-        "subject": "fix(deps): update dependency @design-parity/adapter-figma to v1 (#4924)",
-        "at": "2026-08-31T21:48:30+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
