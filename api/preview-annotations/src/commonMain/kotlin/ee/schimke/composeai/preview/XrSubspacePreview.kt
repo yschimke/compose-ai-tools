@@ -14,8 +14,8 @@ package ee.schimke.composeai.preview
  * **Tag every `SpatialPanel` you want in the scene** with
  * `androidx.xr.compose.subspace.semantics.testTag(...)`: the tag becomes the panel's id (and its
  * `<id>.png` texture path), and an untagged `SpatialPanel` produces no spatial-semantics node and
- * is therefore invisible to the recorder. See `:samples:xr-spatial` for a worked example of the
- * offline rendering model.
+ * is therefore invisible to the recorder. See compose-preview-xr's `:samples:xr-spatial` for a
+ * worked example of the offline rendering model.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION)

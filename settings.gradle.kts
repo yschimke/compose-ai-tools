@@ -424,8 +424,6 @@ include(":samples:design-catalog-wear-m3")
 
 include(":samples:xr-glimmer")
 
-include(":samples:xr-spatial")
-
 include(":samples:cmp")
 
 include(":samples:cmp-shared")
@@ -466,10 +464,6 @@ project(":renderer-desktop").projectDir = file("renderers/desktop")
 include(":renderer-android")
 
 project(":renderer-android").projectDir = file("renderers/android")
-
-include(":renderer-xr")
-
-project(":renderer-xr").projectDir = file("renderers/xr")
 
 // JVM client for the native `xr-composite --serve` render server that the daemon fronts. The
 // daemon's future XR RenderSession backend wraps this.
