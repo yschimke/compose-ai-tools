@@ -2214,6 +2214,18 @@ object PreviewDiscovery {
     // walks the bytecode once instead of N times; tile previews skip the inference entirely
     // (handled in `makePreview`) and the lazy never forces.
     val previewSourceFile = sourceFilePath(classInfo, input)
+    // The design-system components this preview demonstrates — a different question from
+    // `inferredTargets` (see `PreviewInfo.componentTargets`), so a separate lazy walk. Lazy for the
+    // same reason: a multi-preview fans one function into N `PreviewInfo`s and the bytecode does
+    // not change between them.
+    val inferredComponentTargets = lazy {
+      PreviewTargetInference.inferComponents(
+        previewClassInfo = classInfo,
+        previewMethod = method,
+        scanResult = scanResult,
+        projectClassFqns = projectClassFqns,
+      )
+    }
     val inferredTargets = lazy {
       PreviewTargetInference.infer(
         previewClassInfo = classInfo,
@@ -2303,6 +2315,7 @@ object PreviewDiscovery {
             previewParameter,
             previewSourceFile,
             inferredTargets,
+            inferredComponentTargets,
           )
         previews.add(base)
         for (spec in overrideVariantSpecs) previews.add(overrideVariantPreview(base, spec))
@@ -2334,6 +2347,7 @@ object PreviewDiscovery {
           previewParameter,
           previewSourceFile,
           inferredTargets,
+          inferredComponentTargets,
         )
       previews.add(base)
       for (spec in overrideVariantSpecs) previews.add(overrideVariantPreview(base, spec))
@@ -2364,6 +2378,7 @@ object PreviewDiscovery {
           timings,
           previewSourceFile,
           inferredTargets,
+          inferredComponentTargets,
         )
       previews.add(base)
       for (variant in overrideVariantSpecs) previews.add(overrideVariantPreview(base, variant))
@@ -4539,6 +4554,7 @@ object PreviewDiscovery {
     previewParameter: Pair<String, Int>?,
     previewSourceFile: String?,
     inferredTargets: Lazy<List<PreviewTarget>>,
+    inferredComponentTargets: Lazy<List<PreviewTarget>>,
   ): PreviewInfo {
     val params = extractPreviewParams(ann, wrapperClassName, previewParameter)
     return buildPreviewInfo(
@@ -4560,6 +4576,7 @@ object PreviewDiscovery {
       timings,
       previewSourceFile,
       inferredTargets,
+      inferredComponentTargets,
     )
   }
 
@@ -4590,6 +4607,7 @@ object PreviewDiscovery {
     timings: List<Long>,
     previewSourceFile: String?,
     inferredTargets: Lazy<List<PreviewTarget>>,
+    inferredComponentTargets: Lazy<List<PreviewTarget>>,
   ): PreviewInfo {
     val fqn = "${classInfo.name}.${method.name}"
     val id = fqn + buildVariantSuffix(params)
@@ -4614,15 +4632,12 @@ object PreviewDiscovery {
     // Tile / notification previews don't go through @Composable invocations — they return a
     // `TilePreviewData` / `Notification` and the renderer reflects them directly. Skipping the
     // lazy means the bytecode walk never runs for these methods.
-    val targets =
-      if (
-        params.kind == PreviewKind.TILE ||
-          params.kind == PreviewKind.NOTIFICATION ||
-          params.kind == PreviewKind.GLANCE_APPWIDGET ||
-          params.kind == PreviewKind.XR_SUBSPACE
-      )
-        emptyList()
-      else inferredTargets.value
+    val skipTargetInference =
+      params.kind == PreviewKind.TILE ||
+        params.kind == PreviewKind.NOTIFICATION ||
+        params.kind == PreviewKind.GLANCE_APPWIDGET ||
+        params.kind == PreviewKind.XR_SUBSPACE
+    val targets = if (skipTargetInference) emptyList() else inferredTargets.value
     return PreviewInfo(
       id = id,
       functionName = method.name,
@@ -4647,6 +4662,11 @@ object PreviewDiscovery {
       // multi-preview carries the same signature-derived set. Empty for every preview that declares
       // none, which is every `previewOverride*` preview and every parameterless one.
       knobs = ComposableSignature.knobsOf(classInfo, method),
+      // Skipped for the same non-@Composable kinds as `targets` above — those never invoke a
+      // library component, so the bytecode walk would only cost time.
+      // Skipped for the same non-`@Composable` kinds as `targets` above (`skipTargetInference`),
+      // which never invoke a library component through a composition at all.
+      componentTargets = if (skipTargetInference) emptyList() else inferredComponentTargets.value,
     )
   }
 

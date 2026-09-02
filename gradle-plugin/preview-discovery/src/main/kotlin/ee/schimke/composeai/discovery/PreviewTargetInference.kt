@@ -46,6 +46,49 @@ object PreviewTargetInference {
       "org.jetbrains.compose.",
     )
 
+  // The subset of [WRAPPER_FQN_PREFIXES] that names design-system **components** rather than
+  // layout, runtime or drawing primitives.
+  //
+  // Both lists are right about the same packages for different questions. "Which of MY composables
+  // does this preview render?" wants `material3.Button` dropped — it is not the project's UI.
+  // "Which
+  // component does this sticker demonstrate?" wants exactly that call and nothing else, because a
+  // catalog sticker's whole subject is the library component it wraps. m3-catalog's 59 entries
+  // stand
+  // for 148 distinct `androidx.compose.material3.*` symbols, none of which the project-local pass
+  // can name, so a catalog gets no target at all today.
+  //
+  // Deliberately NOT the whole of `WRAPPER_FQN_PREFIXES`: `foundation.layout.Column`,
+  // `runtime.remember` and `ui.Modifier` stay scaffolding under either question, and admitting them
+  // would bury the one call a reader cares about under the frame that positions it.
+  private val COMPONENT_LIBRARY_FQN_PREFIXES =
+    listOf(
+      "androidx.compose.material3.",
+      "androidx.compose.material.",
+      "androidx.wear.compose.material3.",
+      "androidx.wear.compose.material.",
+    )
+
+  // Theme entry points inside the component libraries. They pass every other test here — real
+  // `@Composable`s returning `Unit`, in `material3` — and they are the frame a sticker is drawn in,
+  // not its subject. Nine of `:samples:cmp`'s twelve component-bearing previews reported
+  // `MaterialTheme` before this list existed.
+  //
+  // A denylist rather than a shape rule, because the obvious shape rule does not separate them:
+  // `MaterialTheme(colorScheme, shapes, typography, content)` and
+  // `Card(modifier, shape, colors, elevation, border, content)` are both "defaulted config plus one
+  // `@Composable` content lambda". The set is small, stable and named in every catalog's own
+  // scaffolding rules already (`compose-usage.json` rewrites `Sticker` to `MaterialTheme` for
+  // exactly this reason), so naming it here is cheaper and clearer than a heuristic that would
+  // eventually drop a real component.
+  private val THEME_ENTRY_POINTS =
+    setOf(
+      "androidx.compose.material3.MaterialThemeKt.MaterialTheme",
+      "androidx.compose.material.MaterialThemeKt.MaterialTheme",
+      "androidx.wear.compose.material3.MaterialThemeKt.MaterialTheme",
+      "androidx.wear.compose.material.MaterialThemeKt.MaterialTheme",
+    )
+
   // Stdlib / JVM / Kotlin-runtime owners. Filtered explicitly so we never attempt to look
   // them up as project-local @Composable methods.
   private val STDLIB_FQN_PREFIXES = listOf("java.", "javax.", "kotlin.", "kotlinx.", "sun.", "jdk.")
@@ -107,6 +150,71 @@ object PreviewTargetInference {
    *   parameter; enables the `PARAMETER_FORWARDED` signal when the candidate consumes a value of
    *   the right shape.
    */
+  /**
+   * The **design-system components** [previewMethod] renders — the library composables a catalog
+   * sticker exists to demonstrate, as opposed to [infer]'s "which of the project's own composables
+   * does this preview render?".
+   *
+   * The two answer different questions and neither subsumes the other, so this is a separate list
+   * rather than more entries in `targets`: a consumer correlating a UI change to its preview wants
+   * the project-local answer, while a consumer describing a component's API wants this one. Mixing
+   * them would also silently change what `targets[0]` means for every existing reader.
+   *
+   * Resolution reuses [resolveCandidate], so a candidate must be a real `@Composable` on the scan's
+   * classpath — which already spans dependency jars — and must not itself carry a `@Preview`.
+   * Ordering is by call order, deduped, so a sticker wrapping one component yields exactly one
+   * entry and `HIGH` confidence; several distinct component calls yield several at `MEDIUM`,
+   * because nothing here can tell the subject from its neighbours.
+   *
+   * Parameters come from the same `@kotlin.Metadata` read as [infer]'s, so a library component
+   * arrives with its real signature — which is the point: `Button(onClick, modifier, enabled,
+   * shape, colors, elevation, border, contentPadding, interactionSource, content)` is written down
+   * nowhere in a catalog that spells it `Sticker("button-filled")`.
+   */
+  fun inferComponents(
+    previewClassInfo: ClassInfo,
+    previewMethod: MethodInfo,
+    scanResult: ScanResult,
+    projectClassFqns: Set<String>,
+  ): List<PreviewTarget> {
+    val directCalls =
+      try {
+        extractCalls(previewClassInfo, previewMethod)
+      } catch (_: Throwable) {
+        return emptyList()
+      }
+    val calls =
+      directCalls + extractComposeSingletonLambdaCalls(directCalls, scanResult, projectClassFqns)
+    val candidates =
+      calls
+        .asSequence()
+        .filter { call -> COMPONENT_LIBRARY_FQN_PREFIXES.any { call.ownerFqn.startsWith(it) } }
+        .mapNotNull { resolveCandidate(it, scanResult) }
+        .filter {
+          isComponentLibraryTarget(
+            ownerFqn = it.ownerFqn,
+            methodName = it.method.name,
+            returnsUnit = it.method.typeDescriptor?.resultType?.toString() == "void",
+          )
+        }
+        .distinctBy { it.ownerFqn to it.method.name }
+        .toList()
+    if (candidates.isEmpty()) return emptyList()
+    val confidence = if (candidates.size == 1) TargetConfidence.HIGH else TargetConfidence.MEDIUM
+    return candidates.map { candidate ->
+      PreviewTarget(
+        className = candidate.ownerFqn,
+        functionName = candidate.method.name,
+        // A library symbol has no source file in this build; `sourceFile` stays null and
+        // [PreviewTarget.origin] is what says so, rather than the null being read as "library".
+        sourceFile = null,
+        confidence = confidence,
+        signals = listOf(TargetSignal.LIBRARY_COMPONENT),
+        parameters = ComposableSignature.parametersOf(candidate.classInfo, candidate.method),
+      )
+    }
+  }
+
   fun infer(
     previewClassInfo: ClassInfo,
     previewMethod: MethodInfo,
@@ -411,6 +519,26 @@ object PreviewTargetInference {
     val method: MethodInfo,
     val classInfo: ClassInfo,
   )
+
+  /**
+   * Whether a resolved call in a component library is the **component a sticker demonstrates**.
+   *
+   * Three rules, each earning its place against `:samples:cmp`:
+   * * the name must be usable as a Kotlin import — a mangled or synthetic member is not a call site
+   *   anyone can write;
+   * * [returnsUnit] — a component *emits*, it does not return a value. `MaterialTheme.colorScheme`
+   *   and `MaterialTheme.typography` are `@Composable` property getters that pass every other test
+   *   here, and reporting them would describe a sticker's theme lookup as its subject;
+   * * not a [THEME_ENTRY_POINTS] member — the frame a sticker is drawn in rather than its subject.
+   */
+  internal fun isComponentLibraryTarget(
+    ownerFqn: String,
+    methodName: String,
+    returnsUnit: Boolean,
+  ): Boolean =
+    isValidKotlinImportIdentifier(methodName) &&
+      returnsUnit &&
+      "$ownerFqn.$methodName" !in THEME_ENTRY_POINTS
 
   private fun resolveCandidate(call: Invocation, scanResult: ScanResult): ResolvedCandidate? {
     val classInfo = scanResult.getClassInfo(call.ownerFqn) ?: return null

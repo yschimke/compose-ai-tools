@@ -1349,6 +1349,20 @@ data class PreviewInfo(
    * unchanged. See [PreviewKnob].
    */
   val knobs: List<PreviewKnob> = emptyList(),
+  /**
+   * The **design-system library components** this preview renders — the composables a catalog
+   * sticker exists to demonstrate, with their real signatures read from `@kotlin.Metadata`.
+   *
+   * Separate from [targets], which answers a different question: *that* list is "which of the
+   * project's own composables does this preview render?", used to correlate a UI change to its
+   * preview, and it deliberately drops `androidx.compose.material3.*` as scaffolding. A catalog
+   * whose every sticker wraps one library component therefore gets an empty [targets] and is
+   * described by this field instead.
+   *
+   * Empty for a preview that calls no design-system component directly, so older manifests and
+   * ordinary application previews are unchanged.
+   */
+  val componentTargets: List<PreviewTarget> = emptyList(),
 )
 
 /**
@@ -1424,6 +1438,12 @@ enum class TargetSignal {
    * -> Unit` parameter) before landing on the candidate.
    */
   WRAPPER_UNWRAPPED,
+  /**
+   * The candidate is a **design-system library** component rather than one of the project's own
+   * composables — the subject a catalog sticker demonstrates. Only ever appears on
+   * [PreviewInfo.componentTargets].
+   */
+  LIBRARY_COMPONENT,
 }
 
 @Serializable

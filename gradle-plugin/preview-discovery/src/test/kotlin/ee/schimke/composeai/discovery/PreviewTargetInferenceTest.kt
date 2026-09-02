@@ -70,4 +70,67 @@ class PreviewTargetInferenceTest {
       )
       .isFalse()
   }
+
+  // --- component-library targets (PreviewInfo.componentTargets) -------------------------------
+
+  @Test
+  fun `a component library composable returning Unit is a component target`() {
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.CardKt",
+          "Card",
+          returnsUnit = true,
+        )
+      )
+      .isTrue()
+  }
+
+  @Test
+  fun `a composable property getter is not a component target`() {
+    // `MaterialTheme.colorScheme` / `.typography` are @Composable getters on the theme object.
+    // They pass every other test — real @Composable, in material3 — and reporting one would
+    // describe a sticker's theme lookup as the component it demonstrates. Nine of :samples:cmp's
+    // twelve component-bearing previews reported these before the Unit rule existed.
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.MaterialTheme",
+          "getColorScheme",
+          returnsUnit = false,
+        )
+      )
+      .isFalse()
+  }
+
+  @Test
+  fun `a theme entry point is the frame, not the subject`() {
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.MaterialThemeKt",
+          "MaterialTheme",
+          returnsUnit = true,
+        )
+      )
+      .isFalse()
+    // …on every component library the catalogs use, not just the Android one.
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.wear.compose.material3.MaterialThemeKt",
+          "MaterialTheme",
+          returnsUnit = true,
+        )
+      )
+      .isFalse()
+  }
+
+  @Test
+  fun `a name that is not a usable Kotlin import is rejected`() {
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.CardKt",
+          "Card\u0024lambda\u00240",
+          returnsUnit = true,
+        )
+      )
+      .isFalse()
+  }
 }
