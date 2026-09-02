@@ -75,6 +75,33 @@ test("an indexed issue survives a locator that names no revision", () => {
   assert.equal(index.issues[0].component, "IconButton/Tonal");
 });
 
+test("an indexed issue survives a locator that names no reference", () => {
+  // The viewer's report form names no design reference, and a preview the catalog publishes with
+  // no kit node of its own has none to name on any page. `reference` used to gate the whole fence,
+  // so both filed reports that carried a prose table and nothing the index could read — complete
+  // to look at and permanently invisible (yschimke/compose-ai-tools#5000).
+  const unreferenced = shared.cases.find((shape) => shape.name === "no-reference");
+  const index = buildIssueIndex(
+    [{ html_url: "https://github.com/yschimke/m3-catalog/issues/269", title: "Overlapping text", body: unreferenced.block, state: "open" }],
+    { generatedAt: "2026-08-15T10:00:00Z" },
+  );
+  assert.equal(index.issues.length, 1);
+  assert.equal(index.issues[0].component, "DatePicker/Modal");
+  assert.deepEqual(index.issues[0].previewIds, ["datepicker-modal__ideal__input__compact"]);
+  // Empty rather than `[null]`: the reader takes a list that may be empty, and a null id in it
+  // would reach the comparison's row matcher as a reference that matches nothing by name.
+  assert.deepEqual(index.issues[0].referenceIds, []);
+});
+
+test("a reference present but blank is still a mangled body", () => {
+  // Optional means "omit the line", not "write it empty" — an emptied identity field is the
+  // signature of a mangled body, and that is what `blank-identity-field` pins for the others.
+  const blanked = shared.cases
+    .find((shape) => shape.name === "full")
+    .block.replace(/^reference: .*$/m, "reference:");
+  assert.equal(parseLocator(blanked).error, "empty locator field(s): reference");
+});
+
 test("an ordinary issue is skipped, not rejected", () => {
   // Every repository is mostly issues that are not parity reports. Counting each of them as a
   // failure made the producer red on a healthy repo, which is why no catalog could adopt it.

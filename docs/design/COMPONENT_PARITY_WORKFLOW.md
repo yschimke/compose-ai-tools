@@ -204,6 +204,18 @@ back out without GitHub Projects or per-component labels:
     revision: yschimke/m3-catalog@main
     ```
 
+**`reference` is optional; every other identity line is not.** Two pages have no design reference
+to name: the viewer, which shows one picture, and any preview the catalog publishes with no kit node
+of its own — an `@OverrideVariant` cell, say, which `designReferencesFor` answers for with an empty
+list. `reference` used to gate the whole block, so both filed reports carrying the prose table and
+nothing the indexer could read: complete to look at, and permanently absent from the index the
+report form's own classification control promises to feed
+([#5000](https://github.com/yschimke/compose-ai-tools/issues/5000)). A row is keyed on `repository`,
+`system`, `component` and `preview`; `referenceIds` in the index has always been a list that may be
+empty, and the comparison matches rows by component and preview id as well, so a locator without a
+reference still reaches the component it names. The line is **omitted**, never written empty — a
+blank identity field is the signature of a mangled body and stays refused.
+
 **`overrides` is part of the block, not an optional extra.** §4 makes overrides part of the scope an
 acceptance matches on, so a locator that omits them describes two frames at once: an issue filed at
 `fontScale=1.5` and one filed at the default serialise identically, and the indexer associates the

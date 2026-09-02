@@ -31,14 +31,23 @@ const AREA = new Set(["spec", "component", "preview", "renderer", "comparison"])
 const PARITY = new Set(["regression", "known-difference", "verification-needed", "upstream", "catalog"]);
 
 /**
- * Every key the writer always emits. `revision` is deliberately absent: `ServeIssueReport.locator`
- * fills it from the session's delivery provenance, and a session that has none — a developer's
- * local `compose-preview serve` over a bundle directory, or a live daemon — omits the line
- * entirely. Requiring it here rejected the whole locator, so an issue filed from exactly the
+ * Every key the writer always emits. `reference` and `revision` are deliberately absent:
+ *
+ * `reference` names the design reference on screen beside the render, and two pages have none to
+ * name — the viewer, which shows one picture, and any preview the catalog publishes with no kit
+ * node of its own. Requiring it made both unindexable: `ServeIssueReport.locator` returned null,
+ * no fence was written, and a report filed from the viewer looked complete while never appearing
+ * here (yschimke/compose-ai-tools#5000). A row is keyed on repository, system, component and
+ * preview; `referenceIds` has always been a list that may be empty, and `issuesForPreview` matches
+ * by component and preview id as well, so a locator without one still reaches its component.
+ *
+ * `revision` is omitted for a different reason: `ServeIssueReport.locator` fills it from the
+ * session's delivery provenance, and a session that has none — a developer's local
+ * `compose-preview serve` over a bundle directory, or a live daemon — omits the line entirely. Requiring it here rejected the whole locator, so an issue filed from exactly the
  * session a developer reports from never reached the index. The index carries no revision column
  * either, so requiring it bought nothing even when it was there.
  */
-const REQUIRED_FIELDS = ["repository", "system", "component", "preview", "reference", "variant", "overrides"];
+const REQUIRED_FIELDS = ["repository", "system", "component", "preview", "variant", "overrides"];
 
 /**
  * Reserved in `v1` for the selection batch 03 records, and unwritten until then.
@@ -65,7 +74,7 @@ const BOUNDS_KEYS = ["height", "space", "width", "x", "y"];
  * separate from [REQUIRED_FIELDS]: `ServeIssueReport.variantFor` returns "" for a preview id that
  * carries no `__` axes, and "no axes" is a fact about the preview, not a mangled body.
  */
-const NON_EMPTY_FIELDS = ["repository", "system", "component", "preview", "reference", "overrides"];
+const NON_EMPTY_FIELDS = ["repository", "system", "component", "preview", "overrides"];
 
 /**
  * Order override keys the way the Kotlin writer does — by Unicode **code point**.
@@ -195,9 +204,14 @@ export function parseLocators(body) {
     previews.add(locator.previewId);
     // Same reasoning for the reference: `DesignReference.id` is unique within a served session, and
     // the focused comparison selects rows by it, so two blocks sharing one reference would render
-    // the same issue twice on that comparison's page.
-    if (references.has(locator.referenceId)) return { ok: false, error: `duplicate reference in locator blocks: ${locator.referenceId}` };
-    references.add(locator.referenceId);
+    // the same issue twice on that comparison's page. Only when the block NAMES one, though: an
+    // omitted reference is an absent value rather than a repeated one, so two reference-less
+    // blocks are two rows, and collapsing them here would drop the second component from the
+    // index with no error anywhere.
+    if (locator.referenceId !== null) {
+      if (references.has(locator.referenceId)) return { ok: false, error: `duplicate reference in locator blocks: ${locator.referenceId}` };
+      references.add(locator.referenceId);
+    }
   }
   return { ok: true, locators };
 }
@@ -232,6 +246,7 @@ function parseLocatorBlock(content) {
   const blank = NON_EMPTY_FIELDS.filter((key) => fields[key] === "");
   if (blank.length) return { ok: false, error: `empty locator field(s): ${blank.join(", ")}` };
   if (Object.hasOwn(fields, "revision") && fields.revision === "") return { ok: false, error: "empty locator field(s): revision" };
+  if (Object.hasOwn(fields, "reference") && fields.reference === "") return { ok: false, error: "empty locator field(s): reference" };
   for (const key of OPTIONAL_FIELDS) {
     if (Object.hasOwn(fields, key) && fields[key] === "") return { ok: false, error: `empty locator field(s): ${key}` };
   }
@@ -253,7 +268,7 @@ function parseLocatorBlock(content) {
     if (parsed.error) return { ok: false, error: parsed.error };
     bounds = parsed.bounds;
   }
-  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, overrides: canonicalOverrides, element, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
+  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: Object.hasOwn(fields, "reference") ? fields.reference : null, variant: fields.variant, overrides: canonicalOverrides, element, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
 }
 
 function labelValue(labels, prefix, allowed) {
@@ -299,7 +314,10 @@ export function buildIssueIndex(issues, { generatedAt = new Date().toISOString()
         system: locator.system,
         component: locator.component,
         previewIds: [locator.previewId],
-        referenceIds: [locator.referenceId],
+        // Empty when the block named no reference, which the reader already tolerates: its
+        // `referenceIds` is a `List<String> = emptyList()` and the comparison matches on component
+        // and preview id too. A `[null]` here would reach the index as a row with a null id.
+        referenceIds: locator.referenceId === null ? [] : [locator.referenceId],
       };
       byIdentity.set(`${row.repository}/${row.number}#${row.component}`, row);
     }

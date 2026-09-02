@@ -73,6 +73,36 @@
       }
     },
     {
+      "name": "no-reference",
+      "why": "The viewer names no design reference, and a preview the catalog publishes with no kit node of its own has none to name on any page. The line is omitted rather than emitted empty, and the block still identifies one component and one preview, which is what a row is keyed on. Requiring it made both cases unreportable into the index (yschimke/compose-ai-tools#5000).",
+      "writer": {
+        "repository": "yschimke/m3-catalog",
+        "system": "m3-catalog",
+        "componentId": "DatePicker/Modal",
+        "previewId": "datepicker-modal__ideal__input__compact",
+        "referenceId": null,
+        "variant": "ideal/input/compact",
+        "overrides": {},
+        "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+      },
+      "block": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: DatePicker/Modal\npreview: datepicker-modal__ideal__input__compact\nvariant: ideal/input/compact\noverrides: {}\nrevision: yschimke/m3-catalog@design-artifacts/m3-catalog\n```\n",
+      "parse": {
+        "ok": true,
+        "locator": {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "component": "DatePicker/Modal",
+          "previewId": "datepicker-modal__ideal__input__compact",
+          "referenceId": null,
+          "variant": "ideal/input/compact",
+          "overrides": {},
+          "element": null,
+          "bounds": null,
+          "revision": "yschimke/m3-catalog@design-artifacts/m3-catalog"
+        }
+      }
+    },
+    {
       "name": "empty-variant",
       "why": "`ServeIssueReport.variantFor` returns \"\" for a preview id carrying no `__` axes. No axes is a fact about the preview, not a mangled body.",
       "writer": {
@@ -383,6 +413,60 @@
       "parse": {
         "ok": false,
         "error": "duplicate preview in locator blocks: button-elevated__ideal__default__light"
+      }
+    },
+    {
+      "name": "umbrella-two-components-without-references",
+      "why": "Two reference-less blocks are two rows, not a duplicate. The duplicate checks are per id and an omitted reference is an absent value rather than a repeated one, so collapsing them would silently drop the second component from the index.",
+      "writers": [
+        {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "componentId": "DatePicker/Modal",
+          "previewId": "datepicker-modal__ideal__input__compact",
+          "referenceId": null,
+          "variant": "ideal/input/compact",
+          "overrides": {}
+        },
+        {
+          "repository": "yschimke/m3-catalog",
+          "system": "m3-catalog",
+          "componentId": "DatePicker/Docked",
+          "previewId": "datepicker-docked__ideal__input__compact",
+          "referenceId": null,
+          "variant": "ideal/input/compact",
+          "overrides": {}
+        }
+      ],
+      "body": "```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: DatePicker/Modal\npreview: datepicker-modal__ideal__input__compact\nvariant: ideal/input/compact\noverrides: {}\n```\n```compose-parity-locator/v1\nrepository: yschimke/m3-catalog\nsystem: m3-catalog\ncomponent: DatePicker/Docked\npreview: datepicker-docked__ideal__input__compact\nvariant: ideal/input/compact\noverrides: {}\n```\n",
+      "parse": {
+        "ok": true,
+        "locators": [
+          {
+            "repository": "yschimke/m3-catalog",
+            "system": "m3-catalog",
+            "component": "DatePicker/Modal",
+            "previewId": "datepicker-modal__ideal__input__compact",
+            "referenceId": null,
+            "variant": "ideal/input/compact",
+            "overrides": {},
+            "element": null,
+            "bounds": null,
+            "revision": null
+          },
+          {
+            "repository": "yschimke/m3-catalog",
+            "system": "m3-catalog",
+            "component": "DatePicker/Docked",
+            "previewId": "datepicker-docked__ideal__input__compact",
+            "referenceId": null,
+            "variant": "ideal/input/compact",
+            "overrides": {},
+            "element": null,
+            "bounds": null,
+            "revision": null
+          }
+        ]
       }
     },
     {
