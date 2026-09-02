@@ -69,8 +69,16 @@ jobs:
             '}' \
             > "$smoke/build.gradle.kts"
 
+          # Central's CDN propagation is the long pole: the GitHub Release goes public 10-40
+          # minutes before the artifacts resolve (the milestone note below says exactly that), so
+          # the poll budget has to cover that upper bound with headroom. The previous 40-attempt
+          # loop allowed only ~20 minutes and so failed releases that had published perfectly
+          # well: v1.65.0 went public at 21:36 on 2026-09-02, the gate gave up at 22:00, and the
+          # plugin resolved from Central minutes later. 100 attempts is ~55 minutes of wall clock
+          # (30s sleep plus a few seconds of Gradle each), which clears the documented 40.
+          attempts_max=100
           ready=0
-          for attempt in $(seq 1 40); do
+          for attempt in $(seq 1 "$attempts_max"); do
             if GRADLE_USER_HOME="$gradle_home" ./gradlew \
                 -p "$smoke" help --no-daemon --refresh-dependencies \
                 > "$smoke/gradle.log" 2>&1; then
@@ -84,12 +92,12 @@ jobs:
               } >> "$GITHUB_OUTPUT"
               break
             fi
-            echo "plugin ${V} not fully resolvable from public Maven Central (attempt ${attempt}/40)."
+            echo "plugin ${V} not fully resolvable from public Maven Central (attempt ${attempt}/${attempts_max})."
             tail -n 30 "$smoke/gradle.log"
             sleep 30
           done
           [ "$ready" -eq 1 ] \
-            || { echo "::error::plugin ${V} was not resolvable after ~20 minutes"; exit 1; }
+            || { echo "::error::plugin ${V} was not resolvable after ${attempts_max} attempts (~55 minutes)"; exit 1; }
 
           marker="$RUNNER_TEMP/compose-preview-maven-ready-${V}.json"
           printf '{"version":"%s","verifiedAt":"%s"}\n' \
