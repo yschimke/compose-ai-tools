@@ -1863,6 +1863,14 @@
     "sha256": "4ea495ed4864ab56f8dc3552f1867aefb75998a74f92752091b90597907fd4fb",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ParameterKnobPreviewsKt.ParameterKnobListPreview_Parameter Knob List": {
+    "captureLabel": "",
+    "functionName": "ParameterKnobListPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ParameterKnobListPreview_Parameter_Knob_List-de590fad.png",
+    "sha256": "4ea495ed4864ab56f8dc3552f1867aefb75998a74f92752091b90597907fd4fb",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ParameterKnobPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom": {
     "captureLabel": "",
     "functionName": "PinchToZoomPreview",
