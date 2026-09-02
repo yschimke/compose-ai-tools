@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.66.0](https://github.com/yschimke/compose-ai-tools/compare/v1.65.0...v1.66.0) (2026-09-02)
+
+
+### Features
+
+* **discovery:** publish components.json beside previews.json ([#5013](https://github.com/yschimke/compose-ai-tools/issues/5013)) ([aa636c7](https://github.com/yschimke/compose-ai-tools/commit/aa636c7dec67fbff25b1d8442ae0fe2a9fdfe679))
+* **gradle-plugin:** add a renderGraph DSL to exclude modules from the render graph ([#5014](https://github.com/yschimke/compose-ai-tools/issues/5014)) ([78e621b](https://github.com/yschimke/compose-ai-tools/commit/78e621b36a2e0676cca078f31f8e85aee4b8e97f))
+* **import:** stub google-services.json for an upstream that requires one ([#5017](https://github.com/yschimke/compose-ai-tools/issues/5017)) ([e0d33b8](https://github.com/yschimke/compose-ai-tools/commit/e0d33b8cacbd91005079a04711693f1cfe91e9ce))
+
+
+### Bug Fixes
+
+* **bundle:** key AAR extraction on content so a snapshot rebuild can't serve stale classes ([#5015](https://github.com/yschimke/compose-ai-tools/issues/5015)) ([981e0e1](https://github.com/yschimke/compose-ai-tools/commit/981e0e15c3afaffe4859eba30ed9ae29a4052a9b))
+* **discovery:** declare, package and correct the component record ([#5021](https://github.com/yschimke/compose-ai-tools/issues/5021)) ([e0e4f8b](https://github.com/yschimke/compose-ai-tools/commit/e0e4f8b112cc1f97cc0e8e2d50f7277cb726a540))
+* **import:** render a verified upstream with lenient verification ([#5016](https://github.com/yschimke/compose-ai-tools/issues/5016)) ([780a397](https://github.com/yschimke/compose-ai-tools/commit/780a397a5235ba0b647d120358a2bdb89fca667e))
+
 ## [1.65.0](https://github.com/yschimke/compose-ai-tools/compare/v1.64.0...v1.65.0) (2026-09-02)
 
 
