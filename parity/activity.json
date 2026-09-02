@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T06:58:04.371Z",
+  "generatedAt": "2026-09-02T07:26:30.243Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "5347385e0c7aaa74d5ccbec4d185766a2490b0a8",
+        "subject": "chore(main): release 1.63.0 (#4974)",
+        "at": "2026-09-02T07:53:28+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "19ae6a4d097d3facc24e85c80db4cdc84b362012",
         "subject": "ci: stop publishing per-preview bundles for wear-m3 (#4981)",
@@ -475,14 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v1.60.1 (#4915)",
         "at": "2026-08-31T18:30:21+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c7cb3106a7b891007a5b86f9467e0922da93a8f1",
-        "subject": "chore(main): release 1.60.1 (#4914)",
-        "at": "2026-08-31T17:22:42+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
