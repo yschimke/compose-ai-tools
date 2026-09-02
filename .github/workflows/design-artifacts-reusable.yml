@@ -346,6 +346,11 @@ on:
         required: false
         type: string
         default: ''
+      stub-google-services-packages:
+        description: 'IMPORT MODE ONLY. Comma-separated Android applicationIds to write a stub google-services.json for, into the rendered module of the throwaway checkout. For an upstream that applies the Google Services plugin unconditionally but does not commit the file, where the build cannot configure at all without one. These must be the EXACT applicationId of each variant, suffixes included: the plugin does no prefix fallback, so naming only the base package fails with "No matching client found for package name". Empty (the default) writes nothing.'
+        required: false
+        type: string
+        default: ''
       commit-user-name:
         description: 'Author/committer name for the generated delivery-branch commit.'
         required: false
@@ -1086,6 +1091,99 @@ jobs:
       # plugin's own groups are trusted, and verification is set to lenient. The second is what
       # actually makes such a project render — see TRUST_PREVIEW_PLUGIN_PY, which records why the
       # first was thought sufficient and what disproved it.
+      # An upstream that applies the Google Services plugin but does not commit
+      # google-services.json cannot CONFIGURE without one — home-assistant/android's
+      # AndroidApplicationConventionPlugin applies it to every application module, and contributors
+      # bring their own file, so :app dies on `processMinimalDebugGoogleServices` before a preview
+      # is discovered. The stub is written into the THROWAWAY checkout, never committed anywhere,
+      # and carries no real project: a zeroed project number and a placeholder key.
+      #
+      # The packages are declared by the caller rather than derived, because they have to be the
+      # EXACT applicationId of the variant being rendered, suffixes and all. Verified against a real
+      # AGP build rather than assumed: a stub naming only the base package fails with
+      #
+      #   > No matching client found for package name 'io.example.probe.minimal.debug'
+      #
+      # so there is no prefix fallback to lean on, and nothing here can guess a flavour suffix a
+      # convention plugin three repositories away decided on.
+      - name: Stub google-services.json in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.stub-google-services-packages != '' }}
+        env:
+          PACKAGES: ${{ inputs.stub-google-services-packages }}
+        run: |
+          set -euo pipefail
+          # BOTH have to be checked, not just INPUT_MODULE. The generate job enters repository-wide
+          # discovery on `inputs.module == '' || inputs.modules == 'all'`, so a caller passing
+          # `module: ':app'` AND `modules: all` renders every module while this step, seeing a
+          # non-empty INPUT_MODULE, would stub only `app` — and a second application module needing
+          # Google Services would fail with no stub, from a step that had claimed to refuse exactly
+          # this case.
+          if [ -z "${INPUT_MODULE:-}" ] || [ "${INPUT_MODULES:-}" = "all" ]; then
+            echo "::error title=stub-google-services-packages needs one module::The stub is written" \
+              "into the rendered module's directory, which an all-module import does not name." \
+              "Split the import so it renders one module, or drop the stub."
+            exit 1
+          fi
+          # `:app` -> `app`, `:modules:services:compose` -> `modules/services/compose` — but ONLY
+          # when the project sits where its path says. Gradle lets a settings file put it anywhere:
+          #
+          #     project(":app").projectDir = file("android-app")
+          #
+          # and compose-ai-tools' own settings.gradle.kts does this in several places, so it is not
+          # a hypothetical. Deriving blindly would either reject a real module as nonexistent or —
+          # worse — write the file into a directory that happens to exist and is not the project,
+          # leaving the Google Services task still failing with the stub sitting somewhere it never
+          # looks. So the settings file gets the first word, and the derived path is the fallback.
+          derived="$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${RENDER_DIR}"/settings.gradle "${RENDER_DIR}"/settings.gradle.kts 2>/dev/null |
+              sed -n "s|.*project(['\"]${INPUT_MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then
+            echo "settings remaps ${INPUT_MODULE} to ${remapped} — using that, not ${derived}"
+            derived="$remapped"
+          fi
+          module_dir="${RENDER_DIR}/${derived}"
+          target="${module_dir}/google-services.json"
+          if [ -f "$target" ]; then
+            echo "upstream commits its own ${target#"$RENDER_DIR/"} — left as is"
+            exit 0
+          fi
+          test -d "$module_dir" || {
+            echo "::error::${module_dir} does not exist; is ${INPUT_MODULE} the module being rendered?"
+            exit 1
+          }
+          PACKAGES="$PACKAGES" TARGET="$target" python3 - <<'PY'
+          import json, os
+
+          packages = [p for p in os.environ["PACKAGES"].split(",") if p]
+          doc = {
+              "project_info": {
+                  "project_number": "000000000000",
+                  "project_id": "compose-preview-import-stub",
+                  "storage_bucket": "compose-preview-import-stub.appspot.com",
+              },
+              "client": [
+                  {
+                      "client_info": {
+                          "mobilesdk_app_id": "1:000000000000:android:%032x" % i,
+                          "android_client_info": {"package_name": p},
+                      },
+                      "oauth_client": [],
+                      "api_key": [{"current_key": "AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}],
+                      "services": {"appinvite_service": {"other_platform_oauth_client": []}},
+                  }
+                  for i, p in enumerate(packages)
+              ],
+              "configuration_version": "1",
+          }
+          with open(os.environ["TARGET"], "w", encoding="utf-8") as handle:
+              json.dump(doc, handle, indent=2)
+              handle.write("\n")
+          print("stubbed google-services.json for: " + ", ".join(packages))
+          PY
+
       - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
@@ -1467,6 +1565,99 @@ jobs:
       # plugin's own groups are trusted, and verification is set to lenient. The second is what
       # actually makes such a project render — see TRUST_PREVIEW_PLUGIN_PY, which records why the
       # first was thought sufficient and what disproved it.
+      # An upstream that applies the Google Services plugin but does not commit
+      # google-services.json cannot CONFIGURE without one — home-assistant/android's
+      # AndroidApplicationConventionPlugin applies it to every application module, and contributors
+      # bring their own file, so :app dies on `processMinimalDebugGoogleServices` before a preview
+      # is discovered. The stub is written into the THROWAWAY checkout, never committed anywhere,
+      # and carries no real project: a zeroed project number and a placeholder key.
+      #
+      # The packages are declared by the caller rather than derived, because they have to be the
+      # EXACT applicationId of the variant being rendered, suffixes and all. Verified against a real
+      # AGP build rather than assumed: a stub naming only the base package fails with
+      #
+      #   > No matching client found for package name 'io.example.probe.minimal.debug'
+      #
+      # so there is no prefix fallback to lean on, and nothing here can guess a flavour suffix a
+      # convention plugin three repositories away decided on.
+      - name: Stub google-services.json in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.stub-google-services-packages != '' }}
+        env:
+          PACKAGES: ${{ inputs.stub-google-services-packages }}
+        run: |
+          set -euo pipefail
+          # BOTH have to be checked, not just INPUT_MODULE. The generate job enters repository-wide
+          # discovery on `inputs.module == '' || inputs.modules == 'all'`, so a caller passing
+          # `module: ':app'` AND `modules: all` renders every module while this step, seeing a
+          # non-empty INPUT_MODULE, would stub only `app` — and a second application module needing
+          # Google Services would fail with no stub, from a step that had claimed to refuse exactly
+          # this case.
+          if [ -z "${INPUT_MODULE:-}" ] || [ "${INPUT_MODULES:-}" = "all" ]; then
+            echo "::error title=stub-google-services-packages needs one module::The stub is written" \
+              "into the rendered module's directory, which an all-module import does not name." \
+              "Split the import so it renders one module, or drop the stub."
+            exit 1
+          fi
+          # `:app` -> `app`, `:modules:services:compose` -> `modules/services/compose` — but ONLY
+          # when the project sits where its path says. Gradle lets a settings file put it anywhere:
+          #
+          #     project(":app").projectDir = file("android-app")
+          #
+          # and compose-ai-tools' own settings.gradle.kts does this in several places, so it is not
+          # a hypothetical. Deriving blindly would either reject a real module as nonexistent or —
+          # worse — write the file into a directory that happens to exist and is not the project,
+          # leaving the Google Services task still failing with the stub sitting somewhere it never
+          # looks. So the settings file gets the first word, and the derived path is the fallback.
+          derived="$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${RENDER_DIR}"/settings.gradle "${RENDER_DIR}"/settings.gradle.kts 2>/dev/null |
+              sed -n "s|.*project(['\"]${INPUT_MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then
+            echo "settings remaps ${INPUT_MODULE} to ${remapped} — using that, not ${derived}"
+            derived="$remapped"
+          fi
+          module_dir="${RENDER_DIR}/${derived}"
+          target="${module_dir}/google-services.json"
+          if [ -f "$target" ]; then
+            echo "upstream commits its own ${target#"$RENDER_DIR/"} — left as is"
+            exit 0
+          fi
+          test -d "$module_dir" || {
+            echo "::error::${module_dir} does not exist; is ${INPUT_MODULE} the module being rendered?"
+            exit 1
+          }
+          PACKAGES="$PACKAGES" TARGET="$target" python3 - <<'PY'
+          import json, os
+
+          packages = [p for p in os.environ["PACKAGES"].split(",") if p]
+          doc = {
+              "project_info": {
+                  "project_number": "000000000000",
+                  "project_id": "compose-preview-import-stub",
+                  "storage_bucket": "compose-preview-import-stub.appspot.com",
+              },
+              "client": [
+                  {
+                      "client_info": {
+                          "mobilesdk_app_id": "1:000000000000:android:%032x" % i,
+                          "android_client_info": {"package_name": p},
+                      },
+                      "oauth_client": [],
+                      "api_key": [{"current_key": "AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}],
+                      "services": {"appinvite_service": {"other_platform_oauth_client": []}},
+                  }
+                  for i, p in enumerate(packages)
+              ],
+              "configuration_version": "1",
+          }
+          with open(os.environ["TARGET"], "w", encoding="utf-8") as handle:
+              json.dump(doc, handle, indent=2)
+              handle.write("\n")
+          print("stubbed google-services.json for: " + ", ".join(packages))
+          PY
+
       - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
