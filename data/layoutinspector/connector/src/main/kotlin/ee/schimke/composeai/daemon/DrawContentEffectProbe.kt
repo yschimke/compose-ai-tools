@@ -50,24 +50,54 @@ internal object DrawContentEffectProbe {
     width: Int,
     height: Int,
     density: Float,
+  ): Boolean =
+    // Two calibrations, and a pixel has to look content-independent under *both* to count.
+    //
+    // The one-step pair alone reports a pixel as obscured whenever the draw merely scales content
+    // toward something else: an additive overlay at alpha 0.01 multiplies the content by 0.99, and
+    // a one-unit input difference times 0.99 quantises back to the same byte. That is a limit of
+    // the probe's own resolution, not evidence the content stopped being visible — the overlay
+    // leaves 99% of it on screen. It made a `drawWithContent { drawContent(); drawRect(…) }`
+    // foreground read as a clip, which flattens the node to a frame crop and cost
+    // `OverrideIntegrationTest` its exported indication.
+    //
+    // A genuinely obscuring draw — a clip, a mask, an opaque replacement, an omitted
+    // `drawContent()` — makes those pixels independent of the content, so they stay identical no
+    // matter how far apart the two calibration fills are. Confirming against black/white keeps
+    // every one of those and drops only the quantisation artefacts, because it puts the input
+    // difference 255 units clear of the rounding floor.
+    contentIndependent(lambda, width, height, density, Color.Black, Color(0xFF010101)) &&
+      contentIndependent(lambda, width, height, density, Color.Black, Color.White)
+
+  /**
+   * Whether any output pixel is unchanged when the stand-in content is redrawn in [second] rather
+   * than [first] — including the degenerate case of a draw that never calls `drawContent()` at all.
+   */
+  private fun contentIndependent(
+    lambda: DrawScope.() -> Unit,
+    width: Int,
+    height: Int,
+    density: Float,
+    first: Color,
+    second: Color,
   ): Boolean {
-    lateinit var darkScope: ProbedContentDrawScope
-    val dark =
+    lateinit var firstScope: ProbedContentDrawScope
+    val firstPixels =
       render(width, height, density) {
-        darkScope = ProbedContentDrawScope(this, Color.Black)
-        darkScope.lambda()
+        firstScope = ProbedContentDrawScope(this, first)
+        firstScope.lambda()
       }
-    if (darkScope.drawContentCalls == 0) return true
+    if (firstScope.drawContentCalls == 0) return true
 
-    lateinit var lightScope: ProbedContentDrawScope
-    val light =
+    lateinit var secondScope: ProbedContentDrawScope
+    val secondPixels =
       render(width, height, density) {
-        lightScope = ProbedContentDrawScope(this, Color(0xFF010101))
-        lightScope.lambda()
+        secondScope = ProbedContentDrawScope(this, second)
+        secondScope.lambda()
       }
-    if (lightScope.drawContentCalls == 0) return true
+    if (secondScope.drawContentCalls == 0) return true
 
-    return dark.indices.any { index -> dark[index] == light[index] }
+    return firstPixels.indices.any { index -> firstPixels[index] == secondPixels[index] }
   }
 
   private fun render(
