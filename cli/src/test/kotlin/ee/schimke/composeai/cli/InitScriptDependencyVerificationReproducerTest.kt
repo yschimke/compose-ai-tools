@@ -152,6 +152,80 @@ class InitScriptDependencyVerificationReproducerTest {
     repo.delete()
   }
 
+  @Test
+  fun `a caller's own verification mode is forwarded to Gradle, not merely suppressed`() {
+    // Review found the original escape hatch was a promise the CLI could not keep: raw argv never
+    // reaches Gradle — only what this function returns lands in extraArguments — so suppressing
+    // ours and dropping theirs left the build on strict, the very failure the flag was passed to
+    // avoid. Both spellings must come back out.
+    val root = tempDir()
+    File(root, "gradle").mkdirs()
+    File(root, "gradle/verification-metadata.xml").writeText("<verification-metadata/>")
+
+    fun args(vararg a: String) =
+      autoInjectInitScriptArgs(
+        args = a.toList(),
+        pluginVersion = "1.0",
+        storageDir = tempDir(),
+        env = { null },
+        projectRoot = root,
+        stderr = {},
+      )
+
+    assertTrue(
+      "--dependency-verification=off" in args("--dependency-verification=off"),
+      "the attached form must be forwarded verbatim",
+    )
+    assertTrue(
+      "--dependency-verification=strict" in args("--dependency-verification", "strict"),
+      "the space form must be forwarded as a mode Gradle understands",
+    )
+    assertTrue(
+      args("--dependency-verification=off").none { it.contains("lenient") },
+      "our lenient default must not be added alongside the caller's own mode",
+    )
+  }
+
+  @Test
+  fun `a build whose metadata already covers the plugin keeps strict verification`() {
+    // Relaxing a build that has deliberately allowlisted the preview plugin costs it the strict
+    // guarantee and buys nothing — strict would have succeeded (PR #4988 review).
+    val root = tempDir()
+    File(root, "gradle").mkdirs()
+    File(root, "gradle/verification-metadata.xml")
+      .writeText(
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <verification-metadata>
+           <configuration>
+              <verify-metadata>true</verify-metadata>
+              <trusted-artifacts>
+                 <trust group="ee.schimke.composeai.preview"/>
+              </trusted-artifacts>
+           </configuration>
+        </verification-metadata>
+        """
+          .trimIndent()
+      )
+
+    val notes = mutableListOf<String>()
+    val injectArgs =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "1.0",
+        storageDir = tempDir(),
+        env = { null },
+        projectRoot = root,
+        stderr = { notes += it },
+      )
+
+    assertTrue(
+      injectArgs.none { it.contains("dependency-verification") },
+      "a build that already trusts the plugin must be left on strict; got $injectArgs",
+    )
+    assertTrue(notes.isEmpty(), "and must not be told we relaxed anything; notes were: $notes")
+  }
+
   /**
    * Publishes the two stub plugins this test needs: the compose-preview plugin (prints a marker on
    * apply) and a fake `com.android.application` (the withPlugin host id that triggers auto-inject).

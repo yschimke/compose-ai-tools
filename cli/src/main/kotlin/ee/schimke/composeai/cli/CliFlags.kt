@@ -28,6 +28,9 @@ internal object CliFlags {
   val VALUE_FLAGS: Set<String> =
     setOf(
       "--module",
+      // Accepts the space form (`--dependency-verification lenient`) as well as the attached one,
+      // so command detection must skip its value.
+      "--dependency-verification",
       "--filter",
       "--id",
       "--id-file",

@@ -605,18 +605,46 @@ internal fun dependencyVerificationArgs(
   stderr: (String) -> Unit,
 ): List<String> {
   if (projectRoot == null) return emptyList()
-  if (args.any { it.startsWith("--dependency-verification") || it == "-F" }) return emptyList()
+
+  // A caller who states their own mode gets it FORWARDED, not merely respected. Suppressing ours
+  // and dropping theirs was the worst of both: raw CLI args never reach Gradle — only what this
+  // function returns lands in `GradleConnection.extraArguments` — so the build fell back to strict
+  // and failed, which is exactly what the flag was passed to avoid (PR #4988 review). The flag is
+  // registered in CliFlagValidation.commandBase for the same reason.
+  val attached = args.firstOrNull { it.startsWith("--dependency-verification=") }
+  val spaced =
+    args
+      .zipWithNext()
+      .firstOrNull { (flag, _) -> flag == "--dependency-verification" || flag == "-F" }
+      ?.let { (_, mode) -> "--dependency-verification=$mode" }
+  val callerMode = attached ?: spaced
+  if (callerMode != null) return listOf(callerMode)
+
   val metadata = File(projectRoot, "gradle/verification-metadata.xml")
   if (!metadata.isFile) return emptyList()
+
+  // A build whose metadata ALREADY covers the preview plugin verifies it fine under strict, so
+  // relaxing would cost that project its strict supply-chain guarantee and buy nothing (PR #4988
+  // review). Projects that have deliberately allowlisted the plugin are exactly the ones that
+  // should keep it, so read the file and leave them alone.
+  val metadataText = runCatching { metadata.readText() }.getOrDefault("")
+  if (COMPOSE_AI_PREVIEW_GROUP in metadataText) return emptyList()
+
   stderr(
-    "compose-preview: this build verifies its dependencies (${'$'}{metadata.path}), and the " +
-      "auto-injected preview plugin is not in that file. Running this build with " +
+    "compose-preview: this build verifies its dependencies (${metadata.path}) and its metadata " +
+      "does not cover the auto-injected preview plugin. Running this build with " +
       "--dependency-verification=lenient so verification reports rather than fails; your " +
-      "verification metadata is not modified. Pass --no-auto-inject, or your own " +
-      "--dependency-verification=…, to decide this yourself."
+      "verification metadata is not modified. Lenient means OTHER artifacts can now fail " +
+      "verification without failing the build — Gradle writes every failure to " +
+      "build/reports/dependency-verification, and --verbose shows them inline. Pass " +
+      "--dependency-verification=strict to keep it fatal, or --no-auto-inject to skip injection " +
+      "entirely."
   )
   return listOf("--dependency-verification=lenient")
 }
+
+/** The plugin's Maven group; a verification file naming it already knows about the plugin. */
+private const val COMPOSE_AI_PREVIEW_GROUP = "ee.schimke.composeai.preview"
 
 /**
  * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation, or an empty

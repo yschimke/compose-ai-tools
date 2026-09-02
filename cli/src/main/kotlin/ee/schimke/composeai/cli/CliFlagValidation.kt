@@ -34,6 +34,11 @@ internal object CliFlagValidation {
       "--permutations",
       "--missing-renders",
       "--no-auto-inject",
+      // Auto-inject relaxes dependency verification on a build that verifies (see
+      // dependencyVerificationArgs); this is how someone states their own answer instead. It has to
+      // be a REGISTERED flag or the caller override is a promise the CLI rejects as unknown before
+      // it can be honoured (PR #4988 review).
+      "--dependency-verification",
     )
 
   private val reportFlags = commandBase + setOf("--json", "--fail-on")
