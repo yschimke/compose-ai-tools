@@ -58,6 +58,68 @@ internal object ComposableSignature {
     }
   }
 
+  /**
+   * The editable knobs [method] declares as its own value parameters — the secondary override
+   * format (see [PreviewKnob]).
+   *
+   * Returns empty unless **every** value parameter declares a default, which is the shape
+   * `PreviewDiscovery.allParametersHaveDefaults` already requires before admitting a parameterised
+   * preview at all: a parameter with no default cannot be left to the `$default` mask, so a
+   * partially-defaulted function is not a knob carrier, it is an unrenderable preview.
+   *
+   * Within that, only parameters whose type the harness can build from a seed string become knobs.
+   * A `modifier: Modifier = Modifier` on a production composable annotated `@Preview` in place is
+   * deliberately *not* one — it is defaulted and renderable, but there is no seed value to give it,
+   * and publishing it as editable would put an uneditable control on every such preview.
+   *
+   * [PreviewKnob.index] is the parameter's position in the **full** value-parameter list, not among
+   * the knobs, because that is the index the renderer needs to place the argument.
+   */
+  fun knobsOf(classInfo: ClassInfo, method: MethodInfo): List<PreviewKnob> {
+    val parameters =
+      try {
+        val metadata = readClassMetadata(classInfo) ?: return emptyList()
+        val functions =
+          when (val parsed = KotlinClassMetadata.readLenient(metadata)) {
+            is KotlinClassMetadata.Class -> parsed.kmClass.functions
+            is KotlinClassMetadata.FileFacade -> parsed.kmPackage.functions
+            is KotlinClassMetadata.MultiFileClassPart -> parsed.kmPackage.functions
+            else -> return emptyList()
+          }
+        matchFunction(functions, method)?.valueParameters ?: return emptyList()
+      } catch (_: Throwable) {
+        return emptyList()
+      }
+    if (parameters.isEmpty()) return emptyList()
+    if (!parameters.all { it.declaresDefaultValue }) return emptyList()
+    return parameters.mapIndexedNotNull { index, parameter ->
+      knobType(parameter.type)?.let { PreviewKnob(parameter.name, index, it) }
+    }
+  }
+
+  /**
+   * The knob kind for [type], or null when the harness cannot construct a value for it.
+   *
+   * Matched on the metadata classifier's fully-qualified name rather than the rendered short name,
+   * so a project's own `Boolean` class cannot masquerade as `kotlin.Boolean`. A nullable parameter
+   * is excluded: the renderer signals "use the author default" by passing `null` for a position, so
+   * a knob that can legitimately *be* null has no way to say "seed me null" and would silently
+   * resolve to its default instead.
+   */
+  private fun knobType(type: KmType): PreviewKnobType? {
+    if (type.isNullable) return null
+    val name = (type.classifier as? KmClassifier.Class)?.name ?: return null
+    return when (name) {
+      "kotlin/String" -> PreviewKnobType.STRING
+      "kotlin/Boolean" -> PreviewKnobType.BOOLEAN
+      "kotlin/Int" -> PreviewKnobType.INT
+      "kotlin/Long" -> PreviewKnobType.LONG
+      "kotlin/Float" -> PreviewKnobType.FLOAT
+      "kotlin/Double" -> PreviewKnobType.DOUBLE
+      else -> null
+    }
+  }
+
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
     val name = method.name
