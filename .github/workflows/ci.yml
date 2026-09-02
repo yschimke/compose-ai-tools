@@ -276,8 +276,7 @@ jobs:
               -x :samples:remotecompose:test \
               -x :samples:wear:test \
               -x :samples:wear-widget:test \
-              -x :samples:xr-glimmer:test \
-              -x :samples:xr-spatial:test
+              -x :samples:xr-glimmer:test
           elif [ -z "$TEST_TASKS" ] || [ "$TEST_TASKS" = none ]; then
             # The job `if` normally keeps this branch unreached; it's here so a future skew
             # between the two scope configs is a no-op run, never a `gradlew none` failure.
