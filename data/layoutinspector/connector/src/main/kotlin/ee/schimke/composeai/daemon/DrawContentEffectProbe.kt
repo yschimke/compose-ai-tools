@@ -89,13 +89,26 @@ internal object DrawContentEffectProbe {
     return dark.indices.any { index -> channelDistance(dark[index], light[index]) < CONTENT_FLOOR }
   }
 
-  /** The largest per-channel gap between two opaque calibration pixels. */
-  private fun channelDistance(first: Int, second: Int): Int =
-    maxOf(
-      abs(((first shr 16) and 0xFF) - ((second shr 16) and 0xFF)),
-      abs(((first shr 8) and 0xFF) - ((second shr 8) and 0xFF)),
-      abs((first and 0xFF) - (second and 0xFF)),
-    )
+  /**
+   * How far apart two calibration pixels are once each channel carries its own alpha.
+   *
+   * `readPixels` hands back **unpremultiplied** ARGB, so a draw that attenuates purely through
+   * alpha — a `DstIn` gradient, a save-layer fade bottoming out near 1% opacity — leaves the two
+   * runs' RGB near black and white while both pixels are almost entirely transparent. Comparing raw
+   * channels would call that a 255-unit gap and let a real mask through as editable opaque
+   * descendants. Folding alpha in first collapses both to nearly zero, which is what they paint
+   * like, and the alpha term catches a mask that varies opacity without touching colour.
+   */
+  private fun channelDistance(first: Int, second: Int): Int {
+    val firstAlpha = (first ushr 24) and 0xFF
+    val secondAlpha = (second ushr 24) and 0xFF
+    fun gap(shift: Int): Int =
+      abs(
+        (((first shr shift) and 0xFF) * firstAlpha) / 255 -
+          (((second shr shift) and 0xFF) * secondAlpha) / 255
+      )
+    return maxOf(gap(16), gap(8), gap(0), abs(firstAlpha - secondAlpha))
+  }
 
   private fun render(
     width: Int,
