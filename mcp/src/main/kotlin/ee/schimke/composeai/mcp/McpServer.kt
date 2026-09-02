@@ -251,7 +251,7 @@ internal fun composePreviewServerOptions(): ServerOptions =
       )
   )
 
-private fun ToolDef.toSdkTool(): Tool {
+internal fun ToolDef.toSdkTool(): Tool {
   val schemaObject = inputSchema.jsonObject
   return Tool(
     name = name,
@@ -282,7 +282,7 @@ private fun ee.schimke.composeai.mcp.protocol.ResourceContents.toSdkResourceCont
       BlobResourceContents(blob = blob, uri = uri, mimeType = mimeType)
   }
 
-private fun CallToolResult.toSdkCallToolResult():
+internal fun CallToolResult.toSdkCallToolResult():
   io.modelcontextprotocol.kotlin.sdk.types.CallToolResult =
   io.modelcontextprotocol.kotlin.sdk.types.CallToolResult(
     content = content.map { it.toSdkContent() },

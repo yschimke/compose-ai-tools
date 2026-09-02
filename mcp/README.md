@@ -3,7 +3,9 @@
 A [Model Context Protocol](https://modelcontextprotocol.io/) server that
 exposes [`@Preview`](https://developer.android.com/jetpack/compose/tooling/previews)
 composables — Jetpack Compose (Android via Robolectric) and Compose
-Multiplatform (Desktop via Skiko) — to MCP-aware agents over stdio.
+Multiplatform (Desktop via Skiko) — to MCP-aware agents over stdio. Its remote UI-builder profile
+can also be hosted over authenticated MCP Streamable HTTP so several agents and browsers meet at
+one shared preview server.
 
 The server is a thin, transport-agnostic shim around the per-module
 [preview daemon](../docs/daemon/DESIGN.md): it spawns daemons on demand,
@@ -112,6 +114,41 @@ claude mcp add compose-preview-mcp \
 `--project=<path>[:<rootProjectName>]` pre-registers a workspace at
 startup; you can also call the `register_project` tool from the agent
 later.
+
+### Shared UI builder over Streamable HTTP
+
+Run the MCP process beside the shared preview server and proxy `/mcp` to it. This mode exposes only
+the eight remote UI-builder tools; filesystem/project and preview-daemon tools stay on local stdio.
+Each MCP client sends its own preview-server agent grant as `Authorization: Bearer`, and that grant
+is bound to the MCP session id for its lifetime.
+
+```bash
+compose-preview mcp serve \
+  --streamable-http \
+  --ui-builder-url http://127.0.0.1:8791 \
+  --http-host 127.0.0.1 \
+  --http-port 8788 \
+  --http-allowed-host preview.example.com
+```
+
+The loopback default is intentional: terminate public TLS and route `/mcp` in the same reverse
+proxy that serves the UI builder. Preserve `Authorization`, `Mcp-Session-Id`, `Last-Event-ID`, and
+the response content type; disable proxy buffering for `text/event-stream` responses. Repeat
+`--http-allowed-host` for aliases and `--http-allowed-origin` when browser origins should be
+narrower than the host list.
+
+Codex can then connect directly to the shared endpoint:
+
+```toml
+[mcp_servers.compose-preview-ui-builder]
+url = "https://preview.example.com/mcp"
+bearer_token_env_var = "COMPOSE_PREVIEW_UI_BUILDER_TOKEN"
+required = true
+```
+
+The environment variable belongs to the Codex host, not the MCP sidecar. Obtain it with
+`compose-preview auth request` using the `ui-builder-read`, `ui-builder-write`, and
+`ui-builder-export` capabilities. Restart or reload the MCP host after changing its configuration.
 
 ### 4. From the agent
 
@@ -230,8 +267,8 @@ re-renders.
 
 ## Subscriptions and watch sets
 
-Both are session-scoped — a session is one connected MCP client (in v0,
-one stdio stream). On disconnect the supervisor drops everything that
+Both are session-scoped — a session is one connected MCP client (one stdio stream in the local
+profile). On disconnect the supervisor drops everything that
 session registered.
 
 `subscribe(uri)` is the cheap per-URI hook. `watch(workspaceId,
@@ -273,8 +310,9 @@ equivalent that integrates with `:mcp:test`.
   daemon unless the descriptor reports `enabled: true`. Flip via
   `composePreview.daemon { enabled = true }` in the
   consumer's build script.
-- **Multi-session.** A single MCP server process can serve N agents
-  over N stdio connections (HTTP transport later may multiplex).
+- **Multi-session.** A local stdio process serves one agent connection. The remote UI-builder
+  Streamable HTTP mode multiplexes authenticated MCP sessions while the shared preview server owns
+  all design state and revision ordering.
   Daemons are shared across sessions when they target the same
   `(workspace, module)`, so two agents reading the same preview both
   benefit from the warm sandbox.

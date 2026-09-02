@@ -15,6 +15,7 @@ import java.io.File
  *                     [--replicas-per-daemon <N>]
  *                     [--ui-builder-url <URL>]
  *                     [--ui-builder-actor <ACTOR>]
+ *                     [--streamable-http --http-port <PORT>]
  *                     [--storybook]
  * ```
  *
@@ -43,6 +44,16 @@ object DaemonMcpMain {
   @JvmStatic
   fun main(args: Array<String>) {
     disableKotlinLoggingStartupMessage()
+    parseStreamableHttp(args)?.let { config ->
+      require(parseProjects(args).isEmpty()) {
+        "--streamable-http serves the shared UI Builder only; --project is stdio-only"
+      }
+      require(!parseStorybookProfile(args)) {
+        "--streamable-http serves the shared UI Builder only; --storybook is stdio-only"
+      }
+      runUiBuilderStreamableHttp(config)
+      return
+    }
     val replicasPerDaemon = parseReplicasPerDaemon(args)
     val storybookProfile = parseStorybookProfile(args)
     // Storybook compatibility is intentionally a closed tool surface. Do not even construct the
@@ -126,6 +137,53 @@ object DaemonMcpMain {
     if (index < 0) return null
     return args.getOrNull(index + 1)?.takeUnless { it.startsWith("--") }?.takeIf(String::isNotBlank)
       ?: error("$name requires a value")
+  }
+
+  private fun options(args: Array<String>, name: String): List<String> {
+    val values = mutableListOf<String>()
+    var index = 0
+    while (index < args.size) {
+      when {
+        args[index] == name -> {
+          val value = args.getOrNull(index + 1)?.takeUnless { it.startsWith("--") }
+          require(!value.isNullOrBlank()) { "$name requires a value" }
+          values += value
+          index += 2
+        }
+        args[index].startsWith("$name=") -> {
+          values +=
+            args[index].substringAfter('=').takeIf(String::isNotBlank)
+              ?: error("$name requires a value")
+          index++
+        }
+        else -> index++
+      }
+    }
+    return values
+  }
+
+  private fun parseStreamableHttp(args: Array<String>): UiBuilderStreamableHttpConfig? {
+    if ("--streamable-http" !in args) return null
+    val uiBuilderUrl =
+      option(args, "--ui-builder-url")
+        ?: System.getProperty("composeai.uiBuilder.url")
+        ?: System.getenv("COMPOSE_PREVIEW_UI_BUILDER_URL")
+        ?: error("--streamable-http requires --ui-builder-url")
+    val host = option(args, "--http-host") ?: "127.0.0.1"
+    val portRaw = option(args, "--http-port") ?: "8788"
+    val port = portRaw.toIntOrNull() ?: error("--http-port must be an integer")
+    val allowedHosts = options(args, "--http-allowed-host").ifEmpty { null }
+    if (host !in setOf("127.0.0.1", "localhost", "::1") && allowedHosts == null) {
+      error("non-loopback --http-host requires at least one --http-allowed-host")
+    }
+    return UiBuilderStreamableHttpConfig(
+      uiBuilderUrl = uiBuilderUrl,
+      host = host,
+      port = port,
+      path = option(args, "--http-path") ?: "/mcp",
+      allowedHosts = allowedHosts,
+      allowedOrigins = options(args, "--http-allowed-origin").ifEmpty { null },
+    )
   }
 
   private fun parseProjects(args: Array<String>): List<Pair<String, String?>> {

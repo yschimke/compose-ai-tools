@@ -136,7 +136,7 @@ COMPOSE_PREVIEW_UI_BUILDER_TOKEN='<grant>' \
 ```
 
 The adapter owns no design state. Every call uses the released
-`ee.schimke.composeai:ui-builder-protocol:2.2.0` HTTP envelope and reaches the
+`ee.schimke.composeai:ui-builder-protocol` HTTP envelope and reaches the
 same authoritative service used by browser sessions. Request ids are checked
 on every response, and the default actor is
 `agent:<12-character grant-token fingerprint>`. `--ui-builder-actor` is
@@ -160,6 +160,19 @@ The three capabilities remain independent: a read-only grant cannot mutate or
 export, and a write grant does not implicitly grant export. The Storybook
 compatibility profile never advertises or dispatches these tools, even when
 UI-builder environment variables are present.
+
+For a shared deployment, the same adapter can instead be served as a remote MCP endpoint:
+
+```sh
+compose-preview mcp serve --streamable-http \
+  --ui-builder-url http://127.0.0.1:8791 \
+  --http-allowed-host preview.example.com
+```
+
+Proxy the public `https://preview.example.com/mcp` route to the sidecar's loopback port. This mode
+is deliberately UI-builder-only and accepts each client's grant in `Authorization: Bearer`; the
+sidecar itself has no operator token. Browser and MCP traffic therefore reaches the same persisted
+Design API while the preview server remains free of MCP transport dependencies.
 
 The daemon's render queue is single-priority FIFO today, so `setVisible` /
 `setFocus` traffic flows through the wire but doesn't yet reorder the queue.

@@ -17,6 +17,10 @@ import ee.schimke.composeai.uibuilder.protocol.ListCatalogsRequestV1
 import ee.schimke.composeai.uibuilder.protocol.OpenDesignRequestV1
 import ee.schimke.composeai.uibuilder.protocol.UI_BUILDER_SCHEMA_VERSION_V1
 import ee.schimke.composeai.uibuilder.protocol.UiBuilderRequestV1
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -128,6 +132,24 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
     }
   }
 
+  /** A remote-safe MCP server containing only the shared UI-builder tools. */
+  internal fun sdkServer(): Server =
+    Server(
+      serverInfo = Implementation(name = "compose-preview-ui-builder", version = "v1"),
+      options =
+        ServerOptions(
+          capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))
+        ),
+    ) {
+      toolDefs().forEach { definition ->
+        addTool(definition.toSdkTool()) { request ->
+          val arguments = request.arguments ?: JsonObject(emptyMap())
+          (handle(request.name, arguments) ?: errorCallToolResult("unknown tool: ${request.name}"))
+            .toSdkCallToolResult()
+        }
+      }
+    }
+
   /**
    * The caller's submission with `actorId` filled in from the authenticated client.
    *
@@ -183,6 +205,19 @@ class UiBuilderMcpAdapter internal constructor(private val client: UiBuilderDesi
     const val revisionSchema =
       """{"type":"object","properties":{"designId":{"type":"string"},"revision":{"type":"integer","minimum":0}},"required":["designId","revision"]}"""
   }
+}
+
+/**
+ * Authenticates one remote MCP session against the authoritative UI-builder service.
+ *
+ * The catalog read happens before an MCP session is allocated: it proves that the bearer is
+ * currently accepted and has `ui-builder-read`. Every later operation still carries the same
+ * bearer, so expiry and revocation remain enforced by preview-server.
+ */
+internal fun authenticatedUiBuilderMcp(baseUrl: String, token: String): UiBuilderMcpAdapter {
+  val client = UiBuilderDesignApiClient.remote(baseUrl, token)
+  client.execute(ListCatalogsRequestV1)
+  return UiBuilderMcpAdapter(client)
 }
 
 /** Authenticated HTTP client for one remote preview-server UI-builder service. */

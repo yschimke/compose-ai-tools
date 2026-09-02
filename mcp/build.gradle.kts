@@ -48,6 +48,9 @@ dependencies {
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.mcp.kotlin.sdk.server)
+  // CIO hosts the optional remote UI-builder Streamable HTTP endpoint. The MCP SDK owns the
+  // protocol route (POST/GET/DELETE + SSE); this module only supplies the engine and auth bridge.
+  implementation(libs.ktor.server.cio)
   // Okio-based file IO (`SystemFileSystem`) for descriptor reads + PNG/video byte reads.
   implementation(libs.composeai.common.io)
   implementation(libs.composeai.agent.grant.protocol)
@@ -69,6 +72,7 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(libs.kotlinx.coroutines.core)
+  testImplementation(libs.ktor.server.test.host)
 }
 
 tasks.withType<Test>().configureEach {
