@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="221" height="210" viewBox="0 0 221 210" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <g id="Box">
+      <rect x="42" y="63" width="137" height="84" rx="42" ry="42" fill="#6750A4"/>
+      <g id="Box">
+        <rect x="105" y="74" width="63" height="63" rx="31.5" ry="31.5" fill="#FFFFFF"/>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210" height="210" viewBox="0 0 210 210" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <g id="Spacer">
+      <g transform="translate(79 79) scale(1 1)">
+        <path d="M5.25,0 H47.75 A5.25,5.25 0 0 1 53,5.25 V47.75 A5.25,5.25 0 0 1 47.75,53 H5.25 A5.25,5.25 0 0 1 0,47.75 V5.25 A5.25,5.25 0 0 1 5.25,0 Z" fill="#D0BCFF"/>
+        <path d="M10.6,26.5 L11.66,27.56 L12.72,28.62 L13.78,29.68 L14.84,30.74 L15.9,31.8 L16.96,32.86 L18.02,33.92 L19.09,34.99 L20.15,36.05 L21.21,37.09 L22.27,36.03 L23.33,34.97 L24.39,33.91 L25.45,32.85 L26.51,31.79 L27.57,30.73 L28.63,29.67 L29.69,28.61 L30.75,27.55 L31.81,26.49 L32.87,25.43 L33.93,24.37 L35,23.3 L36.06,22.24 L37.12,21.18 L38.18,20.12 L39.24,19.06 L40.3,18 L41.36,16.94 L42.4,15.9" fill="none" stroke="#381E72" stroke-width="5" stroke-linecap="square"/>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

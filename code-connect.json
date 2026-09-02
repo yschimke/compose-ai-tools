@@ -1,0 +1,299 @@
+{
+  "system": "compose-m3",
+  "title": "Compose Material 3",
+  "label": "Compose",
+  "source": {
+    "repo": "yschimke/compose-ai-tools",
+    "ref": "main",
+    "module": ":samples:design-catalog-m3"
+  },
+  "generatedAt": "2026-09-02T07:00:59.512Z",
+  "mappings": [
+    {
+      "componentId": "Button/Filled",
+      "figmaLayerName": "Button/Filled",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "FilledButton",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/button-filled.svg"
+    },
+    {
+      "componentId": "Progress/Linear",
+      "figmaLayerName": "Progress/Linear",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "LinearProgressSticker",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/progress-linear.svg"
+    },
+    {
+      "componentId": "Badge",
+      "figmaLayerName": "Badge",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "BadgeSticker",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/badge.svg"
+    },
+    {
+      "componentId": "Card/Slots",
+      "figmaLayerName": "Card/Slots",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SlottedCardSticker",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/card-slots.svg"
+    },
+    {
+      "componentId": "Checkbox/Checked",
+      "figmaLayerName": "Checkbox/Checked",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "CheckboxChecked",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/checkbox-checked.svg"
+    },
+    {
+      "componentId": "Switch/On",
+      "figmaLayerName": "Switch/On",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SwitchOn",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/switch-on.svg"
+    },
+    {
+      "componentId": "Slider",
+      "figmaLayerName": "Slider",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "SliderMid",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/slider.svg"
+    },
+    {
+      "componentId": "Shape/Morph",
+      "figmaLayerName": "Shape/Morph",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "ShapeMorph",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/shape-morph.svg"
+    },
+    {
+      "componentId": "Template/AppScaffold",
+      "figmaLayerName": "Template/AppScaffold",
+      "componentName": "FullScreenM3",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogTheme.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "AppScaffoldTemplate",
+      "codeSnippet": "FullScreenM3(\n    content = { },\n)",
+      "imports": [
+        "import com.example.designcatalogm3.FullScreenM3"
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "() -> Unit",
+          "hasDefault": false,
+          "composableSlot": true
+        }
+      ],
+      "figmaSvg": "figma/template-appscaffold.svg"
+    },
+    {
+      "componentId": "TextField/Filled",
+      "figmaLayerName": "TextField/Filled",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TextFieldSticker",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/textfield-filled.svg"
+    },
+    {
+      "componentId": "Text/MaxLines-Truncated",
+      "figmaLayerName": "Text/MaxLines-Truncated",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TextMaxLinesTruncated",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/text-maxlines-truncated.svg"
+    },
+    {
+      "componentId": "Text/Serif",
+      "figmaLayerName": "Text/Serif",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TextSerifSpecimen",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/text-serif.svg"
+    },
+    {
+      "componentId": "Text/Monospace",
+      "figmaLayerName": "Text/Monospace",
+      "componentName": "Sticker",
+      "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+      "label": "Compose",
+      "confidence": "HIGH",
+      "previewName": "TextMonospaceSpecimen",
+      "codeSnippet": "Sticker(\n    id = TODO(\"String\"),\n)",
+      "imports": [
+        "import com.example.designcatalogm3.Sticker"
+      ],
+      "parameters": [
+        {
+          "name": "id",
+          "type": "String",
+          "hasDefault": false,
+          "composableSlot": false
+        }
+      ],
+      "figmaSvg": "figma/text-monospace.svg"
+    }
+  ]
+}

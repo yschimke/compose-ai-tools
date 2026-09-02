@@ -1,0 +1,2270 @@
+{
+  "schema": "compose-preview-annotations/v1",
+  "previews": {
+    "button-filled__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__disabled__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__disabled": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__default__dark__fontscale-2.0": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__default__light__fontscale-2.0": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__pressed__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__pressed__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__keyboard-focus__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__keyboard-focus__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__default__dark__content-icon-label": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "button-filled__ideal__default__light__content-icon-label": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 53,
+          "width": 216,
+          "height": 105
+        },
+        "label": "r 20dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "20",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 105,
+          "y": 79,
+          "width": 90,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Filled",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "progress-linear__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 16,
+          "width": 578,
+          "height": 63
+        },
+        "label": "pad 10dp/0dp",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "10",
+          "padding.end": "0",
+          "padding.bottom": "10",
+          "unit": "dp"
+        }
+      }
+    ],
+    "progress-linear__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 16,
+          "width": 578,
+          "height": 63
+        },
+        "label": "pad 10dp/0dp",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "10",
+          "padding.end": "0",
+          "padding.bottom": "10",
+          "unit": "dp"
+        }
+      }
+    ],
+    "badge__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 53,
+          "y": 42,
+          "width": 20,
+          "height": 42
+        },
+        "label": "pad 0dp/4dp · r 3.8dp",
+        "detail": {
+          "padding.start": "4",
+          "padding.top": "0",
+          "padding.end": "4",
+          "padding.bottom": "0",
+          "cornerRadius": "3.8",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 54,
+          "y": 42,
+          "width": 18,
+          "height": 42
+        },
+        "label": "text 11sp/16",
+        "role": "8",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "11",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "badge__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 53,
+          "y": 42,
+          "width": 20,
+          "height": 42
+        },
+        "label": "pad 0dp/4dp · r 3.8dp",
+        "detail": {
+          "padding.start": "4",
+          "padding.top": "0",
+          "padding.end": "4",
+          "padding.bottom": "0",
+          "cornerRadius": "3.8",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 54,
+          "y": 42,
+          "width": 18,
+          "height": 42
+        },
+        "label": "text 11sp/16",
+        "role": "8",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "11",
+          "lineHeight": "16",
+          "fontWeight": "500",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "card-slots__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 569,
+          "height": 190
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 176,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Headline",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 306,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Supporting text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "card-slots__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 569,
+          "height": 190
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 176,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Headline",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 306,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Supporting text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "card-slots__ideal__slot-mode__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 569,
+          "height": 190
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 176,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Headline",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 306,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Supporting text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "card-slots__ideal__slot-mode__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 569,
+          "height": 190
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 176,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Headline",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 306,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Supporting text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "card-slots__ideal__default__dark__locale-ar": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 569,
+          "height": 190
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 176,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Headline",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 306,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Supporting text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "card-slots__ideal__default__light__locale-ar": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 569,
+          "height": 190
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 176,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Headline",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 306,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Supporting text",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "checkbox-checked__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 74,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "pad 2dp",
+        "role": "Checkbox",
+        "detail": {
+          "padding.start": "2",
+          "padding.top": "2",
+          "padding.end": "2",
+          "padding.bottom": "2",
+          "unit": "dp"
+        }
+      }
+    ],
+    "checkbox-checked__ideal__unchecked__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 74,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "pad 2dp",
+        "role": "Checkbox",
+        "detail": {
+          "padding.start": "2",
+          "padding.top": "2",
+          "padding.end": "2",
+          "padding.bottom": "2",
+          "unit": "dp"
+        }
+      }
+    ],
+    "checkbox-checked__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 74,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "pad 2dp",
+        "role": "Checkbox",
+        "detail": {
+          "padding.start": "2",
+          "padding.top": "2",
+          "padding.end": "2",
+          "padding.bottom": "2",
+          "unit": "dp"
+        }
+      }
+    ],
+    "checkbox-checked__ideal__unchecked": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 74,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "pad 2dp",
+        "role": "Checkbox",
+        "detail": {
+          "padding.start": "2",
+          "padding.top": "2",
+          "padding.end": "2",
+          "padding.bottom": "2",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__off__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__off": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__dark__locale-ar-xb": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__light__locale-ar-xb": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__dark__direction-rtl": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__light__direction-rtl": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__dark__fontscale-2.0": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "switch-on__ideal__default__light__fontscale-2.0": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 63,
+          "width": 137,
+          "height": 84
+        },
+        "label": "r 16dp",
+        "role": "Switch",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 105,
+          "y": 74,
+          "width": 63,
+          "height": 63
+        },
+        "label": "r 12dp",
+        "detail": {
+          "cornerRadius": "12",
+          "unit": "dp"
+        }
+      }
+    ],
+    "slider__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 47,
+          "width": 630,
+          "height": 116
+        },
+        "label": "pad 0dp/10dp",
+        "detail": {
+          "padding.start": "10",
+          "padding.top": "0",
+          "padding.end": "10",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 326,
+          "y": 47,
+          "width": 11,
+          "height": 116
+        },
+        "label": "r 2.1dp",
+        "detail": {
+          "cornerRadius": "2.1",
+          "unit": "dp"
+        }
+      }
+    ],
+    "slider__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 16,
+          "y": 47,
+          "width": 630,
+          "height": 116
+        },
+        "label": "pad 0dp/10dp",
+        "detail": {
+          "padding.start": "10",
+          "padding.top": "0",
+          "padding.end": "10",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 326,
+          "y": 47,
+          "width": 11,
+          "height": 116
+        },
+        "label": "r 2.1dp",
+        "detail": {
+          "cornerRadius": "2.1",
+          "unit": "dp"
+        }
+      }
+    ],
+    "shape-morph__ideal__default__dark": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 99,
+          "y": 520,
+          "width": 630,
+          "height": 116
+        },
+        "label": "pad 0dp/10dp",
+        "detail": {
+          "padding.start": "10",
+          "padding.top": "0",
+          "padding.end": "10",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 409,
+          "y": 520,
+          "width": 11,
+          "height": 116
+        },
+        "label": "r 2.1dp",
+        "detail": {
+          "cornerRadius": "2.1",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 641,
+          "width": 743,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Square → Rounded 9-point star · 50%",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "shape-morph__ideal__default__light": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 99,
+          "y": 520,
+          "width": 630,
+          "height": 116
+        },
+        "label": "pad 0dp/10dp",
+        "detail": {
+          "padding.start": "10",
+          "padding.top": "0",
+          "padding.end": "10",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 409,
+          "y": 520,
+          "width": 11,
+          "height": 116
+        },
+        "label": "r 2.1dp",
+        "detail": {
+          "cornerRadius": "2.1",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 641,
+          "width": 743,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Square → Rounded 9-point star · 50%",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "template-appscaffold__ideal__default__dark__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 43,
+          "y": 110,
+          "width": 159,
+          "height": 74
+        },
+        "label": "pad 0dp/4dp",
+        "detail": {
+          "padding.start": "4",
+          "padding.top": "0",
+          "padding.end": "4",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 889,
+          "y": 2147,
+          "width": 147,
+          "height": 147
+        },
+        "label": "r 16dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 0,
+          "width": 994,
+          "height": 63
+        },
+        "label": "pad 0dp/16dp",
+        "detail": {
+          "padding.start": "16",
+          "padding.top": "0",
+          "padding.end": "16",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 397,
+          "y": 2368,
+          "width": 284,
+          "height": 11
+        },
+        "label": "pad t 4dp e 0dp b 0dp s 0dp · r 2dp",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "4",
+          "padding.end": "0",
+          "padding.bottom": "0",
+          "cornerRadius": "2",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 268,
+          "width": 195,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Alex Kim",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 331,
+          "width": 326,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Lunch tomorrow?",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 460,
+          "width": 282,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Design team",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 523,
+          "width": 506,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Specs are ready for review",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 652,
+          "width": 236,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Priya Patel",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 715,
+          "width": 371,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Sent the render diff",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 844,
+          "width": 255,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Sam Rivera",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 907,
+          "width": 380,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Thanks — merged it",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 1036,
+          "width": 157,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "On-call",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 1099,
+          "width": 440,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Deploy finished cleanly",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 43,
+          "y": 110,
+          "width": 159,
+          "height": 74
+        },
+        "label": "text 22sp/28",
+        "role": "Inbox",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "lineHeight": "28",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 947,
+          "y": 2194,
+          "width": 32,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "+",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 13,
+          "width": 79,
+          "height": 37
+        },
+        "label": "text 12sp",
+        "role": "9:30",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "fontWeight": "700"
+        }
+      }
+    ],
+    "template-appscaffold__ideal__default__light__compact": [
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 43,
+          "y": 110,
+          "width": 159,
+          "height": 74
+        },
+        "label": "pad 0dp/4dp",
+        "detail": {
+          "padding.start": "4",
+          "padding.top": "0",
+          "padding.end": "4",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 889,
+          "y": 2147,
+          "width": 147,
+          "height": 147
+        },
+        "label": "r 16dp",
+        "role": "Button",
+        "detail": {
+          "cornerRadius": "16",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 42,
+          "y": 0,
+          "width": 994,
+          "height": 63
+        },
+        "label": "pad 0dp/16dp",
+        "detail": {
+          "padding.start": "16",
+          "padding.top": "0",
+          "padding.end": "16",
+          "padding.bottom": "0",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "layout",
+        "bounds": {
+          "x": 397,
+          "y": 2368,
+          "width": 284,
+          "height": 11
+        },
+        "label": "pad t 4dp e 0dp b 0dp s 0dp · r 2dp",
+        "detail": {
+          "padding.start": "0",
+          "padding.top": "4",
+          "padding.end": "0",
+          "padding.bottom": "0",
+          "cornerRadius": "2",
+          "unit": "dp"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 268,
+          "width": 195,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Alex Kim",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 331,
+          "width": 326,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Lunch tomorrow?",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 460,
+          "width": 282,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Design team",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 523,
+          "width": 506,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Specs are ready for review",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 652,
+          "width": 236,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Priya Patel",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 715,
+          "width": 371,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Sent the render diff",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 844,
+          "width": 255,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Sam Rivera",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 907,
+          "width": 380,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Thanks — merged it",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 1036,
+          "width": 157,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "On-call",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 1099,
+          "width": 440,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "Deploy finished cleanly",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 43,
+          "y": 110,
+          "width": 159,
+          "height": 74
+        },
+        "label": "text 22sp/28",
+        "role": "Inbox",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "22",
+          "lineHeight": "28",
+          "fontWeight": "400",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 947,
+          "y": 2194,
+          "width": 32,
+          "height": 53
+        },
+        "label": "text 14sp/20",
+        "role": "+",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "14",
+          "lineHeight": "20",
+          "fontWeight": "500",
+          "fontFamily": "sans-serif"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 13,
+          "width": 79,
+          "height": 37
+        },
+        "label": "text 12sp",
+        "role": "9:30",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "fontWeight": "700"
+        }
+      }
+    ],
+    "textfield-filled__ideal__default__dark": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 735,
+          "height": 147
+        },
+        "label": "text 16sp/24",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 84,
+          "y": 63,
+          "width": 82,
+          "height": 42
+        },
+        "label": "text 12sp/16",
+        "role": "Label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "lineHeight": "16",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "textfield-filled__ideal__default__light": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 735,
+          "height": 147
+        },
+        "label": "text 16sp/24",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      },
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 84,
+          "y": 63,
+          "width": 82,
+          "height": 42
+        },
+        "label": "text 12sp/16",
+        "role": "Label",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "12",
+          "lineHeight": "16",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "text-maxlines-truncated__ideal__default__dark": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 336,
+          "height": 126
+        },
+        "label": "text 16sp/24",
+        "role": "This body text is deliberately long so it overflows two lines and truncates.",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "text-maxlines-truncated__ideal__default__light": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 336,
+          "height": 126
+        },
+        "label": "text 16sp/24",
+        "role": "This body text is deliberately long so it overflows two lines and truncates.",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "RobotoFlex"
+        }
+      }
+    ],
+    "text-serif__ideal__default__dark": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 426,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Serif specimen 0123",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "NotoSerif-Regular"
+        }
+      }
+    ],
+    "text-serif__ideal__default__light": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 426,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Serif specimen 0123",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "NotoSerif-Regular"
+        }
+      }
+    ],
+    "text-monospace__ideal__default__dark": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 478,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Mono specimen 0123",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "DroidSansMono"
+        }
+      }
+    ],
+    "text-monospace__ideal__default__light": [
+      {
+        "kind": "typography",
+        "bounds": {
+          "x": 42,
+          "y": 42,
+          "width": 478,
+          "height": 63
+        },
+        "label": "text 16sp/24",
+        "role": "Mono specimen 0123",
+        "detail": {
+          "token": "text",
+          "unit": "sp",
+          "fontSize": "16",
+          "lineHeight": "24",
+          "fontWeight": "400",
+          "fontFamily": "DroidSansMono"
+        }
+      }
+    ]
+  },
+  "references": {}
+}

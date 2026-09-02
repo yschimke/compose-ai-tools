@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 210" width="300" height="210" role="img" aria-label="Button/Filled layout wireframe">
+  <title>Button/Filled — layout wireframe (slots + tokens)</title>
+  <rect width="300" height="210" fill="#ffffff"/>
+  <g>
+    <rect x="0" y="0" width="300" height="210" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="300" height="210" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="0" y="0" width="300" height="210" fill="none" fill-opacity="0" stroke="#8E6BA8" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="42" y="42" width="216" height="126" fill="none" fill-opacity="0" stroke="#B0813B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <path d="M94.5,53 H205.5 A52.5,52.5 0 0 1 258,105.5 V105.5 A52.5,52.5 0 0 1 205.5,158 H94.5 A52.5,52.5 0 0 1 42,105.5 V105.5 A52.5,52.5 0 0 1 94.5,53 Z" fill="#6750A4" fill-opacity="1" stroke="#3B72A8" stroke-width="1.5" stroke-opacity="1"/>
+    <text x="45" y="65" font-family="system-ui, sans-serif" font-size="9" fill="#3B72A8">#FF6750A4</text>
+  </g>
+  <g>
+    <rect x="105" y="74" width="90" height="63" fill="none" fill-opacity="0" stroke="#A85B6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
+    <rect x="105" y="79" width="90" height="53" fill="none" fill-opacity="0" stroke="#4F8A4A" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+</svg>

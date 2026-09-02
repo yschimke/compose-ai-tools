@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Compose Material 3 — design catalog</title>
+<style>
+  :root { color-scheme: light dark; --bg:#0f0f10; --panel:#1b1b1d; --fg:#e8e8ea; --muted:#9b9ba1; --line:#2a2a2d; --accent:#7dd87d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  header.top { padding:24px clamp(16px,4vw,40px); border-bottom:1px solid var(--line); }
+  header.top h1 { margin:0 0 6px; font-size:22px; }
+  header.top .subtitle { color:var(--muted); font-size:13px; }
+  header.top code { background:var(--panel); padding:1px 6px; border-radius:5px; }
+  header.top .pagelink { color:var(--accent); text-decoration:none; font-size:13px; }
+  header.top .pagelink:hover { text-decoration:underline; }
+  .layout { display:grid; grid-template-columns:240px 1fr; align-items:start; }
+  nav.index { position:sticky; top:0; align-self:start; max-height:100vh; overflow:auto; padding:20px 12px; border-right:1px solid var(--line); }
+  nav.index .nav-head { display:flex; justify-content:space-between; font-weight:600; text-decoration:none; color:var(--fg); padding:6px 8px; border-radius:6px; }
+  nav.index .nav-head span { color:var(--muted); font-weight:400; }
+  nav.index .nav-head:hover { background:var(--panel); }
+  nav.index ul { list-style:none; margin:2px 0 14px; padding:0 0 0 8px; }
+  nav.index li a { display:block; color:var(--muted); text-decoration:none; padding:3px 8px; border-radius:5px; font-size:13px; }
+  nav.index li a:hover { color:var(--fg); background:var(--panel); }
+  main { padding:8px clamp(16px,4vw,40px) 64px; min-width:0; }
+  .group { padding-top:24px; }
+  .group h2 { font-size:16px; border-bottom:1px solid var(--line); padding-bottom:8px; position:sticky; top:0; background:var(--bg); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  /* Theme-aware checkerboard so a transparent component sticker reads on the backing that matches
+     its baked theme — a light-theme component (dark strokes/text) on a LIGHT check, a dark-theme (or
+     theme-less) one on the default dark check — instead of light-mode content washing out on a fixed
+     dark backing. --ck-a / --ck-b are the two check colours; [data-bg=light] swaps them. Full-screen
+     stickers carry their own round and just sit on top. Shared by the grid hero and zoom variants. */
+  .shot, .state-shot { --ck-a:#161617; --ck-b:#202022;
+    background-color:var(--ck-a);
+    background-image:
+      linear-gradient(45deg,var(--ck-b) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--ck-b) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--ck-b) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--ck-b) 75%);
+    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
+  .shot[data-bg="light"], .state-shot[data-bg="light"] { --ck-a:#e9e9ef; --ck-b:#ffffff; }
+  .shot { margin:0; display:grid; place-items:center; min-height:120px; padding:12px; }
+  .shot img { max-width:100%; max-height:240px; height:auto; display:block; }
+  a.shot { cursor:zoom-in; text-decoration:none; }
+  /* Framed mode (set by the crop script below): the hero is sized to the component's content bbox
+     — read from the figma-svg's translate + viewBox — and the PNG is absolutely-positioned so only
+     the component shows. A wear sticker rendered on a 454² device canvas is displayed cropped to
+     the component instead of floating in an empty frame; a no-op for close-cropped (phone) renders
+     where the bbox already fills the frame. */
+  .shot--framed { overflow:hidden; padding:0; min-height:0; position:relative; place-items:stretch;
+    margin:16px auto; border-radius:8px; max-width:100%; }
+  .shot--framed img { position:absolute; max-width:none; max-height:none; }
+  /* A gutter window shows the component at its siblings' size and lets the shadow it holds spill
+     past the box — so it must not clip, and the card must not either, or the spill dies at the card
+     edge. AFTER the .shot--framed rule on purpose: same specificity, so the later one is what
+     wins, and a bleeding shot always carries both classes. */
+  .shot--bleed { overflow:visible; }
+  .card:has(.shot--bleed) { overflow:visible; }
+  .shot--missing { color:var(--muted); font-style:italic; }
+  .card--failed { border-color:#7d4148; }
+  .shot--failed { color:#f1b5b9; background:#26191b; text-align:center; display:flex; flex-direction:column; gap:6px; }
+  .shot--failed .failure-mark { display:grid; place-items:center; width:30px; height:30px; border:1px solid #d66c75; border-radius:50%; font-size:18px; }
+  .shot--failed span:last-child { color:#c9a3a6; font-size:11px; max-width:32ch; }
+  .failure-chip { color:#ef9299; border:1px solid #7d4148; border-radius:999px; padding:1px 7px; white-space:nowrap; }
+  .failure-detail { min-width:min(680px,80vw); color:var(--fg); }
+  .failure-detail + .failure-detail { border-top:1px solid var(--line); margin-top:14px; padding-top:14px; }
+  .failure-meta,.failure-frame { color:var(--muted); font-size:12px; margin-top:4px; }
+  .failure-detail details { margin-top:10px; }
+  .failure-detail pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11px; }
+  .failure-summary { margin:18px clamp(16px,4vw,40px) 0; padding:12px 14px; border:1px solid #7d4148; border-radius:10px; background:#26191b; color:#c9a3a6; }
+  .failure-summary > strong { color:#ef9299; }
+  .failure-summary ul { display:grid; gap:4px; margin:8px 0 0; padding:0; list-style:none; }
+  .failure-summary li { display:flex; justify-content:space-between; gap:16px; font-size:12px; }
+  .meta { padding:10px 12px 12px; border-top:1px solid var(--line); }
+  .meta h3 { margin:0; font-size:13px; font-weight:600; word-break:break-word; }
+  .meta h3 a.ctitle { color:inherit; text-decoration:none; }
+  .meta h3 a.ctitle:hover { text-decoration:underline; }
+  .meta .sub { color:var(--muted); font-size:12px; margin-top:2px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
+  .meta .sub .wf { color:#7dd87d; text-decoration:none; white-space:nowrap; }
+  .meta .sub .wf:hover { text-decoration:underline; }
+  .statechip { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); text-decoration:none; white-space:nowrap; }
+  .statechip:hover { color:var(--fg); border-color:var(--muted); }
+  .greenlines { margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; }
+  .chip { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--accent); color:var(--accent); }
+  .chip--warn { border-color:#e0c060; color:#e0c060; }
+  .chip--error { border-color:#e08080; color:#e08080; }
+  /* Single-component zoom view — a pure-CSS :target overlay, one per component. */
+  .detail { display:none; }
+  .detail:target { display:flex; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; padding:clamp(12px,4vw,40px); }
+  .detail-scrim { position:absolute; inset:0; background:rgba(0,0,0,0.72); }
+  .detail-panel { position:relative; z-index:1; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    max-width:min(960px,94vw); max-height:88vh; overflow:auto; padding:20px 24px; }
+  .detail-panel h3 { margin:0 0 4px; font-size:15px; word-break:break-word; }
+  .detail-caption { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .detail-x { position:absolute; top:8px; right:14px; color:var(--muted); text-decoration:none; font-size:24px; line-height:1; }
+  .detail-x:hover { color:var(--fg); }
+  .detail-states { display:flex; flex-wrap:wrap; gap:18px; }
+  figure.state { margin:0; }
+  figure.state figcaption { font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:capitalize; }
+  .state-shots { display:flex; flex-wrap:wrap; gap:10px; }
+  .state-shot { display:flex; flex-direction:column; align-items:center; gap:5px;
+    border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .state-shot img { max-width:220px; max-height:220px; height:auto; display:block; }
+  .state-shot span { font-size:11px; color:var(--muted); text-transform:capitalize; }
+  @media (max-width:720px){ .layout{ grid-template-columns:1fr; } nav.index{ position:static; max-height:none; border-right:0; border-bottom:1px solid var(--line);} }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Compose Material 3</h1>
+  <div class="subtitle">system <code>compose-m3</code> · org.jetbrains.compose.material3:material3, androidx.compose.material3.adaptive:adaptive (planned) · rendered by compose-preview 1.62.3-SNAPSHOT · 2026-09-02T07:00:58.792Z · 13 components</div>
+  <div class="subtitle"><a class="pagelink" href="compare.html">SVG vs PNG compare ↗</a></div>
+</header>
+
+<div class="layout">
+  <nav class="index"><section class="nav-group">
+      <a class="nav-head" href="#g-buttons">Buttons <span>1</span></a>
+      <ul><li><a href="#c-button-filled">Button/Filled</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-communication">Communication <span>2</span></a>
+      <ul><li><a href="#c-progress-linear">Progress/Linear</a></li><li><a href="#c-badge">Badge</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-containment">Containment <span>1</span></a>
+      <ul><li><a href="#c-card-slots">Card/Slots</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-selection">Selection <span>3</span></a>
+      <ul><li><a href="#c-checkbox-checked">Checkbox/Checked</a></li><li><a href="#c-switch-on">Switch/On</a></li><li><a href="#c-slider">Slider</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-shape">Shape <span>1</span></a>
+      <ul><li><a href="#c-shape-morph">Shape/Morph</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-scaffold-templates">Scaffold templates <span>1</span></a>
+      <ul><li><a href="#c-template-appscaffold">Template/AppScaffold</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-text-fields">Text fields <span>1</span></a>
+      <ul><li><a href="#c-textfield-filled">TextField/Filled</a></li></ul>
+    </section><section class="nav-group">
+      <a class="nav-head" href="#g-text-options">Text options <span>3</span></a>
+      <ul><li><a href="#c-text-maxlines-truncated">Text/MaxLines-Truncated</a></li><li><a href="#c-text-serif">Text/Serif</a></li><li><a href="#c-text-monospace">Text/Monospace</a></li></ul>
+    </section></nav>
+  <main><section class="group" id="g-buttons">
+      <h2>Buttons</h2>
+      <div class="grid"><article class="card" id="c-button-filled">
+  <a class="shot" href="#d-button-filled" aria-label="Zoom Button/Filled"><img loading="lazy" src="images/button-filled/ideal__default__dark.png" alt="Button/Filled" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-button-filled">Button/Filled</a></h3>
+    <div class="sub">300×210<a class="statechip" href="#d-button-filled">+5 variants</a><a class="wf" href="wireframes/button-filled.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/button-filled.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    <div class="greenlines" title="accessibility greenlines"><span class="chip chip--info">button</span></div>
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-communication">
+      <h2>Communication</h2>
+      <div class="grid"><article class="card" id="c-progress-linear">
+  <a class="shot" href="#d-progress-linear" aria-label="Zoom Progress/Linear"><img loading="lazy" src="images/progress-linear/ideal__default__dark.png" alt="Progress/Linear" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-progress-linear">Progress/Linear</a></h3>
+    <div class="sub">662×95<a class="wf" href="wireframes/progress-linear.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/progress-linear.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article>
+<article class="card" id="c-badge">
+  <a class="shot" href="#d-badge" aria-label="Zoom Badge"><img loading="lazy" src="images/badge/ideal__default__dark.png" alt="Badge" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-badge">Badge</a></h3>
+    <div class="sub">126×126<a class="wf" href="wireframes/badge.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/badge.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-containment">
+      <h2>Containment</h2>
+      <div class="grid"><article class="card" id="c-card-slots">
+  <a class="shot" href="#d-card-slots" aria-label="Zoom Card/Slots"><img loading="lazy" src="images/card-slots/ideal__default__dark.png" alt="Card/Slots" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-card-slots">Card/Slots</a></h3>
+    <div class="sub">653×274<a class="statechip" href="#d-card-slots">+2 variants</a><a class="wf" href="wireframes/card-slots.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/card-slots.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-selection">
+      <h2>Selection</h2>
+      <div class="grid"><article class="card" id="c-checkbox-checked">
+  <a class="shot" href="#d-checkbox-checked" aria-label="Zoom Checkbox/Checked"><img loading="lazy" src="images/checkbox-checked/ideal__default__dark.png" alt="Checkbox/Checked" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-checkbox-checked">Checkbox/Checked</a></h3>
+    <div class="sub">210×210<a class="statechip" href="#d-checkbox-checked">+1 state</a><a class="wf" href="wireframes/checkbox-checked.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/checkbox-checked.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    <div class="greenlines" title="accessibility greenlines"><span class="chip chip--info">checkbox</span></div>
+  </div>
+</article>
+<article class="card" id="c-switch-on">
+  <a class="shot" href="#d-switch-on" aria-label="Zoom Switch/On"><img loading="lazy" src="images/switch-on/ideal__default__dark.png" alt="Switch/On" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-switch-on">Switch/On</a></h3>
+    <div class="sub">221×210<a class="statechip" href="#d-switch-on">+4 variants</a><a class="wf" href="wireframes/switch-on.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/switch-on.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    <div class="greenlines" title="accessibility greenlines"><span class="chip chip--info">switch</span></div>
+  </div>
+</article>
+<article class="card" id="c-slider">
+  <a class="shot" href="#d-slider" aria-label="Zoom Slider"><img loading="lazy" src="images/slider/ideal__default__dark.png" alt="Slider" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-slider">Slider</a></h3>
+    <div class="sub">662×210<a class="wf" href="wireframes/slider.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/slider.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-shape">
+      <h2>Shape</h2>
+      <div class="grid"><article class="card" id="c-shape-morph">
+  <a class="shot" href="#d-shape-morph" aria-label="Zoom Shape/Morph"><img loading="lazy" src="images/shape-morph/ideal__default__dark.png" alt="Shape/Morph" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-shape-morph">Shape/Morph</a></h3>
+    <div class="sub">827×746<a class="wf" href="wireframes/shape-morph.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/shape-morph.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-scaffold-templates">
+      <h2>Scaffold templates</h2>
+      <div class="grid"><article class="card" id="c-template-appscaffold">
+  <a class="shot" href="#d-template-appscaffold" aria-label="Zoom Template/AppScaffold"><img loading="lazy" src="images/template-appscaffold/ideal__default__dark__compact.png" alt="Template/AppScaffold" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-template-appscaffold">Template/AppScaffold</a></h3>
+    <div class="sub">1078×2399<a class="wf" href="wireframes/template-appscaffold.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/template-appscaffold.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    <div class="greenlines" title="accessibility greenlines"><span class="chip chip--info">button</span></div>
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-text-fields">
+      <h2>Text fields</h2>
+      <div class="grid"><article class="card" id="c-textfield-filled">
+  <a class="shot" href="#d-textfield-filled" aria-label="Zoom TextField/Filled"><img loading="lazy" src="images/textfield-filled/ideal__default__dark.png" alt="TextField/Filled" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-textfield-filled">TextField/Filled</a></h3>
+    <div class="sub">819×231<a class="wf" href="wireframes/textfield-filled.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/textfield-filled.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article></div>
+    </section>
+<section class="group" id="g-text-options">
+      <h2>Text options</h2>
+      <div class="grid"><article class="card" id="c-text-maxlines-truncated">
+  <a class="shot" href="#d-text-maxlines-truncated" aria-label="Zoom Text/MaxLines-Truncated"><img loading="lazy" src="images/text-maxlines-truncated/ideal__default__dark.png" alt="Text/MaxLines-Truncated" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-text-maxlines-truncated">Text/MaxLines-Truncated</a></h3>
+    <div class="sub">420×210<a class="wf" href="wireframes/text-maxlines-truncated.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/text-maxlines-truncated.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article>
+<article class="card" id="c-text-serif">
+  <a class="shot" href="#d-text-serif" aria-label="Zoom Text/Serif"><img loading="lazy" src="images/text-serif/ideal__default__dark.png" alt="Text/Serif" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-text-serif">Text/Serif</a></h3>
+    <div class="sub">510×147<a class="wf" href="wireframes/text-serif.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/text-serif.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article>
+<article class="card" id="c-text-monospace">
+  <a class="shot" href="#d-text-monospace" aria-label="Zoom Text/Monospace"><img loading="lazy" src="images/text-monospace/ideal__default__dark.png" alt="Text/Monospace" /></a>
+  <div class="meta">
+    <h3><a class="ctitle" href="#d-text-monospace">Text/Monospace</a></h3>
+    <div class="sub">562×147<a class="wf" href="wireframes/text-monospace.svg" target="_blank" rel="noopener">wireframe ↗</a><a class="wf figma-svg-link" href="figma/text-monospace.svg" target="_blank" rel="noopener">figma svg ↗</a></div>
+    
+  </div>
+</article></div>
+    </section></main>
+</div>
+<div class="detail" id="d-button-filled" role="dialog" aria-label="Button/Filled">
+  <a class="detail-scrim" href="#c-button-filled" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-button-filled" aria-label="Close">×</a>
+    <h3>Button/Filled</h3>
+    <div class="detail-caption">The catalog&#39;s stateless-action carrier; the disabled state folds in as an @OverrideVariant (enabled = false).</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__default__dark.png" alt="Button/Filled default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/button-filled/ideal__default__light.png" alt="Button/Filled default" /><span>light</span></div></div></figure><figure class="state"><figcaption>disabled</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__disabled__dark.png" alt="Button/Filled disabled" /><span>dark</span></div><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__disabled.png" alt="Button/Filled disabled" /><span>disabled</span></div></div></figure><figure class="state"><figcaption>fontScale=2.0</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__default__dark__fontscale-2.0.png" alt="Button/Filled fontScale=2.0" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/button-filled/ideal__default__light__fontscale-2.0.png" alt="Button/Filled fontScale=2.0" /><span>light</span></div></div></figure><figure class="state"><figcaption>pressed</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__pressed__dark.png" alt="Button/Filled pressed" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/button-filled/ideal__pressed__light.png" alt="Button/Filled pressed" /><span>light</span></div></div></figure><figure class="state"><figcaption>keyboard-focus</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__keyboard-focus__dark.png" alt="Button/Filled keyboard-focus" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/button-filled/ideal__keyboard-focus__light.png" alt="Button/Filled keyboard-focus" /><span>light</span></div></div></figure><figure class="state"><figcaption>content=icon+label</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/button-filled/ideal__default__dark__content-icon-label.png" alt="Button/Filled content=icon+label" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/button-filled/ideal__default__light__content-icon-label.png" alt="Button/Filled content=icon+label" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-progress-linear" role="dialog" aria-label="Progress/Linear">
+  <a class="detail-scrim" href="#c-progress-linear" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-progress-linear" aria-label="Close">×</a>
+    <h3>Progress/Linear</h3>
+    <div class="detail-caption">Determinate, driven by the `progress` Float knob.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/progress-linear/ideal__default__dark.png" alt="Progress/Linear default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/progress-linear/ideal__default__light.png" alt="Progress/Linear default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-badge" role="dialog" aria-label="Badge">
+  <a class="detail-scrim" href="#c-badge" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-badge" aria-label="Close">×</a>
+    <h3>Badge</h3>
+    <div class="detail-caption">The sheet&#39;s Int knob (`count`).</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/badge/ideal__default__dark.png" alt="Badge default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/badge/ideal__default__light.png" alt="Badge default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-card-slots" role="dialog" aria-label="Card/Slots">
+  <a class="detail-scrim" href="#c-card-slots" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-card-slots" aria-label="Close">×</a>
+    <h3>Card/Slots</h3>
+    <div class="detail-caption">A card with named PreviewSlot regions a structured-screen builder fills.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/card-slots/ideal__default__dark.png" alt="Card/Slots default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/card-slots/ideal__default__light.png" alt="Card/Slots default" /><span>light</span></div></div></figure><figure class="state"><figcaption>slot-mode</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/card-slots/ideal__slot-mode__dark.png" alt="Card/Slots slot-mode" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/card-slots/ideal__slot-mode__light.png" alt="Card/Slots slot-mode" /><span>light</span></div></div></figure><figure class="state"><figcaption>locale=ar</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/card-slots/ideal__default__dark__locale-ar.png" alt="Card/Slots locale=ar" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/card-slots/ideal__default__light__locale-ar.png" alt="Card/Slots locale=ar" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-checkbox-checked" role="dialog" aria-label="Checkbox/Checked">
+  <a class="detail-scrim" href="#c-checkbox-checked" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-checkbox-checked" aria-label="Close">×</a>
+    <h3>Checkbox/Checked</h3>
+    <div class="detail-caption">Checked; the unchecked state folds in as an @OverrideVariant (checked = false).</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/checkbox-checked/ideal__default__dark.png" alt="Checkbox/Checked default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/checkbox-checked/ideal__default__light.png" alt="Checkbox/Checked default" /><span>light</span></div></div></figure><figure class="state"><figcaption>unchecked</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/checkbox-checked/ideal__unchecked__dark.png" alt="Checkbox/Checked unchecked" /><span>dark</span></div><div class="state-shot"><img loading="lazy" src="images/checkbox-checked/ideal__unchecked.png" alt="Checkbox/Checked unchecked" /><span>unchecked</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-switch-on" role="dialog" aria-label="Switch/On">
+  <a class="detail-scrim" href="#c-switch-on" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-switch-on" aria-label="Close">×</a>
+    <h3>Switch/On</h3>
+    <div class="detail-caption">On; the off state folds in as an @OverrideVariant (checked = false).</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/switch-on/ideal__default__dark.png" alt="Switch/On default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/switch-on/ideal__default__light.png" alt="Switch/On default" /><span>light</span></div></div></figure><figure class="state"><figcaption>off</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/switch-on/ideal__off__dark.png" alt="Switch/On off" /><span>dark</span></div><div class="state-shot"><img loading="lazy" src="images/switch-on/ideal__off.png" alt="Switch/On off" /><span>off</span></div></div></figure><figure class="state"><figcaption>locale=ar-XB</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/switch-on/ideal__default__dark__locale-ar-xb.png" alt="Switch/On locale=ar-XB" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/switch-on/ideal__default__light__locale-ar-xb.png" alt="Switch/On locale=ar-XB" /><span>light</span></div></div></figure><figure class="state"><figcaption>direction=rtl</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/switch-on/ideal__default__dark__direction-rtl.png" alt="Switch/On direction=rtl" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/switch-on/ideal__default__light__direction-rtl.png" alt="Switch/On direction=rtl" /><span>light</span></div></div></figure><figure class="state"><figcaption>fontScale=2.0</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/switch-on/ideal__default__dark__fontscale-2.0.png" alt="Switch/On fontScale=2.0" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/switch-on/ideal__default__light__fontscale-2.0.png" alt="Switch/On fontScale=2.0" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-slider" role="dialog" aria-label="Slider">
+  <a class="detail-scrim" href="#c-slider" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-slider" aria-label="Close">×</a>
+    <h3>Slider</h3>
+    <div class="detail-caption">The sheet&#39;s Float knob (`value`).</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/slider/ideal__default__dark.png" alt="Slider default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/slider/ideal__default__light.png" alt="Slider default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-shape-morph" role="dialog" aria-label="Shape/Morph">
+  <a class="detail-scrim" href="#c-shape-morph" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-shape-morph" aria-label="Close">×</a>
+    <h3>Shape/Morph</h3>
+    <div class="detail-caption">Square to rounded 9-point star; drag the slider in Live Compose or Wasm.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/shape-morph/ideal__default__dark.png" alt="Shape/Morph default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/shape-morph/ideal__default__light.png" alt="Shape/Morph default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-template-appscaffold" role="dialog" aria-label="Template/AppScaffold">
+  <a class="detail-scrim" href="#c-template-appscaffold" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-template-appscaffold" aria-label="Close">×</a>
+    <h3>Template/AppScaffold</h3>
+    <div class="detail-caption">Full-screen layout with the OS status bar — TopAppBar, a list, and a FAB, captured with showSystemUi on a phone.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/template-appscaffold/ideal__default__dark__compact.png" alt="Template/AppScaffold default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/template-appscaffold/ideal__default__light__compact.png" alt="Template/AppScaffold default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-textfield-filled" role="dialog" aria-label="TextField/Filled">
+  <a class="detail-scrim" href="#c-textfield-filled" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-textfield-filled" aria-label="Close">×</a>
+    <h3>TextField/Filled</h3>
+    <div class="detail-caption">Editable value + floating label — the sheet&#39;s string-knob carrier.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/textfield-filled/ideal__default__dark.png" alt="TextField/Filled default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/textfield-filled/ideal__default__light.png" alt="TextField/Filled default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-text-maxlines-truncated" role="dialog" aria-label="Text/MaxLines-Truncated">
+  <a class="detail-scrim" href="#c-text-maxlines-truncated" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-text-maxlines-truncated" aria-label="Close">×</a>
+    <h3>Text/MaxLines-Truncated</h3>
+    <div class="detail-caption">maxLines=2 + ellipsis overflow — exercises the textOverflow product.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/text-maxlines-truncated/ideal__default__dark.png" alt="Text/MaxLines-Truncated default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/text-maxlines-truncated/ideal__default__light.png" alt="Text/MaxLines-Truncated default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-text-serif" role="dialog" aria-label="Text/Serif">
+  <a class="detail-scrim" href="#c-text-serif" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-text-serif" aria-label="Close">×</a>
+    <h3>Text/Serif</h3>
+    <div class="detail-caption">Generic serif family (Noto Serif) — pins the Wasm tier’s font interception.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/text-serif/ideal__default__dark.png" alt="Text/Serif default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/text-serif/ideal__default__light.png" alt="Text/Serif default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<div class="detail" id="d-text-monospace" role="dialog" aria-label="Text/Monospace">
+  <a class="detail-scrim" href="#c-text-monospace" aria-label="Close"></a>
+  <div class="detail-panel">
+    <a class="detail-x" href="#c-text-monospace" aria-label="Close">×</a>
+    <h3>Text/Monospace</h3>
+    <div class="detail-caption">Generic monospace family (Droid Sans Mono) — pins the Wasm tier’s font interception.</div>
+    <div class="detail-states"><figure class="state"><figcaption>default</figcaption><div class="state-shots"><div class="state-shot"><img loading="lazy" src="images/text-monospace/ideal__default__dark.png" alt="Text/Monospace default" /><span>dark</span></div><div class="state-shot" data-bg="light"><img loading="lazy" src="images/text-monospace/ideal__default__light.png" alt="Text/Monospace default" /><span>light</span></div></div></figure></div>
+  </div>
+</div>
+<script>
+// Crop each component's hero (and its zoom-view default capture) to the component's content bbox,
+// read from its figma-svg's root translate + viewBox. A wear sticker rendered on a 454² device
+// canvas then displays cropped to the component instead of floating in an empty frame. A no-op for
+// close-cropped renders (the bbox already fills the frame) and for components with no figma-svg.
+(function () {
+  function parseBox(svgText) {
+    var t = /translate\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/.exec(svgText);
+    var v = /viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/.exec(svgText);
+    if (!v) return null;
+    return { tx: t ? +t[1] : 0, ty: t ? +t[2] : 0, vw: +v[1], vh: +v[2] };
+  }
+  function frame(shot, box, gutterEdges) {
+    var img = shot.querySelector("img");
+    if (!img) return;
+    function apply() {
+      var rw = img.naturalWidth || img.width, rh = img.naturalHeight || img.height;
+      if (!(rw > 0 && rh > 0)) return;
+      if (box.vw >= rw * 0.9 && box.vh >= rh * 0.9) {
+        // Already close-cropped as far as the vector can tell — but a declared gutter is margin the
+        // capture added, which no bbox of the drawn pixels can distinguish from the component.
+        if (gutterEdges) frameGutter(shot, gutterEdges);
+        return;
+      }
+      var cap = 240, scale = Math.min(1, cap / Math.max(box.vw, box.vh));
+      var dw = Math.max(1, Math.round(box.vw * scale));
+      shot.classList.add("shot--framed");
+      // A vector-framed shot on a GUTTERED render must not hide its overflow either: the box the
+      // vector describes is the component, and the pixels beyond it are that component's shadow.
+      if (gutterEdges) shot.classList.add("shot--bleed");
+      // Size the window by aspect-ratio at its natural (capped) width, with max-width:100% so it
+      // shrinks to a narrow grid card instead of overflowing it; frame the render in PERCENTAGES of
+      // the box so the whole thing scales as one. (A fixed-px window overflowed the card and clipped
+      // wide components.) Height stays auto — the img keeps the render's aspect.
+      var pct = function (n, d) { return +(n / d * 100).toFixed(4); };
+      shot.style.width = dw + "px";
+      shot.style.aspectRatio = box.vw + " / " + box.vh;
+      img.style.width = pct(rw, box.vw) + "%";
+      // (tx,ty) is negative for a centred component, so it shifts the render to bring the component's
+      // top-left to the clip origin; as a % of the box axis it scales with the shrunk window.
+      img.style.left = pct(box.tx, box.vw) + "%";
+      img.style.top = pct(box.ty, box.vh) + "%";
+    }
+    if (img.complete) apply();
+    else img.addEventListener("load", apply);
+  }
+  // A declared capture gutter needs no vector and no guard: the renderer recorded exactly how much
+  // transparent margin it added, so the box is a fact rather than an inference. Native pixels — the
+  // stylesheet caps how large a card draws, and scaling here would hand a guttered card a different
+  // display size from the plain one beside it, which is the difference being removed.
+  function frameGutter(shot, edges) {
+    var img = shot.querySelector("img");
+    if (!img) return;
+    function apply() {
+      var rw = img.naturalWidth || img.width, rh = img.naturalHeight || img.height;
+      if (!(rw > 0 && rh > 0)) return;
+      var boxW = rw - edges[0] - edges[2], boxH = rh - edges[1] - edges[3];
+      if (!(boxW > 0 && boxH > 0)) return;
+      // Capped on HEIGHT, which is the rule the stylesheet applies to a plain card image
+      // (max-height:240px, width follows) — a framed window carries an aspect-ratio, so the cap
+      // cannot come from CSS without squashing it. Capping the largest edge instead would shrink a
+      // wide-but-short component no plain sibling shrinks.
+      var scale = Math.min(1, 240 / boxH);
+      var bw = Math.max(1, Math.round(boxW * scale));
+      var bh = Math.max(1, Math.round(boxH * scale));
+      var iw = Math.round(rw * scale);
+      var offX = Math.round(edges[0] * scale), offY = Math.round(edges[1] * scale);
+      var pct = function (n, d) { return +(n / d * 100).toFixed(4); };
+      // "shot--bleed" keeps the overflow visible: what falls outside this box is the component's
+      // own shadow, which the gutter was captured to preserve. Hiding it would crop the shadow a
+      // second time, which is the bug the gutter fixed.
+      shot.classList.add("shot--framed");
+      shot.classList.add("shot--bleed");
+      shot.style.width = bw + "px";
+      shot.style.aspectRatio = bw + " / " + bh;
+      img.style.width = pct(iw, bw) + "%";
+      img.style.left = pct(-offX, bw) + "%";
+      img.style.top = pct(-offY, bh) + "%";
+    }
+    if (img.complete) apply();
+    else img.addEventListener("load", apply);
+  }
+  document.querySelectorAll(".card").forEach(function (card) {
+    var hero = card.querySelector("a.shot");
+    if (!hero) return;
+    var declared = hero.getAttribute("data-gutter");
+    var edges = declared
+      ? declared.split(",").map(function (v) { return Math.max(0, parseInt(v, 10) || 0); })
+      : null;
+    var link = card.querySelector('a.figma-svg-link');
+    if (!link) {
+      if (edges) frameGutter(hero, edges);
+      return;
+    }
+    // Fetch the vector only once the card is actually near the viewport.
+    //
+    // A deferred catalog publishes no static vector: the href is an absolute live-render URL and
+    // the daemon generates the SVG per request, from a small pool of live seats. Fetching every
+    // card's on load would start a render for the whole catalog the instant the gallery opens —
+    // thousands, on the large catalogs deferral exists for — spending the seats on bounding boxes
+    // and answering the visitors who actually asked for a vector with 503s.
+    //
+    // Deferring the same fetch to visibility fixes that without giving up the crop: the vector is
+    // the only source of the content box for a card with no declared gutter (an ordinary 454x454
+    // Wear canvas, say), so skipping it outright would leave those heroes uncropped in the full
+    // device canvas. Only what someone looks at is rendered, at the pace they scroll.
+    var pending = function () {
+      fetch(link.getAttribute("href"))
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (txt) {
+          // The vector wins where it applies — it answers the tighter question of where the
+          // component sits on a canvas it was drawn on — and the gutter answers when it does not.
+          var box = txt ? parseBox(txt) : null;
+          if (box) frame(hero, box, edges);
+          else if (edges) frameGutter(hero, edges);
+        })
+        .catch(function () { if (edges) frameGutter(hero, edges); });
+    };
+    if (typeof IntersectionObserver !== "function") {
+      pending();
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        observer.unobserve(entry.target);
+        pending();
+      });
+    }, { rootMargin: "400px" });
+    observer.observe(card);
+  });
+})();
+</script>
+</body>
+</html>

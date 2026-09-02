@@ -1,0 +1,185 @@
+{
+  "schema": "compose-preview-tags/v1",
+  "previews": {
+    "card-slots__ideal__default__dark": {
+      "dp-slot:leadingIcon;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 74,
+          "y": 85,
+          "width": 105,
+          "height": 105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:headline;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:supporting;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      }
+    },
+    "card-slots__ideal__default__light": {
+      "dp-slot:leadingIcon;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 74,
+          "y": 85,
+          "width": 105,
+          "height": 105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:headline;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:supporting;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      }
+    },
+    "card-slots__ideal__slot-mode__dark": {
+      "dp-slot:leadingIcon;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 74,
+          "y": 998,
+          "width": 105,
+          "height": 105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:headline;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 368,
+          "height": 1952
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:supporting;scope=column": {
+        "count": 1,
+        "space": "render-pixels"
+      }
+    },
+    "card-slots__ideal__slot-mode__light": {
+      "dp-slot:leadingIcon;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 74,
+          "y": 998,
+          "width": 105,
+          "height": 105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:headline;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 368,
+          "height": 1952
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:supporting;scope=column": {
+        "count": 1,
+        "space": "render-pixels"
+      }
+    },
+    "card-slots__ideal__default__dark__locale-ar": {
+      "dp-slot:leadingIcon;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 74,
+          "y": 85,
+          "width": 105,
+          "height": 105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:headline;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:supporting;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      }
+    },
+    "card-slots__ideal__default__light__locale-ar": {
+      "dp-slot:leadingIcon;scope=row": {
+        "count": 1,
+        "bounds": {
+          "x": 74,
+          "y": 85,
+          "width": 105,
+          "height": 105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:headline;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 74,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:supporting;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 211,
+          "y": 137,
+          "width": 368,
+          "height": 63
+        },
+        "space": "render-pixels"
+      }
+    }
+  }
+}

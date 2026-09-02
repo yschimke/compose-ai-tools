@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210" height="210" viewBox="0 0 210 210" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <g id="Spacer">
+      <g transform="translate(79 79) scale(1 1)">
+        <path d="M5.25,5 H47.75 A0.25,0.25 0 0 1 48,5.25 V47.75 A0.25,0.25 0 0 1 47.75,48 H5.25 A0.25,0.25 0 0 1 5,47.75 V5.25 A0.25,0.25 0 0 1 5.25,5 Z" fill="none"/>
+        <path d="M5.25,2.5 H47.75 A2.75,2.75 0 0 1 50.5,5.25 V47.75 A2.75,2.75 0 0 1 47.75,50.5 H5.25 A2.75,2.75 0 0 1 2.5,47.75 V5.25 A2.75,2.75 0 0 1 5.25,2.5 Z" fill="none" stroke="#49454F" stroke-width="5"/>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>
