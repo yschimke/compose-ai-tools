@@ -193,19 +193,22 @@ object PreviewTargetInference {
         .filter {
           isComponentLibraryTarget(
             ownerFqn = it.ownerFqn,
-            methodName = it.method.name,
+            methodName = sourceFunctionName(it.method.name),
             returnsUnit = it.method.typeDescriptor?.resultType?.toString() == "void",
           )
         }
-        .distinctBy { it.ownerFqn to it.method.name }
+        .distinctBy { it.ownerFqn to sourceFunctionName(it.method.name) }
         .toList()
     if (candidates.isEmpty()) return emptyList()
     val confidence = if (candidates.size == 1) TargetConfidence.HIGH else TargetConfidence.MEDIUM
     return candidates.map { candidate ->
+      // Metadata is matched on the JVM name (`candidate.method`), which is the mangled one; only
+      // the *reported* name is demangled. Reading the signature with the source name would find
+      // nothing.
       val signature = ComposableSignature.signatureOf(candidate.classInfo, candidate.method)
       PreviewTarget(
         className = candidate.ownerFqn,
-        functionName = candidate.method.name,
+        functionName = sourceFunctionName(candidate.method.name),
         // A library symbol has no source file in this build; `sourceFile` stays null and
         // [PreviewTarget.origin] is what says so, rather than the null being read as "library".
         sourceFile = null,
@@ -537,6 +540,30 @@ object PreviewTargetInference {
    *   here, and reporting them would describe a sticker's theme lookup as its subject;
    * * not a [THEME_ENTRY_POINTS] member — the frame a sticker is drawn in rather than its subject.
    */
+  /**
+   * The **source-level** name behind a JVM method name, undoing Kotlin's inline-class mangling.
+   *
+   * Kotlin mangles the JVM name of any function whose signature mentions a value class, appending
+   * `-` and a hash of that signature: `androidx.compose.material3.Text` compiles to
+   * `TextKt."Text-Nvy7gAk"` because its `fontSize`, `color` and `overflow` parameters are
+   * `TextUnit`, `Color` and `TextOverflow`. A Kotlin identifier can never contain `-`, so the first
+   * one is unambiguously the mangling boundary.
+   *
+   * This is load-bearing rather than cosmetic. [isComponentLibraryTarget] rejects a name that is
+   * not a usable import, and a mangled name is not — so before this, **every Material 3 component
+   * whose signature mentions `Color`, `Dp` or `TextUnit` was silently dropped from the component
+   * record**, `Text` among them. A preview whose only call was `Text` inferred no component at all.
+   * The functional compile gate is what surfaced it: `Button` and `Card` take neither, so the
+   * hand-written unit tests never had a mangled name to trip over.
+   *
+   * Only the `-` mangle, deliberately. Kotlin's other JVM mangle is `name$module` for an `internal`
+   * function ([nameMatches] strips that one for its own purposes), but stripping `$` here would
+   * also turn `Card$lambda$0` into `Card` and rescue exactly the synthetic members
+   * [isComponentLibraryTarget] exists to reject — and a library's `internal` composable is not a
+   * call site a consumer could write anyway.
+   */
+  internal fun sourceFunctionName(jvmName: String): String = jvmName.substringBefore('-')
+
   internal fun isComponentLibraryTarget(
     ownerFqn: String,
     methodName: String,
