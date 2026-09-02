@@ -12,7 +12,7 @@ import ee.schimke.composeai.daemon.RemoteEmbeddedPreviewWrapper
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * Two ways to preview a Remote Compose component — same output, different code shape. The
+ * Two ways to preview a Remote Compose component — same pixels, different export behavior. The
  * component-preview dimensions (200×200) are kept small and square so the rendered PNG frames a
  * single button cleanly; bump `widthDp` / `heightDp` if you add components that need more room.
  */
@@ -26,7 +26,9 @@ import ee.schimke.composeai.preview.AnimatedPreview
 // { ... } }`. Verbose for many previews but works today — no reliance on
 // the `@PreviewWrapper` tooling annotation (which only exists in
 // compose-ui 1.11.0-beta+ and isn't yet understood by Android Studio
-// releases paired with stable Compose).
+// releases paired with stable Compose). This renders the pixels but does not expose
+// the recorded Remote Compose document to compose-preview, so it does not emit an
+// `.rc` data product.
 // ---------------------------------------------------------------------------
 
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
@@ -62,7 +64,10 @@ fun RemoteButtonWithShapePreview() {
 // substitution wires `renderNow.overrides.remoteCompose.namedValues` into the
 // running player's `StateUpdater`, so a binding like
 // `rememberNamedRemoteString("label", "Tap me")` flips when the daemon seeds an
-// override — no annotation change on the preview side.
+// override — no annotation change on the preview side. The substitution also
+// records the Remote Compose document as an `.rc` data product. Keep this wrapper
+// form, and add `data-remotecompose-connector` as a debug dependency, whenever the
+// document itself must be collected in addition to the rendered pixels.
 // ---------------------------------------------------------------------------
 
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
@@ -78,9 +83,10 @@ fun RemoteButtonWithBorderPreview() {
  * infinite, and [AnimatedPreview.showCurves] is disabled because the moving values live in the
  * Remote Compose document rather than Compose UI's animation inspector.
  *
- * The wrapper path also emits the captured `.rc` document. This variant uses the standard
- * View-backed Remote Compose player; [RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview]
- * renders the identical remote content through the embedded Compose player.
+ * With `:data-remotecompose-connector` on the render classpath, the wrapper path also emits the
+ * captured `.rc` document. This variant uses the standard View-backed Remote Compose player;
+ * [RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview] renders the identical remote
+ * content through the embedded Compose player.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @PreviewWrapper(RemotePreviewWrapper::class)
