@@ -23,9 +23,8 @@ import okio.Path.Companion.toPath
  *
  * Three subcommands cover the full agent-attach lifecycle:
  *
- * - `serve` — start the MCP server on stdio. Writes nothing to stdout itself; the only stdout
- *   traffic is the JSON-RPC frames the [DaemonMcpMain] reader/writer pair owns. Status / errors go
- *   to stderr.
+ * - `serve` — start the MCP server on stdio, or the shared UI Builder's authenticated Streamable
+ *   HTTP endpoint with `--streamable-http`. Status / errors go to stderr.
  * - `install` — bootstrap descriptors for every module that applies the plugin, flip each
  *   descriptor's `enabled` flag to `true` (`composePreview.daemon { enabled = true }` isn't
  *   required up-front this way), run `composePreviewDiscover`, and print or install the MCP host
@@ -88,8 +87,21 @@ internal class McpCommand(
                              Override the authenticated actor id. By default it is derived from
                              the grant token fingerprint.
         COMPOSE_PREVIEW_UI_BUILDER_TOKEN
-                             Required secret when --ui-builder-url is set. It is read from the
-                             environment and never accepted as an argv value.
+                             Required secret for stdio when --ui-builder-url is set. It is read
+                             from the environment and never accepted as an argv value. Streamable
+                             HTTP instead accepts each client's Authorization bearer.
+
+      serve: shared UI builder over Streamable HTTP:
+        --streamable-http    Serve only the eight remote UI-builder tools over MCP Streamable HTTP.
+                             Each client supplies its preview-server grant as Authorization: Bearer.
+        --http-host <host>   Bind host (default 127.0.0.1; use a reverse proxy for public TLS).
+        --http-port <port>   Bind port (default 8788).
+        --http-path <path>   MCP endpoint path (default /ui-builder/mcp).
+        --http-allowed-host <host>
+                             Accepted Host header; repeat for aliases. Required for non-loopback
+                             binds and normally set to the shared server's public hostname.
+        --http-allowed-origin <host>
+                             Accepted browser Origin hostname; repeat to narrow independently.
 
       install: agent host registration (each defaults to "on" when the host is detected
       locally; opt out with --no-<host>):

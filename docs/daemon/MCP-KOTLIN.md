@@ -10,33 +10,30 @@ high-level mapping.
 message types and spawns daemon JVMs over stdio via launch descriptors
 emitted by `composePreviewDaemonStart`.
 
-## Why hand-rolled (not on the MCP Kotlin SDK)
+## SDK boundary
 
-The implementation is hand-rolled rather than built on
-[`io.modelcontextprotocol:kotlin-sdk`](https://github.com/modelcontextprotocol/kotlin-sdk):
-
-- The SDK auto-registers internal handlers for `resources/list` /
-  `resources/read` / `subscribe`, making the dynamic catalog + push
-  subscription model awkward to bolt on.
-- Rolling our own keeps the wire layer self-contained and mirrors the
-  proven `:daemon:core` `JsonRpcServer` framing.
+The official [`io.modelcontextprotocol:kotlin-sdk`](https://github.com/modelcontextprotocol/kotlin-sdk)
+owns MCP framing, negotiation, sessions, stdio, and Streamable HTTP. `DaemonMcpServer` still owns
+the dynamic catalog and installs its handlers directly on each SDK session so early pipelined calls
+cannot race the handler registration.
 
 ## Transport
 
-**stdio only.** The MCP server reads framed JSON-RPC from stdin, writes
-to stdout. Same `Content-Length:` LSP framing as the daemon
-([PROTOCOL.md § 1](PROTOCOL.md#1-transport)) — reused from
-`JsonRpcServer`.
+The local preview-daemon profile uses **stdio**.
 
-HTTP / SSE transports are out of scope. If a remote-agent use case
-materialises, factor `McpSession`'s read/write loops behind a transport
-interface and add an HTTP variant alongside.
+The shared UI-builder profile additionally uses the SDK's stateful **Streamable HTTP** transport at
+`/ui-builder/mcp`. It exposes only the remote UI-builder tools: a hosted service cannot safely make local
+filesystem paths or project-daemon controls meaningful. POST, GET/SSE and DELETE all require the
+same preview-server agent grant. The first authenticated request validates the grant through the
+Design API, then the MCP session id is bound to its fingerprint so another valid grant cannot take
+over that session.
 
-The optional UI-builder facade is different: the MCP client still connects to
-this process over stdio, while `UiBuilderMcpAdapter` acts as an authenticated
-HTTP client of preview-server's versioned Design API. It depends only on the
-released protocol artifact and deliberately owns no reducer, persistence,
-catalog, or render implementation.
+This is not the legacy standalone SSE transport. SSE is used only as Streamable HTTP's response and
+notification stream when negotiated by the MCP client.
+
+In both transports `UiBuilderMcpAdapter` is an authenticated HTTP client of preview-server's
+versioned Design API. It depends only on the released protocol artifact and deliberately owns no
+reducer, persistence, catalog, or render implementation.
 
 ## Module layout
 
@@ -50,6 +47,7 @@ mcp/
     ├── DaemonMcpMain.kt        — entry point; arg parsing; supervisor wiring
     ├── DaemonMcpServer.kt      — load-bearing wiring layer
     ├── McpServer.kt            — McpSession + handler interface
+    ├── UiBuilderStreamableHttp.kt — authenticated hosted `/ui-builder/mcp` transport
     ├── DaemonClient.kt         — JSON-RPC client of one daemon JVM
     ├── DaemonSupervisor.kt     — owns per-(workspace, module) daemons
     ├── PreviewResource.kt      — URI parsing (PreviewUri / HistoryUri / WorkspaceId / FqnGlob)
@@ -212,7 +210,7 @@ The respawn cap recovers when the user re-registers via
 
 ### MCP client disconnect
 
-`McpSession.runReader` exits on stdin EOF. `DaemonMcpMain.main` calls
+The SDK stdio transport closes on stdin EOF. `DaemonMcpMain.main` calls
 `supervisor.shutdown()` after the session exits, which sends `shutdown`
 + `exit` to every daemon and waits for them to drain.
 
