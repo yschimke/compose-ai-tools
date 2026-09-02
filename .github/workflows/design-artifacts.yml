@@ -580,9 +580,10 @@ jobs:
   # wear-m3 delegates to the shared reusable workflow (the same one external
   # consumers use), building the CLI from source (cli-source: build) so it still
   # publishes HEAD's renderer output. It's an Android (Robolectric) render with no
-  # Wasm tier, so it fits the common pipeline, and it carries a live bundle
-  # (shared-classpath split) — the Robolectric daemon a serve host with the Android
-  # sidecar runs re-renders it. See DESIGN_CATALOGS.md's reference-caller convention.
+  # Wasm tier, so it fits the common pipeline, and it carries a module-level live
+  # bundle (no per-preview split) — the Robolectric daemon a serve host with the
+  # Android sidecar runs re-renders it. See DESIGN_CATALOGS.md's reference-caller
+  # convention.
   #
   # remote-m3 used to sit beside it with the same shape. It is published by
   # yschimke/wear-m3-catalog now (#4588), through this very workflow's reusable half —
@@ -600,14 +601,20 @@ jobs:
       spec: samples/design-catalog-wear-m3/catalog.spec.json
       module: 'samples:design-catalog-wear-m3'
       cli-source: build
-      # Android Robolectric daemon can re-render Wear, so carry a live bundle and
-      # split it with a SHARED classpath: `classes/app.jar` is published once into
-      # `bundle/res` and each per-preview manifest carries a hash-verified
-      # `externalClasspath`, so the live re-render lane survives without repeating the
-      # carriage once per preview (the growth #4211 measured on m3-catalog).
+      # Android Robolectric daemon can re-render Wear, so carry a live bundle.
       publish-live-bundle: true
-      split-per-preview: true
-      split-mode: full-shared-classpath
+      # Pure editable SVGs are a daemon data product: keep them transient through catalog
+      # generation, then produce and cache them on request. Raster-backed hybrid SVGs stay
+      # static so their crop references remain self-contained.
+      defer-figma-svg: true
+      # No per-preview split. Pooling the classpath (`full-shared-classpath`) stopped the
+      # per-preview app.jar carriage #4211 measured on m3-catalog, but the split still writes
+      # an addressable copy of every preview under bundle/previews on each publish, and any
+      # catalog change rewrites all of them onto an append-only delivery branch. The module
+      # bundle above is what a trusted serve host hydrates, so the live re-render lane
+      # survives without it; `split-mode` is dropped with the split, which is the only thing
+      # it modifies. Same treatment as the consumer callers (meshcore-mobile#461).
+      split-per-preview: false
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
