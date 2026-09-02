@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.67.0](https://github.com/yschimke/compose-ai-tools/compare/v1.66.1...v1.67.0) (2026-09-02)
+
+
+### Features
+
+* **discovery:** print a compiling call site for each component ([#5028](https://github.com/yschimke/compose-ai-tools/issues/5028)) ([89defc6](https://github.com/yschimke/compose-ai-tools/commit/89defc6bcb37418f88036933d19f6fda15545703))
+
+
+### Bug Fixes
+
+* capture the font family a Wear clock draws with ([#5033](https://github.com/yschimke/compose-ai-tools/issues/5033)) ([db5d96a](https://github.com/yschimke/compose-ai-tools/commit/db5d96af5b92c994082540c470d0967641d11ac8))
+* **import:** render the nested build an import named, not its enclosing repo ([#5030](https://github.com/yschimke/compose-ai-tools/issues/5030)) ([65b5e4b](https://github.com/yschimke/compose-ai-tools/commit/65b5e4b1db2a465fc9843947003feeb1817246b7))
+
 ## [1.66.1](https://github.com/yschimke/compose-ai-tools/compare/v1.66.0...v1.66.1) (2026-09-02)
 
 
