@@ -4,6 +4,7 @@ import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ModifierInfo
@@ -1279,12 +1280,13 @@ internal object ComposeLayoutInspector {
         }
       } else null
     val ownerId = semanticsId?.toString() ?: identityId
-    val indications = LayoutTreeAccess.indications(modifiers, rootCoords)
+    val ripple = LayoutTreeAccess.rippleLayers(modifiers, rootCoords, density)
+    val indications = ripple.indications
     // A drawWithContent outside clickable paints its foreground after the ripple; one inside it
     // paints before the ripple. Capture each after-content pass separately so it can be interleaved
     // with indications by modifier position instead of flattening every indication to the end.
     val indicationForegrounds =
-      if (indications.isEmpty()) emptyList()
+      if (ripple.isEmpty()) emptyList()
       else
         modifiers.mapIndexedNotNull { modifierIndex, info ->
           DrawRasterCapture.captureForeground(listOf(info), density, fontScale) { candidate ->
@@ -1367,7 +1369,7 @@ internal object ComposeLayoutInspector {
       // A captured vector is normally a leaf in FigmaSvgModel. When an indication is active, move
       // the vector into a synthetic first child so the model's leaf return cannot discard the
       // overlay that must paint after it.
-      vectorGraphic = vectorGraphic.takeIf { indications.isEmpty() },
+      vectorGraphic = vectorGraphic.takeIf { ripple.isEmpty() },
       // The content-loading placeholder this chain declares, plus whether it is currently visible
       // (issue #2646). Resolved from the same modifier chain + measured size as `tokens`, by the
       // same resolver — the placeholder's own shape/colour, which `tokens` deliberately refuses as
@@ -1394,7 +1396,7 @@ internal object ComposeLayoutInspector {
       children =
         children +
           vectorGraphic
-            ?.takeIf { indications.isNotEmpty() }
+            ?.takeIf { ripple.isNotEmpty() }
             ?.let {
               LayoutInspectorNode(
                 nodeId = "$ownerId-indication-content",
@@ -1409,6 +1411,11 @@ internal object ComposeLayoutInspector {
           buildList<Pair<Int, LayoutInspectorNode>> {
               indications.forEachIndexed { index, indication ->
                 add(indication.modifierIndex to indication.toWireNode(ownerId, index))
+              }
+              // After the state layer, exactly as `RippleNode.draw` paints it: the ring is the
+              // last thing on top of a focused component.
+              ripple.focusRings.forEachIndexed { index, ring ->
+                ring.toWireNodes(ownerId, index).forEach { add(ring.modifierIndex to it) }
               }
               addAll(indicationForegrounds)
             }
@@ -1534,6 +1541,35 @@ internal object ComposeLayoutInspector {
         ),
       tokens = ComposeSemanticsTokens(clipsContent = true).takeIf { bounded },
       children = listOf(circle),
+      transform = transform,
+    )
+  }
+
+  /**
+   * Turns Material's inset focus ring into editable stroked layers — one per band, in paint order.
+   *
+   * Each band is a `borderColor` + `borderWidth` layer on the box the stroke runs inwards from,
+   * which is the shape the SVG emitter already draws a `Modifier.border` as: it centres the stroke
+   * half a width inside the box so the band's outer edge lands on the bound, exactly as Compose's
+   * own border does. So the ring needs no bespoke emitter — it is a border, drawn where Material
+   * drew it.
+   */
+  private fun LayoutTreeAccess.FocusRing.toWireNodes(
+    ownerId: String,
+    index: Int,
+  ): List<LayoutInspectorNode> = strokes.mapIndexed { strokeIndex, stroke ->
+    LayoutInspectorNode(
+      nodeId = "$ownerId-focus-ring-$index-$strokeIndex",
+      component = "Material Focus Ring",
+      bounds = stroke.bounds,
+      size = LayoutInspectorSize(width = stroke.localWidthPx, height = stroke.localHeightPx),
+      tokens =
+        ComposeSemanticsTokens(
+          borderColor = "#%08X".format(stroke.argb),
+          borderWidth = "${stroke.widthDp}dp",
+          cornerRadiusPx = stroke.cornerRadiusPx,
+          shapePath = stroke.shapePath,
+        ),
       transform = transform,
     )
   }
@@ -2437,7 +2473,7 @@ internal object ComposeLayoutInspector {
     }
   }
 
-  private class LayoutNodeFacade(val raw: Any) {
+  internal class LayoutNodeFacade(val raw: Any) {
     val coordinates: LayoutCoordinates?
       get() = LayoutTreeAccess.coordinates(raw)
 
@@ -2480,8 +2516,15 @@ internal object ComposeLayoutInspector {
       get() = LayoutTreeAccess.children(raw).map(::LayoutNodeFacade)
   }
 
-  /** Private adapter over Compose UI implementation details. */
-  private object LayoutTreeAccess {
+  /**
+   * Adapter over Compose UI implementation details.
+   *
+   * `internal` rather than private only so the Material-ripple reads below — the ones with no
+   * compiled API to check them against, and the ones that silently stopped matching when material3
+   * forked its ripple node (issue #4980) — can be exercised directly by `MaterialFocusRingTest`
+   * instead of only through a live composition.
+   */
+  internal object LayoutTreeAccess {
     fun rootLayoutNode(semanticsNode: Any): LayoutNodeFacade? =
       (call(semanticsNode, "getLayoutNode\$ui_release") ?: call(semanticsNode, "getLayoutInfo"))
         ?.let(::LayoutNodeFacade)
@@ -2517,6 +2560,68 @@ internal object ComposeLayoutInspector {
     )
 
     /**
+     * One of the concentric strokes a [FocusRing] is drawn from, already reduced to the box it runs
+     * *inwards* from — which is exactly how the SVG emitter draws a `Modifier.border`, so the
+     * stroke needs no geometry of its own beyond a width.
+     *
+     * [bounds] is that box in root pixels (the node's own box, moved in by the stroke's inset);
+     * [localWidthPx] / [localHeightPx] are the same box in the node's local pixels, the space
+     * [cornerRadiusPx] and [shapePath] are measured in.
+     */
+    data class FocusRingStroke(
+      val argb: Int,
+      val widthDp: Float,
+      val bounds: LayoutInspectorBounds,
+      val localWidthPx: Int,
+      val localHeightPx: Int,
+      val cornerRadiusPx: String?,
+      val shapePath: String?,
+    )
+
+    /**
+     * Material's **keyboard focus indicator** — `RippleThemeConfiguration.Focus.InsetRing`, the
+     * ring a Tab draws around whatever now holds focus.
+     *
+     * Two strokes, not one: an inner band in the container colour and an outer band in `secondary`
+     * over it, which is what produces the gap between the ring and the component it surrounds.
+     * [strokes] is in paint order — inner first — the order the render draws them in and the order
+     * their overlap resolves in.
+     */
+    data class FocusRing(
+      val strokes: List<FocusRingStroke>,
+      val transform: LayoutInspectorTransform?,
+      val modifierIndex: Int,
+    )
+
+    /** Everything one node's ripple chain contributes to the export, in one walk. */
+    data class RippleLayers(
+      val indications: List<Indication>,
+      val focusRings: List<FocusRing>,
+    ) {
+      fun isEmpty(): Boolean = indications.isEmpty() && focusRings.isEmpty()
+
+      fun isNotEmpty(): Boolean = !isEmpty()
+    }
+
+    /**
+     * Every class name Material's ripple node ships under.
+     *
+     * There are three, and they are the same node forked into three homes: `material-ripple`'s
+     * original, the copy material3 1.5.0-alpha took into its own `ripple` package, and the copy
+     * Compose Multiplatform's material3 1.12 took into `material3.internal.ripple`. Matching only
+     * the first is what left every interaction state — the focus ring, the hover/focus state layer
+     * *and* the press ripple — out of the `compose/figma-svg` export of any catalog on the newer
+     * material3 lines: the walk below simply never recognised the node, so a `focus-ring` sticker
+     * exported identical to its resting one (issue #4980).
+     */
+    val RIPPLE_NODE_CLASSES: Set<String> =
+      setOf(
+        "androidx.compose.material.ripple.RippleNode",
+        "androidx.compose.material3.ripple.RippleNode",
+        "androidx.compose.material3.internal.ripple.RippleNode",
+      )
+
+    /**
      * Reads settled opacity state from Material's delegated ripple node on both backends.
      *
      * `ModifierInfo` exposes the `ClickableElement`, but the active state lives on a delegate of
@@ -2528,18 +2633,27 @@ internal object ComposeLayoutInspector {
      * The result retains the indication coordinator's own box, radius and boundedness. The SVG
      * projection can therefore draw the real circle at the correct z-order and clip it at the same
      * box instead of recolouring an unrelated container fill.
+     *
+     * The three [RIPPLE_NODE_CLASSES] disagree on where the state lives, so every read below has
+     * two spellings: the original keeps `bounded` / the colour / a `stateLayer` holder on the node,
+     * while the material3 forks moved boundedness, colour and the per-interaction alphas onto the
+     * `RippleNodeConfiguration` their `rippleNodeConfig(uration)` lambda resolves, and inlined the
+     * state layer's `animatedAlpha` onto the node itself. Both are read duck-typed rather than
+     * against a compiled API, because this module compiles against neither material line.
      */
-    fun indications(
+    fun rippleLayers(
       modifiers: List<ModifierInfo>,
       rootCoordinates: LayoutCoordinates?,
-    ): List<Indication> {
+      density: Float,
+    ): RippleLayers {
       val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
       val layers = mutableListOf<Indication>()
+      val rings = mutableListOf<FocusRing>()
       fun visit(candidate: Any?, fallbackCoordinates: LayoutCoordinates, fallbackIndex: Int) {
         if (candidate == null || !seen.add(candidate)) return
         val rippleClass =
           generateSequence(candidate.javaClass as Class<*>?) { it.superclass }
-            .firstOrNull { it.name == "androidx.compose.material.ripple.RippleNode" }
+            .firstOrNull { it.name in RIPPLE_NODE_CLASSES }
         if (rippleClass != null) {
           val coordinates =
             sequenceOf(
@@ -2555,13 +2669,34 @@ internal object ComposeLayoutInspector {
           val bounds = coordinates.boundsIn(rootCoordinates)
           val transform = coordinates.scaleIn(rootCoordinates)
           val targetRadius = reflectedField(candidate, "targetRadius") as? Float
-          val bounded = reflectedField(candidate, "bounded") as? Boolean ?: true
-          val stateLayer = reflectedField(candidate, "stateLayer")
-          val color = (call(candidate, "getRippleColor-0d7_KjU") as? Long)?.let(::packedColorToArgb)
+          // The material3 forks resolve boundedness, colour and the per-interaction alphas out of
+          // a `RippleNodeConfiguration` instead of holding them on the node.
+          val config = rippleNodeConfiguration(candidate)
+          val bounded =
+            reflectedField(candidate, "bounded") as? Boolean
+              ?: config?.let { call(it, "isBounded") as? Boolean }
+              ?: true
+          // `material.ripple` keeps the state layer in a holder object; the forks inlined its
+          // `animatedAlpha` straight onto the node. Same field name either way, so the only
+          // question is which object owns it.
+          val stateLayer = reflectedField(candidate, "stateLayer") ?: candidate
+          val color =
+            (call(candidate, "getRippleColor-0d7_KjU") as? Long
+                ?: config?.let { call(it, "getColor") }?.let { colorProducerValue(it) })
+              ?.let(::packedColorToArgb)
           val stateAlpha =
-            stateLayer
-              ?.let { reflectedField(it, "animatedAlpha") }
-              ?.let { call(it, "getValue") as? Float }
+            reflectedField(stateLayer, "animatedAlpha")?.let { call(it, "getValue") as? Float }
+          focusRing(
+              node = candidate,
+              config = config,
+              bounds = bounds,
+              localWidth = coordinates.size.width,
+              localHeight = coordinates.size.height,
+              transform = transform,
+              modifierIndex = modifierIndex,
+              density = density,
+            )
+            ?.let { rings += it }
           if (
             color != null &&
               stateAlpha != null &&
@@ -2588,7 +2723,12 @@ internal object ComposeLayoutInspector {
 
           val rippleAlphaConfig =
             reflectedField(candidate, "rippleAlpha")?.let { call(it, "invoke") }
-          val pressedAlpha = rippleAlphaConfig?.let { call(it, "getPressedAlpha") as? Float } ?: 0f
+          val pressedAlpha =
+            rippleAlphaConfig?.let { call(it, "getPressedAlpha") as? Float }
+              ?: config
+                ?.let { call(it, "getPress") ?: call(it, "getPressConfiguration") }
+                ?.let { call(it, "getAlpha") as? Float }
+              ?: 0f
           val ripples = reflectedField(candidate, "ripples")
           val animations = ripples?.let { call(it, "asMutableMap") as? Map<*, *> }?.values.orEmpty()
           for (animation in animations) {
@@ -2678,7 +2818,136 @@ internal object ComposeLayoutInspector {
         val tail = call(info.coordinates, "getTail")
         tail?.let { visit(it, info.coordinates, index) }
       }
-      return layers
+      return RippleLayers(layers, rings)
+    }
+
+    /**
+     * The `RippleNodeConfiguration` a material3 ripple node resolves its interaction styling from,
+     * or null on `material.ripple`'s original node (which has none — it keeps that state itself).
+     *
+     * Prefers the node's own cached instance over invoking the producing lambda: the lambda reads
+     * composition locals, and a capture walk is not a composition. Invoking it is the fallback for
+     * the CMP fork, which caches on the delegating node rather than here; it is the same call the
+     * node's own `draw` makes, so it is safe, and any failure yields null and the node simply
+     * reports what it holds directly.
+     */
+    internal fun rippleNodeConfiguration(node: Any): Any? =
+      reflectedField(node, "_rippleNodeConfiguration")
+        ?: sequenceOf("rippleNodeConfiguration", "rippleNodeConfig")
+          .mapNotNull { reflectedField(node, it) }
+          .mapNotNull { call(it, "invoke") }
+          .firstOrNull()
+
+    /** Invokes a `ColorProducer`, whose single accessor carries an inline-class name mangle. */
+    private fun colorProducerValue(producer: Any): Long? =
+      producer.javaClass.methods
+        .firstOrNull { it.name.startsWith("invoke-") && it.parameterCount == 0 }
+        ?.let { method ->
+          runCatching {
+            method.isAccessible = true
+            method.invoke(producer) as? Long
+          }
+            .getOrNull()
+        }
+
+    /**
+     * Material's inset focus ring, read off a settled ripple node.
+     *
+     * The ring is `RippleNodeConfiguration.Focus.InsetRing`: a shape plus two `(inset, width,
+     * colour)` stroke bands, both scaled by the node's `animatedFocusRingInterpolation` — 0 when
+     * the node is not focused, 1 once the focus animation has settled, which is what every still
+     * capture sees. Reading the interpolation rather than the focused flag means a *mid-animation*
+     * capture exports the ring at the width it was actually drawn at, and an unfocused node exports
+     * nothing at all.
+     *
+     * Returns null for the `Opacity` focus style (the state layer above already carries it), for
+     * `material.ripple`'s original node, and for any shape/colour that cannot be read — in every
+     * case the export is exactly what it was before the ring existed.
+     */
+    internal fun focusRing(
+      node: Any,
+      config: Any?,
+      bounds: LayoutInspectorBounds,
+      localWidth: Int,
+      localHeight: Int,
+      transform: LayoutInspectorTransform?,
+      modifierIndex: Int,
+      density: Float,
+    ): FocusRing? {
+      if (config == null) return null
+      if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return null
+      val interpolation =
+        reflectedField(node, "animatedFocusRingInterpolation")
+          ?.let { call(it, "getValue") as? Float }
+          ?.takeIf { it > 0f } ?: return null
+      val focus =
+        (call(config, "getFocus") ?: call(config, "getFocusConfiguration"))?.takeIf {
+          it.javaClass.simpleName == "InsetRing"
+        } ?: return null
+      if (localWidth <= 0 || localHeight <= 0) return null
+      // The ring's own shape, not the container's: a component whose focus ring is squarer than
+      // its fill must export the ring it drew, not the pill underneath it.
+      val shape = reflectedField(focus, "shape") as? Shape
+      // Local px → root px. A ripple node under a scaled `graphicsLayer` reports a root box larger
+      // or smaller than its own; the insets below are authored in dp against the local one.
+      val scaleX = (bounds.right - bounds.left).toFloat() / localWidth
+      val scaleY = (bounds.bottom - bounds.top).toFloat() / localHeight
+
+      fun stroke(insetField: String, widthField: String, colorField: String): FocusRingStroke? {
+        val strokeWidthDp =
+          (reflectedField(focus, widthField) as? Float)?.takeIf { it > 0f }?.times(interpolation)
+            ?: return null
+        val argb =
+          reflectedField(focus, colorField)
+            ?.let { colorProducerValue(it) }
+            ?.let(::packedColorToArgb) ?: return null
+        val insetPx =
+          ((reflectedField(focus, insetField) as? Float) ?: 0f) * interpolation * density
+        val insetWidth = localWidth - 2 * insetPx
+        val insetHeight = localHeight - 2 * insetPx
+        if (insetWidth <= 0f || insetHeight <= 0f) return null
+        val cornerRadiusPx = shape?.let {
+          with(ModifierTokenResolver) {
+            it.outlineCornerRadiusPxWire(insetWidth.roundToInt(), insetHeight.roundToInt(), density)
+          }
+        }
+        return FocusRingStroke(
+          argb = argb,
+          widthDp = strokeWidthDp,
+          bounds =
+            LayoutInspectorBounds(
+              left = bounds.left + (insetPx * scaleX).roundToInt(),
+              top = bounds.top + (insetPx * scaleY).roundToInt(),
+              right = bounds.right - (insetPx * scaleX).roundToInt(),
+              bottom = bounds.bottom - (insetPx * scaleY).roundToInt(),
+            ),
+          localWidthPx = insetWidth.roundToInt(),
+          localHeightPx = insetHeight.roundToInt(),
+          cornerRadiusPx = cornerRadiusPx,
+          // Only when the corners came up empty, matching the same last-resort rule the container
+          // tokens use: an understood shape keeps its editable rounded rect.
+          shapePath =
+            if (cornerRadiusPx != null) null
+            else
+              shape?.let {
+                with(ModifierTokenResolver) {
+                  it.outlineShapePathWire(
+                    insetWidth.roundToInt(),
+                    insetHeight.roundToInt(),
+                    density,
+                  )
+                }
+              },
+        )
+      }
+
+      val strokes =
+        listOfNotNull(
+          stroke("innerStrokeInset", "innerStrokeWidth", "innerStrokeColor"),
+          stroke("outerStrokeInset", "outerStrokeWidth", "outerStrokeColor"),
+        )
+      if (strokes.isEmpty()) return null
+      return FocusRing(strokes = strokes, transform = transform, modifierIndex = modifierIndex)
     }
 
     /** Converts a raw Compose [Color] packed value without routing it through `Color(Long)`. */
