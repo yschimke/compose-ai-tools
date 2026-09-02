@@ -1204,6 +1204,107 @@ jobs:
       # a probe with configuration-cache=true, parallel=true and IP=false runs clean; Gradle simply
       # ignores the parallel request. Touching a second property to fix a problem that does not
       # exist would be the riskier change.
+      # `working-directory` names a Gradle build nested inside the upstream repository, and the CLI
+      # finds "the project" by walking UP from its cwd until it sees a `gradlew`
+      # (`findGradleProjectRoot`). A nested build that ships its own wrapper is therefore found
+      # correctly — mullvad/mullvadvpn-app's `android/` has one. thunderbird-android's `components/`
+      # does NOT: it is a complete build (its own `settings.gradle.kts`, `rootProject.name =
+      # "components"`) that borrows the repository root's wrapper. The walk-up sailed past it and
+      # rendered the REPOSITORY ROOT build instead, which is a different build entirely:
+      #
+      #   Module ':ui:bolt' not found or does not apply the compose-ai-tools plugin.
+      #   206 project(s) failed to configure during discovery and were skipped
+      #     :: InvalidUserCodeException: Project ':' cannot access 'Project.buildscript' …
+      #     :app-k9mail: … :app-thunderbird: … :backend:imap: …
+      #
+      # — the root build's 206 projects, under the root build's `isolated-projects=true`, none of
+      # them the three in `components`. Both symptoms are downstream of running the wrong build, so
+      # neither the Isolated Projects step below nor an exclusion list could have fixed it.
+      #
+      # Copying the nearest ancestor's wrapper into the throwaway checkout stops the walk at the
+      # build the import actually named. `gradle-wrapper.properties` is the half that matters to the
+      # Tooling API (it is what pins the distribution); `gradlew` is the half that matters to the
+      # CLI's search. Both are copied, so the nested build resolves the same Gradle the repository
+      # would have used — this is not a version choice being made here.
+      #
+      # Deliberately confined to a directory that is a build root in its own right: without a
+      # settings file the walk-up is the CORRECT behaviour (an ordinary subproject renders from its
+      # parent build), and planting a wrapper there would break it.
+      - name: Give a nested upstream build its own Gradle wrapper
+        if: ${{ inputs.upstream-repository != '' && inputs.working-directory != '' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "${RENDER_DIR}/settings.gradle" ] && [ ! -f "${RENDER_DIR}/settings.gradle.kts" ]; then
+            echo "${RENDER_DIR} is not a Gradle build root — the walk-up to the enclosing build is correct"
+            exit 0
+          fi
+          if [ -f "${RENDER_DIR}/gradlew" ]; then
+            echo "${RENDER_DIR} ships its own wrapper — nothing to do"
+            exit 0
+          fi
+          # Walk up from the nested build, stopping at the upstream checkout root. `upstream` is
+          # where the fetch step put it, so this cannot wander into the calling repository.
+          dir=$(dirname "${RENDER_DIR}")
+          found=""
+          while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+            if [ -f "$dir/gradlew" ] && [ -f "$dir/gradle/wrapper/gradle-wrapper.properties" ]; then
+              found="$dir"
+              break
+            fi
+            if [ "$dir" = "upstream" ]; then
+              break
+            fi
+            dir=$(dirname "$dir")
+          done
+          if [ -z "$found" ]; then
+            # Failing here rather than continuing. There is no benign outcome further on: the
+            # walk-up does not stop at `upstream`, so it either leaves the checkout entirely and
+            # lands on some unrelated `gradlew` in the runner workspace, or finds none and the CLI
+            # exits with "Cannot find Gradle project root" — a message that says nothing about the
+            # nested build being the reason. Neither is a Tooling-API default worth waiting for.
+            echo "::error::${RENDER_DIR} is a Gradle build root but neither it nor any directory" \
+                 "up to the upstream checkout has a Gradle wrapper, so the render has no" \
+                 "distribution to run and would silently target some other build"
+            exit 1
+          fi
+          mkdir -p "${RENDER_DIR}/gradle/wrapper"
+          cp "$found/gradlew" "${RENDER_DIR}/gradlew"
+          chmod +x "${RENDER_DIR}/gradlew"
+          if [ -f "$found/gradlew.bat" ]; then
+            cp "$found/gradlew.bat" "${RENDER_DIR}/gradlew.bat"
+          fi
+          cp "$found"/gradle/wrapper/gradle-wrapper.* "${RENDER_DIR}/gradle/wrapper/"
+
+          # A `distributionUrl` with no scheme is resolved RELATIVE TO the directory holding
+          # gradle-wrapper.properties, so copying the file further down the tree silently repoints
+          # it — a repository vendoring its distribution at `gradle/wrapper/gradle-x.y-bin.zip`
+          # would have the nested copy look for it under the nested build instead, and fail. Re-
+          # anchor it against the wrapper's original directory so it names the same file the
+          # ancestor's wrapper named. A value with a scheme (`https\://…`, the overwhelmingly common case) and
+          # an absolute path are both already location-independent and are left alone.
+          wrapper_properties="${RENDER_DIR}/gradle/wrapper/gradle-wrapper.properties"
+          url=$(sed -n -E 's/^[[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*//p' \
+                  "$wrapper_properties" | head -1)
+          case "$url" in
+            "" | /*) ;;
+            *)
+              if printf '%s' "$url" | grep -qE '^[A-Za-z][A-Za-z0-9+.-]*\\?:'; then
+                :
+              else
+                # The base is the directory holding the PROPERTIES FILE, not the build directory,
+                # so the hop is from `<found>/gradle/wrapper` to `<render>/gradle/wrapper` — one
+                # `../` per level of the nesting does NOT reach it. Let the path library say it.
+                prefix=$(python3 -c \
+                  'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]) + "/")' \
+                  "$found/gradle/wrapper" "${RENDER_DIR}/gradle/wrapper")
+                sed -i -E "s#^([[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*)#\\1${prefix}#" \
+                  "$wrapper_properties"
+                echo "re-anchored the relative distributionUrl '$url' as '${prefix}${url}'"
+              fi
+              ;;
+          esac
+          echo "copied $found's wrapper into ${RENDER_DIR} so the render targets that build"
+
       - name: Disable Isolated Projects in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
@@ -1715,6 +1816,107 @@ jobs:
       # a probe with configuration-cache=true, parallel=true and IP=false runs clean; Gradle simply
       # ignores the parallel request. Touching a second property to fix a problem that does not
       # exist would be the riskier change.
+      # `working-directory` names a Gradle build nested inside the upstream repository, and the CLI
+      # finds "the project" by walking UP from its cwd until it sees a `gradlew`
+      # (`findGradleProjectRoot`). A nested build that ships its own wrapper is therefore found
+      # correctly — mullvad/mullvadvpn-app's `android/` has one. thunderbird-android's `components/`
+      # does NOT: it is a complete build (its own `settings.gradle.kts`, `rootProject.name =
+      # "components"`) that borrows the repository root's wrapper. The walk-up sailed past it and
+      # rendered the REPOSITORY ROOT build instead, which is a different build entirely:
+      #
+      #   Module ':ui:bolt' not found or does not apply the compose-ai-tools plugin.
+      #   206 project(s) failed to configure during discovery and were skipped
+      #     :: InvalidUserCodeException: Project ':' cannot access 'Project.buildscript' …
+      #     :app-k9mail: … :app-thunderbird: … :backend:imap: …
+      #
+      # — the root build's 206 projects, under the root build's `isolated-projects=true`, none of
+      # them the three in `components`. Both symptoms are downstream of running the wrong build, so
+      # neither the Isolated Projects step below nor an exclusion list could have fixed it.
+      #
+      # Copying the nearest ancestor's wrapper into the throwaway checkout stops the walk at the
+      # build the import actually named. `gradle-wrapper.properties` is the half that matters to the
+      # Tooling API (it is what pins the distribution); `gradlew` is the half that matters to the
+      # CLI's search. Both are copied, so the nested build resolves the same Gradle the repository
+      # would have used — this is not a version choice being made here.
+      #
+      # Deliberately confined to a directory that is a build root in its own right: without a
+      # settings file the walk-up is the CORRECT behaviour (an ordinary subproject renders from its
+      # parent build), and planting a wrapper there would break it.
+      - name: Give a nested upstream build its own Gradle wrapper
+        if: ${{ inputs.upstream-repository != '' && inputs.working-directory != '' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "${RENDER_DIR}/settings.gradle" ] && [ ! -f "${RENDER_DIR}/settings.gradle.kts" ]; then
+            echo "${RENDER_DIR} is not a Gradle build root — the walk-up to the enclosing build is correct"
+            exit 0
+          fi
+          if [ -f "${RENDER_DIR}/gradlew" ]; then
+            echo "${RENDER_DIR} ships its own wrapper — nothing to do"
+            exit 0
+          fi
+          # Walk up from the nested build, stopping at the upstream checkout root. `upstream` is
+          # where the fetch step put it, so this cannot wander into the calling repository.
+          dir=$(dirname "${RENDER_DIR}")
+          found=""
+          while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+            if [ -f "$dir/gradlew" ] && [ -f "$dir/gradle/wrapper/gradle-wrapper.properties" ]; then
+              found="$dir"
+              break
+            fi
+            if [ "$dir" = "upstream" ]; then
+              break
+            fi
+            dir=$(dirname "$dir")
+          done
+          if [ -z "$found" ]; then
+            # Failing here rather than continuing. There is no benign outcome further on: the
+            # walk-up does not stop at `upstream`, so it either leaves the checkout entirely and
+            # lands on some unrelated `gradlew` in the runner workspace, or finds none and the CLI
+            # exits with "Cannot find Gradle project root" — a message that says nothing about the
+            # nested build being the reason. Neither is a Tooling-API default worth waiting for.
+            echo "::error::${RENDER_DIR} is a Gradle build root but neither it nor any directory" \
+                 "up to the upstream checkout has a Gradle wrapper, so the render has no" \
+                 "distribution to run and would silently target some other build"
+            exit 1
+          fi
+          mkdir -p "${RENDER_DIR}/gradle/wrapper"
+          cp "$found/gradlew" "${RENDER_DIR}/gradlew"
+          chmod +x "${RENDER_DIR}/gradlew"
+          if [ -f "$found/gradlew.bat" ]; then
+            cp "$found/gradlew.bat" "${RENDER_DIR}/gradlew.bat"
+          fi
+          cp "$found"/gradle/wrapper/gradle-wrapper.* "${RENDER_DIR}/gradle/wrapper/"
+
+          # A `distributionUrl` with no scheme is resolved RELATIVE TO the directory holding
+          # gradle-wrapper.properties, so copying the file further down the tree silently repoints
+          # it — a repository vendoring its distribution at `gradle/wrapper/gradle-x.y-bin.zip`
+          # would have the nested copy look for it under the nested build instead, and fail. Re-
+          # anchor it against the wrapper's original directory so it names the same file the
+          # ancestor's wrapper named. A value with a scheme (`https\://…`, the overwhelmingly common case) and
+          # an absolute path are both already location-independent and are left alone.
+          wrapper_properties="${RENDER_DIR}/gradle/wrapper/gradle-wrapper.properties"
+          url=$(sed -n -E 's/^[[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*//p' \
+                  "$wrapper_properties" | head -1)
+          case "$url" in
+            "" | /*) ;;
+            *)
+              if printf '%s' "$url" | grep -qE '^[A-Za-z][A-Za-z0-9+.-]*\\?:'; then
+                :
+              else
+                # The base is the directory holding the PROPERTIES FILE, not the build directory,
+                # so the hop is from `<found>/gradle/wrapper` to `<render>/gradle/wrapper` — one
+                # `../` per level of the nesting does NOT reach it. Let the path library say it.
+                prefix=$(python3 -c \
+                  'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]) + "/")' \
+                  "$found/gradle/wrapper" "${RENDER_DIR}/gradle/wrapper")
+                sed -i -E "s#^([[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*)#\\1${prefix}#" \
+                  "$wrapper_properties"
+                echo "re-anchored the relative distributionUrl '$url' as '${prefix}${url}'"
+              fi
+              ;;
+          esac
+          echo "copied $found's wrapper into ${RENDER_DIR} so the render targets that build"
+
       - name: Disable Isolated Projects in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
