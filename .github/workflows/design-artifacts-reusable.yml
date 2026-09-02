@@ -1184,6 +1184,43 @@ jobs:
           print("stubbed google-services.json for: " + ", ".join(packages))
           PY
 
+      # Isolated Projects and auto-inject cannot coexist, and that is not a bug to work around here
+      # — AutoInject.kt says so in as many words: the init script configures every project through
+      # `allprojects { buildscript { … } }`, which IP forbids outright, and there is no IP-safe
+      # init-script mechanism that puts an AGP-aware plugin on each project's buildscript
+      # classloader. thunderbird/thunderbird-android sets it, and the render dies during discovery
+      # with 206 projects skipped:
+      #
+      #   Project ':' cannot access 'Project.buildscript' functionality on subprojects
+      #   via 'allprojects'
+      #
+      # AutoInject's own warning names the remedy — turn IP off for compose-preview runs — and in
+      # import mode we hold a throwaway clone, so we can simply take it. Unconditional rather than
+      # conditional on the upstream setting it: writing `false` where nothing set it is a no-op,
+      # and detection logic that can be wrong is worse than a line that cannot be.
+      #
+      # `org.gradle.configuration-cache.parallel` is deliberately left alone. It is documented as
+      # needing IP, so the obvious worry is that turning IP off breaks a build carrying both — but
+      # a probe with configuration-cache=true, parallel=true and IP=false runs clean; Gradle simply
+      # ignores the parallel request. Touching a second property to fix a problem that does not
+      # exist would be the riskier change.
+      - name: Disable Isolated Projects in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
+        run: |
+          set -euo pipefail
+          if [ -f "$GRADLE_PROPERTIES" ] &&
+             grep -q '^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=' "$GRADLE_PROPERTIES"; then
+            sed -i 's/^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=.*/org.gradle.unsafe.isolated-projects=false/' \
+              "$GRADLE_PROPERTIES"
+            echo "turned Isolated Projects off in the throwaway checkout"
+          else
+            printf '\n# compose-preview import: auto-inject configures projects via allprojects {},\n# which Isolated Projects forbids.\norg.gradle.unsafe.isolated-projects=false\n' \
+              >> "$GRADLE_PROPERTIES"
+            echo "pinned Isolated Projects off in the throwaway checkout"
+          fi
+
       - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
@@ -1657,6 +1694,43 @@ jobs:
               handle.write("\n")
           print("stubbed google-services.json for: " + ", ".join(packages))
           PY
+
+      # Isolated Projects and auto-inject cannot coexist, and that is not a bug to work around here
+      # — AutoInject.kt says so in as many words: the init script configures every project through
+      # `allprojects { buildscript { … } }`, which IP forbids outright, and there is no IP-safe
+      # init-script mechanism that puts an AGP-aware plugin on each project's buildscript
+      # classloader. thunderbird/thunderbird-android sets it, and the render dies during discovery
+      # with 206 projects skipped:
+      #
+      #   Project ':' cannot access 'Project.buildscript' functionality on subprojects
+      #   via 'allprojects'
+      #
+      # AutoInject's own warning names the remedy — turn IP off for compose-preview runs — and in
+      # import mode we hold a throwaway clone, so we can simply take it. Unconditional rather than
+      # conditional on the upstream setting it: writing `false` where nothing set it is a no-op,
+      # and detection logic that can be wrong is worse than a line that cannot be.
+      #
+      # `org.gradle.configuration-cache.parallel` is deliberately left alone. It is documented as
+      # needing IP, so the obvious worry is that turning IP off breaks a build carrying both — but
+      # a probe with configuration-cache=true, parallel=true and IP=false runs clean; Gradle simply
+      # ignores the parallel request. Touching a second property to fix a problem that does not
+      # exist would be the riskier change.
+      - name: Disable Isolated Projects in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' }}
+        env:
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
+        run: |
+          set -euo pipefail
+          if [ -f "$GRADLE_PROPERTIES" ] &&
+             grep -q '^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=' "$GRADLE_PROPERTIES"; then
+            sed -i 's/^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=.*/org.gradle.unsafe.isolated-projects=false/' \
+              "$GRADLE_PROPERTIES"
+            echo "turned Isolated Projects off in the throwaway checkout"
+          else
+            printf '\n# compose-preview import: auto-inject configures projects via allprojects {},\n# which Isolated Projects forbids.\norg.gradle.unsafe.isolated-projects=false\n' \
+              >> "$GRADLE_PROPERTIES"
+            echo "pinned Isolated Projects off in the throwaway checkout"
+          fi
 
       - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
