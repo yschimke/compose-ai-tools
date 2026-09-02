@@ -55,6 +55,13 @@ public object PreviewDiscoveryCli {
         outcome.warnings.forEach { System.err.println("WARN: $it") }
         parsed.outFile.parentFile?.mkdirs()
         parsed.outFile.writeText(JSON.encodeToString(outcome.manifest))
+        // The component record travels with the manifest on every producer, not just the Gradle
+        // one. Bazel, Amper and anything else driving this CLI run the same discovery library and
+        // get the same manifest, so making the data product conditional on the build system that
+        // happened to invoke it would be an arbitrary hole in the contract.
+        parsed.outFile
+          .resolveSibling("components.json")
+          .writeText(JSON.encodeToString(ComponentRecords.from(outcome.manifest)))
         outcome.infoMessages.forEach { System.err.println(it) }
         exitProcess(0)
       }
