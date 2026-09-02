@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T11:54:50.751Z",
+  "generatedAt": "2026-09-02T19:07:22.586Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "a3bbff4730a204e01d3af3bdb44c6d53a6ed5e40",
+        "subject": "fix(import): trust the preview plugin in the upstream checkout, not lenient verification (#4990)",
+        "at": "2026-09-02T19:59:07+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "46c54375f0a462347aeb29012daa73bf38fa3426",
+        "subject": "fix(render): preserve upstream Remote Compose wrapper (#4983)",
+        "at": "2026-09-02T12:42:26+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3cbbd2d128f092fc4c8453f0dd71ccc505719bee",
+        "subject": "fix: restore Module Unit Tests on main (#4984)",
+        "at": "2026-09-02T12:38:16+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "fa9ad8c7f8191de283baa41340ff3730ead99ed2",
         "subject": "feat(design-artifacts): default defer-figma-svg to true (#4982)",
@@ -458,30 +482,6 @@
         "sha": "5793a199b3ab67195894783614a690cfc63522f8",
         "subject": "chore(main): release 1.60.3 (#4921)",
         "at": "2026-08-31T20:59:15+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8bdb211de2f484c3fc51bf6961ecf50187972b31",
-        "subject": "fix(design-artifacts): exempt optional shard captures (#4920)",
-        "at": "2026-08-31T20:57:09+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7df2dc4d38b42d10efee1ed1975b681f2c3ad7b9",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.60.2 (#4919)",
-        "at": "2026-08-31T20:40:27+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "970ad3f5062c894e2d40a5c65a55ae608b2c2b75",
-        "subject": "chore(main): release 1.60.2 (#4918)",
-        "at": "2026-08-31T20:23:04+01:00",
         "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
