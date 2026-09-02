@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.64.0](https://github.com/yschimke/compose-ai-tools/compare/v1.63.0...v1.64.0) (2026-09-02)
+
+
+### Features
+
+* **design-artifacts:** default defer-figma-svg to true ([#4982](https://github.com/yschimke/compose-ai-tools/issues/4982)) ([fa9ad8c](https://github.com/yschimke/compose-ai-tools/commit/fa9ad8c7f8191de283baa41340ff3730ead99ed2))
+
+
+### Bug Fixes
+
+* **figma-svg:** export the focus ring and state layer on material3's forked ripple node ([#4999](https://github.com/yschimke/compose-ai-tools/issues/4999)) ([d8956b9](https://github.com/yschimke/compose-ai-tools/commit/d8956b9b5274f65f0b26b12c7fca56c0573ae990))
+* **import:** carry --write-locks and the plugin's dep groups into the render ([#4994](https://github.com/yschimke/compose-ai-tools/issues/4994)) ([8f1d170](https://github.com/yschimke/compose-ai-tools/commit/8f1d170dcb8917d117b2e1c77da54c12e2a05d2d))
+* **import:** keep the trust step out of the pinned driver checkout ([#4991](https://github.com/yschimke/compose-ai-tools/issues/4991)) ([a37a39f](https://github.com/yschimke/compose-ai-tools/commit/a37a39f101a7011e4dde5dba8e6f9387f3295a82))
+* **import:** render a locked upstream with --write-locks ([#4992](https://github.com/yschimke/compose-ai-tools/issues/4992)) ([bcacbf9](https://github.com/yschimke/compose-ai-tools/commit/bcacbf96a363af8250dcf65799252f2943fb1898))
+* **import:** trust the preview plugin in the upstream checkout, not lenient verification ([#4990](https://github.com/yschimke/compose-ai-tools/issues/4990)) ([a3bbff4](https://github.com/yschimke/compose-ai-tools/commit/a3bbff4730a204e01d3af3bdb44c6d53a6ed5e40))
+* **render:** preserve upstream Remote Compose wrapper ([#4983](https://github.com/yschimke/compose-ai-tools/issues/4983)) ([46c5437](https://github.com/yschimke/compose-ai-tools/commit/46c54375f0a462347aeb29012daa73bf38fa3426))
+* restore Module Unit Tests on main ([#4984](https://github.com/yschimke/compose-ai-tools/issues/4984)) ([3cbbd2d](https://github.com/yschimke/compose-ai-tools/commit/3cbbd2d128f092fc4c8453f0dd71ccc505719bee))
+
 ## [1.63.0](https://github.com/yschimke/compose-ai-tools/compare/v1.62.2...v1.63.0) (2026-09-02)
 
 
