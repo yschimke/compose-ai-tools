@@ -243,8 +243,9 @@ class CoordinateResolverTest {
     assertTrue(r.downloaded, "should have come from the remote repo")
     assertTrue(r.verified)
     assertFalse(r.mismatch)
-    // Cached in Maven layout for next time.
-    val cached = File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.jar")
+    // Cached in Maven layout for next time, bucketed under the sha the fetch was made for so two
+    // bundles pinning one `-SNAPSHOT` coordinate at different builds can't overwrite each other.
+    val cached = File(cacheDir, "com/example/foo/widgets/1.2.3/${sha256(bytes)}/widgets-1.2.3.jar")
     assertTrue(cached.isFile)
     assertEquals(bytes.toList(), cached.readBytes().toList())
   }
@@ -377,8 +378,10 @@ class CoordinateResolverTest {
     assertEquals("classes.jar", r.file?.name)
     assertTrue(r.downloaded)
     assertTrue(r.verified)
-    // The raw aar is cached under the aar filename; the extracted jar lives under extracted/.
-    assertTrue(File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar").isFile)
+    // The raw aar is cached under the aar filename in its per-hash bucket; the extracted jar lives
+    // under extracted/, keyed on the aar's own content.
+    val sha = sha256(classesBytes)
+    assertTrue(File(cacheDir, "com/example/foo/widgets/1.2.3/$sha/widgets-1.2.3.aar").isFile)
   }
 
   @Test
@@ -500,6 +503,90 @@ class CoordinateResolverTest {
     s.start()
     server = s
     return "http://127.0.0.1:${s.address.port}"
+  }
+
+  @Test
+  fun `a re-downloaded snapshot aar is extracted fresh, not served from the stale extraction`() {
+    // compose-preview-server#187, the whole failure in one test. Two catalogs pin
+    // `androidx.compose.remote:*:1.0.0-SNAPSHOT` from two androidx.dev builds. Build A resolves
+    // first and its `.aar` lands in the download cache; build B then resolves the SAME coordinate,
+    // rejects the cached copy on hash, and re-downloads. Keyed on the AAR's path — the literal
+    // `widgets-1.0.0-SNAPSHOT.aar` both builds share — the extraction cache would hand back build
+    // A's `classes.jar` forever, while a sibling `.jar` coordinate (never extracted) came back
+    // fresh: two builds of one library on one classpath, and every render dead on
+    // `NoSuchFieldError`. Keyed on content, build B gets build B.
+    val buildA = byteArrayOf(0xA, 0xA, 0xA)
+    val buildB = byteArrayOf(0xB, 0xB, 0xB, 0xB)
+    val coord = { classes: ByteArray ->
+      BundleReader.ClasspathEntry.Maven(
+        group = "com.example.foo",
+        artifact = "widgets",
+        version = "1.0.0-SNAPSHOT",
+        type = "aar",
+        sha256 = sha256(classes),
+      )
+    }
+
+    val repoA = startRoutedRepo(mapOf(SNAPSHOT_AAR to makeAar(buildA)))
+    val a = assertNotNull(networkResolver(repoA).resolve(coord(buildA)).file)
+    assertEquals(buildA.toList(), a.readBytes().toList())
+    server?.stop(0)
+
+    val repoB = startRoutedRepo(mapOf(SNAPSHOT_AAR to makeAar(buildB)))
+    val r = networkResolver(repoB).resolve(coord(buildB))
+
+    assertEquals(
+      buildB.toList(),
+      assertNotNull(r.file).readBytes().toList(),
+      "the second build's classes.jar must not be shadowed by the first's extraction",
+    )
+    assertTrue(r.verified, "fresh bytes must verify against the bundle's hash: $warnings")
+    assertTrue(warnings.isEmpty(), "no hash mismatch should be reported: $warnings")
+  }
+
+  @Test
+  fun `two builds of one snapshot coordinate coexist in the download cache`() {
+    // The flat cache path is the same for every build of a `-SNAPSHOT`, so each resolve overwrote
+    // the other's bytes: a torn file when two catalogs materialize at once, and a re-download every
+    // time when they don't. A hashed coordinate is bucketed under the sha it was fetched for, and
+    // [locate] reads that level back, so build A still resolves offline after build B has run.
+    val buildA = byteArrayOf(1, 1, 1)
+    val buildB = byteArrayOf(2, 2, 2, 2)
+    val coordA = snapshotJarCoord(sha256(buildA))
+    val coordB = snapshotJarCoord(sha256(buildB))
+
+    val repoA = startRoutedRepo(mapOf(SNAPSHOT_JAR to buildA))
+    assertTrue(networkResolver(repoA).resolve(coordA).verified)
+    server?.stop(0)
+    val repoB = startRoutedRepo(mapOf(SNAPSHOT_JAR to buildB))
+    assertTrue(networkResolver(repoB).resolve(coordB).verified)
+
+    // Build A, offline, with only the cache to go on: its bytes must still be there.
+    val offline =
+      CoordinateResolver(
+        repositoryRoots = listOf(root),
+        warn = { warnings += it },
+        networkEnabled = false,
+        downloadCacheDir = cacheDir,
+      )
+    val again = offline.resolve(coordA)
+    assertEquals(buildA.toList(), assertNotNull(again.file).readBytes().toList())
+    assertTrue(again.verified, "build A must survive build B caching the same coordinate")
+    assertTrue(warnings.isEmpty(), "neither build should report a mismatch: $warnings")
+  }
+
+  private fun snapshotJarCoord(sha: String) =
+    BundleReader.ClasspathEntry.Maven(
+      group = "com.example.foo",
+      artifact = "widgets",
+      version = "1.0.0-SNAPSHOT",
+      type = "jar",
+      sha256 = sha,
+    )
+
+  private companion object {
+    const val SNAPSHOT_AAR = "/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.aar"
+    const val SNAPSHOT_JAR = "/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar"
   }
 
   private fun assertNotNullFile(f: File?) =
