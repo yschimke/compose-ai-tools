@@ -1393,6 +1393,22 @@ data class PreviewTarget(
    * the function had no value parameters) — consumers degrade to a parameterless call.
    */
   val parameters: List<TargetParameter> = emptyList(),
+  /**
+   * The **fully-qualified extension receiver** this composable is declared on
+   * (`androidx.compose.foundation.layout.ColumnScope`), or null when it is an ordinary function.
+   *
+   * Only meaningful when [signatureKnown]; null otherwise says "not recovered", not "none".
+   */
+  val receiver: String? = null,
+  /**
+   * Whether [parameters] and [receiver] were actually read from `@kotlin.Metadata`.
+   *
+   * [parameters] degrades an unreadable signature to an empty list, which reads identically to a
+   * genuinely parameterless composable. That ambiguity is harmless for scaffolding a call site a
+   * human completes and fatal for a generator that claims its output compiles, so the two cases are
+   * told apart here rather than left to be guessed at.
+   */
+  val signatureKnown: Boolean = false,
 )
 
 /**

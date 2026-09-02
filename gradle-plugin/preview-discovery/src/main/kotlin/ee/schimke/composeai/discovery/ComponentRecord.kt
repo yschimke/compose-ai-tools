@@ -63,6 +63,16 @@ data class ComponentRecord(
   val parameters: List<TargetParameter> = emptyList(),
   val slots: List<ComponentSlot> = emptyList(),
   val bindings: List<ComponentBinding> = emptyList(),
+  /**
+   * Whether [parameters], [slots] and [ComponentSymbol.receiver] were read from `@kotlin.Metadata`
+   * rather than defaulted away.
+   *
+   * An empty [parameters] means "takes no arguments" only when this is true; when it is false it
+   * means "not recovered", and the two are not interchangeable. A consumer scaffolding a call site
+   * for a human to finish may ignore the distinction; one generating code it claims will compile
+   * must not.
+   */
+  val signatureKnown: Boolean = false,
 )
 
 /**
@@ -83,6 +93,11 @@ data class ComponentRecord(
  * @property docs where KDoc and default expressions came from. `"unavailable"` in v1 for every
  *   symbol: Kotlin metadata carries neither, and resolving a `-sources.jar` is the next step. Said
  *   explicitly so a consumer can tell "no KDoc" from "KDoc not recovered".
+ * @property receiver the fully-qualified type this composable is declared as an extension on, or
+ *   null when it is an ordinary function. Decides whether a call site resolves at all:
+ *   `AnimatedVisibility` is declared on `ColumnScope`, so printing it at file scope is an
+ *   unresolved reference rather than a style choice. Only meaningful when
+ *   [ComponentRecord.signatureKnown].
  */
 @Serializable
 data class ComponentSymbol(
@@ -93,6 +108,7 @@ data class ComponentSymbol(
   val descriptor: String? = null,
   val sourceFile: String? = null,
   val docs: String = "unavailable",
+  val receiver: String? = null,
 )
 
 @Serializable

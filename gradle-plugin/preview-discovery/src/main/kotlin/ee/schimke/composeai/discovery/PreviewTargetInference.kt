@@ -202,6 +202,7 @@ object PreviewTargetInference {
     if (candidates.isEmpty()) return emptyList()
     val confidence = if (candidates.size == 1) TargetConfidence.HIGH else TargetConfidence.MEDIUM
     return candidates.map { candidate ->
+      val signature = ComposableSignature.signatureOf(candidate.classInfo, candidate.method)
       PreviewTarget(
         className = candidate.ownerFqn,
         functionName = candidate.method.name,
@@ -210,7 +211,9 @@ object PreviewTargetInference {
         sourceFile = null,
         confidence = confidence,
         signals = listOf(TargetSignal.LIBRARY_COMPONENT),
-        parameters = ComposableSignature.parametersOf(candidate.classInfo, candidate.method),
+        parameters = signature?.parameters.orEmpty(),
+        receiver = signature?.receiver,
+        signatureKnown = signature != null,
       )
     }
   }
@@ -296,6 +299,7 @@ object PreviewTargetInference {
         best.score >= MEDIUM_THRESHOLD -> TargetConfidence.MEDIUM
         else -> TargetConfidence.LOW
       }
+    val signature = ComposableSignature.signatureOf(bestCandidate.classInfo, bestCandidate.method)
     return listOf(
       PreviewTarget(
         className = best.classFqn,
@@ -304,9 +308,11 @@ object PreviewTargetInference {
         confidence = confidence,
         signals = best.signals,
         // The target's real Kotlin value parameters (names / types / defaults) for the call site a
-        // consumer renders into Code Connect. Best-effort — empty when metadata can't be read.
-        parameters =
-          ComposableSignature.parametersOf(bestCandidate.classInfo, bestCandidate.method),
+        // consumer renders into Code Connect. Best-effort — empty when metadata can't be read,
+        // which `signatureKnown` is what distinguishes from a parameterless composable.
+        parameters = signature?.parameters.orEmpty(),
+        receiver = signature?.receiver,
+        signatureKnown = signature != null,
       )
     )
   }
