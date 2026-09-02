@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T07:26:30.243Z",
+  "generatedAt": "2026-09-02T11:44:16.245Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "fa9ad8c7f8191de283baa41340ff3730ead99ed2",
+        "subject": "feat(design-artifacts): default defer-figma-svg to true (#4982)",
+        "at": "2026-09-02T12:34:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "753844837b5f940c2e454725f6e631bc284bcf30",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.63.0 (#4985)",
+        "at": "2026-09-02T11:06:04Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "5347385e0c7aaa74d5ccbec4d185766a2490b0a8",
         "subject": "chore(main): release 1.63.0 (#4974)",
@@ -467,22 +483,6 @@
         "subject": "chore(main): release 1.60.2 (#4918)",
         "at": "2026-08-31T20:23:04+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3234c77d9636b8dfc8187b1434f696dab54d2bd5",
-        "subject": "fix(design-artifacts): reject shard exclusion format skew (#4917)",
-        "at": "2026-08-31T20:18:30+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "37f209f647550740e7ead5ca0d7c8a2bbb2e5afe",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.60.1 (#4915)",
-        "at": "2026-08-31T18:30:21+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
