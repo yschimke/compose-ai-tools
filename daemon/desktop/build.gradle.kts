@@ -237,6 +237,138 @@ dependencies {
   "testFixturesImplementation"(project(":data-preview-overrides-runtime"))
 }
 
+/**
+ * The `compose/figma-svg` export's Material interaction states, run one Compose line forward.
+ *
+ * `ForwardMaterialInteractionExportTest` is the reason this exists. Material forked its ripple node
+ * — `androidx.compose.material.ripple.RippleNode` is the original, material3 1.5.0-alpha took a
+ * copy into `androidx.compose.material3.ripple`, CMP material3 1.12 another into
+ * `androidx.compose.material3.internal.ripple` — and the export matched the first name only, so on
+ * every catalog running the newer lines it recognised no ripple node and silently dropped the focus
+ * ring, the state layer and the press ripple alike (#4980). Nothing went red: this whole repository
+ * renders at CMP 1.11, the line where the original match was correct, and `OverrideIntegrationTest`
+ * covers precisely this surface at that pin.
+ *
+ * So the runtime has to move twice, not once. `compose.desktop.currentOs` carries **no material3**
+ * (its POM is foundation/material/runtime/ui), so upgrading the desktop distribution alone leaves
+ * material3 on the pre-fork line and the task passes while covering nothing — the same silent no-op
+ * `:renderer-desktop`'s forward-pin guard exists to prevent. Both are pinned, and both are required
+ * to be strictly ahead of what the module compiles against.
+ */
+val forwardComposeTestRuntime =
+  configurations.create("forwardComposeTestRuntime") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    description = "Daemon tests running on the forward Compose Multiplatform + material3 runtime."
+    extendsFrom(configurations.testRuntimeClasspath.get())
+  }
+
+// `asProvider()` because `compose-multiplatform-forward` shares this alias's prefix, which makes
+// `libs.versions.compose.multiplatform` a group node rather than the leaf version.
+val productionCompose = libs.versions.compose.multiplatform.asProvider().get()
+val forwardCompose = libs.versions.compose.multiplatform.forward.get()
+val productionMaterial3 = libs.versions.compose.multiplatform.material3.asProvider().get()
+val forwardMaterial3 = libs.versions.compose.multiplatform.material3.forward.get()
+
+/**
+ * Version ordering that treats a pre-release as *below* the release it precedes, so a production
+ * bump to a final `1.12.0` fails here against a forward pin of `1.12.0-rc01` rather than silently
+ * levelling. At or below the production pin the forward task runs on an identical or downgraded
+ * graph and passes while covering nothing.
+ *
+ * A deliberate copy of `:renderer-desktop`'s, not an accident: it is the same rule, and the two
+ * would be worth sharing — but `build-logic` currently exposes convention plugins and nothing a
+ * build script can call, so hoisting a comparator there is a new pattern on a classpath every
+ * module in the build depends on. Keep the two in step; if a third forward pin appears, hoist it.
+ */
+fun composeVersionIsNewer(candidate: String, than: String): Boolean {
+  fun core(version: String) = version.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+
+  val candidateCore = core(candidate)
+  val thanCore = core(than)
+  for (index in 0 until maxOf(candidateCore.size, thanCore.size)) {
+    val left = candidateCore.getOrElse(index) { 0 }
+    val right = thanCore.getOrElse(index) { 0 }
+    if (left != right) return left > right
+  }
+  val candidatePre = candidate.substringAfter('-', "")
+  val thanPre = than.substringAfter('-', "")
+  return when {
+    candidatePre.isEmpty() && thanPre.isEmpty() -> false
+    candidatePre.isEmpty() -> true
+    thanPre.isEmpty() -> false
+    else -> candidatePre > thanPre
+  }
+}
+
+require(composeVersionIsNewer(forwardCompose, productionCompose)) {
+  "compose-multiplatform-forward ($forwardCompose) must be strictly newer than " +
+    "compose-multiplatform ($productionCompose) — see forwardComposeInteractionExportTest."
+}
+
+require(composeVersionIsNewer(forwardMaterial3, productionMaterial3)) {
+  "compose-multiplatform-material3-forward ($forwardMaterial3) must be strictly newer than " +
+    "compose-multiplatform-material3 ($productionMaterial3). forwardComposeInteractionExportTest " +
+    "exists to run the figma-svg export against the material3 that forked its ripple node; at or " +
+    "below the production pin it runs on the pre-fork node and passes while covering nothing. " +
+    "Bump the forward pin in gradle/libs.versions.toml."
+}
+
+dependencies {
+  // Explicit rather than derived from the production pins: the point of the task is to preserve a
+  // second, forward runtime line. `strictly` is what wins conflict resolution against the 1.11
+  // coordinates this configuration inherits from `testRuntimeClasspath`.
+  forwardComposeTestRuntime(compose.desktop.currentOs) { version { strictly(forwardCompose) } }
+  forwardComposeTestRuntime(libs.jetbrains.forward.compose.material3) {
+    version { strictly(forwardMaterial3) }
+  }
+}
+
+val forwardComposeInteractionExportTest =
+  tasks.register<Test>("forwardComposeInteractionExportTest") {
+    group = "verification"
+    // Derived, not spelled out: hardcoded numbers here go stale on the next forward bump and then
+    // describe a runtime the task is not using.
+    description =
+      "Runs the figma-svg interaction-state export on Compose Multiplatform $forwardCompose " +
+        "with material3 $forwardMaterial3."
+    val testSourceSet = sourceSets.test.get()
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath =
+      testSourceSet.output +
+        sourceSets.main.get().output +
+        sourceSets.getByName("testFixtures").output +
+        forwardComposeTestRuntime
+    filter {
+      includeTestsMatching("ee.schimke.composeai.daemon.ForwardMaterialInteractionExportTest")
+    }
+    shouldRunAfter(tasks.test)
+  }
+
+// `check` for anyone running it, and `test` because that is what actually runs.
+//
+// CI never invokes `check`: the full branch of ci.yml's module-unit-test job runs
+// `test jvmTest desktopTest checkKotlinAbi`, and the scoped branch runs whatever
+// `.github/ci/affected-gradle-tests.py` resolves — which is `test`/`jvmTest` per project. That
+// resolver's own docstring records this repository having already shipped a gate wired only into
+// `check` and therefore never run; `finalizedBy` is what keeps this one out of that bucket. It
+// also means a local `:daemon:desktop:test` covers the forward runtime, which is the point: the
+// regression it guards was invisible precisely because the interaction-state suite only ever ran
+// one Compose line.
+tasks.check { dependsOn(forwardComposeInteractionExportTest) }
+
+tasks.test {
+  finalizedBy(forwardComposeInteractionExportTest)
+  // The forward class asserts behaviour that only exists once material3 has forked its ripple
+  // node, so on the production pin it would fail for the right reason at the wrong time. It runs
+  // in `forwardComposeInteractionExportTest` and nowhere else — and that task's first test fails
+  // loudly if the forward runtime ever resolves back to the production line, so this exclusion
+  // cannot end up hiding a class that has quietly stopped being run anywhere.
+  filter {
+    excludeTestsMatching("ee.schimke.composeai.daemon.ForwardMaterialInteractionExportTest")
+  }
+}
+
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon
 // .DaemonMain`. Lets local verification of the daemon happen without applying the
 // `application` plugin (which would add `distZip`/`distTar`/etc. tasks we don't need yet). Wire-up

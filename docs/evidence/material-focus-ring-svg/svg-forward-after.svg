@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="48" viewBox="0 0 96 48" text-rendering="geometricPrecision" font-family="sans-serif">
+<g transform="translate(0, 0)">
+  <g id="Root">
+    <g id="Box">
+      <rect x="0" y="0" width="96" height="48" fill="#FFFFFF"/>
+      <clipPath id="clip-0"><rect x="0" y="0" width="96" height="48" rx="24" ry="24"/></clipPath>
+      <g id="Box">
+        <rect x="0" y="0" width="96" height="48" rx="24" ry="24" fill="#6750A4"/>
+        <g clip-path="url(#clip-0)">
+          <g id="BoxKt">
+            <rect x="44" y="20" width="8" height="8" fill="#FFFFFF"/>
+          </g>
+          <g id="Material Focus Ring">
+            <rect x="3" y="3" width="90" height="42" rx="21" ry="21" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+          </g>
+          <g id="Material Focus Ring">
+            <rect x="1" y="1" width="94" height="46" rx="23" ry="23" fill="none" stroke="#625B71" stroke-width="2"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

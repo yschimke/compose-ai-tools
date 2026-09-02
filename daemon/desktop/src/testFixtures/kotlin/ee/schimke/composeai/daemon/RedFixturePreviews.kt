@@ -46,6 +46,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -1753,11 +1754,85 @@ fun InteractionStateSquare() {
 /** A real Material 3 indication target for the interaction-variant SVG regression. */
 @Composable
 fun MaterialButtonInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) { MaterialButtonInteractionStateBody() }
+}
+
+/**
+ * [MaterialButtonInteractionState] drawing Material's **keyboard focus indicator** rather than the
+ * 10% state layer — the same switch `m3-catalog` makes for its `focus-ring` stickers, and the shape
+ * of component every catalog on the newer material3 line renders.
+ *
+ * Under the module's production pin this is [MaterialButtonInteractionState] exactly: the ring is
+ * `RippleDefaults.InsetFocusRingRippleThemeConfiguration` over `LocalRippleThemeConfiguration`, and
+ * neither exists before CMP material3 1.12, so [insetFocusRing] resolves to null and the fixture
+ * falls through to the opacity focus every 1.11 render already draws. On the forward runtime
+ * `forwardComposeInteractionExportTest` supplies, both resolve and the button draws the ring.
+ *
+ * That is why the theme is reached for reflectively instead of imported. A compile-time reference
+ * would pin the whole module forward for one fixture; a second source set compiled against the
+ * forward artifact would fork `RedFixturePreviews` in two. Reflection keeps one fixture that is
+ * honest on both runtimes — and the test that needs the ring asserts the API resolved, so a
+ * silently-null lookup fails the run rather than passing it.
+ */
+@Composable
+fun InsetFocusRingButtonInteractionState() {
   MaterialTheme(colorScheme = lightColorScheme()) {
-    Button(onClick = {}, modifier = Modifier.fillMaxSize()) {
-      Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.onPrimary))
+    val ring = insetFocusRing
+    if (ring == null) {
+      MaterialButtonInteractionStateBody()
+    } else {
+      CompositionLocalProvider(ring.local provides ring.configuration) {
+        MaterialButtonInteractionStateBody()
+      }
     }
   }
+}
+
+/** The button both interaction fixtures draw, so the only difference between them is the theme. */
+@Composable
+private fun MaterialButtonInteractionStateBody() {
+  Button(onClick = {}, modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.onPrimary))
+  }
+}
+
+/** The composition local and value [InsetFocusRingButtonInteractionState] provides, if any. */
+class InsetFocusRingTheme(
+  val local: ProvidableCompositionLocal<Any?>,
+  val configuration: Any,
+)
+
+/**
+ * Material's inset-focus-ring theming, read off whichever material3 is on the runtime classpath, or
+ * null on a line that has none.
+ *
+ * The two material3 lines disagree on the accessor's name — AndroidX calls it
+ * `InsetFocusRingThemeConfiguration`, Compose Multiplatform
+ * `InsetFocusRingRippleThemeConfiguration` — so both are tried. Resolved once: the configuration is
+ * a singleton, and only the `ProvidedValue` wrapper is rebuilt per composition.
+ */
+val insetFocusRing: InsetFocusRingTheme? by lazy {
+  runCatching {
+    val loader = MaterialTheme::class.java.classLoader
+    @Suppress("UNCHECKED_CAST")
+    val local =
+      Class.forName("androidx.compose.material3.RippleKt", false, loader)
+        .getMethod("getLocalRippleThemeConfiguration")
+        .invoke(null) as ProvidableCompositionLocal<Any?>
+    val defaults = Class.forName("androidx.compose.material3.RippleDefaults", false, loader)
+    val instance = defaults.getField("INSTANCE").get(null)
+    val configuration =
+      sequenceOf(
+          "getInsetFocusRingRippleThemeConfiguration",
+          "getInsetFocusRingThemeConfiguration",
+        )
+        .mapNotNull { name ->
+          runCatching { defaults.getMethod(name).invoke(instance) }.getOrNull()
+        }
+        .first()
+    InsetFocusRingTheme(local, configuration)
+  }
+    .getOrNull()
 }
 
 /**
