@@ -35,8 +35,9 @@ import okio.openZip
  * 2. **Remote repositories** (when [networkEnabled]) — Maven Central + Google Maven by default,
  *    overridable via [remoteRepositories]. Hit only when the local repos can't satisfy the
  *    coordinate (nothing found, or a v4 hash that no local copy matched). A downloaded jar is
- *    cached under [downloadCacheDir] in Maven layout, so a second resolve — or a later local-only
- *    run — finds it without the network.
+ *    cached under [downloadCacheDir] in Maven layout, fanned one level deeper under the sha256 the
+ *    fetch was made for, so a second resolve — or a later local-only run — finds it without the
+ *    network and two builds of one `-SNAPSHOT` coordinate never overwrite each other.
  *
  * # Verification — warn, never fail
  *
@@ -164,35 +165,49 @@ public class CoordinateResolver(
       // AndroidX libs ship `.aar`). [materialize] turns any `.aar` hit into its `classes.jar`.
       for (fileName in candidateFileNames(coord)) {
         // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.<ext>
-        val mavenPath =
-          File(
-            root,
-            "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName",
-          )
+        val mavenVersionDir =
+          File(root, "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}")
+        val mavenPath = File(mavenVersionDir, fileName)
         if (fileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
           found += mavenPath
+        // [download] buckets a hashed coordinate one level deeper, under the sha256 it was fetched
+        // for, so two builds of the same `-SNAPSHOT` coordinate coexist instead of overwriting each
+        // other. Scan that level too — the same one-directory-deep sweep the Gradle layout below
+        // gets, and for the same reason: the bytes are fanned under a per-hash dir. Flat entries
+        // from an older cache (and from `~/.m2`, which is never bucketed) still match above.
+        found += subdirectoryHits(mavenVersionDir, fileName)
         // Gradle modules-2 layout fans the artifact under per-hash dirs; collect every match under
         // <root>/<group>/<artifact>/<version>/<hash>/<fileName>. One directory level only, so a
         // huge cache root doesn't turn this into a full filesystem scan.
-        val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
-        if (fileSystem.metadataOrNull(gradleVersionDir.path.toPath())?.isDirectory == true) {
-          fileSystem
-            .listOrNull(gradleVersionDir.path.toPath())
-            ?.asSequence()
-            ?.map { it.toFile() }
-            ?.filter { fileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
-            ?.mapNotNull { hashDir ->
-              File(hashDir, fileName).takeIf {
-                fileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
-              }
-            }
-            ?.let { found += it }
-        }
+        found +=
+          subdirectoryHits(
+            File(root, "${coord.group}/${coord.artifact}/${coord.version}"),
+            fileName,
+          )
       }
     }
     // Materialize before returning so the hash check (and the caller's classpath) sees real jars:
     // an `.aar` isn't loadable, and the bundle's `sha256` is of the extracted `classes.jar`.
     return found.mapNotNull { materialize(it) }
+  }
+
+  /**
+   * Every `<versionDir>/<*>/<fileName>` — one directory level only, so a huge cache root never
+   * turns this into a filesystem walk. Both fanned layouts this resolver reads are exactly one
+   * level deep: Gradle's `modules-2` per-sha1 dirs, and [download]'s own per-sha256 buckets.
+   */
+  private fun subdirectoryHits(versionDir: File, fileName: String): List<File> {
+    if (fileSystem.metadataOrNull(versionDir.path.toPath())?.isDirectory != true) return emptyList()
+    return fileSystem
+      .listOrNull(versionDir.path.toPath())
+      .orEmpty()
+      .map { it.toFile() }
+      .filter { fileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
+      .mapNotNull { dir ->
+        File(dir, fileName).takeIf {
+          fileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
+        }
+      }
   }
 
   /**
@@ -202,16 +217,27 @@ public class CoordinateResolver(
    *
    * A previously-cached download is *not* short-circuited here: [locate] already searches
    * [downloadCacheDir], so reaching this method means either nothing was cached, or the cached
-   * bytes didn't match the bundle's hash and we want fresh bytes (which overwrite the stale copy).
+   * bytes didn't match the bundle's hash and we want fresh bytes. Those land in this coordinate's
+   * own per-hash bucket, so they replace only an earlier fetch made for the same expected content —
+   * never another catalog's copy of the same `-SNAPSHOT` path.
    */
   private fun download(coord: BundleReader.ClasspathEntry.Maven): File? {
     val versionDir = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}"
+    // A coordinate carrying a hash is cached one level deeper, in a bucket named for the sha256 it
+    // was fetched to satisfy. `<artifact>-1.0.0-SNAPSHOT.<ext>` is the same literal path for every
+    // build of a snapshot, so a flat cache makes two catalogs on two androidx.dev builds overwrite
+    // each other's bytes on every materialization — a torn file when they run concurrently, and an
+    // endless re-download when they don't. The bucket is the EXPECTED hash, not the file's own (for
+    // an `.aar` the recorded sha256 is of the extracted `classes.jar`); it is a per-content
+    // partition of the cache, not a claim about what is in it. Unhashed coordinates (pre-v4
+    // bundles) keep the flat path, which is also where older caches already hold their downloads —
+    // [locate] reads both.
+    val cacheRel = coord.sha256?.let { "$versionDir/$it" } ?: versionDir
     // Try the recorded type, then `.aar` — same fallback as [locate], for the same reasons.
     for (fileName in candidateFileNames(coord)) {
-      val rel = "$versionDir/$fileName"
       // The cache always keys on the LITERAL `<artifact>-<version>.<ext>` name, even when the
       // remote served a timestamped snapshot file, so [locate] finds the download next time.
-      val dest = File(downloadCacheDir, rel)
+      val dest = File(downloadCacheDir, "$cacheRel/$fileName")
       for (base in remoteRepositories) {
         val remoteName = remoteFileName(base, coord, versionDir, fileName)
         val url = base.trimEnd('/') + "/" + versionDir + "/" + remoteName
@@ -274,13 +300,19 @@ public class CoordinateResolver(
    */
   private fun materialize(file: File): File? {
     if (!file.name.endsWith(".aar", ignoreCase = true)) return file
-    // Key the extraction dir on the source path so distinct candidates (hash disambiguation) don't
-    // collide, and a re-resolve reuses the already-extracted jar.
-    val dest =
-      File(
-        downloadCacheDir,
-        "extracted/${file.absolutePath.hashCode().toUInt().toString(16)}/classes.jar",
-      )
+    // Key the extraction dir on the AAR's CONTENT, never on its path. A path is not unique to a
+    // set of bytes: `<artifact>-1.0.0-SNAPSHOT.aar` is the literal name [download] caches every
+    // build of a snapshot under, so two catalogs built against two androidx.dev snapshot builds
+    // write the same path. Keyed on the path, the first extraction wins forever — [download]
+    // overwrites the AAR with the right bytes, `dest` already exists, and the STALE `classes.jar`
+    // is handed back. That is how meshcore-mobile's render lane died: its
+    // `remote-player-core:1.0.0-SNAPSHOT` resolved to another catalog's build while its
+    // `remote-core` (a `.jar`, so never extracted) came back fresh, putting two Remote Compose
+    // builds on one classpath and killing every IR replay with `NoSuchFieldError: class
+    // androidx.compose.remote.core.RemoteClock does not have member field ... SYSTEM`
+    // (compose-preview-server#187). Content keying makes a stale extraction unreachable, and two
+    // paths holding the same bytes still share one extraction.
+    val dest = File(downloadCacheDir, "extracted/${sha256Hex(file)}/classes.jar")
     val destPath = dest.path.toPath()
     if ((fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) return dest
     return try {
