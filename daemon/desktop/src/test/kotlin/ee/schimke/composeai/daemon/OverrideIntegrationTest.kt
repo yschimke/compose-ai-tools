@@ -318,15 +318,23 @@ class OverrideIntegrationTest {
       fun svg(id: String) = dataDir.resolve(id).resolve("compose-figma.svg").readText()
       fun png(id: String) = outputDir.resolve("$id.png").readBytes()
       fun containerPixel(id: String) = ImageIO.read(outputDir.resolve("$id.png")).getRGB(10, 24)
-      fun hasFillNearPixel(svg: String, argb: Int): Boolean {
-        val target = intArrayOf(argb shr 16 and 0xFF, argb shr 8 and 0xFF, argb and 0xFF)
-        return Regex("""fill="(#(?:[0-9A-Fa-f]{6}))""")
-          .findAll(svg)
-          .map { it.groupValues[1].removePrefix("#").toInt(16) }
-          .any { fill ->
-            val actual = intArrayOf(fill shr 16 and 0xFF, fill shr 8 and 0xFF, fill and 0xFF)
-            actual.indices.all { abs(actual[it] - target[it]) <= 1 }
+      fun composite(destination: Int, source: Int, alpha: Float): Int {
+        fun channel(shift: Int): Int {
+          val dst = destination shr shift and 0xFF
+          val src = source shr shift and 0xFF
+          return (src * alpha + dst * (1f - alpha)).toInt()
+        }
+        return channel(16).shl(16) or channel(8).shl(8) or channel(0)
+      }
+      fun assertPixelNear(message: String, expected: Int, actual: Int) {
+        val close =
+          listOf(16, 8, 0).all { shift ->
+            abs((expected shr shift and 0xFF) - (actual shr shift and 0xFF)) <= 1
           }
+        assertTrue(
+          "$message: expected #%06X, actual #%06X".format(expected, actual and 0xFFFFFF),
+          close,
+        )
       }
       assertNotEquals(
         "focused Material button PNG must not stay resting",
@@ -348,14 +356,173 @@ class OverrideIntegrationTest {
         svg(baseId),
         svg(pressedId),
       )
+      assertTrue("focused SVG keeps the editable base fill", svg(focusedId).contains("#6750A4"))
       assertTrue(
-        "focused SVG fill must match the captured Material state-layer pixel",
-        hasFillNearPixel(svg(focusedId), containerPixel(focusedId)),
+        "focused SVG emits the indication after content",
+        svg(focusedId).contains("id=\"Material State Layer\""),
       )
       assertTrue(
-        "pressed SVG fill must match the captured Material ripple pixel",
-        hasFillNearPixel(svg(pressedId), containerPixel(pressedId)),
+        "pressed SVG emits the press ripple after content",
+        svg(pressedId).contains("id=\"Material Press Ripple\""),
       )
+      val focusedExpected = composite(0x6750A4, 0xFFFFFF, 0.1f)
+      val pressedExpected = composite(focusedExpected, 0xFFFFFF, 0.1f)
+      assertPixelNear(
+        "focused overlay must match the captured Material state-layer pixel",
+        focusedExpected,
+        containerPixel(focusedId),
+      )
+      assertPixelNear(
+        "pressed overlays must match the captured Material ripple pixel",
+        pressedExpected,
+        containerPixel(pressedId),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /** Follow-up coverage for the geometry, compositing, ordering and tokenless review findings. */
+  @Test
+  fun customIndicationPreservesItsOverlayGeometryAndDrawOrder() {
+    val outputDir = tempFolder.newFolder("renders-custom-indication")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val id = "CustomIndication_Focused"
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                PreviewManifestEntry(
+                  id = id,
+                  className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+                  functionName = "CustomIndicationInteractionState",
+                  widthPx = 96,
+                  heightPx = 48,
+                  density = 1.0f,
+                  outputBaseName = id,
+                  overrides =
+                    OverrideVariantSpec(
+                      name = "focused",
+                      interaction = OverrideVariantInteraction.Focused,
+                    ),
+                )
+              )
+          ),
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(FocusPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
+      val svg =
+        outputDir.parentFile!!.resolve("data").resolve(id).resolve("compose-figma.svg").readText()
+      assertTrue("gradient ancestor must remain editable", svg.contains("<linearGradient"))
+      assertTrue(
+        "tokenless clickable must emit its state layer",
+        svg.contains("Material State Layer"),
+      )
+      assertTrue(
+        "explicit 20dp ripple radius must export as a 40px circle",
+        svg.contains("width=\"40\" height=\"40\""),
+      )
+      assertFalse(
+        "unbounded indication must not gain a clip path",
+        svg
+          .substringAfter("id=\"Material Indication\"")
+          .substringBefore("</g>")
+          .contains("clip-path"),
+      )
+      assertTrue(
+        "state layer must be emitted after the clickable's green child",
+        svg.lastIndexOf("Material State Layer") > svg.lastIndexOf("#00FF00"),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun capturedVectorLeafRetainsItsIndicationOverlay() {
+    val svg = renderFocusedSvg("VectorIndication", "VectorIndicationInteractionState", 96, 48)
+    assertTrue("captured vector path must remain editable", svg.contains("<path"))
+    assertTrue(
+      "vector leaf must retain its final indication child",
+      svg.contains("Material State Layer"),
+    )
+    assertTrue(
+      "indication must paint after the captured vector",
+      svg.lastIndexOf("Material State Layer") > svg.lastIndexOf("<path"),
+    )
+  }
+
+  @Test
+  fun nonUniformScaleTransformsRippleIntoAnEllipse() {
+    val svg = renderFocusedSvg("ScaledIndication", "ScaledIndicationInteractionState", 128, 64)
+    val stateLayer = svg.substringAfter("id=\"Material State Layer\"").substringBefore("</g>")
+    val points =
+      Regex("""[ML](-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)""")
+        .findAll(stateLayer)
+        .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
+        .toList()
+    assertTrue(
+      "20px radius at scaleX=2 must become 80px wide: $stateLayer",
+      abs(points.maxOf { it.first } - points.minOf { it.first } - 80.0) < 0.01,
+    )
+    assertTrue(
+      "20px radius at scaleY=0.5 must become 20px high: $stateLayer",
+      abs(points.maxOf { it.second } - points.minOf { it.second } - 20.0) < 0.01,
+    )
+    assertTrue(
+      "non-uniformly scaled circle must export an ellipse contour",
+      stateLayer.contains("<path"),
+    )
+  }
+
+  private fun renderFocusedSvg(
+    id: String,
+    functionName: String,
+    widthPx: Int,
+    heightPx: Int,
+  ): String {
+    val outputDir = tempFolder.newFolder("renders-$id")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                PreviewManifestEntry(
+                  id = id,
+                  className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+                  functionName = functionName,
+                  widthPx = widthPx,
+                  heightPx = heightPx,
+                  density = 1.0f,
+                  outputBaseName = id,
+                  overrides =
+                    OverrideVariantSpec(
+                      name = "focused",
+                      interaction = OverrideVariantInteraction.Focused,
+                    ),
+                )
+              )
+          ),
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(FocusPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    return try {
+      host.submit(RenderRequest.Render(payload = "previewId=$id"), timeoutMs = 60_000)
+      outputDir.parentFile!!.resolve("data").resolve(id).resolve("compose-figma.svg").readText()
     } finally {
       host.shutdown()
     }

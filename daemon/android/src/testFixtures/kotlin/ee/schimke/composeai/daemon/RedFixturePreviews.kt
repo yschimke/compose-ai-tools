@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -274,6 +275,16 @@ fun InteractionStateSquare() {
           interactionSource = interactionSource,
         )
   )
+}
+
+/** Android's platform-ripple counterpart to the desktop Material indication fixture. */
+@Composable
+fun MaterialButtonInteractionState() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Button(onClick = {}, modifier = Modifier.fillMaxSize()) {
+      Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.onPrimary))
+    }
+  }
 }
 
 @Composable

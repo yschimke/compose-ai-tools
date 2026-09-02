@@ -46,7 +46,12 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.lang.reflect.Method
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import okio.FileSystem
@@ -1273,8 +1278,48 @@ internal object ComposeLayoutInspector {
           info.coordinates.boundsIn(rootCoords)
         }
       } else null
+    val ownerId = semanticsId?.toString() ?: identityId
+    val indications = LayoutTreeAccess.indications(modifiers, rootCoords)
+    val ownerTransform = coordinates.scaleIn(rootCoords)
+    val wireModifiers = modifiers.mapNotNull { info ->
+      info.toWireModifier(rootCoords, density, fontScale)
+    }
+    val resolvedTokens =
+      ModifierTokenResolver.resolve(
+          modifierInfo = modifiers,
+          measurePolicy = measurePolicy,
+          sizeWidthPx = width,
+          sizeHeightPx = height,
+          density = density,
+        )
+        // The box the fill/ring modifier drew into, measured off its own coordinator in the same
+        // root space as `placedBounds` — the direct answer to the question `paintInset` and the
+        // measured-size growth heuristic can only estimate (issue #3572).
+        //
+        // The FILL's modifier is preferred over a ring's, matching the precedence the resolver
+        // itself uses: one box cannot describe both when a chain pads between them, and the fill
+        // is the layer's dominant paint (a ring that resolves fully transparent is dropped by the
+        // renderer outright, so taking its outer box would stretch a visible background over a
+        // region nothing painted). A ring-only node — an `OutlinedCard`, a divider — still gets
+        // its own box from the `border`.
+        ?.let { resolved ->
+          val hasVisibleFill =
+            resolved.backgroundGradient != null ||
+              resolved.backgroundColor?.let { color ->
+                color.length >= 3 && !color.substring(1, 3).equals("00", ignoreCase = true)
+              } == true
+          val paint =
+            modifiers.firstOrNull {
+              hasVisibleFill && ModifierTokenResolver.fillsContainer(it.modifier)
+            } ?: modifiers.firstOrNull { ModifierTokenResolver.ringsContainer(it.modifier) }
+          paint
+            ?.coordinates
+            ?.boundsIn(rootCoords)
+            ?.takeIf { it.right > it.left && it.bottom > it.top }
+            ?.let { resolved.copy(paintBox = it) } ?: resolved
+        }
     return LayoutInspectorNode(
-      nodeId = semanticsId?.toString() ?: identityId,
+      nodeId = ownerId,
       component = ownComponent,
       displayName = displayComponent.takeIf { it != ownComponent },
       source = source?.source,
@@ -1285,49 +1330,17 @@ internal object ComposeLayoutInspector {
       placed = placed,
       attached = attached,
       zIndex = zIndex,
-      modifiers =
-        modifiers.mapNotNull { info -> info.toWireModifier(rootCoords, density, fontScale) },
+      modifiers = wireModifiers,
       // Resolved tokens are computed by the shared resolver (issue #1903) from the same modifier
       // chain + measure policy + measured size this node already carries — `layout/inspector` is
       // the
       // canonical home for the modifier-derived token projection.
-      tokens =
-        ModifierTokenResolver.resolve(
-            modifierInfo = modifiers,
-            measurePolicy = measurePolicy,
-            sizeWidthPx = width,
-            sizeHeightPx = height,
-            density = density,
-          )
-          // The box the fill/ring modifier drew into, measured off its own coordinator in the same
-          // root space as `placedBounds` — the direct answer to the question `paintInset` and the
-          // measured-size growth heuristic can only estimate (issue #3572).
-          //
-          // The FILL's modifier is preferred over a ring's, matching the precedence the resolver
-          // itself uses: one box cannot describe both when a chain pads between them, and the fill
-          // is the layer's dominant paint (a ring that resolves fully transparent is dropped by the
-          // renderer outright, so taking its outer box would stretch a visible background over a
-          // region nothing painted). A ring-only node — an `OutlinedCard`, a divider — still gets
-          // its own box from the `border`.
-          ?.let { resolved ->
-            val hasVisibleFill =
-              resolved.backgroundGradient != null ||
-                resolved.backgroundColor?.let { color ->
-                  color.length >= 3 && !color.substring(1, 3).equals("00", ignoreCase = true)
-                } == true
-            val paint =
-              modifiers.firstOrNull {
-                hasVisibleFill && ModifierTokenResolver.fillsContainer(it.modifier)
-              } ?: modifiers.firstOrNull { ModifierTokenResolver.ringsContainer(it.modifier) }
-            paint
-              ?.coordinates
-              ?.boundsIn(rootCoords)
-              ?.takeIf { it.right > it.left && it.bottom > it.top }
-              ?.let { resolved.copy(paintBox = it) } ?: resolved
-          }
-          ?.let { resolved -> applyStateLayers(resolved, LayoutTreeAccess.stateLayers(modifiers)) },
+      tokens = resolvedTokens,
       curvedTexts = curvedTexts,
-      vectorGraphic = vectorGraphic,
+      // A captured vector is normally a leaf in FigmaSvgModel. When an indication is active, move
+      // the vector into a synthetic first child so the model's leaf return cannot discard the
+      // overlay that must paint after it.
+      vectorGraphic = vectorGraphic.takeIf { indications.isEmpty() },
       // The content-loading placeholder this chain declares, plus whether it is currently visible
       // (issue #2646). Resolved from the same modifier chain + measured size as `tokens`, by the
       // same resolver — the placeholder's own shape/colour, which `tokens` deliberately refuses as
@@ -1346,8 +1359,26 @@ internal object ComposeLayoutInspector {
       drawsContent = drawsContent,
       modifiesDrawnContent =
         DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
-      transform = coordinates.scaleIn(rootCoords),
-      children = children,
+      transform = ownerTransform,
+      // A Material indication is a draw-over operation: `RippleNode.draw` calls `drawContent()`
+      // before its focus state layer and press ripple. Keep it as the final child so gradients,
+      // icons, images and tokenless custom content are tinted in the same order as the real frame.
+      children =
+        children +
+          vectorGraphic
+            ?.takeIf { indications.isNotEmpty() }
+            ?.let {
+              LayoutInspectorNode(
+                nodeId = "$ownerId-indication-content",
+                component = "$ownComponent Graphic",
+                bounds = placedBounds,
+                size = LayoutInspectorSize(width = width, height = height),
+                vectorGraphic = it,
+                transform = ownerTransform,
+              )
+            }
+            .let(::listOfNotNull) +
+          indications.mapIndexed { index, it -> it.toWireNode(ownerId, index) },
     )
   }
 
@@ -1410,54 +1441,85 @@ internal object ComposeLayoutInspector {
     return transform.takeIf { it.scaled || it.rotated }
   }
 
-  /**
-   * Composites the live Material ripple node's settled state layers into the editable container
-   * fill.
-   *
-   * Material's indication is a delegated [androidx.compose.ui.node.DrawModifierNode], not an
-   * inspectable modifier element. The frame therefore draws focus / hover / press correctly while
-   * the token-only SVG keeps the resting fill. A settled opacity indication is still a flat fill:
-   * folding it into [ComposeSemanticsTokens.backgroundColor] preserves the editable shape and its
-   * children instead of rasterising the whole component.
-   */
-  private fun applyStateLayers(
-    tokens: ComposeSemanticsTokens,
-    layers: List<LayoutTreeAccess.StateLayer>,
-  ): ComposeSemanticsTokens {
-    if (layers.isEmpty()) return tokens
-    val destination = parseArgb(tokens.backgroundColor) ?: 0
-    var alpha = ((destination ushr 24) and 0xFF) / 255f
-    var red = ((destination ushr 16) and 0xFF).toFloat()
-    var green = ((destination ushr 8) and 0xFF).toFloat()
-    var blue = (destination and 0xFF).toFloat()
-    for (layer in layers) {
-      val sourceAlpha = ((layer.argb ushr 24) and 0xFF) / 255f * layer.alpha.coerceIn(0f, 1f)
-      val outputAlpha = sourceAlpha + alpha * (1f - sourceAlpha)
-      if (outputAlpha <= 0f) continue
-      fun channel(source: Int, destination: Float): Float =
-        (source * sourceAlpha + destination * alpha * (1f - sourceAlpha)) / outputAlpha
-      red = channel((layer.argb ushr 16) and 0xFF, red)
-      green = channel((layer.argb ushr 8) and 0xFF, green)
-      blue = channel(layer.argb and 0xFF, blue)
-      alpha = outputAlpha
-    }
-    // Skia converts its floating paint result to 8-bit channels by truncation. Keep the whole
-    // stack in float until here (focus + press otherwise rounds twice), then match that conversion.
-    val composited =
-      (alpha * 255f).toInt().coerceIn(0, 255).shl(24) or
-        red.toInt().coerceIn(0, 255).shl(16) or
-        green.toInt().coerceIn(0, 255).shl(8) or
-        blue.toInt().coerceIn(0, 255)
-    return tokens.copy(backgroundColor = "#%08X".format(composited))
+  /** Turns one live Material opacity indication into an editable, correctly ordered SVG subtree. */
+  private fun LayoutTreeAccess.Indication.toWireNode(
+    ownerId: String,
+    index: Int,
+  ): LayoutInspectorNode {
+    val centerX = (bounds.left + bounds.right) / 2.0
+    val centerY = (bounds.top + bounds.bottom) / 2.0
+    val scaleX = abs(transform?.scaleX?.toDouble() ?: 1.0)
+    val scaleY = abs(transform?.scaleY?.toDouble() ?: 1.0)
+    val angle = Math.toRadians((transform?.rotationDegrees ?: 0f).toDouble())
+    // The circle is measured in the ripple node's local pixels. Map its two axes into root space
+    // before constructing the captured AABB; FigmaSvgModel uses the local size + transform below
+    // to recover and rotate the actual ellipse from this box.
+    val halfWidth =
+      radiusPx.toDouble() *
+        sqrt((scaleX * cos(angle)).let { it * it } + (scaleY * sin(angle)).let { it * it })
+    val halfHeight =
+      radiusPx.toDouble() *
+        sqrt((scaleX * sin(angle)).let { it * it } + (scaleY * cos(angle)).let { it * it })
+    val circleBounds =
+      LayoutInspectorBounds(
+        left = (centerX - halfWidth).roundToInt(),
+        top = (centerY - halfHeight).roundToInt(),
+        right = (centerX + halfWidth).roundToInt(),
+        bottom = (centerY + halfHeight).roundToInt(),
+      )
+    val nonUniformScale = abs(scaleX - scaleY) > 0.001
+    val circle =
+      LayoutInspectorNode(
+        nodeId = "$ownerId-indication-$index-circle",
+        component = if (pressed) "Material Press Ripple" else "Material State Layer",
+        bounds = circleBounds,
+        size =
+          LayoutInspectorSize(
+            width = (radiusPx * 2f).roundToInt(),
+            height = (radiusPx * 2f).roundToInt(),
+          ),
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundColor = colorWithOpacity(argb, alpha),
+            shape = "circle".takeUnless { nonUniformScale },
+            // A non-uniformly scaled circle is an ellipse, not the capsule produced by applying
+            // CircleShape to a rectangular box. The unit contour scales with the recovered box.
+            shapePath = UNIT_CIRCLE_PATH.takeIf { nonUniformScale },
+          ),
+        transform = transform,
+      )
+    return LayoutInspectorNode(
+      nodeId = "$ownerId-indication-$index",
+      component = "Material Indication",
+      bounds = bounds,
+      size =
+        LayoutInspectorSize(
+          width = localWidthPx,
+          height = localHeightPx,
+        ),
+      tokens = ComposeSemanticsTokens(clipsContent = true).takeIf { bounded },
+      children = listOf(circle),
+      transform = transform,
+    )
   }
 
-  private fun parseArgb(value: String?): Int? {
-    val hex = value?.removePrefix("#") ?: return null
-    return when (hex.length) {
-      6 -> (0xFF000000L or hex.toLong(16)).toInt()
-      8 -> hex.toLong(16).toInt()
-      else -> null
-    }
+  private val UNIT_CIRCLE_PATH: String =
+    (0 until 48)
+      .joinToString(" ") { index ->
+        val angle = 2.0 * PI * index / 48.0
+        val x = (0.5 + 0.5 * cos(angle)).roundedPathCoordinate()
+        val y = (0.5 + 0.5 * sin(angle)).roundedPathCoordinate()
+        "${if (index == 0) 'M' else 'L'}$x,$y"
+      }
+      .plus(" Z")
+
+  private fun Double.roundedPathCoordinate(): Double =
+    kotlin.math.round(this * 1_000_000.0) / 1_000_000.0
+
+  private fun colorWithOpacity(argb: Int, opacity: Float): String {
+    val sourceAlpha = (argb ushr 24 and 0xFF) / 255f
+    val alpha = (sourceAlpha * opacity.coerceIn(0f, 1f) * 255f).roundToInt().coerceIn(0, 255)
+    return "#%08X".format(alpha.shl(24) or (argb and 0x00FFFFFF))
   }
 
   private fun ModifierInfo.toWireModifier(
@@ -2406,32 +2468,82 @@ internal object ComposeLayoutInspector {
       (call(node, "getModifierInfo") as? Iterable<*>)?.filterIsInstance<ModifierInfo>()
         ?: emptyList()
 
-    data class StateLayer(val argb: Int, val alpha: Float)
+    data class Indication(
+      val argb: Int,
+      val alpha: Float,
+      val bounds: LayoutInspectorBounds,
+      val radiusPx: Float,
+      val bounded: Boolean,
+      val pressed: Boolean,
+      val localWidthPx: Int,
+      val localHeightPx: Int,
+      val transform: LayoutInspectorTransform?,
+    )
 
     /**
-     * Reads settled opacity state from Material's delegated ripple node.
+     * Reads settled opacity state from Material's delegated ripple node on both backends.
      *
      * `ModifierInfo` exposes the `ClickableElement`, but the active state lives on a delegate of
      * the coordinator's modifier-node chain. Reflection keeps this compatible across Compose
-     * versions and makes an unavailable node a no-op. Only the legacy opacity ripple is flattened;
-     * Material 3's inset focus-ring node has non-uniform geometry and must remain outside this
-     * flat-fill path.
+     * versions and makes an unavailable node a no-op. `CommonRippleNode` owns its press animations
+     * directly; `AndroidRippleNode` delegates the active press to a `RippleHostView`. Both inherit
+     * the focus/hover state layer, target radius and boundedness from `RippleNode`.
+     *
+     * The result retains the indication coordinator's own box, radius and boundedness. The SVG
+     * projection can therefore draw the real circle at the correct z-order and clip it at the same
+     * box instead of recolouring an unrelated container fill.
      */
-    fun stateLayers(modifiers: List<ModifierInfo>): List<StateLayer> {
+    fun indications(
+      modifiers: List<ModifierInfo>,
+      rootCoordinates: LayoutCoordinates?,
+    ): List<Indication> {
       val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
-      val layers = mutableListOf<StateLayer>()
-      fun visit(candidate: Any?) {
+      val layers = mutableListOf<Indication>()
+      fun visit(candidate: Any?, fallbackCoordinates: LayoutCoordinates) {
         if (candidate == null || !seen.add(candidate)) return
-        val className = candidate.javaClass.name
-        if (className == "androidx.compose.material.ripple.CommonRippleNode") {
+        val rippleClass =
+          generateSequence(candidate.javaClass as Class<*>?) { it.superclass }
+            .firstOrNull { it.name == "androidx.compose.material.ripple.RippleNode" }
+        if (rippleClass != null) {
+          val coordinates =
+            sequenceOf(
+                "getCoordinator\$ui_release",
+                "getCoordinator\$ui",
+                "getCoordinator",
+              )
+              .mapNotNull { call(candidate, it) as? LayoutCoordinates }
+              .firstOrNull() ?: fallbackCoordinates
+          val bounds = coordinates.boundsIn(rootCoordinates)
+          val transform = coordinates.scaleIn(rootCoordinates)
+          val targetRadius = reflectedField(candidate, "targetRadius") as? Float
+          val bounded = reflectedField(candidate, "bounded") as? Boolean ?: true
           val stateLayer = reflectedField(candidate, "stateLayer")
           val color = (call(candidate, "getRippleColor-0d7_KjU") as? Long)?.let(::packedColorToArgb)
           val stateAlpha =
             stateLayer
               ?.let { reflectedField(it, "animatedAlpha") }
               ?.let { call(it, "getValue") as? Float }
-          if (color != null && stateAlpha != null && stateAlpha > 0f) {
-            layers += StateLayer(color, stateAlpha)
+          if (
+            color != null &&
+              stateAlpha != null &&
+              stateAlpha > 0f &&
+              targetRadius != null &&
+              targetRadius > 0f &&
+              bounds.right > bounds.left &&
+              bounds.bottom > bounds.top
+          ) {
+            layers +=
+              Indication(
+                color,
+                stateAlpha,
+                bounds,
+                targetRadius,
+                bounded,
+                pressed = false,
+                coordinates.size.width,
+                coordinates.size.height,
+                transform,
+              )
           }
 
           val rippleAlphaConfig =
@@ -2444,34 +2556,85 @@ internal object ComposeLayoutInspector {
               reflectedField(animation ?: continue, "animatedAlpha")?.let {
                 call(it, "getValue") as? Float
               } ?: continue
-            val radius =
+            val radiusPercent =
               reflectedField(animation, "animatedRadiusPercent")?.let {
                 call(it, "getValue") as? Float
               } ?: continue
-            // Before the ripple reaches its target radius it is a circle, not a flat container
-            // overlay. Static interaction capture settles it to 1; decline anything mid-flight
-            // rather than flattening geometry that is not flat.
-            if (color != null && radius >= 0.999f && animationAlpha > 0f && pressedAlpha > 0f) {
-              layers += StateLayer(color, animationAlpha * pressedAlpha)
+            // Static interaction capture settles the radius and centre to their targets. Decline a
+            // mid-flight animation rather than claiming its target geometry describes this frame.
+            if (
+              color != null &&
+                radiusPercent >= 0.999f &&
+                animationAlpha > 0f &&
+                pressedAlpha > 0f &&
+                targetRadius != null
+            ) {
+              if (targetRadius > 0f && bounds.right > bounds.left && bounds.bottom > bounds.top) {
+                layers +=
+                  Indication(
+                    color,
+                    animationAlpha * pressedAlpha,
+                    bounds,
+                    targetRadius,
+                    bounded,
+                    pressed = true,
+                    coordinates.size.width,
+                    coordinates.size.height,
+                    transform,
+                  )
+              }
             }
+          }
+
+          // Android keeps the active press in a platform RippleDrawable rather than the common
+          // animation map. The host survives release for the exit animation and reuse, so gate on
+          // the drawable's actual pressed state rather than host allocation.
+          val androidHost =
+            if (candidate.javaClass.name == "androidx.compose.material.ripple.AndroidRippleNode")
+              reflectedField(candidate, "rippleHostView")
+            else null
+          val androidRipple = androidHost?.let { reflectedField(it, "ripple") }
+          val androidPressed =
+            (androidRipple?.let { call(it, "getState") } as? IntArray)?.contains(16842919) == true
+          if (
+            androidPressed &&
+              color != null &&
+              pressedAlpha > 0f &&
+              targetRadius != null &&
+              targetRadius > 0f &&
+              bounds.right > bounds.left &&
+              bounds.bottom > bounds.top
+          ) {
+            layers +=
+              Indication(
+                color,
+                pressedAlpha,
+                bounds,
+                targetRadius,
+                bounded,
+                pressed = true,
+                coordinates.size.width,
+                coordinates.size.height,
+                transform,
+              )
           }
         }
         sequenceOf("getDelegate\$ui_release", "getDelegate\$ui", "getDelegate")
           .mapNotNull { call(candidate, it) }
           .firstOrNull()
-          ?.let(::visit)
+          ?.let { visit(it, fallbackCoordinates) }
         sequenceOf("getParent\$ui_release", "getParent\$ui", "getParent")
           .mapNotNull { call(candidate, it) }
           .firstOrNull()
-          ?.let(::visit)
+          ?.let { visit(it, fallbackCoordinates) }
         sequenceOf("getChild\$ui_release", "getChild\$ui", "getChild")
           .mapNotNull { call(candidate, it) }
           .firstOrNull()
-          ?.let(::visit)
+          ?.let { visit(it, fallbackCoordinates) }
       }
       modifiers.forEach { info ->
         val tail = call(info.coordinates, "getTail")
-        tail?.let(::visit)
+        tail?.let { visit(it, info.coordinates) }
       }
       return layers
     }
