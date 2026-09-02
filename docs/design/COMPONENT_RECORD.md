@@ -747,6 +747,30 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > The lesson generalises past this bug: a corpus you chose is a corpus that agrees
 > with you. Both fixtures I picked by hand happened to avoid the one construct that
 > breaks the path, and only compiling something real found it.
+>
+> **Measured reach.** Over a 28-component Material 3 surface (buttons, cards, chips,
+> toggles, progress, scaffolding, list and navigation items, dialogs), **26 emit a
+> call site and 2 refuse** — the two being `TextField` / `OutlinedTextField`, whose
+> required `state: TextFieldState` genuinely has no literal to write. So the
+> placeholder table is not the bottleneck it looked like from the outside, and
+> widening it further would buy very little: what is left needs *values*, which is
+> Phase 2's argument binding, not more literals.
+>
+> The first run of that measurement read 25/30 with five refusals, three of which —
+> `Checkbox`, `RadioButton`, `Switch` — turned out to share one cause: material3
+> declares their callbacks `((Boolean) -> Unit)?`, and no lambda-shaped rule accepts
+> a nullable function type. Fixing that also surfaced a trap worth recording, because
+> the obvious fix is wrong: a rendered type ending in `?` does **not** mean the
+> parameter is nullable. `(Int) -> String?` is a non-null callback returning a
+> nullable value, and answering `null` for it emits source that does not compile.
+> Nullability is now carried structurally on `TargetParameter.nullable` rather than
+> read off the spelling — and `renderType` separately parenthesises nullable function
+> types, because `(Boolean) -> Unit?` was being handed to every consumer as the
+> rendering of `((Boolean) -> Unit)?`.
+>
+> Caveat on the number: that surface is hand-picked, so it measures the *table*, not
+> a catalog. The corpus ratios §7 asks for still have to come from m3-catalog,
+> wear-m3 and Confetti.
 
 **Phase 4 — the builder on the record.** Generate the capability catalog;
 generate `UiBuilderRenderer` / `CapabilityComposeCodeExporter` for the Wasm tier

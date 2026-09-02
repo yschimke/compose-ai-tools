@@ -1436,6 +1436,16 @@ data class TargetParameter(
    * can define the same simple `RowScope`, and `RowScope` alone cannot be imported.
    */
   val composableSlotReceiver: String? = null,
+  /**
+   * Whether the parameter's own type is nullable, read from metadata rather than inferred from
+   * [type]'s spelling.
+   *
+   * The spelling cannot carry it. A rendered type ends in `?` both when the parameter is nullable
+   * (`String?`) and when it is a non-null function whose *return* is (`(Int) -> String?`), and the
+   * two want opposite treatment from anything generating an argument: `null` type-checks for the
+   * first and not for the second. Recorded structurally so no consumer has to guess.
+   */
+  val nullable: Boolean = false,
 )
 
 @Serializable
