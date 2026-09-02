@@ -1859,6 +1859,12 @@ internal object AndroidPreviewSupport {
 
     val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
 
+    // `composePreview { renderGraph { exclude(…) } }` / `-PcomposePreview.renderGraphExcludes=…`.
+    // Read once here: this runs inside `onVariants`, so the consumer's build script has already
+    // been evaluated, and Gradle's exclude rules are an eager `Set` on the configuration rather
+    // than a lazy provider — there is nothing to defer.
+    val renderGraphExclusions = extension.renderGraph.excludes.get()
+
     // The default path for external consumers: resolve
     // `ee.schimke.composeai:renderer-android:<plugin-version>` from Maven.
     // The plugin's own version is baked into the jar at build time so the
@@ -1921,6 +1927,11 @@ internal object AndroidPreviewSupport {
         // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
         // line, whatever it is.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
+        // Consumer-declared exclusions, applied AFTER the rules above so a module the consumer
+        // keeps off the graph stays off it even when one of our substitutions would have pulled it
+        // back in. See [RenderGraphExtension] for the strict-constraint platform this exists for
+        // (issue #4995).
+        RenderGraphExclusions.applyTo(project, this, renderGraphExclusions)
       }
 
     if (useLocalRenderer) {
@@ -2051,6 +2062,10 @@ internal object AndroidPreviewSupport {
         // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
         // line, whatever it is.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
+        // Same reason `extendsFrom` does not carry `resolutionStrategy`: exclude rules are not
+        // inherited either. The daemon has to exclude exactly what the render config excludes, or
+        // the two JVMs render the same previews off different graphs.
+        RenderGraphExclusions.applyTo(project, this, renderGraphExclusions)
       }
 
     val daemonRendererProjectDir = project.rootDir.resolve("daemon/android")

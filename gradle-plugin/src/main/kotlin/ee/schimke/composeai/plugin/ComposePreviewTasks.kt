@@ -476,7 +476,12 @@ internal object ComposePreviewTasks {
     val rendererConfig = ensureRendererDesktopConfig(project, "composePreviewRenderer")
     // Resolve the renderer in the consumer's dependency graph so a single coherent Skiko / Compose
     // version wins (issue #1844). See [alignDesktopToolWithConsumerGraph].
-    alignDesktopToolWithConsumerGraph(project, rendererConfig, resolveDependencyConfigName)
+    alignDesktopToolWithConsumerGraph(
+      project,
+      extension,
+      rendererConfig,
+      resolveDependencyConfigName,
+    )
 
     val renderClasspathGuard =
       registerDesktopClasspathGuard(
@@ -834,7 +839,12 @@ internal object ComposePreviewTasks {
     // The daemon JVM puts the consumer's full runtime classpath on its parent `-cp` (below), so it
     // hits the same Skiko skew as the one-shot render path — resolve it in the consumer's graph too
     // (issue #1844). See [alignDesktopToolWithConsumerGraph].
-    alignDesktopToolWithConsumerGraph(project, daemonRendererConfig, dependencyConfigName)
+    alignDesktopToolWithConsumerGraph(
+      project,
+      extension,
+      daemonRendererConfig,
+      dependencyConfigName,
+    )
     if (useLocalDaemon) {
       try {
         project.dependencies.add(
@@ -1113,10 +1123,17 @@ internal object ComposePreviewTasks {
    */
   private fun alignDesktopToolWithConsumerGraph(
     project: Project,
+    extension: PreviewExtension,
     toolConfig: org.gradle.api.artifacts.Configuration,
     dependencyConfigName: () -> String,
   ) {
     project.afterEvaluate {
+      // Consumer-declared render-graph exclusions apply to the desktop configurations for the same
+      // reason they apply to the Android ones: this `extendsFrom` is what puts the consumer's
+      // constraints — including a strict-version platform that no renderer version can satisfy —
+      // onto a configuration we own. Read inside `afterEvaluate`, where `composePreview { … }` has
+      // been evaluated. See [RenderGraphExtension] (issue #4995).
+      RenderGraphExclusions.applyTo(project, toolConfig, extension.renderGraph.excludes.get())
       val depName = dependencyConfigName()
       // androidJvm classpath: the desktop renderer has no matching variant — leave it alone.
       if (depName == "androidRuntimeClasspath") return@afterEvaluate

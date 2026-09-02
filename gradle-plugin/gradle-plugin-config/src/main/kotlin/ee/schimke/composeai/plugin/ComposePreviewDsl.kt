@@ -53,6 +53,17 @@ object ComposePreviewDsl {
         .map { it.toBooleanStrictOrNull() ?: false }
         .orElse(false)
     )
+    // `addAll`, not `convention`: the property and the `renderGraph { exclude(…) }` DSL are
+    // additive, so a consumer passing `-PcomposePreview.renderGraphExcludes=…` on one CI job does
+    // not silently drop the exclusions their build script already commits to (a convention would
+    // be replaced wholesale by the first DSL `add`). The provider stays lazy, so the property is
+    // read at resolution time like every other override here.
+    extension.renderGraph.excludes.addAll(
+      project.providers
+        .gradleProperty("composePreview.renderGraphExcludes")
+        .map { RenderGraphExclusion.parse(it) }
+        .orElse(emptyList())
+    )
     return extension
   }
 

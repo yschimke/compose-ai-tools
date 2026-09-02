@@ -317,6 +317,59 @@ module — including your `releaseRuntimeClasspath`. Aligning a family upward is
 usually right for a render classpath and isn't a preview tool's call to make for
 a shipped app, so the decision stays yours.
 
+### Keeping a module off the render graph
+
+Sharing one graph with your unit-test classpath is what keeps a single coherent
+version of each module in front of the render classloader — but it also means
+the render configuration inherits **your** constraints. If your build applies a
+platform whose constraints are `strictly(v)` + `reject("(v,")`, every renderer
+dependency above one of those pins becomes a conflict Gradle cannot solve, and
+the render configuration fails to resolve before a single preview renders.
+
+`renderGraph` removes a module from the configurations the plugin owns, leaving
+your own build exactly as it was:
+
+```kotlin
+composePreview {
+  renderGraph {
+    exclude(group = "com.example", module = "version-constraints")
+  }
+}
+```
+
+In a Groovy build script, the usual map form:
+
+```groovy
+composePreview {
+  renderGraph {
+    exclude group: 'com.example', module: 'version-constraints'
+  }
+}
+```
+
+Either half may be omitted, exactly as in Gradle's own
+`Configuration.exclude(group:, module:)`: `group` alone drops the whole group,
+`module` alone drops that name wherever it comes from.
+
+| Property | Default | Effect |
+| --- | --- | --- |
+| `composePreview.renderGraphExcludes` | *(none)* | Comma-separated `group:module` coordinates, for a build script you can't edit — a CLI-driven render where the plugin is auto-injected, or one CI job. Additive with the DSL. |
+
+```
+./gradlew composePreviewRender -PcomposePreview.renderGraphExcludes=com.example:version-constraints
+```
+
+The exclusions land on the configurations the plugin creates — the Android
+render config, its daemon superset, and the two desktop equivalents — and never
+on the configurations your build declares, so a normal build and everything your
+platform guarantees it are untouched. The Kotlin-build-tools configurations are
+deliberately not covered: they are standalone compiler classpaths that never
+inherit your graph.
+
+This is a scalpel, not a switch. Excluding something the renderer genuinely
+needs trades an unresolvable configuration for a `ClassNotFoundException` on the
+render JVM; `--info` prints one line per configuration naming what was excluded.
+
 ## Requirements
 
 Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+, Compose

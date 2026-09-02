@@ -364,11 +364,141 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     action.execute(resourcePreviews)
   }
 
+  /**
+   * Supported control over the dependency graph the renderer resolves in. Today it carries module
+   * exclusions — see [RenderGraphExtension] for what the render graph is and why a consumer would
+   * need to keep something off it.
+   */
+  val renderGraph: RenderGraphExtension = objects.newInstance(RenderGraphExtension::class.java)
+
+  fun renderGraph(action: Action<RenderGraphExtension>) {
+    action.execute(renderGraph)
+  }
+
   /** Persistent preview daemon configuration. Enabled by default for the VS Code extension. */
   val daemon: DaemonExtension = objects.newInstance(DaemonExtension::class.java)
 
   fun daemon(action: Action<DaemonExtension>) {
     action.execute(daemon)
+  }
+}
+
+/**
+ * `composePreview { renderGraph { … } }` — the supported way to shape the configurations the plugin
+ * resolves the renderer in.
+ *
+ * The render configurations (`composePreviewAndroidRenderer<Variant>`, its
+ * `composePreviewAndroidDaemon<Variant>` superset, and the desktop `composePreviewRenderer` /
+ * `composePreviewDesktopDaemon` pair) deliberately `extendsFrom` the consumer's own test/runtime
+ * classpath, so the renderer and the consumer's code resolve as ONE graph and a single coherent
+ * version of every shared module reaches the render classloader. That inheritance is load-bearing
+ * and this block does not undo it.
+ *
+ * What it does undo, module by module, is a dependency that cannot survive that merge. The case
+ * this exists for (issue #4995): a `java-platform` of `strictly(v)` + `reject("(v," )` constraints
+ * on `implementation`. Inherited onto the render configuration, every renderer dependency newer
+ * than one of those pins becomes a hard conflict and the render configuration fails to resolve
+ * before a single preview is rendered. Excluding the platform module keeps the consumer's own
+ * builds strict and lets the render graph resolve:
+ * ```kotlin
+ * composePreview {
+ *   renderGraph { exclude(group = "com.example", module = "version-constraints") }
+ * }
+ * ```
+ *
+ * The equivalent Gradle property, for a build the consumer cannot edit — notably a CLI-driven
+ * render where the plugin is auto-injected — is a comma-separated list of the same coordinates:
+ * ```
+ * -PcomposePreview.renderGraphExcludes=com.example:version-constraints
+ * ```
+ *
+ * The two are additive: property entries and DSL entries all apply.
+ *
+ * Scope: the exclusions land on the configurations the plugin creates and owns, never on the
+ * consumer's own configurations, so a normal build resolves exactly as it did before. The
+ * Kotlin-build-tools configurations (`composePreviewBtaImpl`, `composePreviewBtaPlugin`) are
+ * deliberately NOT covered — they are standalone compiler classpaths that never inherit the
+ * consumer's graph, so nothing a consumer would want to exclude is on them.
+ */
+abstract class RenderGraphExtension @Inject constructor(objects: ObjectFactory) {
+  /**
+   * Modules to keep off the render graph. Prefer the [exclude] helpers; this property is the lazy
+   * plumbing they and the `composePreview.renderGraphExcludes` Gradle property feed.
+   */
+  val excludes: ListProperty<RenderGraphExclusion> =
+    objects.listProperty(RenderGraphExclusion::class.java)
+
+  /**
+   * Excludes a module from the render graph, in the shape of Gradle's own
+   * `Configuration.exclude(group:, module:)`: pass either or both. `group` alone drops every module
+   * in that group; `module` alone drops that module whatever its group.
+   */
+  @JvmOverloads
+  fun exclude(group: String? = null, module: String? = null) {
+    excludes.add(RenderGraphExclusion.of(group, module))
+  }
+
+  /**
+   * Groovy-friendly overload so `renderGraph { exclude group: 'com.example', module: 'x' }` reads
+   * the same in a `build.gradle` as the Kotlin named-argument form does in a `build.gradle.kts`.
+   */
+  fun exclude(notation: Map<String, String>) {
+    val unknown = notation.keys - setOf("group", "module")
+    require(unknown.isEmpty()) {
+      "composePreview.renderGraph.exclude: unknown key(s) ${unknown.sorted()}; " +
+        "supported keys are 'group' and 'module'."
+    }
+    exclude(notation["group"], notation["module"])
+  }
+}
+
+/**
+ * One `group`/`module` exclusion from [RenderGraphExtension]. At least one of the two is non-null —
+ * [of] rejects the empty exclusion, which Gradle would otherwise accept and quietly turn into "drop
+ * everything".
+ *
+ * `Serializable` because the value travels inside a `ListProperty` that the configuration cache
+ * stores.
+ */
+data class RenderGraphExclusion(val group: String?, val module: String?) : java.io.Serializable {
+  /** The `group:module` spelling used by the Gradle property and in error messages. */
+  override fun toString(): String = "${group.orEmpty()}:${module.orEmpty()}"
+
+  companion object {
+    private const val serialVersionUID: Long = 1L
+
+    fun of(group: String?, module: String?): RenderGraphExclusion {
+      val g = group?.trim()?.takeIf { it.isNotEmpty() }
+      val m = module?.trim()?.takeIf { it.isNotEmpty() }
+      require(g != null || m != null) {
+        "composePreview.renderGraph.exclude requires a group, a module, or both — " +
+          "an exclusion with neither would drop every dependency from the render graph."
+      }
+      return RenderGraphExclusion(g, m)
+    }
+
+    /**
+     * Parses the `composePreview.renderGraphExcludes` Gradle property: a comma-separated list of
+     * `group:module` coordinates, either half of which may be empty (`com.example:`,
+     * `:version-constraints`). Blank entries are ignored so a trailing comma is not an error; a
+     * malformed entry fails loudly rather than silently excluding nothing, because the symptom of a
+     * missed exclusion is an unresolvable render configuration whose message never names this
+     * property.
+     */
+    fun parse(spec: String): List<RenderGraphExclusion> =
+      spec
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .map { entry ->
+          val parts = entry.split(':')
+          require(parts.size == 2) {
+            "composePreview.renderGraphExcludes: '$entry' is not a 'group:module' coordinate. " +
+              "Use 'group:module', 'group:' for a whole group, or ':module' for a module in any " +
+              "group, separating entries with commas."
+          }
+          of(parts[0], parts[1])
+        }
   }
 }
 
