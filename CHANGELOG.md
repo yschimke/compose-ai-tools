@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.65.0](https://github.com/yschimke/compose-ai-tools/compare/v1.64.0...v1.65.0) (2026-09-02)
+
+
+### Features
+
+* **discovery:** infer the library components a preview demonstrates ([#5010](https://github.com/yschimke/compose-ai-tools/issues/5010)) ([c2ac68d](https://github.com/yschimke/compose-ai-tools/commit/c2ac68d829ec64e403376208bdcd8e9e39aca04f))
+* **import:** let an import name the previews it cannot render ([#5011](https://github.com/yschimke/compose-ai-tools/issues/5011)) ([06348d6](https://github.com/yschimke/compose-ai-tools/commit/06348d6c18a765bc401f0ef3eb4806654c74f6e2))
+
+
+### Bug Fixes
+
+* **ci:** run the embedded player lanes from rc-players ([#5006](https://github.com/yschimke/compose-ai-tools/issues/5006)) ([6cee9cf](https://github.com/yschimke/compose-ai-tools/commit/6cee9cf812de3820715ec29669b0e1759e2d77db))
+* **rc-compare:** name the players a catalog's parity run left out ([#5004](https://github.com/yschimke/compose-ai-tools/issues/5004)) ([d7fd549](https://github.com/yschimke/compose-ai-tools/commit/d7fd54907bc921a376e6a194171abb42f1536903))
+
 ## [1.64.0](https://github.com/yschimke/compose-ai-tools/compare/v1.63.0...v1.64.0) (2026-09-02)
 
 
