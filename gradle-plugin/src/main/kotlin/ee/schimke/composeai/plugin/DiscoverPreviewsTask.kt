@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -233,6 +234,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val outFile = outputFile.get().asFile
         outFile.parentFile.mkdirs()
         outFile.writeText(json.encodeToString(outcome.manifest))
+        // `components.json` beside `previews.json`: the components those previews render, rather
+        // than the renders themselves. Derived wholly from the manifest, so it never disagrees with
+        // it, and written unconditionally — an empty component list is a fact worth publishing
+        // (it says inference found nothing), not a reason to omit the file.
+        outFile
+          .resolveSibling("components.json")
+          .writeText(json.encodeToString(ComponentRecords.from(outcome.manifest)))
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }
       is PreviewDiscovery.Outcome.Failure -> {
