@@ -257,10 +257,15 @@ object PreviewTargetInference {
         .filter { it.ownerFqn in projectClassFqns }
         .mapNotNull { resolveCandidate(it, scanResult) }
         .filterNot { candidate ->
-          !isValidKotlinImportIdentifier(candidate.method.name) ||
-            isPreviewOnlyWrapper(candidate.method.name, resolveSourceFile(candidate.ownerFqn))
+          // Demangled first: a project composable taking a `Dp` compiles to `MyCard-abc123`, which
+          // is not a usable import and was therefore dropped outright — the same value-class
+          // mangling that hid `Text` from the component path, and more common here because `Dp`
+          // and `Color` parameters are ordinary in an app's own composables.
+          val name = sourceFunctionName(candidate.method.name)
+          !isValidKotlinImportIdentifier(name) ||
+            isPreviewOnlyWrapper(name, resolveSourceFile(candidate.ownerFqn))
         }
-        .distinctBy { it.ownerFqn to it.method.name }
+        .distinctBy { it.ownerFqn to sourceFunctionName(it.method.name) }
         .toList()
 
     if (candidates.isEmpty()) return emptyList()
@@ -549,12 +554,18 @@ object PreviewTargetInference {
    * `TextUnit`, `Color` and `TextOverflow`. A Kotlin identifier can never contain `-`, so the first
    * one is unambiguously the mangling boundary.
    *
-   * This is load-bearing rather than cosmetic. [isComponentLibraryTarget] rejects a name that is
-   * not a usable import, and a mangled name is not — so before this, **every Material 3 component
-   * whose signature mentions `Color`, `Dp` or `TextUnit` was silently dropped from the component
-   * record**, `Text` among them. A preview whose only call was `Text` inferred no component at all.
-   * The functional compile gate is what surfaced it: `Button` and `Card` take neither, so the
-   * hand-written unit tests never had a mangled name to trip over.
+   * This is load-bearing rather than cosmetic, and it bites on **both** inference paths, because
+   * both reject a name that is not a usable import:
+   * * [inferComponents] dropped **every Material 3 component whose signature mentions `Color`, `Dp`
+   *   or `TextUnit`**, `Text` among them — a preview whose only call was `Text` inferred no
+   *   component at all;
+   * * [infer] dropped any of the project's *own* composables with a value-class parameter, which in
+   *   a typical app means anything taking a `Dp`. `AppTile(padding: Dp)` left its preview with
+   *   `targets = []` for a composable the preview does nothing but render.
+   *
+   * The functional compile gate is what surfaced it. `Button` and `Card` take no value-class
+   * parameters, so the hand-written unit tests never had a mangled name to trip over — a corpus
+   * chosen by hand is a corpus that agrees with you.
    *
    * Only the `-` mangle, deliberately. Kotlin's other JVM mangle is `name$module` for an `internal`
    * function ([nameMatches] strips that one for its own purposes), but stripping `$` here would
@@ -629,7 +640,8 @@ object PreviewTargetInference {
     }
 
     // +2 if `FooPreview` / `PreviewFoo` / `Foo_*_Preview` strips down to the candidate's name.
-    if (nameMatches(previewMethodName, callerMethod.name)) {
+    // Compared against the *source* name: `MyCardPreview` never strips down to `MyCard-abc123`.
+    if (nameMatches(previewMethodName, sourceFunctionName(callerMethod.name))) {
       score += 2
       signals += TargetSignal.NAME_MATCH
     }
@@ -671,7 +683,7 @@ object PreviewTargetInference {
 
     return ScoredCandidate(
       classFqn = callerOwner,
-      methodName = callerMethod.name,
+      methodName = sourceFunctionName(callerMethod.name),
       sourceFile = resolveSourceFile(callerOwner) ?: packageQualifiedSourcePath(callerClassInfo),
       score = score,
       signals = signals,
