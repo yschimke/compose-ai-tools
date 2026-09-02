@@ -37,17 +37,42 @@ button growing.
 
 ![Four Material buttons; the second holds focus and is drawn with an inset keyboard focus ring](inset-focus-ring-render.png)
 
-## What is not captured here
+## The export, before and after
 
-There is no after-shot of the *export* in this directory. `compose/figma-svg` is
-written by the daemon's post-capture extensions, not by the Gradle plugin's
-render task, and every daemon lane in this repository runs material3 1.4 /
-CMP 1.11 — the line where the ring API does not exist and the pre-fork ripple
-node was matched correctly all along. The read is covered by
-`MaterialFocusRingTest` instead, and the visual confirmation is the catalog
-re-render on `preview.coo.ee`.
+`svg-forward-before.png` and `svg-forward-after.png` are the *export itself*,
+both written by the daemon on the forward runtime that
+`:daemon:desktop:forwardComposeInteractionExportTest` supplies — Compose
+Multiplatform 1.12 with CMP material3 1.12.0-alpha03, the line whose ripple node
+lives at `androidx.compose.material3.internal.ripple.RippleNode`. The subject is
+`InsetFocusRingButtonInteractionState`, a focused Material button at 96×48 px,
+shown at 4× so the bands are legible.
 
-That gap is the reason this shipped: nothing exercises the export against the
-material3 line the catalogs actually render on. `:renderer-desktop` already has
-the shape of the answer in `forwardComposeSystemThemeTest`, which runs one test
-class against `compose-multiplatform-forward`.
+The only difference between them is `RIPPLE_NODE_CLASSES` in
+`ComposeSemanticsDataProduct.kt`: "before" is that set cut back to the single
+pre-fork class name, which is the code as it shipped.
+
+| Before: the single pre-fork name | After: all three names matched |
+| --- | --- |
+| ![The exported SVG with the ripple node unmatched: a plain filled button, no focus ring](svg-forward-before.png) | ![The same export with the forked ripple node matched: the button inside its two-band keyboard focus ring](svg-forward-after.png) |
+
+`svg-forward-after.svg` is the export those pixels came from — 24 lines, so the
+two `Material Focus Ring` layers are readable directly:
+
+```
+<g id="Material Focus Ring">
+  <rect x="3" y="3" width="90" height="42" rx="21" ry="21" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+</g>
+<g id="Material Focus Ring">
+  <rect x="1" y="1" width="94" height="46" rx="23" ry="23" fill="none" stroke="#625B71" stroke-width="2"/>
+</g>
+```
+
+Editable strokes on their own boxes, after the content they surround — not a
+raster, and not baked into the container fill.
+
+Before that forward lane existed there was no way to capture this at all:
+`compose/figma-svg` is written by the daemon's post-capture extensions, not by
+the Gradle plugin's render task, and every daemon lane in this repository ran
+material3 1.4 / CMP 1.11 — the line where the ring API does not exist and the
+pre-fork node was matched correctly all along. That is why the regression
+shipped green, and why the lane is wired into `test` rather than only `check`.

@@ -112,6 +112,16 @@ compose-material3-catalog = "1.5.0-alpha27"
 # as on Skiko. (This artifact itself declares foundation/ui `1.11.0-beta03`; the `1.11.1` ref above
 # is newer, so Gradle's conflict resolution keeps one coherent 1.11.1 Compose graph.)
 compose-multiplatform-material3 = "1.11.0-alpha07"
+# The material3 line the *catalogs* render on, used only by
+# `:daemon:desktop:forwardComposeInteractionExportTest`. It must stay strictly ahead of
+# `compose-multiplatform-material3` above, because the whole point of that task is to run the
+# `compose/figma-svg` export against the material3 that forked its ripple node into
+# `androidx.compose.material3.internal.ripple` — the fork the export silently stopped recognising
+# (#4980), on a line nothing else here compiles or renders against. `compose.desktop.currentOs`
+# carries no material3 of its own (its POM is foundation/material/runtime/ui only), so upgrading
+# `compose-multiplatform-forward` alone would leave material3 on the pre-fork line and the task
+# would pass while covering nothing. `m3-catalog` pins this exact version.
+compose-multiplatform-material3-forward = "1.12.0-alpha03"
 graphics-shapes = "1.1.0"
 # Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Tracks the same Compose
 # minor as `compose-multiplatform`: 2.2.x is built against JetBrains Compose foundation 1.11.0, which
@@ -499,6 +509,10 @@ jetbrains-compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "
 jetbrains-compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose-multiplatform" }
 jetbrains-compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "compose-multiplatform" }
 jetbrains-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-multiplatform-material3" }
+# Not `jetbrains-compose-material3-forward`: that alias would turn the existing
+# `libs.jetbrains.compose.material3` leaf into a group node, and every one of its 14 call sites
+# would have to grow an `.asProvider()`. Only `:daemon:desktop`'s forward test runtime uses this.
+jetbrains-forward-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-multiplatform-material3-forward" }
 graphics-shapes = { module = "androidx.graphics:graphics-shapes", version.ref = "graphics-shapes" }
 jetbrains-compose-components-ui-tooling-preview = { module = "org.jetbrains.compose.components:components-ui-tooling-preview", version.ref = "compose-multiplatform" }
 jetbrains-compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
