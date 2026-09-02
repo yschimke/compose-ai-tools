@@ -23,14 +23,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || '' }}
-  # Cancel superseded runs on a pull request — only the current head's result
-  # matters there. On a push to main every commit gets its own group and runs to
-  # completion: a merge is not "superseded" by the next merge, and a cancelled
-  # main run leaves the branch with no verdict for that commit (and, for the
-  # jobs gated to `push`, no post-merge drift detection at all). See
-  # docs/AGENT_GUIDE.md -> "CI concurrency: main runs to completion".
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded verification is worthless, so cancel it — on main as well as on
+  # PRs. This is only safe because CI no longer writes the BuildFetch remote
+  # cache: `buildfetch-cache` below takes `ro-token` only, so these runs keep
+  # their local build cache (`ON_CI` stays false) and are cheap to throw away.
+  # Cache writes live in gradle-cache-seed.yml, which runs uncancelled in its
+  # own concurrency group precisely so this one can stay disposable.
+  cancel-in-progress: true
 
 # Release-please PRs only bump the version manifest / CHANGELOG / version
 # strings in docs — no source or build inputs change, so the full build+test

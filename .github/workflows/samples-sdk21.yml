@@ -35,14 +35,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || '' }}
-  # Cancel superseded runs on a pull request — only the current head's result
-  # matters there. On a push to main every commit gets its own group and runs to
-  # completion: a merge is not "superseded" by the next merge, and a cancelled
-  # main run leaves the branch with no verdict for that commit (and, for the
-  # jobs gated to `push`, no post-merge drift detection at all). See
-  # docs/AGENT_GUIDE.md -> "CI concurrency: main runs to completion".
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   render:
