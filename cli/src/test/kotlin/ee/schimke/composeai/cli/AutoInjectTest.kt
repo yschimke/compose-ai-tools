@@ -800,9 +800,16 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "val composeAiPreviewNeedsResolvedClasspathInject =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos"
+        "val composeAiPreviewNeedsResolvedClasspathInject =\n        composeAiPreviewBuildscriptClasspathIsLocked ||\n            (composeAiPreviewSettingsHasExclusiveContent &&\n                projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos)"
       ),
       "expected the per-project fork flag in allprojects",
+    )
+    assertTrue(
+      script.contains(
+        "val composeAiPreviewBuildscriptClasspathIsLocked =\n        java.io.File(projectDir, \"buildscript-gradle.lockfile\").isFile ||\n            java.io.File(rootDir, \"gradle/dependency-locks\").isDirectory"
+      ),
+      "expected the locked-buildscript detection that routes a locked build down the files() " +
+        "branch (see InitScriptDependencyLockingReproducerTest)",
     )
     assertFalse(
       script.contains("composeAiPreviewSkipExclusiveContentClasspathDep"),
@@ -830,7 +837,7 @@ class AutoInjectTest {
       "expected the detached-configuration classpath resolver helper",
     )
     assertTrue(
-      script.contains("configurations.detachedConfiguration(composeAiPreviewMarker).files.toSet()"),
+      script.contains("configurations.detachedConfiguration(composeAiPreviewMarker)"),
       "expected resolution via a detached configuration (not a buildscript.repositories add)",
     )
     assertTrue(

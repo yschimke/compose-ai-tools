@@ -423,7 +423,12 @@ fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io
         )
     val composeAiPreviewResolved =
         runCatching {
-            configurations.detachedConfiguration(composeAiPreviewMarker).files.toSet()
+            configurations.detachedConfiguration(composeAiPreviewMarker).apply {
+                // A build using `dependencyLocking { lockAllConfigurations() }` would lock this
+                // one too, and it is a configuration we created for this resolution alone — no
+                // lock state describes it and none should.
+                resolutionStrategy.deactivateDependencyLocking()
+            }.files.toSet()
         }.getOrDefault(emptySet())
     if (composeAiPreviewResolved.isNotEmpty()) {
         composeAiPreviewCachedPluginClasspath = composeAiPreviewResolved
@@ -433,6 +438,34 @@ fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
+    // A build that LOCKS its buildscript classpath rejects every module the lock state does not
+    // name, and auto-inject's whole job is to add one it does not name:
+    //
+    //   > Could not resolve all artifacts for configuration 'classpath'.
+    //      > Resolved 'ee.schimke.composeai.preview:...' which is not part of the dependency lock
+    //        state
+    //
+    // That fires while the buildscript classpath resolves, so it takes the build out before
+    // discovery ever runs — the bitwarden/android import hit it with 51 previews it could never
+    // reach (yschimke/compose-preview-imports#30).
+    //
+    // Deactivating locking from here does NOT work, and the reproducer pins why: the imported
+    // build activates it inside its own `buildscript { configurations.classpath { ... } }`, which
+    // Gradle evaluates AFTER this init script, so the project's activation is simply the last
+    // writer. The route that does work is the one the exclusiveContent shape already uses — inject
+    // the plugin as `files(...)` instead of as a coordinate. A file dependency resolves to no
+    // module component at all, so lock state has nothing to validate against and the locked
+    // configuration stays exactly as locked as its owner wrote it. Nothing in the checkout is
+    // edited and no lockfile is rewritten.
+    //
+    // Detection is by lockfile on disk, matching how the rest of this script reads a build it does
+    // not control: Gradle's per-project buildscript lock state is `buildscript-gradle.lockfile`
+    // beside the build script (bitwarden's shape), and the pre-6.0 layout is a
+    // `gradle/dependency-locks/` directory.
+    val composeAiPreviewBuildscriptClasspathIsLocked =
+        java.io.File(projectDir, "buildscript-gradle.lockfile").isFile ||
+            java.io.File(rootDir, "gradle/dependency-locks").isDirectory
+
     // In the exclusiveContent shape Gradle 9.3+ rejects adding to buildscript.repositories from
     // any project (issues #1470, #1482), so a project without its own `buildscript { repositories
     // { ... } }` can't resolve our classpath coordinate that way. Rather than drop auto-inject
@@ -441,8 +474,9 @@ allprojects {
     // files — see composeAiPreviewResolvePluginClasspath above. Modules that DO declare their own
     // buildscript repos still take the plain coordinate path below (their repos resolve it).
     val composeAiPreviewNeedsResolvedClasspathInject =
-        composeAiPreviewSettingsHasExclusiveContent &&
-            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
+        composeAiPreviewBuildscriptClasspathIsLocked ||
+            (composeAiPreviewSettingsHasExclusiveContent &&
+                projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos)
 
     // Gradle inherits a project's buildscript classpath into its subprojects' `plugins { }`
     // resolution. So injecting the plugin onto an ANCESTOR of a module that applies the plugin
