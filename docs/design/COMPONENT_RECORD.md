@@ -26,10 +26,18 @@ supersedes on architecture), [USAGE_SNIPPET_CORPUS.md](USAGE_SNIPPET_CORPUS.md)
 
 ## 1. What is actually wrong
 
-Measured over four checkouts: this repo, [`yschimke/m3-catalog`](https://github.com/yschimke/m3-catalog),
-[`yschimke/wear-m3-catalog`](https://github.com/yschimke/wear-m3-catalog) (including
-`:remote-catalog`, published as `remote-m3`), and [`joreilly/Confetti`](https://github.com/joreilly/Confetti)
-as a stand-in for a typical app.
+Measured over four checkouts, pinned so the numbers below can be reproduced and a changed
+corpus can be told apart from a changed analyzer:
+
+| Checkout | Revision |
+|---|---|
+| `yschimke/compose-ai-tools` | `bcacbf96a363af8250dcf65799252f2943fb1898` (`main`) |
+| [`yschimke/m3-catalog`](https://github.com/yschimke/m3-catalog) | `3e6ac3a482d9090a3e5c00a754255d05ca0d16de` |
+| [`yschimke/wear-m3-catalog`](https://github.com/yschimke/wear-m3-catalog) (incl. `:remote-catalog`, published as `remote-m3`) | `5a9a588c526dd46c538f405dd4139405827a5d8f` |
+| [`joreilly/Confetti`](https://github.com/joreilly/Confetti) — a stand-in for a typical app | `f000306138d1ef7b1b5957f3ce7c015799d72bd6` |
+
+Every count in this document is from those exact revisions. Phase 0 re-measures and
+re-pins them.
 
 ### 1.1 Knobs are declared in the wrong place
 
@@ -205,8 +213,9 @@ Introduce **one component record**, derived from Kotlin metadata + a parse of th
 source, published as a data product beside `previews.json`. Move the override
 surface out of composable bodies and into **the preview function's own parameter
 list**, where Kotlin already supplies names, types, defaults, nullability, enum
-constants and KDoc — making overrides exhaustive by construction and making the
-body clean Compose. Generate code by **printing a call site** from the record,
+constants and KDoc — making a preview's knobs statically enumerable and its body
+clean Compose, while the *exhaustive* editable surface comes from the record's own
+reading of the target's signature (§4). Generate code by **printing a call site** from the record,
 never by subtracting scaffolding from source. Derive the UI builder's capability
 catalog from the same record, and render builder nodes by **invoking the real
 composable** through the `ComposableMethod` path the daemon already uses. Gate
@@ -225,10 +234,16 @@ convention `previews/<id>.overrides.json` already uses).
 {
   "componentId": "Button/Filled",              // catalog identity, when published
   "symbol": {
-    "fqn": "androidx.compose.material3.ButtonKt",
+    // Two names, deliberately. `jvmOwner` is the reflection handle — for a top-level
+    // function that is the synthetic file facade — and `callable` is the source-level
+    // FQN that generated Kotlin imports. Deriving `code.imports` from the facade would
+    // print `import androidx.compose.material3.ButtonKt`, which does not resolve.
+    "jvmOwner": "androidx.compose.material3.ButtonKt",
+    "callable": "androidx.compose.material3.Button",
     "name": "Button",
     "sourceFile": null,                        // null ⇒ library, not project-local
-    "library": "androidx.compose.material3:material3:1.5.0"
+    "library": "androidx.compose.material3:material3:1.5.0",
+    "docs": "sources-jar"                      // where kdoc/defaults below came from; see §3
   },
   "kdoc": { "summary": "…", "markdown": "…" },
   "parameters": [
@@ -242,7 +257,12 @@ convention `previews/<id>.overrides.json` already uses).
       "composableSlot": true, "receiverScope": "androidx.compose.foundation.layout.RowScope",
       "hasDefault": false }
   ],
-  "slots": [ { "name": "content", "cardinality": {"min":1,"max":1}, "scope": "RowScope" } ],
+  "slots": [
+    { "name": "content", "scope": "androidx.compose.foundation.layout.RowScope",
+      "required": true,                        // the *lambda* must be supplied…
+      "childCardinality": {"min":0,"max":null}, // …but it may emit any number of children
+      "childPolicy": "unknown" }               // acceptedRoles/Traits are NOT derivable; see §3
+  ],
   "bindings": [                                  // one per preview that renders it
     { "previewId": "…FilledButton", "arguments": {
         "onClick": {"kind":"literal","source":"{}"},
@@ -268,15 +288,54 @@ convention `previews/<id>.overrides.json` already uses).
    `analyze(String): String` output from `calls` + `declarations` to include
    parameter lists with KDoc and defaults is the single cheapest high-value change
    in this plan.
+
+   **Where that source comes from is a real problem for the primary corpus, and the
+   plan has to name it.** `analyze` only sees source text it is handed. For a
+   project-local target (Confetti's `SpeakerItemView`) the file is in the checkout.
+   For m3-catalog — whose components are *library* symbols like
+   `androidx.compose.material3.Button` — there is no source in the checkout at all,
+   which is exactly the case this plan leans on hardest. Three options, in order of
+   preference:
+
+   * **resolve the `-sources.jar`** for the declaring coordinate through the same
+     Gradle resolution the bundle already does for `manifest.classpath`, and parse
+     the entry the metadata's file facade names. This is the only path that yields
+     real KDoc and real default *expressions* for a library component;
+   * fall back to a **curated overlay** for coordinates with no published sources;
+   * otherwise **degrade explicitly** — emit the parameter with `hasDefault: true`,
+     `default: null`, `kdoc: null` and a `docs: "unavailable"` marker on the symbol,
+     so a consumer can tell "no default" from "default not recovered". Silently
+     omitting the field is the one outcome to avoid.
+
+   Phase 0 must report the sources-jar availability rate across the corpora; if it is
+   low for `material3`, the API panel's promise shrinks to types-and-defaults-exist
+   for library components and the overlay becomes load-bearing rather than optional.
 3. **Runtime observation during the existing render** — what the override
    controller does today. Kept only as a *cross-check* that the static record
    matches what composed, never as the source of truth.
 
-**Slots are derived, not declared.** A parameter whose type is
-`@Composable (Scope.) -> Unit` *is* a slot; its receiver scope *is* its acceptance
-rule; nullability and defaults *are* its cardinality. The UI builder's
-`SlotCapability` becomes a projection of the parameter list rather than a second
-hand-written table that can disagree with it.
+**Slots are derived — but only their existence, not their content policy.** A
+parameter whose type is `@Composable (Scope.) -> Unit` *is* a slot, and whether the
+lambda must be supplied follows from its nullability and default. Two things do
+**not** follow, and conflating them would reject valid documents:
+
+* **Child cardinality is not lambda optionality.** `Button`'s `content` lambda is
+  required, and it may legally emit zero children or five. A required lambda is
+  `required: true` with `childCardinality {min: 0, max: null}` — not `min 1, max 1`.
+  Where a real bound exists it comes from the component's own contract (a
+  `LazyColumn` item slot, a `Scaffold`'s `topBar`), which is authored or measured,
+  not inferred from the signature.
+* **`acceptedRoles` / `acceptedTraits` are not recoverable from a receiver scope.**
+  `RowScope` says what the *child* may call on its modifier; it says nothing about
+  which catalog components belong there. So the record carries
+  `childPolicy: "unknown"` by default, and the builder either permits any
+  Tier-3 component or takes an explicit policy the catalog authored. The receiver
+  scope is still worth recording — it is what tells the generator that a child using
+  `Modifier.weight` compiles here and not elsewhere.
+
+With those two separated, the UI builder's `SlotCapability` is a projection of the
+parameter list plus an explicit content policy, rather than a second hand-written
+table that can silently disagree with the signature.
 
 ---
 
@@ -301,7 +360,7 @@ fun FilledButton(
 
 | Property | `previewOverride*` today | parameter |
 |---|---|---|
-| Exhaustive | only where hand-wired | **every parameter, by construction** |
+| Enumerable without rendering | no | **yes** |
 | Statically enumerable | no (recorded at composition) | **yes** |
 | Types | 8 hand-rolled kinds | **the Kotlin type system** |
 | Closed value sets | `previewOverrideChoice` + an options list | **an enum's constants** |
@@ -310,17 +369,58 @@ fun FilledButton(
 | Snippet | body must be rewritten to be readable | **the body already is the snippet** |
 | Variant cell | `@OverrideVariant(booleans=["enabled=false"])` | `enabled = false` — a real argument |
 
-**Seeding already works.** The daemon resolves a parameterised preview through
-[`PreviewParameterSupport.resolve`](../../daemon/desktop/src/main/kotlin/ee/schimke/composeai/daemon/RenderEngine.kt)
-and invokes it as `composableMethod.invoke(currentComposer, null, *args)`. It
-*already* passes a `@Composable () -> Unit` as a reflective argument —
-`InvokeWithOptionalWrapper` hands the preview body to a wrapper exactly that way.
-Seeding an override is building the argument array and letting Kotlin's `$default`
-mask cover what the request did not set. Nothing new is needed at the render seam;
-what is needed is a wire shape for "here are the arguments" and a mapping from
-JSON to the small set of constructible types (`String`, numerics, `Boolean`,
-`Color`, `Dp`, enums, no-op lambdas, and `@Composable` slot lambdas built from
-child nodes).
+**What "exhaustive" does and does not mean here — the claim needs narrowing.**
+Parameters make a preview's knobs *statically enumerable*; they do **not** by
+themselves make them exhaustive over the component's API. The example above exposes
+`label`, `enabled` and `size`, while `Button` also takes `shape`, `colors`,
+`elevation`, `border`, `contentPadding` and `interactionSource` — deciding which to
+thread into the wrapper is the same per-parameter manual work `previewOverride*`
+demanded. So the honest split is:
+
+* **the preview's parameters are a curated seed set** — what the catalog author chose
+  to fan variants over, and what the render is baked from;
+* **the record's `parameters` list is the exhaustive one**, because it is read off
+  the *target's* signature rather than the wrapper's. The API panel, the generated
+  call site and the UI-builder property list can offer every parameter `Button` has,
+  whether or not a preview ever threaded it.
+
+That is where "exhaustively enable overrides for everything" actually comes from, and
+it costs nothing extra: the record already knows the full signature. What the two
+lists being different buys is a **mechanical parity check** — for each component,
+report target parameters with no wrapper knob. Today that gap is invisible; as a
+reported delta it becomes a finite, closeable list per component instead of a
+standing unknown. Tier 3 can require the delta to be empty or explicitly waived.
+
+**Seeding is *not* free, and the earlier draft of this plan was wrong to say so.** Three facts about the existing seam, two helpful and one not:
+
+* **The all-defaults preview shape is already first-class.**
+  `PreviewDiscovery.hasUnsupportedPreviewParameters` admits "no parameters, exactly
+  one `@PreviewParameter` value, **or a default for every parameter**", verified
+  against metadata by `allParametersHaveDefaults`; the renderer then invokes with no
+  args and `ComposableMethod` fills every one from Kotlin's synthetic `$default`
+  bridge. So a fully-defaulted knob preview is discovered and rendered *today*, with
+  no change at all. That is the floor this format stands on.
+* **Reflective `@Composable` lambda arguments already work.**
+  `InvokeWithOptionalWrapper` hands the preview body to a wrapper as exactly such an
+  argument, which is what makes builder slot-filling feasible later.
+* **But nothing seeds a *subset* of arguments.** `PreviewParameterSupport.resolve`
+  returns `emptyList()` for a non-`@PreviewParameter` preview — it invokes the
+  all-defaults path, it does not bind chosen values. Seeding `enabled = false` while
+  letting `label` default means invoking the `$default` bridge with a computed mask
+  (bits cleared for supplied parameters), which is new plumbing. And
+  `@PreviewParameter` composes badly with it: `hasUnsupportedPreviewParameters`
+  returns `userParameters.size != 1` when a provider is present, so adding even one
+  defaulted knob to a provider-backed preview makes discovery **skip it silently**
+  with a warning.
+
+So Phase 2 owns three concrete pieces of work, not zero: a wire shape for "here are
+the arguments"; a `$default`-mask invoker that merges *provider values*, *named
+override values* and *defaults* in that precedence (rather than replacing the
+resolver's argument list, which would drop the selected provider row); and a
+discovery change to admit `@PreviewParameter` alongside otherwise-defaulted
+parameters. Plus the JSON→value mapping for the constructible set (`String`,
+numerics, `Boolean`, `Color`, `Dp`, enums, no-op lambdas, and `@Composable` slot
+lambdas built from child nodes).
 
 **What this costs.** Direct knob call sites are few — 55 in m3-catalog, 167 in
 wear-m3-catalog, 116 here — and a codemod can rewrite them from the PSI offsets
@@ -408,9 +508,11 @@ forgot a flag.
 
 Tiers 0 and 1 are automatic — Confetti gets Tier 1 today with no repo change.
 Tier 2 requires either a migrated catalog or a `compose-usage.json`. Tier 3
-additionally requires the module to opt in (`composeAi { uiBuilder { enabled = true } }`)
-**and** to run the generated conformance suite in its own CI **and** to publish the
-resulting record in its bundle. `SpeakerItemView(speaker: SpeakerDetails, …)` fails
+additionally requires the module to opt in under the plugin's existing extension —
+`composePreview { uiBuilder { enabled = true } }`, since `ComposePreviewDsl.EXTENSION_NAME`
+is `composePreview` and there is no `composeAi` extension to nest under — **and** to run
+the generated conformance suite in its own CI **and** to publish the resulting record in
+its bundle. `SpeakerItemView(speaker: SpeakerDetails, …)` fails
 Tier 3 at the first check, automatically, which is the correct answer.
 
 **Falsifiable success criterion for the gate: if Confetti reaches Tier 3 for any
@@ -423,12 +525,30 @@ component, the gate is too loose.**
 One harness, used by every tier above Tier 1:
 
 ```
-component record + argument binding
+component record + argument binding + the preview's frame context
   → print Kotlin                                        (§5.2)
   → compile against a consumer classpath                PlaygroundCompileService / :tools:usage-compile-check
   → discover + render                                   the daemon
   → pixel-compare to the reference capture              the known-difference machinery
 ```
+
+**The frame context is not optional, and leaving it out would make Tier 2
+unreachable rather than strict.** A baked capture is never the bare call: m3-catalog's
+goes through `Sticker` (a `MaterialTheme` over the baseline scheme),
+`:samples:design-catalog-m3`'s through `CatalogSticker` (a transparent surface plus
+16 dp of padding), the wear sheet's through `WearSticker`, and several through a
+`ButtonFrame` that pins the container height. Those wrappers supply theme, sizing and
+framing that a printed call site does not, so the snippet could be argument-perfect,
+compile cleanly, and still never match the reference pixel for pixel.
+
+So the record carries the preview's **frame**: the wrapper chain the capture composed
+through, each entry classified as *reproducible* (a stock `MaterialTheme` the snippet
+can print, which `compose-usage.json`'s `RENAME`/`MATERIAL3_SYSTEM_THEME` rules
+already do today) or *catalog-private* (`CatalogSticker`'s padding — reproducible in
+the harness, but not something a consumer snippet should carry). Tier 2 then compares
+under the frame, and the *published* snippet keeps only the reproducible half. Where a
+frame cannot be reproduced at all, the comparison falls back to a consistently
+isolated component region rather than the full canvas.
 
 Run over three deliberately different corpora:
 
@@ -450,9 +570,13 @@ Ordered so that the cheapest measurement decides the expensive work.
 
 **Phase 0 — measure (small, no product change).** Extend `:usage-source-psi` to
 report parameter lists, KDoc and default expressions, plus call-site argument
-expressions. Run it over the four corpora and publish: how many previews have
-exactly one inferable target; for how many is the full signature recoverable; and
-the binding taxonomy (literal / fixture reference / unrepresentable). Every later
+expressions. Run it over the four pinned corpora and publish: how many previews have
+exactly one inferable target; for how many is the full signature recoverable; the
+binding taxonomy (literal / fixture reference / unrepresentable); the
+**`-sources.jar` availability rate** for the library coordinates the catalogs depend
+on (§3 — this decides whether the API panel can promise KDoc for library components
+at all); and, per component, the **parity delta** between the wrapper's parameters and
+the target's (§4). Every later
 phase is sized by these numbers, and Phase 0 can be wrong cheaply.
 
 **Phase 1 — the record.** `components.json` as a data product (bundle sidecar +
@@ -461,8 +585,11 @@ Delivers "detect components from previews", "learn the API", "explain the API" o
 its own, for every catalog *and* for typical apps, with no source change anywhere.
 
 **Phase 2 — parameters as the override format.** The parameter convention; the
-daemon's argument-seeding wire shape; `@OverrideVariant` lowering to arguments;
-the codemod; deprecation of `previewOverride*`. Migrate `:samples:design-catalog-m3`
+argument wire shape; the `$default`-mask invoker merging provider values, named
+overrides and defaults; discovery support for `@PreviewParameter` alongside
+otherwise-defaulted parameters (§4 — without it, adding a knob to a provider-backed
+preview silently drops it); `@OverrideVariant` lowering to arguments; the codemod;
+deprecation of `previewOverride*`. Migrate `:samples:design-catalog-m3`
 first (this repo's own, and the delegating shape that broke the Source panel),
 then m3-catalog's ambient helpers.
 
