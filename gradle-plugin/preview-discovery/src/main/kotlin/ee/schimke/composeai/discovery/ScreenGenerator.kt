@@ -85,7 +85,11 @@ object ScreenGenerator {
     val claimants = components.components.groupBy { it.symbol.name }
     val simplyImportable =
       components.components
-        .filter { claimants.getValue(it.symbol.name).size == 1 && it.symbol.name != document.name }
+        .filter {
+          claimants.getValue(it.symbol.name).size == 1 &&
+            it.symbol.name != document.name &&
+            it.symbol.name !in RESERVED_BY_THE_WRAPPER
+        }
         .map { it.canonicalId }
         .toSet()
     val context = Emission(byId, simplyImportable)
@@ -197,7 +201,7 @@ object ScreenGenerator {
           children != null && parameter.composableSlot -> {
             val nested =
               children.joinToString("\n") {
-                node(it, depth + 1, inReceiverScope || hasReceiver(parameter.type))
+                node(it, depth + 1, inReceiverScope || hasReceiver(parameter))
               }
             arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
           }
@@ -332,9 +336,6 @@ object ScreenGenerator {
   private fun markerReference(marker: String): String =
     ComponentSnippets.escapeCallableIfKeyword(marker.replace('$', '.'))
 
-  /** Whether the function type [type] declares a receiver, as `ColumnScope.() -> Unit` does. */
-  private fun hasReceiver(type: String): Boolean = type.substringBefore('(').contains('.')
-
   /**
    * The bytes [value] occupies as a JVM constant-pool string.
    *
@@ -349,7 +350,31 @@ object ScreenGenerator {
     }
   }
 
+  /**
+   * Whether children placed in [parameter] execute inside an implicit receiver.
+   *
+   * The **recorded** receiver is the answer, because the rendered type is a lossy spelling: a
+   * nullable extension slot renders as `(ColumnScope.() -> Unit)?`, which has nothing at all before
+   * its first `(`, so reading the receiver off the text answered "none" for exactly the slots most
+   * likely to have one. The text is kept only as a fallback for a record written before
+   * `composableSlotReceiver` existed, where null means "not recorded" rather than "no receiver" —
+   * and there it is unwrapped first, so the same nullable case does not slip through twice.
+   */
+  private fun hasReceiver(parameter: TargetParameter): Boolean =
+    parameter.composableSlotReceiver != null ||
+      parameter.type.removePrefix("(").removeSuffix(")?").substringBefore('(').contains('.')
+
   private const val MAX_CONSTANT_POOL_STRING = 65535
+
+  /**
+   * Simple names the generated file has already spent on its own scaffolding.
+   *
+   * The wrapper always imports `androidx.compose.runtime.Composable`, so a catalog component that
+   * happens to be called `Composable` would be imported alongside it and `Composable()` would be
+   * ambiguous between the two. Such a component is called fully qualified instead — the same answer
+   * the screen's own name and a two-package collision already get.
+   */
+  private val RESERVED_BY_THE_WRAPPER = setOf("Composable")
 
   private val KOTLIN_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
 }

@@ -657,6 +657,69 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `a component named Composable is qualified, so it cannot collide with the wrapper's import`() {
+    // The generated file always imports `androidx.compose.runtime.Composable` for its own
+    // `@Composable`
+    // annotation. Importing a catalog component of the same simple name alongside it makes
+    // `Composable()` ambiguous between the two.
+    val clash =
+      component("Composable", "com.example.Composable", emptyList()).let {
+        it.copy(
+          canonicalId = "app/com.example.ComposableKt.Composable",
+          symbol = it.symbol.copy(callable = "com.example.Composable"),
+        )
+      }
+
+    val source =
+      emitted(ScreenDocument("Screen", ScreenNode(clash.canonicalId)), catalog(clash)).source
+
+    assertThat(source).contains("com.example.Composable()")
+    assertThat(source).doesNotContain("import com.example.Composable")
+    // The wrapper's own import is untouched.
+    assertThat(source).contains("import androidx.compose.runtime.Composable")
+  }
+
+  @Test
+  fun `a nullable receiver slot still qualifies its children`() {
+    // `(ColumnScope.() -> Unit)?` has nothing before its first `(`, so reading the receiver off the
+    // rendered type answered "no receiver" and the children went back to simple names. The record
+    // carries the receiver structurally; that is what is read.
+    val optional =
+      component(
+        "Optional",
+        "com.example.Optional",
+        listOf(
+          TargetParameter(
+            "content",
+            "(ColumnScope.() -> Unit)?",
+            hasDefault = true,
+            composableSlot = true,
+            composableSlotReceiver = "androidx.compose.foundation.layout.ColumnScope",
+          )
+        ),
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          optional.canonicalId,
+          slots =
+            mapOf(
+              "content" to
+                listOf(
+                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi")))
+                )
+            ),
+        ),
+      )
+
+    val source = emitted(screen, catalog(optional, text)).source
+
+    assertThat(source).contains("androidx.compose.material3.Text(text = \"Hi\")")
+    assertThat(source).doesNotContain("import androidx.compose.material3.Text")
+  }
+
+  @Test
   fun `children of an unresolved node are still reported`() {
     // A catalog that dropped a whole subtree should name every node it can no longer place.
     val holder =
