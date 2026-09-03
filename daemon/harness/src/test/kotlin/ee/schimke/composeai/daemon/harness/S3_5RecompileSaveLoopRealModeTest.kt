@@ -359,7 +359,24 @@ class S3_5RecompileSaveLoopRealModeTest {
     targetMethod: String,
   ): ByteArray {
     val reader = ClassReader(sourceBytes)
-    val writer = ClassWriter(reader, ClassWriter.COMPUTE_MAXS or ClassWriter.COMPUTE_FRAMES)
+    // NO `COMPUTE_FRAMES`, deliberately. Computing stack map frames makes ASM merge reference
+    // types, and `ClassWriter.getCommonSuperClass` resolves both sides with `Class.forName` on the
+    // *writer's own* classloader — this test JVM's. But [sourceClassBytesFrom] reads these bytes
+    // off the spawned daemon's classpath precisely because that class is NOT on ours (see its
+    // KDoc), so the first method whose frames merge two of the fixture's own types dies:
+    //
+    //     TypeNotPresentException: Type …RedFixturePreviewsKt$GenericOutlineShapeSquare$diamond$1$1
+    //       at ClassWriter.getCommonSuperClass → SymbolTable.addMergedType → Frame.merge
+    //       → MethodWriter.computeAllFrames
+    //
+    // Recomputing them buys nothing here: this transformation is name-only — remap the internal
+    // name, rename one method, drop `<clinit>` — and none of that invalidates a frame, so
+    // [ClassRemapper] rewriting the existing frames' types keeps them correct. `COMPUTE_MAXS`
+    // stays: it recomputes stack/local sizes arithmetically, without loading a class.
+    //
+    // If a future change here *does* alter control flow, the copied frames stop matching and the
+    // JVM rejects the clone with `VerifyError` at define time — loud, not silent.
+    val writer = ClassWriter(reader, ClassWriter.COMPUTE_MAXS)
     val remapper =
       object : Remapper(Opcodes.ASM9) {
         override fun map(internalName: String): String =
