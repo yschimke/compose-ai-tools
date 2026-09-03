@@ -780,6 +780,59 @@ jobs:
       #
       # The supported shape is `publish: false` + `upload-out: true`, with the caller publishing the
       # artifact from a job that runs none of the imported code.
+      # `variant` preflight, HERE rather than beside the other module-selector checks, because
+      # this job is the one every other job depends on. The later checks run in `generate`, which
+      # depends on `render-shard` — so with render-shards > 1 a deterministic configuration error
+      # would only be reported after the entire parallel render fan-out had already run and
+      # uploaded its artifacts. A configuration error that costs the full render before it fires is
+      # a configuration error in the wrong place.
+      - name: Validate the variant selector
+        if: ${{ inputs.variant != '' }}
+        env:
+          INPUT_VARIANT: ${{ inputs.variant }}
+          INPUT_MODULE: ${{ inputs.module }}
+          INPUT_MODULES: ${{ inputs.modules }}
+          INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
+          INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+        run: |
+          set -euo pipefail
+          # "Flavored" exactly as the plugin defines it (AndroidPreviewSupport.variantMatchesTarget):
+          # a target with no uppercase character is a bare build type, which SUFFIX-matches every
+          # flavored variant — `release` matches `demoRelease`, `prodRelease` and so on. Only a
+          # target carrying an uppercase segment is matched exactly, and only that one silently
+          # skips modules. The two guards below therefore ask different questions, and neither is
+          # "is the variant non-empty".
+          flavored=0
+          case "$INPUT_VARIANT" in *[A-Z]*) flavored=1 ;; esac
+
+          # A FLAVORED variant plus repository-wide discovery loses modules with no diagnostic:
+          # every module without that exact variant drops out of `compose-preview list`, and the
+          # catalog publishes smaller with nothing in the log. A bare build type is fine here —
+          # `variant: release` across a repository is a legitimate thing to ask for.
+          if [ "$flavored" = "1" ] && { [ -z "$INPUT_MODULE" ] || [ "$INPUT_MODULES" = "all" ]; }; then
+            echo "::error title=variant input::a flavored variant ('${INPUT_VARIANT}') is matched" \
+                 "EXACTLY, so with repository-wide discovery every module that does not have it is" \
+                 "SILENTLY skipped and disappears from the catalog. Name one module with 'module'," \
+                 "or pass a bare build type (e.g. 'release'), which suffix-matches each module."
+            exit 1
+          fi
+
+          # The source-rebuild live path records repo, ref and module — there is no --source-variant
+          # in generate-design-catalog.mjs — so a trusted serve box rebuilds on the plugin's default
+          # of `debug`. Any variant OTHER than that default is therefore silently lost, and the
+          # catalog would look complete while re-rendering something else. `debug` itself is exempt:
+          # passing the default explicitly is identical to omitting the input, and refusing it would
+          # only punish a caller for being explicit.
+          if [ "$INPUT_VARIANT" != "debug" ] && [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] \
+             && [ "$INPUT_PUBLISH_LIVE_BUNDLE" != "true" ]; then
+            echo "::error title=variant input::'${INPUT_VARIANT}' cannot be carried by the" \
+                 "source-rebuild live path — the catalog's source block records repo, ref and module" \
+                 "only, so a trusted serve box would rebuild on the plugin's default 'debug'. Use" \
+                 "publish-live-bundle: true so the bundle carries the render, or" \
+                 "live-rerender-source: false."
+            exit 1
+          fi
+
       - name: Refuse to publish from an import
         if: ${{ inputs.upstream-repository != '' && inputs.publish }}
         run: |
@@ -2171,6 +2224,7 @@ jobs:
           if [ "$INPUT_DEFER_FIGMA_SVG" = "true" ] && [ "$INPUT_PUBLISH_LIVE_BUNDLE" != "true" ]; then
             echo "::notice title=defer-figma-svg::ignored — it needs publish-live-bundle: true so a trusted daemon can produce the vector on request. Static vectors will be published as before."
           fi
+
 
       # Repository-wide publication keeps one executable bundle per Gradle module. Discover the
       # module set once, order it deterministically, and prefer spec.module as the primary when the
