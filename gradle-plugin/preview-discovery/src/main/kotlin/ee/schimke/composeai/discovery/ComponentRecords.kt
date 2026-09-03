@@ -66,7 +66,9 @@ object ComponentRecords {
             descriptor = target.descriptor,
             callableFromAnotherFile = target.callableFromAnotherFile,
             hasTypeParameters = target.hasTypeParameters,
+            hasContextReceivers = target.hasContextReceivers,
             requiredOptIns = target.requiredOptIns,
+            androidxOptIns = target.androidxOptIns,
           )
         }
       // Overloads share a canonical id and merge into this one record. Both JVM handles identify
@@ -100,7 +102,9 @@ object ComponentRecords {
         existing.signatureKnown = true
         existing.callableFromAnotherFile = target.callableFromAnotherFile
         existing.hasTypeParameters = target.hasTypeParameters
+        existing.hasContextReceivers = target.hasContextReceivers
         existing.requiredOptIns = target.requiredOptIns
+        existing.androidxOptIns = target.androidxOptIns
       } else if (
         target.signatureKnown == existing.signatureKnown &&
           target.parameters.size > existing.parameters.size
@@ -175,7 +179,9 @@ object ComponentRecords {
     var descriptor: String? = null,
     var callableFromAnotherFile: Boolean = true,
     var hasTypeParameters: Boolean = false,
+    var hasContextReceivers: Boolean = false,
     var requiredOptIns: List<String> = emptyList(),
+    var androidxOptIns: List<String> = emptyList(),
   ) {
     /**
      * Set when two targets under this id disagreed about which method they are. Distinct from a
@@ -204,7 +210,9 @@ object ComponentRecords {
           callableFromAnotherFile = callableFromAnotherFile,
           hasTypeParameters = hasTypeParameters,
           overloadsCollided = overloadsCollided,
+          hasContextReceivers = hasContextReceivers,
           requiredOptIns = requiredOptIns,
+          androidxOptIns = androidxOptIns,
         )
       // Printed from the finished record, so the snippet is answering the same symbol, parameters
       // and receiver a consumer will read beside it.

@@ -14,7 +14,18 @@ import kotlinx.serialization.Serializable
  * meaning changes, bumps this. A reader that does not know a major version refuses the file rather
  * than guessing at it.
  */
-const val COMPONENT_RECORD_SCHEMA_VERSION: Int = 1
+const val COMPONENT_RECORD_SCHEMA_VERSION: Int = 2
+
+/**
+ * The first schema that records **which opt-in mechanism** each marker in [ComponentCode] needs.
+ *
+ * Before it, `requiredOptIns` was a flat list and a consumer could only assume `kotlin.OptIn`,
+ * which is wrong for a marker declared with `androidx.annotation.RequiresOptIn` — the assumption
+ * that made this a meaning change rather than an addition, and so a version bump under the rule
+ * above. A generator reading an older record cannot classify its markers and should say so instead
+ * of guessing.
+ */
+const val COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA: Int = 2
 
 /**
  * `components.json` — the **components** a module's previews render, as opposed to
@@ -97,6 +108,11 @@ data class ComponentRecord(
   /** See `PreviewTarget.hasTypeParameters`. */
   val hasTypeParameters: Boolean = false,
   /**
+   * Whether the composable declares a context receiver or context parameter, which a generated
+   * wrapper cannot supply — see `ComposableSignatureInfo.hasContextReceivers`.
+   */
+  val hasContextReceivers: Boolean = false,
+  /**
    * True when overloads collided into this record — they share [canonicalId], so `collect` merged
    * them and kept one signature. No call site can be printed for the merged pair: two fully
    * defaulted overloads make `Chip()` ambiguous, and the record no longer says which one the
@@ -109,6 +125,17 @@ data class ComponentRecord(
    * them.
    */
   val requiredOptIns: List<String> = emptyList(),
+  /**
+   * The subset of [requiredOptIns] whose markers are declared with
+   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
+   *
+   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
+   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
+   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
+   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
+   * the one point that can see it — the annotation's own meta-annotations.
+   */
+  val androidxOptIns: List<String> = emptyList(),
 )
 
 /**
@@ -221,6 +248,17 @@ data class ComponentCode(
    * problem the caller fixes in one annotation.
    */
   val requiredOptIns: List<String> = emptyList(),
+  /**
+   * The subset of [requiredOptIns] whose markers are declared with
+   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
+   *
+   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
+   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
+   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
+   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
+   * the one point that can see it — the annotation's own meta-annotations.
+   */
+  val androidxOptIns: List<String> = emptyList(),
 )
 
 /**

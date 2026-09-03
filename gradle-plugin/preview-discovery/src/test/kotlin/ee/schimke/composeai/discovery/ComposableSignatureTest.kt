@@ -53,6 +53,62 @@ class ComposableSignatureTest {
     assertThat(params.first { it.name == "state" }.composableSlot).isFalse()
   }
 
+  /** As [parametersOf], for the opt-in markers a caller of the fixture has to apply. */
+  private fun optInsOf(simpleName: String): List<String> {
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      // The producer enables this too; without it no annotation is visible and every method would
+      // trivially report no markers, which is a green test that proves nothing.
+      .enableAnnotationInfo()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        val classInfo =
+          scan.getClassInfo("ee.schimke.composeai.discovery.SignatureFixturesKt")
+            ?: error("fixture facade class not found")
+        val m: MethodInfo = classInfo.methodInfo.first { it.name == simpleName }
+        return ComposableSignature.signatureOf(classInfo, m)?.requiredOptIns
+          ?: error("no signature for $simpleName")
+      }
+  }
+
+  @Test
+  fun `only markers written on the method are reported, not their meta-annotations`() {
+    // `optInComponent` carries `@ExperimentalFixtureApi` (a real requirement) and
+    // `@FixtureInferredTarget` (the shape the Compose compiler stamps on, itself guarded by
+    // `@InternalFixtureApi`). Reading ClassGraph's annotation closure rather than the direct
+    // annotations reported `InternalFixtureApi` — and `kotlin.RequiresOptIn` itself — telling a
+    // caller to opt into internals in order to place a component.
+    assertThat(optInsOf("optInComponent"))
+      .containsExactly("ee.schimke.composeai.discovery.ExperimentalFixtureApi")
+  }
+
+  @Test
+  fun `a marker the author wrote on their own component survives`() {
+    // The other half, and why a name denylist was the wrong fix: `InternalFixtureApi` is noise as a
+    // meta-annotation of a compiler marker and a real requirement when an author applies it.
+    assertThat(optInsOf("deliberatelyInternalComponent"))
+      .containsExactly("ee.schimke.composeai.discovery.InternalFixtureApi")
+  }
+
+  @Test
+  fun `a nested marker is recorded in source notation, not by its binary name`() {
+    // ClassGraph hands over `MarkerHolder$NestedApi`. The source name is rebuilt from the nesting
+    // chain here, at the one place that can see it — an emitter replacing every `$` with `.` would
+    // also corrupt a top-level marker whose backticked name legitimately contains one.
+    assertThat(optInsOf("nestedMarkerComponent"))
+      .containsExactly("ee.schimke.composeai.discovery.MarkerHolder.NestedApi")
+  }
+
+  @Test
+  fun `a top-level marker whose name contains a dollar keeps it`() {
+    // The other half of the nesting question, and why replacing every `$` was wrong: this marker
+    // has no outer class, so its name is already what source spells.
+    assertThat(optInsOf("dollarMarkerComponent"))
+      .containsExactly("ee.schimke.composeai.discovery.Api\$Experimental")
+  }
+
   /** As [parametersOf], for the knob view of the same fixtures. */
   private fun knobsOf(simpleName: String): List<PreviewKnob> {
     ClassGraph()

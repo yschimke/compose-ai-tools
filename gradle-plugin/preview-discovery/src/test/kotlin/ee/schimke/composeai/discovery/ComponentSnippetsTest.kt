@@ -15,6 +15,7 @@ class ComponentSnippetsTest {
     callableFromAnotherFile: Boolean = true,
     hasTypeParameters: Boolean = false,
     overloadsCollided: Boolean = false,
+    hasContextReceivers: Boolean = false,
     requiredOptIns: List<String> = emptyList(),
   ) =
     ComponentRecord(
@@ -32,6 +33,7 @@ class ComponentSnippetsTest {
       callableFromAnotherFile = callableFromAnotherFile,
       hasTypeParameters = hasTypeParameters,
       overloadsCollided = overloadsCollided,
+      hasContextReceivers = hasContextReceivers,
       requiredOptIns = requiredOptIns,
     )
 
@@ -139,6 +141,15 @@ class ComponentSnippetsTest {
     // `Button()` from it would emit source that does not compile.
     assertThat(refusal(record(signatureKnown = false, parameters = emptyList())))
       .contains("not recovered")
+  }
+
+  @Test
+  fun `a composable with a context requirement is refused`() {
+    // The same reason as an extension receiver, and invisible in the parameter list: a context is
+    // not a value parameter, so a printed call would carry no hint that something has to be in
+    // scope around it.
+    assertThat(refusal(record(hasContextReceivers = true)))
+      .contains("context receiver or parameter")
   }
 
   @Test

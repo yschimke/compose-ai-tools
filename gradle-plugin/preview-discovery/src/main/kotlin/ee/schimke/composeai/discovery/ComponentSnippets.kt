@@ -66,6 +66,14 @@ object ComponentSnippets {
         "declares type parameters that a call omitting defaulted arguments cannot infer"
       )
     }
+    // The same reason as an extension receiver, one the parameter list cannot show: a context is
+    // not a value parameter, so nothing in the printed call would hint that a `Theme` has to be in
+    // scope around it.
+    if (record.hasContextReceivers) {
+      return ComponentSnippet.Refused(
+        "declares a context receiver or parameter, which a generated wrapper cannot supply"
+      )
+    }
     record.symbol.receiver?.let { receiver ->
       return ComponentSnippet.Refused(
         "declared on $receiver, so a call site needs that scope around it"
@@ -97,6 +105,7 @@ object ComponentSnippets {
       imports = listOf(escapeCallableIfKeyword(record.symbol.callable)),
       code = "${escapeIfKeyword(record.symbol.name)}(${arguments.joinToString(", ")})",
       requiredOptIns = record.requiredOptIns,
+      androidxOptIns = record.androidxOptIns,
     )
   }
 
@@ -114,6 +123,7 @@ object ComponentSnippets {
           call = snippet.code,
           imports = snippet.imports,
           requiredOptIns = snippet.requiredOptIns,
+          androidxOptIns = snippet.androidxOptIns,
         )
       is ComponentSnippet.Refused -> ComponentCode(refusedReason = snippet.reason)
     }
@@ -172,13 +182,48 @@ object ComponentSnippets {
       "while",
     )
 
-  private fun escapeIfKeyword(name: String): String = if (name in HARD_KEYWORDS) "`$name`" else name
+  /**
+   * The parameter's qualified type, falling back to the rendered spelling under `kotlin.` when the
+   * record predates [TargetParameter.typeFqn].
+   *
+   * Shared with [ScreenGenerator] rather than duplicated: both have to decide "is this actually
+   * `kotlin.String`?", and two implementations of that question is how one of them starts emitting
+   * `""` for `com.example.String` again.
+   */
+  internal fun qualifiedTypeOf(parameter: TargetParameter): String =
+    parameter.typeFqn ?: "kotlin.${parameter.type}"
 
-  /** Escapes each segment of an import path, since any one of them may be a keyword. */
-  private fun escapeCallableIfKeyword(callable: String): String =
+  internal fun isHardKeyword(name: String): Boolean = name in HARD_KEYWORDS
+
+  /**
+   * Kotlin's own identifier rule: `(Letter | '_') (Letter | '_' | UnicodeDigit)*`.
+   *
+   * Not `[A-Za-z_][A-Za-z0-9_]*` — `Übersicht` and `画面` are identifiers Kotlin accepts without
+   * backticks. Kept here, next to the escaping it decides, so there is one answer to "can this be
+   * written bare?" rather than one per generator.
+   */
+  internal fun isIdentifier(name: String): Boolean =
+    name.isNotEmpty() &&
+      (name[0].isLetter() || name[0] == '_') &&
+      name.all { it.isLetter() || it.isDigit() || it == '_' }
+
+  /**
+   * Backticks [name] unless it can be written bare.
+   *
+   * Two reasons it cannot, and a keyword is only the obvious one: a declaration's *source* name can
+   * hold characters no bare identifier may, because it was written in backticks to begin with —
+   * ``annotation class `Api${'$'}Experimental` ``. Printing that unquoted is as broken as printing
+   * `when` unquoted, and the second case is the one that survived a round of review by looking
+   * unremarkable.
+   */
+  internal fun escapeIfKeyword(name: String): String =
+    if (name in HARD_KEYWORDS || !isIdentifier(name)) "`$name`" else name
+
+  /** Escapes each segment of an import path, since any one of them may need it. */
+  internal fun escapeCallableIfKeyword(callable: String): String =
     callable.split('.').joinToString(".") { escapeIfKeyword(it) }
 
-  private fun placeholderFor(parameter: TargetParameter): String? {
+  internal fun placeholderFor(parameter: TargetParameter): String? {
     if (parameter.nullable) return "null"
     val type = parameter.type
     // A record written before `nullable` existed defaults it to `false`, so a persisted v1
@@ -192,7 +237,7 @@ object ComponentSnippets {
     // `String` exactly like `kotlin.String`, and answering `""` for the first emits source that
     // does not compile. A record written before `typeFqn` existed has null here and falls back to
     // the spelling, which is what it always did — no worse, and no silent retraction.
-    return when (parameter.typeFqn ?: "kotlin.$type") {
+    return when (qualifiedTypeOf(parameter)) {
       "kotlin.String" -> "\"\""
       "kotlin.Boolean" -> "false"
       "kotlin.Int" -> "0"
@@ -204,6 +249,42 @@ object ComponentSnippets {
       // compiling.
       else -> null
     }
+  }
+
+  /**
+   * Whether a bare `{ … }` satisfies the function type [type] — the question a slot has to answer
+   * before children can be dropped into it.
+   *
+   * Shared with [ScreenGenerator] because a slot whose type is `(Int, Int) -> Unit` or `() ->
+   * String` accepts children in neither generator, and two answers to that would let one of them
+   * emit a lambda the compiler rejects.
+   */
+  internal fun acceptsBareLambda(type: String): Boolean =
+    // A nullable slot renders as `(() -> Unit)?` — parenthesised so the `?` cannot read as part of
+    // the return type. Kotlin accepts a non-null `{ … }` for a nullable function type, so the
+    // outer nullability is stripped before asking about the lambda's shape. Only
+    // `acceptsBareLambda`
+    // unwraps: `emptyLambda` still answers null for a nullable parameter, because `placeholderFor`
+    // reaches `null` first and that is the better answer when there are no children to place.
+    emptyLambda(unwrapNullable(type)) != null
+
+  /** `(() -> Unit)?` to `() -> Unit`; anything else unchanged. */
+  private fun unwrapNullable(type: String): String {
+    if (!type.startsWith("(") || !type.endsWith(")?")) return type
+    val inner = type.substring(1, type.length - 2)
+    // Only strip when the opening paren really is the one the `?` closes, so `(A) -> B` — whose
+    // first paren belongs to the parameter list — is left alone.
+    return if (topLevelCommaCount(inner) >= 0 && balanced(inner)) inner else type
+  }
+
+  private fun balanced(text: String): Boolean {
+    var depth = 0
+    for (c in text) {
+      if (c == '(') depth++
+      if (c == ')') depth--
+      if (depth < 0) return false
+    }
+    return depth == 0
   }
 
   /**
@@ -260,6 +341,7 @@ sealed interface ComponentSnippet {
     val code: String,
     /** Markers the caller's `@Composable` wrapper must `@OptIn` to — see `ComponentCode`. */
     val requiredOptIns: List<String> = emptyList(),
+    val androidxOptIns: List<String> = emptyList(),
   ) : ComponentSnippet
 
   /**

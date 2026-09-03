@@ -226,7 +226,9 @@ object PreviewTargetInference {
         signatureKnown = true,
         callableFromAnotherFile = signature.callableFromAnotherFile,
         hasTypeParameters = signature.hasTypeParameters,
+        hasContextReceivers = signature.hasContextReceivers,
         requiredOptIns = signature.requiredOptIns,
+        androidxOptIns = signature.androidxOptIns,
       )
     }
   }
@@ -346,7 +348,9 @@ object PreviewTargetInference {
         // Null metadata keeps the permissive defaults: "not recovered" must not read as "private".
         callableFromAnotherFile = signature?.callableFromAnotherFile ?: true,
         hasTypeParameters = signature?.hasTypeParameters ?: false,
+        hasContextReceivers = signature?.hasContextReceivers ?: false,
         requiredOptIns = signature?.requiredOptIns.orEmpty(),
+        androidxOptIns = signature?.androidxOptIns.orEmpty(),
       )
     )
   }

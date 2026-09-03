@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import kotlin.metadata.KmClassifier
@@ -62,6 +63,14 @@ internal data class ComposableSignatureInfo(
    */
   val hasTypeParameters: Boolean,
   /**
+   * Whether the composable declares a context receiver or context parameter.
+   *
+   * `context(Theme) @Composable fun Widget()` is callable only where a `Theme` is in scope, and a
+   * generated wrapper supplies none. Nothing in the rendered parameter list says so — the context
+   * is not a value parameter — so a call site would be printed and would not compile.
+   */
+  val hasContextReceivers: Boolean,
+  /**
    * Fully-qualified `@RequiresOptIn` marker annotations on the declaration
    * (`androidx.compose.material3.ExperimentalMaterial3Api`).
    *
@@ -74,6 +83,17 @@ internal data class ComposableSignatureInfo(
    * be identified, and is indistinguishable here from a declaration that needs no opt-in.
    */
   val requiredOptIns: List<String>,
+  /**
+   * The subset of [requiredOptIns] whose markers are declared with
+   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
+   *
+   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
+   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
+   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
+   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
+   * the one point that can see it — the annotation's own meta-annotations.
+   */
+  val androidxOptIns: List<String>,
 )
 
 internal object ComposableSignature {
@@ -131,7 +151,9 @@ internal object ComposableSignature {
         callableFromAnotherFile =
           fn.visibility == Visibility.PUBLIC || fn.visibility == Visibility.INTERNAL,
         hasTypeParameters = fn.typeParameters.isNotEmpty(),
-        requiredOptIns = requiredOptInsOf(method),
+        hasContextReceivers = hasContextRequirement(fn),
+        requiredOptIns = requiredOptInsOf(method, OPT_IN_MARKER_ANNOTATIONS),
+        androidxOptIns = requiredOptInsOf(method, setOf("androidx.annotation.RequiresOptIn")),
         receiver =
           fn.receiverParameterType?.let { receiver ->
             (receiver.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.')
@@ -205,22 +227,73 @@ internal object ComposableSignature {
   }
 
   /**
-   * The `@RequiresOptIn`-marked annotations applied to [method].
+   * The `@RequiresOptIn`-marked annotations a caller of [method] has to opt into.
    *
    * An opt-in marker is an annotation whose own class carries `@RequiresOptIn`, so this resolves
    * one level up rather than pattern-matching names like `Experimental…` — a convention plenty of
    * annotations follow without gating anything. An annotation class outside the scan resolves to
    * null and is skipped: unrecognised, not assumed.
+   *
+   * **`directOnly()` at both levels is what makes this correct, and its absence is what made the
+   * first version wrong.** ClassGraph's `annotationInfo` is the transitive closure of
+   * meta-annotations, not the annotations written on the element: `Card` carries `@Composable`,
+   * `@ComposableInferredTarget` and `@FunctionKeyMeta`, and the closure of those three drags in
+   * `InternalComposeApi`, `ComposeCompilerApi` and `kotlin.RequiresOptIn` itself. Reading the
+   * closure therefore reported `@OptIn(InternalComposeApi::class)` for placing a `Card` — telling
+   * consumers to opt into Compose's internals to draw a container.
+   *
+   * Filtering those names out was the first fix and the wrong one: it also silenced a component an
+   * author had *deliberately* marked `@InternalComposeApi`, whose callers really must opt in.
+   * Direct annotations answer the actual Kotlin rule — this element, this marker — so
+   * `ComposableInferredTarget` drops out because it is not itself `@RequiresOptIn`, while an
+   * author's `@ExperimentalMaterial3Api` or `@InternalComposeApi` survives.
    */
-  private fun requiredOptInsOf(method: MethodInfo): List<String> =
+  private fun requiredOptInsOf(method: MethodInfo, mechanisms: Set<String>): List<String> =
     method.annotationInfo
+      ?.directOnly()
       .orEmpty()
       .filter { annotation ->
-        annotation.classInfo?.annotationInfo?.any { it.name in OPT_IN_MARKER_ANNOTATIONS } == true
+        annotation.classInfo?.annotationInfo?.directOnly()?.any { it.name in mechanisms } == true
       }
-      .map { it.name }
+      .map { sourceNameOf(it) }
       .distinct()
       .sorted()
+
+  /**
+   * Whether [fn] can only be called where some context is in scope.
+   *
+   * **Partial, and deliberately so.** `context(Theme)` compiled by an older toolchain lands in
+   * `contextReceiverTypes`, which is what this reads. Kotlin 2.2 onwards records the same
+   * declaration as a context *parameter* instead, and `KmFunction.contextParameters` is gated on an
+   * opt-in marker that itself requires API version 2.2 — this module targets 2.0, so the accessor
+   * cannot be referenced here at all.
+   *
+   * So a component compiled by a 2.2+ toolchain with a context parameter is still admitted and
+   * still produces a call that does not compile. That is a real gap, named here rather than hidden
+   * behind a check that looks total: closing it needs this module's API version raised, which is a
+   * build-wide decision and not this change's to make.
+   */
+  @OptIn(kotlin.metadata.ExperimentalContextReceivers::class)
+  @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+  private fun hasContextRequirement(fn: KmFunction): Boolean = fn.contextReceiverTypes.isNotEmpty()
+
+  /**
+   * An annotation class's name as Kotlin source spells it.
+   *
+   * ClassGraph reports the **binary** name, where `$` separates a nested class from its outer one —
+   * but `$` is also legal inside a backticked top-level name (``annotation class
+   * `Api${'$'}Experimental` ``), so replacing every `$` with `.` corrupts the second case while
+   * fixing the first. The nesting chain says which is which, so the source name is rebuilt from it
+   * here, once, and the emitter gets a name it can print verbatim.
+   */
+  private fun sourceNameOf(annotation: AnnotationInfo): String {
+    val info = annotation.classInfo ?: return annotation.name
+    val outers = info.outerClasses?.reversed().orEmpty()
+    if (outers.isEmpty()) return annotation.name
+    val packageName = annotation.name.substringBeforeLast('.', "")
+    val nesting = (outers.map { it.simpleName } + info.simpleName).joinToString(".")
+    return if (packageName.isEmpty()) nesting else "$packageName.$nesting"
+  }
 
   private val OPT_IN_MARKER_ANNOTATIONS =
     setOf("kotlin.RequiresOptIn", "androidx.annotation.RequiresOptIn")

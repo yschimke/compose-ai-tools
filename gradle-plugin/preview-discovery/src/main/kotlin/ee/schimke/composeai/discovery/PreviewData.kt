@@ -1459,10 +1459,26 @@ data class PreviewTarget(
    */
   val hasTypeParameters: Boolean = false,
   /**
+   * Whether the composable declares a context receiver or context parameter, which a generated
+   * wrapper cannot supply — see `ComposableSignatureInfo.hasContextReceivers`.
+   */
+  val hasContextReceivers: Boolean = false,
+  /**
    * Fully-qualified `@RequiresOptIn` markers the declaration carries, which a generated wrapper
    * must apply itself — see `ComposableSignatureInfo.requiredOptIns`.
    */
   val requiredOptIns: List<String> = emptyList(),
+  /**
+   * The subset of [requiredOptIns] whose markers are declared with
+   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
+   *
+   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
+   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
+   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
+   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
+   * the one point that can see it — the annotation's own meta-annotations.
+   */
+  val androidxOptIns: List<String> = emptyList(),
 )
 
 /**
