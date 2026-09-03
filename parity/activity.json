@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T06:21:08.073Z",
+  "generatedAt": "2026-09-03T06:32:12.054Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e3e96ad8a944069c25d3c796b7fefed740cc5aa8",
+        "subject": "fix(import): write Gradle properties with python, and print the diagnosed sidecar (#5050)",
+        "at": "2026-09-03T07:15:44+01:00",
+        "author": "claude[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "b82d9f4ff25b9b785cdb99dcf250f7974fce8b8e",
         "subject": "fix(ci): say which direction the rc-players pin has drifted (#5049)",
@@ -475,14 +483,6 @@
         "subject": "chore(xr): adopt renderer-xr 2.0.0 (#4977)",
         "at": "2026-09-02T04:31:54+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e8cd1d3ecd6c18d3de22f3fdc4244c041c53888a",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.62.2 (#4976)",
-        "at": "2026-09-02T04:28:21+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
