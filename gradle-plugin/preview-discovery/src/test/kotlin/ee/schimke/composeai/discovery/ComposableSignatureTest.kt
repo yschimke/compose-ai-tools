@@ -35,6 +35,16 @@ class ComposableSignatureTest {
   }
 
   @Test
+  fun `a type alias is recorded as the class it expands to, not as the alias`() {
+    // `typealias AliasedLabel = String` on a parameter. Kotlin's metadata expands aliases, so the
+    // classifier is `kotlin.String` and a value claiming `kotlin.String` matches — there is no
+    // fabricated `kotlin.AliasedLabel` for a claimed value to be refused against.
+    val parameter = parametersOf("aliasedComponent").single()
+    assertThat(parameter.typeFqn).isEqualTo("kotlin.String")
+    assertThat(ComponentSnippets.qualifiedTypeOf(parameter)).isEqualTo("kotlin.String")
+  }
+
+  @Test
   fun `reads parameter names, types and defaults from metadata`() {
     val params = parametersOf("sampleComponent")
 
