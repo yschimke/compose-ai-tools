@@ -397,8 +397,8 @@ test("the two samples are the same point, aligned the way the score is", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   // Both axes separately: frameToComponent rounds the displayed width and height independently,
   // so a capped non-square component is scaled by slightly different factors across and down.
-  assert.match(html, /const sx = svgRect\.width \/ nw, sy = svgRect\.height \/ nh;/);
-  assert.match(html, /const svgX = fx \/ sx, svgY = fy \/ sy;/);
+  assert.match(html, /const meet = Math\.min\(svgRect\.width \/ nw, svgRect\.height \/ nh\);/);
+  assert.match(html, /const svgX = \(fx - boxX\) \/ meet, svgY = \(fy - boxY\) \/ meet;/);
   // The render coordinate goes through the PNG's own displayed placement, whose width and
   // offset frameToComponent rounds independently; the exact translate is the fallback.
   assert.match(html, /renderX = \(fx - \(pr\.left - ps\.left\)\) \/ px;/);
@@ -541,7 +541,7 @@ test("the live hover is stored against its tile, not the viewport", () => {
   // which fires a pointer event, so a stored client point silently starts naming a different
   // row. An offset into a tile is measured against the thing being read and survives all three.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /const LAST = \{ shot: null, fx: 0, fy: 0 \}/);
+  assert.match(html, /const LAST = \{ shot: null, fx: 0, fy: 0, cx: 0, cy: 0 \}/);
   assert.match(html, /function pickAt\(shot, fx, fy\)/);
   // The pointer handlers do the conversion, once, where the event is.
   assert.match(html, /pickAt\(shot, e\.clientX - r\.left, e\.clientY - r\.top\)/);
@@ -592,4 +592,30 @@ test("pixels a host will not release settle as unreadable rather than retrying",
   assert.match(html, /if \(ACTIVE\.failed\[side\] === src\) return UNREADABLE;/);
   assert.match(html, /ACTIVE\.failed\[side\] = src;/);
   assert.match(html, /raw === UNREADABLE \? "pixels not readable \(no CORS\)"/);
+});
+
+test("the vector is mapped through its meet transform, not a stretch", () => {
+  // An SVG in an <img> honours preserveAspectRatio, defaulting to xMidYMid meet, and the emitted
+  // vectors never override it — so it scales uniformly by the smaller ratio and centres,
+  // letterboxing the rest. frameToComponent rounds the box's width and height independently, so
+  // the box rarely has the vector's natural aspect and the letterbox is real. Measured: a 308x109
+  // vector in a 240x200 box draws an 84.9px band with 57.5px of transparency above and below.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const meet = Math\.min\(svgRect\.width \/ nw, svgRect\.height \/ nh\);/);
+  assert.match(html, /const boxX = \(svgRect\.width - nw \* meet\) \/ 2, boxY = \(svgRect\.height - nh \* meet\) \/ 2;/);
+  // The render is a raster and does stretch to its box, so its mapping stays per-axis.
+  assert.match(html, /const px = pr\.width \/ pngImg\.naturalWidth, py = pr\.height \/ pngImg\.naturalHeight;/);
+});
+
+test("a scroll or resize re-aims an unlocked reading", () => {
+  // Both move the tiles under a cursor that has not moved, and neither fires a pointer event: the
+  // tile offset stays valid for the tile it names while the cursor is now over a different part
+  // of it. The client point has not changed, so it is what re-aims. A frozen reading is tied to
+  // its row rather than the cursor and is left alone.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function reaim\(\)/);
+  assert.match(html, /if \(PICK\.locked \|\| PICK\.blocked \|\| !LAST\.shot\) return;/);
+  assert.match(html, /document\.elementFromPoint\(LAST\.cx, LAST\.cy\)/);
+  assert.match(html, /addEventListener\("scroll", reaim, \{ passive: true, capture: true \}\);/);
+  assert.match(html, /addEventListener\("resize", reaim\);/);
 });

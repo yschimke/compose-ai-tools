@@ -466,13 +466,28 @@ const SCORER = String.raw`
     failed: { png: null, svg: null },
   };
 
-  // The live hover: the tile it is in, and the point WITHIN that tile.
+  // The live hover: the tile it is in, the point WITHIN that tile, and the client point that
+  // produced it — the last kept solely to re-aim after the page moves under a still cursor.
   //
   // Tile-relative on purpose. A viewport coordinate goes stale in three separate ways — run()
   // re-appends the rows in score order, the page scrolls, the window resizes — none of which
   // fires a pointer event, so a stored client point silently starts naming a different row. An
   // offset into a tile survives all three, because it is measured against the thing being read.
-  const LAST = { shot: null, fx: 0, fy: 0 };
+  const LAST = { shot: null, fx: 0, fy: 0, cx: 0, cy: 0 };
+
+  // Scrolling or resizing moves the tiles under a cursor that has not moved, and neither fires a
+  // pointer event: the offset stored above stays valid for the tile it names while the cursor is
+  // now over a different part of it, or over nothing. The client point has not changed, so it is
+  // exactly what re-aims the reading. A frozen reading is tied to its row rather than the cursor,
+  // so it is left alone.
+  function reaim() {
+    if (PICK.locked || PICK.blocked || !LAST.shot) return;
+    const el = document.elementFromPoint(LAST.cx, LAST.cy);
+    const shot = el && el.closest && el.closest(".shot--framed");
+    if (!shot) { hidePick(); return; }
+    const r = shot.getBoundingClientRect();
+    pickAt(shot, LAST.cx - r.left, LAST.cy - r.top);
+  }
 
   function releaseActive() {
     for (const side of ["png", "svg"]) {
@@ -713,10 +728,15 @@ const SCORER = String.raw`
     // sits in: the two agree once the tile is framed, and reading the image means a stray cap on
     // its width shows up as a wrong scale rather than as silently wrong pixels.
     //
-    // Both axes, separately. frameToComponent rounds the displayed width and height
-    // independently, so a capped non-square component — 300x101 framed to 240x81 — is scaled by
-    // 0.800 across and 0.802 down. One scale for both drifts a row at the bottom edge and can
-    // report a visible last row as outside the image.
+    // Through the vector's "meet" transform, not a per-axis stretch. frameToComponent rounds the
+    // displayed width and height independently, so the box the vector is given rarely has quite
+    // its natural aspect — and an SVG in an <img> honours preserveAspectRatio, defaulting to
+    // xMidYMid meet, which the emitted vectors never override. It therefore scales UNIFORMLY by
+    // the smaller ratio and centres, letterboxing the remainder. Measured: a 308x109 vector in a
+    // 240x200 box draws an 84.9px band centred with 57.5px of transparency above and below it.
+    // Two independent scales describe a stretch that never happens, so the offset is the thing
+    // that has to be accounted for. (The render is a raster, which does stretch to its box; its
+    // own mapping below stays per-axis.)
     const svgImg = displayImg(tr, "svg");
     const svgRect = svgImg && svgImg.getBoundingClientRect();
     const nw = svgImg && svgImg.naturalWidth, nh = svgImg && svgImg.naturalHeight;
@@ -729,8 +749,9 @@ const SCORER = String.raw`
       hidePick();
       return;
     }
-    const sx = svgRect.width / nw, sy = svgRect.height / nh;
-    const svgX = fx / sx, svgY = fy / sy;
+    const meet = Math.min(svgRect.width / nw, svgRect.height / nh);
+    const boxX = (svgRect.width - nw * meet) / 2, boxY = (svgRect.height - nh * meet) / 2;
+    const svgX = (fx - boxX) / meet, svgY = (fy - boxY) / meet;
     // The render coordinate goes through the PNG's own displayed transform where there is one.
     // frameToComponent rounds that element's width and its left/top offset independently, so the
     // pixel visibly under the crosshair in the PNG column is the one those rounded values put
@@ -815,6 +836,7 @@ const SCORER = String.raw`
       const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
       if (!shot) { hidePick(); return; }
       const r = shot.getBoundingClientRect();
+      LAST.cx = e.clientX; LAST.cy = e.clientY;
       pickAt(shot, e.clientX - r.left, e.clientY - r.top);
     });
     rows.addEventListener("pointerleave", hidePick);
@@ -824,6 +846,7 @@ const SCORER = String.raw`
       const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
       if (!shot || PICK.blocked) return;
       const r = shot.getBoundingClientRect();
+      LAST.cx = e.clientX; LAST.cy = e.clientY;
       const fx = e.clientX - r.left, fy = e.clientY - r.top;
       if (PICK.locked) {
         PICK.locked = false;
@@ -1070,6 +1093,8 @@ const SCORER = String.raw`
   function start() {
     wireControls();
     wirePicker();
+    addEventListener("scroll", reaim, { passive: true, capture: true });
+    addEventListener("resize", reaim);
     run();
   }
 
