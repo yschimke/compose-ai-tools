@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T06:48:40.849Z",
+  "generatedAt": "2026-09-03T07:24:13.434Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "312befe1d35ec2a1c645c4c6ff231fd1bcbb31b2",
+        "subject": "fix: turn Isolated Projects off for auto-injected runs, and keep the S3.5 clone out of the fixture's static initializer (#5060)",
+        "at": "2026-09-03T08:15:13+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "61b544d7b042a5236c9b0b695e65fd76ce4a0543",
         "subject": "chore(ci): update the design-artifacts export driver to v1.69.0 (#5053)",
@@ -475,14 +483,6 @@
         "subject": "chore(main): release 1.63.0 (#4974)",
         "at": "2026-09-02T07:53:28+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "19ae6a4d097d3facc24e85c80db4cdc84b362012",
-        "subject": "ci: stop publishing per-preview bundles for wear-m3 (#4981)",
-        "at": "2026-09-02T07:49:31+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
