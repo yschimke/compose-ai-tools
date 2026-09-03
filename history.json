@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "5ec464a5f2b1b3b2377de6e67ed8dbcae870f75a",
+    "generatedFrom": "fe856dcd926c77afddd6d41afa36710bd2cedad6",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -6976,6 +6976,15 @@
             "path": "renders/samples:remotecompose/colorcatalog__Remote_theme.png",
             "versions": [
                 {
+                    "blob": "775f55e6da474c11ee56cdd5e33d5cd3f4a61c95",
+                    "commit": "fe856dcd926c77afddd6d41afa36710bd2cedad6",
+                    "date": "2026-09-03T15:17:25Z",
+                    "sourceSha": "ab5e96a2",
+                    "sinceCommit": "275a8498a3244cff2c97f6382769c1a4d1619665",
+                    "commits": 3,
+                    "occurrences": 3
+                },
+                {
                     "blob": "c5f597c4295862028f853ead6d4504cf98f477a3",
                     "commit": "5ec464a5f2b1b3b2377de6e67ed8dbcae870f75a",
                     "date": "2026-09-03T08:54:27Z",
@@ -6992,15 +7001,6 @@
                     "commits": 1
                 },
                 {
-                    "blob": "775f55e6da474c11ee56cdd5e33d5cd3f4a61c95",
-                    "commit": "7d26c152b492509d4b45c369339cf923a2372480",
-                    "date": "2026-09-03T06:29:10Z",
-                    "sourceSha": "b82d9f4f",
-                    "sinceCommit": "275a8498a3244cff2c97f6382769c1a4d1619665",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
                     "blob": "c8fc1c6d8c5a537a74705c117b13dec8660eec42",
                     "commit": "f7f4ac566fe9437db0912eb7d49e0b4116b1f2ef",
                     "date": "2026-09-02T23:05:40Z",
@@ -7010,9 +7010,9 @@
                     "occurrences": 6
                 }
             ],
-            "observations": 19,
+            "observations": 20,
             "unstable": true,
-            "flapCount": 15
+            "flapCount": 16
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
             "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
