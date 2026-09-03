@@ -436,6 +436,468 @@ const SCORER = String.raw`
     }
   }
 
+  // ---------------------------------------------------------------- eyedropper
+  // Per-row alignment, recorded by the scorer once a row has been framed. Only the export's
+  // root translate: every other quantity is read back from the images the row is *showing*,
+  // so nothing here retains a bitmap. A record per row is unavoidable (each component has its
+  // own translate) and this one is two numbers.
+  const SAMPLES = new WeakMap();
+
+  // The image each column is displaying. Sampling these rather than the scorer's own decoded
+  // copies keeps what is read identical to what is seen — including an overridden or hybrid
+  // vector, which the scorer swapped into this element — and retains nothing the page was not
+  // already holding.
+  function displayImg(tr, side) {
+    return tr.querySelector((side === "png" ? ".col-png" : ".col-svg") + " .shot img");
+  }
+
+  // One row's sampling canvases at a time. A scored row stays in the DOM forever, so keeping a
+  // canvas per row would grow with every row the cursor visited — two full-size backing stores
+  // each — until the page ran out. Zeroing the dimensions drops the old store immediately
+  // rather than waiting for the context to be collected.
+  const ACTIVE = {
+    tr: null,
+    png: null,
+    svg: null,
+    pending: { png: null, svg: null },
+    // The src whose origin-clean load was refused, per side. Without it every pointermove starts
+    // the same doomed request again and the panel reads "still loading" forever; a host that
+    // sends no CORS header will not start sending one because the cursor moved.
+    failed: { png: null, svg: null },
+  };
+
+  // The live hover: the tile it is in, the point WITHIN that tile, and the client point that
+  // produced it — the last kept solely to re-aim after the page moves under a still cursor.
+  //
+  // Tile-relative on purpose. A viewport coordinate goes stale in three separate ways — run()
+  // re-appends the rows in score order, the page scrolls, the window resizes — none of which
+  // fires a pointer event, so a stored client point silently starts naming a different row. An
+  // offset into a tile survives all three, because it is measured against the thing being read.
+  const LAST = { shot: null, fx: 0, fy: 0, cx: 0, cy: 0 };
+
+  // Scrolling or resizing moves the tiles under a cursor that has not moved, and neither fires a
+  // pointer event: the offset stored above stays valid for the tile it names while the cursor is
+  // now over a different part of it, or over nothing. The client point has not changed, so it is
+  // exactly what re-aims the reading. A frozen reading is tied to its row rather than the cursor,
+  // so it is left alone.
+  function reaim() {
+    if (PICK.locked || PICK.blocked || !LAST.shot) return;
+    const el = document.elementFromPoint(LAST.cx, LAST.cy);
+    const shot = el && el.closest && el.closest(".shot--framed");
+    if (!shot) { hidePick(); return; }
+    const r = shot.getBoundingClientRect();
+    pickAt(shot, LAST.cx - r.left, LAST.cy - r.top);
+  }
+
+  function releaseActive() {
+    for (const side of ["png", "svg"]) {
+      if (ACTIVE[side]) { ACTIVE[side].canvas.width = 0; ACTIVE[side].canvas.height = 0; }
+      ACTIVE[side] = null;
+    }
+    ACTIVE.tr = null;
+    ACTIVE.pending.png = null;
+    ACTIVE.pending.svg = null;
+    ACTIVE.failed.png = null;
+    ACTIVE.failed.svg = null;
+  }
+
+  // Whether drawing this element would taint the canvas and make every read throw. The display
+  // images carry no "crossorigin" attribute, and on the published htmlpreview report they resolve
+  // cross-origin to raw.githubusercontent.com — including the relative "images/..." paths, which
+  // resolve against the injected base. Adding the attribute to the markup would fix the read but
+  // break the picture outright on any host that does not send the header, which trades a disabled
+  // picker for a blank column; so the check is here and the fallback below re-fetches instead.
+  function taints(img) {
+    const src = img.currentSrc || img.src || "";
+    if (/^(data|blob):/i.test(src)) return false;
+    try {
+      return new URL(src, document.baseURI).origin !== location.origin;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // Replay once this image can be read. Display images are loading="lazy" and a rescore swaps in
+  // a replacement, so an element can be present, sized by CSS, and not yet decoded; both the
+  // scale read in pickAt and the canvas in sampler need it, and neither can wait on its own.
+  function awaitImage(tr, img) {
+    if (!img || img.dataset.pickWaiting) return;
+    img.dataset.pickWaiting = "1";
+    img.addEventListener("load", () => {
+      delete img.dataset.pickWaiting;
+      replayPick(tr);
+    }, { once: true });
+  }
+
+  function contextFor(img) {
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0);
+    return ctx;
+  }
+
+  // A 1:1 context over the row's image: native resolution, no ground fill, no smoothing, so a
+  // read is the source pixel outright. The scorer's 192px downscale box-averages neighbours
+  // together for offset-robust SSIM and would answer with a blend present in neither image —
+  // exactly the wrong answer for "what colour is this".
+  //
+  // The displayed element is used whenever reading it cannot taint the canvas, which keeps the
+  // sample identical to the picture — including an overridden or hybrid vector, whose blob the
+  // scorer swapped into that element and which no reload could reproduce. Otherwise an
+  // origin-clean copy is requested through the same CORS path the scorer loads by, once per row
+  // per side; null until it arrives, and the hover is replayed when it does.
+  function sampler(tr, side) {
+    if (ACTIVE.tr !== tr) { releaseActive(); ACTIVE.tr = tr; }
+    if (ACTIVE[side]) return ACTIVE[side];
+    const img = displayImg(tr, side);
+    // A display image is loading="lazy", so a row scrolled to and hovered at once can be framed
+    // and scored (the scorer loads its own copies) while this element has not decoded. Replay
+    // when it does, rather than answering for pixels that are not there yet.
+    if (!img || !img.complete || !img.naturalWidth) {
+      awaitImage(tr, img);
+      return null;
+    }
+    if (!taints(img)) {
+      ACTIVE[side] = contextFor(img);
+      return ACTIVE[side];
+    }
+    const src = img.currentSrc || img.src;
+    if (ACTIVE.failed[side] === src) return UNREADABLE;
+    const key = src;
+    // Per side: one slot for both would be overwritten by the second side of the same hover,
+    // and every later pointermove would then start the first side's load over again.
+    if (ACTIVE.pending[side] !== key) {
+      ACTIVE.pending[side] = key;
+      loadImage(src).then((clean) => {
+        if (ACTIVE.tr !== tr || ACTIVE.pending[side] !== key) return;
+        ACTIVE.pending[side] = null;
+        ACTIVE[side] = contextFor(clean);
+        replayPick(tr);
+      }).catch(() => {
+        // The host sends no CORS header, so these pixels are unreadable however they are
+        // fetched — the same wall that leaves this row's score at "n/a". Remember it, so the
+        // answer settles instead of the next pointer move asking again.
+        if (ACTIVE.pending[side] !== key) return;
+        ACTIVE.pending[side] = null;
+        ACTIVE.failed[side] = src;
+        replayPick(tr);
+      });
+    }
+    return null;
+  }
+
+  // The source pixel at (x, y), or null when the point falls outside that image. Null is a real
+  // answer here: the two images have different extents, so a point inside the vector's bbox can
+  // still be off the edge of the render.
+  // Four answers, all different, none of which may be spelled as another: a colour; null for a
+  // point genuinely outside that image; undefined while the side is not sampleable yet (a lazy
+  // display image decoding, an origin-clean copy in flight); and UNREADABLE for pixels this
+  // browser will never hand over, which is settled rather than pending.
+  function samplePixel(tr, side, x, y) {
+    const ctx = sampler(tr, side);
+    if (ctx === UNREADABLE) return UNREADABLE;
+    if (!ctx) return undefined;
+    const px = Math.floor(x), py = Math.floor(y);
+    if (!(px >= 0 && py >= 0 && px < ctx.canvas.width && py < ctx.canvas.height)) return null;
+    const d = ctx.getImageData(px, py, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  }
+
+  const HEX = (n) => n.toString(16).padStart(2, "0");
+  function hex(c) { return "#" + HEX(c.r) + HEX(c.g) + HEX(c.b); }
+
+  // The tile's own backdrop, so a partly transparent sample can be reported as what the eye
+  // actually sees. Checker reports over its base square: the alternative is reporting a colour
+  // that changes with which 8px square the cursor happens to be over.
+  // The checker is two colours, not one: 8px squares of #202022 over a #161617 base, from the
+  // four-gradient recipe on .shot. Compositing every translucent pixel over the base reports a
+  // colour that is not on screen wherever the point lands on a light square — and can call a
+  // transparent pixel and an opaque #161617 one identical, which is exactly backwards. The
+  // parity below is measured from the rendered pattern, not inferred from the gradients.
+  // Framed tiles have no padding, so a tile offset is already in the background's own space.
+  function backdrop(fx, fy) {
+    if (OV.bg === "white") return { r: 255, g: 255, b: 255 };
+    if (OV.bg === "dark") return { r: 11, g: 11, b: 12 };
+    const light = (Math.floor(fx / 8) + Math.floor(fy / 8)) % 2 !== 0;
+    return light ? { r: 32, g: 32, b: 34 } : { r: 22, g: 22, b: 23 };
+  }
+
+  // Straight (unmultiplied) colour composited over the tile ground. Comparing two straight
+  // colours at different alphas answers a question nobody asked — a 10% state layer is a
+  // white pixel at alpha 26 in one image and an opaque lightened container in the other, and
+  // only the composite says whether they agree.
+  function over(c, bg) {
+    const a = c.a / 255;
+    return {
+      r: Math.round(c.r * a + bg.r * (1 - a)),
+      g: Math.round(c.g * a + bg.g * (1 - a)),
+      b: Math.round(c.b * a + bg.b * (1 - a)),
+      a: 255,
+    };
+  }
+
+  const UNREADABLE = "unreadable";
+
+  const PICK = { locked: false, blocked: false, ready: false };
+
+  function pickEl(id) { return document.getElementById(id); }
+
+  // Paint one side of the readout: swatch, hex, and the straight rgba when the sample
+  // carried alpha (so a translucent overlay is legible as an overlay, not as its composite).
+  function showSwatch(side, raw, comp) {
+    const sw = pickEl("pick-" + side + "-sw");
+    const val = pickEl("pick-" + side + "-val");
+    const sub = pickEl("pick-" + side + "-sub");
+    if (!sw || !val || !sub) return;
+    if (!raw || raw === UNREADABLE) {
+      sw.style.background = "transparent";
+      sw.classList.add("pick-sw--none");
+      val.textContent = "—";
+      sub.textContent =
+        raw === UNREADABLE ? "pixels not readable (no CORS)"
+        : raw === undefined ? "still loading"
+        : "outside this image";
+      return;
+    }
+    sw.classList.remove("pick-sw--none");
+    sw.style.background = "rgb(" + comp.r + "," + comp.g + "," + comp.b + ")";
+    val.textContent = hex(comp);
+    sub.textContent = raw.a === 255
+      ? "opaque"
+      : "rgba(" + raw.r + "," + raw.g + "," + raw.b + "," + (raw.a / 255).toFixed(2) + ") over backdrop";
+  }
+
+  // The crosshair, placed at the same tile offset in BOTH columns of the row — the point of
+  // the whole feature is that one hover names two pixels, so the marker has to appear twice.
+  function marks(tr, fx, fy) {
+    // Clear first. Moving straight from one row to the next never passes over non-shot content,
+    // so nothing else would take the previous row's pair down and two rows would both look like
+    // the live sample.
+    clearMarks();
+    for (const shot of tr.querySelectorAll(".shot--framed")) {
+      let m = shot.querySelector(".xh");
+      if (!m) { m = document.createElement("i"); m.className = "xh"; shot.appendChild(m); }
+      m.style.left = fx + "px";
+      m.style.top = fy + "px";
+      m.hidden = false;
+    }
+  }
+
+  function clearMarks() {
+    for (const m of document.querySelectorAll(".xh")) m.hidden = true;
+  }
+
+  // What a screen reader is told, and only when there is something settled to tell: a frozen
+  // reading. During ordinary hover the panel is rewritten on every pointermove, so announcing it
+  // would queue a stream of pixel values over everything else on the page.
+  function announce(text) {
+    const live = pickEl("pick-live");
+    if (live) live.textContent = text;
+  }
+
+  function frozenSummary() {
+    const part = (id) => (pickEl(id) ? pickEl(id).textContent : "");
+    const verdict = part("pick-verdict");
+    return "Frozen reading. " + part("pick-where") +
+      ". figma-svg " + part("pick-svg-val") + ", " + part("pick-svg-sub") +
+      ". render " + part("pick-png-val") + ", " + part("pick-png-sub") +
+      (verdict ? ". " + verdict : "") + ".";
+  }
+
+  function hidePick() {
+    if (PICK.locked) return;
+    // Abandon the pending hover too. An origin-clean copy still in flight resolves into a replay,
+    // and without this the panel and crosshairs would reopen at a point the cursor has left.
+    LAST.shot = null;
+    const panel = pickEl("pick");
+    if (panel) panel.hidden = true;
+    clearMarks();
+  }
+
+  // Replay the last hover, if it is still the live one and still in this row. Used when an
+  // origin-clean copy lands, and when a rescore replaces what the row is showing.
+  function replayPick(tr) {
+    if (!LAST.shot || !LAST.shot.isConnected) return;
+    if (LAST.shot.closest("tr.crow") !== tr) return;
+    pickAt(LAST.shot, LAST.fx, LAST.fy);
+  }
+
+  // Map a point in a displayed tile to a pixel in each source and read both.
+  //
+  // The tile is the component's content bbox — the vector's viewBox — at whatever scale it
+  // was framed to, so the vector's own pixel is just the tile offset over that scale. The
+  // render is the same space shifted by the export's root translate, which is the alignment
+  // the scorer already does before measuring; reusing it is what makes the two reads the
+  // same point rather than two points that merely look alike.
+  function pickAt(shot, fx, fy) {
+    // Nothing is readable until this call says so. Every return below is a point that could not
+    // be read, and leaving the previous hover's answer standing lets the click that follows lock
+    // onto it — hidden panel, no live hover for the load to replay, and pointer moves ignored,
+    // which is the state the lock exists to prevent.
+    PICK.ready = false;
+    const tr = shot.closest("tr.crow");
+    const rec = tr && SAMPLES.get(tr);
+    const panel = pickEl("pick");
+    // An unscored row (or one whose pass failed) has no record and no framing, so there is
+    // nothing to sample — drop the previous row's reading rather than leaving it up beside a
+    // cursor that has moved on.
+    if (!rec || !panel) { hidePick(); return; }
+    const rect = shot.getBoundingClientRect();
+    LAST.shot = shot; LAST.fx = fx; LAST.fy = fy;
+    // The displayed scale comes from the vector as it is actually rendered, not from the tile it
+    // sits in: the two agree once the tile is framed, and reading the image means a stray cap on
+    // its width shows up as a wrong scale rather than as silently wrong pixels.
+    //
+    // Through the vector's "meet" transform, not a per-axis stretch. frameToComponent rounds the
+    // displayed width and height independently, so the box the vector is given rarely has quite
+    // its natural aspect — and an SVG in an <img> honours preserveAspectRatio, defaulting to
+    // xMidYMid meet, which the emitted vectors never override. It therefore scales UNIFORMLY by
+    // the smaller ratio and centres, letterboxing the remainder. Measured: a 308x109 vector in a
+    // 240x200 box draws an 84.9px band centred with 57.5px of transparency above and below it.
+    // Two independent scales describe a stretch that never happens, so the offset is the thing
+    // that has to be accounted for. (The render is a raster, which does stretch to its box; its
+    // own mapping below stays per-axis.)
+    const svgImg = displayImg(tr, "svg");
+    const svgRect = svgImg && svgImg.getBoundingClientRect();
+    const nw = svgImg && svgImg.naturalWidth, nh = svgImg && svgImg.naturalHeight;
+    if (!(rect.width > 0 && svgRect && svgRect.width > 0 && svgRect.height > 0 && nw > 0 && nh > 0)) {
+      // A vector that has not decoded yet is the frozen-reading case: hidePick is a no-op under
+      // the lock and pointer moves are ignored, so without waiting on the element here the panel
+      // would hold the previous pass's colours for good. sampler's own wait is downstream of a
+      // scale this return never reaches.
+      awaitImage(tr, svgImg);
+      hidePick();
+      return;
+    }
+    const meet = Math.min(svgRect.width / nw, svgRect.height / nh);
+    const boxX = (svgRect.width - nw * meet) / 2, boxY = (svgRect.height - nh * meet) / 2;
+    const svgX = (fx - boxX) / meet, svgY = (fy - boxY) / meet;
+    // The render coordinate goes through the PNG's own displayed transform where there is one.
+    // frameToComponent rounds that element's width and its left/top offset independently, so the
+    // pixel visibly under the crosshair in the PNG column is the one those rounded values put
+    // there — up to about a source pixel from what the exact translate gives, which shows up
+    // around a glyph or shape edge. Reading the placement keeps the report honest to the picture,
+    // which is the property this whole readout rests on. The translate is the fallback for a row
+    // whose PNG is missing or unframed.
+    let renderX, renderY;
+    const pngImg = displayImg(tr, "png");
+    const pngShot = pngImg && pngImg.closest(".shot");
+    if (pngImg && pngShot && pngImg.naturalWidth > 0 && pngImg.naturalHeight > 0) {
+      const pr = pngImg.getBoundingClientRect(), ps = pngShot.getBoundingClientRect();
+      const px = pr.width / pngImg.naturalWidth, py = pr.height / pngImg.naturalHeight;
+      if (px > 0 && py > 0) {
+        renderX = (fx - (pr.left - ps.left)) / px;
+        renderY = (fy - (pr.top - ps.top)) / py;
+      }
+    }
+    if (renderX === undefined) {
+      renderX = svgX - rec.tx;
+      renderY = svgY - rec.ty;
+    }
+
+    let svgRaw, pngRaw;
+    try {
+      svgRaw = samplePixel(tr, "svg", svgX, svgY);
+      pngRaw = samplePixel(tr, "png", renderX, renderY);
+    } catch (err) {
+      // Same tainted-canvas wall the scorer hits; say so once and stop offering the picker.
+      PICK.blocked = true;
+      panel.hidden = true;
+      const b = pickEl("taintwarn");
+      if (b) b.style.display = "block";
+      return;
+    }
+
+    // Nothing may be frozen until both sides have answered: a lock taken over a half-loaded row
+    // cannot be refreshed by a pointer move, so it would keep a placeholder on screen until the
+    // reader thought to release it.
+    PICK.ready = svgRaw !== undefined && pngRaw !== undefined;
+    const g = backdrop(fx, fy);
+    const colour = (raw) => (raw && raw !== UNREADABLE ? over(raw, g) : null);
+    const svgOver = colour(svgRaw);
+    const pngOver = colour(pngRaw);
+    showSwatch("svg", svgRaw, svgOver);
+    showSwatch("png", pngRaw, pngOver);
+
+    const id = tr.querySelector(".cid");
+    const where = pickEl("pick-where");
+    if (where) {
+      where.textContent = (id ? id.textContent + " · " : "") +
+        "render px " + Math.floor(renderX) + "," + Math.floor(renderY);
+    }
+    const verdict = pickEl("pick-verdict");
+    if (verdict) {
+      if (!svgOver || !pngOver) {
+        verdict.textContent = "";
+        verdict.className = "pick-verdict";
+      } else {
+        const d = Math.max(
+          Math.abs(svgOver.r - pngOver.r),
+          Math.abs(svgOver.g - pngOver.g),
+          Math.abs(svgOver.b - pngOver.b),
+        );
+        verdict.textContent = d === 0 ? "identical" : "Δ " + d + "/255 max channel";
+        verdict.className = "pick-verdict " + (d === 0 ? "ok" : d <= 4 ? "near" : "off");
+      }
+    }
+    // Dock the readout to the side the cursor is not on. Fixed to one corner it sits over the
+    // match column exactly when a bottom row is being read, which is the moment the number
+    // matters most.
+    panel.classList.toggle("pick--left", rect.left + fx > window.innerWidth / 2);
+    panel.hidden = false;
+    marks(tr, fx, fy);
+    // Announce from here rather than from the callers, because here is where a reading actually
+    // settles. A frozen one is refreshed by several paths — a rescore, an image finishing its
+    // decode, an origin-clean copy landing — and announcing at any single call site publishes
+    // whatever the panel held at that moment, which on the pending path is "still loading". The
+    // readiness test is what keeps the announcement to settled values.
+    if (PICK.locked && PICK.ready) announce(frozenSummary());
+  }
+
+  function wirePicker() {
+    const rows = document.getElementById("rows");
+    if (!rows) return;
+    rows.addEventListener("pointermove", (e) => {
+      if (PICK.locked || PICK.blocked) return;
+      const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
+      if (!shot) { hidePick(); return; }
+      const r = shot.getBoundingClientRect();
+      LAST.cx = e.clientX; LAST.cy = e.clientY;
+      pickAt(shot, e.clientX - r.left, e.clientY - r.top);
+    });
+    rows.addEventListener("pointerleave", hidePick);
+    // Click freezes the reading so it can be read and copied without the cursor moving off;
+    // clicking again (or Escape) releases it.
+    rows.addEventListener("click", (e) => {
+      const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
+      if (!shot || PICK.blocked) return;
+      const r = shot.getBoundingClientRect();
+      LAST.cx = e.clientX; LAST.cy = e.clientY;
+      const fx = e.clientX - r.left, fy = e.clientY - r.top;
+      if (PICK.locked) {
+        PICK.locked = false;
+        pickAt(shot, fx, fy);
+        announce("");
+      } else {
+        pickAt(shot, fx, fy);
+        PICK.locked = PICK.ready;
+        if (PICK.locked) announce(frozenSummary());
+      }
+      const panel = pickEl("pick");
+      if (panel) panel.classList.toggle("pick--locked", PICK.locked);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !PICK.locked) return;
+      PICK.locked = false;
+      const panel = pickEl("pick");
+      if (panel) panel.classList.remove("pick--locked");
+      announce("");
+      hidePick();
+    });
+  }
+
   async function scoreRow(tr, seq) {
     const cell = tr.querySelector(".score");
     try {
@@ -518,6 +980,19 @@ const SCORER = String.raw`
       else restoreSvg(tr);
       // Crop both display columns to the component now that we've read its bbox from the SVG.
       frameToComponent(tr, rw, rh, tx, ty, sw, sh);
+      // Hand the eyedropper the alignment this pass used. Only the translate: it reads the
+      // pixels off the images the row is showing, which this pass has just put in sync with
+      // what it scored, so there is nothing else to carry and no bitmap to retain.
+      SAMPLES.set(tr, { tx, ty });
+      // The row's displayed images have just been replaced or re-sized; drop any canvases
+      // cached from the previous pass so the next sample redraws from what is on screen.
+      if (ACTIVE.tr === tr) releaseActive();
+      // Then re-read the point being shown. A frozen reading is the case that needs this: the
+      // lock stops pointer moves from refreshing it, so a theme or backdrop change would leave
+      // the panel asserting the previous pass's colours — over the previous pass's ground —
+      // against a picture that has moved on. pickAt re-announces a frozen reading once it
+      // settles, which may be later than this call if the replacement has yet to decode.
+      replayPick(tr);
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.className = "score score--" + grade(pct);
@@ -596,6 +1071,11 @@ const SCORER = String.raw`
       for (const tr of Array.from(body.querySelectorAll("tr.crow")).sort((a, b) => sortKey(a) - sortKey(b))) {
         body.appendChild(tr);
       }
+      // The rows just moved under a stationary cursor, and a reorder fires no pointer event. An
+      // unlocked reading is meant to follow the cursor, so it is no longer about anything: drop
+      // it rather than leave the panel naming a row that has slid elsewhere. A frozen reading is
+      // tied to its row, not to the cursor, so it survives the move.
+      if (!PICK.locked) hidePick();
     }
     // Opened over file:// the canvas taints (opaque origin) and fetch() is blocked, so
     // every row fails — point the reader at the http path (htmlpreview / a local server)
@@ -644,6 +1124,9 @@ const SCORER = String.raw`
 
   function start() {
     wireControls();
+    wirePicker();
+    addEventListener("scroll", reaim, { passive: true, capture: true });
+    addEventListener("resize", reaim);
     run();
   }
 
@@ -833,8 +1316,47 @@ export function renderCompareHtml(catalog, opts = {}) {
      component, matching the content-cropped SVG column instead of floating in an empty frame.
      A no-op for close-cropped renders (phone), where the bbox already fills the frame. */
   .shot--framed { overflow:hidden; padding:0; min-width:0; min-height:0; }
-  .shot--framed img { position:absolute; max-width:none; max-height:none; }
+  /* Doubled class deliberately: ".shot--framed img" and ".shot img" tie on specificity, so the
+     narrow-viewport cap below — declared later — would win and clamp a framed image to 150px
+     inside a tile up to 240px wide. That breaks the framing outright (the PNG column's offset is
+     computed from the unclamped scale, so the two columns stop lining up) and, with it, any
+     mapping from a point in the tile back to a source pixel. */
+  .shot.shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; background:var(--panel); }
+  /* Eyedropper: a framed tile is a live surface, and the crosshair marks the sampled point in
+     BOTH columns at once so the pair is read as one point rather than two lookalikes. Double
+     ring (dark core, light halo) so it stays visible on any colour underneath it. */
+  .shot--framed { cursor:crosshair; }
+  .shot .xh { position:absolute; width:9px; height:9px; margin:-5px 0 0 -5px; border-radius:50%;
+    border:1px solid #000; box-shadow:0 0 0 1px rgba(255,255,255,0.9); pointer-events:none; z-index:2; }
+  .pick { position:fixed; right:16px; bottom:16px; z-index:5; width:264px; padding:12px 14px;
+    border:1px solid var(--line); border-radius:10px; background:var(--panel); box-shadow:0 8px 28px rgba(0,0,0,0.45);
+    font-size:12px; }
+  .pick[hidden] { display:none; }
+  /* Transparent to the pointer while it is following the cursor: docked opposite or not, a 264px
+     panel can still fall under the cursor on a narrow viewport, and then the pointer target
+     becomes the panel rather than the row — #rows sees pointerleave, hides it, the row is exposed
+     again, and the reading flickers. A frozen one takes the pointer back so its text can be
+     selected. */
+  .pick { pointer-events:none; }
+  .pick--locked { border-color:var(--accent); pointer-events:auto; }
+  .pick--left { left:16px; right:auto; }
+  .pick .pick-where { color:var(--muted); font-size:11px; word-break:break-word; }
+  .pick .pick-row { display:flex; align-items:center; gap:9px; margin-top:9px; }
+  .pick .pick-sw { width:26px; height:26px; border-radius:6px; border:1px solid var(--line); flex:none; }
+  .pick .pick-sw--none { background-image:linear-gradient(45deg,transparent 45%,var(--muted) 45%,var(--muted) 55%,transparent 55%); }
+  .pick .pick-who { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:0.04em; }
+  .pick .pick-val { font-variant-numeric:tabular-nums; font-size:13px; }
+  .pick .pick-sub { color:var(--muted); font-size:10px; }
+  .pick .pick-verdict { margin-top:10px; font-size:11px; font-variant-numeric:tabular-nums; }
+  .pick .pick-verdict.ok { color:var(--good); }
+  .pick .pick-verdict.near { color:var(--warn); }
+  .pick .pick-verdict.off { color:var(--bad); }
+  .pick .pick-hint { margin-top:8px; color:var(--muted); font-size:10px; }
+  /* The announcement for a frozen reading. Off-screen rather than display:none, which would take
+     it out of the accessibility tree and silence it. */
+  .pick-live { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);
+    clip-path:inset(50%); white-space:nowrap; }
   .badge { position:absolute; top:4px; right:4px; font-size:10px; padding:0 5px; border-radius:999px;
     background:rgba(0,0,0,0.6); color:var(--warn); border:1px solid var(--warn); }
   td.score { text-align:right; font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; white-space:nowrap; width:96px; }
@@ -874,13 +1396,32 @@ export function renderCompareHtml(catalog, opts = {}) {
   <code>&lt;text&gt;</code> while its captured layer boxes stay put — a fixed-geometry sticker can't reflow, so
   the glyphs overflow, showing why it can't stand in for a re-rendered <code>fontScale</code>; turning off
   <strong>embedded fonts</strong> drops the <code>@font-face</code> so the browser substitutes its own face.
-  <strong>Rows sort largest-diff-first once scored</strong>, so the worst offenders come to the top.</p>
+  <strong>Rows sort largest-diff-first once scored</strong>, so the worst offenders come to the top.
+  <strong>Hover either column</strong> to read the colour under the cursor: one hover samples the same
+  point in <em>both</em> images — the vector's own pixel and, through the same alignment the score uses,
+  the render's — and reports each as it composites over the tile's backdrop, which is the only form in
+  which a translucent state layer and an opaque container are comparable at all. Click to freeze the
+  reading, <kbd>Esc</kbd> to release.</p>
   <p class="taintwarn" id="taintwarn">⚠ The match scores read pixels back from a canvas, which the browser
   blocks when the images can't be read cross-origin — over <code>file://</code> (opaque origin), or from a
   host that doesn't send CORS headers for the PNGs. Open this page over <strong>http</strong> from a
   CORS-enabled host: the README's htmlpreview link (images come from <code>raw.githubusercontent.com</code>,
   which allows it) or a local server (<code>python3 -m http.server</code> in the branch).</p>
 </header>
+<p class="pick-live" id="pick-live" aria-live="polite"></p>
+<aside class="pick" id="pick" hidden>
+  <div class="pick-where" id="pick-where"></div>
+  <div class="pick-row">
+    <span class="pick-sw" id="pick-svg-sw"></span>
+    <span><span class="pick-who">figma-svg</span><br /><span class="pick-val" id="pick-svg-val">—</span><br /><span class="pick-sub" id="pick-svg-sub"></span></span>
+  </div>
+  <div class="pick-row">
+    <span class="pick-sw" id="pick-png-sw"></span>
+    <span><span class="pick-who">render</span><br /><span class="pick-val" id="pick-png-val">—</span><br /><span class="pick-sub" id="pick-png-sub"></span></span>
+  </div>
+  <div class="pick-verdict" id="pick-verdict"></div>
+  <div class="pick-hint">click to freeze · esc to release</div>
+</aside>
 <main>
   <table>
     <thead>

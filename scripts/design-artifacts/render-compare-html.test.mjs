@@ -367,3 +367,288 @@ test("the extra ground is gated on both sides actually showing one", () => {
   assert.match(html, /const varies = \(side\) =>/);
   assert.match(html, /varies\("a"\) && varies\("b"\) \? planes : \[planes\[0\]\]/);
 });
+
+test("the page carries the two-sided eyedropper readout", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // The panel names both sides, because the point of one hover is two pixels.
+  assert.match(html, /id="pick-svg-val"/);
+  assert.match(html, /id="pick-png-val"/);
+  assert.match(html, /id="pick-verdict"/);
+  assert.match(html, /<aside class="pick" id="pick" hidden/);
+  assert.match(html, /wirePicker\(\)/);
+});
+
+test("the eyedropper samples at native resolution, not the scorer's downscale", () => {
+  // MAX_SIDE exists to make SSIM robust to a half-pixel offset by box-averaging neighbours
+  // together. Reading a colour back off that plane would answer with a blend that exists in
+  // neither image — the one answer a colour picker must never give.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function sampler\(tr, side\)/);
+  assert.match(html, /ctx\.imageSmoothingEnabled = false/);
+  assert.match(html, /ctx\.drawImage\(img, 0, 0\)/);
+  // The sample is a single source pixel, addressed in that image's own space.
+  assert.match(html, /getImageData\(px, py, 1, 1\)/);
+});
+
+test("the two samples are the same point, aligned the way the score is", () => {
+  // The vector's pixel is the tile offset over the framing scale; the render's is that same
+  // point less the export's root translate — the alignment scoreRow already applies before
+  // measuring. Sharing it is what makes the pair one point rather than two lookalikes.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // Both axes separately: frameToComponent rounds the displayed width and height independently,
+  // so a capped non-square component is scaled by slightly different factors across and down.
+  assert.match(html, /const meet = Math\.min\(svgRect\.width \/ nw, svgRect\.height \/ nh\);/);
+  assert.match(html, /const svgX = \(fx - boxX\) \/ meet, svgY = \(fy - boxY\) \/ meet;/);
+  // The render coordinate goes through the PNG's own displayed placement, whose width and
+  // offset frameToComponent rounds independently; the exact translate is the fallback.
+  assert.match(html, /renderX = \(fx - \(pr\.left - ps\.left\)\) \/ px;/);
+  assert.match(html, /renderX = svgX - rec\.tx;/);
+  // Both columns are marked, so the reading is visibly about one point in two images.
+  assert.match(html, /for \(const shot of tr\.querySelectorAll\("\.shot--framed"\)\)/);
+});
+
+test("a sample is reported composited over the tile's own backdrop", () => {
+  // A 10% state layer is a white pixel at alpha 26 in the vector and an opaque lightened
+  // container in the render. Straight colours at different alphas are not comparable; only
+  // the composite says whether the two agree, which is the question the row is asking.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function over\(c, bg\)/);
+  assert.match(html, /function backdrop\(fx, fy\)/);
+  // The backdrop tracks the header's own control rather than assuming one ground.
+  assert.match(html, /if \(OV\.bg === "white"\) return \{ r: 255, g: 255, b: 255 \}/);
+});
+
+test("a point outside one image reads as absent rather than as a colour", () => {
+  // The two images have different extents: a point inside the vector's bbox can be off the
+  // edge of the render. Clamping would invent a colour for a pixel that isn't there.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(!\(px >= 0 && py >= 0 && px < ctx\.canvas\.width && py < ctx\.canvas\.height\)\) return null/);
+  assert.match(html, /raw === undefined \? "still loading"/);
+  assert.match(html, /: "outside this image";/);
+});
+
+test("the picker gives up on a tainted canvas the same way the scorer does", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /PICK\.blocked = true/);
+  assert.match(html, /if \(b\) b\.style\.display = "block"/);
+});
+
+test("the readout docks away from the cursor", () => {
+  // Pinned to one corner it covers the match column exactly when a bottom row is being read,
+  // which is the moment that number matters most.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /panel\.classList\.toggle\("pick--left", rect\.left \+ fx > window\.innerWidth \/ 2\)/);
+  assert.match(html, /\.pick--left \{ left:16px; right:auto; \}/);
+});
+
+test("a framed image is exempt from the narrow-viewport width cap", () => {
+  // `.shot--framed img` and `.shot img` TIE on specificity — one class and one type each — so
+  // the `max-width:150px` cap in the later media block wins and clamps a framed image inside a
+  // tile up to 240px wide. That breaks the framing itself (the PNG column is offset using the
+  // unclamped scale, so the columns stop lining up) and any mapping from the tile to a source
+  // pixel with it. The doubled class outranks the cap.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /\.shot\.shot--framed img \{ position:absolute; max-width:none; max-height:none; \}/);
+  assert.doesNotMatch(html, /^\s*\.shot--framed img \{/m);
+});
+
+test("only the hovered row holds sampling canvases", () => {
+  // Every scored row stays in the DOM, so a canvas per row would grow with every row the cursor
+  // visited — two full-size backing stores each — rather than staying flat the way the
+  // sequential scorer intends.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /pending: \{ png: null, svg: null \},/);
+  assert.match(html, /if \(ACTIVE\.tr !== tr\) \{ releaseActive\(\); ACTIVE\.tr = tr; \}/);
+  // Zeroing the dimensions drops the backing store now rather than at collection time.
+  assert.match(html, /ACTIVE\[side\]\.canvas\.width = 0; ACTIVE\[side\]\.canvas\.height = 0;/);
+  // The per-row record carries the alignment only — no bitmaps.
+  assert.match(html, /SAMPLES\.set\(tr, \{ tx, ty \}\)/);
+});
+
+test("the picker reads the images the row is displaying", () => {
+  // The scorer swaps an overridden or hybrid vector into the column it shows; sampling that
+  // element keeps what is read identical to what is seen, and retains nothing the page was not
+  // already holding.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function displayImg\(tr, side\)/);
+  assert.match(html, /if \(!img \|\| !img\.complete \|\| !img\.naturalWidth\) \{/);
+  // Used directly only when reading it cannot taint the canvas.
+  assert.match(html, /if \(!taints\(img\)\) \{/);
+});
+
+test("a cross-origin display image is sampled through an origin-clean copy", () => {
+  // The display elements carry no `crossorigin` attribute, and on the published htmlpreview
+  // report they resolve cross-origin to raw.githubusercontent.com — relative `images/...` paths
+  // included, since those resolve against the injected base. Drawing one taints the canvas and
+  // every read throws. Putting the attribute in the markup would fix the read and break the
+  // picture outright on a host that sends no header, so the copy is fetched instead, through the
+  // same CORS path the scorer already loads by.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function taints\(img\)/);
+  assert.match(html, /new URL\(src, document\.baseURI\)\.origin !== location\.origin/);
+  assert.match(html, /loadImage\(src\)\.then\(\(clean\) => \{/);
+  // A blob or data URL is already origin-clean, and an overridden or hybrid vector lives in a
+  // blob no reload could reproduce — so those are read off the element itself.
+  assert.match(html, /if \(\/\^\(data\|blob\):\/i\.test\(src\)\) return false/);
+  // The hover is replayed once the copy lands, so the reading appears where the cursor is.
+  assert.match(html, /replayPick\(tr\);/);
+});
+
+test("an abandoned hover is not replayed when its copy lands", () => {
+  // The cross-origin path waits for an origin-clean copy. If the cursor leaves meanwhile, the
+  // resolved load must not reopen the panel and crosshairs at a point nobody is pointing at.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /LAST\.shot = null;/);
+  assert.match(html, /function replayPick\(tr\)/);
+  assert.match(html, /if \(!LAST\.shot \|\| !LAST\.shot\.isConnected\) return;/);
+  assert.match(html, /if \(LAST\.shot\.closest\("tr\.crow"\) !== tr\) return;/);
+});
+
+test("a frozen reading is refreshed when its row rescores", () => {
+  // The lock stops pointer moves from refreshing the panel, so a theme or backdrop change would
+  // otherwise leave it asserting the previous pass's colours, over the previous pass's ground,
+  // against a picture that has moved on.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(ACTIVE\.tr === tr\) releaseActive\(\);\n\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*replayPick\(tr\);/);
+});
+
+test("a not-yet-decoded image reads as pending, and cannot be frozen", () => {
+  // Display images are loading="lazy", so a row scrolled to and clicked at once can be framed and
+  // scored — the scorer loads its own copies — while the element has not decoded. Reporting that
+  // as "outside this image" asserts something false about the picture, and locking it strands a
+  // placeholder that no pointer move can refresh.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(ctx\) return undefined;|if \(!ctx\) return undefined;/);
+  assert.match(html, /PICK\.ready = svgRaw !== undefined && pngRaw !== undefined;/);
+  assert.match(html, /PICK\.locked = PICK\.ready;/);
+  // And the element's own load replays the hover, since nothing else would.
+  assert.match(html, /img\.addEventListener\("load", \(\) => \{/);
+});
+
+test("each side tracks its own pending origin-clean load", () => {
+  // One slot for both sides is overwritten by the second side of the same hover, so every later
+  // pointermove restarts the first side's load — many concurrent decodes while the cursor moves,
+  // instead of once per row per side.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(ACTIVE\.pending\[side\] !== key\) \{/);
+  assert.match(html, /if \(ACTIVE\.tr !== tr \|\| ACTIVE\.pending\[side\] !== key\) return;/);
+  assert.match(html, /ACTIVE\.pending\.png = null;/);
+  assert.match(html, /ACTIVE\.pending\.svg = null;/);
+});
+
+test("the live hover is stored against its tile, not the viewport", () => {
+  // run() re-appends the rows in score order, the page scrolls, the window resizes — none of
+  // which fires a pointer event, so a stored client point silently starts naming a different
+  // row. An offset into a tile is measured against the thing being read and survives all three.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const LAST = \{ shot: null, fx: 0, fy: 0, cx: 0, cy: 0 \}/);
+  assert.match(html, /function pickAt\(shot, fx, fy\)/);
+  // The pointer handlers do the conversion, once, where the event is.
+  assert.match(html, /pickAt\(shot, e\.clientX - r\.left, e\.clientY - r\.top\)/);
+});
+
+test("an unlocked reading is dropped when scoring reorders the rows", () => {
+  // A reorder fires no pointer event, so an unlocked panel would keep naming a row that has
+  // slid out from under the cursor. A frozen reading is tied to its row and survives.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(!PICK\.locked\) hidePick\(\);/);
+});
+
+test("crosshairs are cleared before the current row's pair is drawn", () => {
+  // Moving straight from one row to the next never passes over non-shot content, so nothing
+  // else takes the previous row's pair down and two rows both look like the live sample.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function marks\(tr, fx, fy\) \{\n(\s*\/\/[^\n]*\n)+\s*clearMarks\(\);/);
+});
+
+test("one place waits for an image that has not decoded", () => {
+  // Both the scale read in pickAt and the canvas in sampler need a decoded element, and neither
+  // can wait on its own — a replacement vector from a rescore reaches the first and returns
+  // before the second, which is where a frozen reading got stuck.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function awaitImage\(tr, img\)/);
+  assert.match(html, /awaitImage\(tr, svgImg\);/);
+  assert.match(html, /awaitImage\(tr, img\);\n\s*return null;/);
+});
+
+test("a translucent pixel composites over the checker square under it", () => {
+  // The checker is two colours: 8px #202022 squares over a #161617 base. Compositing everything
+  // over the base reports a colour that is not on screen wherever the point lands on a light
+  // square, and can call a transparent pixel and an opaque #161617 one identical. The parity is
+  // measured from the rendered pattern: even square index is the base, odd is the light square.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const light = \(Math\.floor\(fx \/ 8\) \+ Math\.floor\(fy \/ 8\)\) % 2 !== 0;/);
+  assert.match(html, /return light \? \{ r: 32, g: 32, b: 34 \} : \{ r: 22, g: 22, b: 23 \};/);
+  // And the ground is chosen per sampled point, not once per row.
+  assert.match(html, /const g = backdrop\(fx, fy\);/);
+});
+
+test("pixels a host will not release settle as unreadable rather than retrying", () => {
+  // A refused CORS load is not pending: a host that sends no header will not start sending one
+  // because the cursor moved, so retrying on every pointermove churns doomed requests while the
+  // panel reads "still loading" for good.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /failed: \{ png: null, svg: null \},/);
+  assert.match(html, /if \(ACTIVE\.failed\[side\] === src\) return UNREADABLE;/);
+  assert.match(html, /ACTIVE\.failed\[side\] = src;/);
+  assert.match(html, /raw === UNREADABLE \? "pixels not readable \(no CORS\)"/);
+});
+
+test("the vector is mapped through its meet transform, not a stretch", () => {
+  // An SVG in an <img> honours preserveAspectRatio, defaulting to xMidYMid meet, and the emitted
+  // vectors never override it — so it scales uniformly by the smaller ratio and centres,
+  // letterboxing the rest. frameToComponent rounds the box's width and height independently, so
+  // the box rarely has the vector's natural aspect and the letterbox is real. Measured: a 308x109
+  // vector in a 240x200 box draws an 84.9px band with 57.5px of transparency above and below.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const meet = Math\.min\(svgRect\.width \/ nw, svgRect\.height \/ nh\);/);
+  assert.match(html, /const boxX = \(svgRect\.width - nw \* meet\) \/ 2, boxY = \(svgRect\.height - nh \* meet\) \/ 2;/);
+  // The render is a raster and does stretch to its box, so its mapping stays per-axis.
+  assert.match(html, /const px = pr\.width \/ pngImg\.naturalWidth, py = pr\.height \/ pngImg\.naturalHeight;/);
+});
+
+test("a scroll or resize re-aims an unlocked reading", () => {
+  // Both move the tiles under a cursor that has not moved, and neither fires a pointer event: the
+  // tile offset stays valid for the tile it names while the cursor is now over a different part
+  // of it. The client point has not changed, so it is what re-aims. A frozen reading is tied to
+  // its row rather than the cursor and is left alone.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function reaim\(\)/);
+  assert.match(html, /if \(PICK\.locked \|\| PICK\.blocked \|\| !LAST\.shot\) return;/);
+  assert.match(html, /document\.elementFromPoint\(LAST\.cx, LAST\.cy\)/);
+  assert.match(html, /addEventListener\("scroll", reaim, \{ passive: true, capture: true \}\);/);
+  assert.match(html, /addEventListener\("resize", reaim\);/);
+});
+
+test("readiness does not outlive the hover that established it", () => {
+  // Every early return in pickAt is a point that could not be read. Leaving the previous hover's
+  // answer standing lets the click that follows lock onto it — hidden panel, no live hover for
+  // the load to replay, pointer moves ignored: exactly the state the lock guard exists to stop.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /PICK\.ready = false;\n\s*const tr = shot\.closest\("tr\.crow"\);/);
+});
+
+test("the live panel does not become the pointer target", () => {
+  // Docked opposite or not, a 264px fixed panel can fall under the cursor on a narrow viewport;
+  // the pointer target then becomes the panel, #rows sees pointerleave, and the reading flickers.
+  // A frozen panel takes the pointer back so its text can be selected.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /\.pick \{ pointer-events:none; \}/);
+  assert.match(html, /\.pick--locked \{ border-color:var\(--accent\); pointer-events:auto; \}/);
+});
+
+test("only a frozen reading is announced", () => {
+  // pickAt rewrites the whole panel on every pointermove, so a live region around it would queue
+  // a stream of pixel values over everything else a screen-reader user is doing.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.doesNotMatch(html, /<aside class="pick" id="pick" hidden aria-live/);
+  assert.match(html, /<p class="pick-live" id="pick-live" aria-live="polite"><\/p>/);
+  assert.match(html, /if \(PICK\.locked\) announce\(frozenSummary\(\)\);/);
+  // Released readings stop being announced, and a refreshed frozen one is re-announced.
+  assert.match(html, /announce\(""\);/);
+  // Announced where a reading settles, so every refresh path publishes the settled values
+  // rather than whatever the panel held when a caller happened to ask.
+  assert.match(html, /if \(PICK\.locked && PICK\.ready\) announce\(frozenSummary\(\)\);/);
+  // Off-screen rather than display:none, which would take it out of the accessibility tree.
+  assert.match(html, /\.pick-live \{ position:absolute; width:1px; height:1px;/);
+});
