@@ -97,3 +97,15 @@ fun optInComponent(label: String) {}
 
 /** An author opting *their own* declaration into internals — the caller really must opt in. */
 @Suppress("unused", "UNUSED_PARAMETER") @InternalFixtureApi fun deliberatelyInternalComponent() {}
+
+/**
+ * A marker declared inside a class, so its binary name carries a `$` the source spelling has not.
+ */
+class MarkerHolder {
+  @RequiresOptIn("Fixture-only marker.")
+  @Retention(AnnotationRetention.BINARY)
+  @Target(AnnotationTarget.FUNCTION)
+  annotation class NestedApi
+}
+
+@Suppress("unused") @MarkerHolder.NestedApi fun nestedMarkerComponent() {}

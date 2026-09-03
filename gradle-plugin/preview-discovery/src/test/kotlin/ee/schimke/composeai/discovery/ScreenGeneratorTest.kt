@@ -86,7 +86,9 @@ class ScreenGeneratorTest {
     assertThat(source).contains("Card(content = {")
     assertThat(source).contains("fun HomeScreen()")
     assertThat(source).contains("import androidx.compose.material3.Card")
-    assertThat(source).contains("import androidx.compose.material3.Text")
+    // `Text` is nested inside `Card`'s `ColumnScope` slot, so it is qualified rather than imported
+    // — an implicit receiver's members outrank an import in Kotlin. See the dedicated test.
+    assertThat(source).contains("androidx.compose.material3.Text(text = ")
     // `modifier` is defaulted and untouched, so it is omitted rather than guessed at.
     assertThat(source).doesNotContain("modifier =")
   }
@@ -506,6 +508,152 @@ class ScreenGeneratorTest {
     assertThat(reasons).hasSize(2)
     assertThat(reasons.joinToString()).contains("has no slot `body`")
     assertThat(reasons.joinToString()).contains("Gone")
+  }
+
+  @Test
+  fun `children of an unsatisfiable slot are still reported`() {
+    // The third branch that rejects a node and could drop its subtree, after an unresolved id and
+    // a slot the component never declared.
+    val dragging =
+      component(
+        "Dragging",
+        "com.example.Dragging",
+        listOf(
+          TargetParameter(
+            "onDrag",
+            "(Float, Float) -> Unit",
+            hasDefault = true,
+            composableSlot = true,
+          )
+        ),
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          dragging.canonicalId,
+          slots = mapOf("onDrag" to listOf(ScreenNode("app/com.example.GoneKt.Gone"))),
+        ),
+      )
+
+    val reasons = refusal(screen, catalog(dragging))
+
+    assertThat(reasons).hasSize(2)
+    assertThat(reasons.joinToString()).contains("bare lambda cannot satisfy")
+    assertThat(reasons.joinToString()).contains("Gone")
+  }
+
+  @Test
+  fun `a child inside a receiver slot is qualified, because the receiver outranks an import`() {
+    // Kotlin resolves a simple name against implicit receivers before imports, so a `ColumnScope`
+    // with a member `Text` would win over `import androidx.compose.material3.Text` — source that
+    // compiles and draws something else. The receiver's members are not in the record, so this
+    // cannot be checked, only avoided.
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          card.canonicalId,
+          slots =
+            mapOf(
+              "content" to
+                listOf(
+                  ScreenNode(
+                    text.canonicalId,
+                    arguments = mapOf("text" to ScreenValue.Text("Hi")),
+                  )
+                )
+            ),
+        ),
+      )
+
+    val source = emitted(screen, catalog(card, text)).source
+
+    assertThat(source).contains("androidx.compose.material3.Text(text = \"Hi\")")
+    // No import either: nothing uses the simple name, and an unused import is noise in generated
+    // source that a linter will flag.
+    assertThat(source).doesNotContain("import androidx.compose.material3.Text")
+    // The root is not inside any receiver, so it keeps the readable spelling.
+    assertThat(source).contains("    Card(")
+    assertThat(source).contains("import androidx.compose.material3.Card")
+  }
+
+  @Test
+  fun `a nullable composable slot accepts children`() {
+    // `(@Composable () -> Unit)?` renders as `(() -> Unit)?`, which has no ` -> Unit` suffix for
+    // the lambda-shape check to find — so an optional slot was refused even though Kotlin accepts
+    // a non-null `{ … }` for it.
+    val optional =
+      component(
+        "Optional",
+        "com.example.Optional",
+        listOf(
+          TargetParameter("content", "(() -> Unit)?", hasDefault = true, composableSlot = true)
+        ),
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          optional.canonicalId,
+          slots =
+            mapOf(
+              "content" to
+                listOf(
+                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi")))
+                )
+            ),
+        ),
+      )
+
+    val source = emitted(screen, catalog(optional, text)).source
+
+    assertThat(source).contains("content = {")
+    assertThat(source).contains("Text(text = \"Hi\")")
+  }
+
+  @Test
+  fun `a nested opt-in marker is emitted in source notation, not its binary name`() {
+    // ClassGraph reports a marker declared inside a class as `com.example.Api${'$'}Experimental`,
+    // and
+    // `${'$'}` is not a nesting separator in Kotlin source. `ComposableSignatureTest` proves that
+    // is
+    // really the shape the producer records.
+    val fancy =
+      component(
+        "Fancy",
+        "com.example.Fancy",
+        emptyList(),
+        requiredOptIns = listOf("com.example.Api${'$'}Experimental"),
+      )
+
+    val source =
+      emitted(ScreenDocument("Screen", ScreenNode(fancy.canonicalId)), catalog(fancy)).source
+
+    assertThat(source).contains("@OptIn(com.example.Api.Experimental::class)")
+  }
+
+  @Test
+  fun `a string too large for the constant pool is refused`() {
+    val labelled =
+      component(
+        "Labelled",
+        "com.example.Labelled",
+        listOf(TargetParameter("label", "String", typeFqn = "kotlin.String")),
+      )
+    fun screen(value: String) =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(labelled.canonicalId, arguments = mapOf("label" to ScreenValue.Text(value))),
+      )
+
+    // A JVM string constant is length-prefixed with an unsigned short, so 65536 bytes cannot be a
+    // literal. The backend, not this generator, would have been the one to say so.
+    assertThat(refusal(screen("a".repeat(65536)), catalog(labelled)).first()).contains("65535")
+    // Measured in modified UTF-8, not characters: a 3-byte character reaches the limit in a third
+    // of the count.
+    assertThat(refusal(screen("\u4e2d".repeat(21846)), catalog(labelled)).first()).contains("65535")
+    assertThat(emitted(screen("a".repeat(65535)), catalog(labelled)).source).contains("label = \"")
   }
 
   @Test

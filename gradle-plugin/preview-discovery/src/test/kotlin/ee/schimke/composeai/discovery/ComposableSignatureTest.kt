@@ -92,6 +92,15 @@ class ComposableSignatureTest {
       .containsExactly("ee.schimke.composeai.discovery.InternalFixtureApi")
   }
 
+  @Test
+  fun `a nested marker is reported by its binary name, which is not its source spelling`() {
+    // Not a wish: this is what ClassGraph hands the producer, and `$` is not a nesting separator
+    // in Kotlin source. `ScreenGenerator` converts it back before emitting `@OptIn`, and this is
+    // the test that says the conversion has something real to convert.
+    assertThat(optInsOf("nestedMarkerComponent"))
+      .containsExactly("ee.schimke.composeai.discovery.MarkerHolder\$NestedApi")
+  }
+
   /** As [parametersOf], for the knob view of the same fixtures. */
   private fun knobsOf(simpleName: String): List<PreviewKnob> {
     ClassGraph()

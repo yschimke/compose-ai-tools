@@ -228,7 +228,33 @@ object ComponentSnippets {
    * String` accepts children in neither generator, and two answers to that would let one of them
    * emit a lambda the compiler rejects.
    */
-  internal fun acceptsBareLambda(type: String): Boolean = emptyLambda(type) != null
+  internal fun acceptsBareLambda(type: String): Boolean =
+    // A nullable slot renders as `(() -> Unit)?` — parenthesised so the `?` cannot read as part of
+    // the return type. Kotlin accepts a non-null `{ … }` for a nullable function type, so the
+    // outer nullability is stripped before asking about the lambda's shape. Only
+    // `acceptsBareLambda`
+    // unwraps: `emptyLambda` still answers null for a nullable parameter, because `placeholderFor`
+    // reaches `null` first and that is the better answer when there are no children to place.
+    emptyLambda(unwrapNullable(type)) != null
+
+  /** `(() -> Unit)?` to `() -> Unit`; anything else unchanged. */
+  private fun unwrapNullable(type: String): String {
+    if (!type.startsWith("(") || !type.endsWith(")?")) return type
+    val inner = type.substring(1, type.length - 2)
+    // Only strip when the opening paren really is the one the `?` closes, so `(A) -> B` — whose
+    // first paren belongs to the parameter list — is left alone.
+    return if (topLevelCommaCount(inner) >= 0 && balanced(inner)) inner else type
+  }
+
+  private fun balanced(text: String): Boolean {
+    var depth = 0
+    for (c in text) {
+      if (c == '(') depth++
+      if (c == ')') depth--
+      if (depth < 0) return false
+    }
+    return depth == 0
+  }
 
   /**
    * `"{}"` when a bare empty-lambda literal satisfies the function type [type], else null.

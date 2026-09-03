@@ -104,9 +104,7 @@ object ScreenGenerator {
           // Qualified, not imported and shortened: two markers can share a simple name from
           // different packages, and `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` is
           // ambiguous rather than merely ugly. Same reasoning as the component calls below.
-          optIns.joinToString(", ", "@OptIn(", ")") {
-            "${ComponentSnippets.escapeCallableIfKeyword(it)}::class"
-          }
+          optIns.joinToString(", ", "@OptIn(", ")") { "${markerReference(it)}::class" }
         )
       }
       appendLine("@Composable")
@@ -128,7 +126,7 @@ object ScreenGenerator {
     val optIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
 
-    fun node(node: ScreenNode, depth: Int): String {
+    fun node(node: ScreenNode, depth: Int, inReceiverScope: Boolean = false): String {
       val pad = INDENT.repeat(depth)
       val record = byId[node.componentId]
       if (record == null) {
@@ -136,7 +134,7 @@ object ScreenGenerator {
         // Keep walking its children: a catalog that dropped a whole subtree should name every node
         // it can no longer place, not just the outermost one. `reasons` is what a caller acts on,
         // and the text returned here is discarded the moment anything has failed.
-        node.slots.values.flatten().forEach { node(it, depth + 1) }
+        node.slots.values.flatten().forEach { node(it, depth + 1, inReceiverScope) }
         return "$pad// unresolved: ${node.componentId}"
       }
       // The licence to call at all. Everything a refusal protects against — private, generic,
@@ -145,11 +143,11 @@ object ScreenGenerator {
       if (code?.call == null) {
         reasons +=
           "`${node.componentId}` has no call site: ${code?.refusedReason ?: "no code was recorded"}"
-        node.slots.values.flatten().forEach { node(it, depth + 1) }
+        node.slots.values.flatten().forEach { node(it, depth + 1, inReceiverScope) }
         return "$pad// unusable: ${node.componentId}"
       }
       val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
-      if (record.canonicalId in simplyImportable) imports += qualified
+      if (record.canonicalId in simplyImportable && !inReceiverScope) imports += qualified
       optIns += code.requiredOptIns
 
       val byName = record.parameters.associateBy { it.name }
@@ -171,7 +169,7 @@ object ScreenGenerator {
           // never reached and its subtree would go unreported — the same gap as an unresolved
           // node's children, one level in. A renamed slot is exactly when a document is most
           // likely to be stale further down, so those children are the ones worth naming.
-          children.forEach { node(it, depth + 1) }
+          children.forEach { node(it, depth + 1, inReceiverScope) }
         }
       }
 
@@ -192,9 +190,15 @@ object ScreenGenerator {
             reasons +=
               "`${record.symbol.name}`.`${parameter.name}` is `${parameter.type}`, which children " +
                 "in a bare lambda cannot satisfy"
+            // The third branch that rejects a node and would otherwise drop its subtree, after an
+            // unresolved id and a slot the component never declared. All three now walk on.
+            children.forEach { node(it, depth + 1, inReceiverScope) }
           }
           children != null && parameter.composableSlot -> {
-            val nested = children.joinToString("\n") { node(it, depth + 1) }
+            val nested =
+              children.joinToString("\n") {
+                node(it, depth + 1, inReceiverScope || hasReceiver(parameter.type))
+              }
             arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
           }
           // Untouched by the document. A default may be omitted; anything else still has to be
@@ -213,7 +217,7 @@ object ScreenGenerator {
         }
       }
       val name =
-        if (record.canonicalId in simplyImportable)
+        if (record.canonicalId in simplyImportable && !inReceiverScope)
           ComponentSnippets.escapeIfKeyword(record.symbol.name)
         else qualified
       return "$pad$name(${arguments.joinToString(", ")})"
@@ -229,7 +233,21 @@ object ScreenGenerator {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val literal =
         when (value) {
-          is ScreenValue.Text -> if (type == "kotlin.String") quote(value.value) else null
+          is ScreenValue.Text ->
+            when {
+              type != "kotlin.String" -> null
+              // A JVM constant-pool string is length-prefixed with an unsigned short, so a value
+              // over 65535 modified-UTF-8 bytes cannot be a literal at all — the backend fails
+              // late, on a file this generator has already called compilable. Nothing bounds a
+              // pasted document value, so it is measured and refused rather than assumed small.
+              modifiedUtf8Length(value.value) > MAX_CONSTANT_POOL_STRING -> {
+                reasons +=
+                  "`$owner`.`${parameter.name}` is ${modifiedUtf8Length(value.value)} bytes, past " +
+                    "the $MAX_CONSTANT_POOL_STRING a JVM string constant can hold"
+                return null
+              }
+              else -> quote(value.value)
+            }
           is ScreenValue.Bool -> if (type == "kotlin.Boolean") value.value.toString() else null
           is ScreenValue.Whole ->
             when (type) {
@@ -302,6 +320,36 @@ object ScreenGenerator {
     KOTLIN_IDENTIFIER.matches(name) &&
       !ComponentSnippets.isHardKeyword(name) &&
       name.any { it != '_' }
+
+  /**
+   * The source spelling of an opt-in marker's class name.
+   *
+   * ClassGraph reports a nested annotation by its **binary** name — `com.example.Api$Experimental`
+   * — and `$` is not a nesting separator in Kotlin source, so emitting it verbatim produces an
+   * annotation the compiler rejects. The segments are then keyword-escaped like any other path,
+   * because a marker under `com.`when`` is spelled without the backticks in the binary name too.
+   */
+  private fun markerReference(marker: String): String =
+    ComponentSnippets.escapeCallableIfKeyword(marker.replace('$', '.'))
+
+  /** Whether the function type [type] declares a receiver, as `ColumnScope.() -> Unit` does. */
+  private fun hasReceiver(type: String): Boolean = type.substringBefore('(').contains('.')
+
+  /**
+   * The bytes [value] occupies as a JVM constant-pool string.
+   *
+   * Modified UTF-8, not UTF-8: `NUL` is two bytes rather than one, and a supplementary character is
+   * six (both halves of the surrogate pair encoded separately) rather than four.
+   */
+  private fun modifiedUtf8Length(value: String): Int = value.sumOf { c ->
+    when {
+      c.code in 1..0x7F -> 1
+      c.code <= 0x7FF -> 2
+      else -> 3
+    }
+  }
+
+  private const val MAX_CONSTANT_POOL_STRING = 65535
 
   private val KOTLIN_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
 }
