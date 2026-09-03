@@ -472,6 +472,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // process-shaped is on a field the configuration cache would try to store.
     val lane = RenderLane(openWorkerPool(nativeEnv), nativeEnv)
     val attempted = mutableListOf<java.io.File>()
+    // Taken BEFORE any capture runs. A suffixed sibling only counts as this execution's output if
+    // it is new or newer than what was here when we started — see [emptyRunFailure].
+    val outputsBefore = snapshotRenderOutputs(outDir)
     try {
       renderCaptures(
         manifest,
@@ -494,8 +497,18 @@ abstract class RenderPreviewsTask : DefaultTask() {
         }
       }
     }
-    failIfNothingWasWritten(attempted)
+    failIfNothingWasWritten(attempted, outputsBefore)
   }
+
+  /**
+   * Every file under [outDir] with the modification time it had before this execution rendered
+   * anything. Empty when the directory does not exist yet, which is the ordinary first-run case.
+   */
+  private fun snapshotRenderOutputs(outDir: java.io.File): Map<String, Long> =
+    outDir
+      .walkTopDown()
+      .filter { it.isFile }
+      .associate { it.absolutePath to it.lastModified() }
 
   /**
    * Fail when every capture this execution scheduled left no file behind.
@@ -512,13 +525,19 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * sidecar; a run where not one capture survived is never that, and is always an environment or
    * classpath fault worth stopping for.
    */
-  private fun failIfNothingWasWritten(attempted: List<java.io.File>) {
-    emptyRunFailure(attempted)?.let { throw GradleException(it) }
+  private fun failIfNothingWasWritten(
+    attempted: List<java.io.File>,
+    outputsBefore: Map<String, Long>,
+  ) {
+    emptyRunFailure(attempted, outputsBefore)?.let { throw GradleException(it) }
   }
 
   internal companion object {
     /** The failure message for an execution that wrote nothing, or null when it wrote something. */
-    internal fun emptyRunFailure(attempted: List<java.io.File>): String? {
+    internal fun emptyRunFailure(
+      attempted: List<java.io.File>,
+      outputsBefore: Map<String, Long> = emptyMap(),
+    ): String? {
       if (attempted.isEmpty()) return null
       if (attempted.any { it.isFile && it.length() > 0L }) return null
       // A capture does not always land on the exact path it was scheduled at. A preview that fans
@@ -528,7 +547,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // still failed this gate with "none produced a file", which is both wrong and the opposite of
       // actionable. So a stem match counts too: the question this gate exists to ask is whether the
       // renderer produced ANYTHING, not whether it used the filename we predicted.
-      if (attempted.any { candidate -> hasSuffixedSibling(candidate) }) return null
+      if (attempted.any { candidate -> hasSuffixedSibling(candidate, outputsBefore) }) return null
       return "composePreviewRender: ${attempted.size} capture(s) were drawn and none produced a " +
         "file. That is a renderer or classpath fault rather than a broken preview — check the " +
         "`Render failed for …` lines above and the `.error.json` sidecars beside the expected " +
@@ -540,7 +559,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
      * True when [candidate]'s directory holds a non-empty file with the same stem and an added
      * `_suffix` — the shape a theme or variant fan-out writes instead of the exact path.
      */
-    private fun hasSuffixedSibling(candidate: java.io.File): Boolean {
+    private fun hasSuffixedSibling(
+      candidate: java.io.File,
+      outputsBefore: Map<String, Long>,
+    ): Boolean {
       val stem = candidate.nameWithoutExtension
       val extension = candidate.extension
       val siblings = candidate.parentFile?.listFiles() ?: return false
@@ -548,7 +570,12 @@ abstract class RenderPreviewsTask : DefaultTask() {
         it.isFile &&
           it.length() > 0L &&
           it.extension == extension &&
-          it.nameWithoutExtension.startsWith("${stem}_")
+          it.nameWithoutExtension.startsWith("${stem}_") &&
+          // Written by THIS execution: absent before it started, or rewritten since. A render that
+          // dies before it draws anything must not be rescued by the previous run's leftovers —
+          // that is precisely the regression this whole gate exists to catch, so accepting any
+          // sibling that merely exists would hand it back.
+          it.lastModified() > (outputsBefore[it.absolutePath] ?: Long.MIN_VALUE)
       }
     }
   }

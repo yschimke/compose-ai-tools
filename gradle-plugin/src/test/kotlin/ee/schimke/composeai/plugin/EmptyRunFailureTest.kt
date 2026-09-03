@@ -79,6 +79,27 @@ class EmptyRunFailureTest {
   }
 
   @Test
+  fun `a stale fan-out file from a previous run does not count as written`() {
+    // The gate exists to catch a render that draws and encodes nothing. If any EXISTING sibling
+    // satisfied it, a run that died before writing anything would be rescued by the previous
+    // run's leftovers — handing back exactly the regression this guard was added for.
+    val stale = png("Foo_DeepTeal.png", 8)
+    val before = mapOf(stale.absolutePath to stale.lastModified())
+    assertThat(RenderPreviewsTask.emptyRunFailure(listOf(File(tmp.root, "Foo.png")), before))
+      .isNotNull()
+  }
+
+  @Test
+  fun `a fan-out file rewritten by this run counts as written`() {
+    // The same path can legitimately be produced again. What distinguishes it from a leftover is
+    // that this execution touched it.
+    val rewritten = png("Foo_DeepTeal.png", 8)
+    val before = mapOf(rewritten.absolutePath to rewritten.lastModified() - 5_000)
+    assertThat(RenderPreviewsTask.emptyRunFailure(listOf(File(tmp.root, "Foo.png")), before))
+      .isNull()
+  }
+
+  @Test
   fun `a run that scheduled nothing is not a failure`() {
     // A filtered or preview-less module renders zero captures and no-ops cleanly, as it always has.
     assertThat(RenderPreviewsTask.emptyRunFailure(emptyList())).isNull()
