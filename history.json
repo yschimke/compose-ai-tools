@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "23338e6f5f4e4a6e5966e440791a1f4e022258f1",
+    "generatedFrom": "7d26c152b492509d4b45c369339cf923a2372480",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -6976,6 +6976,15 @@
             "path": "renders/samples:remotecompose/colorcatalog__Remote_theme.png",
             "versions": [
                 {
+                    "blob": "775f55e6da474c11ee56cdd5e33d5cd3f4a61c95",
+                    "commit": "7d26c152b492509d4b45c369339cf923a2372480",
+                    "date": "2026-09-03T06:29:10Z",
+                    "sourceSha": "b82d9f4f",
+                    "sinceCommit": "275a8498a3244cff2c97f6382769c1a4d1619665",
+                    "commits": 2,
+                    "occurrences": 2
+                },
+                {
                     "blob": "c5f597c4295862028f853ead6d4504cf98f477a3",
                     "commit": "23338e6f5f4e4a6e5966e440791a1f4e022258f1",
                     "date": "2026-09-02T23:50:11Z",
@@ -6992,18 +7001,11 @@
                     "sinceCommit": "43720116fa23299461094c84ffde5f81072c8976",
                     "commits": 6,
                     "occurrences": 6
-                },
-                {
-                    "blob": "775f55e6da474c11ee56cdd5e33d5cd3f4a61c95",
-                    "commit": "275a8498a3244cff2c97f6382769c1a4d1619665",
-                    "date": "2026-09-01T20:46:50Z",
-                    "sourceSha": "41da9cc0",
-                    "commits": 1
                 }
             ],
-            "observations": 15,
+            "observations": 16,
             "unstable": true,
-            "flapCount": 12
+            "flapCount": 13
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
             "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
