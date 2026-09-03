@@ -727,7 +727,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=github-tags depName=yschimke/rc-players
-  RC_PLAYERS_PIN: v1.56.0
+  RC_PLAYERS_PIN: v1.56.1
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -3582,9 +3582,31 @@ jobs:
 
       # `continue-on-error` above exists only so the evidence upload gets a chance to run. Convert
       # the recorded outcome back into a hard gate before either artifact handoff or publication.
+      #
+      # This step also RE-PRINTS the failing ids, which the lane already printed thousands of lines
+      # earlier. That looks redundant and is not. Acting on this gate means writing an allowlist
+      # entry per id, and the allowlist file tells its next editor to take ids from the lane's own
+      # output — but that output is unreachable from the two places anyone actually reads a failure
+      # from: the GitHub log API returns only the tail of a job (this pipeline's is far longer than
+      # that window, and its per-step env dumps fill it), and the evidence artifact needs a download
+      # that agent egress policies routinely refuse. Printing the list from the LAST step puts it in
+      # the tail by construction. Costs a `jq` over a file the lane already wrote.
       - name: Enforce required CMP/Wasm lane
         if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) && steps.rc-compare.outcome == 'failure' }}
         run: |
+          set -uo pipefail
+          summary="$GITHUB_WORKSPACE/out/rc-compare-summary.json"
+          # Best-effort: the lane can fail before it writes a summary (a distribution that would not
+          # build), and that must still exit 1 rather than dying in the reporting.
+          if [ -f "$summary" ]; then
+            jq -r '.cmpWasmGate | "CMP/Wasm gate: \(.rendered // 0)/\(.expected // 0) rendered, \(.allowed // [] | length) allowlisted, \(.failures // [] | length) failing"' \
+              "$summary" || true
+            echo "Failing documents — each needs a player fix or an allowlist entry:"
+            jq -r '.cmpWasmGate.failures[]? | "  \(.id)\n      \(.note)"' "$summary" 2>/dev/null ||
+              echo "  (could not parse $summary)"
+          else
+            echo "no rc-compare-summary.json was written; see the lane's own step above"
+          fi
           echo "::error title=CMP/Wasm parity gate failed::The enabled lane did not build or render every non-allowlisted Remote Compose document."
           exit 1
 
