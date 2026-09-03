@@ -3,11 +3,12 @@
   "extends": [
     "github>yschimke/renovate-config"
   ],
-  "description": "Extends the shared preset at yschimke/renovate-config, which owns the release-train grouping — including the split of the ee.schimke.composeai group into its separate trains (compose-ai-tools, compose-preview-contracts, compose-preview-server, rc-players), which this repo consumes two of. The rules below are repo-specific and are appended AFTER the preset, so they override it. The preset replaces the config:recommended / :dependencyDashboard / :semanticCommits trio this file used to declare, and the `{{manager}} minor/patch` catch-all group is gone with it: one PR per manager per week overrode every release-train group the preset defines, since the last matching rule wins.",
+  "description": "Extends the shared preset at yschimke/renovate-config, which owns the release-train grouping — including the split of the ee.schimke.composeai group into its separate trains (compose-ai-tools, compose-preview-contracts, compose-preview-server, rc-players), which this repo consumes two of. The rules below are repo-specific and are appended AFTER the preset, so they override it. The preset replaces the config:recommended / :dependencyDashboard / :semanticCommits trio this file used to declare, and the `{{manager}} minor/patch` catch-all group is gone with it: one PR per manager per week overrode every release-train group the preset defines, since the last matching rule wins. `platformAutomerge` is set here rather than in the preset, which leaves it false: the preset already turns `automerge` on for minor/patch/digest/pin, but with platform automerge off Renovate has to do the merge itself during one of its own runs, and on this repository it never got there first — #4949, #4965, #4967, #5046 and #5070 were all merged by hand within minutes of opening. Native GitHub auto-merge lands them the moment the last REQUIRED check of the `Protect Main` ruleset reports green. It weakens nothing: the ruleset has no bypass actors, and a red required check leaves the PR open exactly as before. It does mean checks the ruleset does not require may still be running when the merge lands, and majors are unaffected — the preset automerges minor/patch/digest/pin only.",
   "schedule": [
     "before 9am on Monday"
   ],
   "timezone": "UTC",
+  "platformAutomerge": true,
   "prConcurrentLimit": 10,
   "minimumReleaseAge": "7 days",
   "github-actions": {
