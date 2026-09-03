@@ -204,6 +204,15 @@ back out without GitHub Projects or per-component labels:
     revision: yschimke/m3-catalog@main
     ```
 
+**Both reporting surfaces emit it, and they fill `overrides` differently.** The focused comparison
+knows the frame it was served and writes the value outright. The **viewer** re-renders in place, so
+its controls stop describing the served frame the moment one moves: the server writes the key and
+leaves the value as an `{{overrides}}` placeholder, which `refreshReportLink()` fills from live
+control state on the same pass that fills `{{render}}` — one pass, one source, so the identity the
+block states and the pixels the body links cannot name two frames. The viewer emitted no block at all
+until [#5000](https://github.com/yschimke/compose-ai-tools/issues/5000), which cost every issue filed
+from a preview page its row in the index while the form went on promising one.
+
 **`overrides` is part of the block, not an optional extra.** §4 makes overrides part of the scope an
 acceptance matches on, so a locator that omits them describes two frames at once: an issue filed at
 `fontScale=1.5` and one filed at the default serialise identically, and the indexer associates the
