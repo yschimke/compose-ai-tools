@@ -203,9 +203,11 @@ class ScreenGeneratorCompileFunctionalTest {
     // The designed values reached the source, rather than the placeholders a call site prints.
     assertThat(emitted.source).contains("""Text(text = "Good morning")""")
     assertThat(emitted.source).contains("""Text(text = "Continue")""")
-    // Stock Material 3 needs no opt-in at a call site. Compose's compiler stamps its own markers
-    // onto the JVM method, and reporting those told consumers to opt into Compose internals to use
-    // a `Card` — verified by stripping the annotations and watching this same screen still compile.
+    // Stock Material 3 needs no opt-in at a call site. The markers the Compose compiler stamps
+    // onto the JVM method are not themselves opt-in requirements, and reading the meta-annotation
+    // closure rather than the direct annotations reported them anyway — which told consumers to
+    // opt into Compose internals to place a `Card`. This is the gate on that against a real
+    // library; `ComposableSignatureTest` covers the same trap on fixtures.
     assertThat(emitted.requiredOptIns).isEmpty()
     assertThat(emitted.source).doesNotContain("@OptIn")
 

@@ -55,16 +55,50 @@ object ScreenGenerator {
     components: ComponentRecordFile,
     packageName: String = "generated.screen",
   ): Result {
-    if (!KOTLIN_IDENTIFIER.matches(document.name)) {
-      return Result.Refused(listOf("screen name `${document.name}` is not a Kotlin identifier"))
+    if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
+      // A record from a newer producer may mean things by fields this build has never seen.
+      // Reading it as the current schema is exactly the guess the version exists to prevent.
+      return Result.Refused(
+        listOf(
+          "components.json is schema ${components.schemaVersion}, newer than the " +
+            "$COMPONENT_RECORD_SCHEMA_VERSION this generator understands"
+        )
+      )
+    }
+    val badSegment =
+      packageName.split('.').firstOrNull {
+        !KOTLIN_IDENTIFIER.matches(it) || ComponentSnippets.isHardKeyword(it)
+      }
+    if (badSegment != null) {
+      return Result.Refused(
+        listOf("package segment `$badSegment` is not a usable Kotlin identifier")
+      )
+    }
+    if (
+      !KOTLIN_IDENTIFIER.matches(document.name) || ComponentSnippets.isHardKeyword(document.name)
+    ) {
+      return Result.Refused(
+        listOf("screen name `${document.name}` is not a usable Kotlin function name")
+      )
     }
     val byId = components.components.associateBy { it.canonicalId }
-    val context = Emission(byId)
+    // Two components can share a simple name (`com.a.Badge`, `com.b.Badge`), and a screen can share
+    // one with a component it calls — `fun HomeScreen()` calling a `HomeScreen` component would
+    // shadow the import and recurse into itself. Neither is exotic once a catalog spans libraries.
+    // A simple name is only used when exactly one component wants it and the screen does not; the
+    // rest are called fully qualified, which is always unambiguous and needs no import.
+    val claimants = components.components.groupBy { it.symbol.name }
+    val simplyImportable =
+      components.components
+        .filter { claimants.getValue(it.symbol.name).size == 1 && it.symbol.name != document.name }
+        .map { it.canonicalId }
+        .toSet()
+    val context = Emission(byId, simplyImportable)
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
 
     val optIns = context.optIns.toSortedSet().toList()
-    val imports = (context.imports + optIns + "androidx.compose.runtime.Composable").toSortedSet()
+    val imports = (context.imports + "androidx.compose.runtime.Composable").toSortedSet()
     val source = buildString {
       appendLine("package $packageName")
       appendLine()
@@ -72,7 +106,10 @@ object ScreenGenerator {
       appendLine()
       if (optIns.isNotEmpty()) {
         appendLine(
-          optIns.joinToString(", ", "@OptIn(", ")") { "${it.substringAfterLast('.')}::class" }
+          // Qualified, not imported and shortened: two markers can share a simple name from
+          // different packages, and `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` is
+          // ambiguous rather than merely ugly. Same reasoning as the component calls below.
+          optIns.joinToString(", ", "@OptIn(", ")") { "$it::class" }
         )
       }
       appendLine("@Composable")
@@ -86,7 +123,10 @@ object ScreenGenerator {
   /**
    * Accumulates one generation pass: the text, the imports it needs, and every reason it failed.
    */
-  private class Emission(val byId: Map<String, ComponentRecord>) {
+  private class Emission(
+    val byId: Map<String, ComponentRecord>,
+    val simplyImportable: Set<String>,
+  ) {
     val imports = mutableSetOf<String>()
     val optIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
@@ -96,6 +136,10 @@ object ScreenGenerator {
       val record = byId[node.componentId]
       if (record == null) {
         reasons += "no component `${node.componentId}` in this catalog"
+        // Keep walking its children: a catalog that dropped a whole subtree should name every node
+        // it can no longer place, not just the outermost one. `reasons` is what a caller acts on,
+        // and the text returned here is discarded the moment anything has failed.
+        node.slots.values.flatten().forEach { node(it, depth + 1) }
         return "$pad// unresolved: ${node.componentId}"
       }
       // The licence to call at all. Everything a refusal protects against — private, generic,
@@ -104,9 +148,11 @@ object ScreenGenerator {
       if (code?.call == null) {
         reasons +=
           "`${node.componentId}` has no call site: ${code?.refusedReason ?: "no code was recorded"}"
+        node.slots.values.flatten().forEach { node(it, depth + 1) }
         return "$pad// unusable: ${node.componentId}"
       }
-      imports += ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
+      val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
+      if (record.canonicalId in simplyImportable) imports += qualified
       optIns += code.requiredOptIns
 
       val byName = record.parameters.associateBy { it.name }
@@ -131,6 +177,15 @@ object ScreenGenerator {
             literal(supplied, parameter, record.symbol.name)?.let {
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
             }
+          children != null &&
+            parameter.composableSlot &&
+            !ComponentSnippets.acceptsBareLambda(parameter.type) -> {
+            // `code.call` may have been emittable only because this slot was defaulted away. A
+            // `(Int, Int) -> Unit` or `() -> String` slot cannot be satisfied by `{ children }`.
+            reasons +=
+              "`${record.symbol.name}`.`${parameter.name}` is `${parameter.type}`, which children " +
+                "in a bare lambda cannot satisfy"
+          }
           children != null && parameter.composableSlot -> {
             val nested = children.joinToString("\n") { node(it, depth + 1) }
             arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
@@ -150,7 +205,10 @@ object ScreenGenerator {
           }
         }
       }
-      val name = ComponentSnippets.escapeIfKeyword(record.symbol.name)
+      val name =
+        if (record.canonicalId in simplyImportable)
+          ComponentSnippets.escapeIfKeyword(record.symbol.name)
+        else qualified
       return "$pad$name(${arguments.joinToString(", ")})"
     }
 
@@ -168,14 +226,30 @@ object ScreenGenerator {
           is ScreenValue.Bool -> if (type == "kotlin.Boolean") value.value.toString() else null
           is ScreenValue.Whole ->
             when (type) {
-              "kotlin.Int" -> value.value.toInt().toString()
+              "kotlin.Int" ->
+                // `toInt()` wraps silently: 2147483648 would be emitted as -2147483648, which
+                // compiles and is not the number anyone entered.
+                if (value.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong())
+                  value.value.toString()
+                else null
               "kotlin.Long" -> "${value.value}L"
               else -> null
             }
           is ScreenValue.Fractional ->
-            when (type) {
-              "kotlin.Float" -> "${value.value}f"
-              "kotlin.Double" -> value.value.toString()
+            when {
+              // Neither `NaN` nor `Infinity` is a Kotlin literal, so both would emit source the
+              // compiler rejects.
+              !value.value.isFinite() -> null
+              type == "kotlin.Float" -> {
+                // The same narrowing rule as `Int`, which the first pass missed one type down: a
+                // `Double` past `Float`'s range becomes `Infinity`, and one below it collapses to
+                // zero. The float's own rendering is emitted, so the literal is exactly the value
+                // the parameter will hold rather than a `Double` spelling with an `f` stapled on.
+                val narrowed = value.value.toFloat()
+                val lost = !narrowed.isFinite() || (narrowed == 0.0f && value.value != 0.0)
+                if (lost) null else "${narrowed}f"
+              }
+              type == "kotlin.Double" -> value.value.toString()
               else -> null
             }
         }

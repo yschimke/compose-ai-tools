@@ -62,3 +62,38 @@ fun nullableKnobComponent(label: String? = null, enabled: Boolean = true) {}
 // ambiguous with a non-null callback returning `Unit?`.
 @Suppress("unused")
 fun nullableCallbackComponent(onCheckedChange: ((Boolean) -> Unit)?, onClick: (() -> Unit)?) {}
+
+// --- Opt-in marker fixtures ------------------------------------------------------------------
+
+/** An author-written opt-in marker, the shape `@ExperimentalMaterial3Api` has. */
+@RequiresOptIn("Fixture-only marker.")
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+annotation class ExperimentalFixtureApi
+
+/** An author-written marker guarding internals, the shape `@InternalComposeApi` has. */
+@RequiresOptIn("Fixture-only marker.")
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+annotation class InternalFixtureApi
+
+/**
+ * A marker that is **not itself** an opt-in requirement but whose class is guarded by one — exactly
+ * `@ComposableInferredTarget`, which the Compose compiler stamps onto every composable and which is
+ * declared `@InternalComposeApi`. Reading the meta-annotation closure of a method carrying this
+ * reports [InternalFixtureApi], which no caller has to opt into.
+ */
+@InternalFixtureApi
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.FUNCTION)
+annotation class FixtureInferredTarget
+
+/** The trap: one real marker, one compiler-shaped marker that must not contribute its own. */
+@OptIn(InternalFixtureApi::class)
+@ExperimentalFixtureApi
+@FixtureInferredTarget
+@Suppress("unused", "UNUSED_PARAMETER")
+fun optInComponent(label: String) {}
+
+/** An author opting *their own* declaration into internals — the caller really must opt in. */
+@Suppress("unused", "UNUSED_PARAMETER") @InternalFixtureApi fun deliberatelyInternalComponent() {}

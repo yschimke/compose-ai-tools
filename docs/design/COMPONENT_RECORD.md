@@ -834,13 +834,21 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > compiler accepts. The exporter this path replaces asserted *balanced braces* on its
 > output.
 >
-> Building it immediately caught a defect in the opt-in markers below. The Compose
-> compiler stamps `@ComposableInferredTarget` and `@InternalComposeApi` onto the JVM
-> method; both carry `@RequiresOptIn`, so both were reported, and generated screens
-> told consumers to opt into Compose **internals** in order to place a `Card`.
-> Verified rather than argued — the same screen compiles with those annotations
-> stripped — so they are excluded and the gate now asserts stock Material 3 needs no
-> opt-in at all.
+> Building it immediately caught a defect in the opt-in markers below, and the first
+> fix for it was wrong in an instructive way. Generated screens told consumers to
+> `@OptIn(InternalComposeApi::class)` in order to place a `Card`. The cause is that
+> ClassGraph's `annotationInfo` is the **transitive closure of meta-annotations**, not
+> the annotations written on the element: `Card` carries `@Composable`,
+> `@ComposableInferredTarget` and `@FunctionKeyMeta`, and the closure of those three
+> drags in `InternalComposeApi`, `ComposeCompilerApi` and `kotlin.RequiresOptIn`
+> itself. Denylisting those names silenced the noise and *also* silenced a component an
+> author had deliberately marked `@InternalComposeApi`, whose callers really must opt
+> in. Reading `directOnly()` at both levels asks the actual Kotlin question — this
+> element, this marker — so a compiler-stamped annotation drops out because it is not
+> itself `@RequiresOptIn`, while an author's `@ExperimentalMaterial3Api` survives.
+> `ComposableSignatureTest` reproduces both halves on local fixtures shaped like the
+> Compose ones, and the functional gate asserts stock Material 3 needs no opt-in at
+> all.
 >
 > What is **not** done: `compose-preview-server`'s exporter still runs off an authored
 > `CapabilityCatalog` and a hand-written 29-entry `EMITTER_IDS` allowlist. Moving it

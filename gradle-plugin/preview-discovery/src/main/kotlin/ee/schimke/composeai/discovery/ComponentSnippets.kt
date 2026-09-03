@@ -183,6 +183,8 @@ object ComponentSnippets {
   internal fun qualifiedTypeOf(parameter: TargetParameter): String =
     parameter.typeFqn ?: "kotlin.${parameter.type}"
 
+  internal fun isHardKeyword(name: String): Boolean = name in HARD_KEYWORDS
+
   internal fun escapeIfKeyword(name: String): String =
     if (name in HARD_KEYWORDS) "`$name`" else name
 
@@ -217,6 +219,16 @@ object ComponentSnippets {
       else -> null
     }
   }
+
+  /**
+   * Whether a bare `{ … }` satisfies the function type [type] — the question a slot has to answer
+   * before children can be dropped into it.
+   *
+   * Shared with [ScreenGenerator] because a slot whose type is `(Int, Int) -> Unit` or `() ->
+   * String` accepts children in neither generator, and two answers to that would let one of them
+   * emit a lambda the compiler rejects.
+   */
+  internal fun acceptsBareLambda(type: String): Boolean = emptyLambda(type) != null
 
   /**
    * `"{}"` when a bare empty-lambda literal satisfies the function type [type], else null.

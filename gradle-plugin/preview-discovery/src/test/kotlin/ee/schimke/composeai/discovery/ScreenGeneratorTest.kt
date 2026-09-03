@@ -189,9 +189,12 @@ class ScreenGeneratorTest {
 
     val emitted = emitted(screen, catalog(experimental))
 
-    assertThat(emitted.source).contains("@OptIn(ExperimentalMaterial3Api::class)")
+    // Qualified, not imported: two markers can share a simple name across packages, so the
+    // shortened form is ambiguous rather than merely ugly.
     assertThat(emitted.source)
-      .contains("import androidx.compose.material3.ExperimentalMaterial3Api")
+      .contains("@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)")
+    assertThat(emitted.source)
+      .doesNotContain("import androidx.compose.material3.ExperimentalMaterial3Api")
     assertThat(emitted.requiredOptIns)
       .containsExactly("androidx.compose.material3.ExperimentalMaterial3Api")
   }
@@ -215,6 +218,237 @@ class ScreenGeneratorTest {
   @Test
   fun `a screen name that is not an identifier is refused`() {
     assertThat(refusal(ScreenDocument("my screen", ScreenNode(text.canonicalId)), catalog(text)))
-      .containsExactly("screen name `my screen` is not a Kotlin identifier")
+      .containsExactly("screen name `my screen` is not a usable Kotlin function name")
+  }
+
+  @Test
+  fun `two components sharing a simple name are called fully qualified`() {
+    // `com.a.Badge` and `com.b.Badge` both reduced to `Badge()` under two conflicting imports.
+    fun badge(pkg: String) =
+      component("Badge", "$pkg.Badge", emptyList()).let {
+        it.copy(
+          canonicalId = "app/$pkg.BadgeKt.Badge",
+          symbol = it.symbol.copy(jvmOwner = "$pkg.BadgeKt", callable = "$pkg.Badge"),
+        )
+      }
+    val a = badge("com.a")
+    val b = badge("com.b")
+    val card2 =
+      card.copy(
+        parameters =
+          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          card2.canonicalId,
+          slots = mapOf("content" to listOf(ScreenNode(a.canonicalId), ScreenNode(b.canonicalId))),
+        ),
+      )
+
+    val source = emitted(screen, catalog(card2, a, b)).source
+
+    assertThat(source).contains("com.a.Badge()")
+    assertThat(source).contains("com.b.Badge()")
+    assertThat(source).doesNotContain("import com.a.Badge")
+    assertThat(source).doesNotContain("import com.b.Badge")
+  }
+
+  @Test
+  fun `a component sharing the screen's own name is qualified, so the screen cannot recurse`() {
+    // `fun HomeScreen()` calling an imported `HomeScreen()` would shadow the import and call
+    // itself — a stack overflow that compiles.
+    val same =
+      component("HomeScreen", "com.example.HomeScreen", emptyList()).let {
+        it.copy(
+          canonicalId = "app/com.example.HomeScreenKt.HomeScreen",
+          symbol = it.symbol.copy(callable = "com.example.HomeScreen"),
+        )
+      }
+    val screen = ScreenDocument("HomeScreen", ScreenNode(same.canonicalId))
+
+    val source = emitted(screen, catalog(same)).source
+
+    assertThat(source).contains("com.example.HomeScreen()")
+    assertThat(source).doesNotContain("import com.example.HomeScreen")
+  }
+
+  @Test
+  fun `an Int value that does not fit is refused rather than silently wrapped`() {
+    // `Long.toInt()` turns 2147483648 into -2147483648: source that compiles carrying a number
+    // nobody entered.
+    val counted =
+      component(
+        "Counted",
+        "com.example.Counted",
+        listOf(TargetParameter("count", "Int", typeFqn = "kotlin.Int")),
+      )
+    val tooBig =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          counted.canonicalId,
+          arguments = mapOf("count" to ScreenValue.Whole(2147483648L)),
+        ),
+      )
+    val fits =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(counted.canonicalId, arguments = mapOf("count" to ScreenValue.Whole(7L))),
+      )
+
+    assertThat(refusal(tooBig, catalog(counted)).first()).contains("count")
+    assertThat(emitted(fits, catalog(counted)).source).contains("Counted(count = 7)")
+  }
+
+  @Test
+  fun `children are refused for a slot a bare lambda cannot satisfy`() {
+    // A defaulted slot can be absent from `code.call` and still be uncallable with `{ children }`:
+    // two parameters have nothing to bind, and a non-Unit return has nothing to return.
+    val dragging =
+      component(
+        "Dragging",
+        "com.example.Dragging",
+        listOf(
+          TargetParameter(
+            "onDrag",
+            "(Float, Float) -> Unit",
+            hasDefault = true,
+            composableSlot = true,
+          )
+        ),
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          dragging.canonicalId,
+          slots = mapOf("onDrag" to listOf(ScreenNode(text.canonicalId))),
+        ),
+      )
+
+    assertThat(refusal(screen, catalog(dragging, text)).first())
+      .contains("bare lambda cannot satisfy")
+  }
+
+  @Test
+  fun `a screen named after a Kotlin keyword is refused`() {
+    assertThat(refusal(ScreenDocument("when", ScreenNode(text.canonicalId)), catalog(text)).first())
+      .contains("not a usable Kotlin function name")
+  }
+
+  @Test
+  fun `a Float value that cannot survive narrowing is refused`() {
+    val sized =
+      component(
+        "Sized",
+        "com.example.Sized",
+        listOf(TargetParameter("scale", "Float", typeFqn = "kotlin.Float")),
+      )
+    fun screen(v: Double) =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(sized.canonicalId, arguments = mapOf("scale" to ScreenValue.Fractional(v))),
+      )
+
+    // Past Float's range it becomes Infinity; below it, zero. Neither is the designed value.
+    assertThat(refusal(screen(Double.MAX_VALUE), catalog(sized)).first()).contains("scale")
+    assertThat(refusal(screen(1.0e-60), catalog(sized)).first()).contains("scale")
+    // Non-finite is not a Kotlin literal at all.
+    assertThat(refusal(screen(Double.NaN), catalog(sized)).first()).contains("scale")
+    assertThat(emitted(screen(0.5), catalog(sized)).source).contains("Sized(scale = 0.5f)")
+    // Zero is legitimate and must not be mistaken for an underflow.
+    assertThat(emitted(screen(0.0), catalog(sized)).source).contains("Sized(scale = 0.0f)")
+  }
+
+  @Test
+  fun `opt-in markers are qualified, so two of the same simple name stay distinct`() {
+    val a =
+      component("A", "com.a.A", emptyList(), requiredOptIns = listOf("com.a.ExperimentalApi")).let {
+        it.copy(canonicalId = "app/com.a.AKt.A", symbol = it.symbol.copy(callable = "com.a.A"))
+      }
+    val b =
+      component("B", "com.b.B", emptyList(), requiredOptIns = listOf("com.b.ExperimentalApi")).let {
+        it.copy(canonicalId = "app/com.b.BKt.B", symbol = it.symbol.copy(callable = "com.b.B"))
+      }
+    val holder =
+      card.copy(
+        parameters =
+          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          holder.canonicalId,
+          slots = mapOf("content" to listOf(ScreenNode(a.canonicalId), ScreenNode(b.canonicalId))),
+        ),
+      )
+
+    val source = emitted(screen, catalog(holder, a, b)).source
+
+    // `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` would not compile.
+    assertThat(source)
+      .contains("@OptIn(com.a.ExperimentalApi::class, com.b.ExperimentalApi::class)")
+  }
+
+  @Test
+  fun `a record from a newer schema is refused rather than read as this one`() {
+    val newer =
+      ComponentRecordFile(
+        schemaVersion = COMPONENT_RECORD_SCHEMA_VERSION + 1,
+        module = "app",
+        variant = "debug",
+        components = listOf(text),
+      )
+
+    assertThat(refusal(ScreenDocument("Screen", ScreenNode(text.canonicalId)), newer).first())
+      .contains("newer than")
+  }
+
+  @Test
+  fun `a package segment that is not a usable identifier is refused`() {
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument("Screen", ScreenNode(text.canonicalId)),
+        catalog(text),
+        packageName = "com.example.when",
+      )
+
+    assertThat((result as ScreenGenerator.Result.Refused).reasons.first()).contains("`when`")
+  }
+
+  @Test
+  fun `children of an unresolved node are still reported`() {
+    // A catalog that dropped a whole subtree should name every node it can no longer place.
+    val holder =
+      card.copy(
+        parameters =
+          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          holder.canonicalId,
+          slots =
+            mapOf(
+              "content" to
+                listOf(
+                  ScreenNode(
+                    "app/com.example.GoneKt.Gone",
+                    slots =
+                      mapOf("content" to listOf(ScreenNode("app/com.example.AlsoGoneKt.AlsoGone"))),
+                  )
+                )
+            ),
+        ),
+      )
+
+    val reasons = refusal(screen, catalog(holder))
+
+    assertThat(reasons).hasSize(2)
+    assertThat(reasons.joinToString()).contains("AlsoGone")
   }
 }

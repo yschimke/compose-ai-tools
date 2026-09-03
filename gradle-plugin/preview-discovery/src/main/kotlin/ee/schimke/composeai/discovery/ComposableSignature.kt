@@ -205,19 +205,35 @@ internal object ComposableSignature {
   }
 
   /**
-   * The `@RequiresOptIn`-marked annotations applied to [method].
+   * The `@RequiresOptIn`-marked annotations a caller of [method] has to opt into.
    *
    * An opt-in marker is an annotation whose own class carries `@RequiresOptIn`, so this resolves
    * one level up rather than pattern-matching names like `Experimental…` — a convention plenty of
    * annotations follow without gating anything. An annotation class outside the scan resolves to
    * null and is skipped: unrecognised, not assumed.
+   *
+   * **`directOnly()` at both levels is what makes this correct, and its absence is what made the
+   * first version wrong.** ClassGraph's `annotationInfo` is the transitive closure of
+   * meta-annotations, not the annotations written on the element: `Card` carries `@Composable`,
+   * `@ComposableInferredTarget` and `@FunctionKeyMeta`, and the closure of those three drags in
+   * `InternalComposeApi`, `ComposeCompilerApi` and `kotlin.RequiresOptIn` itself. Reading the
+   * closure therefore reported `@OptIn(InternalComposeApi::class)` for placing a `Card` — telling
+   * consumers to opt into Compose's internals to draw a container.
+   *
+   * Filtering those names out was the first fix and the wrong one: it also silenced a component an
+   * author had *deliberately* marked `@InternalComposeApi`, whose callers really must opt in.
+   * Direct annotations answer the actual Kotlin rule — this element, this marker — so
+   * `ComposableInferredTarget` drops out because it is not itself `@RequiresOptIn`, while an
+   * author's `@ExperimentalMaterial3Api` or `@InternalComposeApi` survives.
    */
   private fun requiredOptInsOf(method: MethodInfo): List<String> =
     method.annotationInfo
+      ?.directOnly()
       .orEmpty()
-      .filterNot { it.name in COMPILER_INSERTED_MARKERS }
       .filter { annotation ->
-        annotation.classInfo?.annotationInfo?.any { it.name in OPT_IN_MARKER_ANNOTATIONS } == true
+        annotation.classInfo?.annotationInfo?.directOnly()?.any {
+          it.name in OPT_IN_MARKER_ANNOTATIONS
+        } == true
       }
       .map { it.name }
       .distinct()
@@ -225,31 +241,6 @@ internal object ComposableSignature {
 
   private val OPT_IN_MARKER_ANNOTATIONS =
     setOf("kotlin.RequiresOptIn", "androidx.annotation.RequiresOptIn")
-
-  /**
-   * Opt-in markers the **Compose compiler** stamps onto a JVM method, which no source caller has to
-   * apply.
-   *
-   * These carry `@RequiresOptIn` and so pass the check above, but ordinary code calls `Card` and
-   * `Text` without opting into anything — the annotations describe how the compiler tracked the
-   * function's composable target, not a contract the author asked callers to accept. Reporting them
-   * put `@OptIn(InternalComposeApi::class)` on generated screens, which is worse than noise: it
-   * tells a consumer to opt into Compose's internals to place a button.
-   *
-   * Verified rather than assumed — a generated screen calling `Card`, `Text` and `Button` compiles
-   * with these annotations stripped, which is what says they were never required.
-   *
-   * A denylist because no shape rule separates them: an author-written `@ExperimentalMaterial3Api`
-   * and a compiler-written `@ComposableInferredTarget` are both `@RequiresOptIn` annotations on the
-   * same method, and only their provenance differs.
-   */
-  private val COMPILER_INSERTED_MARKERS =
-    setOf(
-      "androidx.compose.runtime.ComposableInferredTarget",
-      "androidx.compose.runtime.ComposableOpenTarget",
-      "androidx.compose.runtime.ComposableTarget",
-      "androidx.compose.runtime.InternalComposeApi",
-    )
 
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
