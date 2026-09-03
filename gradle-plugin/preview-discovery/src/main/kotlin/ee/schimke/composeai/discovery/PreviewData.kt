@@ -1379,8 +1379,44 @@ data class PreviewInfo(
 data class PreviewTarget(
   /** Owner class FQN (synthetic `…Kt` for top-level functions). */
   val className: String,
-  /** Composable function name on [className]. */
+  /**
+   * The composable's **source-level** name — what a human reads and what generated Kotlin calls.
+   *
+   * Not the JVM method name, which [jvmName] carries. Kotlin mangles the JVM name of any function
+   * whose signature mentions a value class, so a perfectly ordinary `fun AppTile(padding: Dp)`
+   * compiles to `AppTile-a1b2c3d`. Publishing that as the name meant a consumer generating a call
+   * site emitted an identifier that does not exist, which is why this is read from
+   * `@kotlin.Metadata` rather than from the class file's method table.
+   *
+   * Falls back to the JVM name when metadata could not be read — see [signatureKnown], which is
+   * what says which of the two this is.
+   */
   val functionName: String,
+  /**
+   * The JVM method name, for a consumer that has to *find* this method rather than write a call to
+   * it — `Class.forName(className).getMethod(jvmName, …)`.
+   *
+   * Differs from [functionName] only under mangling (`AppTile-a1b2c3d`, `internalFun$module`), but
+   * it is recorded unconditionally rather than "only when it differs": a consumer that has to
+   * remember `jvmName ?: functionName` gets it right in every case it tests and wrong on exactly
+   * the mangled one this field exists for.
+   *
+   * Null means "not recorded" — a manifest written before this field existed — never "same as
+   * [functionName]".
+   */
+  val jvmName: String? = null,
+  /**
+   * The JVM method descriptor (`(ILandroidx/compose/runtime/Composer;I)V`), which is what actually
+   * identifies *which* method is meant.
+   *
+   * Neither name settles that on its own. Two overloads that mention no value class share their JVM
+   * name exactly, and their source name always; only the descriptor tells them apart. It is
+   * recorded here because inference already has it in hand — the bytecode walk matches call sites
+   * by name **and** descriptor — and was discarding it at the last step.
+   *
+   * Null means "not recorded", as for [jvmName].
+   */
+  val descriptor: String? = null,
   /** Module-relative source path of the target's owning file, when resolvable. */
   val sourceFile: String? = null,
   val confidence: TargetConfidence,

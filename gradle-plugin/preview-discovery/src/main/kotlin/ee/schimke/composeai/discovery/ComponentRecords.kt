@@ -55,13 +55,33 @@ object ComponentRecords {
                 callable = callableFqn(target),
                 name = target.functionName,
                 origin = origin,
+                jvmName = target.jvmName,
+                descriptor = target.descriptor,
                 sourceFile = target.sourceFile,
                 receiver = target.receiver,
               ),
             parameters = target.parameters,
             signatureKnown = target.signatureKnown,
+            jvmName = target.jvmName,
+            descriptor = target.descriptor,
           )
         }
+      // Overloads share a canonical id and merge into this one record. Both JVM handles identify
+      // ONE method, so keeping the first seen would label the merged record with whichever preview
+      // the manifest happened to list first. Disagreement drops each to null instead — the record
+      // then says "several methods, and I cannot tell you which", which is true, rather than
+      // naming one of them.
+      //
+      // `jvmName` needs the same rule as `descriptor` and not merely the same rule as `name`:
+      // overloads always agree on the source name, and can disagree on the JVM one, because
+      // mangling is per-signature. `Chip(label: String)` and `Chip(width: Dp)` are `Chip` and
+      // `Chip-a1b2c3d`.
+      if (existing.jvmName != target.jvmName) {
+        existing.jvmName = null
+      }
+      if (existing.descriptor != target.descriptor) {
+        existing.descriptor = null
+      }
       // One component, many previews: keep the richest signature seen. A target resolved through a
       // path that could not read metadata reports no parameters, and letting that overwrite a
       // populated signature would lose the API for everyone.
@@ -143,6 +163,8 @@ object ComponentRecords {
     val symbol: ComponentSymbol,
     var parameters: List<TargetParameter>,
     var signatureKnown: Boolean = false,
+    var jvmName: String? = null,
+    var descriptor: String? = null,
   ) {
     var receiver: String? = symbol.receiver
 
@@ -156,7 +178,7 @@ object ComponentRecords {
         // first — a shared component such as `Card` is rendered by several previews and would
         // otherwise take an arbitrary, order-dependent id.
         componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted(),
-        symbol = symbol.copy(receiver = receiver),
+        symbol = symbol.copy(receiver = receiver, jvmName = jvmName, descriptor = descriptor),
         parameters = parameters,
         slots = slotsOf(parameters),
         bindings = resolvedBindings,

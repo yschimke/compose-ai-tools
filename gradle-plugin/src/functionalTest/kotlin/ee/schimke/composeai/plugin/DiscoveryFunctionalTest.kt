@@ -3868,7 +3868,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `composePreviewDiscover looks through theme and catalog lambdas and rejects mangled targets`() {
+  fun `composePreviewDiscover looks through theme and catalog lambdas and names mangled targets`() {
     val projectDir = createCmpTestProject()
 
     val srcDir = File(projectDir, "src/main/kotlin/test")
@@ -3955,7 +3955,24 @@ class DiscoveryFunctionalTest {
     assertThat(wrapTarget.sourceFile).contains("Components.kt")
     assertThat(themeTarget.signals).contains(TargetSignal.WRAPPER_UNWRAPPED)
     assertThat(wrapTarget.signals).contains(TargetSignal.WRAPPER_UNWRAPPED)
-    assertThat(manifest.previews.single { it.functionName == "MangledPreview" }.targets).isEmpty()
+    // `Screen(value: ScreenValue)` mentions a value class, so Kotlin mangles its JVM name to
+    // `Screen-<hash>`. This used to report `targets = []`: the name was judged as a Kotlin import
+    // identifier, a mangled one is not, and the target was dropped — so an ordinary app composable
+    // taking a `Dp` or a `Color` was invisible to inference. The rejection was the right call while
+    // a target had one name field and that field held the JVM name; with the source name recorded
+    // separately there is nothing left to be wrong about, and dropping the target is now the only
+    // wrong answer available.
+    val mangled = manifest.previews.single { it.functionName == "MangledPreview" }.targets.single()
+    assertThat(mangled.functionName).isEqualTo("Screen")
+    assertThat(mangled.jvmName).startsWith("Screen-")
+    assertThat(mangled.jvmName).isNotEqualTo(mangled.functionName)
+    assertThat(mangled.descriptor).isNotNull()
+    assertThat(mangled.signatureKnown).isTrue()
+
+    // The unmangled targets carry both names too, and there they agree — recorded rather than
+    // left null so a consumer never has to write `jvmName ?: functionName`.
+    assertThat(themeTarget.jvmName).isEqualTo("HomeScreen")
+    assertThat(themeTarget.descriptor).isNotNull()
   }
 
   @Test
