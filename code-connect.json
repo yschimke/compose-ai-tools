@@ -7,7 +7,7 @@
     "ref": "main",
     "module": "samples:design-catalog-wear-m3"
   },
-  "generatedAt": "2026-09-03T08:37:46.182Z",
+  "generatedAt": "2026-09-03T18:51:30.800Z",
   "mappings": [
     {
       "componentId": "Button/Filled",
@@ -25,6 +25,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -49,6 +50,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -73,6 +75,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -97,6 +100,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -121,6 +125,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -145,6 +150,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -169,6 +175,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -193,6 +200,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -217,6 +225,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -241,6 +250,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -265,6 +275,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -289,6 +300,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -313,6 +325,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -337,6 +350,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -361,6 +375,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -385,6 +400,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -409,6 +425,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -433,6 +450,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -457,6 +475,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -481,6 +500,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -505,6 +525,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -529,6 +550,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -553,6 +575,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -577,6 +600,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -601,6 +625,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -625,6 +650,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -649,6 +675,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -673,6 +700,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -697,6 +725,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,
@@ -721,6 +750,7 @@
         {
           "name": "content",
           "type": "() -> Unit",
+          "typeFqn": "kotlin.Function0",
           "hasDefault": false,
           "composableSlot": true,
           "composableSlotReceiver": null,

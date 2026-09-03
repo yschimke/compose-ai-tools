@@ -1,11 +1,91 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T08:37:51.702Z",
+  "generatedAt": "2026-09-03T18:51:36.469Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "b29ec96620351e2673a44dbb6430cd0b6b66a53f",
+        "subject": "feat(remotecompose): record the player that actually drew each capture (#5075)",
+        "at": "2026-09-03T19:43:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b752d11079c0a37d7bdb7bb31c7cafa09c60e81e",
+        "subject": "fix(harness): clone S3.5's fixture without recomputing frames (#5078)",
+        "at": "2026-09-03T19:42:59+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a9fc68b34c54852d1922b74c49a4c23d5b3615b2",
+        "subject": "feat(discovery): widen a screen value past the four literals (#5077)",
+        "at": "2026-09-03T19:40:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ab5e96a2c707e92f1c28b306085eb458dce11f96",
+        "subject": "feat(discovery): generate a compiling screen from a builder's document (#5076)",
+        "at": "2026-09-03T15:57:30+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "32780aabd21ed9699eac433dce62123ef91e1e0b",
+        "subject": "fix(discovery): close six ways an emitted call site could fail to compile (#5073)",
+        "at": "2026-09-03T10:01:42+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "64da195f69470ccee5c9f2db3e4e467d9c447b7c",
+        "subject": "ci(renovate): hand dependency-PR merges to GitHub native auto-merge (#5074)",
+        "at": "2026-09-03T10:01:14+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bb2bff69474e7e1baee3e2a9e138177a517e7b7a",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.70.0 (#5070)",
+        "at": "2026-09-03T09:45:05+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f9a2ecd5c471b659fb422f56d90ecfdeb7cafc4a",
+        "subject": "style(harness): ktfmt S3.5's new KDoc (#5072)",
+        "at": "2026-09-03T09:44:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fea523d667269e39f9e7afb45ad4e7475efa97bc",
+        "subject": "feat(discovery): persist each component's call site in components.json (#5068)",
+        "at": "2026-09-03T09:40:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4342f07d687123003942c08e02a13514f0667469",
+        "subject": "fix(harness): clone S3.5's MutableSquare from the target's own fixture (#5069)",
+        "at": "2026-09-03T09:39:47+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "08eab81448e14c5759dc4b61c5cae604efc6b3f9",
         "subject": "chore(main): release 1.70.0 (#5055)",
@@ -402,86 +482,6 @@
         "sha": "ea2bd4b805f4db4af3e7e901e2239679b849664b",
         "subject": "ci(renderer-desktop): run forwardComposeSystemThemeTest from `test`, not only `check` (#5007)",
         "at": "2026-09-02T21:56:29+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "51e531315485de8d4f99b6a0c561836ee77ea195",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.64.0 (#5003)",
-        "at": "2026-09-02T21:40:36+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4af4fe27adcdb25f8be84d7f32b1ea1ffadb7f94",
-        "subject": "test(figma-svg): run the export's interaction states on the forked-ripple material3 (#5002)",
-        "at": "2026-09-02T21:40:30+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d7fd54907bc921a376e6a194171abb42f1536903",
-        "subject": "fix(rc-compare): name the players a catalog's parity run left out (#5004)",
-        "at": "2026-09-02T21:39:52+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "84d9c904617e93b2ed9669e9dbc670469391b67e",
-        "subject": "test(samples): add a parameter-knob preview beside its previewOverride twin (#5001)",
-        "at": "2026-09-02T21:19:09+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b8edcc0da9d6d361d5169dfb37623f5d9c95ebfa",
-        "subject": "chore(main): release 1.64.0 (#4986)",
-        "at": "2026-09-02T21:15:08+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d8956b9b5274f65f0b26b12c7fca56c0573ae990",
-        "subject": "fix(figma-svg): export the focus ring and state layer on material3's forked ripple node (#4999)",
-        "at": "2026-09-02T21:05:01+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "eec05e914db1e792f8702183e1786ada6ed0f347",
-        "subject": "docs: plan a derived component record for previews, playground and the UI builder (#4993)",
-        "at": "2026-09-02T20:58:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8f1d170dcb8917d117b2e1c77da54c12e2a05d2d",
-        "subject": "fix(import): carry --write-locks and the plugin's dep groups into the render (#4994)",
-        "at": "2026-09-02T20:26:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bcacbf96a363af8250dcf65799252f2943fb1898",
-        "subject": "fix(import): render a locked upstream with --write-locks (#4992)",
-        "at": "2026-09-02T20:09:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a37a39f101a7011e4dde5dba8e6f9387f3295a82",
-        "subject": "fix(import): keep the trust step out of the pinned driver checkout (#4991)",
-        "at": "2026-09-02T20:03:47+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
