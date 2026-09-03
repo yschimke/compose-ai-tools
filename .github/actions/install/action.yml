@@ -50,6 +50,19 @@ inputs:
       unauthenticated rate limit on shared GHA runners). Empty falls
       back to the workflow token (github.token) inside the steps below.
     default: ''
+  plugin-readiness-timeout:
+    description: >
+      Seconds to wait for the resolved version's Gradle plugin to be
+      resolvable from the Plugin Portal / Maven Central before failing
+      with an explicit message. A release's CLI tarball is downloadable
+      minutes — sometimes tens of minutes — before its plugin is, and a
+      render dispatched in that window dies during configuration with an
+      error that names the *consumer's* project (issue #5051). Waiting
+      turns that hard failure into a delay; the failure at the end of the
+      budget at least says what actually happened. Set to 0 to skip the
+      probe entirely (for a job that installs the CLI without driving a
+      Gradle build).
+    default: '300'
 
 outputs:
   version:
@@ -76,6 +89,28 @@ runs:
         ver=$(python3 "$ACTION_PATH/resolve-version.py")
         printf 'version=%s\n' "$ver" >> "$GITHUB_OUTPUT"
         printf '::notice::Resolved compose-preview version: %s\n' "$ver"
+
+    # `version: latest` already prefers a release carrying its Maven-readiness marker
+    # (resolve-version.py), so this normally passes on the first probe. It is here for every
+    # other mode — a literal version, `pin`, `catalog` — where the version is whatever the
+    # consumer named, and for the case where no release in the window has a marker at all.
+    # `version: latest` already prefers a release carrying its Maven-readiness marker
+    # (resolve-version.py), so this normally passes on the first sweep. It is here for every other
+    # mode — a literal version, `pin`, `catalog` — where the version is whatever the consumer
+    # named, and for the case where no release in the window has a marker at all.
+    #
+    # A script rather than inline shell: it walks the plugin's POMs to derive the artifact set,
+    # keeps every request and sleep inside the caller's budget, and is unit-tested next door
+    # (test_plugin_readiness.py). `python3` is already a hard requirement of this action — the
+    # Resolve step above runs resolve-version.py.
+    - name: Wait for the plugin to be published
+      if: ${{ inputs.plugin-readiness-timeout != '0' }}
+      shell: bash
+      env:
+        VER: ${{ steps.resolve.outputs.version }}
+        BUDGET: ${{ inputs.plugin-readiness-timeout }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 "$ACTION_PATH/plugin-readiness.py"
 
     - name: Download CLI
       shell: bash
