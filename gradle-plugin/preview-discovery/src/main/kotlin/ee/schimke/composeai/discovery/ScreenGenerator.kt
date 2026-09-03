@@ -24,6 +24,23 @@ package ee.schimke.composeai.discovery
  * placeholders, and this replaces them with the document's values. So the emitted call is built
  * here from [ComponentRecord.parameters], with `code.call` used as the licence to call at all.
  *
+ * ## Where that licence is wider than it should be
+ *
+ * `code.call != null` is treated as proof that nothing stops a caller writing this call. That is
+ * not quite true, and the gap is one problem rather than a list of them: **the record cannot
+ * express every source-level restriction on calling a declaration**, so each one found has to be
+ * recorded as its own field, and one not yet found is silently admitted. Two are known and open:
+ *
+ * - `@Deprecated(level = DeprecationLevel.ERROR)`. A preview can call such a component under
+ *   `@Suppress("DEPRECATION_ERROR")`, which persists a call site the generated file — carrying no
+ *   such suppression — cannot compile.
+ * - A context *parameter* (Kotlin 2.2 onwards). `ComposableSignature.hasContextRequirement` reads
+ *   the older `contextReceiverTypes` only, and says there why it cannot read the other.
+ *
+ * Both are admitted today. Closing them properly means either an explicit closed list of what
+ * `code.call` promises, or compiling a candidate call in the producer — not a boolean per
+ * restriction, which is how this list would keep growing.
+ *
  * ## Refusing, again
  *
  * The discipline is the same one that makes the call-site generator worth anything: emit only what
