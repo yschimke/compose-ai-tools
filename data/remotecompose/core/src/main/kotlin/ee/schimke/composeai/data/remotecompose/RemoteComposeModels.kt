@@ -74,11 +74,11 @@ public data class RemoteComposeKnobDeclaration(val name: String, val default: Re
  */
 @Serializable
 public data class RemoteComposeDeclarationsPayload(
-  val declarations: List<RemoteComposeKnobDeclaration> = emptyList(),
+  val declarations: List<RemoteComposeKnobDeclaration> = emptyList()
+) {
   /**
    * The `rcPlayer` wire id of the player that actually drew this capture — `"cmp-android"` for the
-   * embedded player, `"java"` for the view-backed one — or null when the capture predates this
-   * field.
+   * embedded player, `"java"` for the view-backed one — or null when the capture recorded none.
    *
    * Recorded rather than derived, because it cannot be derived. `RemoteOverridablePreview` selects
    * the player as `player == EMBEDDED && isEmbeddedPlayerAvailable`, and that second term is a
@@ -89,10 +89,18 @@ public data class RemoteComposeDeclarationsPayload(
    * (compose-preview-server#233 answers *unknown* instead, which is safe but costs the clean
    * default link — this is what lets it stop being unknown).
    *
-   * Null and absent mean the same thing: not recorded. Never "the default one".
+   * Null and absent mean the same thing: not recorded. Never "the default one". A capture that drew
+   * through more than one player also reads null, because no single answer would be true of it.
+   *
+   * **Declared in the body, not the primary constructor, deliberately.** Adding a parameter would
+   * have removed this published class's `<init>(List)` and `copy(List)` JVM signatures — Kotlin's
+   * default argument does not retain them — so an already-compiled consumer of
+   * `data-remotecompose-core` would hit `NoSuchMethodError`. A body `var` is serialized by
+   * kotlinx.serialization just the same and leaves both signatures intact; the committed ABI dump
+   * shows only additions.
    */
-  val capturePlayer: String? = null,
-)
+  var capturePlayer: String? = null
+}
 
 /**
  * Wire-shape returned by `data/fetch?kind=compose/remotecompose`.

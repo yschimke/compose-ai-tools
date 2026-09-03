@@ -447,6 +447,53 @@ class RemoteComposeDataProductTest {
   }
 
   @Test
+  fun declarationsJson_reads_null_when_two_players_drew_one_capture() {
+    // `RemoteOverridablePreview` is public and a preview may call it twice with different `player`
+    // arguments, each drawing part of the same PNG. Naming one would let the server satisfy a bare
+    // request for that player with pixels the other partly drew, so a mixed capture has no single
+    // true answer and reads as unrecorded.
+    val controller = RemoteComposeController
+    controller.clearDeclarations()
+    controller.recordCapturePlayer("cmp-android")
+    controller.recordCapturePlayer("java")
+    controller.recordDeclaration(
+      RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("x"))
+    )
+    val payload =
+      Json.decodeFromString(
+        RemoteComposeDeclarationsPayload.serializer(),
+        controller.declarationsJson()!!,
+      )
+    assertNull("two players → no single answer", payload.capturePlayer)
+    assertEquals("…and the knobs still ride out", 1, payload.declarations.size)
+
+    // Re-recording the same player is not a conflict: a recomposition takes the same branch.
+    controller.clearDeclarations()
+    controller.recordCapturePlayer("cmp-android")
+    controller.recordCapturePlayer("cmp-android")
+    assertEquals(
+      "cmp-android",
+      Json.decodeFromString(
+          RemoteComposeDeclarationsPayload.serializer(),
+          controller.declarationsJson()!!,
+        )
+        .capturePlayer,
+    )
+    controller.clearDeclarations()
+  }
+
+  @Test
+  fun resetForNewSession_drops_the_recorded_capture_player() {
+    // Every other per-session facet is reset there; leaving this one would have a fresh session's
+    // sidecar claim a player it never composed through.
+    val controller = RemoteComposeController
+    controller.clearDeclarations()
+    controller.recordCapturePlayer("java")
+    controller.resetForNewSession()
+    assertNull("the player is per-session state too", controller.declarationsJson())
+  }
+
+  @Test
   fun document_fetch_before_any_render_returns_not_available() {
     val registry = RemoteComposeDataProductRegistry()
     assertEquals(
