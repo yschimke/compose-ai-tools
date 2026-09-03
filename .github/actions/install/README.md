@@ -44,13 +44,21 @@ carries a marker at all (pre-marker releases, or a readiness job that has been
 failing), it falls back to the newest complete release and says so.
 
 Every other mode installs exactly the version you named, so those keep their
-own guard: after resolving, the action probes the plugin marker POM and waits
-up to `plugin-readiness-timeout` seconds for it to appear, then fails with a
-message that names the publication window rather than letting Gradle report it
-as a configuration error in your build. Set `plugin-readiness-timeout: 0` in a
-job that only needs the binary and never drives Gradle. A registry that answers
-`429` or `5xx` is treated as "no verdict" — a rate limit must not look like an
-unpublished release — and the step passes with a warning.
+own guard: after resolving, the action probes for the plugin and waits up to
+`plugin-readiness-timeout` seconds for it to appear, then fails with a message
+that names the publication window rather than letting Gradle report it as a
+configuration error in your build. Set `plugin-readiness-timeout: 0` in a job
+that only needs the binary and never drives Gradle.
+
+Two artifacts are probed, not one: the marker POM is a `pom`-packaged stub whose
+only content is a dependency on `ee.schimke.composeai:compose-preview-plugin`, in
+a different group, so a 200 on the marker alone does not mean the buildscript
+classpath resolves — during partial CDN propagation the marker can be up while
+the implementation jar is not. Both must answer before the step passes. A
+registry that answers `429` or `5xx` is treated as "no verdict" — a rate limit
+must not look like an unpublished release — and the step passes with a warning
+after trying both mirrors. Each probe and each retry sleep is bounded by what is
+left of the budget, so the step cannot overrun the timeout you set.
 
 ## Pin the CLI to a Gradle version catalog
 

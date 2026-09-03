@@ -102,48 +102,94 @@ runs:
         BUDGET: ${{ inputs.plugin-readiness-timeout }}
       run: |
         set -uo pipefail
-        marker='ee.schimke.composeai.preview.gradle.plugin'
-        portal="https://plugins.gradle.org/m2/ee/schimke/composeai/preview/${marker}/${VER}/${marker}-${VER}.pom"
-        central="https://repo1.maven.org/maven2/ee/schimke/composeai/preview/${marker}/${VER}/${marker}-${VER}.pom"
 
-        # The portal 303s to Central for released markers, so one -L probe usually settles it;
-        # Central is probed directly as a second chance because the auto-inject init script
-        # declares both repositories and Gradle resolves from whichever answers.
-        probe() {
-          curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 60 "$1" 2>/dev/null
+        # Digits only, before the value reaches any arithmetic expansion. Bash evaluates array
+        # subscripts recursively inside $(( … )), so `x[$(cmd)]` would execute `cmd` — and this is a
+        # consumer-facing input a caller could wire to a dispatch or pull-request value.
+        case "$BUDGET" in
+          ''|*[!0-9]*)
+            printf '::error::plugin-readiness-timeout must be a whole number of seconds; got %s\n' "$BUDGET"
+            exit 1
+            ;;
+        esac
+
+        marker='ee.schimke.composeai.preview.gradle.plugin'
+        marker_path="ee/schimke/composeai/preview/${marker}/${VER}/${marker}-${VER}.pom"
+        # The marker POM is a `pom`-packaged stub whose only content is a dependency on the
+        # implementation, in a different group. A 200 on it therefore does not mean the plugin
+        # classpath resolves — during partial CDN propagation the marker can be up while the jar
+        # the buildscript actually loads is not. Probe both.
+        impl='compose-preview-plugin'
+        impl_path="ee/schimke/composeai/${impl}/${VER}/${impl}-${VER}.jar"
+        portal='https://plugins.gradle.org/m2'
+        central='https://repo1.maven.org/maven2'
+
+        last=""
+        deadline=$(( $(date +%s) + BUDGET ))
+        remaining() {
+          local left=$(( deadline - $(date +%s) ))
+          [ "$left" -lt 0 ] && left=0
+          printf '%s' "$left"
         }
 
-        deadline=$(( $(date +%s) + BUDGET ))
-        last=""
-        while :; do
-          inconclusive=""
-          for url in "$portal" "$central"; do
+        # Each probe is bounded by what is left of the budget, so the step cannot overrun the number
+        # of seconds the caller asked for by a whole probe cycle. Floors at 5s because curl treats
+        # --max-time 0 as "no limit", which would be the opposite of the intent.
+        probe() {
+          local cap
+          cap="$(remaining)"
+          [ "$cap" -gt 30 ] && cap=30
+          [ "$cap" -lt 5 ] && cap=5
+          curl -sSL -o /dev/null -w '%{http_code}' \
+            --connect-timeout 10 --max-time "$cap" "$1" 2>/dev/null
+        }
+
+        # 0 = found on one of the mirrors, 1 = absent from all of them, 2 = no verdict (a registry
+        # answered 429/5xx, which says "would not answer", not "artifact is missing"). Both
+        # mirrors are always tried before a no-verdict, so a rate-limited portal cannot hide a
+        # Central 200.
+        check() {
+          local url code inconclusive=0
+          for url in "$@"; do
             code="$(probe "$url")"
             last="$code"
             if [ "$code" = "200" ]; then
-              printf '✓ plugin %s:%s is resolvable.\n' "$marker" "$VER"
-              exit 0
+              return 0
             fi
-            # 429 / 5xx say "the registry would not answer", not "the artifact is missing".
-            # Failing the job on those would turn a Central rate-limit into a fake release race.
-            # Both registries are tried first — a rate-limited portal must not hide a Central 200.
             case "$code" in
-              429|5??) inconclusive="$url answered $code" ;;
+              429|5??) inconclusive=1 ;;
             esac
           done
-          if [ -n "$inconclusive" ]; then
-            printf '::warning::compose-preview install: %s while checking whether plugin %s is published; proceeding without a verdict.\n' "$inconclusive" "$VER"
+          [ "$inconclusive" -eq 1 ] && return 2
+          return 1
+        }
+
+        while :; do
+          check "$portal/$marker_path" "$central/$marker_path"
+          marker_state=$?
+          check "$portal/$impl_path" "$central/$impl_path"
+          impl_state=$?
+
+          if [ "$marker_state" -eq 0 ] && [ "$impl_state" -eq 0 ]; then
+            printf '✓ plugin %s:%s and its implementation are resolvable.\n' "$marker" "$VER"
             exit 0
           fi
-          now="$(date +%s)"
-          if [ "$now" -ge "$deadline" ]; then
+          if [ "$marker_state" -eq 2 ] || [ "$impl_state" -eq 2 ]; then
+            printf '::warning::compose-preview install: a registry answered %s while checking whether plugin %s is published; proceeding without a verdict.\n' "$last" "$VER"
+            exit 0
+          fi
+
+          left="$(remaining)"
+          if [ "$left" -le 0 ]; then
             break
           fi
-          printf 'plugin %s:%s not published yet (HTTP %s); retrying in 15s (until the %ss budget runs out).\n' "$marker" "$VER" "$last" "$BUDGET"
-          sleep 15
+          nap=15
+          [ "$nap" -gt "$left" ] && nap="$left"
+          printf 'plugin %s:%s not published yet (last HTTP %s); retrying in %ss (%ss of the %ss budget left).\n' "$marker" "$VER" "$last" "$nap" "$left" "$BUDGET"
+          sleep "$nap"
         done
 
-        printf '::error title=compose-preview plugin not published yet::The CLI release %s exists, but its Gradle plugin %s:%s is not resolvable from plugins.gradle.org or Maven Central after %ss (last HTTP %s). This is the publication window, not a problem with your project: a release is downloadable as a CLI before the plugin of the same version publishes. Re-run in a few minutes, or pin the previous release (version: <older>, or composePreview.version in gradle.properties). Checked %s\n' "$VER" "$marker" "$VER" "$BUDGET" "$last" "$portal"
+        printf '::error title=compose-preview plugin not published yet::The CLI release %s exists, but its Gradle plugin (%s:%s and its implementation ee.schimke.composeai:%s) is not resolvable from plugins.gradle.org or Maven Central after %ss (last HTTP %s). This is the publication window, not a problem with your project: a release is downloadable as a CLI before the plugin of the same version publishes. Re-run in a few minutes, or pin the previous release (version: <older>, or composePreview.version in gradle.properties).\n' "$VER" "$marker" "$VER" "$impl" "$BUDGET" "$last"
         exit 1
 
     - name: Download CLI
