@@ -717,6 +717,67 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > `Shape`, a domain type), any callback of arity two or more, any callback with a
 > non-`Unit` return. Widening the placeholder table is the obvious next increment
 > and should be paid for by the compile gate, not by confidence.
+>
+> **The gate is in, and it paid for itself on the first run.**
+> `ComponentCallSiteCompileFunctionalTest` builds a real Compose Multiplatform
+> project, discovers its `androidx.compose.material3` components, prints their call
+> sites, writes them into that project and compiles them — so the Kotlin compiler,
+> not an argument in a code review, decides whether a snippet is real. Its
+> load-bearing assertion is the vacuity guard: a generator that refused everything
+> would emit an empty file that compiles perfectly, so the test names components it
+> insists were emitted.
+>
+> That guard failed immediately, on `Text`. Kotlin mangles the JVM name of any
+> function whose signature mentions a value class, so `androidx.compose.material3.Text`
+> compiles to `TextKt."Text-Nvy7gAk"` — its `fontSize`, `color` and `overflow`
+> parameters are `TextUnit`, `Color` and `TextOverflow`. `isComponentLibraryTarget`
+> rejects a name that is not a usable Kotlin import, and a mangled name is not, so
+> **every Material 3 component whose signature mentions `Color`, `Dp` or `TextUnit`
+> was being dropped from the record**. A preview whose only call was `Text` inferred
+> no component at all. `Button` and `Card` take no value-class parameters, which is
+> exactly why the hand-written unit tests were green and stayed green.
+>
+> The same mangling drops the project's *own* composables from `targets`:
+> `AppTile(padding: Dp)` compiles to `AppTile-<hash>`, so its preview reports
+> `targets = []` for a composable the preview does nothing but render. **That half is
+> deliberately left alone**, because `DiscoveryFunctionalTest` pins it with a
+> purpose-built `@JvmInline` fixture — a decision, not an oversight — and the two
+> paths can legitimately differ: `ComponentSymbol` separates `callable` (the
+> source-level name an import needs) from `jvmOwner` (the reflection handle), while a
+> `targets` entry has a single name that consumers may be using as a JVM lookup key,
+> and `ComponentsKt.Screen` does not exist at runtime when the method is
+> `Screen-<hash>`. Whether `targets` should demangle is a question for whoever owns
+> that contract; if it should, `Dp` and `Color` parameters are ordinary enough in app
+> code that this is §1's "detect components from previews in typical projects"
+> failing on the typical projects.
+>
+> The lesson generalises past this bug: a corpus you chose is a corpus that agrees
+> with you. Both fixtures I picked by hand happened to avoid the one construct that
+> breaks the path, and only compiling something real found it.
+>
+> **Measured reach.** Over a 28-component Material 3 surface (buttons, cards, chips,
+> toggles, progress, scaffolding, list and navigation items, dialogs), **26 emit a
+> call site and 2 refuse** — the two being `TextField` / `OutlinedTextField`, whose
+> required `state: TextFieldState` genuinely has no literal to write. So the
+> placeholder table is not the bottleneck it looked like from the outside, and
+> widening it further would buy very little: what is left needs *values*, which is
+> Phase 2's argument binding, not more literals.
+>
+> The first run of that measurement read 25/30 with five refusals, three of which —
+> `Checkbox`, `RadioButton`, `Switch` — turned out to share one cause: material3
+> declares their callbacks `((Boolean) -> Unit)?`, and no lambda-shaped rule accepts
+> a nullable function type. Fixing that also surfaced a trap worth recording, because
+> the obvious fix is wrong: a rendered type ending in `?` does **not** mean the
+> parameter is nullable. `(Int) -> String?` is a non-null callback returning a
+> nullable value, and answering `null` for it emits source that does not compile.
+> Nullability is now carried structurally on `TargetParameter.nullable` rather than
+> read off the spelling — and `renderType` separately parenthesises nullable function
+> types, because `(Boolean) -> Unit?` was being handed to every consumer as the
+> rendering of `((Boolean) -> Unit)?`.
+>
+> Caveat on the number: that surface is hand-picked, so it measures the *table*, not
+> a catalog. The corpus ratios §7 asks for still have to come from m3-catalog,
+> wear-m3 and Confetti.
 
 **Phase 4 — the builder on the record.** Generate the capability catalog;
 generate `UiBuilderRenderer` / `CapabilityComposeCodeExporter` for the Wasm tier

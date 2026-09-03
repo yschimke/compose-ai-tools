@@ -32,12 +32,14 @@ class ComponentSnippetsTest {
     type: String,
     hasDefault: Boolean = false,
     composableSlot: Boolean = false,
+    nullable: Boolean = false,
   ) =
     TargetParameter(
       name = name,
       type = type,
       hasDefault = hasDefault,
       composableSlot = composableSlot,
+      nullable = nullable,
     )
 
   private fun emitted(record: ComponentRecord): ComponentSnippet.Emitted =
@@ -113,7 +115,7 @@ class ComponentSnippetsTest {
           parameters =
             listOf(
               parameter("imageVector", "ImageVector"),
-              parameter("contentDescription", "String?"),
+              parameter("contentDescription", "String?", nullable = true),
             ),
         )
       )
@@ -161,9 +163,50 @@ class ComponentSnippetsTest {
 
   @Test
   fun `a required nullable parameter takes null`() {
-    val snippet = emitted(record(parameters = listOf(parameter("label", "String?"))))
+    val snippet =
+      emitted(record(parameters = listOf(parameter("label", "String?", nullable = true))))
 
     assertThat(snippet.code).isEqualTo("Button(label = null)")
+  }
+
+  @Test
+  fun `a nullable callback takes null rather than being refused`() {
+    // material3's `Checkbox(onCheckedChange: ((Boolean) -> Unit)?)`, and `RadioButton` / `Switch`
+    // alongside it. No lambda-shaped rule accepts a nullable function type, so before the nullable
+    // test came first these were refused outright.
+    val snippet =
+      emitted(
+        record(
+          parameters = listOf(parameter("onCheckedChange", "((Boolean) -> Unit)?", nullable = true))
+        )
+      )
+
+    assertThat(snippet.code).isEqualTo("Button(onCheckedChange = null)")
+  }
+
+  @Test
+  fun `a record written before the nullable field still answers null for a nullable type`() {
+    // A persisted v1 `components.json` has no `nullable`, so it deserialises to `false`. Without
+    // a spelling fallback for non-function types, every `String?` such a record carries would go
+    // from emitting `null` to being refused purely by upgrading the reader.
+    val snippet =
+      emitted(record(parameters = listOf(parameter("label", "String?", nullable = false))))
+
+    assertThat(snippet.code).isEqualTo("Button(label = null)")
+  }
+
+  @Test
+  fun `a non-null callback returning a nullable value is refused, not given null`() {
+    // The trap the structural `nullable` flag exists to avoid. `(Int) -> String?` ends in `?` and
+    // is *not* nullable — the return type is. Reading nullability off the spelling would emit
+    // `lookup = null` for a non-null parameter, which does not compile; `emptyLambda` then refuses
+    // it for the separate reason that `{}` cannot return a `String?`.
+    assertThat(
+        refusal(
+          record(parameters = listOf(parameter("lookup", "(Int) -> String?", nullable = false)))
+        )
+      )
+      .contains("lookup")
   }
 
   @Test

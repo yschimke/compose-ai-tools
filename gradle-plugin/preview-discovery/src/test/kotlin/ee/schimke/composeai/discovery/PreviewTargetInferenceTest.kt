@@ -123,6 +123,38 @@ class PreviewTargetInferenceTest {
   }
 
   @Test
+  fun `the source name from metadata is what the import rule judges`() {
+    // `androidx.compose.material3.Text` compiles to `Text-Nvy7gAk` because its `fontSize`, `color`
+    // and `overflow` parameters are value classes. Judged on the JVM name it is not a usable
+    // import and was rejected, which dropped every Material 3 component mentioning `Color`, `Dp`
+    // or `TextUnit`. `inferComponents` reads the source name from metadata and passes that here.
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.TextKt",
+          "Text",
+          returnsUnit = true,
+        )
+      )
+      .isTrue()
+  }
+
+  @Test
+  fun `a backtick-escaped name containing a hyphen is still not an import`() {
+    // ``fun `filled-button`()`` is legal Kotlin, and its *source* name really does contain a
+    // hyphen — so it is not a usable import and must stay rejected. This is why the source name
+    // comes from metadata rather than from trimming the JVM name at the first `-`, which would
+    // have turned this into `filled` and published a function that does not exist.
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.compose.material3.ButtonKt",
+          "filled-button",
+          returnsUnit = true,
+        )
+      )
+      .isFalse()
+  }
+
+  @Test
   fun `a name that is not a usable Kotlin import is rejected`() {
     assertThat(
         PreviewTargetInference.isComponentLibraryTarget(

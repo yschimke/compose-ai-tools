@@ -56,3 +56,9 @@ fun mixedKnobComponent(modifier: List<String> = emptyList(), count: Int = 1) {}
 /** A nullable knob type is excluded: `null` is how the renderer says "take the author default". */
 @Suppress("unused", "UNUSED_PARAMETER")
 fun nullableKnobComponent(label: String? = null, enabled: Boolean = true) {}
+
+// A nullable function-typed parameter — the shape material3's
+// `Checkbox(onCheckedChange: ((Boolean) -> Unit)?)` has, and the one whose rendering used to be
+// ambiguous with a non-null callback returning `Unit?`.
+@Suppress("unused")
+fun nullableCallbackComponent(onCheckedChange: ((Boolean) -> Unit)?, onClick: (() -> Unit)?) {}

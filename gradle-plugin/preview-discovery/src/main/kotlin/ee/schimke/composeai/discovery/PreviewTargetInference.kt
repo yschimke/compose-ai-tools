@@ -190,30 +190,38 @@ object PreviewTargetInference {
         .asSequence()
         .filter { call -> COMPONENT_LIBRARY_FQN_PREFIXES.any { call.ownerFqn.startsWith(it) } }
         .mapNotNull { resolveCandidate(it, scanResult) }
-        .filter {
+        // Pair each candidate with its metadata up front, because the *source* name lives there
+        // and every decision below is about the source name. A candidate whose metadata cannot be
+        // read is dropped: without it there is no way to tell a mangled JVM name from a legally
+        // escaped one, and reporting the JVM name is how a nonexistent import gets published.
+        .mapNotNull { candidate ->
+          ComposableSignature.signatureOf(candidate.classInfo, candidate.method)?.let {
+            candidate to it
+          }
+        }
+        .filter { (candidate, signature) ->
           isComponentLibraryTarget(
-            ownerFqn = it.ownerFqn,
-            methodName = it.method.name,
-            returnsUnit = it.method.typeDescriptor?.resultType?.toString() == "void",
+            ownerFqn = candidate.ownerFqn,
+            methodName = signature.name,
+            returnsUnit = candidate.method.typeDescriptor?.resultType?.toString() == "void",
           )
         }
-        .distinctBy { it.ownerFqn to it.method.name }
+        .distinctBy { (candidate, signature) -> candidate.ownerFqn to signature.name }
         .toList()
     if (candidates.isEmpty()) return emptyList()
     val confidence = if (candidates.size == 1) TargetConfidence.HIGH else TargetConfidence.MEDIUM
-    return candidates.map { candidate ->
-      val signature = ComposableSignature.signatureOf(candidate.classInfo, candidate.method)
+    return candidates.map { (candidate, signature) ->
       PreviewTarget(
         className = candidate.ownerFqn,
-        functionName = candidate.method.name,
+        functionName = signature.name,
         // A library symbol has no source file in this build; `sourceFile` stays null and
         // [PreviewTarget.origin] is what says so, rather than the null being read as "library".
         sourceFile = null,
         confidence = confidence,
         signals = listOf(TargetSignal.LIBRARY_COMPONENT),
-        parameters = signature?.parameters.orEmpty(),
-        receiver = signature?.receiver,
-        signatureKnown = signature != null,
+        parameters = signature.parameters,
+        receiver = signature.receiver,
+        signatureKnown = true,
       )
     }
   }
@@ -536,6 +544,22 @@ object PreviewTargetInference {
    *   and `MaterialTheme.typography` are `@Composable` property getters that pass every other test
    *   here, and reporting them would describe a sticker's theme lookup as its subject;
    * * not a [THEME_ENTRY_POINTS] member — the frame a sticker is drawn in rather than its subject.
+   */
+  /**
+   * Whether a resolved call in a component library is the **component a sticker demonstrates**.
+   *
+   * [methodName] must be the **source** name from `@kotlin.Metadata`, never the JVM one. Kotlin
+   * mangles the JVM name of any function whose signature mentions a value class, so
+   * `androidx.compose.material3.Text` compiles to `TextKt."Text-Nvy7gAk"` — its `fontSize`, `color`
+   * and `overflow` are `TextUnit`, `Color` and `TextOverflow`. Judged on the JVM name the import
+   * rule below rejects it, which silently dropped **every Material 3 component whose signature
+   * mentions `Color`, `Dp` or `TextUnit`** from the component record, `Text` included: a preview
+   * whose only call was `Text` inferred no component at all.
+   *
+   * Recovering the source name by trimming at the first `-` would be wrong in the other direction.
+   * A backtick-escaped declaration is legal Kotlin and its own name may contain a hyphen — ``fun
+   * `filled-button`()`` — so trimming publishes `filled`, a function that does not exist. Only
+   * metadata separates the two, which is why [inferComponents] reads it before deciding anything.
    */
   internal fun isComponentLibraryTarget(
     ownerFqn: String,
