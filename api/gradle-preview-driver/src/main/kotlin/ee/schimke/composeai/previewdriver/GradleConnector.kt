@@ -4,7 +4,9 @@ import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.net.URI
 import java.util.Collections
+import java.util.Properties
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.events.FailureResult
@@ -50,6 +52,17 @@ class GradleConnection(
    * manually wired it in their `build.gradle.kts`. See [autoInjectInitScriptArgs] for the source.
    */
   private val extraArguments: List<String> = emptyList(),
+  /**
+   * Optional second opinion on a build failure: given everything this connection saw of it
+   * (Gradle's captured stderr plus the exception chain), returns one message to print after the
+   * failure report, or null when it recognises nothing.
+   *
+   * The driver deliberately knows nothing about *why* a particular string is worth explaining — the
+   * CLI supplies the knowledge, because that is where it lives. Today the CLI uses it to name the
+   * publication race behind an unresolvable plugin marker (issue #5034), which otherwise arrives as
+   * a configuration failure in the consumer's own project and is diagnosed as one.
+   */
+  private val failureAdvice: (String) -> String? = { null },
 ) : AutoCloseable {
   companion object {
     /**
@@ -69,7 +82,16 @@ class GradleConnection(
     const val DEFAULT_TIMEOUT_SECONDS: Long = 600
   }
 
-  private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
+  private val connector =
+    GradleConnector.newConnector().forProjectDirectory(projectDir).apply {
+      // `forProjectDirectory` takes the distribution from *that* directory's
+      // gradle/wrapper/gradle-wrapper.properties, and silently falls back to the Tooling API's own
+      // default when there is none. A nested build that borrows its parent repository's wrapper
+      // (issue #5031) has none of its own, so without this it would be driven by a Gradle the
+      // repository never chose. Inherit the nearest ancestor's wrapper distribution instead, which
+      // is exactly what `../gradlew` would have used.
+      inheritedWrapperDistribution(projectDir)?.let { useDistribution(it) }
+    }
   private val connection = connector.connect()
   private var modelAccessFailure: GradleAccessFailure? = null
 
@@ -313,6 +335,11 @@ class GradleConnection(
       }
     }
 
+    failureAdvice((captured + "\n" + messages.joinToString("\n")).trim())?.let {
+      System.err.println()
+      System.err.println(it)
+    }
+
     System.err.println()
     System.err.println("Run with --verbose for full build output.")
   }
@@ -499,6 +526,34 @@ class GradleConnection(
       )
   }
 }
+
+/**
+ * The `distributionUrl` of the nearest **ancestor** wrapper of [projectDir], or null when
+ * [projectDir] has a wrapper of its own (the Tooling API reads that one itself), when no ancestor
+ * has one, or when the URL is unusable (missing, relative, unparseable).
+ *
+ * Only the ancestor case is interesting: a build root with its own wrapper is already handled by
+ * `forProjectDirectory`, and overriding it here would change which Gradle drives it.
+ */
+internal fun inheritedWrapperDistribution(projectDir: File): URI? {
+  if (wrapperProperties(projectDir) != null) return null
+  var dir: File? = projectDir.parentFile
+  while (dir != null) {
+    wrapperProperties(dir)?.let { props ->
+      return runCatching {
+        val loaded = Properties().apply { props.inputStream().use { load(it) } }
+        val url = loaded.getProperty("distributionUrl")?.trim()?.takeIf { it.isNotEmpty() }
+        url?.let { URI(it) }?.takeIf { it.isAbsolute }
+      }
+        .getOrNull()
+    }
+    dir = dir.parentFile
+  }
+  return null
+}
+
+private fun wrapperProperties(dir: File): File? =
+  File(dir, "gradle/wrapper/gradle-wrapper.properties").takeIf { it.isFile }
 
 private object NullOutputStream : OutputStream() {
   override fun write(b: Int) {}

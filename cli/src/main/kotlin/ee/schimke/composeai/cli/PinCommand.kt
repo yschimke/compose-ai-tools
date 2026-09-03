@@ -62,7 +62,10 @@ class PinCommand(
     val root =
       projectRoot
         ?: run {
-          stderr("compose-preview pin: cannot find a Gradle project root (no gradlew found).")
+          stderr(
+            "compose-preview pin: cannot find a Gradle project root " +
+              "(no settings.gradle[.kts] and no gradlew at or above this directory)."
+          )
           exitProcess(1)
         }
 

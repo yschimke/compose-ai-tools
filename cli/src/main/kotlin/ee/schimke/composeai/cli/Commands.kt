@@ -13,6 +13,7 @@ import ee.schimke.composeai.previewdata.PreviewModule
 import ee.schimke.composeai.previewdata.PreviewResult
 import ee.schimke.composeai.previewdata.PreviewResultBuilder
 import ee.schimke.composeai.previewdata.previewSha256
+import ee.schimke.composeai.previewdriver.GradleAccessFailure
 import ee.schimke.composeai.previewdriver.GradleConnection
 import ee.schimke.composeai.previewdriver.GradleTaskOutcome
 import ee.schimke.composeai.previewdriver.ProjectDiscoveryFailure
@@ -344,9 +345,14 @@ abstract class Command(
     val root =
       findProjectRoot()
         ?: run {
-          System.err.println("Cannot find Gradle project root (no gradlew found)")
+          val here = File(".").absoluteFile.normalize().path
+          System.err.println(
+            "Cannot find Gradle project root: no settings.gradle[.kts] and no gradlew at or " +
+              "above $here"
+          )
           exitProcess(1)
         }
+    noteResolvedProjectRoot(root)
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = root)
     val connection =
       withGradleStdout(silenceStdout) {
@@ -361,6 +367,7 @@ abstract class Command(
           verbose,
           progress,
           extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
+          failureAdvice = ::buildFailureAdvice,
         )
       }
     connection.use(block)
@@ -390,15 +397,17 @@ abstract class Command(
           )
           System.err.println("Gradle ${it.operation} failed: ${it.message}")
           it.detail?.let { detail -> System.err.println("Caused by: $detail") }
-          System.err.println(
-            "Check Gradle wrapper/cache access, then rerun with --verbose for full output."
-          )
+          printModelAccessAdvice(it)
           exitProcess(1)
         }
         System.err.println(
           "Module '$explicitModule' not found or does not apply the compose-ai-tools plugin."
         )
-        printDiscoveryFailures(gradle.lastDiscoveryFailures)
+        printDiscoveryFailures(
+          gradle.lastDiscoveryFailures,
+          pluginVersion = injectedPluginVersion,
+          pluginVersionSource = injectedPluginVersionSource,
+        )
         exitProcess(1)
       }
       return listOf(one)
@@ -410,13 +419,15 @@ abstract class Command(
         System.err.println("Could not query Gradle project model.")
         System.err.println("Gradle ${it.operation} failed: ${it.message}")
         it.detail?.let { detail -> System.err.println("Caused by: $detail") }
-        System.err.println(
-          "Check Gradle wrapper/cache access, then rerun with --verbose for full output."
-        )
+        printModelAccessAdvice(it)
         exitProcess(1)
       }
       System.err.println("No preview modules discovered in this project.")
-      printDiscoveryFailures(gradle.lastDiscoveryFailures)
+      printDiscoveryFailures(
+        gradle.lastDiscoveryFailures,
+        pluginVersion = injectedPluginVersion,
+        pluginVersionSource = injectedPluginVersionSource,
+      )
       exitProcess(1)
     }
     if (verbose || modules.size > 1) {
@@ -1044,7 +1055,72 @@ abstract class Command(
   }
 
   protected fun findProjectRoot(): File? = findGradleProjectRoot()
+
+  /**
+   * The version pin in force for this run, resolved once. Read for two things that both need to
+   * name a version the user never typed: the auto-inject diagnosis in [buildFailureAdvice]
+   * (issue #5034) and the attribution in its message.
+   */
+  private val resolvedPin: ResolvedVersionPin? by lazy {
+    resolveVersionPin(findProjectRoot(), args)
+  }
+
+  /** The compose-preview plugin version this run injects — the pin when there is one, else ours. */
+  protected val injectedPluginVersion: String
+    get() = resolvedPin?.version ?: BUNDLE_VERSION
+
+  /** Where [injectedPluginVersion] came from, or null when it is simply the CLI's own version. */
+  protected val injectedPluginVersionSource: String?
+    get() = resolvedPin?.source?.display
+
+  /**
+   * The advice hook handed to every [GradleConnection] this command opens: recognises the
+   * compose-preview plugin marker failing to resolve and explains the publication window, so it is
+   * not diagnosed as a configuration problem in the user's own project (issue #5034).
+   */
+  protected fun buildFailureAdvice(failureText: String): String? =
+    pluginResolutionGuidance(failureText, injectedPluginVersion, injectedPluginVersionSource)
+
+  /**
+   * Prints what to do about a failed Gradle model query: the plugin-publication explanation when
+   * that is what it was, else the generic "check wrapper/cache access" pointer this always had.
+   */
+  private fun printModelAccessAdvice(failure: GradleAccessFailure) {
+    val text = listOfNotNull(failure.message, failure.detail).joinToString("\n")
+    val advice = buildFailureAdvice(text)
+    if (advice != null) {
+      System.err.println()
+      System.err.println(advice)
+    } else {
+      System.err.println(
+        "Check Gradle wrapper/cache access, then rerun with --verbose for full output."
+      )
+    }
+  }
+
+  /**
+   * Names the build the CLI resolved whenever that is **not** the directory it was invoked from —
+   * once per process, on stderr.
+   *
+   * This is the line issue #5031 was missing. When root resolution picks a build other than the one
+   * the user is standing in, every diagnostic that follows is a *true statement about a build they
+   * never named* — a project count, a set of configuration failures, an Isolated Projects error —
+   * and nothing anywhere says which build it is talking about. One line makes a mis-resolution
+   * legible instead of arriving as a wall of unrelated configuration failures. It is also correct
+   * and useful in the ordinary case of standing in a subproject: that is the build being driven.
+   */
+  private fun noteResolvedProjectRoot(root: File) {
+    val cwd = File(".").absoluteFile.normalize()
+    if (root.absoluteFile.normalize() == cwd) return
+    if (!projectRootNotePrinted.compareAndSet(false, true)) return
+    System.err.println(
+      "compose-preview: driving the Gradle build at ${root.path} (from ${cwd.path})."
+    )
+  }
 }
+
+/** One [Command.noteResolvedProjectRoot] line per process, however many connections it opens. */
+private val projectRootNotePrinted = AtomicBoolean(false)
 
 /**
  * Preview kinds whose render legitimately never emits a PNG, so a null `pngPath` is expected rather
@@ -1070,8 +1146,20 @@ internal fun printDiscoveryFailures(
   failures: List<ProjectDiscoveryFailure>,
   limit: Int = 10,
   err: (String) -> Unit = System.err::println,
+  pluginVersion: String? = null,
+  pluginVersionSource: String? = null,
 ) {
   if (failures.isEmpty()) return
+  // The plugin marker not resolving is never the consumer's build being wrong, so it pre-empts
+  // both the AGP guidance and the per-project list (issue #5034).
+  failures
+    .firstNotNullOfOrNull {
+      pluginResolutionGuidance(it.message, pluginVersion, pluginVersionSource)
+    }
+    ?.let {
+      err(it)
+      return
+    }
   // When the failures are dominated by the "auto-injected plugin can't see AGP" signature there's
   // a single actionable cause — emit the guidance instead of N cryptic NoClassDefFoundError stacks
   // (issue #1947).
