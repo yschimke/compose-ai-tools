@@ -646,7 +646,9 @@ test("only a frozen reading is announced", () => {
   assert.match(html, /if \(PICK\.locked\) announce\(frozenSummary\(\)\);/);
   // Released readings stop being announced, and a refreshed frozen one is re-announced.
   assert.match(html, /announce\(""\);/);
-  assert.match(html, /if \(PICK\.locked && LAST\.shot && LAST\.shot\.closest\("tr\.crow"\) === tr\) announce\(frozenSummary\(\)\);/);
+  // Announced where a reading settles, so every refresh path publishes the settled values
+  // rather than whatever the panel held when a caller happened to ask.
+  assert.match(html, /if \(PICK\.locked && PICK\.ready\) announce\(frozenSummary\(\)\);/);
   // Off-screen rather than display:none, which would take it out of the accessibility tree.
   assert.match(html, /\.pick-live \{ position:absolute; width:1px; height:1px;/);
 });

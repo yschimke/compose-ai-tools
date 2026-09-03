@@ -848,6 +848,12 @@ const SCORER = String.raw`
     panel.classList.toggle("pick--left", rect.left + fx > window.innerWidth / 2);
     panel.hidden = false;
     marks(tr, fx, fy);
+    // Announce from here rather than from the callers, because here is where a reading actually
+    // settles. A frozen one is refreshed by several paths — a rescore, an image finishing its
+    // decode, an origin-clean copy landing — and announcing at any single call site publishes
+    // whatever the panel held at that moment, which on the pending path is "still loading". The
+    // readiness test is what keeps the announcement to settled values.
+    if (PICK.locked && PICK.ready) announce(frozenSummary());
   }
 
   function wirePicker() {
@@ -984,9 +990,9 @@ const SCORER = String.raw`
       // Then re-read the point being shown. A frozen reading is the case that needs this: the
       // lock stops pointer moves from refreshing it, so a theme or backdrop change would leave
       // the panel asserting the previous pass's colours — over the previous pass's ground —
-      // against a picture that has moved on. Re-announce it too, for the same reason.
+      // against a picture that has moved on. pickAt re-announces a frozen reading once it
+      // settles, which may be later than this call if the replacement has yet to decode.
       replayPick(tr);
-      if (PICK.locked && LAST.shot && LAST.shot.closest("tr.crow") === tr) announce(frozenSummary());
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.className = "score score--" + grade(pct);
