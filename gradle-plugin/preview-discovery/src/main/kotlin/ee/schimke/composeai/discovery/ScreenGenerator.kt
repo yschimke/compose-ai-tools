@@ -514,6 +514,12 @@ object ScreenGenerator {
         reasons += "$where nests values more than $MAX_VALUE_DEPTH deep"
         return null
       }
+      // Collected for every nesting level, not just the outermost, because a construct's argument
+      // is as capable of naming a gated API as the construct itself. Unioned into the same two
+      // sets a component's markers go into, so the wrapper carries one `@OptIn` of each mechanism
+      // however many places asked for it.
+      optIns += value.requiredOptIns
+      androidxOptIns += value.androidxOptIns
       return when (value) {
         is ScreenValue.Text -> string(value.value, where)
         is ScreenValue.Bool -> value.value.toString()
@@ -557,6 +563,31 @@ object ScreenGenerator {
               // file this generator had already called compilable.
               val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
+              // A chain link is *imported* and called by its simple name, so it has to be a
+              // top-level declaration. `RowScope.weight` is not: it is a member extension of the
+              // scope, supplied by an implicit receiver, and neither
+              // `import …layout.RowScope.weight` nor a package-level `…layout.weight` resolves.
+              // Emitted anyway it produces a file that fails on the import line.
+              //
+              // The qualifier's case is the evidence available here. Kotlin packages are lower
+              // case and classifiers are capitalised by universal convention, so a capitalised
+              // penultimate segment names a classifier and therefore a member. That is a
+              // convention rather than a rule — a top-level callable in a package with a
+              // capitalised segment is legal and would be refused — and refusing the legal
+              // oddity beats emitting the common one broken.
+              if (
+                link.callableFqn
+                  .substringBeforeLast('.')
+                  .substringAfterLast('.')
+                  .firstOrNull()
+                  ?.isUpperCase() == true
+              ) {
+                reasons +=
+                  "$where links `${link.callableFqn}`, whose qualifier names a classifier rather " +
+                    "than a package — a member extension comes from an implicit receiver and " +
+                    "cannot be imported"
+                return null
+              }
               if (!link.property && simple == screenName) {
                 // An extension imported under the screen's own name is shadowed by the function
                 // being generated, so the chain would call the screen — or fail to resolve.

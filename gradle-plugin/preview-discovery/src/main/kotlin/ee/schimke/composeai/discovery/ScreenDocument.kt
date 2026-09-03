@@ -92,6 +92,27 @@ sealed interface ScreenValue {
   val typeFqn: String?
     get() = null
 
+  /**
+   * `@RequiresOptIn` markers the expression needs, declared with `kotlin.RequiresOptIn`.
+   *
+   * The generator unions these into the wrapper's `@OptIn` exactly as it does for a component's
+   * [ComponentCode.requiredOptIns]. It has to be declared rather than derived: a component's
+   * markers come from the record, which discovery read off the class file, but a value names an
+   * arbitrary allowed callable and nothing here has that callable's annotations. So a projection
+   * reaching for an experimental accessor says so, and one that forgets gets a file the compiler
+   * rejects — the same trade as [typeFqn], and the same reason it is written down here.
+   */
+  val requiredOptIns: List<String>
+    get() = emptyList()
+
+  /**
+   * The subset of [requiredOptIns] declared with `androidx.annotation.RequiresOptIn`, which needs
+   * `@androidx.annotation.OptIn(markerClass = […])` rather than `@kotlin.OptIn` — see
+   * [ComponentCode.androidxOptIns] for why the two are not interchangeable.
+   */
+  val androidxOptIns: List<String>
+    get() = emptyList()
+
   @Serializable data class Text(val value: String) : ScreenValue
 
   @Serializable data class Bool(val value: Boolean) : ScreenValue
@@ -118,6 +139,8 @@ sealed interface ScreenValue {
     val rootFqn: String,
     val members: List<String> = emptyList(),
     override val typeFqn: String,
+    override val requiredOptIns: List<String> = emptyList(),
+    override val androidxOptIns: List<String> = emptyList(),
   ) : ScreenValue
 
   /**
@@ -138,6 +161,8 @@ sealed interface ScreenValue {
     val positional: List<ScreenValue> = emptyList(),
     val named: Map<String, ScreenValue> = emptyMap(),
     override val typeFqn: String,
+    override val requiredOptIns: List<String> = emptyList(),
+    override val androidxOptIns: List<String> = emptyList(),
   ) : ScreenValue
 
   /**
@@ -158,6 +183,8 @@ sealed interface ScreenValue {
     val receiver: ScreenValue,
     val links: List<ChainLink>,
     override val typeFqn: String,
+    override val requiredOptIns: List<String> = emptyList(),
+    override val androidxOptIns: List<String> = emptyList(),
   ) : ScreenValue
 }
 

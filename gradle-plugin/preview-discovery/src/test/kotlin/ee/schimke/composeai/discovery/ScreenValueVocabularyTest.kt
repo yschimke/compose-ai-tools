@@ -557,6 +557,86 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a value's opt-in markers reach the wrapper, at any nesting depth`() {
+    val result =
+      emitted(
+        textNode(
+          "color" to
+            ScreenValue.Construct(
+              "androidx.compose.material3.ExperimentalColor",
+              positional =
+                listOf(
+                  ScreenValue.Reference(
+                    "androidx.compose.material3.MaterialTheme",
+                    listOf("colorScheme", "primary"),
+                    typeFqn = color,
+                    androidxOptIns = listOf("androidx.compose.material3.ExperimentalMaterial3Api"),
+                  )
+                ),
+              typeFqn = color,
+              requiredOptIns = listOf("com.example.ExperimentalPalette"),
+            )
+        ),
+        catalog(text),
+      )
+    // The outer construct's marker uses the Kotlin mechanism and the nested reference's uses the
+    // AndroidX one, so both annotations appear and neither marker lands under the wrong one.
+    assertThat(result.source).contains("@kotlin.OptIn(com.example.ExperimentalPalette::class)")
+    assertThat(result.source)
+      .contains(
+        "@androidx.annotation.OptIn(markerClass = " +
+          "[androidx.compose.material3.ExperimentalMaterial3Api::class])"
+      )
+    assertThat(result.requiredOptIns)
+      .containsExactly(
+        "com.example.ExperimentalPalette",
+        "androidx.compose.material3.ExperimentalMaterial3Api",
+      )
+  }
+
+  @Test
+  fun `a member extension is refused, because a chain link has to be importable`() {
+    // `RowScope.weight` is a member of the scope, handed over by an implicit receiver. Neither
+    // `import …layout.RowScope.weight` nor a package-level `…layout.weight` resolves, so importing
+    // it produces a file that fails on the import line.
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links = listOf(ChainLink("androidx.compose.foundation.layout.RowScope.weight")),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` links `androidx.compose.foundation.layout.RowScope.weight`, whose " +
+          "qualifier names a classifier rather than a package — a member extension comes from an " +
+          "implicit receiver and cannot be imported"
+      )
+  }
+
+  @Test
+  fun `a top-level extension in a lower-case package is still accepted`() {
+    val result =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Chain(
+              receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+              links = listOf(ChainLink("androidx.compose.foundation.layout.fillMaxWidth")),
+              typeFqn = modifier,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source).contains("import androidx.compose.foundation.layout.fillMaxWidth")
+  }
+
+  @Test
   fun `a node resolves by catalog alias as well as by canonical id`() {
     val byAlias = emitted(textNode(), catalog(text))
     val byCanonical =
