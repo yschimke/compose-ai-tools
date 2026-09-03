@@ -66,8 +66,19 @@ class ScreenValueVocabularyTest {
   private fun catalog(vararg records: ComponentRecord) =
     ComponentRecordFile(module = "app", variant = "debug", components = records.toList())
 
+  /**
+   * The vocabulary these fixtures name. Passed explicitly in every case, because the generator
+   * refuses a claimed value under a package the caller never declared — see the trusted-vocabulary
+   * test below for what that protects against.
+   */
+  private val allowed = setOf("androidx.compose", "com.example")
+
   private fun generate(root: ScreenNode, catalog: ComponentRecordFile, name: String = "Screen") =
-    ScreenGenerator.generate(ScreenDocument(name = name, root = root), catalog)
+    ScreenGenerator.generate(
+      ScreenDocument(name = name, root = root),
+      catalog,
+      expressionPackages = allowed,
+    )
 
   private fun emitted(root: ScreenNode, catalog: ComponentRecordFile, name: String = "Screen") =
     generate(root, catalog, name) as ScreenGenerator.Result.Emitted
@@ -456,6 +467,93 @@ class ScreenValueVocabularyTest {
         catalog(text),
       )
     assertThat(result.source).contains("modifier = 16.dp")
+  }
+
+  @Test
+  fun `a callable outside the declared vocabulary is refused, however well spelled`() {
+    // A document is wire data and a construct emits a qualified call with the arguments it carries,
+    // so spelling is not the question — a host that compiles and renders what it generated would
+    // have run this one.
+    val exploit =
+      ScreenValue.Construct(
+        callableFqn = "java.nio.file.Files.readString",
+        positional =
+          listOf(
+            ScreenValue.Construct(
+              callableFqn = "java.nio.file.Path.of",
+              positional = listOf(ScreenValue.Text("/etc/passwd")),
+              typeFqn = "java.nio.file.Path",
+            )
+          ),
+        typeFqn = "kotlin.String",
+      )
+    assertThat(
+        (ScreenGenerator.generate(
+            ScreenDocument("Screen", ScreenNode("m3/text", mapOf("text" to exploit))),
+            catalog(text),
+            expressionPackages = allowed,
+          ) as ScreenGenerator.Result.Refused)
+          .reasons
+      )
+      .contains(
+        "`Text`.`text` names `java.nio.file.Files.readString`, which is outside the packages this " +
+          "screen may call (androidx.compose, com.example)"
+      )
+  }
+
+  @Test
+  fun `an undeclared vocabulary refuses every claimed value, because the default is empty`() {
+    // Fail closed: a caller who never thought about the boundary gets refusals, not a wider one.
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          "Screen",
+          ScreenNode(
+            "m3/text",
+            mapOf(
+              "text" to ScreenValue.Text("hi"),
+              "color" to
+                ScreenValue.Reference(
+                  "androidx.compose.material3.MaterialTheme",
+                  listOf("colorScheme", "primary"),
+                  typeFqn = color,
+                ),
+            ),
+          ),
+        ),
+        catalog(text),
+      )
+    assertThat((result as ScreenGenerator.Result.Refused).reasons)
+      .containsExactly(
+        "`Text`.`color` names `androidx.compose.material3.MaterialTheme`, which is outside the " +
+          "packages this screen may call (none are allowed)"
+      )
+  }
+
+  @Test
+  fun `a longer sibling package does not satisfy a prefix`() {
+    assertThat(
+        (ScreenGenerator.generate(
+            ScreenDocument(
+              "Screen",
+              ScreenNode(
+                "m3/text",
+                mapOf(
+                  "text" to ScreenValue.Text("hi"),
+                  "color" to
+                    ScreenValue.Reference("androidx.composeevil.Exfiltrate", typeFqn = color),
+                ),
+              ),
+            ),
+            catalog(text),
+            expressionPackages = setOf("androidx.compose"),
+          ) as ScreenGenerator.Result.Refused)
+          .reasons
+      )
+      .contains(
+        "`Text`.`color` names `androidx.composeevil.Exfiltrate`, which is outside the packages " +
+          "this screen may call (androidx.compose)"
+      )
   }
 
   @Test

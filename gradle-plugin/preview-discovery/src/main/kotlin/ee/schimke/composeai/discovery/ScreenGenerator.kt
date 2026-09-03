@@ -54,6 +54,15 @@ package ee.schimke.composeai.discovery
  * trade is readability against a narrow hazard, and it is recorded here so it is a decision rather
  * than an oversight.
  *
+ * ## The one thing a caller must decide
+ *
+ * `expressionPackages` is not a convenience. A [ScreenDocument] is wire data, and
+ * [ScreenValue.Construct] emits a qualified call with document-supplied arguments — so without a
+ * declared vocabulary this object would happily generate
+ * `java.nio.file.Files.readString(java.nio.file.Path.of("/etc/passwd"))` for a `String` parameter,
+ * and a host that compiles and renders what it generated would run it. The set is empty by default,
+ * so a caller that has not thought about it gets refusals rather than arbitrary code.
+ *
  * A third gap arrived with the widened value vocabulary and is a different animal:
  * [ScreenValue.Reference], [ScreenValue.Construct] and [ScreenValue.Chain] carry a **claimed**
  * type. It is checked against the parameter, so a colour handed to a `String` is still refused, but
@@ -90,6 +99,7 @@ object ScreenGenerator {
     document: ScreenDocument,
     components: ComponentRecordFile,
     packageName: String = "generated.screen",
+    expressionPackages: Set<String> = emptySet(),
   ): Result {
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
@@ -150,7 +160,13 @@ object ScreenGenerator {
         }
         .map { it.canonicalId }
         .toSet()
-    val context = Emission(ComponentIndex(components.components), simplyImportable, document.name)
+    val context =
+      Emission(
+        ComponentIndex(components.components),
+        simplyImportable,
+        document.name,
+        expressionPackages,
+      )
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
 
@@ -271,6 +287,7 @@ object ScreenGenerator {
     val index: ComponentIndex,
     val simplyImportable: Set<String>,
     val screenName: String,
+    val expressionPackages: Set<String>,
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -601,8 +618,32 @@ object ScreenGenerator {
       // unchecked, `Construct("Color", …)` emitted a bare `Color(…)` into `package
       // generated.screen`
       // and this returned `Emitted` for it.
+      //
+      // Shape before trust, deliberately: a malformed name is malformed whatever vocabulary is
+      // declared, and "this is not a qualified name" is the more actionable of the two answers.
       if (fqn.isEmpty() || segments.size < 2 || segments.any { !isWritableName(it) }) {
         reasons += "$where refers to `$fqn`, which is not a qualified Kotlin name"
+        return null
+      }
+      // **The trust boundary.** Everything else in this file asks whether a name can be *written*;
+      // this asks whether it may be *called*, and the two are not the same question once a
+      // document arrives over the wire.
+      //
+      // `Construct` emits a fully-qualified call with the arguments the document supplies, so a
+      // spelling-only check admits any accessible JVM method:
+      // `Files.readString(Path.of("/etc/passwd"))` is a well-formed qualified call whose claimed
+      // type is `kotlin.String`, matches a `String` parameter, and generates without complaint. A
+      // host that then compiles and renders the screen — which is the point of generating it —
+      // has executed it.
+      //
+      // So a caller declares the vocabulary its projection is allowed to name, and the default is
+      // **empty**: a caller who never thought about this gets refusals rather than arbitrary code.
+      // A prefix matches the package itself or a name under it, never a longer sibling package,
+      // which is why the `.` is required rather than a bare `startsWith`.
+      if (expressionPackages.none { fqn == it || fqn.startsWith("$it.") }) {
+        reasons +=
+          "$where names `$fqn`, which is outside the packages this screen may call " +
+            "(${expressionPackages.sorted().joinToString(", ").ifEmpty { "none are allowed" }})"
         return null
       }
       return segments.joinToString(".") { ComponentSnippets.escapeIfKeyword(it) }
