@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-02T23:31:31.655Z",
+  "generatedAt": "2026-09-03T05:37:53.240Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "3f024613637d6c86bab8890d25d2e7a242da5926",
+        "subject": "fix(import): print a sidecar's cause, not the first 4000 bytes of its stack (#5041)",
+        "at": "2026-09-03T06:29:39+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "60c45e280c5525ce6065104e02d57048e3b96fc6",
         "subject": "fix(import): surface the renderer's .error.json sidecars when a render fails (#5035)",
@@ -475,14 +483,6 @@
         "subject": "chore(main): release 1.62.1 (#4963)",
         "at": "2026-09-02T03:11:17+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1b76108a07a93c0aa43bd849848675d5b487e51b",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.62.0 (#4962)",
-        "at": "2026-09-02T03:09:24+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
