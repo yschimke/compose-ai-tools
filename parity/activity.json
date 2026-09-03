@@ -1,11 +1,59 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T07:24:13.434Z",
+  "generatedAt": "2026-09-03T08:37:51.702Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "08eab81448e14c5759dc4b61c5cae604efc6b3f9",
+        "subject": "chore(main): release 1.70.0 (#5055)",
+        "at": "2026-09-03T09:08:31+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7b5620556ebc385b13c99f3493c58d33c06a812c",
+        "subject": "ci: move drift detectors and external integration cells to the nightly lane (#5062)",
+        "at": "2026-09-03T08:36:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "aee0ec49bbad82d3563bffc94cced5ec3c656d3a",
+        "subject": "docs(parity): record that D4's crude form landed with the viewer's locator (#5061)",
+        "at": "2026-09-03T08:28:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "865eec84a09d5bc06055c0021341fdbf65f894fa",
+        "subject": "fix(cli): resolve the build root by settings file, and name the plugin publication race (#5052)",
+        "at": "2026-09-03T08:19:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1be2f59f1d3ec5c9a4a0f9036ea511f864b66466",
+        "subject": "docs(parity): record that the viewer now emits a parity locator (#5057)",
+        "at": "2026-09-03T08:18:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "67e120133ba4bcbe064c55064b09c91d61de975a",
+        "subject": "fix(actions): make install's `latest` mean latest usable, and name the publication window (#5058)",
+        "at": "2026-09-03T08:18:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "312befe1d35ec2a1c645c4c6ff231fd1bcbb31b2",
         "subject": "fix: turn Isolated Projects off for auto-injected runs, and keep the S3.5 clone out of the fixture's static initializer (#5060)",
@@ -435,54 +483,6 @@
         "subject": "fix(import): keep the trust step out of the pinned driver checkout (#4991)",
         "at": "2026-09-02T20:03:47+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a3bbff4730a204e01d3af3bdb44c6d53a6ed5e40",
-        "subject": "fix(import): trust the preview plugin in the upstream checkout, not lenient verification (#4990)",
-        "at": "2026-09-02T19:59:07+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "46c54375f0a462347aeb29012daa73bf38fa3426",
-        "subject": "fix(render): preserve upstream Remote Compose wrapper (#4983)",
-        "at": "2026-09-02T12:42:26+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3cbbd2d128f092fc4c8453f0dd71ccc505719bee",
-        "subject": "fix: restore Module Unit Tests on main (#4984)",
-        "at": "2026-09-02T12:38:16+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fa9ad8c7f8191de283baa41340ff3730ead99ed2",
-        "subject": "feat(design-artifacts): default defer-figma-svg to true (#4982)",
-        "at": "2026-09-02T12:34:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "753844837b5f940c2e454725f6e631bc284bcf30",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.63.0 (#4985)",
-        "at": "2026-09-02T11:06:04Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5347385e0c7aaa74d5ccbec4d185766a2490b0a8",
-        "subject": "chore(main): release 1.63.0 (#4974)",
-        "at": "2026-09-02T07:53:28+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
