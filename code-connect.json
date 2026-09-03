@@ -7,7 +7,7 @@
     "ref": "main",
     "module": ":samples:design-catalog-m3"
   },
-  "generatedAt": "2026-09-03T05:39:06.965Z",
+  "generatedAt": "2026-09-03T05:50:27.103Z",
   "mappings": [
     {
       "componentId": "Button/Filled",
@@ -27,7 +27,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/button-filled.svg"
@@ -50,7 +51,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/progress-linear.svg"
@@ -73,7 +75,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/badge.svg"
@@ -96,7 +99,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/card-slots.svg"
@@ -119,7 +123,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/checkbox-checked.svg"
@@ -142,7 +147,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/switch-on.svg"
@@ -165,7 +171,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/slider.svg"
@@ -188,7 +195,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/shape-morph.svg"
@@ -211,7 +219,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/template-appscaffold.svg"
@@ -234,7 +243,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/textfield-filled.svg"
@@ -257,7 +267,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/text-maxlines-truncated.svg"
@@ -280,7 +291,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/text-serif.svg"
@@ -303,7 +315,8 @@
           "type": "String",
           "hasDefault": false,
           "composableSlot": false,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/text-monospace.svg"
