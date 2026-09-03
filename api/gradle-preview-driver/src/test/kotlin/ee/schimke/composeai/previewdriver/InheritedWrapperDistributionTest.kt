@@ -6,6 +6,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Which Gradle distribution drives a build root that has no wrapper of its own (issue #5031).
@@ -59,9 +60,36 @@ class InheritedWrapperDistributionTest {
   }
 
   @Test
-  fun `null for a wrapper whose distributionUrl is unusable`() {
+  fun `resolves a relative distributionUrl against the wrapper directory`() {
+    // The wrapper resolves a relative distributionUrl against the directory holding
+    // gradle-wrapper.properties, which is how a locally vendored distribution is normally written.
     val repo = dir("relative")
     wrapper(repo, "gradle-9.7-bin.zip")
-    assertNull(inheritedWrapperDistribution(dir("relative/nested")))
+    val resolved = inheritedWrapperDistribution(dir("relative/nested"))
+    assertEquals(
+      File(repo, "gradle/wrapper/gradle-9.7-bin.zip").toURI().normalize(),
+      resolved?.normalize(),
+    )
+  }
+
+  @Test
+  fun `says so when the inherited wrapper pins a checksum it cannot carry over`() {
+    val repo = dir("pinned")
+    File(repo, "gradle/wrapper").mkdirs()
+    File(repo, "gradle/wrapper/gradle-wrapper.properties")
+      .writeText(
+        "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.7-bin.zip\n" +
+          "distributionSha256Sum=aaaabbbbccccdddd\n"
+      )
+    val warnings = mutableListOf<String>()
+    val resolved = inheritedWrapperDistribution(dir("pinned/nested")) { warnings += it }
+    assertEquals(
+      "https://services.gradle.org/distributions/gradle-9.7-bin.zip",
+      resolved?.toString(),
+    )
+    assertTrue(
+      warnings.single().contains("distributionSha256Sum"),
+      "expected the dropped checksum to be named; got $warnings",
+    )
   }
 }

@@ -363,12 +363,12 @@ abstract class Command(
         // invisible to `findPreviewModules()` because its task only registers
         // when `-PcomposePreview.variant=demoDebug` is on the model query too.
         GradleConnection(
-          root,
-          verbose,
-          progress,
-          extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
-          failureAdvice = ::buildFailureAdvice,
-        )
+            root,
+            verbose,
+            progress,
+            extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
+          )
+          .apply { failureAdvice = ::buildFailureAdvice }
       }
     connection.use(block)
   }
@@ -1150,16 +1150,19 @@ internal fun printDiscoveryFailures(
   pluginVersionSource: String? = null,
 ) {
   if (failures.isEmpty()) return
-  // The plugin marker not resolving is never the consumer's build being wrong, so it pre-empts
-  // both the AGP guidance and the per-project list (issue #5034).
-  failures
-    .firstNotNullOfOrNull {
-      pluginResolutionGuidance(it.message, pluginVersion, pluginVersionSource)
-    }
-    ?.let {
-      err(it)
-      return
-    }
+  // The plugin marker not resolving is never the consumer's build being wrong, so it leads —
+  // ahead of the AGP guidance and the per-project list (issue #5034). It only *replaces* them
+  // when it accounts for at least half the failures, the same bar [agpClassloaderGuidance] uses:
+  // one project failing on the marker while others fail for their own reasons is not a reason to
+  // hide theirs and send the user away to wait for a publication.
+  val markerGuidance = failures.firstNotNullOfOrNull {
+    pluginResolutionGuidance(it.message, pluginVersion, pluginVersionSource)
+  }
+  if (markerGuidance != null) {
+    err(markerGuidance)
+    val matching = failures.count { isUnresolvedPluginMarkerFailure(it.message) }
+    if (matching * 2 >= failures.size) return
+  }
   // When the failures are dominated by the "auto-injected plugin can't see AGP" signature there's
   // a single actionable cause — emit the guidance instead of N cryptic NoClassDefFoundError stacks
   // (issue #1947).

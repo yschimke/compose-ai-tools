@@ -52,6 +52,7 @@ class GradleConnection(
    * manually wired it in their `build.gradle.kts`. See [autoInjectInitScriptArgs] for the source.
    */
   private val extraArguments: List<String> = emptyList(),
+) : AutoCloseable {
   /**
    * Optional second opinion on a build failure: given everything this connection saw of it
    * (Gradle's captured stderr plus the exception chain), returns one message to print after the
@@ -61,9 +62,15 @@ class GradleConnection(
    * CLI supplies the knowledge, because that is where it lives. Today the CLI uses it to name the
    * publication race behind an unresolvable plugin marker (issue #5034), which otherwise arrives as
    * a configuration failure in the consumer's own project and is diagnosed as one.
+   *
+   * A settable property rather than a constructor parameter **on purpose**: this module is a
+   * published library, and adding a defaulted parameter would change the primary constructor's JVM
+   * descriptor and its synthetic defaults constructor — every consumer compiled against the
+   * previous release would get a `NoSuchMethodError` on `GradleConnection(…)`, whether or not they
+   * ever wanted failure advice. Adding a property only adds methods.
    */
-  private val failureAdvice: (String) -> String? = { null },
-) : AutoCloseable {
+  var failureAdvice: ((String) -> String?)? = null
+
   companion object {
     /**
      * Wall-clock budget a Gradle invocation gets before it is cancelled.
@@ -335,7 +342,7 @@ class GradleConnection(
       }
     }
 
-    failureAdvice((captured + "\n" + messages.joinToString("\n")).trim())?.let {
+    failureAdvice?.invoke((captured + "\n" + messages.joinToString("\n")).trim())?.let {
       System.err.println()
       System.err.println(it)
     }
@@ -535,7 +542,10 @@ class GradleConnection(
  * Only the ancestor case is interesting: a build root with its own wrapper is already handled by
  * `forProjectDirectory`, and overriding it here would change which Gradle drives it.
  */
-internal fun inheritedWrapperDistribution(projectDir: File): URI? {
+internal fun inheritedWrapperDistribution(
+  projectDir: File,
+  warn: (String) -> Unit = System.err::println,
+): URI? {
   if (wrapperProperties(projectDir) != null) return null
   var dir: File? = projectDir.parentFile
   while (dir != null) {
@@ -543,7 +553,20 @@ internal fun inheritedWrapperDistribution(projectDir: File): URI? {
       return runCatching {
         val loaded = Properties().apply { props.inputStream().use { load(it) } }
         val url = loaded.getProperty("distributionUrl")?.trim()?.takeIf { it.isNotEmpty() }
-        url?.let { URI(it) }?.takeIf { it.isAbsolute }
+        val resolved = url?.let { wrapperDistributionUri(it, props) } ?: return@runCatching null
+        // The Tooling API's `useDistribution(URI)` carries a URL and nothing else — there is no
+        // way to hand it the `distributionSha256Sum` the wrapper would have verified. Say so
+        // rather than silently dropping a repository's integrity pin: the distribution is taken
+        // from the shared wrapper cache, which is where `../gradlew` put the copy it verified.
+        if (loaded.getProperty("distributionSha256Sum")?.isNotBlank() == true) {
+          warn(
+            "compose-preview: ${props.path} pins distributionSha256Sum, which the Gradle " +
+              "Tooling API cannot be given. Using the wrapper's distribution URL as-is " +
+              "($resolved); run ./gradlew once from ${props.parentFile?.parentFile?.parent} to " +
+              "have the wrapper download and verify it first."
+          )
+        }
+        resolved
       }
         .getOrNull()
     }
@@ -551,6 +574,17 @@ internal fun inheritedWrapperDistribution(projectDir: File): URI? {
   }
   return null
 }
+
+/**
+ * A wrapper `distributionUrl` as a URI, resolving a **relative** value against the directory
+ * holding [props] the way the Gradle wrapper itself does (a locally vendored distribution is
+ * normally written that way). Null when the value cannot be parsed.
+ */
+private fun wrapperDistributionUri(url: String, props: File): URI? = runCatching {
+  val uri = URI(url)
+  if (uri.isAbsolute) uri else props.parentFile.toURI().resolve(url)
+}
+  .getOrNull()
 
 private fun wrapperProperties(dir: File): File? =
   File(dir, "gradle/wrapper/gradle-wrapper.properties").takeIf { it.isFile }

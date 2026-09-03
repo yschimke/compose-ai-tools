@@ -55,6 +55,36 @@ class PluginResolutionDiagnosisTest {
   }
 
   @Test
+  fun `a generic resolve failure naming the marker is not the race`() {
+    // "Could not resolve" / "Cannot resolve external dependency" is also what an unreachable
+    // proxy, a TLS failure or a build with no repositories produces — waiting does not fix those.
+    val noRepositories =
+      "Cannot resolve external dependency " +
+        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:1.66.1 " +
+        "because no repositories are defined."
+    assertFalse(isUnresolvedPluginMarkerFailure(noRepositories))
+    assertNull(pluginResolutionGuidance(noRepositories, injectedVersion = "1.66.1"))
+  }
+
+  @Test
+  fun `a missing artifact whose cause is transport is not the race`() {
+    val proxied =
+      "Could not find ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:" +
+        "1.66.1. Could not GET 'https://plugins.gradle.org/…'. Received status code 407 Proxy " +
+        "Authentication Required"
+    assertFalse(isUnresolvedPluginMarkerFailure(proxied))
+  }
+
+  @Test
+  fun `the plugins DSL form is recognised`() {
+    val pluginsDsl =
+      "Plugin [id: 'ee.schimke.composeai.preview', version: '1.66.1'] was not found in any of " +
+        "the following sources: could not resolve plugin artifact " +
+        "'ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:1.66.1'"
+    assertTrue(isUnresolvedPluginMarkerFailure(pluginsDsl, version = "1.66.1"))
+  }
+
+  @Test
   fun `reads the version out of the coordinate`() {
     assertEquals("1.66.1", unresolvedPluginMarkerVersion(raceFailure))
     assertNull(unresolvedPluginMarkerVersion("Could not find something else:1.0.0"))
@@ -112,6 +142,18 @@ class PluginResolutionDiagnosisTest {
   }
 
   @Test
+  fun `reads a version that is not numeric or carries build metadata`() {
+    val snapshot =
+      "Could not find ee.schimke.composeai.preview:" +
+        "ee.schimke.composeai.preview.gradle.plugin:dev-SNAPSHOT."
+    assertEquals("dev-SNAPSHOT", unresolvedPluginMarkerVersion(snapshot))
+    val metadata =
+      "Could not find ee.schimke.composeai.preview:" +
+        "ee.schimke.composeai.preview.gradle.plugin:1.2.3+build, required by: project ':app'"
+    assertEquals("1.2.3+build", unresolvedPluginMarkerVersion(metadata))
+  }
+
+  @Test
   fun `discovery reporting leads with the race instead of the per-project list`() {
     val lines = mutableListOf<String>()
     printDiscoveryFailures(
@@ -125,6 +167,26 @@ class PluginResolutionDiagnosisTest {
     assertEquals(1, lines.size, "expected one explanation, got $lines")
     assertTrue(lines.single().contains("publication window"), lines.single())
     assertFalse(lines.single().contains("failed to configure during discovery"), lines.single())
+  }
+
+  @Test
+  fun `a lone marker failure among unrelated ones does not hide them`() {
+    // One project failing on the marker while others fail for their own reasons is not a reason
+    // to hide theirs and send the user away to wait for a publication.
+    val lines = mutableListOf<String>()
+    printDiscoveryFailures(
+      listOf(
+        ProjectDiscoveryFailure(":app", raceFailure),
+        ProjectDiscoveryFailure(":lib", "Cannot resolve external dependency"),
+        ProjectDiscoveryFailure(":data", "PluginApplicationException: boom"),
+      ),
+      err = { lines += it },
+      pluginVersion = "1.66.1",
+    )
+    assertTrue(lines.first().contains("publication window"), lines.first())
+    assertTrue(lines.any { it.contains("3 project(s) failed to configure") }, "got $lines")
+    assertTrue(lines.any { it.contains(":lib:") }, "got $lines")
+    assertTrue(lines.any { it.contains(":data:") }, "got $lines")
   }
 
   @Test
