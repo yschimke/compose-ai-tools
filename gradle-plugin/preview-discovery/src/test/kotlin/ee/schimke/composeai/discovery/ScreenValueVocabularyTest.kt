@@ -637,6 +637,44 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `an opt-in marker that is not a name is refused, because it becomes annotation source`() {
+    // A marker is printed straight into `@OptIn(…)`, so a backtick and a newline close the
+    // annotation and open a top-level declaration — arbitrary code in the generated file that
+    // names nothing `expressionPackages` would have looked at.
+    val injected =
+      "com.example.Marker`::class)\nval pwned = System.exit(0)\n@kotlin.OptIn(kotlin.Any"
+    assertThat(
+        refusal(
+          textNode(
+            "color" to
+              ScreenValue.Reference(
+                "androidx.compose.ui.graphics.Color",
+                listOf("Unspecified"),
+                typeFqn = color,
+                requiredOptIns = listOf(injected),
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`color` needs opt-in marker `$injected`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
+  fun `a component's markers are checked too, since one printer serves both`() {
+    val gated =
+      component("Gated", "androidx.compose.material3.Gated", emptyList()).let {
+        it.copy(code = it.code!!.copy(requiredOptIns = listOf("not a name")))
+      }
+    assertThat(refusal(ScreenNode(gated.canonicalId), catalog(gated)))
+      .containsExactly(
+        "`Gated` needs opt-in marker `not a name`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
   fun `a node resolves by catalog alias as well as by canonical id`() {
     val byAlias = emitted(textNode(), catalog(text))
     val byCanonical =

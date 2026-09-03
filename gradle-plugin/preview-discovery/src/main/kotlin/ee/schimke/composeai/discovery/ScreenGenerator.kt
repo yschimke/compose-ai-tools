@@ -331,8 +331,8 @@ object ScreenGenerator {
       }
       val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
       if (record.canonicalId in simplyImportable && !inReceiverScope) imports += qualified
-      optIns += code.requiredOptIns
-      androidxOptIns += code.androidxOptIns
+      markers(code.requiredOptIns, optIns, "`${record.symbol.name}`")
+      markers(code.androidxOptIns, androidxOptIns, "`${record.symbol.name}`")
 
       val byName = record.parameters.associateBy { it.name }
       node.arguments.keys.filterNot(byName::containsKey).forEach {
@@ -518,8 +518,8 @@ object ScreenGenerator {
       // is as capable of naming a gated API as the construct itself. Unioned into the same two
       // sets a component's markers go into, so the wrapper carries one `@OptIn` of each mechanism
       // however many places asked for it.
-      optIns += value.requiredOptIns
-      androidxOptIns += value.androidxOptIns
+      markers(value.requiredOptIns, optIns, where)
+      markers(value.androidxOptIns, androidxOptIns, where)
       return when (value) {
         is ScreenValue.Text -> string(value.value, where)
         is ScreenValue.Bool -> value.value.toString()
@@ -629,6 +629,29 @@ object ScreenGenerator {
     }
 
     /**
+     * Accepts each `@RequiresOptIn` marker that can be written as a qualified name, refusing the
+     * rest.
+     *
+     * A marker reaches the file as annotation source through `markerReference`, which only
+     * keyword-escapes. That was safe while every marker came from `ComponentRecord` — discovery
+     * read those off a class file — and stopped being safe the moment a [ScreenValue] could carry
+     * its own, because a `ScreenDocument` is wire data. A marker holding a backtick and a newline
+     * closes the generated `@OptIn(…)` and opens a top-level declaration: arbitrary code in the
+     * file **without naming anything `expressionPackages` would have checked**.
+     *
+     * The shape check alone, deliberately. A marker is an inert type reference inside an annotation
+     * and executes nothing, so restricting *which* markers may be named would refuse a project's
+     * own experimental annotation for no safety gained. What has to hold is that it cannot stop
+     * being a name.
+     */
+    private fun markers(names: List<String>, into: MutableSet<String>, where: String) {
+      for (name in names) {
+        if (isQualifiedName(name)) into += name
+        else reasons += "$where needs opt-in marker `$name`, which is not a qualified Kotlin name"
+      }
+    }
+
+    /**
      * A single name, backticked when it has to be, or null having said why it cannot be written.
      */
     private fun name(name: String, where: String): String? {
@@ -652,7 +675,7 @@ object ScreenGenerator {
       //
       // Shape before trust, deliberately: a malformed name is malformed whatever vocabulary is
       // declared, and "this is not a qualified name" is the more actionable of the two answers.
-      if (fqn.isEmpty() || segments.size < 2 || segments.any { !isWritableName(it) }) {
+      if (!isQualifiedName(fqn)) {
         reasons += "$where refers to `$fqn`, which is not a qualified Kotlin name"
         return null
       }
@@ -751,6 +774,18 @@ object ScreenGenerator {
    * escape's own limit rather than the identifier's: a backticked name may not be empty and may not
    * contain the characters that would close the quoting or reparse as structure.
    */
+  /**
+   * Whether [fqn] is a dotted path of writable names carrying a qualifier.
+   *
+   * Shared by the callable check and the marker check so the two cannot drift. Both put a
+   * projection-supplied string into generated source, and a string that is not a name is how one
+   * stops being a reference and starts being syntax.
+   */
+  private fun isQualifiedName(fqn: String): Boolean {
+    val segments = fqn.split('.')
+    return fqn.isNotEmpty() && segments.size >= 2 && segments.all(::isWritableName)
+  }
+
   private fun isWritableName(name: String): Boolean =
     name.isNotEmpty() &&
       // Reserved, and reserved past backticks. `_`, `__` and friends match every identifier rule
