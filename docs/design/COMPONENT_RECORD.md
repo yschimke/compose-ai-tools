@@ -739,17 +739,52 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 >
 > The same mangling drops the project's *own* composables from `targets`:
 > `AppTile(padding: Dp)` compiles to `AppTile-<hash>`, so its preview reports
-> `targets = []` for a composable the preview does nothing but render. **That half is
-> deliberately left alone**, because `DiscoveryFunctionalTest` pins it with a
-> purpose-built `@JvmInline` fixture — a decision, not an oversight — and the two
-> paths can legitimately differ: `ComponentSymbol` separates `callable` (the
-> source-level name an import needs) from `jvmOwner` (the reflection handle), while a
-> `targets` entry has a single name that consumers may be using as a JVM lookup key,
-> and `ComponentsKt.Screen` does not exist at runtime when the method is
-> `Screen-<hash>`. Whether `targets` should demangle is a question for whoever owns
-> that contract; if it should, `Dp` and `Color` parameters are ordinary enough in app
-> code that this is §1's "detect components from previews in typical projects"
-> failing on the typical projects.
+> `targets = []` for a composable the preview does nothing but render. That half was
+> left alone at first, on two arguments that did not survive being checked.
+>
+> The first was that `DiscoveryFunctionalTest` pins the rejection with a
+> purpose-built `@JvmInline` fixture, so someone had decided it. The assertion
+> arrived whole in `feat(mcp): add remote UI builder tools` (#4929) — a feature
+> commit — pinning what the code did at the time. Someone noticed enough to extend
+> the test's *name*; nothing designed the behaviour.
+>
+> The second was that a `targets` entry has a single name which consumers may be
+> using as a JVM lookup key, so demangling it would break them. Across both
+> repositories `PreviewInfo.targets` has exactly **one** non-test consumer,
+> `ComponentRecords.from`, which folds it into this record. Nothing reflects on it.
+> The consumer being deferred to did not exist.
+>
+> What was true is the shape underneath: `ComponentSymbol` already separates
+> `callable` (the source-level name an import needs) from `jvmOwner` (the reflection
+> handle) — its own KDoc opens *"three ways, because one name cannot serve all three
+> readers"* — and `PreviewTarget` had one name for all of them. **So the fix is not
+> to choose which name to publish but to stop making it a choice**: `functionName` is
+> the source name, `jvmName` is the JVM name, and `descriptor` is what actually says
+> *which* method is meant, since two overloads mentioning no value class share both
+> names exactly. Discovery already had the descriptor — the bytecode walk matches
+> call sites by name **and** descriptor — and was discarding it at the last step;
+> `ComponentSymbol.descriptor` had been declared and left null since v1 waiting for
+> it.
+>
+> Scoring was reading the mangled name too. `nameMatches` compared `ScreenPreview`
+> against `Screen-<hash>`, so the clearest naming convention a preview can follow was
+> the one case where the `NAME_MATCH` signal could never fire — a scoring bug hiding
+> behind the naming bug, invisible while the target was being dropped anyway.
+>
+> One thing this does **not** fix: overloads still share a canonical id and merge
+> into a single record. Recording a descriptor does not un-merge them, and putting
+> the id on a descriptor basis would rewrite every id in the file for a case no
+> consumer has asked to resolve. `ComponentSymbol.descriptor` is therefore null when
+> merged targets disagreed, rather than naming whichever one the manifest listed
+> first — a null descriptor with `signatureKnown` true is how a collision announces
+> itself.
+>
+> Cost worth stating rather than hiding: `infer` now reads `@kotlin.Metadata` once
+> per surviving candidate instead of once per preview, because the source name has to
+> be in hand before any name-based filter can run. That is the shape `inferComponents`
+> already had, the parse is `SKIP_CODE`, and candidate counts after filtering are
+> small — but it is more class-file reads than before and has not been measured on a
+> large corpus.
 >
 > The lesson generalises past this bug: a corpus you chose is a corpus that agrees
 > with you. Both fixtures I picked by hand happened to avoid the one construct that

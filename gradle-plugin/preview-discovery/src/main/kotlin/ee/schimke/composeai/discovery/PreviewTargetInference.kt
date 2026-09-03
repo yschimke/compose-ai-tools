@@ -214,6 +214,8 @@ object PreviewTargetInference {
       PreviewTarget(
         className = candidate.ownerFqn,
         functionName = signature.name,
+        jvmName = candidate.method.name,
+        descriptor = candidate.method.typeDescriptorStr,
         // A library symbol has no source file in this build; `sourceFile` stays null and
         // [PreviewTarget.origin] is what says so, rather than the null being read as "library".
         sourceFile = null,
@@ -261,23 +263,37 @@ object PreviewTargetInference {
         .filterNot { isWrapperFqn(it.ownerFqn) }
         .filter { it.ownerFqn in projectClassFqns }
         .mapNotNull { resolveCandidate(it, scanResult) }
-        .filterNot { candidate ->
-          !isValidKotlinImportIdentifier(candidate.method.name) ||
-            isPreviewOnlyWrapper(candidate.method.name, resolveSourceFile(candidate.ownerFqn))
+        // Pair each candidate with its metadata before judging its name, because every decision
+        // below is about the *source* name and only metadata carries it. Unlike `inferComponents`,
+        // a candidate whose metadata cannot be read is kept rather than dropped: `signatureKnown`
+        // already models "we could not look", `infer` has always emitted such targets, and
+        // dropping them here would trade a wrong name for a missing target.
+        .map { candidate ->
+          candidate to ComposableSignature.signatureOf(candidate.classInfo, candidate.method)
         }
-        .distinctBy { it.ownerFqn to it.method.name }
+        .filterNot { (candidate, signature) ->
+          // No metadata means no source name, so the JVM name is all there is — and then the
+          // import filter below is the only guard, exactly as it was before this pairing existed.
+          val sourceName = signature?.name ?: candidate.method.name
+          !isValidKotlinImportIdentifier(sourceName) ||
+            isPreviewOnlyWrapper(sourceName, resolveSourceFile(candidate.ownerFqn))
+        }
+        .distinctBy { (candidate, signature) ->
+          candidate.ownerFqn to (signature?.name ?: candidate.method.name)
+        }
         .toList()
 
     if (candidates.isEmpty()) return emptyList()
 
     val survivors = candidates.size
-    // Keep each candidate paired with its score so the winner's resolved ClassInfo/MethodInfo is in
-    // hand for signature extraction (params come from the target's Kotlin metadata, below).
-    val scored = candidates.map { candidate ->
-      candidate to
+    // Keep each candidate paired with its score so the winner's resolved metadata is in hand below
+    // rather than read a second time.
+    val scored = candidates.map { (candidate, signature) ->
+      (candidate to signature) to
         score(
           callerOwner = candidate.ownerFqn,
           callerMethod = candidate.method,
+          callerSourceName = signature?.name ?: candidate.method.name,
           callerClassInfo = candidate.classInfo,
           previewClassFqn = previewFqn,
           previewMethodName = previewMethodName,
@@ -298,7 +314,7 @@ object PreviewTargetInference {
         )
     }
 
-    val (bestCandidate, best) = scored.maxByOrNull { it.second.score } ?: return emptyList()
+    val (winner, best) = scored.maxByOrNull { it.second.score } ?: return emptyList()
     if (best.score < MIN_EMIT_SCORE) return emptyList()
 
     val confidence =
@@ -307,11 +323,14 @@ object PreviewTargetInference {
         best.score >= MEDIUM_THRESHOLD -> TargetConfidence.MEDIUM
         else -> TargetConfidence.LOW
       }
-    val signature = ComposableSignature.signatureOf(bestCandidate.classInfo, bestCandidate.method)
+    val signature = winner.second
     return listOf(
       PreviewTarget(
         className = best.classFqn,
+        // The source name when metadata gave one, else the JVM name — `signatureKnown` says which.
         functionName = best.methodName,
+        jvmName = best.jvmName,
+        descriptor = best.descriptor,
         sourceFile = best.sourceFile,
         confidence = confidence,
         signals = best.signals,
@@ -537,16 +556,11 @@ object PreviewTargetInference {
   /**
    * Whether a resolved call in a component library is the **component a sticker demonstrates**.
    *
-   * Three rules, each earning its place against `:samples:cmp`:
-   * * the name must be usable as a Kotlin import — a mangled or synthetic member is not a call site
-   *   anyone can write;
-   * * [returnsUnit] — a component *emits*, it does not return a value. `MaterialTheme.colorScheme`
-   *   and `MaterialTheme.typography` are `@Composable` property getters that pass every other test
-   *   here, and reporting them would describe a sticker's theme lookup as its subject;
-   * * not a [THEME_ENTRY_POINTS] member — the frame a sticker is drawn in rather than its subject.
-   */
-  /**
-   * Whether a resolved call in a component library is the **component a sticker demonstrates**.
+   * Three rules, each earning its place against `:samples:cmp`: the name must be usable as a Kotlin
+   * import; [returnsUnit], because a component *emits* rather than returning a value
+   * (`MaterialTheme.colorScheme` is a `@Composable` property getter that passes every other test
+   * here, and reporting it would describe a sticker's theme lookup as its subject); and not a
+   * [THEME_ENTRY_POINTS] member, which is the frame a sticker is drawn in rather than its subject.
    *
    * [methodName] must be the **source** name from `@kotlin.Metadata`, never the JVM one. Kotlin
    * mangles the JVM name of any function whose signature mentions a value class, so
@@ -591,7 +605,10 @@ object PreviewTargetInference {
 
   private data class ScoredCandidate(
     val classFqn: String,
+    /** Source-level name, or the JVM name when metadata could not be read. */
     val methodName: String,
+    val jvmName: String,
+    val descriptor: String,
     val sourceFile: String?,
     val score: Int,
     val signals: List<TargetSignal>,
@@ -601,6 +618,7 @@ object PreviewTargetInference {
   private fun score(
     callerOwner: String,
     callerMethod: MethodInfo,
+    callerSourceName: String,
     callerClassInfo: ClassInfo,
     previewClassFqn: String,
     previewMethodName: String,
@@ -626,7 +644,10 @@ object PreviewTargetInference {
     }
 
     // +2 if `FooPreview` / `PreviewFoo` / `Foo_*_Preview` strips down to the candidate's name.
-    if (nameMatches(previewMethodName, callerMethod.name)) {
+    // Against the SOURCE name: `ScreenPreview` matches `Screen`, never `Screen-a1b2c3d`, so
+    // scoring a mangled candidate on its JVM name silently withheld this signal from exactly the
+    // previews whose naming convention was clearest.
+    if (nameMatches(previewMethodName, callerSourceName)) {
       score += 2
       signals += TargetSignal.NAME_MATCH
     }
@@ -668,7 +689,9 @@ object PreviewTargetInference {
 
     return ScoredCandidate(
       classFqn = callerOwner,
-      methodName = callerMethod.name,
+      methodName = callerSourceName,
+      jvmName = callerMethod.name,
+      descriptor = callerMethod.typeDescriptorStr,
       sourceFile = resolveSourceFile(callerOwner) ?: packageQualifiedSourcePath(callerClassInfo),
       score = score,
       signals = signals,

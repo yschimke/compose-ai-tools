@@ -42,11 +42,15 @@ data class ComponentRecordFile(
  *   preview does not carry, so it is absent for exactly the typical-app records this file exists to
  *   publish, and several absent ids would collide as a key.
  *
- *   **Overloads collide here, and that is a known v1 limitation.** Distinguishing them needs the
- *   JVM descriptor, which discovery does not record yet — the same gap `:renderer-android`'s
- *   `findDefaultedComposableMethod` names when it refuses to guess between two fully-defaulted
- *   overloads. [ComponentSymbol.descriptor] is where it lands; until then a reader that finds two
- *   records with one id should treat the pair as unresolved rather than pick one.
+ *   **Overloads still collide here.** Two overloads share this id, so they merge into one record
+ *   rather than appearing as two. Discovery now records the JVM descriptor that tells them apart
+ *   ([ComponentSymbol.descriptor]) — the gap `:renderer-android`'s `findDefaultedComposableMethod`
+ *   names when it refuses to guess between two fully-defaulted overloads — but recording it does
+ *   not un-merge the records, and putting the id itself on a descriptor basis would rewrite every
+ *   id in the file for a case no consumer has asked to resolve. So the merge is what a reader sees,
+ *   and [ComponentSymbol.descriptor] is deliberately **null** when the merged targets disagreed: a
+ *   single descriptor on a merged symbol would claim a precision the record does not have. Null
+ *   descriptor with `signatureKnown` true is how a collision announces itself.
  *
  * @property componentIds every published catalog identity associated with this symbol, deduplicated
  *   and ordered. A **list**, not a scalar: one symbol is routinely rendered by several catalog
@@ -83,8 +87,15 @@ data class ComponentRecord(
  * @property callable the **source-level** FQN generated Kotlin imports
  *   (`androidx.compose.material3.Button`). Deriving an import from [jvmOwner] would print `import
  *   androidx.compose.material3.ButtonKt`, which does not resolve.
- * @property descriptor the JVM method descriptor, once discovery records one. Null in v1 — see
- *   [ComponentRecord.canonicalId] for what that costs.
+ * @property jvmName the JVM method name — what `Class.forName(jvmOwner).getMethod(…)` needs, and
+ *   not the same string as [name] whenever Kotlin mangled it (a signature mentioning a value class
+ *   gives `AppTile-a1b2c3d`). Null when not recorded, and — like [descriptor] — when overloads
+ *   merged into this record disagreed: mangling is per-signature, so `Chip(label: String)` and
+ *   `Chip(width: Dp)` share a source name and a canonical id while their JVM names differ.
+ * @property descriptor the JVM method descriptor, which is what actually identifies *which* method
+ *   is meant: two overloads mentioning no value class share both [name] and [jvmName] exactly. Null
+ *   when not recorded, and also when overloads merged into this record disagreed — see
+ *   [ComponentRecord.canonicalId].
  * @property origin where the symbol lives. Explicit rather than inferred from [sourceFile] being
  *   null, which also happens for a project-local file discovery could not resolve (a generated
  *   source, say) — reading that null as "library" would send a local component down the sources-jar
@@ -105,6 +116,7 @@ data class ComponentSymbol(
   val callable: String,
   val name: String,
   val origin: ComponentOrigin,
+  val jvmName: String? = null,
   val descriptor: String? = null,
   val sourceFile: String? = null,
   val docs: String = "unavailable",

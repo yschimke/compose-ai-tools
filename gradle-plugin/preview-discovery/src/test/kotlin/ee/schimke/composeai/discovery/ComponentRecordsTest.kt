@@ -10,10 +10,14 @@ class ComponentRecordsTest {
     functionName: String,
     parameters: List<TargetParameter> = emptyList(),
     sourceFile: String? = null,
+    jvmName: String? = null,
+    descriptor: String? = null,
   ) =
     PreviewTarget(
       className = className,
       functionName = functionName,
+      jvmName = jvmName,
+      descriptor = descriptor,
       sourceFile = sourceFile,
       confidence = TargetConfidence.HIGH,
       parameters = parameters,
@@ -209,5 +213,84 @@ class ComponentRecordsTest {
 
     assertThat(file.components).isEmpty()
     assertThat(file.module).isEqualTo("app")
+  }
+
+  @Test
+  fun `the symbol carries the JVM name and descriptor alongside the source name`() {
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets =
+              listOf(
+                target(
+                  "androidx.compose.material3.TextKt",
+                  "Text",
+                  jvmName = "Text-Nvy7gAk",
+                  descriptor = "(Ljava/lang/String;JLandroidx/compose/runtime/Composer;I)V",
+                )
+              ),
+          )
+        )
+      )
+
+    val symbol = file.components.single().symbol
+    // Three answers to three different questions, none of which the others can serve: what to
+    // import, what to reflect on, and which method this actually is.
+    assertThat(symbol.callable).isEqualTo("androidx.compose.material3.Text")
+    assertThat(symbol.jvmName).isEqualTo("Text-Nvy7gAk")
+    assertThat(symbol.descriptor)
+      .isEqualTo("(Ljava/lang/String;JLandroidx/compose/runtime/Composer;I)V")
+  }
+
+  @Test
+  fun `overloads merging into one record drop the descriptor rather than name one of them`() {
+    // Two overloads share `<module>/<jvmOwner>.<name>`, so they merge. Keeping the first
+    // descriptor would label the merged record with whichever preview the manifest listed first —
+    // a precise-looking answer that is wrong half the time.
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            targets =
+              listOf(target("com.example.ChipKt", "Chip", descriptor = "(Ljava/lang/String;)V")),
+          ),
+          preview(
+            "p2",
+            targets = listOf(target("com.example.ChipKt", "Chip", descriptor = "(I)V")),
+          ),
+        )
+      )
+
+    val symbol = file.components.single().symbol
+    assertThat(symbol.descriptor).isNull()
+    assertThat(symbol.name).isEqualTo("Chip")
+  }
+
+  @Test
+  fun `one component seen by several previews keeps its descriptor`() {
+    // The common case, and the reason the rule above is "disagree" rather than "seen twice":
+    // `Card` is rendered by many previews and every one of them reports the same method.
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            targets =
+              listOf(target("com.example.CardKt", "Card", jvmName = "Card", descriptor = "(I)V")),
+          ),
+          preview(
+            "p2",
+            targets =
+              listOf(target("com.example.CardKt", "Card", jvmName = "Card", descriptor = "(I)V")),
+          ),
+        )
+      )
+
+    val symbol = file.components.single().symbol
+    assertThat(symbol.descriptor).isEqualTo("(I)V")
+    assertThat(symbol.jvmName).isEqualTo("Card")
   }
 }

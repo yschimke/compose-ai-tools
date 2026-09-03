@@ -165,4 +165,14 @@ class PreviewTargetInferenceTest {
       )
       .isFalse()
   }
+
+  @Test
+  fun `a mangled JVM name only matches its preview once scored on the source name`() {
+    // `ScreenPreview` is the clearest naming convention a preview can follow, and it was the one
+    // this signal never fired for: `Screen(padding: Dp)` compiles to `Screen-a1b2c3d`, and the
+    // scorer compared against that. Scoring on the source name is what makes NAME_MATCH reachable
+    // for a composable taking a value-class parameter.
+    assertThat(PreviewTargetInference.nameMatches("ScreenPreview", "Screen-a1b2c3d")).isFalse()
+    assertThat(PreviewTargetInference.nameMatches("ScreenPreview", "Screen")).isTrue()
+  }
 }
