@@ -395,8 +395,10 @@ test("the two samples are the same point, aligned the way the score is", () => {
   // point less the export's root translate — the alignment scoreRow already applies before
   // measuring. Sharing it is what makes the pair one point rather than two lookalikes.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /const s = svgRect\.width \/ natural;/);
-  assert.match(html, /const svgX = fx \/ s, svgY = fy \/ s;/);
+  // Both axes separately: frameToComponent rounds the displayed width and height independently,
+  // so a capped non-square component is scaled by slightly different factors across and down.
+  assert.match(html, /const sx = svgRect\.width \/ nw, sy = svgRect\.height \/ nh;/);
+  assert.match(html, /const svgX = fx \/ sx, svgY = fy \/ sy;/);
   assert.match(html, /const renderX = svgX - rec\.tx, renderY = svgY - rec\.ty;/);
   // Both columns are marked, so the reading is visibly about one point in two images.
   assert.match(html, /for \(const shot of tr\.querySelectorAll\("\.shot--framed"\)\)/);
@@ -485,5 +487,23 @@ test("a cross-origin display image is sampled through an origin-clean copy", () 
   // blob no reload could reproduce — so those are read off the element itself.
   assert.match(html, /if \(\/\^\(data\|blob\):\/i\.test\(src\)\) return false/);
   // The hover is replayed once the copy lands, so the reading appears where the cursor is.
-  assert.match(html, /if \(LAST\.shot && LAST\.shot\.isConnected\) pickAt\(LAST\.shot, LAST\.x, LAST\.y\)/);
+  assert.match(html, /replayPick\(tr\);/);
+});
+
+test("an abandoned hover is not replayed when its copy lands", () => {
+  // The cross-origin path waits for an origin-clean copy. If the cursor leaves meanwhile, the
+  // resolved load must not reopen the panel and crosshairs at a point nobody is pointing at.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /LAST\.shot = null;/);
+  assert.match(html, /function replayPick\(tr\)/);
+  assert.match(html, /if \(!LAST\.shot \|\| !LAST\.shot\.isConnected\) return;/);
+  assert.match(html, /if \(LAST\.shot\.closest\("tr\.crow"\) !== tr\) return;/);
+});
+
+test("a frozen reading is refreshed when its row rescores", () => {
+  // The lock stops pointer moves from refreshing the panel, so a theme or backdrop change would
+  // otherwise leave it asserting the previous pass's colours, over the previous pass's ground,
+  // against a picture that has moved on.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(ACTIVE\.tr === tr\) releaseActive\(\);\n\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*replayPick\(tr\);/);
 });

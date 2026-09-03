@@ -522,7 +522,7 @@ const SCORER = String.raw`
         if (ACTIVE.tr !== tr || ACTIVE.loading !== key) return;
         ACTIVE.loading = null;
         ACTIVE[side] = contextFor(clean);
-        if (LAST.shot && LAST.shot.isConnected) pickAt(LAST.shot, LAST.x, LAST.y);
+        replayPick(tr);
       }).catch(() => {
         // The host sends no CORS header, so these pixels are unreadable however they are
         // fetched — the same wall that leaves this row's score at "n/a".
@@ -614,9 +614,20 @@ const SCORER = String.raw`
 
   function hidePick() {
     if (PICK.locked) return;
+    // Abandon the pending hover too. An origin-clean copy still in flight resolves into a replay,
+    // and without this the panel and crosshairs would reopen at a point the cursor has left.
+    LAST.shot = null;
     const panel = pickEl("pick");
     if (panel) panel.hidden = true;
     clearMarks();
+  }
+
+  // Replay the last hover, if it is still the live one and still in this row. Used when an
+  // origin-clean copy lands, and when a rescore replaces what the row is showing.
+  function replayPick(tr) {
+    if (!LAST.shot || !LAST.shot.isConnected) return;
+    if (LAST.shot.closest("tr.crow") !== tr) return;
+    pickAt(LAST.shot, LAST.x, LAST.y);
   }
 
   // Map a point in a displayed tile to a pixel in each source and read both.
@@ -635,17 +646,25 @@ const SCORER = String.raw`
     // cursor that has moved on.
     if (!rec || !panel) { hidePick(); return; }
     const rect = shot.getBoundingClientRect();
-    // The displayed scale comes from the vector as it is actually rendered, not from the tile
-    // it sits in: the two agree once the tile is framed, and reading the image means a stray
-    // cap on its width shows up as a wrong scale rather than as silently wrong pixels.
     LAST.shot = shot; LAST.x = clientX; LAST.y = clientY;
+    // The displayed scale comes from the vector as it is actually rendered, not from the tile it
+    // sits in: the two agree once the tile is framed, and reading the image means a stray cap on
+    // its width shows up as a wrong scale rather than as silently wrong pixels.
+    //
+    // Both axes, separately. frameToComponent rounds the displayed width and height
+    // independently, so a capped non-square component — 300x101 framed to 240x81 — is scaled by
+    // 0.800 across and 0.802 down. One scale for both drifts a row at the bottom edge and can
+    // report a visible last row as outside the image.
     const svgImg = displayImg(tr, "svg");
     const svgRect = svgImg && svgImg.getBoundingClientRect();
-    const natural = svgImg && svgImg.naturalWidth;
-    if (!(rect.width > 0 && svgRect && svgRect.width > 0 && natural > 0)) { hidePick(); return; }
-    const s = svgRect.width / natural;
+    const nw = svgImg && svgImg.naturalWidth, nh = svgImg && svgImg.naturalHeight;
+    if (!(rect.width > 0 && svgRect && svgRect.width > 0 && svgRect.height > 0 && nw > 0 && nh > 0)) {
+      hidePick();
+      return;
+    }
+    const sx = svgRect.width / nw, sy = svgRect.height / nh;
     const fx = clientX - rect.left, fy = clientY - rect.top;
-    const svgX = fx / s, svgY = fy / s;
+    const svgX = fx / sx, svgY = fy / sy;
     const renderX = svgX - rec.tx, renderY = svgY - rec.ty;
 
     let svgRaw, pngRaw;
@@ -819,6 +838,11 @@ const SCORER = String.raw`
       // The row's displayed images have just been replaced or re-sized; drop any canvases
       // cached from the previous pass so the next sample redraws from what is on screen.
       if (ACTIVE.tr === tr) releaseActive();
+      // Then re-read the point being shown. A frozen reading is the case that needs this: the
+      // lock stops pointer moves from refreshing it, so a theme or backdrop change would leave
+      // the panel asserting the previous pass's colours — over the previous pass's ground —
+      // against a picture that has moved on.
+      replayPick(tr);
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.className = "score score--" + grade(pct);
