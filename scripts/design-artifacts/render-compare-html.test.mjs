@@ -367,3 +367,69 @@ test("the extra ground is gated on both sides actually showing one", () => {
   assert.match(html, /const varies = \(side\) =>/);
   assert.match(html, /varies\("a"\) && varies\("b"\) \? planes : \[planes\[0\]\]/);
 });
+
+test("the page carries the two-sided eyedropper readout", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // The panel names both sides, because the point of one hover is two pixels.
+  assert.match(html, /id="pick-svg-val"/);
+  assert.match(html, /id="pick-png-val"/);
+  assert.match(html, /id="pick-verdict"/);
+  assert.match(html, /<aside class="pick" id="pick" hidden/);
+  assert.match(html, /wirePicker\(\)/);
+});
+
+test("the eyedropper samples at native resolution, not the scorer's downscale", () => {
+  // MAX_SIDE exists to make SSIM robust to a half-pixel offset by box-averaging neighbours
+  // together. Reading a colour back off that plane would answer with a blend that exists in
+  // neither image — the one answer a colour picker must never give.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function sampler\(rec, side\)/);
+  assert.match(html, /ctx\.imageSmoothingEnabled = false/);
+  assert.match(html, /ctx\.drawImage\(rec\[side\], 0, 0, w, h\)/);
+  // The sample is a single source pixel, addressed in that image's own space.
+  assert.match(html, /getImageData\(px, py, 1, 1\)/);
+});
+
+test("the two samples are the same point, aligned the way the score is", () => {
+  // The vector's pixel is the tile offset over the framing scale; the render's is that same
+  // point less the export's root translate — the alignment scoreRow already applies before
+  // measuring. Sharing it is what makes the pair one point rather than two lookalikes.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const svgX = fx \/ s, svgY = fy \/ s;/);
+  assert.match(html, /const renderX = svgX - rec\.tx, renderY = svgY - rec\.ty;/);
+  // Both columns are marked, so the reading is visibly about one point in two images.
+  assert.match(html, /for \(const shot of tr\.querySelectorAll\("\.shot--framed"\)\)/);
+});
+
+test("a sample is reported composited over the tile's own backdrop", () => {
+  // A 10% state layer is a white pixel at alpha 26 in the vector and an opaque lightened
+  // container in the render. Straight colours at different alphas are not comparable; only
+  // the composite says whether the two agree, which is the question the row is asking.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function over\(c, bg\)/);
+  assert.match(html, /function backdrop\(\)/);
+  // The backdrop tracks the header's own control rather than assuming one ground.
+  assert.match(html, /if \(OV\.bg === "white"\) return \{ r: 255, g: 255, b: 255 \}/);
+});
+
+test("a point outside one image reads as absent rather than as a colour", () => {
+  // The two images have different extents: a point inside the vector's bbox can be off the
+  // edge of the render. Clamping would invent a colour for a pixel that isn't there.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(!\(px >= 0 && py >= 0 && px < w && py < h\)\) return null/);
+  assert.match(html, /sub\.textContent = "outside this image"/);
+});
+
+test("the picker gives up on a tainted canvas the same way the scorer does", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /PICK\.blocked = true/);
+  assert.match(html, /if \(b\) b\.style\.display = "block"/);
+});
+
+test("the readout docks away from the cursor", () => {
+  // Pinned to one corner it covers the match column exactly when a bottom row is being read,
+  // which is the moment that number matters most.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /panel\.classList\.toggle\("pick--left", clientX > window\.innerWidth \/ 2\)/);
+  assert.match(html, /\.pick--left \{ left:16px; right:auto; \}/);
+});

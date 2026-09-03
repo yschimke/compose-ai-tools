@@ -436,6 +436,222 @@ const SCORER = String.raw`
     }
   }
 
+  // ---------------------------------------------------------------- eyedropper
+  // Per-row sampling state, captured by the scorer once a row has been framed: the two
+  // decoded images plus the geometry that maps a point in the displayed tile back to a
+  // pixel in each source. Per row rather than global because every component carries its
+  // own root translate and its own natural sizes.
+  const SAMPLES = new WeakMap();
+
+  // A 1:1 offscreen context per side, built on first sample and reused. Native resolution,
+  // no ground fill, no smoothing — so a read is the source pixel outright. The scorer's
+  // 192px downscale would box-average neighbours together and answer with a colour that
+  // exists in neither image, which is exactly the wrong answer for "what colour is this".
+  function sampler(rec, side) {
+    const key = side + "Ctx";
+    if (rec[key]) return rec[key];
+    const w = side === "png" ? rec.rw : rec.sw;
+    const h = side === "png" ? rec.rh : rec.sh;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(rec[side], 0, 0, w, h);
+    rec[key] = ctx;
+    return ctx;
+  }
+
+  // The source pixel at (x, y), or null when the point falls outside that image. Null is a
+  // real answer here: the two images have different extents, so a point inside the vector's
+  // bbox can still be off the edge of the render.
+  function samplePixel(rec, side, x, y) {
+    const w = side === "png" ? rec.rw : rec.sw;
+    const h = side === "png" ? rec.rh : rec.sh;
+    const px = Math.floor(x), py = Math.floor(y);
+    if (!(px >= 0 && py >= 0 && px < w && py < h)) return null;
+    const d = sampler(rec, side).getImageData(px, py, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  }
+
+  const HEX = (n) => n.toString(16).padStart(2, "0");
+  function hex(c) { return "#" + HEX(c.r) + HEX(c.g) + HEX(c.b); }
+
+  // The tile's own backdrop, so a partly transparent sample can be reported as what the eye
+  // actually sees. Checker reports over its base square: the alternative is reporting a colour
+  // that changes with which 8px square the cursor happens to be over.
+  function backdrop() {
+    if (OV.bg === "white") return { r: 255, g: 255, b: 255 };
+    if (OV.bg === "dark") return { r: 11, g: 11, b: 12 };
+    return { r: 22, g: 22, b: 23 };
+  }
+
+  // Straight (unmultiplied) colour composited over the tile ground. Comparing two straight
+  // colours at different alphas answers a question nobody asked — a 10% state layer is a
+  // white pixel at alpha 26 in one image and an opaque lightened container in the other, and
+  // only the composite says whether they agree.
+  function over(c, bg) {
+    const a = c.a / 255;
+    return {
+      r: Math.round(c.r * a + bg.r * (1 - a)),
+      g: Math.round(c.g * a + bg.g * (1 - a)),
+      b: Math.round(c.b * a + bg.b * (1 - a)),
+      a: 255,
+    };
+  }
+
+  const PICK = { locked: false, blocked: false };
+
+  function pickEl(id) { return document.getElementById(id); }
+
+  // Paint one side of the readout: swatch, hex, and the straight rgba when the sample
+  // carried alpha (so a translucent overlay is legible as an overlay, not as its composite).
+  function showSwatch(side, raw, comp) {
+    const sw = pickEl("pick-" + side + "-sw");
+    const val = pickEl("pick-" + side + "-val");
+    const sub = pickEl("pick-" + side + "-sub");
+    if (!sw || !val || !sub) return;
+    if (!raw) {
+      sw.style.background = "transparent";
+      sw.classList.add("pick-sw--none");
+      val.textContent = "—";
+      sub.textContent = "outside this image";
+      return;
+    }
+    sw.classList.remove("pick-sw--none");
+    sw.style.background = "rgb(" + comp.r + "," + comp.g + "," + comp.b + ")";
+    val.textContent = hex(comp);
+    sub.textContent = raw.a === 255
+      ? "opaque"
+      : "rgba(" + raw.r + "," + raw.g + "," + raw.b + "," + (raw.a / 255).toFixed(2) + ") over backdrop";
+  }
+
+  // The crosshair, placed at the same tile offset in BOTH columns of the row — the point of
+  // the whole feature is that one hover names two pixels, so the marker has to appear twice.
+  function marks(tr, fx, fy) {
+    for (const shot of tr.querySelectorAll(".shot--framed")) {
+      let m = shot.querySelector(".xh");
+      if (!m) { m = document.createElement("i"); m.className = "xh"; shot.appendChild(m); }
+      m.style.left = fx + "px";
+      m.style.top = fy + "px";
+      m.hidden = false;
+    }
+  }
+
+  function clearMarks() {
+    for (const m of document.querySelectorAll(".xh")) m.hidden = true;
+  }
+
+  function hidePick() {
+    if (PICK.locked) return;
+    const panel = pickEl("pick");
+    if (panel) panel.hidden = true;
+    clearMarks();
+  }
+
+  // Map a point in a displayed tile to a pixel in each source and read both.
+  //
+  // The tile is the component's content bbox — the vector's viewBox — at whatever scale it
+  // was framed to, so the vector's own pixel is just the tile offset over that scale. The
+  // render is the same space shifted by the export's root translate, which is the alignment
+  // the scorer already does before measuring; reusing it is what makes the two reads the
+  // same point rather than two points that merely look alike.
+  function pickAt(shot, clientX, clientY) {
+    const tr = shot.closest("tr.crow");
+    const rec = tr && SAMPLES.get(tr);
+    const panel = pickEl("pick");
+    // An unscored row (or one whose pass failed) has no record and no framing, so there is
+    // nothing to sample — drop the previous row's reading rather than leaving it up beside a
+    // cursor that has moved on.
+    if (!rec || !panel) { hidePick(); return; }
+    const rect = shot.getBoundingClientRect();
+    if (!(rect.width > 0 && rec.sw > 0)) { hidePick(); return; }
+    const s = rect.width / rec.sw;
+    const fx = clientX - rect.left, fy = clientY - rect.top;
+    const svgX = fx / s, svgY = fy / s;
+    const renderX = svgX - rec.tx, renderY = svgY - rec.ty;
+
+    let svgRaw, pngRaw;
+    try {
+      svgRaw = samplePixel(rec, "svg", svgX, svgY);
+      pngRaw = samplePixel(rec, "png", renderX, renderY);
+    } catch (err) {
+      // Same tainted-canvas wall the scorer hits; say so once and stop offering the picker.
+      PICK.blocked = true;
+      panel.hidden = true;
+      const b = pickEl("taintwarn");
+      if (b) b.style.display = "block";
+      return;
+    }
+
+    const g = backdrop();
+    const svgOver = svgRaw && over(svgRaw, g);
+    const pngOver = pngRaw && over(pngRaw, g);
+    showSwatch("svg", svgRaw, svgOver);
+    showSwatch("png", pngRaw, pngOver);
+
+    const id = tr.querySelector(".cid");
+    const where = pickEl("pick-where");
+    if (where) {
+      where.textContent = (id ? id.textContent + " · " : "") +
+        "render px " + Math.floor(renderX) + "," + Math.floor(renderY);
+    }
+    const verdict = pickEl("pick-verdict");
+    if (verdict) {
+      if (!svgOver || !pngOver) {
+        verdict.textContent = "";
+        verdict.className = "pick-verdict";
+      } else {
+        const d = Math.max(
+          Math.abs(svgOver.r - pngOver.r),
+          Math.abs(svgOver.g - pngOver.g),
+          Math.abs(svgOver.b - pngOver.b),
+        );
+        verdict.textContent = d === 0 ? "identical" : "Δ " + d + "/255 max channel";
+        verdict.className = "pick-verdict " + (d === 0 ? "ok" : d <= 4 ? "near" : "off");
+      }
+    }
+    // Dock the readout to the side the cursor is not on. Fixed to one corner it sits over the
+    // match column exactly when a bottom row is being read, which is the moment the number
+    // matters most.
+    panel.classList.toggle("pick--left", clientX > window.innerWidth / 2);
+    panel.hidden = false;
+    marks(tr, fx, fy);
+  }
+
+  function wirePicker() {
+    const rows = document.getElementById("rows");
+    if (!rows) return;
+    rows.addEventListener("pointermove", (e) => {
+      if (PICK.locked || PICK.blocked) return;
+      const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
+      if (!shot) { hidePick(); return; }
+      pickAt(shot, e.clientX, e.clientY);
+    });
+    rows.addEventListener("pointerleave", hidePick);
+    // Click freezes the reading so it can be read and copied without the cursor moving off;
+    // clicking again (or Escape) releases it.
+    rows.addEventListener("click", (e) => {
+      const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
+      if (!shot || PICK.blocked) return;
+      if (PICK.locked) {
+        PICK.locked = false;
+        pickAt(shot, e.clientX, e.clientY);
+      } else {
+        pickAt(shot, e.clientX, e.clientY);
+        PICK.locked = true;
+      }
+      const panel = pickEl("pick");
+      if (panel) panel.classList.toggle("pick--locked", PICK.locked);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !PICK.locked) return;
+      PICK.locked = false;
+      const panel = pickEl("pick");
+      if (panel) panel.classList.remove("pick--locked");
+      hidePick();
+    });
+  }
+
   async function scoreRow(tr, seq) {
     const cell = tr.querySelector(".score");
     try {
@@ -518,6 +734,10 @@ const SCORER = String.raw`
       else restoreSvg(tr);
       // Crop both display columns to the component now that we've read its bbox from the SVG.
       frameToComponent(tr, rw, rh, tx, ty, sw, sh);
+      // Hand the eyedropper the images this pass actually scored, with the geometry that
+      // aligns them. Replaced on every rescore, so the picker reads the same overridden
+      // vector and theme-selected render the score and the columns are showing.
+      SAMPLES.set(tr, { png, svg, rw, rh, sw, sh, tx, ty });
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.className = "score score--" + grade(pct);
@@ -644,6 +864,7 @@ const SCORER = String.raw`
 
   function start() {
     wireControls();
+    wirePicker();
     run();
   }
 
@@ -835,6 +1056,30 @@ export function renderCompareHtml(catalog, opts = {}) {
   .shot--framed { overflow:hidden; padding:0; min-width:0; min-height:0; }
   .shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; background:var(--panel); }
+  /* Eyedropper: a framed tile is a live surface, and the crosshair marks the sampled point in
+     BOTH columns at once so the pair is read as one point rather than two lookalikes. Double
+     ring (dark core, light halo) so it stays visible on any colour underneath it. */
+  .shot--framed { cursor:crosshair; }
+  .shot .xh { position:absolute; width:9px; height:9px; margin:-5px 0 0 -5px; border-radius:50%;
+    border:1px solid #000; box-shadow:0 0 0 1px rgba(255,255,255,0.9); pointer-events:none; z-index:2; }
+  .pick { position:fixed; right:16px; bottom:16px; z-index:5; width:264px; padding:12px 14px;
+    border:1px solid var(--line); border-radius:10px; background:var(--panel); box-shadow:0 8px 28px rgba(0,0,0,0.45);
+    font-size:12px; }
+  .pick[hidden] { display:none; }
+  .pick--locked { border-color:var(--accent); }
+  .pick--left { left:16px; right:auto; }
+  .pick .pick-where { color:var(--muted); font-size:11px; word-break:break-word; }
+  .pick .pick-row { display:flex; align-items:center; gap:9px; margin-top:9px; }
+  .pick .pick-sw { width:26px; height:26px; border-radius:6px; border:1px solid var(--line); flex:none; }
+  .pick .pick-sw--none { background-image:linear-gradient(45deg,transparent 45%,var(--muted) 45%,var(--muted) 55%,transparent 55%); }
+  .pick .pick-who { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:0.04em; }
+  .pick .pick-val { font-variant-numeric:tabular-nums; font-size:13px; }
+  .pick .pick-sub { color:var(--muted); font-size:10px; }
+  .pick .pick-verdict { margin-top:10px; font-size:11px; font-variant-numeric:tabular-nums; }
+  .pick .pick-verdict.ok { color:var(--good); }
+  .pick .pick-verdict.near { color:var(--warn); }
+  .pick .pick-verdict.off { color:var(--bad); }
+  .pick .pick-hint { margin-top:8px; color:var(--muted); font-size:10px; }
   .badge { position:absolute; top:4px; right:4px; font-size:10px; padding:0 5px; border-radius:999px;
     background:rgba(0,0,0,0.6); color:var(--warn); border:1px solid var(--warn); }
   td.score { text-align:right; font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; white-space:nowrap; width:96px; }
@@ -874,13 +1119,31 @@ export function renderCompareHtml(catalog, opts = {}) {
   <code>&lt;text&gt;</code> while its captured layer boxes stay put — a fixed-geometry sticker can't reflow, so
   the glyphs overflow, showing why it can't stand in for a re-rendered <code>fontScale</code>; turning off
   <strong>embedded fonts</strong> drops the <code>@font-face</code> so the browser substitutes its own face.
-  <strong>Rows sort largest-diff-first once scored</strong>, so the worst offenders come to the top.</p>
+  <strong>Rows sort largest-diff-first once scored</strong>, so the worst offenders come to the top.
+  <strong>Hover either column</strong> to read the colour under the cursor: one hover samples the same
+  point in <em>both</em> images — the vector's own pixel and, through the same alignment the score uses,
+  the render's — and reports each as it composites over the tile's backdrop, which is the only form in
+  which a translucent state layer and an opaque container are comparable at all. Click to freeze the
+  reading, <kbd>Esc</kbd> to release.</p>
   <p class="taintwarn" id="taintwarn">⚠ The match scores read pixels back from a canvas, which the browser
   blocks when the images can't be read cross-origin — over <code>file://</code> (opaque origin), or from a
   host that doesn't send CORS headers for the PNGs. Open this page over <strong>http</strong> from a
   CORS-enabled host: the README's htmlpreview link (images come from <code>raw.githubusercontent.com</code>,
   which allows it) or a local server (<code>python3 -m http.server</code> in the branch).</p>
 </header>
+<aside class="pick" id="pick" hidden aria-live="polite">
+  <div class="pick-where" id="pick-where"></div>
+  <div class="pick-row">
+    <span class="pick-sw" id="pick-svg-sw"></span>
+    <span><span class="pick-who">figma-svg</span><br /><span class="pick-val" id="pick-svg-val">—</span><br /><span class="pick-sub" id="pick-svg-sub"></span></span>
+  </div>
+  <div class="pick-row">
+    <span class="pick-sw" id="pick-png-sw"></span>
+    <span><span class="pick-who">render</span><br /><span class="pick-val" id="pick-png-val">—</span><br /><span class="pick-sub" id="pick-png-sub"></span></span>
+  </div>
+  <div class="pick-verdict" id="pick-verdict"></div>
+  <div class="pick-hint">click to freeze · esc to release</div>
+</aside>
 <main>
   <table>
     <thead>
