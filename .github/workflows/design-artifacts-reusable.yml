@@ -2452,6 +2452,10 @@ jobs:
       - name: Check the rc-players pin against the consumed player version
         id: rc-players-pin
         if: ${{ inputs.rc-embedded-lane || inputs.rc-embedded-jvm-lane }}
+        env:
+          # Named in the drift report, so a reader can see WHICH driver commit supplied the
+          # `rcplayers` on the other side of the comparison rather than having to work it out.
+          DRIVER_REF: ${{ needs.driver.outputs.ref }}
         run: |
           set -euo pipefail
           catalog="$GITHUB_WORKSPACE/compose-ai-tools/gradle/libs.versions.toml"
@@ -2463,9 +2467,45 @@ jobs:
             echo "::warning::no 'rcplayers' entry in the driver checkout's gradle/libs.versions.toml; skipping the embedded player lanes"
             exit 0
           fi
+          # Drift has two directions and they are not the same problem, which the single message
+          # here did not say. Both still skip the lanes — a harness on a different build than the
+          # capture is unattributable either way — but only one of them is anyone's to fix.
+          #
+          # PIN AHEAD OF DRIVER is the ordinary, self-healing case, and it happens on every player
+          # bump. `RC_PLAYERS_PIN` lives in this file, which an external caller reads at `@main`, so
+          # it moves the moment the bump merges; `rcplayers` reaches that caller through the DRIVER
+          # PIN, which only advances when release-please cuts a release and Renovate bumps
+          # `.github/design-artifacts-driver-pin.txt`. Between those two events every external
+          # caller drifts. Nothing is broken and nothing needs editing — it clears itself, and on
+          # 3 Sep 2026 (rcplayers 1.56.0 -> 1.56.1) the whole window was 24 minutes. What made it
+          # cost an afternoon was this step saying only "Bump RC_PLAYERS_PIN in this workflow",
+          # which is the WRONG instruction for this direction and sends the reader to edit a file
+          # that is already correct, while two columns quietly vanish from the wall.
+          #
+          # PIN BEHIND DRIVER is a real editing mistake: someone moved `rcplayers` without moving
+          # the literal beside it. That one IS "bump RC_PLAYERS_PIN in this workflow".
           if [ "v${version}" != "$RC_PLAYERS_PIN" ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=rc-players pin drift::RC_PLAYERS_PIN is $RC_PLAYERS_PIN but this repo consumes the players at v${version}. Rendering a harness through a different player build than the catalog's own capture makes every column unattributable, so the embedded lanes are skipped. Bump RC_PLAYERS_PIN in this workflow."
+            # `sort -V` decides the direction. The two values are equal-or-not by the test above,
+            # so the older of the pair is whichever sorts first.
+            older="$(printf '%s\n%s\n' "$RC_PLAYERS_PIN" "v${version}" | sort -V | head -n1)"
+            if [ "$older" = "v${version}" ]; then
+              detail="The pin is AHEAD of the driver, which is the ordinary state right after a player bump and needs no edit: this workflow is read at @main so RC_PLAYERS_PIN moved immediately, while rcplayers reaches you through the export-driver pin, which advances only when a release is cut and Renovate bumps .github/design-artifacts-driver-pin.txt. It clears on its own once that pin reaches a release carrying rcplayers=${RC_PLAYERS_PIN#v}."
+            else
+              detail="The pin is BEHIND the driver, which is an editing mistake: rcplayers moved without RC_PLAYERS_PIN beside it. Bump RC_PLAYERS_PIN in this workflow to v${version}."
+            fi
+            echo "::warning title=rc-players pin drift::RC_PLAYERS_PIN is $RC_PLAYERS_PIN but the driver checkout consumes the players at v${version}, so the vendored-Android and cmp-jvm columns are skipped for this run. $detail"
+            {
+              echo ""
+              echo "### Remote Compose embedded lanes skipped"
+              echo ""
+              echo "| | |"
+              echo "| --- | --- |"
+              echo "| \`RC_PLAYERS_PIN\` (this workflow, read at \`@main\`) | \`$RC_PLAYERS_PIN\` |"
+              echo "| \`rcplayers\` (export driver \`${DRIVER_REF:-unknown}\`) | \`v${version}\` |"
+              echo ""
+              echo "Columns lost this run: **vendored Android** and **cmp-jvm**. $detail"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "ok=true" >> "$GITHUB_OUTPUT"
