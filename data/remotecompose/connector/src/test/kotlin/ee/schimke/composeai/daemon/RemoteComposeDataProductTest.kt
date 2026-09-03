@@ -409,6 +409,44 @@ class RemoteComposeDataProductTest {
   }
 
   @Test
+  fun declarationsJson_carries_the_capture_player_even_with_no_knobs() {
+    val controller = RemoteComposeController
+    controller.clearDeclarations()
+    assertNull("nothing declared and no player → still no sidecar", controller.declarationsJson())
+
+    // The common case this exists for: a sticker with no editable knobs. Before the player was
+    // recorded, `declarationsJson` returned null here and the renderer DELETED the sidecar, so most
+    // Remote Compose captures carried none — and there was nowhere for the player to ride out.
+    controller.recordCapturePlayer("cmp-android")
+    val jsonStr = controller.declarationsJson()
+    assertNotNull("a recorded player is worth a sidecar on its own", jsonStr)
+    val payload = Json.decodeFromString(RemoteComposeDeclarationsPayload.serializer(), jsonStr!!)
+    assertTrue("no knobs were declared", payload.declarations.isEmpty())
+    assertEquals("cmp-android", payload.capturePlayer)
+
+    // …and it is per-capture, so a pooled sandbox cannot hand the next preview a stale answer.
+    controller.clearDeclarations()
+    assertNull(controller.declarationsJson())
+  }
+
+  @Test
+  fun declarationsJson_records_the_view_player_when_that_is_what_drew_it() {
+    // The whole reason this is recorded rather than derived: a consumer shipping the connector
+    // without the optional embedded-player runtime draws through the view player, with nothing in
+    // its annotations saying so.
+    val controller = RemoteComposeController
+    controller.clearDeclarations()
+    controller.recordCapturePlayer("java")
+    val payload =
+      Json.decodeFromString(
+        RemoteComposeDeclarationsPayload.serializer(),
+        controller.declarationsJson()!!,
+      )
+    assertEquals("java", payload.capturePlayer)
+    controller.clearDeclarations()
+  }
+
+  @Test
   fun document_fetch_before_any_render_returns_not_available() {
     val registry = RemoteComposeDataProductRegistry()
     assertEquals(

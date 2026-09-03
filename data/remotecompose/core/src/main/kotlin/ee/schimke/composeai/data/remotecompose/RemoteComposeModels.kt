@@ -74,7 +74,24 @@ public data class RemoteComposeKnobDeclaration(val name: String, val default: Re
  */
 @Serializable
 public data class RemoteComposeDeclarationsPayload(
-  val declarations: List<RemoteComposeKnobDeclaration> = emptyList()
+  val declarations: List<RemoteComposeKnobDeclaration> = emptyList(),
+  /**
+   * The `rcPlayer` wire id of the player that actually drew this capture — `"cmp-android"` for the
+   * embedded player, `"java"` for the view-backed one — or null when the capture predates this
+   * field.
+   *
+   * Recorded rather than derived, because it cannot be derived. `RemoteOverridablePreview` selects
+   * the player as `player == EMBEDDED && isEmbeddedPlayerAvailable`, and that second term is a
+   * property of the capturing app's own classpath at render time: a consumer shipping the connector
+   * without the optional embedded-player runtime draws through the view player while its
+   * `@PreviewWrapper` says nothing at all. A reader inferring from the wrapper would then answer
+   * `?rcPlayer=cmp-android` with view-player pixels under a confident 200
+   * (compose-preview-server#233 answers *unknown* instead, which is safe but costs the clean
+   * default link — this is what lets it stop being unknown).
+   *
+   * Null and absent mean the same thing: not recorded. Never "the default one".
+   */
+  val capturePlayer: String? = null,
 )
 
 /**
