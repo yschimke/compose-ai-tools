@@ -374,7 +374,9 @@ object ScreenGenerator {
    * reserved in Kotlin".
    */
   private fun isUsableIdentifier(name: String): Boolean =
-    isIdentifier(name) && !ComponentSnippets.isHardKeyword(name) && name.any { it != '_' }
+    ComponentSnippets.isIdentifier(name) &&
+      !ComponentSnippets.isHardKeyword(name) &&
+      name.any { it != '_' }
 
   /**
    * An opt-in marker, spelled for source.

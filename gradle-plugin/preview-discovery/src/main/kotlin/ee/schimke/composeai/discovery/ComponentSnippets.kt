@@ -195,10 +195,31 @@ object ComponentSnippets {
 
   internal fun isHardKeyword(name: String): Boolean = name in HARD_KEYWORDS
 
-  internal fun escapeIfKeyword(name: String): String =
-    if (name in HARD_KEYWORDS) "`$name`" else name
+  /**
+   * Kotlin's own identifier rule: `(Letter | '_') (Letter | '_' | UnicodeDigit)*`.
+   *
+   * Not `[A-Za-z_][A-Za-z0-9_]*` — `Übersicht` and `画面` are identifiers Kotlin accepts without
+   * backticks. Kept here, next to the escaping it decides, so there is one answer to "can this be
+   * written bare?" rather than one per generator.
+   */
+  internal fun isIdentifier(name: String): Boolean =
+    name.isNotEmpty() &&
+      (name[0].isLetter() || name[0] == '_') &&
+      name.all { it.isLetter() || it.isDigit() || it == '_' }
 
-  /** Escapes each segment of an import path, since any one of them may be a keyword. */
+  /**
+   * Backticks [name] unless it can be written bare.
+   *
+   * Two reasons it cannot, and a keyword is only the obvious one: a declaration's *source* name can
+   * hold characters no bare identifier may, because it was written in backticks to begin with —
+   * ``annotation class `Api${'$'}Experimental` ``. Printing that unquoted is as broken as printing
+   * `when` unquoted, and the second case is the one that survived a round of review by looking
+   * unremarkable.
+   */
+  internal fun escapeIfKeyword(name: String): String =
+    if (name in HARD_KEYWORDS || !isIdentifier(name)) "`$name`" else name
+
+  /** Escapes each segment of an import path, since any one of them may need it. */
   internal fun escapeCallableIfKeyword(callable: String): String =
     callable.split('.').joinToString(".") { escapeIfKeyword(it) }
 

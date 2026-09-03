@@ -621,9 +621,10 @@ class ScreenGeneratorTest {
   @Test
   fun `an opt-in marker is emitted exactly as recorded, dollars and all`() {
     // The producer rebuilds a nested marker's name from its nesting chain, so what arrives here is
-    // already source notation. The emitter must not second-guess it: a top-level marker whose
-    // backticked name contains a `$` is spelled with the `$`, and rewriting every one to `.` would
-    // reference a class that does not exist. `ComposableSignatureTest` covers both producer halves.
+    // already source notation. The emitter must not rewrite it — turning every `$` into `.` would
+    // reference a class that does not exist — but it must still quote a segment that cannot be
+    // written bare, which is how such a name came to hold a `$` in the first place.
+    // `ComposableSignatureTest` covers both producer halves.
     val nested =
       component(
         "Nested",
@@ -642,7 +643,7 @@ class ScreenGeneratorTest {
     assertThat(emitted(ScreenDocument("A", ScreenNode(nested.canonicalId)), catalog(nested)).source)
       .contains("@OptIn(com.example.Api.Experimental::class)")
     assertThat(emitted(ScreenDocument("B", ScreenNode(dollar.canonicalId)), catalog(dollar)).source)
-      .contains("@OptIn(com.example.Api${'$'}Experimental::class)")
+      .contains("@OptIn(com.example.`Api${'$'}Experimental`::class)")
   }
 
   @Test
