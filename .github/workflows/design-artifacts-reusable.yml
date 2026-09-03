@@ -52,9 +52,11 @@ on:
         default: ''
       gradle-properties:
         description: >
-          Comma-separated `key=value` Gradle properties to set in the THROWAWAY checkout's
+          A compact JSON object of Gradle properties to set in the THROWAWAY checkout's
           gradle.properties, for an upstream whose build configuration the render needs to differ
-          on. Import mode only.
+          on. Import mode only. JSON rather than a comma-joined `key=value` list because a Gradle
+          property value can legitimately contain a comma — `android.suppressUnsupportedCompileSdk=35,36`
+          is one — which a comma-split transport turns into a second property nobody wrote.
 
           The pipeline already rewrites that file for the cases it knows about — dependency
           verification, Isolated Projects, the render variant — each as its own step with its own
@@ -1520,26 +1522,62 @@ jobs:
           GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
         run: |
           set -euo pipefail
-          IFS=','
-          for composeai_entry in $INPUT_GRADLE_PROPERTIES; do
-            unset IFS
-            composeai_key="${composeai_entry%%=*}"
-            composeai_value="${composeai_entry#*=}"
-            # Escaped for sed's regex, not just interpolated: a Gradle property key is full of dots.
-            composeai_pattern="$(printf '%s' "$composeai_key" | sed 's/[.[\*^$/]/\\&/g')"
-            if [ -f "$GRADLE_PROPERTIES" ] &&
-               grep -q "^[[:space:]]*${composeai_pattern}[[:space:]]*=" "$GRADLE_PROPERTIES"; then
-              sed -i "s|^[[:space:]]*${composeai_pattern}[[:space:]]*=.*|${composeai_key}=${composeai_value}|" \
-                "$GRADLE_PROPERTIES"
-              echo "rewrote ${composeai_key}=${composeai_value} in the throwaway checkout"
-            else
-              printf '\n# compose-preview import: declared by this import.\n%s=%s\n' \
-                "$composeai_key" "$composeai_value" >> "$GRADLE_PROPERTIES"
-              echo "set ${composeai_key}=${composeai_value} in the throwaway checkout"
-            fi
-            IFS=','
-          done
-          unset IFS
+          # python3 rather than shell, for two reasons the shell version got wrong. Splitting the
+          # transport on commas turns a legitimate comma-bearing value into a second property nobody
+          # wrote (`android.suppressUnsupportedCompileSdk=35,36` became `…=35` plus a bogus `36=36`),
+          # which JSON transport fixes. And building a `sed` replacement out of the value is unsafe
+          # whatever the delimiter: an `&` expands to the whole matched line and the delimiter itself
+          # makes sed exit non-zero, which under `set -e` aborts the render rather than misconfiguring
+          # it. Neither is reachable from the imports caller today — its validator rejects both — but
+          # this workflow is the contract, and a caller's validation is not this step's correctness.
+          #
+          # Heredoc body at the block scalar's own indent, so what the shell sees starts at column 0:
+          # indent it for readability and python raises IndentationError before the step does anything.
+          python3 <<'COMPOSEAI_PROPS_PY'
+          import json, os, re
+
+          path = os.environ["GRADLE_PROPERTIES"]
+          raw = (os.environ["INPUT_GRADLE_PROPERTIES"] or "").strip()
+          if raw.startswith("{"):
+              props = json.loads(raw)
+              if not isinstance(props, dict):
+                  raise SystemExit("::error::gradle-properties must be a JSON object")
+          else:
+              # The comma-joined `key=value` form this input used to take. Still accepted so that
+              # updating this workflow and updating a caller are independent deploys rather than a
+              # window in which whichever landed first breaks the other. It carries the ambiguity
+              # that motivated the JSON form — a comma in a value still splits — so callers should
+              # send JSON; nothing here can recover a value the transport already lost.
+              props = {}
+              for entry in (e for e in raw.split(",") if e):
+                  key, sep, value = entry.partition("=")
+                  if not sep:
+                      raise SystemExit("::error::gradle-properties entry %r is not key=value" % entry)
+                  props[key] = value
+
+          try:
+              with open(path, encoding="utf-8") as fh:
+                  lines = fh.read().splitlines()
+          except FileNotFoundError:
+              lines = []
+
+          for key, value in props.items():
+              value = "true" if value is True else "false" if value is False else str(value)
+              # Every assignment of the key, not just the first: a gradle.properties that sets one
+              # twice takes the last, so rewriting one line and leaving another would not stick.
+              pattern = re.compile(r"^[ \t]*" + re.escape(str(key)) + r"[ \t]*=")
+              matched = [i for i, line in enumerate(lines) if pattern.match(line)]
+              for i in matched:
+                  lines[i] = "%s=%s" % (key, value)
+              if matched:
+                  print("rewrote %s=%s in the throwaway checkout" % (key, value))
+              else:
+                  lines += ["", "# compose-preview import: declared by this import.", "%s=%s" % (key, value)]
+                  print("set %s=%s in the throwaway checkout" % (key, value))
+
+          with open(path, "w", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          COMPOSEAI_PROPS_PY
 
       - name: Pin the render variant in the upstream checkout
         if: ${{ inputs.upstream-repository != '' && inputs.variant != '' }}
@@ -2281,26 +2319,62 @@ jobs:
           GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
         run: |
           set -euo pipefail
-          IFS=','
-          for composeai_entry in $INPUT_GRADLE_PROPERTIES; do
-            unset IFS
-            composeai_key="${composeai_entry%%=*}"
-            composeai_value="${composeai_entry#*=}"
-            # Escaped for sed's regex, not just interpolated: a Gradle property key is full of dots.
-            composeai_pattern="$(printf '%s' "$composeai_key" | sed 's/[.[\*^$/]/\\&/g')"
-            if [ -f "$GRADLE_PROPERTIES" ] &&
-               grep -q "^[[:space:]]*${composeai_pattern}[[:space:]]*=" "$GRADLE_PROPERTIES"; then
-              sed -i "s|^[[:space:]]*${composeai_pattern}[[:space:]]*=.*|${composeai_key}=${composeai_value}|" \
-                "$GRADLE_PROPERTIES"
-              echo "rewrote ${composeai_key}=${composeai_value} in the throwaway checkout"
-            else
-              printf '\n# compose-preview import: declared by this import.\n%s=%s\n' \
-                "$composeai_key" "$composeai_value" >> "$GRADLE_PROPERTIES"
-              echo "set ${composeai_key}=${composeai_value} in the throwaway checkout"
-            fi
-            IFS=','
-          done
-          unset IFS
+          # python3 rather than shell, for two reasons the shell version got wrong. Splitting the
+          # transport on commas turns a legitimate comma-bearing value into a second property nobody
+          # wrote (`android.suppressUnsupportedCompileSdk=35,36` became `…=35` plus a bogus `36=36`),
+          # which JSON transport fixes. And building a `sed` replacement out of the value is unsafe
+          # whatever the delimiter: an `&` expands to the whole matched line and the delimiter itself
+          # makes sed exit non-zero, which under `set -e` aborts the render rather than misconfiguring
+          # it. Neither is reachable from the imports caller today — its validator rejects both — but
+          # this workflow is the contract, and a caller's validation is not this step's correctness.
+          #
+          # Heredoc body at the block scalar's own indent, so what the shell sees starts at column 0:
+          # indent it for readability and python raises IndentationError before the step does anything.
+          python3 <<'COMPOSEAI_PROPS_PY'
+          import json, os, re
+
+          path = os.environ["GRADLE_PROPERTIES"]
+          raw = (os.environ["INPUT_GRADLE_PROPERTIES"] or "").strip()
+          if raw.startswith("{"):
+              props = json.loads(raw)
+              if not isinstance(props, dict):
+                  raise SystemExit("::error::gradle-properties must be a JSON object")
+          else:
+              # The comma-joined `key=value` form this input used to take. Still accepted so that
+              # updating this workflow and updating a caller are independent deploys rather than a
+              # window in which whichever landed first breaks the other. It carries the ambiguity
+              # that motivated the JSON form — a comma in a value still splits — so callers should
+              # send JSON; nothing here can recover a value the transport already lost.
+              props = {}
+              for entry in (e for e in raw.split(",") if e):
+                  key, sep, value = entry.partition("=")
+                  if not sep:
+                      raise SystemExit("::error::gradle-properties entry %r is not key=value" % entry)
+                  props[key] = value
+
+          try:
+              with open(path, encoding="utf-8") as fh:
+                  lines = fh.read().splitlines()
+          except FileNotFoundError:
+              lines = []
+
+          for key, value in props.items():
+              value = "true" if value is True else "false" if value is False else str(value)
+              # Every assignment of the key, not just the first: a gradle.properties that sets one
+              # twice takes the last, so rewriting one line and leaving another would not stick.
+              pattern = re.compile(r"^[ \t]*" + re.escape(str(key)) + r"[ \t]*=")
+              matched = [i for i, line in enumerate(lines) if pattern.match(line)]
+              for i in matched:
+                  lines[i] = "%s=%s" % (key, value)
+              if matched:
+                  print("rewrote %s=%s in the throwaway checkout" % (key, value))
+              else:
+                  lines += ["", "# compose-preview import: declared by this import.", "%s=%s" % (key, value)]
+                  print("set %s=%s in the throwaway checkout" % (key, value))
+
+          with open(path, "w", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          COMPOSEAI_PROPS_PY
 
       - name: Pin the render variant in the upstream checkout
         if: ${{ inputs.upstream-repository != '' && inputs.variant != '' }}
@@ -3122,6 +3196,28 @@ jobs:
                       print("    " + frame.strip())
           SIDECAR_PY
             sed -i 's/^    //' "${RUNNER_TEMP}/sidecar-cause.py"
+            # Diagnosis-bearing sidecars first, BEFORE the cap. The cause of a wholesale failure is
+            # normally the FIRST render — the one that actually tried to load the native library —
+            # and every sidecar after it carries only the generic cascade error. `find | sort` orders
+            # them by preview name, which has nothing to do with render order, so the one sidecar that
+            # explains the failure is not guaranteed to land in the first 25 and the block that prints
+            # `diagnosis` could never run. Partitioning here is what makes that print's "never dropped"
+            # true; a sidecar too broken to parse sorts with the rest rather than failing the step.
+            mapfile -t sidecars < <(
+              python3 - "${sidecars[@]}" <<'COMPOSEAI_ORDER_PY'
+          import json, sys
+
+          diagnosed, plain = [], []
+          for path in sys.argv[1:]:
+              try:
+                  with open(path, encoding="utf-8") as fh:
+                      has = bool((json.load(fh).get("diagnosis") or "").strip())
+              except Exception:
+                  has = False
+              (diagnosed if has else plain).append(path)
+          print("\n".join(diagnosed + plain))
+          COMPOSEAI_ORDER_PY
+            )
             for f in "${sidecars[@]:0:25}"; do
               echo "--- ${f#"$root"/}"
               python3 "${RUNNER_TEMP}/sidecar-cause.py" "$f"
