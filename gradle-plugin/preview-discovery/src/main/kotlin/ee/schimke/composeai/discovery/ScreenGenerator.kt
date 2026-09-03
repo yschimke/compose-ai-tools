@@ -65,18 +65,13 @@ object ScreenGenerator {
         )
       )
     }
-    val badSegment =
-      packageName.split('.').firstOrNull {
-        !KOTLIN_IDENTIFIER.matches(it) || ComponentSnippets.isHardKeyword(it)
-      }
+    val badSegment = packageName.split('.').firstOrNull { !isUsableIdentifier(it) }
     if (badSegment != null) {
       return Result.Refused(
         listOf("package segment `$badSegment` is not a usable Kotlin identifier")
       )
     }
-    if (
-      !KOTLIN_IDENTIFIER.matches(document.name) || ComponentSnippets.isHardKeyword(document.name)
-    ) {
+    if (!isUsableIdentifier(document.name)) {
       return Result.Refused(
         listOf("screen name `${document.name}` is not a usable Kotlin function name")
       )
@@ -109,7 +104,9 @@ object ScreenGenerator {
           // Qualified, not imported and shortened: two markers can share a simple name from
           // different packages, and `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` is
           // ambiguous rather than merely ugly. Same reasoning as the component calls below.
-          optIns.joinToString(", ", "@OptIn(", ")") { "$it::class" }
+          optIns.joinToString(", ", "@OptIn(", ")") {
+            "${ComponentSnippets.escapeCallableIfKeyword(it)}::class"
+          }
         )
       }
       appendLine("@Composable")
@@ -159,12 +156,22 @@ object ScreenGenerator {
       node.arguments.keys.filterNot(byName::containsKey).forEach {
         reasons += "`${record.symbol.name}` has no parameter `$it`"
       }
-      node.slots.keys.forEach { slot ->
+      node.slots.forEach { (slot, children) ->
         val parameter = byName[slot]
-        when {
-          parameter == null -> reasons += "`${record.symbol.name}` has no slot `$slot`"
-          !parameter.composableSlot ->
-            reasons += "`${record.symbol.name}`.`$slot` is a parameter, not a @Composable slot"
+        val rejected =
+          when {
+            parameter == null -> "`${record.symbol.name}` has no slot `$slot`"
+            !parameter.composableSlot ->
+              "`${record.symbol.name}`.`$slot` is a parameter, not a @Composable slot"
+            else -> null
+          }
+        if (rejected != null) {
+          reasons += rejected
+          // The loop below walks `record.parameters`, so a slot the component never declared is
+          // never reached and its subtree would go unreported — the same gap as an unresolved
+          // node's children, one level in. A renamed slot is exactly when a document is most
+          // likely to be stale further down, so those children are the ones worth naming.
+          children.forEach { node(it, depth + 1) }
         }
       }
 
@@ -232,7 +239,12 @@ object ScreenGenerator {
                 if (value.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong())
                   value.value.toString()
                 else null
-              "kotlin.Long" -> "${value.value}L"
+              // `-9223372036854775808L` does not compile: Kotlin reads the positive token first
+              // and rejects it as out of range, then applies unary minus. Verified with the
+              // compiler, which is also why `Int.MIN_VALUE` is left as a plain literal — the same
+              // spelling one type down *is* accepted.
+              "kotlin.Long" ->
+                if (value.value == Long.MIN_VALUE) "Long.MIN_VALUE" else "${value.value}L"
               else -> null
             }
           is ScreenValue.Fractional ->
@@ -276,6 +288,20 @@ object ScreenGenerator {
       .replace("\r", "\\r")
       .replace("\t", "\\t")
       .let { "\"$it\"" }
+
+  /**
+   * Whether [name] can be written into generated source as a bare declaration name.
+   *
+   * Three ways it cannot, and all three produce source the compiler rejects rather than a warning:
+   * it is not an identifier at all (`my screen`), it is a hard keyword (`when`), or it is
+   * all-underscore. The last is the least obvious — `_`, `__` and friends match every identifier
+   * regex ever written and Kotlin reserves them, so `fun _()` fails with "Names _, __, ___, … are
+   * reserved in Kotlin".
+   */
+  private fun isUsableIdentifier(name: String): Boolean =
+    KOTLIN_IDENTIFIER.matches(name) &&
+      !ComponentSnippets.isHardKeyword(name) &&
+      name.any { it != '_' }
 
   private val KOTLIN_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
 }

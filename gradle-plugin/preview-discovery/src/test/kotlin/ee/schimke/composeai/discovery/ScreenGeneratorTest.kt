@@ -420,6 +420,95 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `Long MIN_VALUE is emitted by name, because its literal does not compile`() {
+    // `-9223372036854775808L` is rejected: Kotlin reads the positive token first and it is out of
+    // range, then applies unary minus. Confirmed against the compiler — and `Int.MIN_VALUE`, the
+    // same spelling one type down, *is* accepted, so it stays a plain literal.
+    val counted =
+      component(
+        "Counted",
+        "com.example.Counted",
+        listOf(TargetParameter("total", "Long", typeFqn = "kotlin.Long")),
+      )
+    fun screen(v: Long) =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(counted.canonicalId, arguments = mapOf("total" to ScreenValue.Whole(v))),
+      )
+
+    assertThat(emitted(screen(Long.MIN_VALUE), catalog(counted)).source)
+      .contains("Counted(total = Long.MIN_VALUE)")
+    assertThat(emitted(screen(Long.MAX_VALUE), catalog(counted)).source)
+      .contains("Counted(total = 9223372036854775807L)")
+    assertThat(emitted(screen(7L), catalog(counted)).source).contains("Counted(total = 7L)")
+  }
+
+  @Test
+  fun `an all-underscore screen name is refused`() {
+    // `_` and `__` match every identifier regex and Kotlin reserves them: "Names _, __, ___, ...
+    // are reserved in Kotlin".
+    assertThat(refusal(ScreenDocument("_", ScreenNode(text.canonicalId)), catalog(text)).first())
+      .contains("not a usable Kotlin function name")
+    assertThat(refusal(ScreenDocument("__", ScreenNode(text.canonicalId)), catalog(text)).first())
+      .contains("not a usable Kotlin function name")
+    // A leading underscore on an otherwise ordinary name is legal and must still be accepted.
+    assertThat(
+        emitted(ScreenDocument("_Screen", ScreenNode(text.canonicalId)), catalog(text)).source
+      )
+      .contains("fun _Screen()")
+  }
+
+  @Test
+  fun `an all-underscore package segment is refused`() {
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument("Screen", ScreenNode(text.canonicalId)),
+        catalog(text),
+        packageName = "com._.example",
+      )
+
+    assertThat((result as ScreenGenerator.Result.Refused).reasons.first()).contains("`_`")
+  }
+
+  @Test
+  fun `an opt-in marker under a keyword package is escaped`() {
+    // ClassGraph reports the FQN unescaped, so a marker in a package Kotlin source spells
+    // ``com.`when``` arrives as `com.when` and would emit an annotation that does not compile.
+    val fancy =
+      component("Fancy", "com.example.Fancy", emptyList(), requiredOptIns = listOf("com.when.Api"))
+
+    val source =
+      emitted(ScreenDocument("Screen", ScreenNode(fancy.canonicalId)), catalog(fancy)).source
+
+    assertThat(source).contains("@OptIn(com.`when`.Api::class)")
+  }
+
+  @Test
+  fun `children of a slot the component never declared are still reported`() {
+    // The argument loop walks the component's own parameters, so a renamed slot is never reached
+    // and its subtree would go unreported — the unresolved-node gap, one level in.
+    val holder =
+      card.copy(
+        parameters =
+          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          holder.canonicalId,
+          slots = mapOf("body" to listOf(ScreenNode("app/com.example.GoneKt.Gone"))),
+        ),
+      )
+
+    val reasons = refusal(screen, catalog(holder))
+
+    assertThat(reasons).hasSize(2)
+    assertThat(reasons.joinToString()).contains("has no slot `body`")
+    assertThat(reasons.joinToString()).contains("Gone")
+  }
+
+  @Test
   fun `children of an unresolved node are still reported`() {
     // A catalog that dropped a whole subtree should name every node it can no longer place.
     val holder =
