@@ -209,7 +209,10 @@ knows the frame it was served and writes the value outright. The **viewer** re-r
 its controls stop describing the served frame the moment one moves: the server writes the key and
 leaves the value as an `{{overrides}}` placeholder, which `refreshReportLink()` fills from live
 control state on the same pass that fills `{{render}}` — one pass, one source, so the identity the
-block states and the pixels the body links cannot name two frames. The viewer emitted no block at all
+block states and the pixels the body links cannot name two frames. **And that pass runs only when
+the landed frame is the one the controls are asking for** (§D4): the links move a fetch and a decode
+ahead of the image, so between a knob and its pixels the report is left holding the body that
+describes the frame still on the stage, and it catches up the moment the new one lands. The viewer emitted no block at all
 until [#5000](https://github.com/yschimke/compose-ai-tools/issues/5000), which cost every issue filed
 from a preview page its row in the index while the form went on promising one.
 
