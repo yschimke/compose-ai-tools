@@ -455,7 +455,16 @@ const SCORER = String.raw`
   // canvas per row would grow with every row the cursor visited — two full-size backing stores
   // each — until the page ran out. Zeroing the dimensions drops the old store immediately
   // rather than waiting for the context to be collected.
-  const ACTIVE = { tr: null, png: null, svg: null, pending: { png: null, svg: null } };
+  const ACTIVE = {
+    tr: null,
+    png: null,
+    svg: null,
+    pending: { png: null, svg: null },
+    // The src whose origin-clean load was refused, per side. Without it every pointermove starts
+    // the same doomed request again and the panel reads "still loading" forever; a host that
+    // sends no CORS header will not start sending one because the cursor moved.
+    failed: { png: null, svg: null },
+  };
 
   // The live hover: the tile it is in, and the point WITHIN that tile.
   //
@@ -473,6 +482,8 @@ const SCORER = String.raw`
     ACTIVE.tr = null;
     ACTIVE.pending.png = null;
     ACTIVE.pending.svg = null;
+    ACTIVE.failed.png = null;
+    ACTIVE.failed.svg = null;
   }
 
   // Whether drawing this element would taint the canvas and make every read throw. The display
@@ -538,6 +549,7 @@ const SCORER = String.raw`
       return ACTIVE[side];
     }
     const src = img.currentSrc || img.src;
+    if (ACTIVE.failed[side] === src) return UNREADABLE;
     const key = src;
     // Per side: one slot for both would be overwritten by the second side of the same hover,
     // and every later pointermove would then start the first side's load over again.
@@ -550,8 +562,12 @@ const SCORER = String.raw`
         replayPick(tr);
       }).catch(() => {
         // The host sends no CORS header, so these pixels are unreadable however they are
-        // fetched — the same wall that leaves this row's score at "n/a".
-        if (ACTIVE.pending[side] === key) ACTIVE.pending[side] = null;
+        // fetched — the same wall that leaves this row's score at "n/a". Remember it, so the
+        // answer settles instead of the next pointer move asking again.
+        if (ACTIVE.pending[side] !== key) return;
+        ACTIVE.pending[side] = null;
+        ACTIVE.failed[side] = src;
+        replayPick(tr);
       });
     }
     return null;
@@ -560,11 +576,13 @@ const SCORER = String.raw`
   // The source pixel at (x, y), or null when the point falls outside that image. Null is a real
   // answer here: the two images have different extents, so a point inside the vector's bbox can
   // still be off the edge of the render.
-  // undefined: this side is not sampleable yet (a lazy display image still decoding, or an
-  // origin-clean copy in flight). null: the point is genuinely outside that image. Two different
-  // answers — reporting the first as the second states a fact about the picture that is not true.
+  // Four answers, all different, none of which may be spelled as another: a colour; null for a
+  // point genuinely outside that image; undefined while the side is not sampleable yet (a lazy
+  // display image decoding, an origin-clean copy in flight); and UNREADABLE for pixels this
+  // browser will never hand over, which is settled rather than pending.
   function samplePixel(tr, side, x, y) {
     const ctx = sampler(tr, side);
+    if (ctx === UNREADABLE) return UNREADABLE;
     if (!ctx) return undefined;
     const px = Math.floor(x), py = Math.floor(y);
     if (!(px >= 0 && py >= 0 && px < ctx.canvas.width && py < ctx.canvas.height)) return null;
@@ -578,10 +596,17 @@ const SCORER = String.raw`
   // The tile's own backdrop, so a partly transparent sample can be reported as what the eye
   // actually sees. Checker reports over its base square: the alternative is reporting a colour
   // that changes with which 8px square the cursor happens to be over.
-  function backdrop() {
+  // The checker is two colours, not one: 8px squares of #202022 over a #161617 base, from the
+  // four-gradient recipe on .shot. Compositing every translucent pixel over the base reports a
+  // colour that is not on screen wherever the point lands on a light square — and can call a
+  // transparent pixel and an opaque #161617 one identical, which is exactly backwards. The
+  // parity below is measured from the rendered pattern, not inferred from the gradients.
+  // Framed tiles have no padding, so a tile offset is already in the background's own space.
+  function backdrop(fx, fy) {
     if (OV.bg === "white") return { r: 255, g: 255, b: 255 };
     if (OV.bg === "dark") return { r: 11, g: 11, b: 12 };
-    return { r: 22, g: 22, b: 23 };
+    const light = (Math.floor(fx / 8) + Math.floor(fy / 8)) % 2 !== 0;
+    return light ? { r: 32, g: 32, b: 34 } : { r: 22, g: 22, b: 23 };
   }
 
   // Straight (unmultiplied) colour composited over the tile ground. Comparing two straight
@@ -598,6 +623,8 @@ const SCORER = String.raw`
     };
   }
 
+  const UNREADABLE = "unreadable";
+
   const PICK = { locked: false, blocked: false, ready: false };
 
   function pickEl(id) { return document.getElementById(id); }
@@ -609,11 +636,14 @@ const SCORER = String.raw`
     const val = pickEl("pick-" + side + "-val");
     const sub = pickEl("pick-" + side + "-sub");
     if (!sw || !val || !sub) return;
-    if (!raw) {
+    if (!raw || raw === UNREADABLE) {
       sw.style.background = "transparent";
       sw.classList.add("pick-sw--none");
       val.textContent = "—";
-      sub.textContent = raw === undefined ? "still loading" : "outside this image";
+      sub.textContent =
+        raw === UNREADABLE ? "pixels not readable (no CORS)"
+        : raw === undefined ? "still loading"
+        : "outside this image";
       return;
     }
     sw.classList.remove("pick-sw--none");
@@ -741,9 +771,10 @@ const SCORER = String.raw`
     // cannot be refreshed by a pointer move, so it would keep a placeholder on screen until the
     // reader thought to release it.
     PICK.ready = svgRaw !== undefined && pngRaw !== undefined;
-    const g = backdrop();
-    const svgOver = svgRaw && over(svgRaw, g);
-    const pngOver = pngRaw && over(pngRaw, g);
+    const g = backdrop(fx, fy);
+    const colour = (raw) => (raw && raw !== UNREADABLE ? over(raw, g) : null);
+    const svgOver = colour(svgRaw);
+    const pngOver = colour(pngRaw);
     showSwatch("svg", svgRaw, svgOver);
     showSwatch("png", pngRaw, pngOver);
 

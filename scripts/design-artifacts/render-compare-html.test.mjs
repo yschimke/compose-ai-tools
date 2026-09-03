@@ -413,7 +413,7 @@ test("a sample is reported composited over the tile's own backdrop", () => {
   // the composite says whether the two agree, which is the question the row is asking.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /function over\(c, bg\)/);
-  assert.match(html, /function backdrop\(\)/);
+  assert.match(html, /function backdrop\(fx, fy\)/);
   // The backdrop tracks the header's own control rather than assuming one ground.
   assert.match(html, /if \(OV\.bg === "white"\) return \{ r: 255, g: 255, b: 255 \}/);
 });
@@ -423,7 +423,8 @@ test("a point outside one image reads as absent rather than as a colour", () => 
   // edge of the render. Clamping would invent a colour for a pixel that isn't there.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /if \(!\(px >= 0 && py >= 0 && px < ctx\.canvas\.width && py < ctx\.canvas\.height\)\) return null/);
-  assert.match(html, /sub\.textContent = raw === undefined \? "still loading" : "outside this image"/);
+  assert.match(html, /raw === undefined \? "still loading"/);
+  assert.match(html, /: "outside this image";/);
 });
 
 test("the picker gives up on a tainted canvas the same way the scorer does", () => {
@@ -456,7 +457,7 @@ test("only the hovered row holds sampling canvases", () => {
   // visited — two full-size backing stores each — rather than staying flat the way the
   // sequential scorer intends.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /const ACTIVE = \{ tr: null, png: null, svg: null, pending: \{ png: null, svg: null \} \}/);
+  assert.match(html, /pending: \{ png: null, svg: null \},/);
   assert.match(html, /if \(ACTIVE\.tr !== tr\) \{ releaseActive\(\); ACTIVE\.tr = tr; \}/);
   // Zeroing the dimensions drops the backing store now rather than at collection time.
   assert.match(html, /ACTIVE\[side\]\.canvas\.width = 0; ACTIVE\[side\]\.canvas\.height = 0;/);
@@ -568,4 +569,27 @@ test("one place waits for an image that has not decoded", () => {
   assert.match(html, /function awaitImage\(tr, img\)/);
   assert.match(html, /awaitImage\(tr, svgImg\);/);
   assert.match(html, /awaitImage\(tr, img\);\n\s*return null;/);
+});
+
+test("a translucent pixel composites over the checker square under it", () => {
+  // The checker is two colours: 8px #202022 squares over a #161617 base. Compositing everything
+  // over the base reports a colour that is not on screen wherever the point lands on a light
+  // square, and can call a transparent pixel and an opaque #161617 one identical. The parity is
+  // measured from the rendered pattern: even square index is the base, odd is the light square.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const light = \(Math\.floor\(fx \/ 8\) \+ Math\.floor\(fy \/ 8\)\) % 2 !== 0;/);
+  assert.match(html, /return light \? \{ r: 32, g: 32, b: 34 \} : \{ r: 22, g: 22, b: 23 \};/);
+  // And the ground is chosen per sampled point, not once per row.
+  assert.match(html, /const g = backdrop\(fx, fy\);/);
+});
+
+test("pixels a host will not release settle as unreadable rather than retrying", () => {
+  // A refused CORS load is not pending: a host that sends no header will not start sending one
+  // because the cursor moved, so retrying on every pointermove churns doomed requests while the
+  // panel reads "still loading" for good.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /failed: \{ png: null, svg: null \},/);
+  assert.match(html, /if \(ACTIVE\.failed\[side\] === src\) return UNREADABLE;/);
+  assert.match(html, /ACTIVE\.failed\[side\] = src;/);
+  assert.match(html, /raw === UNREADABLE \? "pixels not readable \(no CORS\)"/);
 });
