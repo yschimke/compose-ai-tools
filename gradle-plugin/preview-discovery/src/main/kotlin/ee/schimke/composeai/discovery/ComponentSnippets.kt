@@ -46,6 +46,26 @@ object ComponentSnippets {
     if (!record.signatureKnown) {
       return ComponentSnippet.Refused("signature was not recovered from @kotlin.Metadata")
     }
+    // Overloads share a canonical id, so `ComponentRecords` merged them and kept one signature.
+    // Even when that signature prints, the call is ambiguous: two fully defaulted overloads both
+    // accept `Chip()`, and Kotlin resolves neither.
+    if (record.overloadsCollided) {
+      return ComponentSnippet.Refused(
+        "overloads collided under this canonical id, so no single call site identifies one"
+      )
+    }
+    // A generator writes its wrapper into a new file. `private` and `protected` declarations are
+    // not reachable from there however correct the call text is.
+    if (!record.callableFromAnotherFile) {
+      return ComponentSnippet.Refused("not public or internal, so a generated file cannot call it")
+    }
+    // Every defaulted argument is omitted, which leaves a generic function with nothing to infer
+    // its type parameters from — `fun <T> Picker(items: List<T> = emptyList())` has no `Picker()`.
+    if (record.hasTypeParameters) {
+      return ComponentSnippet.Refused(
+        "declares type parameters that a call omitting defaulted arguments cannot infer"
+      )
+    }
     record.symbol.receiver?.let { receiver ->
       return ComponentSnippet.Refused(
         "declared on $receiver, so a call site needs that scope around it"
@@ -71,11 +91,12 @@ object ComponentSnippets {
             "no placeholder can be written for required parameter " +
               "`${parameter.name}: ${parameter.type}`"
           )
-      arguments += "${parameter.name} = $placeholder"
+      arguments += "${escapeIfKeyword(parameter.name)} = $placeholder"
     }
     return ComponentSnippet.Emitted(
-      imports = listOf(record.symbol.callable),
-      code = "${record.symbol.name}(${arguments.joinToString(", ")})",
+      imports = listOf(escapeCallableIfKeyword(record.symbol.callable)),
+      code = "${escapeIfKeyword(record.symbol.name)}(${arguments.joinToString(", ")})",
+      requiredOptIns = record.requiredOptIns,
     )
   }
 
@@ -88,7 +109,12 @@ object ComponentSnippets {
    */
   fun codeFor(record: ComponentRecord): ComponentCode =
     when (val snippet = callSite(record)) {
-      is ComponentSnippet.Emitted -> ComponentCode(call = snippet.code, imports = snippet.imports)
+      is ComponentSnippet.Emitted ->
+        ComponentCode(
+          call = snippet.code,
+          imports = snippet.imports,
+          requiredOptIns = snippet.requiredOptIns,
+        )
       is ComponentSnippet.Refused -> ComponentCode(refusedReason = snippet.reason)
     }
 
@@ -105,6 +131,53 @@ object ComponentSnippets {
    * That test is what lets `Checkbox`, `RadioButton` and `Switch` through: material3 declares their
    * `onCheckedChange` / `onClick` as `((Boolean) -> Unit)?`, which no lambda-shaped rule accepts.
    */
+  /**
+   * Kotlin's **hard** keywords — the ones that are never valid as a plain identifier and so must be
+   * backtick-escaped wherever they appear as a name.
+   *
+   * Soft and modifier keywords (`by`, `data`, `value`, `where`, …) are deliberately absent: they
+   * are legal identifiers, and escaping them would be noise. `` fun `when`(`is`: String) `` is a
+   * legal declaration whose metadata hands back the bare names `when` and `is`, which pass the
+   * import-identifier filter and would otherwise be printed as `when(is = "")`.
+   */
+  private val HARD_KEYWORDS =
+    setOf(
+      "as",
+      "break",
+      "class",
+      "continue",
+      "do",
+      "else",
+      "false",
+      "for",
+      "fun",
+      "if",
+      "in",
+      "interface",
+      "is",
+      "null",
+      "object",
+      "package",
+      "return",
+      "super",
+      "this",
+      "throw",
+      "true",
+      "try",
+      "typealias",
+      "typeof",
+      "val",
+      "var",
+      "when",
+      "while",
+    )
+
+  private fun escapeIfKeyword(name: String): String = if (name in HARD_KEYWORDS) "`$name`" else name
+
+  /** Escapes each segment of an import path, since any one of them may be a keyword. */
+  private fun escapeCallableIfKeyword(callable: String): String =
+    callable.split('.').joinToString(".") { escapeIfKeyword(it) }
+
   private fun placeholderFor(parameter: TargetParameter): String? {
     if (parameter.nullable) return "null"
     val type = parameter.type
@@ -115,13 +188,17 @@ object ComponentSnippets {
     // deliberately get no fallback: `(Int) -> String?` ends in `?` and is *not* nullable.
     if (!type.contains("->") && type.endsWith("?")) return "null"
     if (parameter.composableSlot || type.contains("->")) return emptyLambda(type)
-    return when (type) {
-      "String" -> "\"\""
-      "Boolean" -> "false"
-      "Int" -> "0"
-      "Long" -> "0L"
-      "Float" -> "0f"
-      "Double" -> "0.0"
+    // Matched on the QUALIFIED type, never the rendered spelling: `com.example.String` renders as
+    // `String` exactly like `kotlin.String`, and answering `""` for the first emits source that
+    // does not compile. A record written before `typeFqn` existed has null here and falls back to
+    // the spelling, which is what it always did — no worse, and no silent retraction.
+    return when (parameter.typeFqn ?: "kotlin.$type") {
+      "kotlin.String" -> "\"\""
+      "kotlin.Boolean" -> "false"
+      "kotlin.Int" -> "0"
+      "kotlin.Long" -> "0L"
+      "kotlin.Float" -> "0f"
+      "kotlin.Double" -> "0.0"
       // Everything else — `Modifier`, `ImageVector`, an enum, a domain type — has no literal that
       // is correct without knowing the type, and inventing one is how generated code stops
       // compiling.
@@ -178,7 +255,12 @@ sealed interface ComponentSnippet {
    *   placeholder is a literal or an empty lambda, so nothing else has to resolve.
    * @property code the call expression, for a caller to place inside a `@Composable` body.
    */
-  data class Emitted(val imports: List<String>, val code: String) : ComponentSnippet
+  data class Emitted(
+    val imports: List<String>,
+    val code: String,
+    /** Markers the caller's `@Composable` wrapper must `@OptIn` to — see `ComponentCode`. */
+    val requiredOptIns: List<String> = emptyList(),
+  ) : ComponentSnippet
 
   /**
    * No call site, and why — phrased for a human or a model to act on, since supplying the missing

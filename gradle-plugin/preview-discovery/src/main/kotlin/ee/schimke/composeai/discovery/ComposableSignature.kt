@@ -7,11 +7,13 @@ import kotlin.metadata.KmFunction
 import kotlin.metadata.KmType
 import kotlin.metadata.KmTypeProjection
 import kotlin.metadata.KmValueParameter
+import kotlin.metadata.Visibility
 import kotlin.metadata.declaresDefaultValue
 import kotlin.metadata.isNullable
 import kotlin.metadata.jvm.KotlinClassMetadata
 import kotlin.metadata.jvm.annotations
 import kotlin.metadata.jvm.signature
+import kotlin.metadata.visibility
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
@@ -47,6 +49,31 @@ internal data class ComposableSignatureInfo(
   val name: String,
   val parameters: List<TargetParameter>,
   val receiver: String?,
+  /**
+   * True when the declaration is `public` (or `internal`, which is still callable from the same
+   * module). A `private` or `protected` composable cannot be called from a file a generator writes,
+   * so a call site for one is a compile error waiting to happen.
+   */
+  val callableFromAnotherFile: Boolean,
+  /**
+   * True when the function declares type parameters. A call that omits every defaulted argument
+   * supplies nothing for the compiler to infer them from — `fun <T> Picker(items: List<T> =
+   * emptyList())` cannot be called as `Picker()`.
+   */
+  val hasTypeParameters: Boolean,
+  /**
+   * Fully-qualified `@RequiresOptIn` marker annotations on the declaration
+   * (`androidx.compose.material3.ExperimentalMaterial3Api`).
+   *
+   * A preview calling one of these compiles because its own file or function carries `@OptIn`. A
+   * generated wrapper inherits nothing, so the same call fails there unless the wrapper opts in
+   * too. Recorded rather than used to refuse, because opting in is mechanical and refusing would
+   * drop much of Material 3 for a problem the caller can fix in one annotation.
+   *
+   * Empty also means "none we could resolve": a marker whose own class was outside the scan cannot
+   * be identified, and is indistinguishable here from a declaration that needs no opt-in.
+   */
+  val requiredOptIns: List<String>,
 )
 
 internal object ComposableSignature {
@@ -101,6 +128,10 @@ internal object ComposableSignature {
         // amount of string surgery on the JVM name distinguishes those two.
         name = fn.name,
         parameters = fn.valueParameters.map { it.toTargetParameter() },
+        callableFromAnotherFile =
+          fn.visibility == Visibility.PUBLIC || fn.visibility == Visibility.INTERNAL,
+        hasTypeParameters = fn.typeParameters.isNotEmpty(),
+        requiredOptIns = requiredOptInsOf(method),
         receiver =
           fn.receiverParameterType?.let { receiver ->
             (receiver.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.')
@@ -173,6 +204,27 @@ internal object ComposableSignature {
     }
   }
 
+  /**
+   * The `@RequiresOptIn`-marked annotations applied to [method].
+   *
+   * An opt-in marker is an annotation whose own class carries `@RequiresOptIn`, so this resolves
+   * one level up rather than pattern-matching names like `Experimental…` — a convention plenty of
+   * annotations follow without gating anything. An annotation class outside the scan resolves to
+   * null and is skipped: unrecognised, not assumed.
+   */
+  private fun requiredOptInsOf(method: MethodInfo): List<String> =
+    method.annotationInfo
+      .orEmpty()
+      .filter { annotation ->
+        annotation.classInfo?.annotationInfo?.any { it.name in OPT_IN_MARKER_ANNOTATIONS } == true
+      }
+      .map { it.name }
+      .distinct()
+      .sorted()
+
+  private val OPT_IN_MARKER_ANNOTATIONS =
+    setOf("kotlin.RequiresOptIn", "androidx.annotation.RequiresOptIn")
+
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
     val name = method.name
@@ -189,6 +241,8 @@ internal object ComposableSignature {
     return TargetParameter(
       name = name,
       type = renderType(type),
+      typeFqn =
+        (type.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.'),
       hasDefault = declaresDefaultValue,
       composableSlot = slot,
       composableSlotReceiver = if (slot) receiverFqnOf(type) else null,

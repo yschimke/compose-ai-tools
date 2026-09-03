@@ -92,6 +92,23 @@ data class ComponentRecord(
    * must not.
    */
   val signatureKnown: Boolean = false,
+  /** See `PreviewTarget.callableFromAnotherFile`. Defaults to the permissive reading. */
+  val callableFromAnotherFile: Boolean = true,
+  /** See `PreviewTarget.hasTypeParameters`. */
+  val hasTypeParameters: Boolean = false,
+  /**
+   * True when overloads collided into this record — they share [canonicalId], so `collect` merged
+   * them and kept one signature. No call site can be printed for the merged pair: two fully
+   * defaulted overloads make `Chip()` ambiguous, and the record no longer says which one the
+   * signature belongs to.
+   */
+  val overloadsCollided: Boolean = false,
+  /**
+   * Fully-qualified `@RequiresOptIn` markers the declaration carries. Copied onto
+   * [ComponentCode.requiredOptIns] for the emitted call; see that field for what a caller does with
+   * them.
+   */
+  val requiredOptIns: List<String> = emptyList(),
 )
 
 /**
@@ -194,6 +211,16 @@ data class ComponentCode(
   val call: String? = null,
   val imports: List<String> = emptyList(),
   val refusedReason: String? = null,
+  /**
+   * Fully-qualified `@RequiresOptIn` markers the wrapper around [call] must apply.
+   *
+   * This is the one part of the contract the caller has to act on rather than paste. [call] already
+   * only compiles inside a `@Composable` body the caller supplies; when this is non-empty that body
+   * also needs `@OptIn(Marker::class)` and an import for each marker. Emitting the call and saying
+   * so beats refusing: opting in is mechanical, and refusing would drop most of Material 3 over a
+   * problem the caller fixes in one annotation.
+   */
+  val requiredOptIns: List<String> = emptyList(),
 )
 
 /**
