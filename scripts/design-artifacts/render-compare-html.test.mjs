@@ -436,7 +436,7 @@ test("the readout docks away from the cursor", () => {
   // Pinned to one corner it covers the match column exactly when a bottom row is being read,
   // which is the moment that number matters most.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /panel\.classList\.toggle\("pick--left", clientX > window\.innerWidth \/ 2\)/);
+  assert.match(html, /panel\.classList\.toggle\("pick--left", rect\.left \+ fx > window\.innerWidth \/ 2\)/);
   assert.match(html, /\.pick--left \{ left:16px; right:auto; \}/);
 });
 
@@ -533,4 +533,39 @@ test("each side tracks its own pending origin-clean load", () => {
   assert.match(html, /if \(ACTIVE\.tr !== tr \|\| ACTIVE\.pending\[side\] !== key\) return;/);
   assert.match(html, /ACTIVE\.pending\.png = null;/);
   assert.match(html, /ACTIVE\.pending\.svg = null;/);
+});
+
+test("the live hover is stored against its tile, not the viewport", () => {
+  // run() re-appends the rows in score order, the page scrolls, the window resizes — none of
+  // which fires a pointer event, so a stored client point silently starts naming a different
+  // row. An offset into a tile is measured against the thing being read and survives all three.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const LAST = \{ shot: null, fx: 0, fy: 0 \}/);
+  assert.match(html, /function pickAt\(shot, fx, fy\)/);
+  // The pointer handlers do the conversion, once, where the event is.
+  assert.match(html, /pickAt\(shot, e\.clientX - r\.left, e\.clientY - r\.top\)/);
+});
+
+test("an unlocked reading is dropped when scoring reorders the rows", () => {
+  // A reorder fires no pointer event, so an unlocked panel would keep naming a row that has
+  // slid out from under the cursor. A frozen reading is tied to its row and survives.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(!PICK\.locked\) hidePick\(\);/);
+});
+
+test("crosshairs are cleared before the current row's pair is drawn", () => {
+  // Moving straight from one row to the next never passes over non-shot content, so nothing
+  // else takes the previous row's pair down and two rows both look like the live sample.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function marks\(tr, fx, fy\) \{\n(\s*\/\/[^\n]*\n)+\s*clearMarks\(\);/);
+});
+
+test("one place waits for an image that has not decoded", () => {
+  // Both the scale read in pickAt and the canvas in sampler need a decoded element, and neither
+  // can wait on its own — a replacement vector from a rescore reaches the first and returns
+  // before the second, which is where a frozen reading got stuck.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function awaitImage\(tr, img\)/);
+  assert.match(html, /awaitImage\(tr, svgImg\);/);
+  assert.match(html, /awaitImage\(tr, img\);\n\s*return null;/);
 });

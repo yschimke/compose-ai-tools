@@ -457,9 +457,13 @@ const SCORER = String.raw`
   // rather than waiting for the context to be collected.
   const ACTIVE = { tr: null, png: null, svg: null, pending: { png: null, svg: null } };
 
-  // The last point hovered, so a sample that had to wait for an origin-clean load can be
-  // completed where the cursor actually is rather than dropped.
-  const LAST = { shot: null, x: 0, y: 0 };
+  // The live hover: the tile it is in, and the point WITHIN that tile.
+  //
+  // Tile-relative on purpose. A viewport coordinate goes stale in three separate ways — run()
+  // re-appends the rows in score order, the page scrolls, the window resizes — none of which
+  // fires a pointer event, so a stored client point silently starts naming a different row. An
+  // offset into a tile survives all three, because it is measured against the thing being read.
+  const LAST = { shot: null, fx: 0, fy: 0 };
 
   function releaseActive() {
     for (const side of ["png", "svg"]) {
@@ -485,6 +489,18 @@ const SCORER = String.raw`
     } catch (err) {
       return false;
     }
+  }
+
+  // Replay once this image can be read. Display images are loading="lazy" and a rescore swaps in
+  // a replacement, so an element can be present, sized by CSS, and not yet decoded; both the
+  // scale read in pickAt and the canvas in sampler need it, and neither can wait on its own.
+  function awaitImage(tr, img) {
+    if (!img || img.dataset.pickWaiting) return;
+    img.dataset.pickWaiting = "1";
+    img.addEventListener("load", () => {
+      delete img.dataset.pickWaiting;
+      replayPick(tr);
+    }, { once: true });
   }
 
   function contextFor(img) {
@@ -514,13 +530,7 @@ const SCORER = String.raw`
     // and scored (the scorer loads its own copies) while this element has not decoded. Replay
     // when it does, rather than answering for pixels that are not there yet.
     if (!img || !img.complete || !img.naturalWidth) {
-      if (img && !img.dataset.pickWaiting) {
-        img.dataset.pickWaiting = "1";
-        img.addEventListener("load", () => {
-          delete img.dataset.pickWaiting;
-          replayPick(tr);
-        }, { once: true });
-      }
+      awaitImage(tr, img);
       return null;
     }
     if (!taints(img)) {
@@ -617,6 +627,10 @@ const SCORER = String.raw`
   // The crosshair, placed at the same tile offset in BOTH columns of the row — the point of
   // the whole feature is that one hover names two pixels, so the marker has to appear twice.
   function marks(tr, fx, fy) {
+    // Clear first. Moving straight from one row to the next never passes over non-shot content,
+    // so nothing else would take the previous row's pair down and two rows would both look like
+    // the live sample.
+    clearMarks();
     for (const shot of tr.querySelectorAll(".shot--framed")) {
       let m = shot.querySelector(".xh");
       if (!m) { m = document.createElement("i"); m.className = "xh"; shot.appendChild(m); }
@@ -645,7 +659,7 @@ const SCORER = String.raw`
   function replayPick(tr) {
     if (!LAST.shot || !LAST.shot.isConnected) return;
     if (LAST.shot.closest("tr.crow") !== tr) return;
-    pickAt(LAST.shot, LAST.x, LAST.y);
+    pickAt(LAST.shot, LAST.fx, LAST.fy);
   }
 
   // Map a point in a displayed tile to a pixel in each source and read both.
@@ -655,7 +669,7 @@ const SCORER = String.raw`
   // render is the same space shifted by the export's root translate, which is the alignment
   // the scorer already does before measuring; reusing it is what makes the two reads the
   // same point rather than two points that merely look alike.
-  function pickAt(shot, clientX, clientY) {
+  function pickAt(shot, fx, fy) {
     const tr = shot.closest("tr.crow");
     const rec = tr && SAMPLES.get(tr);
     const panel = pickEl("pick");
@@ -664,7 +678,7 @@ const SCORER = String.raw`
     // cursor that has moved on.
     if (!rec || !panel) { hidePick(); return; }
     const rect = shot.getBoundingClientRect();
-    LAST.shot = shot; LAST.x = clientX; LAST.y = clientY;
+    LAST.shot = shot; LAST.fx = fx; LAST.fy = fy;
     // The displayed scale comes from the vector as it is actually rendered, not from the tile it
     // sits in: the two agree once the tile is framed, and reading the image means a stray cap on
     // its width shows up as a wrong scale rather than as silently wrong pixels.
@@ -677,11 +691,15 @@ const SCORER = String.raw`
     const svgRect = svgImg && svgImg.getBoundingClientRect();
     const nw = svgImg && svgImg.naturalWidth, nh = svgImg && svgImg.naturalHeight;
     if (!(rect.width > 0 && svgRect && svgRect.width > 0 && svgRect.height > 0 && nw > 0 && nh > 0)) {
+      // A vector that has not decoded yet is the frozen-reading case: hidePick is a no-op under
+      // the lock and pointer moves are ignored, so without waiting on the element here the panel
+      // would hold the previous pass's colours for good. sampler's own wait is downstream of a
+      // scale this return never reaches.
+      awaitImage(tr, svgImg);
       hidePick();
       return;
     }
     const sx = svgRect.width / nw, sy = svgRect.height / nh;
-    const fx = clientX - rect.left, fy = clientY - rect.top;
     const svgX = fx / sx, svgY = fy / sy;
     // The render coordinate goes through the PNG's own displayed transform where there is one.
     // frameToComponent rounds that element's width and its left/top offset independently, so the
@@ -753,7 +771,7 @@ const SCORER = String.raw`
     // Dock the readout to the side the cursor is not on. Fixed to one corner it sits over the
     // match column exactly when a bottom row is being read, which is the moment the number
     // matters most.
-    panel.classList.toggle("pick--left", clientX > window.innerWidth / 2);
+    panel.classList.toggle("pick--left", rect.left + fx > window.innerWidth / 2);
     panel.hidden = false;
     marks(tr, fx, fy);
   }
@@ -765,7 +783,8 @@ const SCORER = String.raw`
       if (PICK.locked || PICK.blocked) return;
       const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
       if (!shot) { hidePick(); return; }
-      pickAt(shot, e.clientX, e.clientY);
+      const r = shot.getBoundingClientRect();
+      pickAt(shot, e.clientX - r.left, e.clientY - r.top);
     });
     rows.addEventListener("pointerleave", hidePick);
     // Click freezes the reading so it can be read and copied without the cursor moving off;
@@ -773,11 +792,13 @@ const SCORER = String.raw`
     rows.addEventListener("click", (e) => {
       const shot = e.target && e.target.closest && e.target.closest(".shot--framed");
       if (!shot || PICK.blocked) return;
+      const r = shot.getBoundingClientRect();
+      const fx = e.clientX - r.left, fy = e.clientY - r.top;
       if (PICK.locked) {
         PICK.locked = false;
-        pickAt(shot, e.clientX, e.clientY);
+        pickAt(shot, fx, fy);
       } else {
-        pickAt(shot, e.clientX, e.clientY);
+        pickAt(shot, fx, fy);
         PICK.locked = PICK.ready;
       }
       const panel = pickEl("pick");
@@ -964,6 +985,11 @@ const SCORER = String.raw`
       for (const tr of Array.from(body.querySelectorAll("tr.crow")).sort((a, b) => sortKey(a) - sortKey(b))) {
         body.appendChild(tr);
       }
+      // The rows just moved under a stationary cursor, and a reorder fires no pointer event. An
+      // unlocked reading is meant to follow the cursor, so it is no longer about anything: drop
+      // it rather than leave the panel naming a row that has slid elsewhere. A frozen reading is
+      // tied to its row, not to the cursor, so it survives the move.
+      if (!PICK.locked) hidePick();
     }
     // Opened over file:// the canvas taints (opaque origin) and fetch() is blocked, so
     // every row fails — point the reader at the http path (htmlpreview / a local server)
