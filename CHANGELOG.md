@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.68.0](https://github.com/yschimke/compose-ai-tools/compare/v1.67.0...v1.68.0) (2026-09-03)
+
+
+### Features
+
+* **discovery:** compile the printed call sites, and fix what that caught ([#5036](https://github.com/yschimke/compose-ai-tools/issues/5036)) ([5ab99c1](https://github.com/yschimke/compose-ai-tools/commit/5ab99c1be405f2888e7ed3bbcb4183e53a63b516))
+* **import:** let a caller name the Android variant to render ([#5037](https://github.com/yschimke/compose-ai-tools/issues/5037)) ([02a4352](https://github.com/yschimke/compose-ai-tools/commit/02a435245167a14f9836f5959c7fca4150d8ce4b))
+
+
+### Bug Fixes
+
+* **cli:** bundle pack dropped --variant; feat(import): render-runtime-projects ([#5042](https://github.com/yschimke/compose-ai-tools/issues/5042)) ([fa62dee](https://github.com/yschimke/compose-ai-tools/commit/fa62dee7c038dca07cce6e326fdc5a4e7036689a))
+* **import:** print a sidecar's cause, not the first 4000 bytes of its stack ([#5041](https://github.com/yschimke/compose-ai-tools/issues/5041)) ([3f02461](https://github.com/yschimke/compose-ai-tools/commit/3f024613637d6c86bab8890d25d2e7a242da5926))
+* **import:** refuse the two variant combinations that would publish a wrong catalog ([#5040](https://github.com/yschimke/compose-ai-tools/issues/5040)) ([0b47e34](https://github.com/yschimke/compose-ai-tools/commit/0b47e343d9f57c74a7417615322ccbe2270dd42a))
+* **import:** surface the renderer's .error.json sidecars when a render fails ([#5035](https://github.com/yschimke/compose-ai-tools/issues/5035)) ([60c45e2](https://github.com/yschimke/compose-ai-tools/commit/60c45e280c5525ce6065104e02d57048e3b96fc6))
+* **rc:** take the rc-players 1.56.1 image-painter fix, and print the gate's failures ([#5043](https://github.com/yschimke/compose-ai-tools/issues/5043)) ([c35bb2b](https://github.com/yschimke/compose-ai-tools/commit/c35bb2b9ff333f68f85477dfe9b60b65f5f61f42))
+
 ## [1.67.0](https://github.com/yschimke/compose-ai-tools/compare/v1.66.1...v1.67.0) (2026-09-02)
 
 
