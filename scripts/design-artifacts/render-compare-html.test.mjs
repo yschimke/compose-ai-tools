@@ -383,9 +383,9 @@ test("the eyedropper samples at native resolution, not the scorer's downscale", 
   // together. Reading a colour back off that plane would answer with a blend that exists in
   // neither image — the one answer a colour picker must never give.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /function sampler\(rec, side\)/);
+  assert.match(html, /function sampler\(tr, side\)/);
   assert.match(html, /ctx\.imageSmoothingEnabled = false/);
-  assert.match(html, /ctx\.drawImage\(rec\[side\], 0, 0, w, h\)/);
+  assert.match(html, /ctx\.drawImage\(img, 0, 0\)/);
   // The sample is a single source pixel, addressed in that image's own space.
   assert.match(html, /getImageData\(px, py, 1, 1\)/);
 });
@@ -395,6 +395,7 @@ test("the two samples are the same point, aligned the way the score is", () => {
   // point less the export's root translate — the alignment scoreRow already applies before
   // measuring. Sharing it is what makes the pair one point rather than two lookalikes.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const s = svgRect\.width \/ natural;/);
   assert.match(html, /const svgX = fx \/ s, svgY = fy \/ s;/);
   assert.match(html, /const renderX = svgX - rec\.tx, renderY = svgY - rec\.ty;/);
   // Both columns are marked, so the reading is visibly about one point in two images.
@@ -416,7 +417,7 @@ test("a point outside one image reads as absent rather than as a colour", () => 
   // The two images have different extents: a point inside the vector's bbox can be off the
   // edge of the render. Clamping would invent a colour for a pixel that isn't there.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /if \(!\(px >= 0 && py >= 0 && px < w && py < h\)\) return null/);
+  assert.match(html, /if \(!\(px >= 0 && py >= 0 && px < ctx\.canvas\.width && py < ctx\.canvas\.height\)\) return null/);
   assert.match(html, /sub\.textContent = "outside this image"/);
 });
 
@@ -432,4 +433,37 @@ test("the readout docks away from the cursor", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /panel\.classList\.toggle\("pick--left", clientX > window\.innerWidth \/ 2\)/);
   assert.match(html, /\.pick--left \{ left:16px; right:auto; \}/);
+});
+
+test("a framed image is exempt from the narrow-viewport width cap", () => {
+  // `.shot--framed img` and `.shot img` TIE on specificity — one class and one type each — so
+  // the `max-width:150px` cap in the later media block wins and clamps a framed image inside a
+  // tile up to 240px wide. That breaks the framing itself (the PNG column is offset using the
+  // unclamped scale, so the columns stop lining up) and any mapping from the tile to a source
+  // pixel with it. The doubled class outranks the cap.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /\.shot\.shot--framed img \{ position:absolute; max-width:none; max-height:none; \}/);
+  assert.doesNotMatch(html, /^\s*\.shot--framed img \{/m);
+});
+
+test("only the hovered row holds sampling canvases", () => {
+  // Every scored row stays in the DOM, so a canvas per row would grow with every row the cursor
+  // visited — two full-size backing stores each — rather than staying flat the way the
+  // sequential scorer intends.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /const ACTIVE = \{ tr: null, png: null, svg: null \}/);
+  assert.match(html, /if \(ACTIVE\.tr !== tr\) \{ releaseActive\(\); ACTIVE\.tr = tr; \}/);
+  // Zeroing the dimensions drops the backing store now rather than at collection time.
+  assert.match(html, /ACTIVE\[side\]\.canvas\.width = 0; ACTIVE\[side\]\.canvas\.height = 0;/);
+  // The per-row record carries the alignment only — no bitmaps.
+  assert.match(html, /SAMPLES\.set\(tr, \{ tx, ty \}\)/);
+});
+
+test("the picker reads the images the row is displaying", () => {
+  // The scorer swaps an overridden or hybrid vector into the column it shows; sampling that
+  // element keeps what is read identical to what is seen, and retains nothing the page was not
+  // already holding.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function displayImg\(tr, side\)/);
+  assert.match(html, /if \(!img \|\| !img\.complete \|\| !img\.naturalWidth\) return null/);
 });

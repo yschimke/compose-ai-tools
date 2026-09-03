@@ -437,39 +437,61 @@ const SCORER = String.raw`
   }
 
   // ---------------------------------------------------------------- eyedropper
-  // Per-row sampling state, captured by the scorer once a row has been framed: the two
-  // decoded images plus the geometry that maps a point in the displayed tile back to a
-  // pixel in each source. Per row rather than global because every component carries its
-  // own root translate and its own natural sizes.
+  // Per-row alignment, recorded by the scorer once a row has been framed. Only the export's
+  // root translate: every other quantity is read back from the images the row is *showing*,
+  // so nothing here retains a bitmap. A record per row is unavoidable (each component has its
+  // own translate) and this one is two numbers.
   const SAMPLES = new WeakMap();
 
-  // A 1:1 offscreen context per side, built on first sample and reused. Native resolution,
-  // no ground fill, no smoothing — so a read is the source pixel outright. The scorer's
-  // 192px downscale would box-average neighbours together and answer with a colour that
-  // exists in neither image, which is exactly the wrong answer for "what colour is this".
-  function sampler(rec, side) {
-    const key = side + "Ctx";
-    if (rec[key]) return rec[key];
-    const w = side === "png" ? rec.rw : rec.sw;
-    const h = side === "png" ? rec.rh : rec.sh;
+  // The image each column is displaying. Sampling these rather than the scorer's own decoded
+  // copies keeps what is read identical to what is seen — including an overridden or hybrid
+  // vector, which the scorer swapped into this element — and retains nothing the page was not
+  // already holding.
+  function displayImg(tr, side) {
+    return tr.querySelector((side === "png" ? ".col-png" : ".col-svg") + " .shot img");
+  }
+
+  // One row's sampling canvases at a time. A scored row stays in the DOM forever, so keeping a
+  // canvas per row would grow with every row the cursor visited — two full-size backing stores
+  // each — until the page ran out. Zeroing the dimensions drops the old store immediately
+  // rather than waiting for the context to be collected.
+  const ACTIVE = { tr: null, png: null, svg: null };
+
+  function releaseActive() {
+    for (const side of ["png", "svg"]) {
+      if (ACTIVE[side]) { ACTIVE[side].canvas.width = 0; ACTIVE[side].canvas.height = 0; }
+      ACTIVE[side] = null;
+    }
+    ACTIVE.tr = null;
+  }
+
+  // A 1:1 context over the displayed image: native resolution, no ground fill, no smoothing, so
+  // a read is the source pixel outright. The scorer's 192px downscale box-averages neighbours
+  // together for offset-robust SSIM and would answer with a blend present in neither image —
+  // exactly the wrong answer for "what colour is this".
+  function sampler(tr, side) {
+    if (ACTIVE.tr !== tr) { releaseActive(); ACTIVE.tr = tr; }
+    if (ACTIVE[side]) return ACTIVE[side];
+    const img = displayImg(tr, side);
+    if (!img || !img.complete || !img.naturalWidth) return null;
     const c = document.createElement("canvas");
-    c.width = w; c.height = h;
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
     const ctx = c.getContext("2d", { willReadFrequently: true });
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(rec[side], 0, 0, w, h);
-    rec[key] = ctx;
+    ctx.drawImage(img, 0, 0);
+    ACTIVE[side] = ctx;
     return ctx;
   }
 
-  // The source pixel at (x, y), or null when the point falls outside that image. Null is a
-  // real answer here: the two images have different extents, so a point inside the vector's
-  // bbox can still be off the edge of the render.
-  function samplePixel(rec, side, x, y) {
-    const w = side === "png" ? rec.rw : rec.sw;
-    const h = side === "png" ? rec.rh : rec.sh;
+  // The source pixel at (x, y), or null when the point falls outside that image. Null is a real
+  // answer here: the two images have different extents, so a point inside the vector's bbox can
+  // still be off the edge of the render.
+  function samplePixel(tr, side, x, y) {
+    const ctx = sampler(tr, side);
+    if (!ctx) return null;
     const px = Math.floor(x), py = Math.floor(y);
-    if (!(px >= 0 && py >= 0 && px < w && py < h)) return null;
-    const d = sampler(rec, side).getImageData(px, py, 1, 1).data;
+    if (!(px >= 0 && py >= 0 && px < ctx.canvas.width && py < ctx.canvas.height)) return null;
+    const d = ctx.getImageData(px, py, 1, 1).data;
     return { r: d[0], g: d[1], b: d[2], a: d[3] };
   }
 
@@ -564,16 +586,22 @@ const SCORER = String.raw`
     // cursor that has moved on.
     if (!rec || !panel) { hidePick(); return; }
     const rect = shot.getBoundingClientRect();
-    if (!(rect.width > 0 && rec.sw > 0)) { hidePick(); return; }
-    const s = rect.width / rec.sw;
+    // The displayed scale comes from the vector as it is actually rendered, not from the tile
+    // it sits in: the two agree once the tile is framed, and reading the image means a stray
+    // cap on its width shows up as a wrong scale rather than as silently wrong pixels.
+    const svgImg = displayImg(tr, "svg");
+    const svgRect = svgImg && svgImg.getBoundingClientRect();
+    const natural = svgImg && svgImg.naturalWidth;
+    if (!(rect.width > 0 && svgRect && svgRect.width > 0 && natural > 0)) { hidePick(); return; }
+    const s = svgRect.width / natural;
     const fx = clientX - rect.left, fy = clientY - rect.top;
     const svgX = fx / s, svgY = fy / s;
     const renderX = svgX - rec.tx, renderY = svgY - rec.ty;
 
     let svgRaw, pngRaw;
     try {
-      svgRaw = samplePixel(rec, "svg", svgX, svgY);
-      pngRaw = samplePixel(rec, "png", renderX, renderY);
+      svgRaw = samplePixel(tr, "svg", svgX, svgY);
+      pngRaw = samplePixel(tr, "png", renderX, renderY);
     } catch (err) {
       // Same tainted-canvas wall the scorer hits; say so once and stop offering the picker.
       PICK.blocked = true;
@@ -734,10 +762,13 @@ const SCORER = String.raw`
       else restoreSvg(tr);
       // Crop both display columns to the component now that we've read its bbox from the SVG.
       frameToComponent(tr, rw, rh, tx, ty, sw, sh);
-      // Hand the eyedropper the images this pass actually scored, with the geometry that
-      // aligns them. Replaced on every rescore, so the picker reads the same overridden
-      // vector and theme-selected render the score and the columns are showing.
-      SAMPLES.set(tr, { png, svg, rw, rh, sw, sh, tx, ty });
+      // Hand the eyedropper the alignment this pass used. Only the translate: it reads the
+      // pixels off the images the row is showing, which this pass has just put in sync with
+      // what it scored, so there is nothing else to carry and no bitmap to retain.
+      SAMPLES.set(tr, { tx, ty });
+      // The row's displayed images have just been replaced or re-sized; drop any canvases
+      // cached from the previous pass so the next sample redraws from what is on screen.
+      if (ACTIVE.tr === tr) releaseActive();
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.className = "score score--" + grade(pct);
@@ -1054,7 +1085,12 @@ export function renderCompareHtml(catalog, opts = {}) {
      component, matching the content-cropped SVG column instead of floating in an empty frame.
      A no-op for close-cropped renders (phone), where the bbox already fills the frame. */
   .shot--framed { overflow:hidden; padding:0; min-width:0; min-height:0; }
-  .shot--framed img { position:absolute; max-width:none; max-height:none; }
+  /* Doubled class deliberately: ".shot--framed img" and ".shot img" tie on specificity, so the
+     narrow-viewport cap below — declared later — would win and clamp a framed image to 150px
+     inside a tile up to 240px wide. That breaks the framing outright (the PNG column's offset is
+     computed from the unclamped scale, so the two columns stop lining up) and, with it, any
+     mapping from a point in the tile back to a source pixel. */
+  .shot.shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; background:var(--panel); }
   /* Eyedropper: a framed tile is a live surface, and the crosshair marks the sampled point in
      BOTH columns at once so the pair is read as one point rather than two lookalikes. Double
