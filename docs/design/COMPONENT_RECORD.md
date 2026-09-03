@@ -811,6 +811,47 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > generator that worked in-process while the record persisted something else would have
 > passed the old test and failed every consumer.
 >
+> **From a call site to a screen.** `ComponentSnippets` prints one component with
+> placeholders — `Text(text = "")` — which proves a component is *reachable* and
+> renders nothing anyone designed. `ScreenGenerator` adds the half a UI builder needs:
+> the values its user set, and components nested into each other's slots.
+>
+> A node generates **only when its record carries an emitted `code`**. That single
+> check inherits every protection listed below without restating any of it — public,
+> no uninferable type parameters, no overload collision, a signature actually read, an
+> importable callable. `code.call` is the licence to call; the argument list is rebuilt
+> from `parameters` with the document's values, and `placeholderFor` plus the
+> qualified-type check are *shared* with `ComponentSnippets` rather than copied,
+> because "is this really `kotlin.String`?" is the question already got wrong twice.
+>
+> `ScreenDocument` is deliberately not the builder's own document model — it is the
+> narrow projection the generator needs, so the generator is testable without an
+> editor's undo stack and collaboration protocol. Projecting onto it is the builder's
+> job, and the interesting decisions are not in that projection.
+>
+> `ScreenGeneratorCompileFunctionalTest` closes the loop: a real project, real
+> discovery, and a screen assembled from the discovered catalog that the Kotlin
+> compiler accepts. The exporter this path replaces asserted *balanced braces* on its
+> output.
+>
+> Building it immediately caught a defect in the opt-in markers below. The Compose
+> compiler stamps `@ComposableInferredTarget` and `@InternalComposeApi` onto the JVM
+> method; both carry `@RequiresOptIn`, so both were reported, and generated screens
+> told consumers to opt into Compose **internals** in order to place a `Card`.
+> Verified rather than argued — the same screen compiles with those annotations
+> stripped — so they are excluded and the gate now asserts stock Material 3 needs no
+> opt-in at all.
+>
+> What is **not** done: `compose-preview-server`'s exporter still runs off an authored
+> `CapabilityCatalog` and a hand-written 29-entry `EMITTER_IDS` allowlist. Moving it
+> onto this path needs `ScreenGenerator` in a published artifact — that repo consumes
+> released jars and does not depend on `preview-discovery` — so the wiring is blocked
+> on a release rather than on a design question. Layout primitives (`Column`, `Row`,
+> `Box`) are also absent, because inference scopes library components to
+> `material3`/`material`/`wear`; the prototype nests inside `Card`'s `ColumnScope`
+> content slot instead, and widening that is a separate decision about what counts as
+> a component.
+>
 > **Six ways the compile claim was wider than the record could justify.** Persisting
 > the call site drew a review pass over the guarantee itself, and every one of these
 > was real. They share a root cause worth naming: `callSite` was deciding from a
