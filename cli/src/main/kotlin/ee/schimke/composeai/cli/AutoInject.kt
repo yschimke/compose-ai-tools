@@ -347,16 +347,22 @@ gradle.settingsEvaluated {
     // BEFORE the allprojects violation, so a warning here is the one place reliably delivered to
     // the user driving the CLI / MCP / VS Code workflow. `BuildFeatures` (Gradle 8.5+) is the
     // supported active-IP probe; runCatching keeps older Gradle from breaking the script.
+    //
+    // The CLI itself passes ISOLATED_PROJECTS_OFF_ARGS on every auto-injected invocation, so this
+    // warning is for the caller who runs `./gradlew --init-script <this>` by hand (CI matrices,
+    // the docs' manual repro) and hasn't turned IP off.
     val composeAiPreviewIpActive =
         runCatching { gradle.serviceOf<BuildFeatures>().isolatedProjects.active.get() }
             .getOrDefault(false)
     if (composeAiPreviewIpActive) {
         logger.warn(
             "compose-preview: Isolated Projects is enabled " +
-                "(org.gradle.unsafe.isolated-projects=true). Auto-inject configures projects via " +
+                "(org.gradle.isolated-projects / org.gradle.unsafe.isolated-projects). " +
+                "Auto-inject configures projects via " +
                 "`allprojects { }`, which Isolated Projects rejects, so discovery/render will fail. " +
                 "Disable Isolated Projects for compose-preview runs " +
-                "(e.g. -Dorg.gradle.unsafe.isolated-projects=false), or apply " +
+                "(-Dorg.gradle.isolated-projects=false on Gradle 9.7+, " +
+                "-Dorg.gradle.unsafe.isolated-projects=false before that), or apply " +
                 "id(\"ee.schimke.composeai.preview\") manually in each module's build script."
         )
     }
@@ -599,8 +605,31 @@ internal fun gradleWriteLocksArgs(env: (String) -> String? = System::getenv): Li
   if (env("COMPOSE_PREVIEW_WRITE_LOCKS") == "1") listOf("--write-locks") else emptyList()
 
 /**
- * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation, or an empty
- * list when auto-inject is disabled. Materialises the script on first call.
+ * Every Gradle invocation the CLI drives with auto-inject on also turns Isolated Projects **off**
+ * for that build.
+ *
+ * The init script applies the plugin through `allprojects { buildscript { … } }`, which IP rejects
+ * outright ("Project ':' cannot access 'Project.buildscript' functionality on subprojects via
+ * 'allprojects'"), and no IP-safe injection mechanism exists — the docs page
+ * `docs/isolated-projects-autoinject.md` records the three we tested and why each fails. A
+ * consumer's own `gradle.properties` decides whether IP is on and the Tooling API daemon honours
+ * it, so without this the CLI simply fails on any build that opted in. Passing the flag here is the
+ * same opt-out that page tells a human to type by hand; a command-line `-D` outranks
+ * `gradle.properties`.
+ *
+ * Both spellings go out because Gradle 9.7 graduated the feature and renamed
+ * `org.gradle.unsafe.isolated-projects` to `org.gradle.isolated-projects`. Consumer builds carry
+ * either name (nowinandroid moved to the new one, which is what turned its integration cell red the
+ * moment its wrapper reached 9.7.1 — the old name alone no longer covers it), and a name the
+ * running Gradle doesn't recognise is an inert system property.
+ */
+internal val ISOLATED_PROJECTS_OFF_ARGS: List<String> =
+  listOf("-Dorg.gradle.unsafe.isolated-projects=false", "-Dorg.gradle.isolated-projects=false")
+
+/**
+ * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation — followed by
+ * [ISOLATED_PROJECTS_OFF_ARGS], since the injected script cannot run under Isolated Projects — or
+ * an empty list when auto-inject is disabled. Materialises the script on first call.
  *
  * The injected plugin version is the **project's version pin** when it has one —
  * `--plugin-version`, `COMPOSE_PREVIEW_VERSION`, `gradle.properties`' `composePreview.version`, or
@@ -655,7 +684,7 @@ internal fun autoInjectInitScriptArgs(
   val dir = storageDir ?: defaultInitScriptStorageDir(effectiveVersion)
   return try {
     val path = materializeInitScript(dir, effectiveVersion, fileSystem)
-    listOf("--init-script", path.absolutePath)
+    listOf("--init-script", path.absolutePath) + ISOLATED_PROJECTS_OFF_ARGS
   } catch (e: Exception) {
     stderr(
       "compose-preview: auto-inject disabled — could not materialise init script in $dir: ${e.message}"

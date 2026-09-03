@@ -13,8 +13,22 @@ that would actually fix it.
 - The auto-inject init script applies the plugin to every project via
   `allprojects { buildscript { … } }`. That is a cross-project configuration
   IP rejects outright, and the Tooling API daemon honours whatever a project's
-  `gradle.properties` sets — so enabling IP (here **or** in a consumer's build)
-  breaks every tooling-driven run, not just CI.
+  `gradle.properties` sets — so a consumer who enables IP would break every
+  tooling-driven run, not just CI.
+- **So the CLI turns IP off for its own invocations.** Every auto-injected
+  Gradle build the CLI / MCP server / VS Code extension drives carries
+  `-Dorg.gradle.isolated-projects=false -Dorg.gradle.unsafe.isolated-projects=false`
+  (`ISOLATED_PROJECTS_OFF_ARGS` in
+  [AutoInject.kt](../cli/src/main/kotlin/ee/schimke/composeai/cli/AutoInject.kt)),
+  which outranks the consumer's `gradle.properties`. Both spellings, because
+  **Gradle 9.7 graduated IP and renamed `org.gradle.unsafe.isolated-projects`
+  to `org.gradle.isolated-projects`** — a build on 9.7+ that sets the new name
+  (nowinandroid does) is unaffected by the old one. Anything driving
+  `./gradlew --init-script <script>` by hand — the integration matrix, the
+  repros below — has to pass the same flags itself.
+- `--no-auto-inject` (or a build that applies the plugin in its own
+  `plugins { }` blocks) does not need any of this: the plugin itself is
+  IP-clean, which the gradle-plugin functional tests pin with IP on.
 - We attempted an IP-safe redesign. The blocker is fundamental: there is no
   Gradle mechanism that is simultaneously **(a)** IP-clean, **(b)** injects a
   plugin without editing build files, and **(c)** puts that plugin on the same
