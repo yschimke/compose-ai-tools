@@ -455,7 +455,7 @@ const SCORER = String.raw`
   // canvas per row would grow with every row the cursor visited — two full-size backing stores
   // each — until the page ran out. Zeroing the dimensions drops the old store immediately
   // rather than waiting for the context to be collected.
-  const ACTIVE = { tr: null, png: null, svg: null, loading: null };
+  const ACTIVE = { tr: null, png: null, svg: null, pending: { png: null, svg: null } };
 
   // The last point hovered, so a sample that had to wait for an origin-clean load can be
   // completed where the cursor actually is rather than dropped.
@@ -467,7 +467,8 @@ const SCORER = String.raw`
       ACTIVE[side] = null;
     }
     ACTIVE.tr = null;
-    ACTIVE.loading = null;
+    ACTIVE.pending.png = null;
+    ACTIVE.pending.svg = null;
   }
 
   // Whether drawing this element would taint the canvas and make every read throw. The display
@@ -509,24 +510,38 @@ const SCORER = String.raw`
     if (ACTIVE.tr !== tr) { releaseActive(); ACTIVE.tr = tr; }
     if (ACTIVE[side]) return ACTIVE[side];
     const img = displayImg(tr, side);
-    if (!img || !img.complete || !img.naturalWidth) return null;
+    // A display image is loading="lazy", so a row scrolled to and hovered at once can be framed
+    // and scored (the scorer loads its own copies) while this element has not decoded. Replay
+    // when it does, rather than answering for pixels that are not there yet.
+    if (!img || !img.complete || !img.naturalWidth) {
+      if (img && !img.dataset.pickWaiting) {
+        img.dataset.pickWaiting = "1";
+        img.addEventListener("load", () => {
+          delete img.dataset.pickWaiting;
+          replayPick(tr);
+        }, { once: true });
+      }
+      return null;
+    }
     if (!taints(img)) {
       ACTIVE[side] = contextFor(img);
       return ACTIVE[side];
     }
     const src = img.currentSrc || img.src;
-    const key = side + " " + src;
-    if (ACTIVE.loading !== key) {
-      ACTIVE.loading = key;
+    const key = src;
+    // Per side: one slot for both would be overwritten by the second side of the same hover,
+    // and every later pointermove would then start the first side's load over again.
+    if (ACTIVE.pending[side] !== key) {
+      ACTIVE.pending[side] = key;
       loadImage(src).then((clean) => {
-        if (ACTIVE.tr !== tr || ACTIVE.loading !== key) return;
-        ACTIVE.loading = null;
+        if (ACTIVE.tr !== tr || ACTIVE.pending[side] !== key) return;
+        ACTIVE.pending[side] = null;
         ACTIVE[side] = contextFor(clean);
         replayPick(tr);
       }).catch(() => {
         // The host sends no CORS header, so these pixels are unreadable however they are
         // fetched — the same wall that leaves this row's score at "n/a".
-        if (ACTIVE.loading === key) ACTIVE.loading = null;
+        if (ACTIVE.pending[side] === key) ACTIVE.pending[side] = null;
       });
     }
     return null;
@@ -535,9 +550,12 @@ const SCORER = String.raw`
   // The source pixel at (x, y), or null when the point falls outside that image. Null is a real
   // answer here: the two images have different extents, so a point inside the vector's bbox can
   // still be off the edge of the render.
+  // undefined: this side is not sampleable yet (a lazy display image still decoding, or an
+  // origin-clean copy in flight). null: the point is genuinely outside that image. Two different
+  // answers — reporting the first as the second states a fact about the picture that is not true.
   function samplePixel(tr, side, x, y) {
     const ctx = sampler(tr, side);
-    if (!ctx) return null;
+    if (!ctx) return undefined;
     const px = Math.floor(x), py = Math.floor(y);
     if (!(px >= 0 && py >= 0 && px < ctx.canvas.width && py < ctx.canvas.height)) return null;
     const d = ctx.getImageData(px, py, 1, 1).data;
@@ -570,7 +588,7 @@ const SCORER = String.raw`
     };
   }
 
-  const PICK = { locked: false, blocked: false };
+  const PICK = { locked: false, blocked: false, ready: false };
 
   function pickEl(id) { return document.getElementById(id); }
 
@@ -585,7 +603,7 @@ const SCORER = String.raw`
       sw.style.background = "transparent";
       sw.classList.add("pick-sw--none");
       val.textContent = "—";
-      sub.textContent = "outside this image";
+      sub.textContent = raw === undefined ? "still loading" : "outside this image";
       return;
     }
     sw.classList.remove("pick-sw--none");
@@ -665,7 +683,28 @@ const SCORER = String.raw`
     const sx = svgRect.width / nw, sy = svgRect.height / nh;
     const fx = clientX - rect.left, fy = clientY - rect.top;
     const svgX = fx / sx, svgY = fy / sy;
-    const renderX = svgX - rec.tx, renderY = svgY - rec.ty;
+    // The render coordinate goes through the PNG's own displayed transform where there is one.
+    // frameToComponent rounds that element's width and its left/top offset independently, so the
+    // pixel visibly under the crosshair in the PNG column is the one those rounded values put
+    // there — up to about a source pixel from what the exact translate gives, which shows up
+    // around a glyph or shape edge. Reading the placement keeps the report honest to the picture,
+    // which is the property this whole readout rests on. The translate is the fallback for a row
+    // whose PNG is missing or unframed.
+    let renderX, renderY;
+    const pngImg = displayImg(tr, "png");
+    const pngShot = pngImg && pngImg.closest(".shot");
+    if (pngImg && pngShot && pngImg.naturalWidth > 0 && pngImg.naturalHeight > 0) {
+      const pr = pngImg.getBoundingClientRect(), ps = pngShot.getBoundingClientRect();
+      const px = pr.width / pngImg.naturalWidth, py = pr.height / pngImg.naturalHeight;
+      if (px > 0 && py > 0) {
+        renderX = (fx - (pr.left - ps.left)) / px;
+        renderY = (fy - (pr.top - ps.top)) / py;
+      }
+    }
+    if (renderX === undefined) {
+      renderX = svgX - rec.tx;
+      renderY = svgY - rec.ty;
+    }
 
     let svgRaw, pngRaw;
     try {
@@ -680,6 +719,10 @@ const SCORER = String.raw`
       return;
     }
 
+    // Nothing may be frozen until both sides have answered: a lock taken over a half-loaded row
+    // cannot be refreshed by a pointer move, so it would keep a placeholder on screen until the
+    // reader thought to release it.
+    PICK.ready = svgRaw !== undefined && pngRaw !== undefined;
     const g = backdrop();
     const svgOver = svgRaw && over(svgRaw, g);
     const pngOver = pngRaw && over(pngRaw, g);
@@ -735,7 +778,7 @@ const SCORER = String.raw`
         pickAt(shot, e.clientX, e.clientY);
       } else {
         pickAt(shot, e.clientX, e.clientY);
-        PICK.locked = true;
+        PICK.locked = PICK.ready;
       }
       const panel = pickEl("pick");
       if (panel) panel.classList.toggle("pick--locked", PICK.locked);

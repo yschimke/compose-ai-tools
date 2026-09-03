@@ -399,7 +399,10 @@ test("the two samples are the same point, aligned the way the score is", () => {
   // so a capped non-square component is scaled by slightly different factors across and down.
   assert.match(html, /const sx = svgRect\.width \/ nw, sy = svgRect\.height \/ nh;/);
   assert.match(html, /const svgX = fx \/ sx, svgY = fy \/ sy;/);
-  assert.match(html, /const renderX = svgX - rec\.tx, renderY = svgY - rec\.ty;/);
+  // The render coordinate goes through the PNG's own displayed placement, whose width and
+  // offset frameToComponent rounds independently; the exact translate is the fallback.
+  assert.match(html, /renderX = \(fx - \(pr\.left - ps\.left\)\) \/ px;/);
+  assert.match(html, /renderX = svgX - rec\.tx;/);
   // Both columns are marked, so the reading is visibly about one point in two images.
   assert.match(html, /for \(const shot of tr\.querySelectorAll\("\.shot--framed"\)\)/);
 });
@@ -420,7 +423,7 @@ test("a point outside one image reads as absent rather than as a colour", () => 
   // edge of the render. Clamping would invent a colour for a pixel that isn't there.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /if \(!\(px >= 0 && py >= 0 && px < ctx\.canvas\.width && py < ctx\.canvas\.height\)\) return null/);
-  assert.match(html, /sub\.textContent = "outside this image"/);
+  assert.match(html, /sub\.textContent = raw === undefined \? "still loading" : "outside this image"/);
 });
 
 test("the picker gives up on a tainted canvas the same way the scorer does", () => {
@@ -453,7 +456,7 @@ test("only the hovered row holds sampling canvases", () => {
   // visited — two full-size backing stores each — rather than staying flat the way the
   // sequential scorer intends.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /const ACTIVE = \{ tr: null, png: null, svg: null, loading: null \}/);
+  assert.match(html, /const ACTIVE = \{ tr: null, png: null, svg: null, pending: \{ png: null, svg: null \} \}/);
   assert.match(html, /if \(ACTIVE\.tr !== tr\) \{ releaseActive\(\); ACTIVE\.tr = tr; \}/);
   // Zeroing the dimensions drops the backing store now rather than at collection time.
   assert.match(html, /ACTIVE\[side\]\.canvas\.width = 0; ACTIVE\[side\]\.canvas\.height = 0;/);
@@ -467,7 +470,7 @@ test("the picker reads the images the row is displaying", () => {
   // already holding.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /function displayImg\(tr, side\)/);
-  assert.match(html, /if \(!img \|\| !img\.complete \|\| !img\.naturalWidth\) return null/);
+  assert.match(html, /if \(!img \|\| !img\.complete \|\| !img\.naturalWidth\) \{/);
   // Used directly only when reading it cannot taint the canvas.
   assert.match(html, /if \(!taints\(img\)\) \{/);
 });
@@ -506,4 +509,28 @@ test("a frozen reading is refreshed when its row rescores", () => {
   // against a picture that has moved on.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /if \(ACTIVE\.tr === tr\) releaseActive\(\);\n\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*replayPick\(tr\);/);
+});
+
+test("a not-yet-decoded image reads as pending, and cannot be frozen", () => {
+  // Display images are loading="lazy", so a row scrolled to and clicked at once can be framed and
+  // scored — the scorer loads its own copies — while the element has not decoded. Reporting that
+  // as "outside this image" asserts something false about the picture, and locking it strands a
+  // placeholder that no pointer move can refresh.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(ctx\) return undefined;|if \(!ctx\) return undefined;/);
+  assert.match(html, /PICK\.ready = svgRaw !== undefined && pngRaw !== undefined;/);
+  assert.match(html, /PICK\.locked = PICK\.ready;/);
+  // And the element's own load replays the hover, since nothing else would.
+  assert.match(html, /img\.addEventListener\("load", \(\) => \{/);
+});
+
+test("each side tracks its own pending origin-clean load", () => {
+  // One slot for both sides is overwritten by the second side of the same hover, so every later
+  // pointermove restarts the first side's load — many concurrent decodes while the cursor moves,
+  // instead of once per row per side.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /if \(ACTIVE\.pending\[side\] !== key\) \{/);
+  assert.match(html, /if \(ACTIVE\.tr !== tr \|\| ACTIVE\.pending\[side\] !== key\) return;/);
+  assert.match(html, /ACTIVE\.pending\.png = null;/);
+  assert.match(html, /ACTIVE\.pending\.svg = null;/);
 });
