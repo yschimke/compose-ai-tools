@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T06:03:19.026Z",
+  "generatedAt": "2026-09-03T06:13:26.316Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "d8ddacfbaf573bcddff7499b704c10f7dc22dcb2",
+        "subject": "fix(import): keep a sidecar's diagnosis, drop its suppressed branches, and free repo-wide release (#5047)",
+        "at": "2026-09-03T07:02:02+01:00",
+        "author": "claude[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "cc2b0eddabb5d01adba9d95cb8429b17fa3eedae",
         "subject": "feat(import): let an import declare Gradle properties for its throwaway checkout (#5045)",
@@ -474,14 +482,6 @@
         "sha": "802b84b87fb52b1ce9be38776f15c82b84380c96",
         "subject": "refactor(xr): move renderer to compose-preview-xr (#4972)",
         "at": "2026-09-02T04:13:29+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d45341db16e57bc5bded2c276c482f7e84001cf3",
-        "subject": "fix(figma-svg): preserve indication modifier order (#4973)",
-        "at": "2026-09-02T04:13:22+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
