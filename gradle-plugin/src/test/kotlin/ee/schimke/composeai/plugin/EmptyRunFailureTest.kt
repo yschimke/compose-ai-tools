@@ -43,6 +43,42 @@ class EmptyRunFailureTest {
   }
 
   @Test
+  fun `a theme fan-out's suffixed siblings count as written`() {
+    // DroidKaigi's :core:ui fans every preview over five named themes, so the renderer writes
+    // `Foo-<hash>_DeepTeal.png` and friends and never the bare path the capture was scheduled at.
+    // Judged on exact paths it produced 450 files and still failed with "none produced a file".
+    png("CollapsingHeaderLayoutPreview-b2afa1fb_DeepTeal.png", 8)
+    png("CollapsingHeaderLayoutPreview-b2afa1fb_SakuraPlum.png", 8)
+    assertThat(
+        RenderPreviewsTask.emptyRunFailure(
+          listOf(File(tmp.root, "CollapsingHeaderLayoutPreview-b2afa1fb.png"))
+        )
+      )
+      .isNull()
+  }
+
+  @Test
+  fun `an unrelated file sharing no stem is not a surviving capture`() {
+    // The stem match must not degrade into "something is in the directory": a genuinely empty run
+    // that happens to sit beside another preview's output is still an empty run.
+    png("SomethingElse_DeepTeal.png", 8)
+    assertThat(RenderPreviewsTask.emptyRunFailure(listOf(File(tmp.root, "Foo.png")))).isNotNull()
+  }
+
+  @Test
+  fun `an empty suffixed sibling does not count as written`() {
+    png("Foo_DeepTeal.png", 0)
+    assertThat(RenderPreviewsTask.emptyRunFailure(listOf(File(tmp.root, "Foo.png")))).isNotNull()
+  }
+
+  @Test
+  fun `a stem that is a prefix of another preview's name is not a match`() {
+    // `Foo` must not be satisfied by `FooBar_DeepTeal.png` — the separator is part of the match.
+    png("FooBar_DeepTeal.png", 8)
+    assertThat(RenderPreviewsTask.emptyRunFailure(listOf(File(tmp.root, "Foo.png")))).isNotNull()
+  }
+
+  @Test
   fun `a run that scheduled nothing is not a failure`() {
     // A filtered or preview-less module renders zero captures and no-ops cleanly, as it always has.
     assertThat(RenderPreviewsTask.emptyRunFailure(emptyList())).isNull()
