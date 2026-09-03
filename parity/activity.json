@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T05:48:22.935Z",
+  "generatedAt": "2026-09-03T06:03:19.026Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "cc2b0eddabb5d01adba9d95cb8429b17fa3eedae",
+        "subject": "feat(import): let an import declare Gradle properties for its throwaway checkout (#5045)",
+        "at": "2026-09-03T06:53:47+01:00",
+        "author": "claude[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "113cadf4e171a8204faaa37a0df5b63f253d668a",
+        "subject": "fix(render): a theme fan-out's suffixed outputs count as written (#5044)",
+        "at": "2026-09-03T06:52:34+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "152835c09c1c6120e20cf8dd6f3718e6fd0ff75c",
+        "subject": "chore(main): release 1.68.0 (#5038)",
+        "at": "2026-09-03T06:42:08+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "26066fd81c71b3a4ae59da5e0aa1227f9d54fa1c",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.67.0 (#5039)",
+        "at": "2026-09-03T06:41:43+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "fa62dee7c038dca07cce6e326fdc5a4e7036689a",
         "subject": "fix(cli): bundle pack dropped --variant; feat(import): render-runtime-projects (#5042)",
@@ -451,38 +483,6 @@
         "subject": "fix(figma-svg): preserve indication modifier order (#4973)",
         "at": "2026-09-02T04:13:22+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "71616b54ad5ee3ecd35b3d1d8cff4d17b3dd0359",
-        "subject": "chore(deps): update dependency com.android.library to v9.4.0 (#4966)",
-        "at": "2026-09-02T04:12:18+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "73b07547423fa0e9a4b91e07219819b73cfab904",
-        "subject": "chore(main): release 1.62.2 (#4970)",
-        "at": "2026-09-02T04:03:47+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "eac3f2d2c9398a3da04110d89d55a1c9f22151db",
-        "subject": "fix(figma-svg): preserve indication overlay geometry (#4964)",
-        "at": "2026-09-02T04:01:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3686b81a719bf1be0136bfa35141dd68656f6af7",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.62.1 (#4971)",
-        "at": "2026-09-02T03:51:27+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
