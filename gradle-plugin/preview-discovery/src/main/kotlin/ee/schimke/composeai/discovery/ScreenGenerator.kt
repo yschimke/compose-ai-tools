@@ -41,6 +41,19 @@ package ee.schimke.composeai.discovery
  * `code.call` promises, or compiling a candidate call in the producer — not a boolean per
  * restriction, which is how this list would keep growing.
  *
+ * A third restriction belongs to [ScreenValue.Chain] rather than to `code.call`: an imported
+ * extension **loses to a member of the same simple name on the receiver**. A link naming
+ * `com.example.pad` is emitted as `.pad()`, and a receiver that declares its own `pad` gets the
+ * call instead — a different expression from the one the document asked for, emitted as though it
+ * were the right one. The only mechanism that forces the link's own callable is a *renaming* import
+ * alias (`import com.example.pad as generatedPad`, called as `.generatedPad()`); an alias to the
+ * same name does not help, since resolution keys off the name at the call site. That is declined
+ * for now, deliberately: it renames every link in every generated file — `Modifier
+ * .generatedFillMaxWidth()` — to close a case that needs a link named after a member of `Any`,
+ * `Number` or `Modifier.Companion`, and a probe over material3 1.11 found no such collision. The
+ * trade is readability against a narrow hazard, and it is recorded here so it is a decision rather
+ * than an oversight.
+ *
  * A third gap arrived with the widened value vocabulary and is a different animal:
  * [ScreenValue.Reference], [ScreenValue.Construct] and [ScreenValue.Chain] carry a **claimed**
  * type. It is checked against the parameter, so a colour handed to a `String` is still refused, but
@@ -511,7 +524,13 @@ object ScreenGenerator {
             reasons += "$where is a chain with no links, which is a plain reference"
             return null
           }
-          val receiver = expression(value.receiver, where, depth + 1) ?: return null
+          val rendered = expression(value.receiver, where, depth + 1) ?: return null
+          // `-1.dp` is `-(1.dp)`, not `(-1).dp`: Kotlin binds the selector tighter than unary
+          // minus. Verified with the compiler — `-1.toString()` is rejected outright, because
+          // there is no `unaryMinus` on `String`. For a receiver whose result *does* have one the
+          // failure is worse than a compile error: it silently applies the extension to the
+          // positive value and negates afterwards.
+          val receiver = if (rendered.startsWith("-")) "($rendered)" else rendered
           buildString {
             append(receiver)
             for (link in value.links) {
@@ -575,7 +594,14 @@ object ScreenGenerator {
     /** A dotted path, each segment escaped, or null having said why. */
     private fun qualifiedName(fqn: String, where: String): String? {
       val segments = fqn.split('.')
-      if (fqn.isEmpty() || segments.any { !isWritableName(it) }) {
+      // A **qualifier is required**, not just a writable name. Every path this validates is either
+      // emitted fully qualified with no import (a reference, a construct) or imported by its full
+      // name (a chain link), and a single segment can be neither: it names a declaration in the
+      // default package, which a file in a named package can neither import nor refer to. Left
+      // unchecked, `Construct("Color", …)` emitted a bare `Color(…)` into `package
+      // generated.screen`
+      // and this returned `Emitted` for it.
+      if (fqn.isEmpty() || segments.size < 2 || segments.any { !isWritableName(it) }) {
         reasons += "$where refers to `$fqn`, which is not a qualified Kotlin name"
         return null
       }

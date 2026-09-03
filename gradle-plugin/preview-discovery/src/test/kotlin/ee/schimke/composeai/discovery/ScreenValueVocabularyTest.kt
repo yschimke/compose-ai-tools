@@ -376,6 +376,89 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a single-segment name is refused wherever a qualified one is required`() {
+    // A default-package declaration is what a single segment names, and a file in a named package
+    // can neither import nor refer to one. Before this, `Construct("Color", …)` emitted a bare
+    // `Color(…)` into `package generated.screen` and reported success.
+    assertThat(
+        refusal(
+          textNode("color" to ScreenValue.Construct("Color", typeFqn = color)),
+          catalog(text),
+        )
+      )
+      .containsExactly("`Text`.`color` refers to `Color`, which is not a qualified Kotlin name")
+    assertThat(
+        refusal(textNode("color" to ScreenValue.Reference("Color", typeFqn = color)), catalog(text))
+      )
+      .containsExactly("`Text`.`color` refers to `Color`, which is not a qualified Kotlin name")
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links = listOf(ChainLink("padding")),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` refers to `padding`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
+  fun `a negative chain receiver is parenthesised, because the selector binds tighter`() {
+    // `-1.dp` parses as `-(1.dp)`. Proven with the compiler on the same shape one type down:
+    // `-1.toString()` is rejected outright, since `String` has no `unaryMinus`.
+    val whole =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Chain(
+              receiver = ScreenValue.Whole(-1),
+              links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+              typeFqn = modifier,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(whole.source).contains("modifier = (-1).dp")
+    val fractional =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Chain(
+              receiver = ScreenValue.Fractional(-1.5),
+              links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+              typeFqn = modifier,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(fractional.source).contains("modifier = (-1.5).dp")
+  }
+
+  @Test
+  fun `a positive chain receiver is left bare`() {
+    val result =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Chain(
+              receiver = ScreenValue.Whole(16),
+              links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+              typeFqn = modifier,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source).contains("modifier = 16.dp")
+  }
+
+  @Test
   fun `a node resolves by catalog alias as well as by canonical id`() {
     val byAlias = emitted(textNode(), catalog(text))
     val byCanonical =
