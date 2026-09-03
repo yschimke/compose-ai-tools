@@ -100,9 +100,13 @@ export function captureGutterPx(gutter, { density, locale } = {}) {
  * sticker states no device and no background, and a `previewParams: {}` on every image would be
  * pure noise. Kotlin reads a missing record back as null and keeps its existing behaviour.
  */
-function presentationParams(params) {
-  if (!params) return null;
+function presentationParams(params, capturePlayer) {
+  if (!params && !capturePlayer) return null;
   const out = {};
+  // The eighth, and the only one that is about the RENDERER rather than the render: which Remote
+  // Compose player drew these pixels. See `capturePlayerFor`.
+  if (capturePlayer) out.capturePlayer = capturePlayer;
+  if (!params) return Object.keys(out).length > 0 ? out : null;
   if (params.uiMode) out.uiMode = params.uiMode;
   if (params.showBackground === true) out.showBackground = true;
   if (params.backgroundColor) out.backgroundColor = params.backgroundColor;
@@ -121,6 +125,36 @@ function presentationParams(params) {
   const captureGutter = captureGutterPx(params.captureGutter, params);
   if (captureGutter) out.captureGutter = captureGutter;
   return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * FQN of the published wrapper that pins a preview to the view-backed Remote Compose player. A
+ * preview naming it composes through `RemoteComposePlayerKind.VIEW` instead of the
+ * `RemoteOverridablePreview` default.
+ */
+const REMOTE_VIEW_PREVIEW_WRAPPER = "ee.schimke.composeai.daemon.RemoteViewPreviewWrapper";
+
+/**
+ * The `rcPlayer` wire id of the player this preview's baked PNG was **captured** with, or null when
+ * the question does not apply.
+ *
+ * A published catalog stages no `previews.json`, so a server reading it back has nothing that
+ * records a `@PreviewWrapper` pin — and the only inference available to it, that
+ * `RemoteOverridablePreview` defaults to the embedded player, is wrong for exactly the previews
+ * that pin `RemoteViewPreviewWrapper`. Getting it wrong is not cosmetic: the server treats a
+ * request naming the capture's own player as satisfied by the baked pixels, so an inferred
+ * `cmp-android` would answer `?rcPlayer=cmp-android` on a view-pinned preview with the view
+ * player's capture, and the viewer would drop the parameter and label those pixels CMP Android.
+ *
+ * So it is recorded rather than inferred, and a catalog that predates this field reads back as
+ * "unknown" on the server rather than as the common answer (compose-preview-server#233).
+ *
+ * Only for a preview that carries a captured document: a plain Compose preview's PNG is not any
+ * player's output, and claiming one would invite the same false equivalence pointing the other way.
+ */
+function capturePlayerFor(bundle, preview) {
+  if (!bundle?.entries?.[`ir/${preview.id}.rc`]) return null;
+  return preview.params?.wrapperClassName === REMOTE_VIEW_PREVIEW_WRAPPER ? "java" : "cmp-android";
 }
 
 /** Metadata that must be visible on the browse surface before a preview daemon is opened. */
@@ -152,7 +186,7 @@ export function declarationsByPreviewId(bundles) {
       // per-preview backdrop falls back to the catalog's declared stage for all of them and the
       // device clip never resolves: a round Wear comparison is drawn on a square stage there and
       // nowhere else.
-      const previewParams = presentationParams(preview.params);
+      const previewParams = presentationParams(preview.params, capturePlayerFor(bundle, preview));
       if (
         overrides.length > 0 ||
         remoteComposeKnobs.length > 0 ||

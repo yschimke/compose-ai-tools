@@ -198,6 +198,39 @@ test("lifts the ground and device frame a browse surface needs before opening an
   });
 });
 
+test("records which Remote Compose player captured the render", () => {
+  // A published catalog stages no `previews.json`, so a server reading it back has nothing that
+  // records a `@PreviewWrapper` pin. It must be told, because the only inference available to it —
+  // that `RemoteOverridablePreview` defaults to the embedded player — would answer
+  // `?rcPlayer=cmp-android` on the pinned preview below with the VIEW player's own capture.
+  const bundle = {
+    previews: [
+      { id: "Card", params: {} },
+      {
+        id: "Pinned",
+        params: { wrapperClassName: "ee.schimke.composeai.daemon.RemoteViewPreviewWrapper" },
+      },
+    ],
+    entries: { "ir/Card.rc": new Uint8Array([1]), "ir/Pinned.rc": new Uint8Array([1]) },
+  };
+  const out = declarationsByPreviewId(bundle);
+  assert.deepEqual(out.get("Card"), { previewParams: { capturePlayer: "cmp-android" } });
+  assert.deepEqual(out.get("Pinned"), { previewParams: { capturePlayer: "java" } });
+});
+
+test("records no capture player for a preview with no captured document", () => {
+  // A plain Compose preview's PNG is not any player's output. Claiming one would invite the same
+  // false equivalence pointing the other way — an `rcPlayer` request read as satisfied by pixels
+  // no player drew.
+  const bundle = {
+    previews: [{ id: "PlainCompose", params: { showBackground: true } }],
+    entries: {},
+  };
+  assert.deepEqual(declarationsByPreviewId(bundle).get("PlainCompose"), {
+    previewParams: { showBackground: true },
+  });
+});
+
 test("records nothing for a preview that states no ground and no device", () => {
   // The ordinary component sticker. A `previewParams: {}` on every image would grow every catalog
   // for no reader, and Kotlin reads a missing record back as null — its existing behaviour.
