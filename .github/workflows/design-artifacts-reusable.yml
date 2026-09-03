@@ -50,6 +50,25 @@ on:
         required: false
         type: string
         default: ''
+      render-runtime-projects:
+        description: >
+          Comma-separated Gradle project paths to put on the rendered module's RUNTIME classpath
+          for this render only, for an upstream that binds an implementation at runtime and keeps
+          it off the production classpath.
+
+          DroidKaigi/conference-app-2026 is the case. Its `:core:preview:wrapper` declares
+          `compileOnly(project(":core:preview:impl"))` on both `androidMain` and `jvmMain` —
+          "impl stays off production classpaths", as its own comment puts it — and supplies the
+          binding at runtime only from the app and from its screenshot-test convention. A render
+          of `:core:ui` is neither, so every preview dies with
+          `ClassNotFoundException: …preview.impl.DefaultPreviewImageResolver`.
+
+          Import mode only, and appended to the module's build file in the THROWAWAY checkout, on
+          `runtimeOnly`-shaped configurations only: nothing the module compiles against changes,
+          and nothing is written anywhere that outlives the job.
+        required: false
+        type: string
+        default: ''
       variant:
         description: >
           Android variant the preview plugin attaches its tasks to, forwarded to the CLI as
@@ -461,6 +480,7 @@ env:
   INPUT_CATALOG_PATH: ${{ inputs.catalog-path }}
   INPUT_MODULE: ${{ inputs.module }}
   INPUT_VARIANT: ${{ inputs.variant }}
+  INPUT_RENDER_RUNTIME_PROJECTS: ${{ inputs.render-runtime-projects }}
   INPUT_MODULES: ${{ inputs.modules }}
   INPUT_EXTRA_MODULE: ${{ inputs.extra-module }}
   INPUT_RENDER_SHARDS: ${{ inputs.render-shards }}
@@ -1374,6 +1394,119 @@ jobs:
           esac
           echo "copied $found's wrapper into ${RENDER_DIR} so the render targets that build"
 
+      # The variant, pinned in the throwaway checkout's own gradle.properties.
+      #
+      # `--variant` alone does not reach Gradle from `bundle pack`: that subcommand forwards a
+      # WHITELIST of flags to the inner Command (--module, --verbose, --progress, --timeout), so
+      # --variant is accepted and then dropped, `variantGradleArgs()` produces nothing, and the
+      # plugin falls back to its `debug` convention. On a flavored module that is not harmless — a
+      # bare build type suffix-matches, so home-assistant/android rendered `minimalDebug`, the one
+      # flavor that does not compile, while the run had asked for `fullDebug`.
+      #
+      # The CLI is fixed alongside this, but it is installed from a RELEASE, so the fix is not
+      # reachable until the next one. `composePreview.variant` is an ordinary Gradle project
+      # property, and gradle.properties in this throwaway checkout is a file the workflow already
+      # rewrites for exactly this reason (see the two steps below) — so it applies to the very next
+      # run. Once the released CLI carries the fix the two agree, and the command line wins anyway.
+      # Host-supplied implementations, on the render's runtime classpath only.
+      #
+      # An upstream may bind an implementation at runtime and deliberately keep it off the
+      # production compile classpath. DroidKaigi's `:core:preview:wrapper` is explicit about it —
+      # `compileOnly(project(":core:preview:impl"))` on androidMain and jvmMain, commented "impl
+      # stays off production classpaths" — with the binding supplied by the app and by its own
+      # screenshot-test convention. A render of `:core:ui` is neither of those, so all 450 previews
+      # die with `ClassNotFoundException: …preview.impl.DefaultPreviewImageResolver`.
+      #
+      # Appended to the module's build file rather than injected through an init script, because an
+      # init script that reaches across projects fights configuration cache and Isolated Projects,
+      # which several of these upstreams have on. Appended at the END so it runs after the
+      # `kotlin { }` block that creates the KMP configurations it looks for.
+      #
+      # Deliberately `runtimeOnly`-shaped configurations ONLY. Nothing the module compiles against
+      # changes, so this cannot make a preview compile that would not compile for a real consumer —
+      # it only supplies, for the render, what the upstream supplies for its own screenshot tests.
+      #
+      # The names are tried in KMP-first order because a KMP module has no plain `jvmRuntimeOnly`:
+      # its DECLARABLE configurations are source-set scoped (`jvmMainRuntimeOnly`), and only the
+      # resolvable `jvmRuntimeClasspath` carries the bare target name. Getting that wrong is silent
+      # — `findByName` returns null, nothing is added, and the render fails exactly as it did
+      # before — which is how the first version of this step passed its own fixture test and
+      # changed nothing on the real project. Verified against DroidKaigi by resolving
+      # `jvmRuntimeClasspath` and finding the project in it, not by reading the appended file back.
+      - name: Put host-supplied implementations on the render classpath
+        if: ${{ inputs.upstream-repository != '' && inputs.render-runtime-projects != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${INPUT_MODULE:-}" ] || [ "${INPUT_MODULES:-}" = "all" ]; then
+            echo "::error::render-runtime-projects names configurations on ONE module's build file," \
+                 "so it cannot be used with repository-wide discovery. Name the module with 'module'."
+            exit 1
+          fi
+          # Same resolution as the google-services stub: the settings file gets the first word,
+          # because `project(":app").projectDir = file(…)` puts a module where its path does not say.
+          derived="$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${RENDER_DIR}"/settings.gradle "${RENDER_DIR}"/settings.gradle.kts 2>/dev/null |
+              sed -n "s|.*project(['\"]${INPUT_MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then
+            derived="$remapped"
+          fi
+          module_dir="${RENDER_DIR}/${derived}"
+          build_file=""
+          for candidate in "${module_dir}/build.gradle.kts" "${module_dir}/build.gradle"; do
+            if [ -f "$candidate" ]; then build_file="$candidate"; break; fi
+          done
+          [ -n "$build_file" ] || {
+            echo "::error::no build.gradle.kts or build.gradle under ${module_dir} — is ${INPUT_MODULE} the module being rendered?"
+            exit 1
+          }
+          case "$build_file" in
+            *.kts) ;;
+            *)
+              echo "::error::${build_file} is a Groovy build script; render-runtime-projects appends Kotlin DSL." \
+                   "Teach this step the Groovy form before using it on such a module."
+              exit 1
+              ;;
+          esac
+          {
+            printf '\n// compose-preview import: implementations this upstream binds at runtime and keeps off\n'
+            printf '// its production classpath. Render-only, in a throwaway checkout.\n'
+            printf 'dependencies {\n'
+            printf '    listOf(\n'
+            printf '        "jvmMainRuntimeOnly", "desktopMainRuntimeOnly", "androidMainRuntimeOnly",\n'
+            printf '        "jvmRuntimeOnly", "desktopRuntimeOnly", "runtimeOnly",\n'
+            printf '    ).forEach { composeAiPreviewCfg ->\n'
+            printf '        if (configurations.findByName(composeAiPreviewCfg) != null) {\n'
+            IFS=','
+            for composeai_project in $INPUT_RENDER_RUNTIME_PROJECTS; do
+              printf '            add(composeAiPreviewCfg, project("%s"))\n' "$composeai_project"
+            done
+            unset IFS
+            printf '        }\n'
+            printf '    }\n'
+            printf '}\n'
+          } >> "$build_file"
+          echo "added ${INPUT_RENDER_RUNTIME_PROJECTS} to ${build_file#"$RENDER_DIR/"} on runtimeOnly configurations"
+
+      - name: Pin the render variant in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.variant != '' }}
+        env:
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
+        run: |
+          set -euo pipefail
+          if [ -f "$GRADLE_PROPERTIES" ] &&
+             grep -q '^[[:space:]]*composePreview\.variant[[:space:]]*=' "$GRADLE_PROPERTIES"; then
+            sed -i "s/^[[:space:]]*composePreview\.variant[[:space:]]*=.*/composePreview.variant=${INPUT_VARIANT}/" \
+              "$GRADLE_PROPERTIES"
+            echo "rewrote composePreview.variant=${INPUT_VARIANT} in the throwaway checkout"
+          else
+            printf '\n# compose-preview import: render this variant, not the plugin default.\ncomposePreview.variant=%s\n' \
+              "$INPUT_VARIANT" >> "$GRADLE_PROPERTIES"
+            echo "pinned composePreview.variant=${INPUT_VARIANT} in the throwaway checkout"
+          fi
+
       - name: Disable Isolated Projects in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
         env:
@@ -1991,6 +2124,119 @@ jobs:
               ;;
           esac
           echo "copied $found's wrapper into ${RENDER_DIR} so the render targets that build"
+
+      # The variant, pinned in the throwaway checkout's own gradle.properties.
+      #
+      # `--variant` alone does not reach Gradle from `bundle pack`: that subcommand forwards a
+      # WHITELIST of flags to the inner Command (--module, --verbose, --progress, --timeout), so
+      # --variant is accepted and then dropped, `variantGradleArgs()` produces nothing, and the
+      # plugin falls back to its `debug` convention. On a flavored module that is not harmless — a
+      # bare build type suffix-matches, so home-assistant/android rendered `minimalDebug`, the one
+      # flavor that does not compile, while the run had asked for `fullDebug`.
+      #
+      # The CLI is fixed alongside this, but it is installed from a RELEASE, so the fix is not
+      # reachable until the next one. `composePreview.variant` is an ordinary Gradle project
+      # property, and gradle.properties in this throwaway checkout is a file the workflow already
+      # rewrites for exactly this reason (see the two steps below) — so it applies to the very next
+      # run. Once the released CLI carries the fix the two agree, and the command line wins anyway.
+      # Host-supplied implementations, on the render's runtime classpath only.
+      #
+      # An upstream may bind an implementation at runtime and deliberately keep it off the
+      # production compile classpath. DroidKaigi's `:core:preview:wrapper` is explicit about it —
+      # `compileOnly(project(":core:preview:impl"))` on androidMain and jvmMain, commented "impl
+      # stays off production classpaths" — with the binding supplied by the app and by its own
+      # screenshot-test convention. A render of `:core:ui` is neither of those, so all 450 previews
+      # die with `ClassNotFoundException: …preview.impl.DefaultPreviewImageResolver`.
+      #
+      # Appended to the module's build file rather than injected through an init script, because an
+      # init script that reaches across projects fights configuration cache and Isolated Projects,
+      # which several of these upstreams have on. Appended at the END so it runs after the
+      # `kotlin { }` block that creates the KMP configurations it looks for.
+      #
+      # Deliberately `runtimeOnly`-shaped configurations ONLY. Nothing the module compiles against
+      # changes, so this cannot make a preview compile that would not compile for a real consumer —
+      # it only supplies, for the render, what the upstream supplies for its own screenshot tests.
+      #
+      # The names are tried in KMP-first order because a KMP module has no plain `jvmRuntimeOnly`:
+      # its DECLARABLE configurations are source-set scoped (`jvmMainRuntimeOnly`), and only the
+      # resolvable `jvmRuntimeClasspath` carries the bare target name. Getting that wrong is silent
+      # — `findByName` returns null, nothing is added, and the render fails exactly as it did
+      # before — which is how the first version of this step passed its own fixture test and
+      # changed nothing on the real project. Verified against DroidKaigi by resolving
+      # `jvmRuntimeClasspath` and finding the project in it, not by reading the appended file back.
+      - name: Put host-supplied implementations on the render classpath
+        if: ${{ inputs.upstream-repository != '' && inputs.render-runtime-projects != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${INPUT_MODULE:-}" ] || [ "${INPUT_MODULES:-}" = "all" ]; then
+            echo "::error::render-runtime-projects names configurations on ONE module's build file," \
+                 "so it cannot be used with repository-wide discovery. Name the module with 'module'."
+            exit 1
+          fi
+          # Same resolution as the google-services stub: the settings file gets the first word,
+          # because `project(":app").projectDir = file(…)` puts a module where its path does not say.
+          derived="$(printf '%s' "${INPUT_MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${RENDER_DIR}"/settings.gradle "${RENDER_DIR}"/settings.gradle.kts 2>/dev/null |
+              sed -n "s|.*project(['\"]${INPUT_MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then
+            derived="$remapped"
+          fi
+          module_dir="${RENDER_DIR}/${derived}"
+          build_file=""
+          for candidate in "${module_dir}/build.gradle.kts" "${module_dir}/build.gradle"; do
+            if [ -f "$candidate" ]; then build_file="$candidate"; break; fi
+          done
+          [ -n "$build_file" ] || {
+            echo "::error::no build.gradle.kts or build.gradle under ${module_dir} — is ${INPUT_MODULE} the module being rendered?"
+            exit 1
+          }
+          case "$build_file" in
+            *.kts) ;;
+            *)
+              echo "::error::${build_file} is a Groovy build script; render-runtime-projects appends Kotlin DSL." \
+                   "Teach this step the Groovy form before using it on such a module."
+              exit 1
+              ;;
+          esac
+          {
+            printf '\n// compose-preview import: implementations this upstream binds at runtime and keeps off\n'
+            printf '// its production classpath. Render-only, in a throwaway checkout.\n'
+            printf 'dependencies {\n'
+            printf '    listOf(\n'
+            printf '        "jvmMainRuntimeOnly", "desktopMainRuntimeOnly", "androidMainRuntimeOnly",\n'
+            printf '        "jvmRuntimeOnly", "desktopRuntimeOnly", "runtimeOnly",\n'
+            printf '    ).forEach { composeAiPreviewCfg ->\n'
+            printf '        if (configurations.findByName(composeAiPreviewCfg) != null) {\n'
+            IFS=','
+            for composeai_project in $INPUT_RENDER_RUNTIME_PROJECTS; do
+              printf '            add(composeAiPreviewCfg, project("%s"))\n' "$composeai_project"
+            done
+            unset IFS
+            printf '        }\n'
+            printf '    }\n'
+            printf '}\n'
+          } >> "$build_file"
+          echo "added ${INPUT_RENDER_RUNTIME_PROJECTS} to ${build_file#"$RENDER_DIR/"} on runtimeOnly configurations"
+
+      - name: Pin the render variant in the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.variant != '' }}
+        env:
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
+        run: |
+          set -euo pipefail
+          if [ -f "$GRADLE_PROPERTIES" ] &&
+             grep -q '^[[:space:]]*composePreview\.variant[[:space:]]*=' "$GRADLE_PROPERTIES"; then
+            sed -i "s/^[[:space:]]*composePreview\.variant[[:space:]]*=.*/composePreview.variant=${INPUT_VARIANT}/" \
+              "$GRADLE_PROPERTIES"
+            echo "rewrote composePreview.variant=${INPUT_VARIANT} in the throwaway checkout"
+          else
+            printf '\n# compose-preview import: render this variant, not the plugin default.\ncomposePreview.variant=%s\n' \
+              "$INPUT_VARIANT" >> "$GRADLE_PROPERTIES"
+            echo "pinned composePreview.variant=${INPUT_VARIANT} in the throwaway checkout"
+          fi
 
       - name: Disable Isolated Projects in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
