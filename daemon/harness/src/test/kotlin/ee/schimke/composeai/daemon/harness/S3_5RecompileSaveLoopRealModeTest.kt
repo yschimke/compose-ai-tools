@@ -311,13 +311,13 @@ class S3_5RecompileSaveLoopRealModeTest {
    * carries `:daemon:desktop`'s testFixtures, so under `-Ptarget=android` that lookup returns the
    * *desktop* fixture's `RedFixturePreviewsKt` — a class the Robolectric sandbox then has to link
    * against `:daemon:android`'s runtime. The two fixtures share only the composables the scenarios
-   * name; everything else drifted apart long ago (desktop-only `RangeSlider`, `ripple`,
-   * key-event and `InsetFocusRingTheme` code; Android-only Wear, resources and Material-icon code).
-   * Cloning the desktop file class into the sandbox therefore drags desktop-only references into a
-   * class the sandbox has to resolve, and a render that cannot link its preview class never
-   * completes — which is how the Android leg reported this as a bare `renderFinished` timeout after
-   * #5002 added `InsetFocusRingTheme` to the desktop fixture. Taking the bytes off the daemon's own
-   * classpath keeps the clone on one Compose line, whichever target is under test.
+   * name; everything else drifted apart long ago (desktop-only `RangeSlider`, `ripple`, key-event
+   * and `InsetFocusRingTheme` code; Android-only Wear, resources and Material-icon code). Cloning
+   * the desktop file class into the sandbox therefore drags desktop-only references into a class
+   * the sandbox has to resolve, and a render that cannot link its preview class never completes —
+   * which is how the Android leg reported this as a bare `renderFinished` timeout after #5002 added
+   * `InsetFocusRingTheme` to the desktop fixture. Taking the bytes off the daemon's own classpath
+   * keeps the clone on one Compose line, whichever target is under test.
    */
   private fun sourceClassBytesFrom(classpath: List<File>, resourceName: String): ByteArray {
     for (entry in classpath) {
