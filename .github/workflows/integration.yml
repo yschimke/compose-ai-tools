@@ -303,6 +303,23 @@ jobs:
     # gate on PR merges. Other cells default to `false` (blocking) when the
     # field is absent.
     continue-on-error: ${{ matrix.continue_on_error == true }}
+    # Which cells do real work on this event. Every cell still *materialises* as a job
+    # regardless — `wear-os-samples (ComposeStarter)` and `(WearTilesKotlin)` are required
+    # checks in the `Protect Main` ruleset, and the others' names are cheap to keep reporting —
+    # but a cell that is not active skips every expensive step below and costs ~0.1 min.
+    #
+    # PRs already worked this way: only `pr_blocking` cells built anything. What changed is the
+    # push-to-main lane, which used to run the full external matrix on every merge — 8 cells,
+    # ~25 job-min. Measured, 72% of those push runs were cancelled by the next merge before they
+    # finished (`main` merges land a median 4 min apart), so the lane was paying for the full
+    # matrix on every merge and completing it on roughly one in four. These cells guard against
+    # *upstream* drift — an external repo bumping AGP / Kotlin / the Compose BOM — which is
+    # correlated with time, not with our commits, so the nightly cron is the cadence that
+    # actually fits them and the one the workflow header already describes.
+    #
+    # The two `pr_blocking` cells stay on push for immediate post-merge signal.
+    env:
+      CELL_ACTIVE: ${{ (matrix.pr_blocking || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
     strategy:
       fail-fast: false
       matrix:
@@ -747,7 +764,7 @@ jobs:
           #   java_version: "21"
     steps:
       - name: Checkout ${{ matrix.repo }}
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ matrix.repo }}
@@ -756,7 +773,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout ${{ matrix.secondary_repo }} (secondary)
-        if: ${{ matrix.secondary_repo != '' && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.secondary_repo != '' && env.CELL_ACTIVE == '1' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ matrix.secondary_repo }}
@@ -766,7 +783,7 @@ jobs:
           persist-credentials: false
 
       - name: Wire androidx symlink in androidchka workspace
-        if: ${{ matrix.wire_androidx_symlink && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.wire_androidx_symlink && env.CELL_ACTIVE == '1' }}
         run: |
           set -euo pipefail
           target="$GITHUB_WORKSPACE/${{ matrix.secondary_path }}"
@@ -778,7 +795,7 @@ jobs:
           ls -ld "$link"
 
       - name: Write local.properties for ${{ matrix.name }}
-        if: ${{ matrix.local_properties != '' && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.local_properties != '' && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
           LOCAL_PROPERTIES: ${{ matrix.local_properties }}
@@ -789,7 +806,7 @@ jobs:
           cat local.properties
 
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         with:
           distribution: temurin
           # Matrix entries can override (e.g. androidchka needs 21 for
@@ -797,7 +814,7 @@ jobs:
           java-version: ${{ matrix.java_version || '17' }}
 
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         with:
           cache-provider: basic
 
@@ -832,7 +849,7 @@ jobs:
       # from a foreign coordinate costs a quarter-gig restore and still needs the
       # real download.
       - name: Restore Robolectric android-all cache
-        if: ${{ (matrix.render || matrix.render_xr || matrix.daemon) && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ (matrix.render || matrix.render_xr || matrix.daemon) && env.CELL_ACTIVE == '1' }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
@@ -846,7 +863,7 @@ jobs:
       # android-all instead of re-fetching. Structural check only (central
       # directory, no full decompress) — drop anything that fails it.
       - name: Drop corrupt android-all jars
-        if: ${{ (matrix.render || matrix.render_xr || matrix.daemon) && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ (matrix.render || matrix.render_xr || matrix.daemon) && env.CELL_ACTIVE == '1' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -866,13 +883,13 @@ jobs:
           PY
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         with:
           name: compose-ai-bundle
           path: .
 
       - name: Install plugin and CLI
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         run: |
           set -euo pipefail
           mkdir -p bundle
@@ -887,7 +904,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/bundle/cli/bin" >> "$GITHUB_PATH"
 
       - name: Materialise the bundled auto-inject init script
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         env:
           # Tell the rendered init script to look at the snapshot we just
           # seeded into ~/.m2 in addition to the public plugin/Maven Central
@@ -901,11 +918,11 @@ jobs:
           echo "COMPOSE_AI_INIT_SCRIPT=$init_script" >> "$GITHUB_ENV"
 
       - name: Sanity check CLI
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         run: compose-preview help
 
       - name: Make external gradlew executable
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         run: chmod +x ./gradlew
 
@@ -915,7 +932,7 @@ jobs:
         # non-representative drift cell. The discover/render steps that consume
         # the patch are already PR-gated the same way, so there's nothing to
         # patch for on a skipped cell. (Drift still surfaces on cron/push.)
-        if: ${{ matrix.patch_file != '' && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.patch_file != '' && env.CELL_ACTIVE == '1' }}
         # Runs from the external checkout root so each patch's
         # repo-root-relative paths (e.g. AdaptiveJetStream/jetstream/...)
         # line up with `git apply -p1`. The bundle was extracted into
@@ -945,7 +962,7 @@ jobs:
           done
 
       - name: Add preview-annotations dependency for the XR overlay
-        if: ${{ matrix.render_xr && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render_xr && env.CELL_ACTIVE == '1' }}
         # The @XrSubspacePreview overlay needs the preview-annotations artifact
         # (which defines @XrSubspacePreview) on the module's compile classpath.
         # That's an ordinary library dependency, not plugin configuration: the
@@ -996,7 +1013,7 @@ jobs:
           PY
 
       - name: Repo-specific pre-Gradle patches
-        if: ${{ matrix.pre_gradle_script != '' && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.pre_gradle_script != '' && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         run: ${{ matrix.pre_gradle_script }}
 
@@ -1005,7 +1022,7 @@ jobs:
         # are covered by the daily cron + push-to-main. `matrix` is available at
         # step level (unlike at `jobs.<id>.if`), so the cell still reports its
         # check — it just skips the build.
-        if: ${{ !matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ !matrix.use_cli && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -1019,7 +1036,7 @@ jobs:
             --stacktrace
 
       - name: CLI — list previews (${{ matrix.module }})
-        if: ${{ matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.use_cli && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -1034,7 +1051,7 @@ jobs:
       - name: Verify previews.json was produced
         # Skip the assertion on cells whose discovery was skipped above, else it
         # would fail on a missing manifest.
-        if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
+        if: ${{ env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -1056,7 +1073,7 @@ jobs:
           fi
 
       - name: Render previews via Gradle
-        if: ${{ matrix.render && !matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render && !matrix.use_cli && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -1071,7 +1088,7 @@ jobs:
             --stacktrace
 
       - name: CLI — render previews (${{ matrix.module }})
-        if: ${{ matrix.render && matrix.use_cli && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render && matrix.use_cli && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -1083,7 +1100,7 @@ jobs:
           compose-preview render --module "${{ matrix.module }}"
 
       - name: Verify PNGs were produced
-        if: ${{ matrix.render && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -1109,7 +1126,7 @@ jobs:
           printf '  %s\n' "${pngs[@]}"
 
       - name: Render XR subspace previews (composePreviewRenderXr)
-        if: ${{ matrix.render_xr && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render_xr && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -1126,7 +1143,7 @@ jobs:
             --stacktrace
 
       - name: Verify XR scene.json was produced
-        if: ${{ matrix.render_xr && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render_xr && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -1155,7 +1172,7 @@ jobs:
         # Staged before the daemon round-trip below: that step edits a
         # source file and re-renders, which would otherwise leak into the
         # published gallery.
-        if: matrix.render && github.event_name != 'pull_request'
+        if: matrix.render && github.event_name != 'pull_request' && env.CELL_ACTIVE == '1'
         working-directory: external/${{ matrix.workdir }}
         # Matrix-derived strings go through env, not inline `${{ }}` in the
         # script body: `pre_gradle_script` / `notes` are multi-line and
@@ -1253,7 +1270,7 @@ jobs:
         # staged gallery README so the spatial previews are browsable on the
         # published branch alongside the flat ones. No-op when the gallery
         # wasn't staged (README absent) or no scene.json was produced.
-        if: matrix.render_xr && github.event_name != 'pull_request'
+        if: matrix.render_xr && github.event_name != 'pull_request' && env.CELL_ACTIVE == '1'
         working-directory: external/${{ matrix.workdir }}
         env:
           GALLERY_DIR: ${{ github.workspace }}/_integration_baselines
@@ -1268,7 +1285,7 @@ jobs:
             --search-root .
 
       - name: Upload browsable preview gallery payload
-        if: matrix.render && github.event_name != 'pull_request' && hashFiles('_integration_baselines/baselines.json') != ''
+        if: matrix.render && github.event_name != 'pull_request' && env.CELL_ACTIVE == '1' && hashFiles('_integration_baselines/baselines.json') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: integration-previews-${{ matrix.slug }}
@@ -1277,7 +1294,7 @@ jobs:
           retention-days: 7
 
       - name: Configure daemon in consumer build
-        if: matrix.daemon && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: matrix.daemon && env.CELL_ACTIVE == '1'
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -1327,7 +1344,7 @@ jobs:
           MATRIX_BACKGROUND_BOOT: ${{ matrix.daemon_background_boot }}
 
       - name: Emit daemon launch descriptor (composePreviewDaemonStart)
-        if: matrix.daemon && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: matrix.daemon && env.CELL_ACTIVE == '1'
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -1340,7 +1357,7 @@ jobs:
             --stacktrace
 
       - name: Daemon round-trip (spawn → render → edit → re-render)
-        if: matrix.daemon && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: matrix.daemon && env.CELL_ACTIVE == '1'
         working-directory: external/${{ matrix.workdir }}
         env:
           # The recompile step inside daemon-roundtrip.py runs `./gradlew
@@ -1381,7 +1398,7 @@ jobs:
             --gradle-args "--init-script $COMPOSE_AI_INIT_SCRIPT ${{ matrix.extra_gradle_args }}"
 
       - name: Upload daemon launch descriptor
-        if: always() && matrix.daemon && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: always() && matrix.daemon && env.CELL_ACTIVE == '1'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: daemon-launch-${{ matrix.slug }}
@@ -1390,7 +1407,7 @@ jobs:
           retention-days: 7
 
       - name: Verify at least one TILE preview was rendered
-        if: ${{ matrix.render && matrix.require_tile_render && (github.event_name != 'pull_request' || matrix.pr_blocking) }}
+        if: ${{ matrix.render && matrix.require_tile_render && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         run: |
           set -euo pipefail
@@ -1422,7 +1439,7 @@ jobs:
           PY
 
       - name: Upload previews.json
-        if: always() && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: always() && env.CELL_ACTIVE == '1'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: previews-${{ matrix.slug }}
@@ -1431,7 +1448,7 @@ jobs:
           retention-days: 7
 
       - name: Upload rendered PNGs
-        if: always() && (matrix.render || matrix.render_xr) && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: always() && (matrix.render || matrix.render_xr) && env.CELL_ACTIVE == '1'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: renders-${{ matrix.slug }}
@@ -1465,7 +1482,7 @@ jobs:
       # below call that one script; they must not drift apart.
       - name: Resolve android-all cache key
         id: android-all
-        if: always() && (matrix.render || matrix.render_xr || matrix.daemon) && (github.event_name != 'pull_request' || matrix.pr_blocking)
+        if: always() && (matrix.render || matrix.render_xr || matrix.daemon) && env.CELL_ACTIVE == '1'
         run: |
           set -euo pipefail
           # Ships in the bundle (these legs have no checkout of this repo). The
@@ -1847,6 +1864,11 @@ jobs:
     # external consumer code — it just downloads the staged galleries from
     # the matrix job and `git push` them. The untrusted external builds all
     # ran in the `integration` job under a read-only token.
+    #
+    # Cadence note: since the non-`pr_blocking` cells moved to the nightly cron, a push to
+    # main refreshes only the `pr_blocking` cells' gallery branches. The rest refresh on the
+    # nightly run instead of per-merge — in practice fresher than before, because 72% of the
+    # per-merge runs were cancelled before ever reaching this job.
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
