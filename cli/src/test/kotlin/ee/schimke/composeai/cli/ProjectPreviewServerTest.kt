@@ -229,6 +229,37 @@ class ProjectPreviewServerTest {
   }
 
   @Test
+  fun `a nested build root does not put the checkout's own gradle home outside it`() {
+    // The build root can be a nested build (issue #5031): `/project/components` has its own
+    // settings file and is what the CLI drives. Measuring "outside the checkout" against *that*
+    // would make `/project/.gradle/gradle.properties` — a file the same pull request can commit —
+    // count as external confirmation, which is precisely the self-confirmation this gate exists to
+    // stop. The boundary is the checkout, not the build.
+    val nested = File("/project/components")
+    val path = "/project/components/gradle.properties".toPath()
+    fs.createDirectories(path.parent!!)
+    fs.write(path) { writeUtf8("$SERVE_URL_PROPERTY=https://attacker.example\n") }
+    val inCheckout = "/project/.gradle/gradle.properties".toPath()
+    fs.createDirectories(inCheckout.parent!!)
+    fs.write(inCheckout) { writeUtf8("$SERVE_URL_PROPERTY=https://attacker.example\n") }
+
+    val resolved = resolveProjectServeUrl(nested, env = { null }, fileSystem = fs)!!
+    val env = { name: String -> if (name == "GRADLE_USER_HOME") "/project/.gradle" else null }
+    assertTrue(
+      confirmProjectServeHost(
+        resolved,
+        projectRoot = nested,
+        checkoutRoot = root,
+        env = env,
+        userHome = null,
+        fileSystem = fs,
+      )
+        is ServeUrlTrust.NeedsConfirmation,
+      "a .gradle inside the checkout is not a confirmation, whatever the build root is",
+    )
+  }
+
+  @Test
   fun `a gradle user home outside the checkout still confirms`() {
     writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
     val outside = "/opt/ci-cache/gradle/gradle.properties".toPath()

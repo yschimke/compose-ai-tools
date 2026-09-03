@@ -115,6 +115,27 @@ internal fun findGradleWrapperRoot(start: File = File(".").absoluteFile): File? 
   return null
 }
 
+/**
+ * The **VCS checkout root** for [start]: the nearest ancestor (inclusive) holding a `.git` entry,
+ * or null when [start] is not inside a Git checkout. Matches a file as well as a directory, so a
+ * worktree or submodule checkout (whose `.git` is a file) counts.
+ *
+ * This is a different question from [findGradleProjectRoot], and the difference is load-bearing for
+ * trust: the build root can be a *nested* directory inside the checkout, while "what may a pull
+ * request have written?" is bounded by the checkout. [confirmProjectServeHost] uses this to decide
+ * whether a `GRADLE_USER_HOME` is really outside the tree — against the build root alone, a
+ * repository whose nested build is the one being driven could confirm its own
+ * `composePreview.serveUrl` from a committed `.gradle/gradle.properties` one level up.
+ */
+internal fun findVcsCheckoutRoot(start: File = File(".").absoluteFile): File? {
+  var dir: File? = start.absoluteFile
+  while (dir != null) {
+    if (File(dir, ".git").exists()) return dir
+    dir = dir.parentFile
+  }
+  return null
+}
+
 /** Where a resolved pin came from. Ordered by precedence — first match wins. */
 internal enum class VersionPinSource(val display: String) {
   FLAG("--plugin-version"),
