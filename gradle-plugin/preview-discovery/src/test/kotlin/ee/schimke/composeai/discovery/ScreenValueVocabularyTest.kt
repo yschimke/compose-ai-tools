@@ -399,6 +399,89 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a chain link with a malformed qualified name is refused, not imported`() {
+    // Only the last segment used to be checked, so `padding` passed and the link was imported as
+    // `foo.``.padding` — an empty backticked segment in source this generator had called
+    // compilable.
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links = listOf(ChainLink("foo..padding")),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` refers to `foo..padding`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
+  fun `an all-underscore name is refused wherever a projection supplies one`() {
+    assertThat(
+        refusal(
+          textNode("color" to ScreenValue.Reference(color, listOf("__"), color)),
+          catalog(text),
+        )
+      )
+      .containsExactly("`Text`.`color` names `__`, which cannot be written as a Kotlin identifier")
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links = listOf(ChainLink("com.example.decor._")),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` refers to `com.example.decor._`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
+  fun `two records sharing a canonical id and an alias identify neither through the alias`() {
+    // The canonical lookup already refuses this pair. Collapsing the alias list by canonical id
+    // made the alias resolve to whichever came first in the file instead — the same question
+    // answered two ways depending on which spelling the document happened to use.
+    val twin =
+      component(
+        "Label",
+        "androidx.compose.material3.Label",
+        emptyList(),
+        componentIds = listOf("m3/text"),
+        canonicalId = text.canonicalId,
+      )
+    assertThat(refusal(textNode(), catalog(text, twin)))
+      .contains(
+        "catalog id `m3/text` maps to 2 components " +
+          "(`app/androidx.compose.material3.TextKt.Text`, " +
+          "`app/androidx.compose.material3.TextKt.Text`), so it identifies none of them"
+      )
+  }
+
+  @Test
+  fun `one record listing an alias twice still resolves through it`() {
+    val twice =
+      component(
+        "Text",
+        "androidx.compose.material3.Text",
+        text.parameters,
+        componentIds = listOf("m3/text", "m3/text"),
+      )
+    assertThat(emitted(textNode(), catalog(twice)).source).contains("Text(text = \"hi\")")
+  }
+
+  @Test
   fun `a canonical id wins over another record's alias for the same string`() {
     val shadow =
       component(

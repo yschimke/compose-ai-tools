@@ -209,9 +209,14 @@ object ScreenGenerator {
    */
   private class ComponentIndex(records: List<ComponentRecord>) {
     private val byCanonical = records.groupBy { it.canonicalId }
+    // `distinct()` inside the record, never across records. A record listing one alias twice says
+    // nothing twice; two *records* claiming one alias is the ambiguity this refuses, and they can
+    // share a canonical id — so collapsing by canonical id here would let an alias resolve to
+    // whichever of the two came first in the file, while `resolve` refuses the same pair when
+    // asked by canonical id. Catalog-order-dependent, and silently so.
     private val byAlias =
       records
-        .flatMap { record -> record.componentIds.map { it to record } }
+        .flatMap { record -> record.componentIds.distinct().map { it to record } }
         .groupBy(
           { it.first },
           { it.second },
@@ -227,7 +232,7 @@ object ScreenGenerator {
               "identifies none of them"
           )
       }
-      val aliased = byAlias[id]?.distinctBy { it.canonicalId } ?: return Outcome.Missing
+      val aliased = byAlias[id] ?: return Outcome.Missing
       return if (aliased.size == 1) Outcome.Found(aliased.single())
       else
         Outcome.Ambiguous(
@@ -510,15 +515,19 @@ object ScreenGenerator {
           buildString {
             append(receiver)
             for (link in value.links) {
+              // The **whole** callable, not just the simple name it ends in. Validating only the
+              // last segment let `foo..padding` through: `padding` is a fine name, so the link
+              // was accepted and imported as `foo.``.padding` — an empty backticked segment, in a
+              // file this generator had already called compilable.
+              val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
-              if (name(simple, where) == null) return null
               if (!link.property && simple == screenName) {
                 // An extension imported under the screen's own name is shadowed by the function
                 // being generated, so the chain would call the screen — or fail to resolve.
                 reasons += "$where imports `$simple`, which is the screen's own name"
                 return null
               }
-              extensionImports += ComponentSnippets.escapeCallableIfKeyword(link.callableFqn)
+              extensionImports += imported
               append(".")
               append(ComponentSnippets.escapeIfKeyword(simple))
               if (link.property) {
@@ -645,7 +654,13 @@ object ScreenGenerator {
    * contain the characters that would close the quoting or reparse as structure.
    */
   private fun isWritableName(name: String): Boolean =
-    name.isNotEmpty() && name.none { it in FORBIDDEN_IN_A_NAME }
+    name.isNotEmpty() &&
+      // Reserved, and reserved past backticks. `_`, `__` and friends match every identifier rule
+      // ever written, so nothing else here rejects them, and `receiver._` would be returned as
+      // successfully generated source that does not compile. The same rule `isUsableIdentifier`
+      // applies to a declaration's name applies to a name we merely refer to.
+      name.any { it != '_' } &&
+      name.none { it in FORBIDDEN_IN_A_NAME }
 
   private val FORBIDDEN_IN_A_NAME = ".;:\\/[]<>`\n\r".toSet()
 
