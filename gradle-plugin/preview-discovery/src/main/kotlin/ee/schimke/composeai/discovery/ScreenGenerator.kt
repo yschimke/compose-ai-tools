@@ -344,7 +344,10 @@ object ScreenGenerator {
               // compiler, which is also why `Int.MIN_VALUE` is left as a plain literal — the same
               // spelling one type down *is* accepted.
               "kotlin.Long" ->
-                if (value.value == Long.MIN_VALUE) "Long.MIN_VALUE" else "${value.value}L"
+                // Qualified for the same reason `@kotlin.OptIn` is: the generated file sits in a
+                // package the caller chose, and a same-package declaration named `Long` shadows
+                // the default import.
+                if (value.value == Long.MIN_VALUE) "kotlin.Long.MIN_VALUE" else "${value.value}L"
               else -> null
             }
           is ScreenValue.Fractional ->

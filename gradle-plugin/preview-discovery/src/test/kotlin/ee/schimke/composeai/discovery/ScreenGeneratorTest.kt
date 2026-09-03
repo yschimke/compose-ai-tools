@@ -445,7 +445,7 @@ class ScreenGeneratorTest {
       )
 
     assertThat(emitted(screen(Long.MIN_VALUE), catalog(counted)).source)
-      .contains("Counted(total = Long.MIN_VALUE)")
+      .contains("Counted(total = kotlin.Long.MIN_VALUE)")
     assertThat(emitted(screen(Long.MAX_VALUE), catalog(counted)).source)
       .contains("Counted(total = 9223372036854775807L)")
     assertThat(emitted(screen(7L), catalog(counted)).source).contains("Counted(total = 7L)")
