@@ -112,6 +112,41 @@ object RemoteComposeController {
     get() = playerState
 
   /**
+   * The `rcPlayer` wire id of the player that actually drew the current capture, or null when
+   * nothing recorded one this pass.
+   *
+   * A **set**, not a last-write-wins string. `RemoteOverridablePreview` is public and a preview may
+   * call it more than once with different `player` arguments, each drawing part of the same PNG
+   * through a different player. Naming one of them would let the server satisfy a bare request for
+   * that player with pixels another player partly drew — so a mixed capture reads null instead, and
+   * the reader keeps its honest "unknown".
+   *
+   * Plain `@Volatile`, not snapshot state: nobody composes against it and it is read once, after
+   * the render, by [declarationsJson]. Recording it must not invalidate a composition — it happens
+   * *during* one.
+   */
+  @Volatile private var capturePlayerWires: Set<String> = emptySet()
+
+  /**
+   * Record which player `RemoteOverridablePreview` actually composed the document with.
+   *
+   * The wrapper FQN cannot answer this: the selection is `player == EMBEDDED &&
+   * isEmbeddedPlayerAvailable`, and the second term is a property of the capturing app's classpath.
+   * A consumer shipping the connector without the optional embedded-player runtime draws through
+   * the view player with nothing in its annotations saying so, and a downstream reader that
+   * inferred otherwise would answer `?rcPlayer=cmp-android` with those view-player pixels. So the
+   * composable states it, and [RemoteComposeDeclarationsPayload.capturePlayer] carries it out.
+   *
+   * Idempotent per player: a recomposition or a scroll capture re-records the same branch, because
+   * the condition depends on the classpath and the requested player rather than on anything that
+   * varies mid-pass. Two *different* players in one pass are kept apart on purpose — see
+   * [capturePlayerWires].
+   */
+  fun recordCapturePlayer(wire: String) {
+    if (wire !in capturePlayerWires) capturePlayerWires = capturePlayerWires + wire
+  }
+
+  /**
    * Record an editable knob the preview just declared (via a `LocalRemoteComposeHost` named-value
    * read, or an explicit `declareKnob`). Keyed by [RemoteComposeKnobDeclaration.name]; a repeat
    * declaration of the same name (recomposition) replaces the prior entry while keeping its
@@ -198,10 +233,18 @@ object RemoteComposeController {
    */
   fun declarationsJson(): String? {
     val decls = declarations()
-    if (decls.isEmpty()) return null
+    // Exactly one player, or nothing: a capture drawn through two of them has no true single
+    // answer, so it reads as unrecorded rather than naming whichever ran last.
+    val player = capturePlayerWires.singleOrNull()
+    // A knob-less sticker is the common case and still has a player worth recording, so the
+    // sidecar now exists for it too — the writer deletes the file when this returns null, which
+    // before meant most Remote Compose captures carried no sidecar at all. Still null for a
+    // preview that declared nothing AND drew through no player, so a non–Remote Compose render
+    // writes no sidecar exactly as before.
+    if (decls.isEmpty() && capturePlayerWires.isEmpty()) return null
     return json.encodeToString(
       RemoteComposeDeclarationsPayload.serializer(),
-      RemoteComposeDeclarationsPayload(decls),
+      RemoteComposeDeclarationsPayload(decls).also { it.capturePlayer = player },
     )
   }
 
@@ -213,6 +256,9 @@ object RemoteComposeController {
    * `PreviewOverrideController.clearDeclarations`.
    */
   fun clearDeclarations() {
+    // The player is per-capture, so it drops with the declarations: a pooled sandbox re-rendering a
+    // different preview must not inherit the previous one's answer.
+    capturePlayerWires = emptySet()
     // Always reset the bridge scope (even when the in-classloader set is already empty) so a
     // shrinking list's stale knobs drop from a reused sandbox's bridge entries — mirrors
     // `PreviewOverrideController.clearDeclarations`.
@@ -366,6 +412,9 @@ object RemoteComposeController {
     activePreviewId = null
     acceptedActionPayloads = null
     activeSeed = null
+    // The recorded capture player is per-session state like everything above it: leaving it would
+    // let a fresh session's sidecar claim a player the new session never composed through.
+    capturePlayerWires = emptySet()
     bridgeForwarder?.reset(scope)
   }
 

@@ -21,6 +21,32 @@ function sidecarDeclarations(bundle, previewId, suffix) {
 }
 
 /**
+ * The `rcPlayer` wire id recorded by the capture itself, or null when it recorded none.
+ *
+ * Read off the same `previews/<id>.remotecompose.json` sidecar `sidecarDeclarations` parses, and
+ * deliberately NOT derived from the preview's `@PreviewWrapper`. `RemoteOverridablePreview` selects
+ * the player as `player == EMBEDDED && isEmbeddedPlayerAvailable`, and that second term is a
+ * property of the capturing app's classpath at render time — a consumer shipping the connector
+ * without the optional embedded-player runtime draws through the view player with nothing in its
+ * annotations saying so. An exporter reading a finished bundle cannot see that, so inferring here
+ * would record `cmp-android` over view-player pixels and have the server answer
+ * `?rcPlayer=cmp-android` with them under a confident 200 (compose-preview-server#233).
+ *
+ * Null keeps the server's honest "unknown", which costs a redundant query parameter rather than the
+ * wrong pixels. A capture from before the connector recorded this reads back null.
+ */
+function sidecarCapturePlayer(bundle, previewId) {
+  const bytes = bundle?.entries?.[`previews/${previewId}.remotecompose.json`];
+  if (!bytes) return null;
+  try {
+    const player = JSON.parse(decoder.decode(bytes))?.capturePlayer;
+    return typeof player === "string" && player !== "" ? player : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether a `@Preview(locale = …)` render was composed right-to-left — the direction the renderer
  * resolved a gutter's leading / trailing edges against.
  *
@@ -100,9 +126,14 @@ export function captureGutterPx(gutter, { density, locale } = {}) {
  * sticker states no device and no background, and a `previewParams: {}` on every image would be
  * pure noise. Kotlin reads a missing record back as null and keeps its existing behaviour.
  */
-function presentationParams(params) {
-  if (!params) return null;
+function presentationParams(params, capturePlayer) {
+  if (!params && !capturePlayer) return null;
   const out = {};
+  // The eighth, and the only one about the RENDERER rather than the render: which Remote Compose
+  // player actually drew these pixels. Passed straight through from the capture's own sidecar —
+  // see `sidecarCapturePlayer` for why it cannot be derived here.
+  if (capturePlayer) out.capturePlayer = capturePlayer;
+  if (!params) return Object.keys(out).length > 0 ? out : null;
   if (params.uiMode) out.uiMode = params.uiMode;
   if (params.showBackground === true) out.showBackground = true;
   if (params.backgroundColor) out.backgroundColor = params.backgroundColor;
@@ -152,7 +183,10 @@ export function declarationsByPreviewId(bundles) {
       // per-preview backdrop falls back to the catalog's declared stage for all of them and the
       // device clip never resolves: a round Wear comparison is drawn on a square stage there and
       // nowhere else.
-      const previewParams = presentationParams(preview.params);
+      const previewParams = presentationParams(
+        preview.params,
+        sidecarCapturePlayer(bundle, preview.id),
+      );
       if (
         overrides.length > 0 ||
         remoteComposeKnobs.length > 0 ||

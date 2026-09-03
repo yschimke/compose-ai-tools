@@ -198,6 +198,55 @@ test("lifts the ground and device frame a browse surface needs before opening an
   });
 });
 
+test("passes through the capture player the render recorded", () => {
+  // Recorded by the capture, not derived here: `RemoteOverridablePreview` picks the player as
+  // `player == EMBEDDED && isEmbeddedPlayerAvailable`, and the second term is a property of the
+  // capturing app's classpath that a finished bundle does not otherwise expose.
+  const sidecar = (player) =>
+    new TextEncoder().encode(JSON.stringify({ declarations: [], capturePlayer: player }));
+  const bundle = {
+    previews: [{ id: "Card", params: {} }, { id: "Pinned", params: {} }],
+    entries: {
+      "previews/Card.remotecompose.json": sidecar("cmp-android"),
+      "previews/Pinned.remotecompose.json": sidecar("java"),
+    },
+  };
+  const out = declarationsByPreviewId(bundle);
+  assert.deepEqual(out.get("Card"), { previewParams: { capturePlayer: "cmp-android" } });
+  assert.deepEqual(out.get("Pinned"), { previewParams: { capturePlayer: "java" } });
+});
+
+test("records no capture player when the sidecar recorded none", () => {
+  // A capture from before the connector recorded this, or a non-Remote-Compose preview. Null keeps
+  // the server's honest "unknown" rather than asserting the common answer.
+  const bundle = {
+    previews: [
+      { id: "Legacy", params: { showBackground: true } },
+      { id: "PlainCompose", params: { showBackground: true } },
+    ],
+    entries: {
+      "previews/Legacy.remotecompose.json": new TextEncoder().encode(
+        JSON.stringify({ declarations: [{ name: "label", default: "hi" }] }),
+      ),
+    },
+  };
+  const out = declarationsByPreviewId(bundle);
+  assert.equal(out.get("Legacy").previewParams.capturePlayer, undefined);
+  assert.deepEqual(out.get("PlainCompose"), { previewParams: { showBackground: true } });
+});
+
+test("ignores a malformed sidecar rather than failing the export", () => {
+  const bundle = {
+    previews: [{ id: "Broken", params: { showBackground: true } }],
+    entries: {
+      "previews/Broken.remotecompose.json": new TextEncoder().encode("{ not json"),
+    },
+  };
+  assert.deepEqual(declarationsByPreviewId(bundle).get("Broken"), {
+    previewParams: { showBackground: true },
+  });
+});
+
 test("records nothing for a preview that states no ground and no device", () => {
   // The ordinary component sticker. A `previewParams: {}` on every image would grow every catalog
   // for no reader, and Kotlin reads a missing record back as null — its existing behaviour.

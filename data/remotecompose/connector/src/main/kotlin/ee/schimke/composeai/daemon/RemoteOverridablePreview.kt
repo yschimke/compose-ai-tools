@@ -243,7 +243,17 @@ fun RemoteOverridablePreview(
   // controller's `MutableState`, so a follow-up render with a new override re-runs the bridge.
   val seededOverrides = RemoteComposeController.namedValues.value
 
-  if (player == RemoteComposePlayerKind.EMBEDDED && isEmbeddedPlayerAvailable) {
+  // Which branch this takes is the only place the *effective* player is known — the wrapper says
+  // what was asked for, `isEmbeddedPlayerAvailable` says what the classpath can actually do. A
+  // downstream reader inferring from the wrapper would answer `?rcPlayer=cmp-android` with the
+  // view player's pixels for any consumer that ships the connector without the optional embedded
+  // runtime. Recorded, not derived — see [RemoteComposeController.recordCapturePlayer].
+  val embedded = player == RemoteComposePlayerKind.EMBEDDED && isEmbeddedPlayerAvailable
+  androidx.compose.runtime.SideEffect {
+    RemoteComposeController.recordCapturePlayer(if (embedded) "cmp-android" else "java")
+  }
+
+  if (embedded) {
     ExperimentalRemoteDocumentPlayer(
       document = remoteDocument,
       modifier = modifier,
