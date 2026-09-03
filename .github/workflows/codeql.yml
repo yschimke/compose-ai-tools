@@ -20,13 +20,21 @@ name: CodeQL
 # Settings → Code security → Code scanning for this workflow to take effect.
 
 on:
-  push:
-    branches: [main]
+  # Deliberately NOT on `push: [main]`. `path-scope.py` enables every language group on any
+  # non-`pull_request` event (it only diffs a PR against its base), so the push lane ran a full
+  # 13.7-min `java-kotlin` Kotlin compile on every merge — unscoped, and measured 72% cancelled
+  # by the next merge before it finished, because `main` merges land a median 4 min apart.
+  #
+  # Everything reaches `main` through a pull request, so the PR lane below already analyses the
+  # exact tree that lands, and does it scoped (0.8 min median when no Kotlin changed). The weekly
+  # cron re-establishes the full-tree baseline in the security tab, which is what the push lane
+  # was really providing.
   pull_request:
     branches: [main]
   schedule:
-    # Weekly, off-peak.
+    # Weekly, off-peak. Also the full-tree baseline for code scanning now that push is off.
     - cron: '27 7 * * 3'
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -148,48 +148,57 @@ class ModuleUnitTestsGateTest(unittest.TestCase):
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
         self.assertIn("./gradlew test jvmTest desktopTest checkKotlinAbi --continue", ci)
 
-    def test_ci_gates_module_unit_tests_on_a_non_none_task_list(self):
-        ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
-        self.assertIn("needs.module-test-scope.outputs.tasks != 'none'", ci)
+    def test_ci_absorbs_a_none_task_list_without_invoking_gradle(self):
+        """`none` is a real output of this script and must never reach `gradlew`.
 
-    def test_module_unit_tests_consumes_the_resolved_task_list(self):
-        """The gate and the task list must come from the same job.
-
-        `Resolve affected Gradle tests` lives in its own job so it stops blocking the ~11
-        jobs that never read it. That split is only safe while the `if:` gate above and
-        the `TEST_TASKS` the job actually runs both read `module-test-scope` — if one is
-        left pointing at a stale producer, the job passes its gate and then invokes a task
-        list it never resolved.
+        This used to be a job-level `if` on the resolver job's output. The resolver now runs
+        as a step inside Module Unit Tests, so there is no output to gate on before the job
+        starts — the `none` branch of the run step is what absorbs it instead. Assert the
+        branch exists and that the task list is only expanded on the `else`.
         """
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn('elif [ -z "$TEST_TASKS" ] || [ "$TEST_TASKS" = none ]; then', ci)
+        self.assertIn('read -r -a tasks <<< "$TEST_TASKS"', ci)
+
+    def test_module_unit_tests_consumes_the_task_list_it_resolved(self):
+        """The gate and the task list must come from the same place.
+
+        When `Resolve affected Gradle tests` was its own job, this guarded against the `if:`
+        gate and `TEST_TASKS` drifting onto different producers — the job would pass its gate
+        and then run a task list it never resolved. Folding the resolver into the consuming
+        job removes that class of bug by construction, so what is asserted now is that the
+        split is really gone: the step publishes `test-scope`, the run step reads it, and no
+        reference to the old `module-test-scope` job survives anywhere in the file.
+        """
+        ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("id: test-scope", ci)
         self.assertIn(
             "TEST_TASKS: ${{ github.event_name == 'pull_request' "
-            "&& needs.module-test-scope.outputs.tasks || 'full' }}",
+            "&& steps.test-scope.outputs.tasks || 'full' }}",
             ci,
         )
-        self.assertIn("needs: [changes, module-test-scope]", ci)
+        self.assertNotIn("module-test-scope", ci)
         self.assertNotIn("module_test_tasks", ci)
 
     def test_non_pr_events_keep_module_coverage_without_a_resolver_hop(self):
-        """`main` and the nightly cron must not queue a job just to be told `full`.
+        """`main` and the nightly cron must not pay to be told `full`.
 
-        On non-PR events `path-scope.py` enables every group, so gating the resolver on
-        `module_unit_tests` alone would schedule it on every push — and since Module Unit
-        Tests `needs:` it, post-merge coverage would sit behind a second runner queue to
-        compute a constant. The resolver is therefore `pull_request`-only, which makes
-        `!cancelled()` load-bearing on the consumer: without it, the skipped resolver
-        would skip post-merge and nightly module tests outright.
+        On non-PR events `path-scope.py` enables every group, so a resolver gated on
+        `module_unit_tests` alone would run on every push to compute a constant. It used to
+        cost a whole extra job — and because Module Unit Tests `needs:` it, post-merge
+        coverage sat behind a second runner queue (measured p90 ~20 min under merge-burst
+        contention). It is now a `pull_request`-only step in the job that reads it, so a push
+        skips the step and falls through to `full` in the same runner.
+
+        `!cancelled()` stays load-bearing on the job: `changes` can be skipped rather than
+        failed, and a skipped `needs:` would otherwise delete post-merge and nightly module
+        coverage outright.
         """
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
-        scope_gate = "if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.module_unit_tests == 'true'"
-        self.assertIn(scope_gate, ci)
+        self.assertIn("      - name: Resolve affected Gradle tests\n        id: test-scope\n        if: github.event_name == 'pull_request'\n", ci)
         self.assertIn("!cancelled()", ci)
         self.assertIn("needs.changes.result == 'success'", ci)
-        self.assertIn("needs.module-test-scope.result != 'failure'", ci)
-        self.assertIn(
-            "(github.event_name != 'pull_request' || needs.module-test-scope.outputs.tasks != 'none')",
-            ci,
-        )
+        self.assertIn("needs: changes\n", ci)
 
 
 if __name__ == "__main__":

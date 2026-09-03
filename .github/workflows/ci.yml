@@ -15,6 +15,8 @@ on:
   # without making every PR wait on them.
   schedule:
     - cron: "23 4 * * *"
+  # Manual full run, including the nightly-only drift detectors above.
+  workflow_dispatch:
 
 # Workflow-level default: minimum viable scope. Individual jobs can widen if
 # they need it (none here do — all jobs are read-only builds + artifact upload,
@@ -60,9 +62,10 @@ jobs:
   # time added to all ~12 downstream jobs. Resolving the affected Gradle tests
   # (a full `./.github/actions/setup` + a Gradle model query, ~4 min) used to sit
   # in this job and blocked all of them, though only Module Unit Tests consumes
-  # the result. It now lives in `module-test-scope` below, which runs alongside
-  # the other jobs instead of in front of them. Keep this job cheap: anything
-  # added here delays the entire workflow.
+  # the result. It now runs as a step inside `module-unit-tests` itself, which
+  # already has the checkout and the Gradle cache warm — so it costs that job ~2 min
+  # and costs no other job anything. Keep this job cheap: anything added here delays
+  # the entire workflow.
   changes:
     name: Determine CI scope
     runs-on: ubuntu-latest
@@ -107,37 +110,6 @@ jobs:
   # too. On a saturated queue that is another 40-70 min in front of post-merge
   # module coverage: the exact cost this split exists to remove. Non-PR events
   # skip the job and the consumer defaults to `full` directly.
-  module-test-scope:
-    name: Resolve affected module tests
-    needs: changes
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.module_unit_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    outputs:
-      tasks: ${{ steps.test-scope.outputs.tasks }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # `changes` fetched this into its own checkout; the split means this job
-      # has to fetch it again for `affected-gradle-tests.py` to diff against.
-      - name: Fetch the PR base commit
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/buildfetch-cache
-        with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
-          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Resolve affected Gradle tests
-        id: test-scope
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          tasks=$(python3 .github/ci/affected-gradle-tests.py)
-          echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
-
   plugin-tests:
     name: Plugin Unit Tests
     needs: changes
@@ -169,7 +141,13 @@ jobs:
     # figma-svg export change, so it has to run on PRs, where the export changes land.
     name: Renderer Android Unit Tests
     needs: changes
-    if: ${{ needs.changes.outputs.renderer_android_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # `pull_request` only. `:renderer-android` is in the root build (settings.gradle.kts),
+    # so `module-unit-tests`' `full` branch — the one every non-PR event takes — already runs
+    # `:renderer-android:test`, which for an Android library depends on `testDebugUnitTest`.
+    # On push this job was a 3.7-min re-run of work happening in parallel two jobs over.
+    # It stays on PRs, where `module-unit-tests` is scoped to affected modules and may not
+    # reach `:renderer-android` at all.
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.renderer_android_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -211,27 +189,22 @@ jobs:
   # of masking them — the point of the job is to know the true state, not to stop at the first red.
   module-unit-tests:
     name: Module Unit Tests
-    needs: [changes, module-test-scope]
-    # `tasks != 'none'` is load-bearing, not belt-and-braces: the two scopes are
-    # resolved from different configs and can disagree. `path-scope.py` fails OPEN on a path it
-    # doesn't recognise (turning every group on, this job included), while
-    # `affected-gradle-tests.py` reads `gradle-test-scope.json`, where e.g. `.github/**` is
-    # ignored — so a PR touching only such a path enabled the job with `tasks=none` and it died
-    # on `gradlew none` ("Task 'none' not found"). `none` means there is nothing to run: skip.
-    # It is scoped to `pull_request` because that is the only event that produces it.
+    needs: changes
+    # The two scopes are resolved from different configs and can disagree. `path-scope.py`
+    # fails OPEN on a path it doesn't recognise (turning every group on, this job included),
+    # while `affected-gradle-tests.py` reads `gradle-test-scope.json`, where e.g. `.github/**`
+    # is ignored — so a PR touching only such a path enables the job with `tasks=none`. That
+    # used to reach `gradlew none` and die ("Task 'none' not found"); the `none` branch of the
+    # run step below absorbs it as a no-op, which is why the job `if` no longer has to.
     #
-    # `!cancelled()` is required, not decoration: `module-test-scope` deliberately does not run
-    # on push/schedule, and a skipped `needs:` skips the dependent by default — which would
-    # silently delete post-merge and nightly module coverage. The explicit
-    # `needs.changes.result == 'success'` and `module-test-scope.result != 'failure'` restore
-    # the propagation that `!cancelled()` switches off, so a broken scope job still stops this
-    # one rather than running it against an empty task list.
+    # `!cancelled()` is required, not decoration: it keeps the job alive when an upstream is
+    # skipped rather than failed, which would otherwise silently delete post-merge and nightly
+    # module coverage. The explicit `needs.changes.result == 'success'` restores the failure
+    # propagation that `!cancelled()` switches off.
     if: >-
       ${{ !cancelled()
           && needs.changes.result == 'success'
           && needs.changes.outputs.module_unit_tests == 'true'
-          && needs.module-test-scope.result != 'failure'
-          && (github.event_name != 'pull_request' || needs.module-test-scope.outputs.tasks != 'none')
           && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
@@ -243,10 +216,30 @@ jobs:
         with:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      # Resolved here rather than in a `needs:` job. As a separate job this cost a
+      # second checkout, a second Gradle setup and — because a `needs:` edge is a full
+      # scheduling round-trip — a fresh spell in the runner queue, measured at a p90 of
+      # ~20 min under merge-burst contention, to hand 17 min of tests a one-line output.
+      # `module-unit-tests` already has the checkout and the cache warm, so the resolver
+      # is ~2 min of work that now overlaps nothing instead of gating everything.
+      - name: Fetch the PR base commit
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+      - name: Resolve affected Gradle tests
+        id: test-scope
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          tasks=$(python3 .github/ci/affected-gradle-tests.py)
+          echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
       - name: Run affected module tests (full suite off PRs)
         env:
-          # Non-PR events skip the resolver job, so default to the full suite here.
-          TEST_TASKS: ${{ github.event_name == 'pull_request' && needs.module-test-scope.outputs.tasks || 'full' }}
+          # Non-PR events skip the resolver step above, so default to the full suite here.
+          TEST_TASKS: ${{ github.event_name == 'pull_request' && steps.test-scope.outputs.tasks || 'full' }}
         run: |
           if [ "$TEST_TASKS" = full ]; then
             # `checkKotlinAbi` unqualified, so Gradle runs it in every project that HAS it — the
@@ -476,7 +469,18 @@ jobs:
     # smoke job and routinely make Build Samples the slowest CI leg. Run them
     # on main and nightly instead. Because this is a distinct, new check name it
     # is not part of the existing branch-protection required-check set.
-    if: ${{ github.event_name != 'pull_request' }}
+    # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
+    # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
+    # merge before they finish. Running it on push therefore paid a runner slot on 100% of
+    # merges to get a result on ~25% of them — and the ones that did land were rarely the
+    # commit that broke anything. The nightly cron already catches the drift these guard
+    # against within 24h, which is the cadence they were designed for.
+    #
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
+    # required check that never reports blocks every PR forever. `workflow_dispatch` is the
+    # manual escape hatch for running one on demand.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -600,7 +604,18 @@ jobs:
     # Heavy (Xvfb software-GL render, several minutes). Drift detector, not a PR
     # gate — runs on push-to-main + nightly, skipped on PRs (a skipped required
     # check counts as passing for branch protection).
-    if: ${{ github.event_name != 'pull_request' }}
+    # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
+    # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
+    # merge before they finish. Running it on push therefore paid a runner slot on 100% of
+    # merges to get a result on ~25% of them — and the ones that did land were rarely the
+    # commit that broke anything. The nightly cron already catches the drift these guard
+    # against within 24h, which is the cadence they were designed for.
+    #
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
+    # required check that never reports blocks every PR forever. `workflow_dispatch` is the
+    # manual escape hatch for running one on demand.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -682,7 +697,18 @@ jobs:
     # Heavy E2E (~7 min, cold-starts Compose Desktop per preview). Drift
     # detector — runs on push-to-main + nightly, skipped on PRs (skipped
     # required check == passing).
-    if: ${{ github.event_name != 'pull_request' }}
+    # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
+    # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
+    # merge before they finish. Running it on push therefore paid a runner slot on 100% of
+    # merges to get a result on ~25% of them — and the ones that did land were rarely the
+    # commit that broke anything. The nightly cron already catches the drift these guard
+    # against within 24h, which is the cadence they were designed for.
+    #
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
+    # required check that never reports blocks every PR forever. `workflow_dispatch` is the
+    # manual escape hatch for running one on demand.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -721,7 +747,18 @@ jobs:
     # Heavy E2E (~9 min, cold-starts a daemon JVM per bundle). Drift detector —
     # runs on push-to-main + nightly, skipped on PRs (skipped required check ==
     # passing).
-    if: ${{ github.event_name != 'pull_request' }}
+    # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
+    # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
+    # merge before they finish. Running it on push therefore paid a runner slot on 100% of
+    # merges to get a result on ~25% of them — and the ones that did land were rarely the
+    # commit that broke anything. The nightly cron already catches the drift these guard
+    # against within 24h, which is the cadence they were designed for.
+    #
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
+    # required check that never reports blocks every PR forever. `workflow_dispatch` is the
+    # manual escape hatch for running one on demand.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -787,7 +824,18 @@ jobs:
     # Longest single job (~12 min; one external-fetched audit script). Drift
     # detector — runs on push-to-main + nightly, skipped on PRs (skipped
     # required check == passing).
-    if: ${{ github.event_name != 'pull_request' }}
+    # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
+    # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
+    # merge before they finish. Running it on push therefore paid a runner slot on 100% of
+    # merges to get a result on ~25% of them — and the ones that did land were rarely the
+    # commit that broke anything. The nightly cron already catches the drift these guard
+    # against within 24h, which is the cadence they were designed for.
+    #
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
+    # required check that never reports blocks every PR forever. `workflow_dispatch` is the
+    # manual escape hatch for running one on demand.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
