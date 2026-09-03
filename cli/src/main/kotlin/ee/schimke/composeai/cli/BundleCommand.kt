@@ -277,6 +277,8 @@ private class PackSubcommand(private val args: List<String>) {
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val progress: Boolean = verbose || "--progress" in args
   private val timeout: String? = args.flagValue("--timeout")
+  /** `--variant <name>`, forwarded to the inner [Command] so it reaches Gradle. */
+  private val variant: String? = args.flagValue("--variant")?.trim()?.takeIf { it.isNotEmpty() }
   private val ids: List<String> = PackPreviewIdExclusions.selectedIds(args)
 
   /**
@@ -320,6 +322,17 @@ private class PackSubcommand(private val args: List<String>) {
       if (progress && !verbose) add("--progress")
       timeout?.let {
         add("--timeout")
+        add(it)
+      }
+      // `bundle pack` forwards a WHITELIST to the inner Command, so a flag missing from it is
+      // accepted at this level and then silently dropped. `--variant` was one: the inner
+      // Command's `variantOverride` stayed null, `variantGradleArgs()` produced nothing, and the
+      // plugin fell back to its `debug` convention. On a flavored module that is not a no-op — a
+      // bare build type suffix-matches, so the render silently ran whichever flavor sorted first
+      // (home-assistant/android's `minimalDebug`, the one that does not compile) while the caller
+      // had asked for `fullDebug` and the CLI had reported no error.
+      variant?.let {
+        add("--variant")
         add(it)
       }
     }
@@ -482,6 +495,11 @@ private class PackSubcommand(private val args: List<String>) {
       }
       if (verbose) add("--verbose")
       if (progress && !verbose) add("--progress")
+      // Same whitelist, same omission — the per-preview path needs the variant just as much.
+      variant?.let {
+        add("--variant")
+        add(it)
+      }
     }
     object : Command(cmdArgs) {
         override fun run() {
