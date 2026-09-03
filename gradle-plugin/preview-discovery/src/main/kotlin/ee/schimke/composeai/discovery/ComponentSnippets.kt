@@ -80,6 +80,19 @@ object ComponentSnippets {
   }
 
   /**
+   * [callSite] as the wire shape `components.json` carries, so the record answers "how do I call
+   * this?" without a consumer linking this library.
+   *
+   * Deliberately a projection of [callSite] rather than a second implementation: the two cannot
+   * disagree about what is emittable, because there is only one decision.
+   */
+  fun codeFor(record: ComponentRecord): ComponentCode =
+    when (val snippet = callSite(record)) {
+      is ComponentSnippet.Emitted -> ComponentCode(call = snippet.code, imports = snippet.imports)
+      is ComponentSnippet.Refused -> ComponentCode(refusedReason = snippet.reason)
+    }
+
+  /**
    * A literal for [parameter] that is guaranteed to type-check, or null to refuse.
    *
    * The nullable test comes first and needs no per-type knowledge, because `null` satisfies every

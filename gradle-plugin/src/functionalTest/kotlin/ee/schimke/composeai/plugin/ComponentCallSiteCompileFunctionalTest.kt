@@ -2,9 +2,8 @@ package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import ee.schimke.composeai.discovery.ComponentCode
 import ee.schimke.composeai.discovery.ComponentRecordFile
-import ee.schimke.composeai.discovery.ComponentSnippet
-import ee.schimke.composeai.discovery.ComponentSnippets
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.testkit.runner.GradleRunner
@@ -23,6 +22,11 @@ import org.junit.rules.TemporaryFolder
  * defaults, produces a green test and source that does not build. This test removes me from the
  * loop. It discovers real `androidx.compose.material3` components out of a real project, prints
  * their call sites, writes them into that project, and compiles them.
+ *
+ * It reads `ComponentRecord.code` off the written `components.json` rather than calling
+ * `ComponentSnippets` itself, so what is compiled here is the exact bytes a consumer receives. A
+ * generator that worked in-process while the record persisted something else would pass a test that
+ * called the generator, and fail every consumer.
  *
  * **The vacuity guard is the important assertion.** A generator that refused everything would emit
  * an empty file that compiles perfectly, so "the build passed" alone proves nothing. The test
@@ -162,12 +166,16 @@ class ComponentCallSiteCompileFunctionalTest {
     val components =
       json.decodeFromString(ComponentRecordFile.serializer(), componentsFile.readText())
 
-    val emitted = mutableMapOf<String, ComponentSnippet.Emitted>()
+    val emitted = mutableMapOf<String, ComponentCode>()
     val refused = mutableMapOf<String, String>()
     for (record in components.components) {
-      when (val snippet = ComponentSnippets.callSite(record)) {
-        is ComponentSnippet.Emitted -> emitted[record.symbol.name] = snippet
-        is ComponentSnippet.Refused -> refused[record.symbol.name] = snippet.reason
+      val code = record.code
+      // A record with no `code` at all is a producer bug, not a refusal, so it is reported as one
+      // rather than counted among the components that legitimately have no writable call site.
+      when {
+        code == null -> refused[record.symbol.name] = "record carried no `code` field"
+        code.call != null -> emitted[record.symbol.name] = code
+        else -> refused[record.symbol.name] = code.refusedReason ?: "refused without a reason"
       }
     }
 
@@ -200,19 +208,16 @@ class ComponentCallSiteCompileFunctionalTest {
    * fails with the name of the component that produced it, instead of the first compile error
    * hiding the rest.
    */
-  private fun writeGeneratedCallSites(
-    projectDir: File,
-    emitted: Map<String, ComponentSnippet.Emitted>,
-  ) {
+  private fun writeGeneratedCallSites(projectDir: File, emitted: Map<String, ComponentCode>) {
     val imports = emitted.values.flatMap { it.imports }.toSortedSet()
     val body =
       emitted.entries
         .sortedBy { it.key }
-        .joinToString("\n\n") { (name, snippet) ->
+        .joinToString("\n\n") { (name, code) ->
           """
           |@Composable
           |fun Generated$name() {
-          |    ${snippet.code}
+          |    ${code.call}
           |}
           """
             .trimMargin()
