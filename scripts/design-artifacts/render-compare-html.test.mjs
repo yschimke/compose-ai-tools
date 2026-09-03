@@ -451,7 +451,7 @@ test("only the hovered row holds sampling canvases", () => {
   // visited — two full-size backing stores each — rather than staying flat the way the
   // sequential scorer intends.
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
-  assert.match(html, /const ACTIVE = \{ tr: null, png: null, svg: null \}/);
+  assert.match(html, /const ACTIVE = \{ tr: null, png: null, svg: null, loading: null \}/);
   assert.match(html, /if \(ACTIVE\.tr !== tr\) \{ releaseActive\(\); ACTIVE\.tr = tr; \}/);
   // Zeroing the dimensions drops the backing store now rather than at collection time.
   assert.match(html, /ACTIVE\[side\]\.canvas\.width = 0; ACTIVE\[side\]\.canvas\.height = 0;/);
@@ -466,4 +466,24 @@ test("the picker reads the images the row is displaying", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /function displayImg\(tr, side\)/);
   assert.match(html, /if \(!img \|\| !img\.complete \|\| !img\.naturalWidth\) return null/);
+  // Used directly only when reading it cannot taint the canvas.
+  assert.match(html, /if \(!taints\(img\)\) \{/);
+});
+
+test("a cross-origin display image is sampled through an origin-clean copy", () => {
+  // The display elements carry no `crossorigin` attribute, and on the published htmlpreview
+  // report they resolve cross-origin to raw.githubusercontent.com — relative `images/...` paths
+  // included, since those resolve against the injected base. Drawing one taints the canvas and
+  // every read throws. Putting the attribute in the markup would fix the read and break the
+  // picture outright on a host that sends no header, so the copy is fetched instead, through the
+  // same CORS path the scorer already loads by.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /function taints\(img\)/);
+  assert.match(html, /new URL\(src, document\.baseURI\)\.origin !== location\.origin/);
+  assert.match(html, /loadImage\(src\)\.then\(\(clean\) => \{/);
+  // A blob or data URL is already origin-clean, and an overridden or hybrid vector lives in a
+  // blob no reload could reproduce — so those are read off the element itself.
+  assert.match(html, /if \(\/\^\(data\|blob\):\/i\.test\(src\)\) return false/);
+  // The hover is replayed once the copy lands, so the reading appears where the cursor is.
+  assert.match(html, /if \(LAST\.shot && LAST\.shot\.isConnected\) pickAt\(LAST\.shot, LAST\.x, LAST\.y\)/);
 });

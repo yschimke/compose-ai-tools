@@ -455,7 +455,11 @@ const SCORER = String.raw`
   // canvas per row would grow with every row the cursor visited — two full-size backing stores
   // each — until the page ran out. Zeroing the dimensions drops the old store immediately
   // rather than waiting for the context to be collected.
-  const ACTIVE = { tr: null, png: null, svg: null };
+  const ACTIVE = { tr: null, png: null, svg: null, loading: null };
+
+  // The last point hovered, so a sample that had to wait for an origin-clean load can be
+  // completed where the cursor actually is rather than dropped.
+  const LAST = { shot: null, x: 0, y: 0 };
 
   function releaseActive() {
     for (const side of ["png", "svg"]) {
@@ -463,24 +467,69 @@ const SCORER = String.raw`
       ACTIVE[side] = null;
     }
     ACTIVE.tr = null;
+    ACTIVE.loading = null;
   }
 
-  // A 1:1 context over the displayed image: native resolution, no ground fill, no smoothing, so
-  // a read is the source pixel outright. The scorer's 192px downscale box-averages neighbours
-  // together for offset-robust SSIM and would answer with a blend present in neither image —
-  // exactly the wrong answer for "what colour is this".
-  function sampler(tr, side) {
-    if (ACTIVE.tr !== tr) { releaseActive(); ACTIVE.tr = tr; }
-    if (ACTIVE[side]) return ACTIVE[side];
-    const img = displayImg(tr, side);
-    if (!img || !img.complete || !img.naturalWidth) return null;
+  // Whether drawing this element would taint the canvas and make every read throw. The display
+  // images carry no "crossorigin" attribute, and on the published htmlpreview report they resolve
+  // cross-origin to raw.githubusercontent.com — including the relative "images/..." paths, which
+  // resolve against the injected base. Adding the attribute to the markup would fix the read but
+  // break the picture outright on any host that does not send the header, which trades a disabled
+  // picker for a blank column; so the check is here and the fallback below re-fetches instead.
+  function taints(img) {
+    const src = img.currentSrc || img.src || "";
+    if (/^(data|blob):/i.test(src)) return false;
+    try {
+      return new URL(src, document.baseURI).origin !== location.origin;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function contextFor(img) {
     const c = document.createElement("canvas");
     c.width = img.naturalWidth; c.height = img.naturalHeight;
     const ctx = c.getContext("2d", { willReadFrequently: true });
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0);
-    ACTIVE[side] = ctx;
     return ctx;
+  }
+
+  // A 1:1 context over the row's image: native resolution, no ground fill, no smoothing, so a
+  // read is the source pixel outright. The scorer's 192px downscale box-averages neighbours
+  // together for offset-robust SSIM and would answer with a blend present in neither image —
+  // exactly the wrong answer for "what colour is this".
+  //
+  // The displayed element is used whenever reading it cannot taint the canvas, which keeps the
+  // sample identical to the picture — including an overridden or hybrid vector, whose blob the
+  // scorer swapped into that element and which no reload could reproduce. Otherwise an
+  // origin-clean copy is requested through the same CORS path the scorer loads by, once per row
+  // per side; null until it arrives, and the hover is replayed when it does.
+  function sampler(tr, side) {
+    if (ACTIVE.tr !== tr) { releaseActive(); ACTIVE.tr = tr; }
+    if (ACTIVE[side]) return ACTIVE[side];
+    const img = displayImg(tr, side);
+    if (!img || !img.complete || !img.naturalWidth) return null;
+    if (!taints(img)) {
+      ACTIVE[side] = contextFor(img);
+      return ACTIVE[side];
+    }
+    const src = img.currentSrc || img.src;
+    const key = side + " " + src;
+    if (ACTIVE.loading !== key) {
+      ACTIVE.loading = key;
+      loadImage(src).then((clean) => {
+        if (ACTIVE.tr !== tr || ACTIVE.loading !== key) return;
+        ACTIVE.loading = null;
+        ACTIVE[side] = contextFor(clean);
+        if (LAST.shot && LAST.shot.isConnected) pickAt(LAST.shot, LAST.x, LAST.y);
+      }).catch(() => {
+        // The host sends no CORS header, so these pixels are unreadable however they are
+        // fetched — the same wall that leaves this row's score at "n/a".
+        if (ACTIVE.loading === key) ACTIVE.loading = null;
+      });
+    }
+    return null;
   }
 
   // The source pixel at (x, y), or null when the point falls outside that image. Null is a real
@@ -589,6 +638,7 @@ const SCORER = String.raw`
     // The displayed scale comes from the vector as it is actually rendered, not from the tile
     // it sits in: the two agree once the tile is framed, and reading the image means a stray
     // cap on its width shows up as a wrong scale rather than as silently wrong pixels.
+    LAST.shot = shot; LAST.x = clientX; LAST.y = clientY;
     const svgImg = displayImg(tr, "svg");
     const svgRect = svgImg && svgImg.getBoundingClientRect();
     const natural = svgImg && svgImg.naturalWidth;
