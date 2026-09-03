@@ -95,7 +95,10 @@ href"** rule.
 > and hands the one override-dependent field to its own script as `{{overrides}}`, exactly as this
 > batch prescribed. The `{{rawScores}}` row stays exclusive to the comparison; naming a reference and
 > measuring a score turn out to be two decisions, and inferring the second from the first is what had
-> kept the first off the viewer.
+> kept the first off the viewer. The change is the **server's**, so it reaches a catalog when that
+> repository publishes it and reaches this repository's own bundled `serve` when
+> `composeai-preview-serve` is bumped to a release carrying it — the block is not on any deployed
+> viewer until then.
 
 ## Traps
 

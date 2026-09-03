@@ -9,17 +9,30 @@ complete-looking issue with a `parity:` label and no fence, so `buildIssueIndex`
 [#269](https://github.com/yschimke/m3-catalog/issues/269) are open, labelled, and absent from the
 index, while the form beside them told the reporter their label fed it.
 
-The fix is in [`yschimke/compose-preview-server`](https://github.com/yschimke/compose-preview-server),
-which owns the server since extraction #4732. The viewer's report context now names the preview's
-design reference — resolved exactly as the comparison link beside it resolves one — so
-`ServeIssueReport.locator` returns a locator, and the block's one override-dependent field is left as
+**What has landed, and where.** The fix is in
+[`yschimke/compose-preview-server`](https://github.com/yschimke/compose-preview-server), which owns
+the server since extraction #4732 — so it reaches a deployed `preview.coo.ee` with that repository's
+next release, and reaches *this* repository's bundled `compose-preview serve` only when the released
+version is adopted here (`composeai-preview-serve` in `gradle/libs.versions.toml`, on 2.15.0 at the
+time of writing, bumped by Renovate). Until that bump, the CLI this repository builds still files the
+locator-less body, and the stale copy of the page fixture under
+`preview-server/preview-harness/fixtures/pages/` still shows the old panel; both move with the
+version, not with this commit. The shots below are taken from the server repository's own
+regenerated golden.
+
+The viewer's report context now names the preview's design reference — the first, resolved exactly as
+the page's own spec lane and annotations already resolve it, so the locator names the reference the
+viewer actually puts on its stage — so `ServeIssueReport.locator` returns a locator, and the block's one override-dependent field is left as
 an `{{overrides}}` placeholder the page's own script fills from live control state, on the same pass
 that fills `{{render}}`. The *score* stays exclusive to the comparison: it is the only page that
 measures one.
 
-The shots are the committed page fixture, production CSS and JS, with the report disclosure opened:
+The shots are the committed page fixture, production CSS and JS, with the report disclosure opened.
+Both commands run in a **`yschimke/compose-preview-server` checkout**, not this one: `:server` is
+that repository's project, and this build has no such module since the extraction.
 
 ```sh
+git clone https://github.com/yschimke/compose-preview-server && cd compose-preview-server
 UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :server:test --tests '*ServeWebFixtureTest*'
 ```
 
@@ -43,7 +56,7 @@ variant-only choice.
 What the served form now prefills for `com.example.ProfileScreenPreview`, appended after the
 existing prose table (unchanged above this point):
 
-```
+````
 [Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
 
 ```compose-parity-locator/v1
@@ -56,7 +69,7 @@ variant:
 overrides: {}
 revision: yschimke/compose-ai-tools@design-artifacts/compose-m3
 ```
-```
+````
 
 The template the page's script fills is the same body with `overrides: {{overrides}}` on that line.
 A visitor with scripting off files the served form above, whose overrides are the ones their own URL
