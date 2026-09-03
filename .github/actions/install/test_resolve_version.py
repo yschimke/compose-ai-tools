@@ -11,7 +11,10 @@ that one value in a consumer's repo means the same thing in all three places.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import json
 import os
 import tempfile
 import unittest
@@ -148,6 +151,129 @@ class MainDispatchTests(ResolverTestCase):
         os.environ["INPUT_VERSION"] = "catalog"
         with self.assertRaises(SystemExit):
             resolve_version.main()
+
+
+class _FakeResponse:
+    """Minimal stand-in for `urlopen`'s result: `json.load`-able, with `Link` headers."""
+
+    def __init__(self, payload: object, link: str | None = None) -> None:
+        self._body = json.dumps(payload).encode()
+        self.headers = {"Link": link} if link else {}
+
+    def read(self, *args: object) -> bytes:
+        body, self._body = self._body, b""
+        return body
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+def _release(tag: str, *, cli: bool = True, maven_ready: bool = True) -> dict:
+    ver = tag.lstrip("v")
+    assets = []
+    if cli:
+        assets.append(
+            {"name": f"compose-preview-{ver}.tar.gz", "state": "uploaded", "size": 42}
+        )
+    if maven_ready:
+        assets.append(
+            {
+                "name": f"compose-preview-maven-ready-{ver}.json",
+                "state": "uploaded",
+                "size": 7,
+            }
+        )
+    return {"tag_name": tag, "draft": False, "prerelease": False, "assets": assets}
+
+
+class LatestReleaseTests(ResolverTestCase):
+    """`latest` means *latest usable*, not latest released (issue #5051).
+
+    A release's CLI tarball is downloadable minutes before its Gradle plugin is
+    resolvable, and every render dispatched in that window died with an error
+    naming the consumer's project. `maven-readiness.yml` attaches a marker to the
+    release once it has actually resolved the plugin from Central, so `latest`
+    gates on that marker.
+    """
+
+    def _resolve(self, releases: list[dict]) -> tuple[str, str]:
+        calls: list[str] = []
+
+        def fake_urlopen(req: object, timeout: int = 0) -> _FakeResponse:
+            calls.append(getattr(req, "full_url", ""))
+            return _FakeResponse(releases)
+
+        original = resolve_version.urllib.request.urlopen
+        resolve_version.urllib.request.urlopen = fake_urlopen  # type: ignore[assignment]
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(stderr):
+                version = resolve_version.latest_version()
+        finally:
+            resolve_version.urllib.request.urlopen = original  # type: ignore[assignment]
+        return version, stderr.getvalue()
+
+    def test_skips_a_release_whose_plugin_is_not_published_yet(self) -> None:
+        version, err = self._resolve(
+            [_release("v1.68.0", maven_ready=False), _release("v1.67.0")]
+        )
+        self.assertEqual(version, "1.67.0")
+        self.assertIn("v1.68.0", err)
+        self.assertIn("readiness marker", err)
+
+    def test_takes_the_newest_ready_release_silently(self) -> None:
+        version, err = self._resolve([_release("v1.68.0"), _release("v1.67.0")])
+        self.assertEqual(version, "1.68.0")
+        self.assertEqual(err, "")
+
+    def test_still_skips_a_release_with_no_cli_tarball(self) -> None:
+        version, err = self._resolve(
+            [_release("v1.68.0", cli=False), _release("v1.67.0")]
+        )
+        self.assertEqual(version, "1.67.0")
+        self.assertIn("CLI tarball not yet uploaded", err)
+
+    def test_falls_back_when_no_release_carries_a_marker(self) -> None:
+        # Pre-marker releases, or a readiness job that has been failing across all of them:
+        # refusing to install anything would be worse than the behaviour this gate replaced.
+        version, err = self._resolve(
+            [_release("v1.68.0", maven_ready=False), _release("v1.67.0", maven_ready=False)]
+        )
+        self.assertEqual(version, "1.68.0")
+        self.assertIn("no release", err)
+        self.assertIn("Maven-readiness marker", err)
+
+
+class ReleaseAssetPredicateTests(unittest.TestCase):
+    def test_a_partially_uploaded_asset_does_not_count(self) -> None:
+        release = {
+            "tag_name": "v1.68.0",
+            "assets": [
+                {"name": "compose-preview-1.68.0.tar.gz", "state": "open", "size": 0},
+                {
+                    "name": "compose-preview-maven-ready-1.68.0.json",
+                    "state": "open",
+                    "size": 0,
+                },
+            ],
+        }
+        self.assertFalse(resolve_version._release_is_complete(release))
+        self.assertFalse(resolve_version._release_is_maven_ready(release))
+
+    def test_a_marker_for_another_version_does_not_count(self) -> None:
+        release = _release("v1.68.0", maven_ready=False)
+        release["assets"].append(
+            {
+                "name": "compose-preview-maven-ready-1.67.0.json",
+                "state": "uploaded",
+                "size": 7,
+            }
+        )
+        self.assertTrue(resolve_version._release_is_complete(release))
+        self.assertFalse(resolve_version._release_is_maven_ready(release))
 
 
 class _capture:

@@ -50,6 +50,19 @@ inputs:
       unauthenticated rate limit on shared GHA runners). Empty falls
       back to the workflow token (github.token) inside the steps below.
     default: ''
+  plugin-readiness-timeout:
+    description: >
+      Seconds to wait for the resolved version's Gradle plugin to be
+      resolvable from the Plugin Portal / Maven Central before failing
+      with an explicit message. A release's CLI tarball is downloadable
+      minutes — sometimes tens of minutes — before its plugin is, and a
+      render dispatched in that window dies during configuration with an
+      error that names the *consumer's* project (issue #5051). Waiting
+      turns that hard failure into a delay; the failure at the end of the
+      budget at least says what actually happened. Set to 0 to skip the
+      probe entirely (for a job that installs the CLI without driving a
+      Gradle build).
+    default: '300'
 
 outputs:
   version:
@@ -76,6 +89,62 @@ runs:
         ver=$(python3 "$ACTION_PATH/resolve-version.py")
         printf 'version=%s\n' "$ver" >> "$GITHUB_OUTPUT"
         printf '::notice::Resolved compose-preview version: %s\n' "$ver"
+
+    # `version: latest` already prefers a release carrying its Maven-readiness marker
+    # (resolve-version.py), so this normally passes on the first probe. It is here for every
+    # other mode — a literal version, `pin`, `catalog` — where the version is whatever the
+    # consumer named, and for the case where no release in the window has a marker at all.
+    - name: Wait for the plugin to be published
+      if: ${{ inputs.plugin-readiness-timeout != '0' }}
+      shell: bash
+      env:
+        VER: ${{ steps.resolve.outputs.version }}
+        BUDGET: ${{ inputs.plugin-readiness-timeout }}
+      run: |
+        set -uo pipefail
+        marker='ee.schimke.composeai.preview.gradle.plugin'
+        portal="https://plugins.gradle.org/m2/ee/schimke/composeai/preview/${marker}/${VER}/${marker}-${VER}.pom"
+        central="https://repo1.maven.org/maven2/ee/schimke/composeai/preview/${marker}/${VER}/${marker}-${VER}.pom"
+
+        # The portal 303s to Central for released markers, so one -L probe usually settles it;
+        # Central is probed directly as a second chance because the auto-inject init script
+        # declares both repositories and Gradle resolves from whichever answers.
+        probe() {
+          curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 60 "$1" 2>/dev/null
+        }
+
+        deadline=$(( $(date +%s) + BUDGET ))
+        last=""
+        while :; do
+          inconclusive=""
+          for url in "$portal" "$central"; do
+            code="$(probe "$url")"
+            last="$code"
+            if [ "$code" = "200" ]; then
+              printf '✓ plugin %s:%s is resolvable.\n' "$marker" "$VER"
+              exit 0
+            fi
+            # 429 / 5xx say "the registry would not answer", not "the artifact is missing".
+            # Failing the job on those would turn a Central rate-limit into a fake release race.
+            # Both registries are tried first — a rate-limited portal must not hide a Central 200.
+            case "$code" in
+              429|5??) inconclusive="$url answered $code" ;;
+            esac
+          done
+          if [ -n "$inconclusive" ]; then
+            printf '::warning::compose-preview install: %s while checking whether plugin %s is published; proceeding without a verdict.\n' "$inconclusive" "$VER"
+            exit 0
+          fi
+          now="$(date +%s)"
+          if [ "$now" -ge "$deadline" ]; then
+            break
+          fi
+          printf 'plugin %s:%s not published yet (HTTP %s); retrying in 15s (until the %ss budget runs out).\n' "$marker" "$VER" "$last" "$BUDGET"
+          sleep 15
+        done
+
+        printf '::error title=compose-preview plugin not published yet::The CLI release %s exists, but its Gradle plugin %s:%s is not resolvable from plugins.gradle.org or Maven Central after %ss (last HTTP %s). This is the publication window, not a problem with your project: a release is downloadable as a CLI before the plugin of the same version publishes. Re-run in a few minutes, or pin the previous release (version: <older>, or composePreview.version in gradle.properties). Checked %s\n' "$VER" "$marker" "$VER" "$BUDGET" "$last" "$portal"
+        exit 1
 
     - name: Download CLI
       shell: bash

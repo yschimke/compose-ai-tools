@@ -24,6 +24,34 @@ version of this repo, so consumer CI isn't exposed to changes on `main`.
 After this step the `compose-preview` binary is on `$PATH` for the
 remainder of the job.
 
+## `latest` means latest **usable**
+
+A release's CLI tarball is downloadable minutes — sometimes tens of minutes —
+before its Gradle plugin is resolvable from plugins.gradle.org and Maven
+Central. Every build dispatched in that window used to die during
+configuration with `Could not find
+ee.schimke.composeai.preview:…gradle.plugin:<version>`, an error that names
+the *consumer's* project and says nothing about a race; it happened on
+1.64.0, 1.65.0, 1.66.1 and 1.68.0 (issues #5034, #5051).
+
+So `latest` resolves to the newest release that carries both its CLI tarball
+**and** the Maven-readiness marker `maven-readiness.yml` attaches once it has
+resolved that version's plugin classpath from Central for real — the same
+marker `compose-preview update` and the bootstrap installer gate on. A release
+still in its publication window is skipped, with a warning naming it, and the
+previous release is installed instead. If no release in the search window
+carries a marker at all (pre-marker releases, or a readiness job that has been
+failing), it falls back to the newest complete release and says so.
+
+Every other mode installs exactly the version you named, so those keep their
+own guard: after resolving, the action probes the plugin marker POM and waits
+up to `plugin-readiness-timeout` seconds for it to appear, then fails with a
+message that names the publication window rather than letting Gradle report it
+as a configuration error in your build. Set `plugin-readiness-timeout: 0` in a
+job that only needs the binary and never drives Gradle. A registry that answers
+`429` or `5xx` is treated as "no verdict" — a rate limit must not look like an
+unpublished release — and the step passes with a warning.
+
 ## Pin the CLI to a Gradle version catalog
 
 > **Avoid CLI / plugin version skew.** `version: latest` floats to the
@@ -100,6 +128,7 @@ See [`action.yml`](action.yml) for the full schema. Summary:
 | `catalog-key` | `composePreviewCli` | `[versions]` key read when `version=catalog` or `version=pin`. |
 | `properties-path` | `gradle.properties` | File read for `composePreview.version` when `version=pin`. |
 | `github-token` | workflow token | Token used for the releases API call. Falls back to `github.token`. |
+| `plugin-readiness-timeout` | `300` | Seconds to wait for the resolved version's Gradle plugin to be resolvable before failing with an explicit message. `0` skips the probe. |
 
 ## Related actions
 

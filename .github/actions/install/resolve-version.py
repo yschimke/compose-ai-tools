@@ -36,6 +36,12 @@ REPO = "yschimke/compose-ai-tools"
 # the MCP / viewer / VSIX assets don't matter to consumers using this action.
 CLI_ASSET_TEMPLATE = "compose-preview-{ver}.tar.gz"
 
+# The marker `maven-readiness.yml` attaches to a release once a clean Gradle
+# project has actually resolved that version's plugin classpath from public
+# Maven Central. It is the only machine-readable statement that the *plugin*
+# — not just the CLI tarball — exists for consumers.
+MAVEN_READY_ASSET_TEMPLATE = "compose-preview-maven-ready-{ver}.json"
+
 
 def fail(msg: str) -> "NoReturn":  # type: ignore[name-defined]
     print(f"error: {msg}", file=sys.stderr)
@@ -56,6 +62,18 @@ def _api_request(path: str) -> urllib.request.Request:
     return req
 
 
+def _has_uploaded_asset(release: dict, name: str) -> bool:
+    """True iff `name` is present on the release and fully uploaded."""
+    for asset in release.get("assets") or []:
+        if (
+            asset.get("name") == name
+            and asset.get("state") == "uploaded"
+            and (asset.get("size") or 0) > 0
+        ):
+            return True
+    return False
+
+
 def _release_is_complete(release: dict) -> bool:
     """True iff the release has the CLI tarball asset fully uploaded.
 
@@ -68,15 +86,30 @@ def _release_is_complete(release: dict) -> bool:
     tag = release.get("tag_name")
     if not tag:
         return False
-    asset_name = CLI_ASSET_TEMPLATE.format(ver=tag.lstrip("v"))
-    for asset in release.get("assets") or []:
-        if (
-            asset.get("name") == asset_name
-            and asset.get("state") == "uploaded"
-            and (asset.get("size") or 0) > 0
-        ):
-            return True
-    return False
+    return _has_uploaded_asset(release, CLI_ASSET_TEMPLATE.format(ver=tag.lstrip("v")))
+
+
+def _release_is_maven_ready(release: dict) -> bool:
+    """True iff the release carries its Maven-readiness marker (issue #5051).
+
+    A downloadable CLI is *not* a usable release: the render the CLI drives
+    resolves `ee.schimke.composeai.preview` from plugins.gradle.org / Maven
+    Central, and those become available minutes — sometimes tens of minutes —
+    after the GitHub Release goes public. `latest` used to mean "newest release
+    with a CLI tarball", so every build dispatched in that window asked Gradle
+    for a plugin version that did not exist yet and died during configuration,
+    with a message that named the *consumer's* project and nothing else. It
+    happened on 1.64.0, 1.65.0, 1.66.1 and 1.68.0.
+
+    `maven-readiness.yml` already resolves the plugin classpath for real before
+    attaching this marker, so gating on it makes `latest` mean **latest
+    usable** rather than latest released. `compose-preview update` and the
+    bootstrap installer gate on the same marker.
+    """
+    tag = release.get("tag_name")
+    if not tag:
+        return False
+    return _has_uploaded_asset(release, MAVEN_READY_ASSET_TEMPLATE.format(ver=tag.lstrip("v")))
 
 
 _MAX_RELEASES_PAGES = 5
@@ -122,6 +155,8 @@ def latest_version() -> str:
     pipeline fails loudly instead of walking the whole release history.
     """
     skipped: list[str] = []
+    unready: list[str] = []
+    newest_complete: str | None = None
     next_url: str | None = (
         f"https://api.github.com/repos/{REPO}/releases?per_page={_RELEASES_PER_PAGE}"
     )
@@ -153,22 +188,51 @@ def latest_version() -> str:
             tag = release.get("tag_name")
             if not tag:
                 continue
-            if _release_is_complete(release):
+            if not _release_is_complete(release):
+                skipped.append(tag)
+                continue
+            if newest_complete is None:
+                newest_complete = tag
+            if not _release_is_maven_ready(release):
+                unready.append(tag)
+                continue
+            if skipped or unready:
+                # Surface the fall-back so a flaky release pipeline shows up
+                # in run logs instead of silently pinning consumers backwards.
+                notes = []
                 if skipped:
-                    # Surface the fall-back so a flaky release pipeline shows up
-                    # in run logs instead of silently pinning consumers backwards.
-                    print(
-                        f"::warning::compose-preview install: skipped incomplete release(s) "
-                        f"{', '.join(skipped)} (CLI tarball not yet uploaded); "
-                        f"resolved latest to {tag}",
-                        file=sys.stderr,
+                    notes.append(
+                        f"{', '.join(skipped)} (CLI tarball not yet uploaded)"
                     )
-                return tag.lstrip("v")
-            skipped.append(tag)
+                if unready:
+                    notes.append(
+                        f"{', '.join(unready)} (plugin not resolvable from Maven Central yet — "
+                        f"no readiness marker)"
+                    )
+                print(
+                    "::warning::compose-preview install: skipped release(s) "
+                    f"{'; '.join(notes)}; resolved latest to {tag}",
+                    file=sys.stderr,
+                )
+            return tag.lstrip("v")
 
         next_url = _parse_next_link(link_header)
 
     cap = _MAX_RELEASES_PAGES * _RELEASES_PER_PAGE
+    if newest_complete is not None:
+        # Every complete release in the window predates the readiness marker, or the readiness
+        # job has been failing across all of them. Either way the marker is not operational here,
+        # and refusing to install anything would be a worse answer than the behaviour this gate
+        # replaced — so fall back to it, loudly.
+        print(
+            f"::warning::compose-preview install: no release in the last {cap} carries a "
+            f"Maven-readiness marker, so `latest` cannot tell whether the plugin is published. "
+            f"Falling back to the newest complete release {newest_complete}; if a render fails "
+            f"with 'Could not find ee.schimke.composeai.preview…', that version's plugin is not "
+            f"on the Plugin Portal yet.",
+            file=sys.stderr,
+        )
+        return newest_complete.lstrip("v")
     fail(
         f"no published release in the last {cap} has a fully-uploaded CLI tarball; "
         f"checked: {', '.join(skipped) if skipped else '(none)'}"
