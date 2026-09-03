@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T06:32:12.054Z",
+  "generatedAt": "2026-09-03T06:48:40.849Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "61b544d7b042a5236c9b0b695e65fd76ce4a0543",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.69.0 (#5053)",
+        "at": "2026-09-03T07:35:58+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "988f6f8fd29a753e6a7c93f9624505f2fe22185c",
+        "subject": "feat(discovery): give a target its source name, JVM name and descriptor (#5054)",
+        "at": "2026-09-03T07:35:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "761a7e2bd24242891763f35d64f21b1ba3e48f63",
+        "subject": "chore(main): release 1.69.0 (#5048)",
+        "at": "2026-09-03T07:20:47+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "e3e96ad8a944069c25d3c796b7fefed740cc5aa8",
         "subject": "fix(import): write Gradle properties with python, and print the diagnosed sidecar (#5050)",
@@ -458,30 +482,6 @@
         "sha": "19ae6a4d097d3facc24e85c80db4cdc84b362012",
         "subject": "ci: stop publishing per-preview bundles for wear-m3 (#4981)",
         "at": "2026-09-02T07:49:31+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d2753b8a970fd4fcb404ecd70371ccce671d1c56",
-        "subject": "chore(deps): update dependency yschimke/compose-preview-xr to v2 (#4979)",
-        "at": "2026-09-02T04:41:13+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6f1c27a8c0029f0b59235726ac1f98eaf8f673ee",
-        "subject": "fix(deps): update compose-preview-server to v2.15.0 (#4978)",
-        "at": "2026-09-02T04:37:07+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ca8e18c6e0aa6a8540b39450b799fef5eda6e798",
-        "subject": "chore(xr): adopt renderer-xr 2.0.0 (#4977)",
-        "at": "2026-09-02T04:31:54+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
