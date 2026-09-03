@@ -7,7 +7,7 @@
     "ref": "main",
     "module": "samples:design-catalog-wear-m3"
   },
-  "generatedAt": "2026-09-03T05:37:47.584Z",
+  "generatedAt": "2026-09-03T05:48:17.233Z",
   "mappings": [
     {
       "componentId": "Button/Filled",
@@ -27,7 +27,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-filled__ideal__default.svg"
@@ -50,7 +51,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-tonal__ideal__default.svg"
@@ -73,7 +75,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-outlined__ideal__default.svg"
@@ -96,7 +99,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/button-child__ideal__default.svg"
@@ -119,7 +123,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/edgebutton-smallround.svg"
@@ -142,7 +147,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/edgebutton-largeround.svg"
@@ -165,7 +171,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/edgebutton-xlround.svg"
@@ -188,7 +195,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/iconbutton__ideal__default.svg"
@@ -211,7 +219,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/compactbutton__ideal__default.svg"
@@ -234,7 +243,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/buttongroup__ideal__default.svg"
@@ -257,7 +267,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/switchbutton-on.svg"
@@ -280,7 +291,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/card__ideal__default.svg"
@@ -303,7 +315,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/card-outlined__ideal__default.svg"
@@ -326,7 +339,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/titlecard__ideal__default.svg"
@@ -349,7 +363,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/appcard__ideal__default.svg"
@@ -372,7 +387,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/transforminglazycolumn-smallround.svg"
@@ -395,7 +411,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/transforminglazycolumn-largeround.svg"
@@ -418,7 +435,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/transforminglazycolumn-xlround.svg"
@@ -441,7 +459,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/template-timetext-smallround.svg"
@@ -464,7 +483,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/template-timetext-largeround.svg"
@@ -487,7 +507,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/template-timetext-xlround.svg"
@@ -510,7 +531,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/template-pageindicator-smallround.svg"
@@ -533,7 +555,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/template-pageindicator-largeround.svg"
@@ -556,7 +579,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/template-pageindicator-xlround__ideal__default__xlround.svg"
@@ -579,7 +603,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/progress-circular__ideal__default.svg"
@@ -602,7 +627,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "figma/progress-circular-indeterminate.svg"
@@ -625,7 +651,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/text-maxlines-truncated__ideal__default.svg"
@@ -648,7 +675,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/icon__ideal__default.svg"
@@ -671,7 +699,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/typography__ideal__default.svg"
@@ -694,7 +723,8 @@
           "type": "() -> Unit",
           "hasDefault": false,
           "composableSlot": true,
-          "composableSlotReceiver": null
+          "composableSlotReceiver": null,
+          "nullable": false
         }
       ],
       "figmaSvg": "https://preview.coo.ee/wear-m3/render/colorscheme__ideal__default.svg"

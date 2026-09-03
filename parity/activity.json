@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T05:37:53.240Z",
+  "generatedAt": "2026-09-03T05:48:22.935Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "fa62dee7c038dca07cce6e326fdc5a4e7036689a",
+        "subject": "fix(cli): bundle pack dropped --variant; feat(import): render-runtime-projects (#5042)",
+        "at": "2026-09-03T06:39:36+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c35bb2b9ff333f68f85477dfe9b60b65f5f61f42",
+        "subject": "fix(rc): take the rc-players 1.56.1 image-painter fix, and print the gate's failures (#5043)",
+        "at": "2026-09-03T06:38:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5ab99c1be405f2888e7ed3bbcb4183e53a63b516",
+        "subject": "feat(discovery): compile the printed call sites, and fix what that caught (#5036)",
+        "at": "2026-09-03T06:32:25+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0b47e343d9f57c74a7417615322ccbe2270dd42a",
+        "subject": "fix(import): refuse the two variant combinations that would publish a wrong catalog (#5040)",
+        "at": "2026-09-03T06:30:56+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3f024613637d6c86bab8890d25d2e7a242da5926",
         "subject": "fix(import): print a sidecar's cause, not the first 4000 bytes of its stack (#5041)",
@@ -451,38 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v1.62.1 (#4971)",
         "at": "2026-09-02T03:51:27+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1e725a4bfa0728760e2613099efc6f7067f1f531",
-        "subject": "fix(deps): update compose-preview-server to v2.14.0 (#4967)",
-        "at": "2026-09-02T03:32:35+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6046911212e026304cf9b841b9869cbcb7d27fca",
-        "subject": "fix(deps): update dependency org.checkerframework:checker-qual to v4.2.3 (#4965)",
-        "at": "2026-09-02T03:32:30+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "66bff88ab776926a82b33eec9e322137de62e282",
-        "subject": "fix(deps): update rc-players to v1.56.0 (#4969)",
-        "at": "2026-09-02T03:32:23+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a6c2a9cae1654f52964b85d0c6817446a3338819",
-        "subject": "chore(main): release 1.62.1 (#4963)",
-        "at": "2026-09-02T03:11:17+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
