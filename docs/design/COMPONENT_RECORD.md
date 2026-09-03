@@ -790,6 +790,27 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > with you. Both fixtures I picked by hand happened to avoid the one construct that
 > breaks the path, and only compiling something real found it.
 >
+> **The call site is persisted, not recomputed.** `ComponentRecord.code` carries what
+> `ComponentSnippets` printed — either a `call` plus its `imports`, or a `refusedReason`.
+> That is a deliberate choice about where the rule lives. The consumer this record
+> exists for (compose-preview-server's Compose exporter and playground) depends on
+> published compose-ai-tools artifacts but **not** on `preview-discovery`, so a
+> consumer-side call site would mean either a new dependency on a module that drags
+> ClassGraph, ASM and kotlin-metadata in to produce one string, or a second
+> implementation of the three rules that make a refusal sound — `signatureKnown`,
+> `symbol.receiver`, and the `…Kt`-facade evidence in `symbol.callable`. A second
+> implementation of a rule this exacting is how two sides of a contract start
+> disagreeing, which is the drift §1.4 already records once.
+>
+> `codeFor` is a projection of `callSite`, never a parallel path, so the persisted answer
+> and the in-process one cannot differ: there is one decision.
+>
+> The compile gate was moved onto the persisted field for the same reason. It now reads
+> `record.code` off the written `components.json` instead of calling `ComponentSnippets`
+> itself, so what the Kotlin compiler accepts is the exact bytes a consumer receives — a
+> generator that worked in-process while the record persisted something else would have
+> passed the old test and failed every consumer.
+>
 > **Measured reach.** Over a 28-component Material 3 surface (buttons, cards, chips,
 > toggles, progress, scaffolding, list and navigation items, dialogs), **26 emit a
 > call site and 2 refuse** — the two being `TextField` / `OutlinedTextField`, whose

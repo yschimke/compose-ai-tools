@@ -12,6 +12,7 @@ class ComponentRecordsTest {
     sourceFile: String? = null,
     jvmName: String? = null,
     descriptor: String? = null,
+    signatureKnown: Boolean = false,
   ) =
     PreviewTarget(
       className = className,
@@ -21,6 +22,7 @@ class ComponentRecordsTest {
       sourceFile = sourceFile,
       confidence = TargetConfidence.HIGH,
       parameters = parameters,
+      signatureKnown = signatureKnown,
     )
 
   private fun preview(
@@ -292,5 +294,83 @@ class ComponentRecordsTest {
     val symbol = file.components.single().symbol
     assertThat(symbol.descriptor).isEqualTo("(I)V")
     assertThat(symbol.jvmName).isEqualTo("Card")
+  }
+
+  @Test
+  fun `a record carries the printed call site, so a consumer needs no generator`() {
+    // `components.json` has to answer "how do I call this?" on its own: the server that consumes it
+    // depends on published compose-ai-tools artifacts but not on this module, and re-deriving the
+    // call site there would mean a second implementation of the refusal rules.
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets =
+              listOf(
+                target(
+                  "androidx.compose.material3.ButtonKt",
+                  "Button",
+                  parameters =
+                    listOf(
+                      TargetParameter("onClick", "() -> Unit"),
+                      TargetParameter("modifier", "Modifier", hasDefault = true),
+                      TargetParameter("content", "RowScope.() -> Unit", composableSlot = true),
+                    ),
+                  signatureKnown = true,
+                )
+              ),
+          )
+        )
+      )
+
+    val code = file.components.single().code
+    assertThat(code?.call).isEqualTo("Button(onClick = {}, content = {})")
+    assertThat(code?.imports).containsExactly("androidx.compose.material3.Button")
+    assertThat(code?.refusedReason).isNull()
+  }
+
+  @Test
+  fun `a component with no writable call site records why, not silence`() {
+    // The refusal is the half that makes the field trustworthy, and it doubles as the mechanical
+    // tier signal: no printable call site means the component cannot reach a Compose exporter.
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets =
+              listOf(
+                target(
+                  "androidx.compose.material3.IconKt",
+                  "Icon",
+                  parameters = listOf(TargetParameter("imageVector", "ImageVector")),
+                  signatureKnown = true,
+                )
+              ),
+          )
+        )
+      )
+
+    val code = file.components.single().code
+    assertThat(code?.call).isNull()
+    assertThat(code?.refusedReason).contains("imageVector: ImageVector")
+  }
+
+  @Test
+  fun `an unread signature refuses rather than printing a parameterless call`() {
+    // `signatureKnown = false` is "we could not look", which reads identically to "takes nothing".
+    // Printing `Card()` from the first is a compile error in someone else's build.
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(target("androidx.compose.material3.CardKt", "Card")),
+          )
+        )
+      )
+
+    assertThat(file.components.single().code?.refusedReason).contains("not recovered")
   }
 }

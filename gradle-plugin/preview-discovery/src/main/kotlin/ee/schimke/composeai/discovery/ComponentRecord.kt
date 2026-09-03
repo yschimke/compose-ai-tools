@@ -68,6 +68,21 @@ data class ComponentRecord(
   val slots: List<ComponentSlot> = emptyList(),
   val bindings: List<ComponentBinding> = emptyList(),
   /**
+   * The Kotlin call site for this component, printed by `ComponentSnippets` — or the reason there
+   * isn't one.
+   *
+   * Persisted rather than left for a consumer to compute, because the three things that make a
+   * refusal sound ([signatureKnown], [ComponentSymbol.receiver], and the `…Kt`-facade evidence in
+   * [ComponentSymbol.callable]) are producer-side knowledge. A consumer re-deriving the call site
+   * would have to rediscover all three, and a second implementation of a rule this exacting is how
+   * two sides of a contract start disagreeing. It also makes this file answerable on its own: a
+   * reader gets the call site without linking the discovery library that produced it.
+   *
+   * Null only in a record written before this field existed — never "no call site", which
+   * [ComponentCode.refusedReason] says explicitly.
+   */
+  val code: ComponentCode? = null,
+  /**
    * Whether [parameters], [slots] and [ComponentSymbol.receiver] were read from `@kotlin.Metadata`
    * rather than defaulted away.
    *
@@ -149,6 +164,36 @@ data class ComponentSlot(
   val name: String,
   val required: Boolean,
   val receiverScope: String? = null,
+)
+
+/**
+ * How to call this component — exactly one of [call] and [refusedReason] is set.
+ *
+ * The refusal is the load-bearing half. A generator handed a call site it cannot prove will produce
+ * source that looks right and does not build, which is worse than an admitted gap: a consumer given
+ * a [refusedReason] can ask a human or a model for the one missing value, while a consumer handed
+ * broken source has to discover the breakage itself.
+ *
+ * It is also a **tier signal**, and a mechanical one. A component whose call site cannot be printed
+ * cannot reach a Compose exporter, so the question "which components can this pipeline actually
+ * generate code for?" is answered by this field rather than by an authored allowlist that someone
+ * has to remember to extend.
+ *
+ * @property call the call expression — `Button(onClick = {}, content = {})`. An **expression**, not
+ *   a file: it calls a `@Composable`, so it compiles only inside a `@Composable` body, and the
+ *   caller supplies that wrapper.
+ * @property imports the FQNs [call] needs. Today always exactly the callable, because every
+ *   placeholder written is a literal or an empty lambda — a property of the placeholder table
+ *   rather than a coincidence, and one that stops holding the moment the table admits a constructor
+ *   call.
+ * @property refusedReason why there is no call site, phrased for a human or a model to act on,
+ *   since supplying the missing value is exactly what a consumer would escalate.
+ */
+@Serializable
+data class ComponentCode(
+  val call: String? = null,
+  val imports: List<String> = emptyList(),
+  val refusedReason: String? = null,
 )
 
 /**

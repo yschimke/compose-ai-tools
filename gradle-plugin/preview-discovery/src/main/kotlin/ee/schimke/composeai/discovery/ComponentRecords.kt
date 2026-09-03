@@ -172,18 +172,22 @@ object ComponentRecords {
 
     fun toRecord(): ComponentRecord {
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
-      return ComponentRecord(
-        canonicalId = canonicalId,
-        // Every alias any preview published this symbol under, not whichever the manifest listed
-        // first — a shared component such as `Card` is rendered by several previews and would
-        // otherwise take an arbitrary, order-dependent id.
-        componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted(),
-        symbol = symbol.copy(receiver = receiver, jvmName = jvmName, descriptor = descriptor),
-        parameters = parameters,
-        slots = slotsOf(parameters),
-        bindings = resolvedBindings,
-        signatureKnown = signatureKnown,
-      )
+      val record =
+        ComponentRecord(
+          canonicalId = canonicalId,
+          // Every alias any preview published this symbol under, not whichever the manifest listed
+          // first — a shared component such as `Card` is rendered by several previews and would
+          // otherwise take an arbitrary, order-dependent id.
+          componentIds = resolvedBindings.mapNotNull { it.componentId }.distinct().sorted(),
+          symbol = symbol.copy(receiver = receiver, jvmName = jvmName, descriptor = descriptor),
+          parameters = parameters,
+          slots = slotsOf(parameters),
+          bindings = resolvedBindings,
+          signatureKnown = signatureKnown,
+        )
+      // Printed from the finished record, so the snippet is answering the same symbol, parameters
+      // and receiver a consumer will read beside it.
+      return record.copy(code = ComponentSnippets.codeFor(record))
     }
   }
 }
