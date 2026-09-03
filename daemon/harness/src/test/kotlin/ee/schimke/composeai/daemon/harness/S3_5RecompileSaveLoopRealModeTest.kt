@@ -15,6 +15,7 @@ import org.junit.Test
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.commons.ClassRemapper
 import org.objectweb.asm.commons.Remapper
@@ -319,6 +320,22 @@ class S3_5RecompileSaveLoopRealModeTest {
     // [targetMethod]; all other methods retain their original names but live on the new FQN. Any
     // collisions between renamed and original methods are deliberately avoided by picking
     // [targetMethod] = `MutableSquare` which doesn't exist on the source.
+    //
+    // The one method that is NOT copied is the static initializer. The bytes always come from
+    // `:daemon:desktop`'s fixture (the harness's *test* classpath carries that testFixtures jar;
+    // the Android daemon's classpath arrives as a text file the subprocess reads, so it is never
+    // the source of these bytes), while under `-Ptarget=android` the clone is loaded inside the
+    // Robolectric sandbox over `:daemon:android`'s classpath — which carries that module's own
+    // copy of the fixture. `<clinit>` wires the file's top-level properties, none of which
+    // [sourceMethod] touches: `RedSquare` / `BlueSquare` are a `Box` with a background colour and
+    // read no static state. Copying it made this test fail the moment a top-level property in the
+    // desktop fixture named a type the Android fixture does not have — #5002's
+    // `val insetFocusRing: InsetFocusRingTheme? by lazy { … }`, whose initialisation resolves
+    // `InsetFocusRingTheme`, a class only the desktop fixture declares. The sandbox has nothing to
+    // resolve it against, so initialising the clone fails, the render never completes, and this
+    // test reports it as a bare `renderFinished` timeout — which is how the Android leg went red
+    // on `main` from #5002 onwards while the desktop leg stayed green. Dropping the initializer
+    // keeps the clone to what it is for: one composable, loaded from a directory the daemon swaps.
     val filter =
       object : ClassVisitor(Opcodes.ASM9, ClassRemapper(writer, remapper)) {
         override fun visitMethod(
@@ -327,14 +344,16 @@ class S3_5RecompileSaveLoopRealModeTest {
           descriptor: String,
           signature: String?,
           exceptions: Array<out String>?,
-        ) =
-          super.visitMethod(
+        ): MethodVisitor? {
+          if (name == "<clinit>") return null
+          return super.visitMethod(
             access,
             if (name == sourceMethod) targetMethod else name,
             descriptor,
             signature,
             exceptions,
           )
+        }
       }
     reader.accept(filter, 0)
     return writer.toByteArray()

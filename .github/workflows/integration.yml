@@ -30,8 +30,8 @@ name: Integration
 # cheapest real cell and the widest one: measured on recent PR runs it takes
 # ~2.6 min (discover 53s + render 23s + daemon round-trip 34s) against
 # androidify ~3.4-4.1 min, nowinandroid ~3.4-3.6 min and agp8-min ~3.3-4.2 min,
-# while covering the full render pipeline, the daemon, and isolated-projects +
-# configuration-cache end-to-end. Every other cell still spins up on a PR (so
+# while covering the full render pipeline, the daemon, and the configuration
+# cache end-to-end. Every other cell still spins up on a PR (so
 # its check reports) but skips the expensive steps. The daily cron and pushes
 # to `main` run the full matrix, so consumer/AGP-floor drift still surfaces
 # within a day — it just doesn't sit on the PR critical path.
@@ -325,18 +325,24 @@ jobs:
             # It earns the slot on both axes: cheapest real cell (~2.6 min
             # measured, vs ~3.4-4.2 for androidify / nowinandroid / agp8-min)
             # AND the widest coverage — full render pipeline + daemon
-            # round-trip + IP/CC end-to-end. Before adding a second
-            # `pr_blocking` cell, check it buys signal this one can't.
+            # round-trip + configuration cache end-to-end. Before adding a
+            # second `pr_blocking` cell, check it buys signal this one can't.
             pr_blocking: true
-            # ComposeStarter enables isolated-projects + configuration-cache. The plugin used to
-            # need `-Dorg.gradle.unsafe.isolated-projects=false -Dorg.gradle.isolated-projects
-            # =false --no-configuration-cache` here because of `rootProject.findProject` walks +
-            # `rootProject.layout` reads; both were removed in #1546's IP-cleanup pass (#1549
-            # tracks the cross-project-metadata follow-up). Leave the field empty so this cell
-            # exercises IP + CC end-to-end. Re-add specific opt-outs below (with a fresh comment
-            # naming the regression) if the consumer's own build script surfaces an IP problem
-            # we haven't seen before.
-            extra_gradle_args: ""
+            # Configuration cache on, Isolated Projects off. ComposeStarter's gradle.properties
+            # asks for both, but its 9.4.1 wrapper predates Gradle 9.7's graduation of IP, so the
+            # `org.gradle.isolated-projects` name it uses is inert there and this cell has never
+            # actually run under IP — the flags below just make that explicit and keep the cell
+            # green through a wrapper bump. Auto-inject cannot run under IP at all: the init
+            # script configures projects via `allprojects { buildscript { ... } }`, which IP
+            # rejects (docs/isolated-projects-autoinject.md), and the CLI itself passes these same
+            # two flags on every auto-injected invocation (ISOLATED_PROJECTS_OFF_ARGS in
+            # AutoInject.kt) — these steps drive `./gradlew --init-script` directly, so they carry
+            # them here. IP coverage for the plugin's own code lives in the gradle-plugin
+            # functional tests (CrossProjectMetadataFunctionalTest et al), which enable IP and
+            # apply the plugin manually. The `--no-configuration-cache` this cell once needed for
+            # `rootProject.findProject` walks + `rootProject.layout` reads is gone for good after
+            # #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata follow-up).
+            extra_gradle_args: "-Dorg.gradle.isolated-projects=false -Dorg.gradle.unsafe.isolated-projects=false"
             # Exercise the full render pipeline on at least one matrix entry
             # so the `renderer-android` AAR resolution + Robolectric launch
             # path is covered against the locally-published snapshot. The
@@ -369,8 +375,9 @@ jobs:
               - Exercises the full Android render pipeline end-to-end
                 (renderer-android AAR resolution + Robolectric launch) plus
                 the daemon round-trip (spawn → render → edit → re-render).
-              - Runs with isolated-projects + configuration-cache enabled, so
-                it doubles as the IP/CC end-to-end cell. No build-script
+              - Runs with the configuration cache enabled, so it doubles as
+                the CC end-to-end cell. Isolated Projects is turned off, as
+                the CLI does on every auto-injected run. No build-script
                 workarounds applied.
               - The gallery below is the clean baseline render, captured
                 *before* the daemon round-trip edits a source file, so the
@@ -513,10 +520,20 @@ jobs:
               p.write_text(t)
               print(f"patched {p}")
               PY
-            # No opt-outs after #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata
-            # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
-            # if the consumer's build surfaces a new CC / IP gap.
-            extra_gradle_args: ""
+            # Isolated Projects off. nowinandroid's gradle.properties carries
+            # `org.gradle.isolated-projects=true` — the name the feature took when Gradle 9.7
+            # graduated it out of `org.gradle.unsafe.*` — and its wrapper is on 9.7.1, so IP is
+            # genuinely active there. The auto-inject init script configures every project through
+            # `allprojects { buildscript { ... } }`, which IP rejects outright ("Project ':' cannot
+            # access 'Project.buildscript' functionality on subprojects via 'allprojects'"), and no
+            # IP-safe injection mechanism exists — docs/isolated-projects-autoinject.md has the
+            # three we tested. This is NOT the #1546 IP-cleanup pass regressing: it is the
+            # documented opt-out, and the CLI now passes the same two flags itself on every
+            # auto-injected invocation (ISOLATED_PROJECTS_OFF_ARGS in AutoInject.kt). These steps
+            # drive `./gradlew --init-script` directly rather than through the CLI, so they carry
+            # the flags themselves. Both spellings, so the cell survives a wrapper bump in either
+            # direction.
+            extra_gradle_args: "-Dorg.gradle.isolated-projects=false -Dorg.gradle.unsafe.isolated-projects=false"
           - name: homeassistant-remotecompose
             slug: homeassistant-remotecompose
             repo: yschimke/homeassistant-remotecompose

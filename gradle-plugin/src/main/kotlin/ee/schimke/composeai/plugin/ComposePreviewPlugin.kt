@@ -149,10 +149,12 @@ constructor(
   private fun warnIfIsolatedProjectsEnabled(project: Project) {
     if (!buildFeatures.isolatedProjects.active.get()) return
     project.logger.warn(
-      "compose-preview: Isolated Projects is enabled (org.gradle.unsafe.isolated-projects=true). " +
+      "compose-preview: Isolated Projects is enabled (org.gradle.isolated-projects on Gradle 9.7+, " +
+        "org.gradle.unsafe.isolated-projects before that). " +
         "The compose-preview CLI, MCP server, and VS Code extension auto-inject this plugin through " +
         "an init script that configures projects via `allprojects { }`, which Isolated Projects " +
-        "rejects — those runs will fail. Disable Isolated Projects when using compose-preview tooling."
+        "rejects — so those tools turn Isolated Projects off for their own invocations. A build you " +
+        "drive yourself with the init script has to do the same."
     )
   }
 }

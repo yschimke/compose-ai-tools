@@ -1602,16 +1602,19 @@ jobs:
           GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
         run: |
           set -euo pipefail
-          if [ -f "$GRADLE_PROPERTIES" ] &&
-             grep -q '^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=' "$GRADLE_PROPERTIES"; then
-            sed -i 's/^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=.*/org.gradle.unsafe.isolated-projects=false/' \
-              "$GRADLE_PROPERTIES"
-            echo "turned Isolated Projects off in the throwaway checkout"
-          else
-            printf '\n# compose-preview import: auto-inject configures projects via allprojects {},\n# which Isolated Projects forbids.\norg.gradle.unsafe.isolated-projects=false\n' \
-              >> "$GRADLE_PROPERTIES"
-            echo "pinned Isolated Projects off in the throwaway checkout"
-          fi
+          # Gradle 9.7 graduated Isolated Projects and renamed the property from
+          # org.gradle.unsafe.isolated-projects to org.gradle.isolated-projects, so an upstream
+          # checkout can declare either name (nowinandroid uses the new one). Comment out whatever
+          # it declares, then pin both off — appending only the old name would leave IP on for a
+          # 9.7 checkout, and auto-inject's `allprojects { buildscript { ... } }` cannot run under
+          # IP at all (docs/isolated-projects-autoinject.md).
+          touch "$GRADLE_PROPERTIES"
+          sed -i -E \
+            's/^[[:space:]]*org\.gradle\.(unsafe\.)?isolated-projects[[:space:]]*=.*/# & (disabled by compose-preview import)/' \
+            "$GRADLE_PROPERTIES"
+          printf '\n# compose-preview import: auto-inject configures projects via allprojects {},\n# which Isolated Projects forbids.\norg.gradle.unsafe.isolated-projects=false\norg.gradle.isolated-projects=false\n' \
+            >> "$GRADLE_PROPERTIES"
+          echo "pinned Isolated Projects off (both property names) in the throwaway checkout"
 
       - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}
@@ -2399,16 +2402,19 @@ jobs:
           GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
         run: |
           set -euo pipefail
-          if [ -f "$GRADLE_PROPERTIES" ] &&
-             grep -q '^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=' "$GRADLE_PROPERTIES"; then
-            sed -i 's/^[[:space:]]*org\.gradle\.unsafe\.isolated-projects[[:space:]]*=.*/org.gradle.unsafe.isolated-projects=false/' \
-              "$GRADLE_PROPERTIES"
-            echo "turned Isolated Projects off in the throwaway checkout"
-          else
-            printf '\n# compose-preview import: auto-inject configures projects via allprojects {},\n# which Isolated Projects forbids.\norg.gradle.unsafe.isolated-projects=false\n' \
-              >> "$GRADLE_PROPERTIES"
-            echo "pinned Isolated Projects off in the throwaway checkout"
-          fi
+          # Gradle 9.7 graduated Isolated Projects and renamed the property from
+          # org.gradle.unsafe.isolated-projects to org.gradle.isolated-projects, so an upstream
+          # checkout can declare either name (nowinandroid uses the new one). Comment out whatever
+          # it declares, then pin both off — appending only the old name would leave IP on for a
+          # 9.7 checkout, and auto-inject's `allprojects { buildscript { ... } }` cannot run under
+          # IP at all (docs/isolated-projects-autoinject.md).
+          touch "$GRADLE_PROPERTIES"
+          sed -i -E \
+            's/^[[:space:]]*org\.gradle\.(unsafe\.)?isolated-projects[[:space:]]*=.*/# & (disabled by compose-preview import)/' \
+            "$GRADLE_PROPERTIES"
+          printf '\n# compose-preview import: auto-inject configures projects via allprojects {},\n# which Isolated Projects forbids.\norg.gradle.unsafe.isolated-projects=false\norg.gradle.isolated-projects=false\n' \
+            >> "$GRADLE_PROPERTIES"
+          echo "pinned Isolated Projects off (both property names) in the throwaway checkout"
 
       - name: Relax dependency verification in the upstream checkout
         if: ${{ inputs.upstream-repository != '' }}

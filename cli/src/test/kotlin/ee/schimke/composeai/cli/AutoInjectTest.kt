@@ -158,10 +158,33 @@ class AutoInjectTest {
         storageDir = storage,
         env = { null },
       )
-    assertEquals(2, args.size)
-    assertEquals("--init-script", args[0])
-    assertEquals(File(storage, INIT_SCRIPT_FILENAME).absolutePath, args[1])
-    assertTrue(File(args[1]).isFile)
+    val scriptPath = File(storage, INIT_SCRIPT_FILENAME).absolutePath
+    assertEquals(listOf("--init-script", scriptPath) + ISOLATED_PROJECTS_OFF_ARGS, args)
+    assertTrue(File(scriptPath).isFile)
+  }
+
+  @Test
+  fun `autoInjectInitScriptArgs turns Isolated Projects off under both property names`() {
+    val storage = tempDir()
+    val args =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "1.0.0",
+        storageDir = storage,
+        env = { null },
+      )
+    // The injected `allprojects { buildscript { ... } }` cannot run under IP, and a consumer's own
+    // gradle.properties is what turns IP on, so every auto-injected invocation opts back out.
+    // Gradle 9.7 renamed the property when IP graduated (nowinandroid sets the new name), and the
+    // pre-9.7 name still has to be covered for older wrappers — hence both.
+    assertTrue(
+      args.contains("-Dorg.gradle.isolated-projects=false"),
+      "expected the Gradle 9.7+ property name to be disabled",
+    )
+    assertTrue(
+      args.contains("-Dorg.gradle.unsafe.isolated-projects=false"),
+      "expected the pre-9.7 property name to be disabled",
+    )
   }
 
   @Test
@@ -238,7 +261,11 @@ class AutoInjectTest {
         env = { null },
         projectRoot = projectRoot,
       )
-    assertEquals(listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath), out)
+    assertEquals(
+      listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath) +
+        ISOLATED_PROJECTS_OFF_ARGS,
+      out,
+    )
 
     // Same root with parens — should skip.
     File(projectRoot, "settings.gradle").writeText("includeBuild('gradle-plugin')\n")
@@ -274,7 +301,11 @@ class AutoInjectTest {
         env = { null },
         projectRoot = projectRoot,
       )
-    assertEquals(listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath), out)
+    assertEquals(
+      listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath) +
+        ISOLATED_PROJECTS_OFF_ARGS,
+      out,
+    )
   }
 
   @Test
@@ -1080,6 +1111,10 @@ class AutoInjectTest {
         env = { null },
         projectRoot = projectRoot,
       )
-    assertEquals(listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath), out)
+    assertEquals(
+      listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath) +
+        ISOLATED_PROJECTS_OFF_ARGS,
+      out,
+    )
   }
 }
