@@ -99,6 +99,16 @@ href"** rule.
 > repository publishes it and reaches this repository's own bundled `serve` when
 > `composeai-preview-serve` is bumped to a release carrying it — the block is not on any deployed
 > viewer until then.
+>
+> **D4's crude form landed with it, on the viewer.** The trap below is not hypothetical on a page
+> whose controls re-render in place: the copyable links move the instant a knob does and the image
+> lands a fetch and a decode later, so a report composed on every change would describe a frame the
+> reporter never saw. `refreshReportLink()` therefore recomposes only while the landed frame is the
+> one the controls are asking for, and again the moment a frame lands; in between, the field keeps
+> the body that described the previous frame — which is the frame still on the stage. That is the
+> "disable the affordance until the requested frame has loaded" option, spelled without a disabled
+> affordance, and it covers the failed-render case for the same reason it covers the pending one:
+> what decides is which pixels are up, not why the newer ones are missing.
 
 ## Traps
 
