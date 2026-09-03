@@ -50,15 +50,28 @@ that names the publication window rather than letting Gradle report it as a
 configuration error in your build. Set `plugin-readiness-timeout: 0` in a job
 that only needs the binary and never drives Gradle.
 
-Two artifacts are probed, not one: the marker POM is a `pom`-packaged stub whose
-only content is a dependency on `ee.schimke.composeai:compose-preview-plugin`, in
-a different group, so a 200 on the marker alone does not mean the buildscript
-classpath resolves — during partial CDN propagation the marker can be up while
-the implementation jar is not. Both must answer before the step passes. A
-registry that answers `429` or `5xx` is treated as "no verdict" — a rate limit
+The artifact set is **derived from the POMs**, not from the marker alone. The
+marker is a `pom`-packaged stub whose only content is a dependency on
+`ee.schimke.composeai:compose-preview-plugin`, in a different group, and that
+implementation has same-version `api` dependencies of its own; any of them
+lagging in CDN propagation fails a consumer's configuration just as hard. So the
+guard walks the marker's POM to the implementation, the implementation's POM to
+its same-version siblings, and requires every POM and jar in that set to answer.
+Third-party dependencies and anything pinned to a different version are not
+walked — they have been on Central for months; it is the artifacts published by
+*this* release, together, that propagate independently.
+
+A registry that answers `429` or `5xx` is treated as "no verdict" — a rate limit
 must not look like an unpublished release — and the step passes with a warning
-after trying both mirrors. Each probe and each retry sleep is bounded by what is
-left of the budget, so the step cannot overrun the timeout you set.
+after trying both mirrors. A definite `404` is never masked by a neighbour's
+non-answer: while anything is conclusively absent, the guard keeps waiting.
+Every request past the first sweep is bounded by what is left of the budget, and
+running out of time fails rather than passing on a shrug. One sweep always
+happens, so a very small timeout buys one attempt rather than none.
+
+(A real Gradle resolution, as `maven-readiness.yml` performs, would be stronger
+still — but it needs a JDK and a Gradle distribution, and this action installs
+neither by design.)
 
 ## Pin the CLI to a Gradle version catalog
 

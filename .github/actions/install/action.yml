@@ -94,103 +94,23 @@ runs:
     # (resolve-version.py), so this normally passes on the first probe. It is here for every
     # other mode — a literal version, `pin`, `catalog` — where the version is whatever the
     # consumer named, and for the case where no release in the window has a marker at all.
+    # `version: latest` already prefers a release carrying its Maven-readiness marker
+    # (resolve-version.py), so this normally passes on the first sweep. It is here for every other
+    # mode — a literal version, `pin`, `catalog` — where the version is whatever the consumer
+    # named, and for the case where no release in the window has a marker at all.
+    #
+    # A script rather than inline shell: it walks the plugin's POMs to derive the artifact set,
+    # keeps every request and sleep inside the caller's budget, and is unit-tested next door
+    # (test_plugin_readiness.py). `python3` is already a hard requirement of this action — the
+    # Resolve step above runs resolve-version.py.
     - name: Wait for the plugin to be published
       if: ${{ inputs.plugin-readiness-timeout != '0' }}
       shell: bash
       env:
         VER: ${{ steps.resolve.outputs.version }}
         BUDGET: ${{ inputs.plugin-readiness-timeout }}
-      run: |
-        set -uo pipefail
-
-        # Digits only, before the value reaches any arithmetic expansion. Bash evaluates array
-        # subscripts recursively inside $(( … )), so `x[$(cmd)]` would execute `cmd` — and this is a
-        # consumer-facing input a caller could wire to a dispatch or pull-request value.
-        case "$BUDGET" in
-          ''|*[!0-9]*)
-            printf '::error::plugin-readiness-timeout must be a whole number of seconds; got %s\n' "$BUDGET"
-            exit 1
-            ;;
-        esac
-
-        marker='ee.schimke.composeai.preview.gradle.plugin'
-        marker_path="ee/schimke/composeai/preview/${marker}/${VER}/${marker}-${VER}.pom"
-        # The marker POM is a `pom`-packaged stub whose only content is a dependency on the
-        # implementation, in a different group. A 200 on it therefore does not mean the plugin
-        # classpath resolves — during partial CDN propagation the marker can be up while the jar
-        # the buildscript actually loads is not. Probe both.
-        impl='compose-preview-plugin'
-        impl_path="ee/schimke/composeai/${impl}/${VER}/${impl}-${VER}.jar"
-        portal='https://plugins.gradle.org/m2'
-        central='https://repo1.maven.org/maven2'
-
-        last=""
-        deadline=$(( $(date +%s) + BUDGET ))
-        remaining() {
-          local left=$(( deadline - $(date +%s) ))
-          [ "$left" -lt 0 ] && left=0
-          printf '%s' "$left"
-        }
-
-        # Each probe is bounded by what is left of the budget, so the step cannot overrun the number
-        # of seconds the caller asked for by a whole probe cycle. Floors at 5s because curl treats
-        # --max-time 0 as "no limit", which would be the opposite of the intent.
-        probe() {
-          local cap
-          cap="$(remaining)"
-          [ "$cap" -gt 30 ] && cap=30
-          [ "$cap" -lt 5 ] && cap=5
-          curl -sSL -o /dev/null -w '%{http_code}' \
-            --connect-timeout 10 --max-time "$cap" "$1" 2>/dev/null
-        }
-
-        # 0 = found on one of the mirrors, 1 = absent from all of them, 2 = no verdict (a registry
-        # answered 429/5xx, which says "would not answer", not "artifact is missing"). Both
-        # mirrors are always tried before a no-verdict, so a rate-limited portal cannot hide a
-        # Central 200.
-        check() {
-          local url code inconclusive=0
-          for url in "$@"; do
-            code="$(probe "$url")"
-            last="$code"
-            if [ "$code" = "200" ]; then
-              return 0
-            fi
-            case "$code" in
-              429|5??) inconclusive=1 ;;
-            esac
-          done
-          [ "$inconclusive" -eq 1 ] && return 2
-          return 1
-        }
-
-        while :; do
-          check "$portal/$marker_path" "$central/$marker_path"
-          marker_state=$?
-          check "$portal/$impl_path" "$central/$impl_path"
-          impl_state=$?
-
-          if [ "$marker_state" -eq 0 ] && [ "$impl_state" -eq 0 ]; then
-            printf '✓ plugin %s:%s and its implementation are resolvable.\n' "$marker" "$VER"
-            exit 0
-          fi
-          if [ "$marker_state" -eq 2 ] || [ "$impl_state" -eq 2 ]; then
-            printf '::warning::compose-preview install: a registry answered %s while checking whether plugin %s is published; proceeding without a verdict.\n' "$last" "$VER"
-            exit 0
-          fi
-
-          left="$(remaining)"
-          if [ "$left" -le 0 ]; then
-            break
-          fi
-          nap=15
-          [ "$nap" -gt "$left" ] && nap="$left"
-          printf 'plugin %s:%s not published yet (last HTTP %s); retrying in %ss (%ss of the %ss budget left).\n' "$marker" "$VER" "$last" "$nap" "$left" "$BUDGET"
-          sleep "$nap"
-        done
-
-        printf '::error title=compose-preview plugin not published yet::The CLI release %s exists, but its Gradle plugin (%s:%s and its implementation ee.schimke.composeai:%s) is not resolvable from plugins.gradle.org or Maven Central after %ss (last HTTP %s). This is the publication window, not a problem with your project: a release is downloadable as a CLI before the plugin of the same version publishes. Re-run in a few minutes, or pin the previous release (version: <older>, or composePreview.version in gradle.properties).\n' "$VER" "$marker" "$VER" "$impl" "$BUDGET" "$last"
-        exit 1
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 "$ACTION_PATH/plugin-readiness.py"
 
     - name: Download CLI
       shell: bash
