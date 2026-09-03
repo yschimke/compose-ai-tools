@@ -4,7 +4,9 @@ import ee.schimke.composeai.previewdata.PreviewModule
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.net.URI
 import java.util.Collections
+import java.util.Properties
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.events.FailureResult
@@ -51,6 +53,24 @@ class GradleConnection(
    */
   private val extraArguments: List<String> = emptyList(),
 ) : AutoCloseable {
+  /**
+   * Optional second opinion on a build failure: given everything this connection saw of it
+   * (Gradle's captured stderr plus the exception chain), returns one message to print after the
+   * failure report, or null when it recognises nothing.
+   *
+   * The driver deliberately knows nothing about *why* a particular string is worth explaining — the
+   * CLI supplies the knowledge, because that is where it lives. Today the CLI uses it to name the
+   * publication race behind an unresolvable plugin marker (issue #5034), which otherwise arrives as
+   * a configuration failure in the consumer's own project and is diagnosed as one.
+   *
+   * A settable property rather than a constructor parameter **on purpose**: this module is a
+   * published library, and adding a defaulted parameter would change the primary constructor's JVM
+   * descriptor and its synthetic defaults constructor — every consumer compiled against the
+   * previous release would get a `NoSuchMethodError` on `GradleConnection(…)`, whether or not they
+   * ever wanted failure advice. Adding a property only adds methods.
+   */
+  var failureAdvice: ((String) -> String?)? = null
+
   companion object {
     /**
      * Wall-clock budget a Gradle invocation gets before it is cancelled.
@@ -69,7 +89,16 @@ class GradleConnection(
     const val DEFAULT_TIMEOUT_SECONDS: Long = 600
   }
 
-  private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
+  private val connector =
+    GradleConnector.newConnector().forProjectDirectory(projectDir).apply {
+      // `forProjectDirectory` takes the distribution from *that* directory's
+      // gradle/wrapper/gradle-wrapper.properties, and silently falls back to the Tooling API's own
+      // default when there is none. A nested build that borrows its parent repository's wrapper
+      // (issue #5031) has none of its own, so without this it would be driven by a Gradle the
+      // repository never chose. Inherit the nearest ancestor's wrapper distribution instead, which
+      // is exactly what `../gradlew` would have used.
+      inheritedWrapperDistribution(projectDir)?.let { useDistribution(it) }
+    }
   private val connection = connector.connect()
   private var modelAccessFailure: GradleAccessFailure? = null
 
@@ -313,6 +342,11 @@ class GradleConnection(
       }
     }
 
+    failureAdvice?.invoke((captured + "\n" + messages.joinToString("\n")).trim())?.let {
+      System.err.println()
+      System.err.println(it)
+    }
+
     System.err.println()
     System.err.println("Run with --verbose for full build output.")
   }
@@ -499,6 +533,100 @@ class GradleConnection(
       )
   }
 }
+
+/**
+ * The `distributionUrl` of the nearest **ancestor** wrapper of [projectDir], or null when
+ * [projectDir] has a wrapper of its own (the Tooling API reads that one itself), when no ancestor
+ * has one, or when the URL is unusable (missing, relative, unparseable).
+ *
+ * Only the ancestor case is interesting: a build root with its own wrapper is already handled by
+ * `forProjectDirectory`, and overriding it here would change which Gradle drives it.
+ */
+internal fun inheritedWrapperDistribution(
+  projectDir: File,
+  warn: (String) -> Unit = System.err::println,
+  gradleUserHome: File? = defaultGradleUserHome(),
+): URI? {
+  if (wrapperProperties(projectDir) != null) return null
+  var dir: File? = projectDir.parentFile
+  while (dir != null) {
+    wrapperProperties(dir)?.let { props ->
+      return runCatching {
+        val loaded = Properties().apply { props.inputStream().use { load(it) } }
+        val url = loaded.getProperty("distributionUrl")?.trim()?.takeIf { it.isNotEmpty() }
+        val resolved = url?.let { wrapperDistributionUri(it, props) } ?: return@runCatching null
+        val pinned = loaded.getProperty("distributionSha256Sum")?.trim()?.takeIf { it.isNotEmpty() }
+        if (pinned != null && !distributionAlreadyInstalled(resolved, gradleUserHome)) {
+          // The Tooling API's `useDistribution(URI)` carries a URL and nothing else — there is
+          // no way to hand it the `distributionSha256Sum` the wrapper would have verified. So
+          // when the distribution is not already in the wrapper's cache, inheriting the URL
+          // would mean downloading and executing it with the repository's integrity pin
+          // dropped. Refuse instead: the Tooling API falls back to its own distribution, which
+          // is at least not a checksum this build asked for and did not get.
+          warn(
+            "compose-preview: not inheriting the Gradle distribution from ${props.path} — it " +
+              "pins distributionSha256Sum, the Tooling API cannot be given a checksum, and " +
+              "${redactedDistribution(resolved)} is not in the wrapper cache yet. Run " +
+              "./gradlew once from ${props.parentFile?.parentFile?.path} (which verifies and " +
+              "caches it), or give this build its own gradle/wrapper/gradle-wrapper.properties."
+          )
+          return@runCatching null
+        }
+        resolved
+      }
+        .getOrNull()
+    }
+    dir = dir.parentFile
+  }
+  return null
+}
+
+/**
+ * A wrapper `distributionUrl` as a URI, resolving a **relative** value against the directory
+ * holding [props] the way the Gradle wrapper itself does (a locally vendored distribution is
+ * normally written that way). Null when the value cannot be parsed.
+ */
+private fun wrapperDistributionUri(url: String, props: File): URI? = runCatching {
+  val uri = URI(url)
+  if (uri.isAbsolute) uri else props.parentFile.toURI().resolve(url)
+}
+  .getOrNull()
+
+/**
+ * True when [distribution] is already unpacked in the wrapper's own cache, which means the wrapper
+ * downloaded it and — where a `distributionSha256Sum` was pinned — verified it. Reusing that copy
+ * involves no download, so no unverified bytes reach this build.
+ *
+ * Matched by the cache's directory layout (`wrapper/dists/<name>/<hash>/…` with the `.ok` marker
+ * Gradle writes after a successful unpack), not by recomputing Gradle's internal URL hash — the
+ * layout is stable and public, the hash function is neither.
+ */
+private fun distributionAlreadyInstalled(distribution: URI, gradleUserHome: File?): Boolean {
+  val home = gradleUserHome ?: return false
+  val name = distribution.path?.substringAfterLast('/')?.removeSuffix(".zip") ?: return false
+  val dists = File(home, "wrapper/dists/$name")
+  val versions = dists.listFiles()?.filter { it.isDirectory } ?: return false
+  return versions.any { dir -> dir.listFiles()?.any { it.name.endsWith(".ok") } == true }
+}
+
+internal fun defaultGradleUserHome(): File? =
+  System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() }?.let(::File)
+    ?: System.getProperty("user.home")?.takeIf { it.isNotBlank() }?.let { File(it, ".gradle") }
+
+/**
+ * A distribution URL safe to print: userinfo and query string removed.
+ *
+ * A private distribution can carry credentials in either — `https://user:token@host/…` or a signed
+ * `?X-Amz-Signature=…` — and a warning goes to stderr, which in CI means the build log.
+ */
+internal fun redactedDistribution(uri: URI): String = runCatching {
+  URI(uri.scheme, null, uri.host, uri.port, uri.path, null, null).toString() +
+    if (uri.rawQuery != null) "?…" else ""
+}
+  .getOrElse { "(distribution URL withheld)" }
+
+private fun wrapperProperties(dir: File): File? =
+  File(dir, "gradle/wrapper/gradle-wrapper.properties").takeIf { it.isFile }
 
 private object NullOutputStream : OutputStream() {
   override fun write(b: Int) {}

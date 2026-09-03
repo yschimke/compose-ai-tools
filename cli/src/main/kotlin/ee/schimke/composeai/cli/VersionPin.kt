@@ -70,17 +70,67 @@ internal const val VERSION_PIN_CATALOG_PATH = "gradle/libs.versions.toml"
 internal const val VERSION_PIN_CATALOG_KEY = "composePreviewCli"
 
 /**
- * Walks up from [start] looking for the Gradle wrapper, returning the first directory that has one
- * — the project root the pin is read from (and the directory `compose-preview pin <version>` writes
- * into). Null when there is no Gradle project above [start].
+ * The **build root** for [start]: the nearest ancestor (inclusive) holding a settings file, else
+ * the nearest ancestor holding a Gradle wrapper. Null when neither exists above [start].
  *
  * Shared by [Command.findProjectRoot] and [PinCommand] so "which directory is the project" has
  * exactly one answer across the CLI.
+ *
+ * # Why settings, not the wrapper (issue #5031)
+ * This used to walk up looking for `gradlew` alone, on the assumption that a wrapper marks a build.
+ * It does not — a `settings.gradle(.kts)` does. A **nested build that borrows its parent
+ * repository's wrapper** (thunderbird-android's `components/`: its own settings file,
+ * `rootProject.name = "components"`, three projects, no `gradlew` of its own) was therefore walked
+ * straight past, and the CLI silently drove the *enclosing* build instead — reporting the root
+ * build's project count and the root build's configuration failures for a build the user never
+ * named. The wrapper search stays as the fallback, for the rare build with no settings file at all.
+ *
+ * The wrapper is still what supplies the Gradle **distribution**; see [findGradleWrapperRoot],
+ * which `GradleConnection` uses to pick one up from an ancestor when the build root has no wrapper.
  */
 internal fun findGradleProjectRoot(start: File = File(".").absoluteFile): File? {
   var dir: File? = start
   while (dir != null) {
+    if (hasSettingsFile(dir)) return dir
+    dir = dir.parentFile
+  }
+  return findGradleWrapperRoot(start)
+}
+
+/** True when [dir] holds a Gradle settings file in either DSL — i.e. [dir] is a build root. */
+internal fun hasSettingsFile(dir: File): Boolean =
+  File(dir, "settings.gradle.kts").isFile || File(dir, "settings.gradle").isFile
+
+/**
+ * Walks up from [start] returning the first directory holding a `gradlew`. This is *not* "which
+ * build am I in" ([findGradleProjectRoot] answers that) — it is only "whose wrapper, and therefore
+ * whose Gradle distribution, applies here".
+ */
+internal fun findGradleWrapperRoot(start: File = File(".").absoluteFile): File? {
+  var dir: File? = start
+  while (dir != null) {
     if (File(dir, "gradlew").exists()) return dir
+    dir = dir.parentFile
+  }
+  return null
+}
+
+/**
+ * The **VCS checkout root** for [start]: the nearest ancestor (inclusive) holding a `.git` entry,
+ * or null when [start] is not inside a Git checkout. Matches a file as well as a directory, so a
+ * worktree or submodule checkout (whose `.git` is a file) counts.
+ *
+ * This is a different question from [findGradleProjectRoot], and the difference is load-bearing for
+ * trust: the build root can be a *nested* directory inside the checkout, while "what may a pull
+ * request have written?" is bounded by the checkout. [confirmProjectServeHost] uses this to decide
+ * whether a `GRADLE_USER_HOME` is really outside the tree — against the build root alone, a
+ * repository whose nested build is the one being driven could confirm its own
+ * `composePreview.serveUrl` from a committed `.gradle/gradle.properties` one level up.
+ */
+internal fun findVcsCheckoutRoot(start: File = File(".").absoluteFile): File? {
+  var dir: File? = start.absoluteFile
+  while (dir != null) {
+    if (File(dir, ".git").exists()) return dir
     dir = dir.parentFile
   }
   return null

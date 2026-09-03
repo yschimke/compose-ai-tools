@@ -119,6 +119,18 @@ internal fun confirmProjectServeHost(
    * repo-scoped confirmation cannot match.
    */
   originRepo: String? = null,
+  /**
+   * The VCS checkout [projectRoot] belongs to — the boundary "outside the checkout" is measured
+   * against. Defaults to walking up from [projectRoot] for a `.git`, and falls back to
+   * [projectRoot] itself when there is none.
+   *
+   * **Not the same directory as [projectRoot], and that is the point.** The Gradle build root can
+   * be a nested build inside the checkout (`components/` with its own settings file, issue #5031),
+   * so measuring against it would put the repository's own committed `.gradle/gradle.properties`
+   * *outside* — and a branch that writes the same host into both files would be confirming itself,
+   * which is the one thing this mechanism exists to prevent.
+   */
+  checkoutRoot: File? = projectRoot?.let(::findVcsCheckoutRoot),
   env: (String) -> String? = System::getenv,
   userHome: String? = System.getProperty("user.home"),
   fileSystem: FileSystem = SystemFileSystem,
@@ -130,7 +142,7 @@ internal fun confirmProjectServeHost(
     // A URL rather than an allowlist entry, so it can only ever confirm its own host, for any
     // repo — it is the host this environment was built to talk to.
     env(SERVE_URL_ENV)?.let { hostOf(it)?.let { host -> add(Confirmation(host, null)) } }
-    userGradlePropertiesServeUrl(env, userHome, projectRoot, fileSystem)?.let {
+    userGradlePropertiesServeUrl(env, userHome, checkoutRoot ?: projectRoot, fileSystem)?.let {
       hostOf(it)?.let { host -> add(Confirmation(host, null)) }
     }
   }
@@ -218,7 +230,8 @@ internal fun gitOriginRepo(projectRoot: File?): String? {
 private fun userGradlePropertiesServeUrl(
   env: (String) -> String?,
   userHome: String?,
-  projectRoot: File?,
+  /** The checkout boundary — see `checkoutRoot` on [confirmProjectServeHost]. */
+  checkoutRoot: File?,
   fileSystem: FileSystem,
 ): String? {
   val gradleHome =
@@ -227,7 +240,7 @@ private fun userGradlePropertiesServeUrl(
   // both `gradle.properties` and `.gradle/gradle.properties` would be confirming itself — the
   // checkout supplying its own trust, which is the one thing this mechanism exists to prevent.
   // Compared canonically, so a symlink out of the tree and back in cannot launder it.
-  if (projectRoot != null && gradleHome.isInside(projectRoot)) return null
+  if (checkoutRoot != null && gradleHome.isInside(checkoutRoot)) return null
   return readGradleProperty(gradleHome, SERVE_URL_PROPERTY, fileSystem)?.normalizedUrl()
 }
 
