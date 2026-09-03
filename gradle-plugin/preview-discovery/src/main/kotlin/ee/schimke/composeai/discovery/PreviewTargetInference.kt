@@ -190,33 +190,38 @@ object PreviewTargetInference {
         .asSequence()
         .filter { call -> COMPONENT_LIBRARY_FQN_PREFIXES.any { call.ownerFqn.startsWith(it) } }
         .mapNotNull { resolveCandidate(it, scanResult) }
-        .filter {
+        // Pair each candidate with its metadata up front, because the *source* name lives there
+        // and every decision below is about the source name. A candidate whose metadata cannot be
+        // read is dropped: without it there is no way to tell a mangled JVM name from a legally
+        // escaped one, and reporting the JVM name is how a nonexistent import gets published.
+        .mapNotNull { candidate ->
+          ComposableSignature.signatureOf(candidate.classInfo, candidate.method)?.let {
+            candidate to it
+          }
+        }
+        .filter { (candidate, signature) ->
           isComponentLibraryTarget(
-            ownerFqn = it.ownerFqn,
-            methodName = sourceFunctionName(it.method.name),
-            returnsUnit = it.method.typeDescriptor?.resultType?.toString() == "void",
+            ownerFqn = candidate.ownerFqn,
+            methodName = signature.name,
+            returnsUnit = candidate.method.typeDescriptor?.resultType?.toString() == "void",
           )
         }
-        .distinctBy { it.ownerFqn to sourceFunctionName(it.method.name) }
+        .distinctBy { (candidate, signature) -> candidate.ownerFqn to signature.name }
         .toList()
     if (candidates.isEmpty()) return emptyList()
     val confidence = if (candidates.size == 1) TargetConfidence.HIGH else TargetConfidence.MEDIUM
-    return candidates.map { candidate ->
-      // Metadata is matched on the JVM name (`candidate.method`), which is the mangled one; only
-      // the *reported* name is demangled. Reading the signature with the source name would find
-      // nothing.
-      val signature = ComposableSignature.signatureOf(candidate.classInfo, candidate.method)
+    return candidates.map { (candidate, signature) ->
       PreviewTarget(
         className = candidate.ownerFqn,
-        functionName = sourceFunctionName(candidate.method.name),
+        functionName = signature.name,
         // A library symbol has no source file in this build; `sourceFile` stays null and
         // [PreviewTarget.origin] is what says so, rather than the null being read as "library".
         sourceFile = null,
         confidence = confidence,
         signals = listOf(TargetSignal.LIBRARY_COMPONENT),
-        parameters = signature?.parameters.orEmpty(),
-        receiver = signature?.receiver,
-        signatureKnown = signature != null,
+        parameters = signature.parameters,
+        receiver = signature.receiver,
+        signatureKnown = true,
       )
     }
   }
@@ -541,38 +546,21 @@ object PreviewTargetInference {
    * * not a [THEME_ENTRY_POINTS] member — the frame a sticker is drawn in rather than its subject.
    */
   /**
-   * The **source-level** name behind a JVM method name, undoing Kotlin's inline-class mangling.
+   * Whether a resolved call in a component library is the **component a sticker demonstrates**.
    *
-   * Kotlin mangles the JVM name of any function whose signature mentions a value class, appending
-   * `-` and a hash of that signature: `androidx.compose.material3.Text` compiles to
-   * `TextKt."Text-Nvy7gAk"` because its `fontSize`, `color` and `overflow` parameters are
-   * `TextUnit`, `Color` and `TextOverflow`. A Kotlin identifier can never contain `-`, so the first
-   * one is unambiguously the mangling boundary.
+   * [methodName] must be the **source** name from `@kotlin.Metadata`, never the JVM one. Kotlin
+   * mangles the JVM name of any function whose signature mentions a value class, so
+   * `androidx.compose.material3.Text` compiles to `TextKt."Text-Nvy7gAk"` — its `fontSize`, `color`
+   * and `overflow` are `TextUnit`, `Color` and `TextOverflow`. Judged on the JVM name the import
+   * rule below rejects it, which silently dropped **every Material 3 component whose signature
+   * mentions `Color`, `Dp` or `TextUnit`** from the component record, `Text` included: a preview
+   * whose only call was `Text` inferred no component at all.
    *
-   * This is load-bearing rather than cosmetic: [isComponentLibraryTarget] rejects a name that is
-   * not a usable import, and a mangled name is not — so before this, **every Material 3 component
-   * whose signature mentions `Color`, `Dp` or `TextUnit` was silently dropped from the component
-   * record**, `Text` among them. A preview whose only call was `Text` inferred no component at all.
-   * The functional compile gate is what surfaced it: `Button` and `Card` take no value-class
-   * parameters, so the hand-written unit tests never had a mangled name to trip over.
-   *
-   * **Applied to [inferComponents] only, deliberately.** [infer] rejects mangled names too, and
-   * `DiscoveryFunctionalTest` pins that with a purpose-built `@JvmInline` fixture, so it is a
-   * decision rather than an oversight. The two paths can differ because they promise different
-   * things: a [ComponentSymbol] separates `callable` (the source-level name an import needs) from
-   * `jvmOwner` (the reflection handle), whereas a `targets` entry has one name that consumers may
-   * be using as a JVM lookup key — and `ComponentsKt.Screen` does not exist at runtime when the
-   * method is `Screen-<hash>`. Whether `targets` should demangle is a question for whoever owns
-   * that contract.
-   *
-   * Only the `-` mangle, deliberately. Kotlin's other JVM mangle is `name$module` for an `internal`
-   * function ([nameMatches] strips that one for its own purposes), but stripping `$` here would
-   * also turn `Card$lambda$0` into `Card` and rescue exactly the synthetic members
-   * [isComponentLibraryTarget] exists to reject — and a library's `internal` composable is not a
-   * call site a consumer could write anyway.
+   * Recovering the source name by trimming at the first `-` would be wrong in the other direction.
+   * A backtick-escaped declaration is legal Kotlin and its own name may contain a hyphen — ``fun
+   * `filled-button`()`` — so trimming publishes `filled`, a function that does not exist. Only
+   * metadata separates the two, which is why [inferComponents] reads it before deciding anything.
    */
-  internal fun sourceFunctionName(jvmName: String): String = jvmName.substringBefore('-')
-
   internal fun isComponentLibraryTarget(
     ownerFqn: String,
     methodName: String,

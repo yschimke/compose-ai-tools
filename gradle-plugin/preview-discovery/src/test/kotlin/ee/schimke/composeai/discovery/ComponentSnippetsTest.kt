@@ -185,6 +185,17 @@ class ComponentSnippetsTest {
   }
 
   @Test
+  fun `a record written before the nullable field still answers null for a nullable type`() {
+    // A persisted v1 `components.json` has no `nullable`, so it deserialises to `false`. Without
+    // a spelling fallback for non-function types, every `String?` such a record carries would go
+    // from emitting `null` to being refused purely by upgrading the reader.
+    val snippet =
+      emitted(record(parameters = listOf(parameter("label", "String?", nullable = false))))
+
+    assertThat(snippet.code).isEqualTo("Button(label = null)")
+  }
+
+  @Test
   fun `a non-null callback returning a nullable value is refused, not given null`() {
     // The trap the structural `nullable` flag exists to avoid. `(Int) -> String?` ends in `?` and
     // is *not* nullable — the return type is. Reading nullability off the spelling would emit

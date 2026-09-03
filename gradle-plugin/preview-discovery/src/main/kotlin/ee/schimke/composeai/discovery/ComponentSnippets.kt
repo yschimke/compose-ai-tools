@@ -95,6 +95,12 @@ object ComponentSnippets {
   private fun placeholderFor(parameter: TargetParameter): String? {
     if (parameter.nullable) return "null"
     val type = parameter.type
+    // A record written before `nullable` existed defaults it to `false`, so a persisted v1
+    // `components.json` would lose every `String?` it used to answer for. For a type with no
+    // arrow the spelling is unambiguous — type arguments close with `>`, so `List<String?>` does
+    // not reach here looking nullable — and this reads it as the fallback it is. Function types
+    // deliberately get no fallback: `(Int) -> String?` ends in `?` and is *not* nullable.
+    if (!type.contains("->") && type.endsWith("?")) return "null"
     if (parameter.composableSlot || type.contains("->")) return emptyLambda(type)
     return when (type) {
       "String" -> "\"\""

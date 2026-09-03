@@ -123,16 +123,15 @@ class PreviewTargetInferenceTest {
   }
 
   @Test
-  fun `an inline-class-mangled JVM name demangles to the source name`() {
+  fun `the source name from metadata is what the import rule judges`() {
     // `androidx.compose.material3.Text` compiles to `Text-Nvy7gAk` because its `fontSize`, `color`
-    // and `overflow` parameters are value classes. Taken verbatim the name is not a usable import,
-    // so it was rejected — which silently dropped every Material 3 component whose signature
-    // mentions `Color`, `Dp` or `TextUnit`, `Text` included.
-    assertThat(PreviewTargetInference.sourceFunctionName("Text-Nvy7gAk")).isEqualTo("Text")
+    // and `overflow` parameters are value classes. Judged on the JVM name it is not a usable
+    // import and was rejected, which dropped every Material 3 component mentioning `Color`, `Dp`
+    // or `TextUnit`. `inferComponents` reads the source name from metadata and passes that here.
     assertThat(
         PreviewTargetInference.isComponentLibraryTarget(
           "androidx.compose.material3.TextKt",
-          PreviewTargetInference.sourceFunctionName("Text-Nvy7gAk"),
+          "Text",
           returnsUnit = true,
         )
       )
@@ -140,18 +139,15 @@ class PreviewTargetInferenceTest {
   }
 
   @Test
-  fun `an unmangled name is returned unchanged`() {
-    assertThat(PreviewTargetInference.sourceFunctionName("Card")).isEqualTo("Card")
-  }
-
-  @Test
-  fun `demangling does not rescue a synthetic lambda name`() {
-    // Demangling only strips the value-class hash; a synthetic member is still not an import, and
-    // the `$` rule that rejects it must keep applying after the strip.
+  fun `a backtick-escaped name containing a hyphen is still not an import`() {
+    // ``fun `filled-button`()`` is legal Kotlin, and its *source* name really does contain a
+    // hyphen — so it is not a usable import and must stay rejected. This is why the source name
+    // comes from metadata rather than from trimming the JVM name at the first `-`, which would
+    // have turned this into `filled` and published a function that does not exist.
     assertThat(
         PreviewTargetInference.isComponentLibraryTarget(
-          "androidx.compose.material3.CardKt",
-          PreviewTargetInference.sourceFunctionName("Card\u0024lambda\u00240"),
+          "androidx.compose.material3.ButtonKt",
+          "filled-button",
           returnsUnit = true,
         )
       )

@@ -43,6 +43,8 @@ import org.objectweb.asm.Opcodes
  * refuse.
  */
 internal data class ComposableSignatureInfo(
+  /** The source-level function name, straight from metadata — never the mangled JVM name. */
+  val name: String,
   val parameters: List<TargetParameter>,
   val receiver: String?,
 )
@@ -93,6 +95,11 @@ internal object ComposableSignature {
         }
       val fn = matchFunction(functions, method) ?: return null
       ComposableSignatureInfo(
+        // The name as the author wrote it. Metadata carries it directly, which is the only way to
+        // get it right: the JVM name may be value-class-mangled (`Text-Nvy7gAk`) *or* a legally
+        // escaped declaration whose own name contains a hyphen (``fun `filled-button`()``), and no
+        // amount of string surgery on the JVM name distinguishes those two.
+        name = fn.name,
         parameters = fn.valueParameters.map { it.toTargetParameter() },
         receiver =
           fn.receiverParameterType?.let { receiver ->
