@@ -1463,6 +1463,17 @@ data class PreviewTarget(
    * must apply itself — see `ComposableSignatureInfo.requiredOptIns`.
    */
   val requiredOptIns: List<String> = emptyList(),
+  /**
+   * The subset of [requiredOptIns] whose markers are declared with
+   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
+   *
+   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
+   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
+   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
+   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
+   * the one point that can see it — the annotation's own meta-annotations.
+   */
+  val androidxOptIns: List<String> = emptyList(),
 )
 
 /**

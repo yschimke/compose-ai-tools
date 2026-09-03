@@ -227,6 +227,7 @@ object PreviewTargetInference {
         callableFromAnotherFile = signature.callableFromAnotherFile,
         hasTypeParameters = signature.hasTypeParameters,
         requiredOptIns = signature.requiredOptIns,
+        androidxOptIns = signature.androidxOptIns,
       )
     }
   }
@@ -347,6 +348,7 @@ object PreviewTargetInference {
         callableFromAnotherFile = signature?.callableFromAnotherFile ?: true,
         hasTypeParameters = signature?.hasTypeParameters ?: false,
         requiredOptIns = signature?.requiredOptIns.orEmpty(),
+        androidxOptIns = signature?.androidxOptIns.orEmpty(),
       )
     )
   }

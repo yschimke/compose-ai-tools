@@ -97,6 +97,7 @@ object ComponentSnippets {
       imports = listOf(escapeCallableIfKeyword(record.symbol.callable)),
       code = "${escapeIfKeyword(record.symbol.name)}(${arguments.joinToString(", ")})",
       requiredOptIns = record.requiredOptIns,
+      androidxOptIns = record.androidxOptIns,
     )
   }
 
@@ -114,6 +115,7 @@ object ComponentSnippets {
           call = snippet.code,
           imports = snippet.imports,
           requiredOptIns = snippet.requiredOptIns,
+          androidxOptIns = snippet.androidxOptIns,
         )
       is ComponentSnippet.Refused -> ComponentCode(refusedReason = snippet.reason)
     }
@@ -310,6 +312,7 @@ sealed interface ComponentSnippet {
     val code: String,
     /** Markers the caller's `@Composable` wrapper must `@OptIn` to — see `ComponentCode`. */
     val requiredOptIns: List<String> = emptyList(),
+    val androidxOptIns: List<String> = emptyList(),
   ) : ComponentSnippet
 
   /**

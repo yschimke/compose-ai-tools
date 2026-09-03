@@ -74,6 +74,17 @@ internal data class ComposableSignatureInfo(
    * be identified, and is indistinguishable here from a declaration that needs no opt-in.
    */
   val requiredOptIns: List<String>,
+  /**
+   * The subset of [requiredOptIns] whose markers are declared with
+   * `androidx.annotation.RequiresOptIn` rather than `kotlin.RequiresOptIn`.
+   *
+   * The two mechanisms are not interchangeable at the call site: `kotlin.OptIn` rejects an AndroidX
+   * marker outright ("this class is not an opt-in requirement marker"), and the AndroidX annotation
+   * takes its markers as `@androidx.annotation.OptIn(markerClass = [Foo::class])`. A generator that
+   * knows only the marker names cannot tell which to write, so the mechanism is recorded here at
+   * the one point that can see it — the annotation's own meta-annotations.
+   */
+  val androidxOptIns: List<String>,
 )
 
 internal object ComposableSignature {
@@ -131,7 +142,8 @@ internal object ComposableSignature {
         callableFromAnotherFile =
           fn.visibility == Visibility.PUBLIC || fn.visibility == Visibility.INTERNAL,
         hasTypeParameters = fn.typeParameters.isNotEmpty(),
-        requiredOptIns = requiredOptInsOf(method),
+        requiredOptIns = requiredOptInsOf(method, OPT_IN_MARKER_ANNOTATIONS),
+        androidxOptIns = requiredOptInsOf(method, setOf("androidx.annotation.RequiresOptIn")),
         receiver =
           fn.receiverParameterType?.let { receiver ->
             (receiver.classifier as? KmClassifier.Class)?.name?.replace('/', '.')?.replace('$', '.')
@@ -226,14 +238,12 @@ internal object ComposableSignature {
    * `ComposableInferredTarget` drops out because it is not itself `@RequiresOptIn`, while an
    * author's `@ExperimentalMaterial3Api` or `@InternalComposeApi` survives.
    */
-  private fun requiredOptInsOf(method: MethodInfo): List<String> =
+  private fun requiredOptInsOf(method: MethodInfo, mechanisms: Set<String>): List<String> =
     method.annotationInfo
       ?.directOnly()
       .orEmpty()
       .filter { annotation ->
-        annotation.classInfo?.annotationInfo?.directOnly()?.any {
-          it.name in OPT_IN_MARKER_ANNOTATIONS
-        } == true
+        annotation.classInfo?.annotationInfo?.directOnly()?.any { it.name in mechanisms } == true
       }
       .map { it.name }
       .distinct()

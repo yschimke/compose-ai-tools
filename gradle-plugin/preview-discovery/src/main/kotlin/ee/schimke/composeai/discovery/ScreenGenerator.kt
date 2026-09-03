@@ -96,7 +96,10 @@ object ScreenGenerator {
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
 
-    val optIns = context.optIns.toSortedSet().toList()
+    // An AndroidX-mechanism marker is reported by both scans, so it is subtracted here rather than
+    // written twice under two annotations that would each reject the other's markers.
+    val androidxOptIns = context.androidxOptIns.toSortedSet().toList()
+    val optIns = (context.optIns - context.androidxOptIns).toSortedSet().toList()
     val imports = (context.imports + "androidx.compose.runtime.Composable").toSortedSet()
     val source = buildString {
       appendLine("package $packageName")
@@ -111,12 +114,26 @@ object ScreenGenerator {
           optIns.joinToString(", ", "@OptIn(", ")") { "${markerReference(it)}::class" }
         )
       }
+      if (androidxOptIns.isNotEmpty()) {
+        // A different annotation, not a stylistic variant: `kotlin.OptIn` rejects a marker declared
+        // with `androidx.annotation.RequiresOptIn` ("this class is not an opt-in requirement
+        // marker"), and the AndroidX one takes an array under a named `markerClass`.
+        appendLine(
+          androidxOptIns.joinToString(
+            ", ",
+            "@androidx.annotation.OptIn(markerClass = [",
+            "])",
+          ) {
+            "${markerReference(it)}::class"
+          }
+        )
+      }
       appendLine("@Composable")
       appendLine("fun ${document.name}() {")
       appendLine(body)
       appendLine("}")
     }
-    return Result.Emitted(source = source, requiredOptIns = optIns)
+    return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
   }
 
   /**
@@ -128,6 +145,7 @@ object ScreenGenerator {
   ) {
     val imports = mutableSetOf<String>()
     val optIns = mutableSetOf<String>()
+    val androidxOptIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
 
     fun node(node: ScreenNode, depth: Int, inReceiverScope: Boolean = false): String {
@@ -153,6 +171,7 @@ object ScreenGenerator {
       val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
       if (record.canonicalId in simplyImportable && !inReceiverScope) imports += qualified
       optIns += code.requiredOptIns
+      androidxOptIns += code.androidxOptIns
 
       val byName = record.parameters.associateBy { it.name }
       node.arguments.keys.filterNot(byName::containsKey).forEach {
@@ -182,10 +201,20 @@ object ScreenGenerator {
         val supplied = node.arguments[parameter.name]
         val children = node.slots[parameter.name]
         when {
-          supplied != null ->
+          supplied != null -> {
             literal(supplied, parameter, record.symbol.name)?.let {
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
             }
+            // A conflicted document can set both an argument and a slot for one parameter. The
+            // scalar loses (a literal cannot be a function type, so `literal` refuses it), but the
+            // slot's children would never be visited otherwise — the fourth branch that rejects a
+            // node and would drop its subtree.
+            if (children != null) {
+              reasons +=
+                "`${record.symbol.name}`.`${parameter.name}` is set as both a value and a slot"
+              children.forEach { node(it, depth + 1, inReceiverScope || hasReceiver(parameter)) }
+            }
+          }
           children != null &&
             parameter.composableSlot &&
             !ComponentSnippets.acceptsBareLambda(parameter.type) -> {

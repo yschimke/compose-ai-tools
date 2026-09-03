@@ -11,6 +11,7 @@ class ScreenGeneratorTest {
     parameters: List<TargetParameter>,
     call: String = "$name()",
     requiredOptIns: List<String> = emptyList(),
+    androidxOptIns: List<String> = emptyList(),
   ) =
     ComponentRecord(
       canonicalId = "app/androidx.compose.material3.${name}Kt.$name",
@@ -24,7 +25,12 @@ class ScreenGeneratorTest {
       parameters = parameters,
       signatureKnown = true,
       code =
-        ComponentCode(call = call, imports = listOf(callable), requiredOptIns = requiredOptIns),
+        ComponentCode(
+          call = call,
+          imports = listOf(callable),
+          requiredOptIns = requiredOptIns,
+          androidxOptIns = androidxOptIns,
+        ),
     )
 
   private val text =
@@ -717,6 +723,59 @@ class ScreenGeneratorTest {
 
     assertThat(source).contains("androidx.compose.material3.Text(text = \"Hi\")")
     assertThat(source).doesNotContain("import androidx.compose.material3.Text")
+  }
+
+  @Test
+  fun `an AndroidX marker is emitted under the AndroidX annotation, not kotlin OptIn`() {
+    // Not interchangeable: `kotlin.OptIn` rejects a marker declared with
+    // `androidx.annotation.RequiresOptIn` outright, and the AndroidX annotation takes an array
+    // under a named `markerClass`. Emitting one for the other is source the compiler refuses.
+    val guarded =
+      component(
+        "Guarded",
+        "com.example.Guarded",
+        emptyList(),
+        requiredOptIns = listOf("com.example.KotlinApi", "androidx.camera.core.ExperimentalLens"),
+        androidxOptIns = listOf("androidx.camera.core.ExperimentalLens"),
+      )
+
+    val emitted =
+      emitted(ScreenDocument("Screen", ScreenNode(guarded.canonicalId)), catalog(guarded))
+
+    assertThat(emitted.source).contains("@OptIn(com.example.KotlinApi::class)")
+    assertThat(emitted.source)
+      .contains(
+        "@androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalLens::class])"
+      )
+    // The AndroidX marker is not also written under `kotlin.OptIn`, which would reject it.
+    assertThat(emitted.source).doesNotContain("@OptIn(androidx.camera")
+    assertThat(emitted.source).doesNotContain("ExperimentalLens::class, ")
+    // Both are still reported to the caller: the split is about which annotation carries them.
+    assertThat(emitted.requiredOptIns)
+      .containsExactly("com.example.KotlinApi", "androidx.camera.core.ExperimentalLens")
+  }
+
+  @Test
+  fun `a parameter set as both a value and a slot is reported, and its children too`() {
+    val holder =
+      card.copy(
+        parameters =
+          listOf(TargetParameter("content", "ColumnScope.() -> Unit", composableSlot = true))
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          holder.canonicalId,
+          arguments = mapOf("content" to ScreenValue.Text("oops")),
+          slots = mapOf("content" to listOf(ScreenNode("app/com.example.GoneKt.Gone"))),
+        ),
+      )
+
+    val reasons = refusal(screen, catalog(holder))
+
+    assertThat(reasons.joinToString()).contains("both a value and a slot")
+    assertThat(reasons.joinToString()).contains("Gone")
   }
 
   @Test
