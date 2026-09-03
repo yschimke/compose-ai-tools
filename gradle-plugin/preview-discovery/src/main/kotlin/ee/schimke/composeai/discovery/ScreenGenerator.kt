@@ -41,6 +41,12 @@ package ee.schimke.composeai.discovery
  * `code.call` promises, or compiling a candidate call in the producer — not a boolean per
  * restriction, which is how this list would keep growing.
  *
+ * A third gap arrived with the widened value vocabulary and is a different animal:
+ * [ScreenValue.Reference], [ScreenValue.Construct] and [ScreenValue.Chain] carry a **claimed**
+ * type. It is checked against the parameter, so a colour handed to a `String` is still refused, but
+ * the claim itself is taken on trust. [ScreenValue] says why that trade was worth making and where
+ * the failure lands when a projection gets it wrong.
+ *
  * ## Refusing, again
  *
  * The discipline is the same one that makes the call-site generator worth anything: emit only what
@@ -116,7 +122,6 @@ object ScreenGenerator {
         )
       )
     }
-    val byId = components.components.associateBy { it.canonicalId }
     // Two components can share a simple name (`com.a.Badge`, `com.b.Badge`), and a screen can share
     // one with a component it calls — `fun HomeScreen()` calling a `HomeScreen` component would
     // shadow the import and recurse into itself. Neither is exotic once a catalog spans libraries.
@@ -132,7 +137,7 @@ object ScreenGenerator {
         }
         .map { it.canonicalId }
         .toSet()
-    val context = Emission(byId, simplyImportable)
+    val context = Emission(ComponentIndex(components.components), simplyImportable, document.name)
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
 
@@ -140,7 +145,23 @@ object ScreenGenerator {
     // written twice under two annotations that would each reject the other's markers.
     val androidxOptIns = context.androidxOptIns.toSortedSet().toList()
     val optIns = (context.optIns - context.androidxOptIns).toSortedSet().toList()
-    val imports = (context.imports + "androidx.compose.runtime.Composable").toSortedSet()
+    val imports =
+      (context.imports + context.extensionImports + "androidx.compose.runtime.Composable")
+        .toSortedSet()
+    // Kotlin calls two imports of one simple name a conflicting import and compiles neither. The
+    // component half of this can't collide — `simplyImportable` already withholds a simple name two
+    // records want — but an extension link is imported from wherever a projection said, so
+    // `foundation.layout.padding` and `some.other.padding` in one screen have to be caught here.
+    val conflicts =
+      imports.groupBy { it.substringAfterLast('.') }.filterValues { it.size > 1 }.toSortedMap()
+    if (conflicts.isNotEmpty()) {
+      return Result.Refused(
+        conflicts.map { (name, fqns) ->
+          "`$name` would be imported from ${fqns.sorted().joinToString(" and ")}, which Kotlin " +
+            "rejects as a conflicting import"
+        }
+      )
+    }
     val source = buildString {
       appendLine("package $packageName")
       appendLine()
@@ -179,22 +200,85 @@ object ScreenGenerator {
   }
 
   /**
+   * Resolves a document's component id, by canonical key or by catalog alias.
+   *
+   * Two indexes rather than one flat map, because they are not equally authoritative:
+   * [ComponentRecord.canonicalId] is the file's key and an alias is a label several records may
+   * carry. Merging them would let an alias on one record mask another record's key — a silent
+   * substitution, which is the one outcome worth more care than either lookup.
+   */
+  private class ComponentIndex(records: List<ComponentRecord>) {
+    private val byCanonical = records.groupBy { it.canonicalId }
+    private val byAlias =
+      records
+        .flatMap { record -> record.componentIds.map { it to record } }
+        .groupBy(
+          { it.first },
+          { it.second },
+        )
+
+    /** The record, or the reason there isn't exactly one. */
+    fun resolve(id: String): Outcome {
+      byCanonical[id]?.let { matches ->
+        return if (matches.size == 1) Outcome.Found(matches.single())
+        else
+          Outcome.Ambiguous(
+            "canonical id `$id` is claimed by ${matches.size} components in this catalog, so it " +
+              "identifies none of them"
+          )
+      }
+      val aliased = byAlias[id]?.distinctBy { it.canonicalId } ?: return Outcome.Missing
+      return if (aliased.size == 1) Outcome.Found(aliased.single())
+      else
+        Outcome.Ambiguous(
+          "catalog id `$id` maps to ${aliased.size} components " +
+            "(${aliased.joinToString(", ") { "`${it.canonicalId}`" }}), so it identifies none of " +
+            "them"
+        )
+    }
+
+    sealed interface Outcome {
+      data class Found(val record: ComponentRecord) : Outcome
+
+      data class Ambiguous(val reason: String) : Outcome
+
+      data object Missing : Outcome
+    }
+  }
+
+  /**
    * Accumulates one generation pass: the text, the imports it needs, and every reason it failed.
    */
   private class Emission(
-    val byId: Map<String, ComponentRecord>,
+    val index: ComponentIndex,
     val simplyImportable: Set<String>,
+    val screenName: String,
   ) {
     val imports = mutableSetOf<String>()
+    /**
+     * Kept apart from [imports] only so the conflict message can say an *extension* collided. They
+     * are unioned before anything is written.
+     */
+    val extensionImports = mutableSetOf<String>()
     val optIns = mutableSetOf<String>()
     val androidxOptIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
 
     fun node(node: ScreenNode, depth: Int, inReceiverScope: Boolean = false): String {
       val pad = INDENT.repeat(depth)
-      val record = byId[node.componentId]
+      val record =
+        when (val outcome = index.resolve(node.componentId)) {
+          is ComponentIndex.Outcome.Found -> outcome.record
+          is ComponentIndex.Outcome.Ambiguous -> {
+            reasons += outcome.reason
+            null
+          }
+          ComponentIndex.Outcome.Missing -> {
+            reasons += "no component `${node.componentId}` in this catalog"
+            null
+          }
+        }
       if (record == null) {
-        reasons += "no component `${node.componentId}` in this catalog"
         // Keep walking its children: a catalog that dropped a whole subtree should name every node
         // it can no longer place, not just the outermost one. `reasons` is what a caller acts on,
         // and the text returned here is discarded the moment anything has failed.
@@ -244,11 +328,11 @@ object ScreenGenerator {
         val children = node.slots[parameter.name]
         when {
           supplied != null -> {
-            literal(supplied, parameter, record.symbol.name)?.let {
+            argument(supplied, parameter, record.symbol.name)?.let {
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
             }
             // A conflicted document can set both an argument and a slot for one parameter. The
-            // scalar loses (a literal cannot be a function type, so `literal` refuses it), but the
+            // scalar loses (a literal cannot be a function type, so `argument` refuses it), but the
             // slot's children would never be visited otherwise — the fourth branch that rejects a
             // node and would drop its subtree.
             //
@@ -306,30 +390,38 @@ object ScreenGenerator {
     }
 
     /**
-     * The Kotlin literal for [value], or null having recorded why it does not fit [parameter].
+     * The Kotlin expression for [value] as an argument to [parameter], or null having recorded why
+     * it does not fit.
      *
-     * Checked against the **qualified** type, so a `com.example.String` property is rejected rather
+     * Two rules, because [ScreenValue] has two halves. A literal is checked by *rendering it
+     * against the parameter's type*, so `Whole(1)` is an `Int` for an `Int` parameter and a `Long`
+     * for a `Long` one — the parameter decides, which is what lets one document value serve either.
+     * A [ScreenValue.Reference], [ScreenValue.Construct] or [ScreenValue.Chain] is checked the
+     * other way round: it renders once, on its own terms, and its claimed type must equal the
+     * parameter's.
+     *
+     * Both compare the **qualified** type, so a `com.example.String` property is rejected rather
      * than handed a string literal — the trap the call-site generator was caught by twice.
      */
-    fun literal(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
+    fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
+      val where = "`$owner`.`${parameter.name}`"
+      if (value.typeFqn != null) {
+        val rendered = expression(value, where, depth = 0) ?: return null
+        if (value.typeFqn != type) {
+          reasons += "$where is $type, and this value is a ${value.typeFqn}"
+          return null
+        }
+        return rendered
+      }
+      // `string` refuses an over-long value by *recording* the reason, so the count is read either
+      // side of the render: a null literal that already explained itself must not draw the generic
+      // "is not a String" on top of it, and comparing message text instead would silence the
+      // second of two identical parameters on two nodes.
+      val before = reasons.size
       val literal =
         when (value) {
-          is ScreenValue.Text ->
-            when {
-              type != "kotlin.String" -> null
-              // A JVM constant-pool string is length-prefixed with an unsigned short, so a value
-              // over 65535 modified-UTF-8 bytes cannot be a literal at all — the backend fails
-              // late, on a file this generator has already called compilable. Nothing bounds a
-              // pasted document value, so it is measured and refused rather than assumed small.
-              modifiedUtf8Length(value.value) > MAX_CONSTANT_POOL_STRING -> {
-                reasons +=
-                  "`$owner`.`${parameter.name}` is ${modifiedUtf8Length(value.value)} bytes, past " +
-                    "the $MAX_CONSTANT_POOL_STRING a JVM string constant can hold"
-                return null
-              }
-              else -> quote(value.value)
-            }
+          is ScreenValue.Text -> if (type != "kotlin.String") null else string(value.value, where)
           is ScreenValue.Bool -> if (type == "kotlin.Boolean") value.value.toString() else null
           is ScreenValue.Whole ->
             when (type) {
@@ -339,15 +431,7 @@ object ScreenGenerator {
                 if (value.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong())
                   value.value.toString()
                 else null
-              // `-9223372036854775808L` does not compile: Kotlin reads the positive token first
-              // and rejects it as out of range, then applies unary minus. Verified with the
-              // compiler, which is also why `Int.MIN_VALUE` is left as a plain literal — the same
-              // spelling one type down *is* accepted.
-              "kotlin.Long" ->
-                // Qualified for the same reason `@kotlin.OptIn` is: the generated file sits in a
-                // package the caller chose, and a same-package declaration named `Long` shadows
-                // the default import.
-                if (value.value == Long.MIN_VALUE) "kotlin.Long.MIN_VALUE" else "${value.value}L"
+              "kotlin.Long" -> long(value.value)
               else -> null
             }
           is ScreenValue.Fractional ->
@@ -367,13 +451,157 @@ object ScreenGenerator {
               type == "kotlin.Double" -> value.value.toString()
               else -> null
             }
+          // Every case with a claimed type left through the branch above.
+          else -> null
         }
-      if (literal == null) {
-        reasons += "`$owner`.`${parameter.name}` is $type, which ${value::class.simpleName} is not"
+      if (literal == null && reasons.size == before) {
+        reasons += "$where is $type, which ${value::class.simpleName} is not"
       }
       return literal
     }
+
+    /**
+     * [value] rendered on its own terms — no parameter to lean on — or null having said why.
+     *
+     * This is the rule for every **nested** position (a constructor argument, a chain receiver),
+     * where there is no declared type to render against. A literal therefore gets one fixed
+     * spelling: a whole number is an `Int` when it fits and a `Long` otherwise, and a fraction is
+     * always a `Double`. That is a real restriction — `Dp` takes a `Float`, so `Dp(16.0)` does not
+     * compile and a projection wanting `16.dp` writes the idiomatic [ScreenValue.Chain] instead.
+     * Documented rather than papered over: a rule a projection can read beats a coercion it cannot
+     * predict.
+     */
+    fun expression(value: ScreenValue, where: String, depth: Int): String? {
+      // A document arrives over the wire and nothing on that path bounds how deeply a value nests.
+      // Recursion here is depth-first over attacker-shaped data, so the cap is a refusal rather
+      // than a `StackOverflowError` thrown out of a generator that promised a `Result`.
+      if (depth > MAX_VALUE_DEPTH) {
+        reasons += "$where nests values more than $MAX_VALUE_DEPTH deep"
+        return null
+      }
+      return when (value) {
+        is ScreenValue.Text -> string(value.value, where)
+        is ScreenValue.Bool -> value.value.toString()
+        is ScreenValue.Whole ->
+          if (value.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) value.value.toString()
+          else long(value.value)
+        is ScreenValue.Fractional ->
+          if (value.value.isFinite()) value.value.toString()
+          else {
+            reasons += "$where is ${value.value}, which is not a Kotlin literal"
+            null
+          }
+        is ScreenValue.Reference -> {
+          val root = qualifiedName(value.rootFqn, where) ?: return null
+          val members = value.members.map { name(it, where) ?: return null }
+          (listOf(root) + members).joinToString(".")
+        }
+        is ScreenValue.Construct -> {
+          val callable = qualifiedName(value.callableFqn, where) ?: return null
+          val arguments = arguments(value.positional, value.named, where, depth) ?: return null
+          "$callable($arguments)"
+        }
+        is ScreenValue.Chain -> {
+          if (value.links.isEmpty()) {
+            reasons += "$where is a chain with no links, which is a plain reference"
+            return null
+          }
+          val receiver = expression(value.receiver, where, depth + 1) ?: return null
+          buildString {
+            append(receiver)
+            for (link in value.links) {
+              val simple = link.callableFqn.substringAfterLast('.')
+              if (name(simple, where) == null) return null
+              if (!link.property && simple == screenName) {
+                // An extension imported under the screen's own name is shadowed by the function
+                // being generated, so the chain would call the screen — or fail to resolve.
+                reasons += "$where imports `$simple`, which is the screen's own name"
+                return null
+              }
+              extensionImports += ComponentSnippets.escapeCallableIfKeyword(link.callableFqn)
+              append(".")
+              append(ComponentSnippets.escapeIfKeyword(simple))
+              if (link.property) {
+                if (link.positional.isNotEmpty() || link.named.isNotEmpty()) {
+                  reasons += "$where reads `$simple` as a property and also passes it arguments"
+                  return null
+                }
+              } else {
+                val arguments = arguments(link.positional, link.named, where, depth) ?: return null
+                append("(").append(arguments).append(")")
+              }
+            }
+          }
+        }
+      }
+    }
+
+    /** `a, b, name = c` for a call, or null having said why one of them could not be written. */
+    private fun arguments(
+      positional: List<ScreenValue>,
+      named: Map<String, ScreenValue>,
+      where: String,
+      depth: Int,
+    ): String? {
+      val rendered = mutableListOf<String>()
+      for (argument in positional) rendered += expression(argument, where, depth + 1) ?: return null
+      for ((parameter, argument) in named) {
+        val escaped = name(parameter, where) ?: return null
+        rendered += "$escaped = ${expression(argument, where, depth + 1) ?: return null}"
+      }
+      return rendered.joinToString(", ")
+    }
+
+    /**
+     * A single name, backticked when it has to be, or null having said why it cannot be written.
+     */
+    private fun name(name: String, where: String): String? {
+      if (!isWritableName(name)) {
+        reasons += "$where names `$name`, which cannot be written as a Kotlin identifier"
+        return null
+      }
+      return ComponentSnippets.escapeIfKeyword(name)
+    }
+
+    /** A dotted path, each segment escaped, or null having said why. */
+    private fun qualifiedName(fqn: String, where: String): String? {
+      val segments = fqn.split('.')
+      if (fqn.isEmpty() || segments.any { !isWritableName(it) }) {
+        reasons += "$where refers to `$fqn`, which is not a qualified Kotlin name"
+        return null
+      }
+      return segments.joinToString(".") { ComponentSnippets.escapeIfKeyword(it) }
+    }
+
+    /** A string literal, or null when it is too long to be one. */
+    private fun string(value: String, where: String): String? {
+      // A JVM constant-pool string is length-prefixed with an unsigned short, so a value over 65535
+      // modified-UTF-8 bytes cannot be a literal at all — the backend fails late, on a file this
+      // generator has already called compilable. Nothing bounds a pasted document value, so it is
+      // measured and refused rather than assumed small.
+      val length = modifiedUtf8Length(value)
+      if (length > MAX_CONSTANT_POOL_STRING) {
+        reasons +=
+          "$where is $length bytes, past the $MAX_CONSTANT_POOL_STRING a JVM string constant " +
+            "can hold"
+        return null
+      }
+      return quote(value)
+    }
   }
+
+  /**
+   * A `Long` literal.
+   *
+   * `-9223372036854775808L` does not compile: Kotlin reads the positive token first and rejects it
+   * as out of range, then applies unary minus. Verified with the compiler, which is also why
+   * `Int.MIN_VALUE` is left as a plain literal — the same spelling one type down *is* accepted.
+   *
+   * Qualified for the same reason `@kotlin.OptIn` is: the generated file sits in a package the
+   * caller chose, and a same-package declaration named `Long` shadows the default import.
+   */
+  private fun long(value: Long): String =
+    if (value == Long.MIN_VALUE) "kotlin.Long.MIN_VALUE" else "${value}L"
 
   /**
    * A Kotlin string literal for [value].
@@ -405,6 +633,21 @@ object ScreenGenerator {
     ComponentSnippets.isIdentifier(name) &&
       !ComponentSnippets.isHardKeyword(name) &&
       name.any { it != '_' }
+
+  /**
+   * Whether [name] can be written as a Kotlin name at all — bare or in backticks.
+   *
+   * Wider than [isUsableIdentifier] on purpose, and for a different question. That one asks whether
+   * a *declaration* can be named this; this one asks whether a name a projection handed us can be
+   * *referred to*, and Kotlin's backticks admit far more than its identifier rule does — a real
+   * marker in this repo's own fixtures is spelled `` `Api${'$'}Experimental` ``. So the rule is the
+   * escape's own limit rather than the identifier's: a backticked name may not be empty and may not
+   * contain the characters that would close the quoting or reparse as structure.
+   */
+  private fun isWritableName(name: String): Boolean =
+    name.isNotEmpty() && name.none { it in FORBIDDEN_IN_A_NAME }
+
+  private val FORBIDDEN_IN_A_NAME = ".;:\\/[]<>`\n\r".toSet()
 
   /**
    * An opt-in marker, spelled for source.
@@ -449,6 +692,14 @@ object ScreenGenerator {
   private const val MAX_CONSTANT_POOL_STRING = 65535
 
   /**
+   * How deeply one argument's value may nest.
+   *
+   * Sixteen is far past anything a builder produces — `Modifier.padding(PaddingValues(16.dp))` is
+   * three — and far short of what overflows a stack. The number is not the point; having one is.
+   */
+  private const val MAX_VALUE_DEPTH = 16
+
+  /**
    * Simple names the generated file has already spent on its own scaffolding.
    *
    * The wrapper always imports `androidx.compose.runtime.Composable`, so a catalog component that
@@ -457,17 +708,4 @@ object ScreenGenerator {
    * the screen's own name and a two-package collision already get.
    */
   private val RESERVED_BY_THE_WRAPPER = setOf("Composable")
-
-  /**
-   * Kotlin's own identifier rule: `(Letter | '_') (Letter | '_' | UnicodeDigit)*`.
-   *
-   * Not `[A-Za-z_][A-Za-z0-9_]*`. `Übersicht`, `画面` and `généré` are identifiers Kotlin accepts
-   * without backticks, and an ASCII-only rule refused documents that were never wrong — a refusal
-   * costs nothing to the compiler and everything to whoever named their screen in their own
-   * language.
-   */
-  private fun isIdentifier(name: String): Boolean =
-    name.isNotEmpty() &&
-      (name[0].isLetter() || name[0] == '_') &&
-      name.all { it.isLetter() || it.isDigit() || it == '_' }
 }
