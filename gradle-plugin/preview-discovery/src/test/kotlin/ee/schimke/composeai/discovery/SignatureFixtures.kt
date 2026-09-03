@@ -122,3 +122,15 @@ annotation class `Api$Experimental`
 // (`context(Foo)` needs -Xcontext-receivers, `context(f: Foo)` needs language version 2.4). The
 // refusal a recorded context produces is covered in ComponentSnippetsTest instead; the metadata
 // read itself has no fixture here, which ComposableSignature.hasContextRequirement says plainly.
+
+/**
+ * A parameter written through a type alias, for the question of what `typeFqn` records for one.
+ *
+ * Kotlin's metadata **expands** an alias — the docs for `KmType.abbreviatedType` say so outright —
+ * so the recorded classifier should be the aliased class rather than the alias, and a value
+ * claiming that class should match. Asserted rather than assumed, because a review finding claimed
+ * the opposite and the difference is a whole category of false refusals.
+ */
+typealias AliasedLabel = String
+
+@Suppress("unused", "UNUSED_PARAMETER") fun aliasedComponent(label: AliasedLabel = "") {}
