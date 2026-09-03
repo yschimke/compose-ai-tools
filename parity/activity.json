@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T06:13:26.316Z",
+  "generatedAt": "2026-09-03T06:21:08.073Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "b82d9f4ff25b9b785cdb99dcf250f7974fce8b8e",
+        "subject": "fix(ci): say which direction the rc-players pin has drifted (#5049)",
+        "at": "2026-09-03T07:12:14+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "00d3dfd0b6bb03d52651135f344a39ed51acc7c7",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.68.0 (#5046)",
+        "at": "2026-09-03T07:02:13+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "d8ddacfbaf573bcddff7499b704c10f7dc22dcb2",
         "subject": "fix(import): keep a sidecar's diagnosis, drop its suppressed branches, and free repo-wide release (#5047)",
@@ -467,22 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v1.62.2 (#4976)",
         "at": "2026-09-02T04:28:21+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b0186b85d419426503deab2407683c645e1d1816",
-        "subject": "feat(mcp): add shared UI builder HTTP transport (#4975)",
-        "at": "2026-09-02T04:28:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "802b84b87fb52b1ce9be38776f15c82b84380c96",
-        "subject": "refactor(xr): move renderer to compose-preview-xr (#4972)",
-        "at": "2026-09-02T04:13:29+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
