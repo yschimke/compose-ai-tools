@@ -7,8 +7,9 @@ Auto-rendered by the integration matrix from [`android/wear-os-samples@main`](ht
 - Exercises the full Android render pipeline end-to-end
   (renderer-android AAR resolution + Robolectric launch) plus
   the daemon round-trip (spawn → render → edit → re-render).
-- Runs with isolated-projects + configuration-cache enabled, so
-  it doubles as the IP/CC end-to-end cell. No build-script
+- Runs with the configuration cache enabled, so it doubles as
+  the CC end-to-end cell. Isolated Projects is turned off, as
+  the CLI does on every auto-injected run. No build-script
   workarounds applied.
 - The gallery below is the clean baseline render, captured
   *before* the daemon round-trip edits a source file, so the
@@ -18,6 +19,7 @@ Auto-rendered by the integration matrix from [`android/wear-os-samples@main`](ht
 ### Workarounds applied by the integration harness
 
 - Source: [`android/wear-os-samples@main`](https://github.com/android/wear-os-samples/tree/main)
+- Extra Gradle args: `-Dorg.gradle.isolated-projects=false -Dorg.gradle.unsafe.isolated-projects=false`.
 - No source or build-script workarounds — the project renders against the locally-built plugin snapshot as-is.
 
 ## app
