@@ -172,13 +172,25 @@ object ComponentSnippets {
       "while",
     )
 
-  private fun escapeIfKeyword(name: String): String = if (name in HARD_KEYWORDS) "`$name`" else name
+  /**
+   * The parameter's qualified type, falling back to the rendered spelling under `kotlin.` when the
+   * record predates [TargetParameter.typeFqn].
+   *
+   * Shared with [ScreenGenerator] rather than duplicated: both have to decide "is this actually
+   * `kotlin.String`?", and two implementations of that question is how one of them starts emitting
+   * `""` for `com.example.String` again.
+   */
+  internal fun qualifiedTypeOf(parameter: TargetParameter): String =
+    parameter.typeFqn ?: "kotlin.${parameter.type}"
+
+  internal fun escapeIfKeyword(name: String): String =
+    if (name in HARD_KEYWORDS) "`$name`" else name
 
   /** Escapes each segment of an import path, since any one of them may be a keyword. */
-  private fun escapeCallableIfKeyword(callable: String): String =
+  internal fun escapeCallableIfKeyword(callable: String): String =
     callable.split('.').joinToString(".") { escapeIfKeyword(it) }
 
-  private fun placeholderFor(parameter: TargetParameter): String? {
+  internal fun placeholderFor(parameter: TargetParameter): String? {
     if (parameter.nullable) return "null"
     val type = parameter.type
     // A record written before `nullable` existed defaults it to `false`, so a persisted v1
@@ -192,7 +204,7 @@ object ComponentSnippets {
     // `String` exactly like `kotlin.String`, and answering `""` for the first emits source that
     // does not compile. A record written before `typeFqn` existed has null here and falls back to
     // the spelling, which is what it always did — no worse, and no silent retraction.
-    return when (parameter.typeFqn ?: "kotlin.$type") {
+    return when (qualifiedTypeOf(parameter)) {
       "kotlin.String" -> "\"\""
       "kotlin.Boolean" -> "false"
       "kotlin.Int" -> "0"

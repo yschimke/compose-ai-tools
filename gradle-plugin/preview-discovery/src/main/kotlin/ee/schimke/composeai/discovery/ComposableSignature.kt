@@ -215,6 +215,7 @@ internal object ComposableSignature {
   private fun requiredOptInsOf(method: MethodInfo): List<String> =
     method.annotationInfo
       .orEmpty()
+      .filterNot { it.name in COMPILER_INSERTED_MARKERS }
       .filter { annotation ->
         annotation.classInfo?.annotationInfo?.any { it.name in OPT_IN_MARKER_ANNOTATIONS } == true
       }
@@ -224,6 +225,31 @@ internal object ComposableSignature {
 
   private val OPT_IN_MARKER_ANNOTATIONS =
     setOf("kotlin.RequiresOptIn", "androidx.annotation.RequiresOptIn")
+
+  /**
+   * Opt-in markers the **Compose compiler** stamps onto a JVM method, which no source caller has to
+   * apply.
+   *
+   * These carry `@RequiresOptIn` and so pass the check above, but ordinary code calls `Card` and
+   * `Text` without opting into anything — the annotations describe how the compiler tracked the
+   * function's composable target, not a contract the author asked callers to accept. Reporting them
+   * put `@OptIn(InternalComposeApi::class)` on generated screens, which is worse than noise: it
+   * tells a consumer to opt into Compose's internals to place a button.
+   *
+   * Verified rather than assumed — a generated screen calling `Card`, `Text` and `Button` compiles
+   * with these annotations stripped, which is what says they were never required.
+   *
+   * A denylist because no shape rule separates them: an author-written `@ExperimentalMaterial3Api`
+   * and a compiler-written `@ComposableInferredTarget` are both `@RequiresOptIn` annotations on the
+   * same method, and only their provenance differs.
+   */
+  private val COMPILER_INSERTED_MARKERS =
+    setOf(
+      "androidx.compose.runtime.ComposableInferredTarget",
+      "androidx.compose.runtime.ComposableOpenTarget",
+      "androidx.compose.runtime.ComposableTarget",
+      "androidx.compose.runtime.InternalComposeApi",
+    )
 
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
