@@ -66,6 +66,14 @@ object ComponentSnippets {
         "declares type parameters that a call omitting defaulted arguments cannot infer"
       )
     }
+    // The same reason as an extension receiver, one the parameter list cannot show: a context is
+    // not a value parameter, so nothing in the printed call would hint that a `Theme` has to be in
+    // scope around it.
+    if (record.hasContextReceivers) {
+      return ComponentSnippet.Refused(
+        "declares a context receiver or parameter, which a generated wrapper cannot supply"
+      )
+    }
     record.symbol.receiver?.let { receiver ->
       return ComponentSnippet.Refused(
         "declared on $receiver, so a call site needs that scope around it"

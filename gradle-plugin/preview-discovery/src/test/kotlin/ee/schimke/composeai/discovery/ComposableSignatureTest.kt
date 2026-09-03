@@ -93,12 +93,20 @@ class ComposableSignatureTest {
   }
 
   @Test
-  fun `a nested marker is reported by its binary name, which is not its source spelling`() {
-    // Not a wish: this is what ClassGraph hands the producer, and `$` is not a nesting separator
-    // in Kotlin source. `ScreenGenerator` converts it back before emitting `@OptIn`, and this is
-    // the test that says the conversion has something real to convert.
+  fun `a nested marker is recorded in source notation, not by its binary name`() {
+    // ClassGraph hands over `MarkerHolder$NestedApi`. The source name is rebuilt from the nesting
+    // chain here, at the one place that can see it — an emitter replacing every `$` with `.` would
+    // also corrupt a top-level marker whose backticked name legitimately contains one.
     assertThat(optInsOf("nestedMarkerComponent"))
-      .containsExactly("ee.schimke.composeai.discovery.MarkerHolder\$NestedApi")
+      .containsExactly("ee.schimke.composeai.discovery.MarkerHolder.NestedApi")
+  }
+
+  @Test
+  fun `a top-level marker whose name contains a dollar keeps it`() {
+    // The other half of the nesting question, and why replacing every `$` was wrong: this marker
+    // has no outer class, so its name is already what source spells.
+    assertThat(optInsOf("dollarMarkerComponent"))
+      .containsExactly("ee.schimke.composeai.discovery.Api\$Experimental")
   }
 
   /** As [parametersOf], for the knob view of the same fixtures. */

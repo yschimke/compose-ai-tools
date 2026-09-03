@@ -66,6 +66,7 @@ object ComponentRecords {
             descriptor = target.descriptor,
             callableFromAnotherFile = target.callableFromAnotherFile,
             hasTypeParameters = target.hasTypeParameters,
+            hasContextReceivers = target.hasContextReceivers,
             requiredOptIns = target.requiredOptIns,
             androidxOptIns = target.androidxOptIns,
           )
@@ -101,6 +102,7 @@ object ComponentRecords {
         existing.signatureKnown = true
         existing.callableFromAnotherFile = target.callableFromAnotherFile
         existing.hasTypeParameters = target.hasTypeParameters
+        existing.hasContextReceivers = target.hasContextReceivers
         existing.requiredOptIns = target.requiredOptIns
         existing.androidxOptIns = target.androidxOptIns
       } else if (
@@ -177,6 +179,7 @@ object ComponentRecords {
     var descriptor: String? = null,
     var callableFromAnotherFile: Boolean = true,
     var hasTypeParameters: Boolean = false,
+    var hasContextReceivers: Boolean = false,
     var requiredOptIns: List<String> = emptyList(),
     var androidxOptIns: List<String> = emptyList(),
   ) {
@@ -207,6 +210,7 @@ object ComponentRecords {
           callableFromAnotherFile = callableFromAnotherFile,
           hasTypeParameters = hasTypeParameters,
           overloadsCollided = overloadsCollided,
+          hasContextReceivers = hasContextReceivers,
           requiredOptIns = requiredOptIns,
           androidxOptIns = androidxOptIns,
         )

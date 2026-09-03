@@ -1459,6 +1459,11 @@ data class PreviewTarget(
    */
   val hasTypeParameters: Boolean = false,
   /**
+   * Whether the composable declares a context receiver or context parameter, which a generated
+   * wrapper cannot supply — see `ComposableSignatureInfo.hasContextReceivers`.
+   */
+  val hasContextReceivers: Boolean = false,
+  /**
    * Fully-qualified `@RequiresOptIn` markers the declaration carries, which a generated wrapper
    * must apply itself — see `ComposableSignatureInfo.requiredOptIns`.
    */

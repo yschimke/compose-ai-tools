@@ -1,5 +1,6 @@
 package ee.schimke.composeai.discovery
 
+import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import kotlin.metadata.KmClassifier
@@ -61,6 +62,14 @@ internal data class ComposableSignatureInfo(
    * emptyList())` cannot be called as `Picker()`.
    */
   val hasTypeParameters: Boolean,
+  /**
+   * Whether the composable declares a context receiver or context parameter.
+   *
+   * `context(Theme) @Composable fun Widget()` is callable only where a `Theme` is in scope, and a
+   * generated wrapper supplies none. Nothing in the rendered parameter list says so — the context
+   * is not a value parameter — so a call site would be printed and would not compile.
+   */
+  val hasContextReceivers: Boolean,
   /**
    * Fully-qualified `@RequiresOptIn` marker annotations on the declaration
    * (`androidx.compose.material3.ExperimentalMaterial3Api`).
@@ -142,6 +151,7 @@ internal object ComposableSignature {
         callableFromAnotherFile =
           fn.visibility == Visibility.PUBLIC || fn.visibility == Visibility.INTERNAL,
         hasTypeParameters = fn.typeParameters.isNotEmpty(),
+        hasContextReceivers = hasContextRequirement(fn),
         requiredOptIns = requiredOptInsOf(method, OPT_IN_MARKER_ANNOTATIONS),
         androidxOptIns = requiredOptInsOf(method, setOf("androidx.annotation.RequiresOptIn")),
         receiver =
@@ -245,9 +255,45 @@ internal object ComposableSignature {
       .filter { annotation ->
         annotation.classInfo?.annotationInfo?.directOnly()?.any { it.name in mechanisms } == true
       }
-      .map { it.name }
+      .map { sourceNameOf(it) }
       .distinct()
       .sorted()
+
+  /**
+   * Whether [fn] can only be called where some context is in scope.
+   *
+   * **Partial, and deliberately so.** `context(Theme)` compiled by an older toolchain lands in
+   * `contextReceiverTypes`, which is what this reads. Kotlin 2.2 onwards records the same
+   * declaration as a context *parameter* instead, and `KmFunction.contextParameters` is gated on an
+   * opt-in marker that itself requires API version 2.2 — this module targets 2.0, so the accessor
+   * cannot be referenced here at all.
+   *
+   * So a component compiled by a 2.2+ toolchain with a context parameter is still admitted and
+   * still produces a call that does not compile. That is a real gap, named here rather than hidden
+   * behind a check that looks total: closing it needs this module's API version raised, which is a
+   * build-wide decision and not this change's to make.
+   */
+  @OptIn(kotlin.metadata.ExperimentalContextReceivers::class)
+  @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+  private fun hasContextRequirement(fn: KmFunction): Boolean = fn.contextReceiverTypes.isNotEmpty()
+
+  /**
+   * An annotation class's name as Kotlin source spells it.
+   *
+   * ClassGraph reports the **binary** name, where `$` separates a nested class from its outer one —
+   * but `$` is also legal inside a backticked top-level name (``annotation class
+   * `Api${'$'}Experimental` ``), so replacing every `$` with `.` corrupts the second case while
+   * fixing the first. The nesting chain says which is which, so the source name is rebuilt from it
+   * here, once, and the emitter gets a name it can print verbatim.
+   */
+  private fun sourceNameOf(annotation: AnnotationInfo): String {
+    val info = annotation.classInfo ?: return annotation.name
+    val outers = info.outerClasses?.reversed().orEmpty()
+    if (outers.isEmpty()) return annotation.name
+    val packageName = annotation.name.substringBeforeLast('.', "")
+    val nesting = (outers.map { it.simpleName } + info.simpleName).joinToString(".")
+    return if (packageName.isEmpty()) nesting else "$packageName.$nesting"
+  }
 
   private val OPT_IN_MARKER_ANNOTATIONS =
     setOf("kotlin.RequiresOptIn", "androidx.annotation.RequiresOptIn")

@@ -109,3 +109,16 @@ class MarkerHolder {
 }
 
 @Suppress("unused") @MarkerHolder.NestedApi fun nestedMarkerComponent() {}
+
+/** A top-level marker whose backticked name legitimately contains a `$`. */
+@RequiresOptIn("Fixture-only marker.")
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.FUNCTION)
+annotation class `Api$Experimental`
+
+@Suppress("unused") @`Api$Experimental` fun dollarMarkerComponent() {}
+
+// No context-receiver fixture: this module's language version cannot express either spelling
+// (`context(Foo)` needs -Xcontext-receivers, `context(f: Foo)` needs language version 2.4). The
+// refusal a recorded context produces is covered in ComponentSnippetsTest instead; the metadata
+// read itself has no fixture here, which ComposableSignature.hasContextRequirement says plainly.

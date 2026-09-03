@@ -76,6 +76,23 @@ object ScreenGenerator {
         listOf("screen name `${document.name}` is not a usable Kotlin function name")
       )
     }
+    // A record older than `androidxOptIns` carries every marker in `requiredOptIns` with no way to
+    // say which mechanism declared it, and guessing `kotlin.OptIn` is what this whole split exists
+    // to stop. Refused only when such a record actually carries markers — an old catalog with no
+    // opt-ins at all is unambiguous and still generates.
+    if (components.schemaVersion < COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA) {
+      val unclassifiable =
+        components.components.filter { it.code?.requiredOptIns?.isNotEmpty() == true }
+      if (unclassifiable.isNotEmpty()) {
+        return Result.Refused(
+          unclassifiable.map {
+            "`${it.canonicalId}` carries opt-in markers from schema ${components.schemaVersion}, " +
+              "which did not record whether each needs `kotlin.OptIn` or " +
+              "`androidx.annotation.OptIn`"
+          }
+        )
+      }
+    }
     val byId = components.components.associateBy { it.canonicalId }
     // Two components can share a simple name (`com.a.Badge`, `com.b.Badge`), and a screen can share
     // one with a component it calls — `fun HomeScreen()` calling a `HomeScreen` component would
@@ -209,10 +226,17 @@ object ScreenGenerator {
             // scalar loses (a literal cannot be a function type, so `literal` refuses it), but the
             // slot's children would never be visited otherwise — the fourth branch that rejects a
             // node and would drop its subtree.
+            //
+            // Only when the slot loop above did not already walk them. It walks the children of
+            // any slot it rejected, so for a parameter that is not a composable slot both paths
+            // fire, every reason below is duplicated, and a document conflicted at each level
+            // doubles the work per level.
             if (children != null) {
               reasons +=
                 "`${record.symbol.name}`.`${parameter.name}` is set as both a value and a slot"
-              children.forEach { node(it, depth + 1, inReceiverScope || hasReceiver(parameter)) }
+              if (parameter.composableSlot) {
+                children.forEach { node(it, depth + 1, inReceiverScope || hasReceiver(parameter)) }
+              }
             }
           }
           children != null &&
@@ -350,20 +374,19 @@ object ScreenGenerator {
    * reserved in Kotlin".
    */
   private fun isUsableIdentifier(name: String): Boolean =
-    KOTLIN_IDENTIFIER.matches(name) &&
-      !ComponentSnippets.isHardKeyword(name) &&
-      name.any { it != '_' }
+    isIdentifier(name) && !ComponentSnippets.isHardKeyword(name) && name.any { it != '_' }
 
   /**
-   * The source spelling of an opt-in marker's class name.
+   * An opt-in marker, spelled for source.
    *
-   * ClassGraph reports a nested annotation by its **binary** name — `com.example.Api$Experimental`
-   * — and `$` is not a nesting separator in Kotlin source, so emitting it verbatim produces an
-   * annotation the compiler rejects. The segments are then keyword-escaped like any other path,
-   * because a marker under `com.`when`` is spelled without the backticks in the binary name too.
+   * The name arrives already in source notation — the producer rebuilds a nested marker's name from
+   * its nesting chain, because `$` is a nesting separator in a binary name and an ordinary
+   * character inside a backticked one, and only the chain tells them apart. All that is left here
+   * is keyword escaping, since a marker under `com.`when`` is spelled without backticks anywhere it
+   * is recorded.
    */
   private fun markerReference(marker: String): String =
-    ComponentSnippets.escapeCallableIfKeyword(marker.replace('$', '.'))
+    ComponentSnippets.escapeCallableIfKeyword(marker)
 
   /**
    * The bytes [value] occupies as a JVM constant-pool string.
@@ -405,5 +428,16 @@ object ScreenGenerator {
    */
   private val RESERVED_BY_THE_WRAPPER = setOf("Composable")
 
-  private val KOTLIN_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
+  /**
+   * Kotlin's own identifier rule: `(Letter | '_') (Letter | '_' | UnicodeDigit)*`.
+   *
+   * Not `[A-Za-z_][A-Za-z0-9_]*`. `Übersicht`, `画面` and `généré` are identifiers Kotlin accepts
+   * without backticks, and an ASCII-only rule refused documents that were never wrong — a refusal
+   * costs nothing to the compiler and everything to whoever named their screen in their own
+   * language.
+   */
+  private fun isIdentifier(name: String): Boolean =
+    name.isNotEmpty() &&
+      (name[0].isLetter() || name[0] == '_') &&
+      name.all { it.isLetter() || it.isDigit() || it == '_' }
 }

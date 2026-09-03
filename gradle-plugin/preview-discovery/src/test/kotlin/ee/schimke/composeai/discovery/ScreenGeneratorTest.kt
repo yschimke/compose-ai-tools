@@ -619,24 +619,114 @@ class ScreenGeneratorTest {
   }
 
   @Test
-  fun `a nested opt-in marker is emitted in source notation, not its binary name`() {
-    // ClassGraph reports a marker declared inside a class as `com.example.Api${'$'}Experimental`,
-    // and
-    // `${'$'}` is not a nesting separator in Kotlin source. `ComposableSignatureTest` proves that
-    // is
-    // really the shape the producer records.
-    val fancy =
+  fun `an opt-in marker is emitted exactly as recorded, dollars and all`() {
+    // The producer rebuilds a nested marker's name from its nesting chain, so what arrives here is
+    // already source notation. The emitter must not second-guess it: a top-level marker whose
+    // backticked name contains a `$` is spelled with the `$`, and rewriting every one to `.` would
+    // reference a class that does not exist. `ComposableSignatureTest` covers both producer halves.
+    val nested =
       component(
-        "Fancy",
-        "com.example.Fancy",
+        "Nested",
+        "com.example.Nested",
+        emptyList(),
+        requiredOptIns = listOf("com.example.Api.Experimental"),
+      )
+    val dollar =
+      component(
+        "Dollar",
+        "com.example.Dollar",
         emptyList(),
         requiredOptIns = listOf("com.example.Api${'$'}Experimental"),
       )
 
-    val source =
-      emitted(ScreenDocument("Screen", ScreenNode(fancy.canonicalId)), catalog(fancy)).source
+    assertThat(emitted(ScreenDocument("A", ScreenNode(nested.canonicalId)), catalog(nested)).source)
+      .contains("@OptIn(com.example.Api.Experimental::class)")
+    assertThat(emitted(ScreenDocument("B", ScreenNode(dollar.canonicalId)), catalog(dollar)).source)
+      .contains("@OptIn(com.example.Api${'$'}Experimental::class)")
+  }
 
-    assertThat(source).contains("@OptIn(com.example.Api.Experimental::class)")
+  @Test
+  fun `a non-ASCII but valid Kotlin name is accepted`() {
+    // `Übersicht` and `画面` need no backticks in Kotlin. An ASCII-only rule refused documents that
+    // were never wrong.
+    assertThat(
+        emitted(ScreenDocument("Übersicht", ScreenNode(text.canonicalId)), catalog(text)).source
+      )
+      .contains("fun Übersicht()")
+    assertThat(emitted(ScreenDocument("画面", ScreenNode(text.canonicalId)), catalog(text)).source)
+      .contains("fun 画面()")
+    assertThat(
+        ScreenGenerator.generate(
+          ScreenDocument("Screen", ScreenNode(text.canonicalId)),
+          catalog(text),
+          packageName = "généré.écran",
+        )
+      )
+      .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+  }
+
+  @Test
+  fun `a record older than the opt-in mechanism split is refused when it carries markers`() {
+    val guarded =
+      component(
+        "Guarded",
+        "com.example.Guarded",
+        emptyList(),
+        requiredOptIns = listOf("com.example.SomeApi"),
+      )
+    val plain = component("Plain", "com.example.Plain", emptyList())
+    fun legacy(vararg records: ComponentRecord) =
+      ComponentRecordFile(
+        schemaVersion = COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA - 1,
+        module = "app",
+        variant = "debug",
+        components = records.toList(),
+      )
+
+    // Such a record cannot say whether its marker needs `kotlin.OptIn` or the AndroidX one, and
+    // guessing is what the split exists to stop.
+    assertThat(
+        (ScreenGenerator.generate(
+            ScreenDocument("Screen", ScreenNode(guarded.canonicalId)),
+            legacy(guarded),
+          ) as ScreenGenerator.Result.Refused)
+          .reasons
+          .first()
+      )
+      .contains("did not record whether")
+    // An old catalog with no opt-ins at all is unambiguous, and still generates.
+    assertThat(
+        ScreenGenerator.generate(
+          ScreenDocument("Screen", ScreenNode(plain.canonicalId)),
+          legacy(plain),
+        )
+      )
+      .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+  }
+
+  @Test
+  fun `a conflicted non-slot parameter reports its children once, not twice`() {
+    // Both the slot-validation loop and the argument branch can reach these children. Walking them
+    // in both duplicates every reason and doubles the work per conflicted level.
+    val labelled =
+      component(
+        "Labelled",
+        "com.example.Labelled",
+        listOf(TargetParameter("label", "String", typeFqn = "kotlin.String")),
+      )
+    val screen =
+      ScreenDocument(
+        "Screen",
+        ScreenNode(
+          labelled.canonicalId,
+          arguments = mapOf("label" to ScreenValue.Text("hi")),
+          slots = mapOf("label" to listOf(ScreenNode("app/com.example.GoneKt.Gone"))),
+        ),
+      )
+
+    val reasons = refusal(screen, catalog(labelled))
+
+    assertThat(reasons.filter { it.contains("Gone") }).hasSize(1)
   }
 
   @Test
