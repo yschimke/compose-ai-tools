@@ -535,11 +535,44 @@ private constructor(
     error("pollNotification($method) timed out after $timeout. Stderr=\n${dumpStderr()}")
   }
 
-  /** Polls a `renderFinished` notification whose `params.id == previewId`. */
-  fun pollRenderFinishedFor(previewId: String, timeout: Duration): JsonObject =
-    pollNotificationMatching("renderFinished", timeout) { msg ->
-      msg["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull == previewId
+  /**
+   * Polls a `renderFinished` notification whose `params.id == previewId`.
+   *
+   * A `renderFailed` for the **same** id ends the wait immediately, carrying the daemon's typed
+   * error into the failure message. Without that, a preview the daemon cannot render at all costs
+   * the caller its whole timeout and reports as a bare "timed out" with the actual diagnosis buried
+   * in the stderr dump — which is how a broken Android S3.5 clone read as a 120s stall rather than
+   * the linkage error it was. Failures for *other* ids are still dropped, so scenarios that render
+   * a bad and a good preview together (S5) are unaffected.
+   */
+  fun pollRenderFinishedFor(previewId: String, timeout: Duration): JsonObject {
+    val deadline = System.currentTimeMillis() + timeout.inWholeMilliseconds
+    while (System.currentTimeMillis() < deadline) {
+      val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
+      val msg = notifications.poll(remaining, TimeUnit.MILLISECONDS)
+      if (msg == null) {
+        if (!process.isAlive) {
+          error(
+            "pollRenderFinishedFor($previewId): subprocess exited " +
+              "(code=${process.exitValue()}) before the expected notification arrived. " +
+              "Stderr=\n${dumpStderr()}"
+          )
+        }
+        continue
+      }
+      val seenMethod = msg["method"]?.jsonPrimitive?.contentOrNull
+      val seenId = msg["params"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+      if (seenId != previewId) continue
+      if (seenMethod == "renderFinished") return msg
+      if (seenMethod == "renderFailed") {
+        error(
+          "pollRenderFinishedFor($previewId): daemon reported renderFailed instead — " +
+            "${msg["params"]?.jsonObject?.get("error")}. Stderr=\n${dumpStderr()}"
+        )
+      }
     }
+    error("pollRenderFinishedFor($previewId) timed out after $timeout. Stderr=\n${dumpStderr()}")
+  }
 
   /** Polls a `renderStarted` notification whose `params.id == previewId`. */
   fun pollRenderStartedFor(previewId: String, timeout: Duration): JsonObject =

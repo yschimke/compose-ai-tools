@@ -79,9 +79,11 @@ class S3_5RecompileSaveLoopRealModeTest {
     val mutableInternalName = "ee/schimke/composeai/daemon/MutableSquare"
     val mutableClassFile = "$mutableInternalName.class"
 
-    // Source classes we clone into MutableSquare. Same FQN across both targets — testFixtures of
-    // the chosen target are on the harness's *test* classpath via the Real(Desktop|Android)
-    // launcher's classpath sysprop.
+    // Source class we clone into MutableSquare. Both targets declare `RedSquare` / `BlueSquare` at
+    // this FQN, but in *different* fixtures — `:daemon:desktop`'s testFixtures and
+    // `:daemon:android`'s — and the two files have long since diverged beyond those two
+    // composables. The bytes therefore have to come from the fixture of the target under test; see
+    // [sourceClassBytesFrom].
     val sourceClass = "ee.schimke.composeai.daemon.RedFixturePreviewsKt"
     val sourceInternal = sourceClass.replace('.', '/')
 
@@ -93,20 +95,25 @@ class S3_5RecompileSaveLoopRealModeTest {
         }
     val mutableClassPath = File(tempUserClassesDir, mutableClassFile).apply { parentFile.mkdirs() }
 
-    // Locate the RedFixturePreviewsKt bytes on the harness's *test* classpath. ClassLoader's
-    // resource lookup routes through the parent loader → the test JVM's `java.class.path` →
-    // testFixtures jar / dir.
+    // The Android daemon's classpath — resolved here rather than in the launcher branch below
+    // because the clone's source bytes come off it under `-Ptarget=android`.
+    val androidDaemonClasspath: List<File>? =
+      if (target == "android") {
+        RealAndroidHarnessLauncher.classpathFromProperty()
+          ?: run {
+            Assume.assumeTrue(
+              "Skipping S3.5 android — `composeai.harness.androidDaemonClasspath` unset.",
+              false,
+            )
+            return
+          }
+      } else null
+
     val sourceBytes =
-      Thread.currentThread().contextClassLoader.getResourceAsStream("$sourceInternal.class")?.use {
-        it.readBytes()
+      when (target) {
+        "android" -> sourceClassBytesFrom(androidDaemonClasspath!!, "$sourceInternal.class")
+        else -> sourceClassBytesFromTestClasspath("$sourceInternal.class")
       }
-        ?: javaClass.classLoader.getResourceAsStream("$sourceInternal.class")?.use {
-          it.readBytes()
-        }
-        ?: error(
-          "S3.5: $sourceInternal.class not found on the harness test classpath; " +
-            "the testFixtures dependency must expose it"
-        )
 
     // Multi-iteration cycle exposes the "first edit updates, subsequent edits stick" failure mode
     // — a single recompile pass (red → blue) was sufficient to verify the disposable child loader
@@ -172,19 +179,10 @@ class S3_5RecompileSaveLoopRealModeTest {
           )
         }
         "android" -> {
-          val classpath =
-            RealAndroidHarnessLauncher.classpathFromProperty()
-              ?: run {
-                Assume.assumeTrue(
-                  "Skipping S3.5 android — `composeai.harness.androidDaemonClasspath` unset.",
-                  false,
-                )
-                return
-              }
           RealAndroidHarnessLauncher(
             rendersDir = rendersDir,
             previewsManifest = manifestFile,
-            classpath = classpath,
+            classpath = androidDaemonClasspath!!,
             extraJvmArgs =
               listOf("-Dcomposeai.daemon.userClassDirs=${tempUserClassesDir.absolutePath}"),
           )
@@ -290,14 +288,68 @@ class S3_5RecompileSaveLoopRealModeTest {
   }
 
   /**
+   * Reads `[resourceName]` (an internal-name `.class` path) out of the harness's own *test*
+   * classpath. `ClassLoader`'s resource lookup routes through the parent loader → the test JVM's
+   * `java.class.path` → `:daemon:desktop`'s testFixtures jar / dir, which is the fixture the
+   * desktop daemon renders against.
+   */
+  private fun sourceClassBytesFromTestClasspath(resourceName: String): ByteArray =
+    Thread.currentThread().contextClassLoader.getResourceAsStream(resourceName)?.use {
+      it.readBytes()
+    }
+      ?: javaClass.classLoader.getResourceAsStream(resourceName)?.use { it.readBytes() }
+      ?: error(
+        "S3.5: $resourceName not found on the harness test classpath; " +
+          "the testFixtures dependency must expose it"
+      )
+
+  /**
+   * Reads `[resourceName]` out of [classpath] — the entries (directories and jars) the spawned
+   * daemon itself runs with.
+   *
+   * **Why not the harness's own test classpath, as desktop does.** The harness's `java.class.path`
+   * carries `:daemon:desktop`'s testFixtures, so under `-Ptarget=android` that lookup returns the
+   * *desktop* fixture's `RedFixturePreviewsKt` — a class the Robolectric sandbox then has to link
+   * against `:daemon:android`'s runtime. The two fixtures share only the composables the scenarios
+   * name; everything else drifted apart long ago (desktop-only `RangeSlider`, `ripple`,
+   * key-event and `InsetFocusRingTheme` code; Android-only Wear, resources and Material-icon code).
+   * Cloning the desktop file class into the sandbox therefore drags desktop-only references into a
+   * class the sandbox has to resolve, and a render that cannot link its preview class never
+   * completes — which is how the Android leg reported this as a bare `renderFinished` timeout after
+   * #5002 added `InsetFocusRingTheme` to the desktop fixture. Taking the bytes off the daemon's own
+   * classpath keeps the clone on one Compose line, whichever target is under test.
+   */
+  private fun sourceClassBytesFrom(classpath: List<File>, resourceName: String): ByteArray {
+    for (entry in classpath) {
+      if (entry.isDirectory) {
+        val candidate = File(entry, resourceName)
+        if (candidate.isFile) return candidate.readBytes()
+      } else if (entry.isFile) {
+        val fromJar =
+          try {
+            java.util.zip.ZipFile(entry).use { zip ->
+              zip.getEntry(resourceName)?.let { zip.getInputStream(it).use { s -> s.readBytes() } }
+            }
+          } catch (_: java.io.IOException) {
+            null // Not a zip, or unreadable — the next entry may still carry the class.
+          }
+        if (fromJar != null) return fromJar
+      }
+    }
+    error(
+      "S3.5: $resourceName not found on the spawned daemon's classpath " +
+        "(${classpath.size} entries); the target's testFixtures must be on it"
+    )
+  }
+
+  /**
    * Clones [sourceBytes] (a Kotlin file-class containing [sourceMethod] as a `@Composable`) into a
    * fresh class with FQN [targetInternal] whose [targetMethod] is the byte-for-byte copy of
-   * [sourceMethod]. Other methods on the source class are dropped — we only care about a single
-   * composable.
+   * [sourceMethod]. Every other method is carried over unrenamed; only the static initializer is
+   * dropped (see the comment inside).
    *
    * Implementation: ASM's [ClassRemapper] handles internal-name rewriting (the source class's
-   * self-references); a custom [ClassVisitor] filters down to the synthetic `<init>` + the named
-   * composable method only.
+   * self-references); a custom [ClassVisitor] renames the named composable and filters `<clinit>`.
    */
   private fun cloneAsMutableSquare(
     sourceBytes: ByteArray,
@@ -321,21 +373,13 @@ class S3_5RecompileSaveLoopRealModeTest {
     // collisions between renamed and original methods are deliberately avoided by picking
     // [targetMethod] = `MutableSquare` which doesn't exist on the source.
     //
-    // The one method that is NOT copied is the static initializer. The bytes always come from
-    // `:daemon:desktop`'s fixture (the harness's *test* classpath carries that testFixtures jar;
-    // the Android daemon's classpath arrives as a text file the subprocess reads, so it is never
-    // the source of these bytes), while under `-Ptarget=android` the clone is loaded inside the
-    // Robolectric sandbox over `:daemon:android`'s classpath — which carries that module's own
-    // copy of the fixture. `<clinit>` wires the file's top-level properties, none of which
-    // [sourceMethod] touches: `RedSquare` / `BlueSquare` are a `Box` with a background colour and
-    // read no static state. Copying it made this test fail the moment a top-level property in the
-    // desktop fixture named a type the Android fixture does not have — #5002's
-    // `val insetFocusRing: InsetFocusRingTheme? by lazy { … }`, whose initialisation resolves
-    // `InsetFocusRingTheme`, a class only the desktop fixture declares. The sandbox has nothing to
-    // resolve it against, so initialising the clone fails, the render never completes, and this
-    // test reports it as a bare `renderFinished` timeout — which is how the Android leg went red
-    // on `main` from #5002 onwards while the desktop leg stayed green. Dropping the initializer
-    // keeps the clone to what it is for: one composable, loaded from a directory the daemon swaps.
+    // The one method that is NOT copied is the static initializer. `<clinit>` wires the file's
+    // top-level properties, none of which [sourceMethod] touches — `RedSquare` / `BlueSquare` are
+    // a `Box` with a background colour and read no static state — so running it buys the clone
+    // nothing and costs it every top-level property's initialisation (reflective material3 probes,
+    // `by lazy` delegates, fixtures reaching for classes a bare user-class directory has no reason
+    // to carry). Dropping it keeps the clone to what it is for: one composable, loaded from a
+    // directory the daemon swaps.
     val filter =
       object : ClassVisitor(Opcodes.ASM9, ClassRemapper(writer, remapper)) {
         override fun visitMethod(
