@@ -200,7 +200,7 @@ class ScreenGeneratorTest {
     // Qualified, not imported: two markers can share a simple name across packages, so the
     // shortened form is ambiguous rather than merely ugly.
     assertThat(emitted.source)
-      .contains("@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)")
+      .contains("@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)")
     assertThat(emitted.source)
       .doesNotContain("import androidx.compose.material3.ExperimentalMaterial3Api")
     assertThat(emitted.requiredOptIns)
@@ -398,7 +398,7 @@ class ScreenGeneratorTest {
 
     // `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` would not compile.
     assertThat(source)
-      .contains("@OptIn(com.a.ExperimentalApi::class, com.b.ExperimentalApi::class)")
+      .contains("@kotlin.OptIn(com.a.ExperimentalApi::class, com.b.ExperimentalApi::class)")
   }
 
   @Test
@@ -488,7 +488,7 @@ class ScreenGeneratorTest {
     val source =
       emitted(ScreenDocument("Screen", ScreenNode(fancy.canonicalId)), catalog(fancy)).source
 
-    assertThat(source).contains("@OptIn(com.`when`.Api::class)")
+    assertThat(source).contains("@kotlin.OptIn(com.`when`.Api::class)")
   }
 
   @Test
@@ -641,9 +641,9 @@ class ScreenGeneratorTest {
       )
 
     assertThat(emitted(ScreenDocument("A", ScreenNode(nested.canonicalId)), catalog(nested)).source)
-      .contains("@OptIn(com.example.Api.Experimental::class)")
+      .contains("@kotlin.OptIn(com.example.Api.Experimental::class)")
     assertThat(emitted(ScreenDocument("B", ScreenNode(dollar.canonicalId)), catalog(dollar)).source)
-      .contains("@OptIn(com.example.`Api${'$'}Experimental`::class)")
+      .contains("@kotlin.OptIn(com.example.`Api${'$'}Experimental`::class)")
   }
 
   @Test
@@ -667,42 +667,26 @@ class ScreenGeneratorTest {
   }
 
   @Test
-  fun `a record older than the opt-in mechanism split is refused when it carries markers`() {
-    val guarded =
-      component(
-        "Guarded",
-        "com.example.Guarded",
-        emptyList(),
-        requiredOptIns = listOf("com.example.SomeApi"),
-      )
+  fun `a catalog older than the current schema is refused outright`() {
+    // Not "refused when it carries markers": a schema-1 record also cannot say whether a component
+    // needs a context receiver, and every field added since would need its own exception here. One
+    // rule, and a stale catalog is regenerated rather than squinted at.
     val plain = component("Plain", "com.example.Plain", emptyList())
-    fun legacy(vararg records: ComponentRecord) =
+    val legacy =
       ComponentRecordFile(
         schemaVersion = COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA - 1,
         module = "app",
         variant = "debug",
-        components = records.toList(),
+        components = listOf(plain),
       )
 
-    // Such a record cannot say whether its marker needs `kotlin.OptIn` or the AndroidX one, and
-    // guessing is what the split exists to stop.
-    assertThat(
-        (ScreenGenerator.generate(
-            ScreenDocument("Screen", ScreenNode(guarded.canonicalId)),
-            legacy(guarded),
-          ) as ScreenGenerator.Result.Refused)
-          .reasons
-          .first()
-      )
-      .contains("did not record whether")
-    // An old catalog with no opt-ins at all is unambiguous, and still generates.
-    assertThat(
-        ScreenGenerator.generate(
-          ScreenDocument("Screen", ScreenNode(plain.canonicalId)),
-          legacy(plain),
-        )
-      )
-      .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+    val reasons =
+      (ScreenGenerator.generate(ScreenDocument("Screen", ScreenNode(plain.canonicalId)), legacy)
+          as ScreenGenerator.Result.Refused)
+        .reasons
+
+    assertThat(reasons).hasSize(1)
+    assertThat(reasons.single()).contains("Re-run discovery")
   }
 
   @Test
@@ -833,13 +817,13 @@ class ScreenGeneratorTest {
     val emitted =
       emitted(ScreenDocument("Screen", ScreenNode(guarded.canonicalId)), catalog(guarded))
 
-    assertThat(emitted.source).contains("@OptIn(com.example.KotlinApi::class)")
+    assertThat(emitted.source).contains("@kotlin.OptIn(com.example.KotlinApi::class)")
     assertThat(emitted.source)
       .contains(
         "@androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalLens::class])"
       )
     // The AndroidX marker is not also written under `kotlin.OptIn`, which would reject it.
-    assertThat(emitted.source).doesNotContain("@OptIn(androidx.camera")
+    assertThat(emitted.source).doesNotContain("@kotlin.OptIn(androidx.camera")
     assertThat(emitted.source).doesNotContain("ExperimentalLens::class, ")
     // Both are still reported to the caller: the split is about which annotation carries them.
     assertThat(emitted.requiredOptIns)

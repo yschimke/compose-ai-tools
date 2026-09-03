@@ -76,22 +76,28 @@ object ScreenGenerator {
         listOf("screen name `${document.name}` is not a usable Kotlin function name")
       )
     }
-    // A record older than `androidxOptIns` carries every marker in `requiredOptIns` with no way to
-    // say which mechanism declared it, and guessing `kotlin.OptIn` is what this whole split exists
-    // to stop. Refused only when such a record actually carries markers — an old catalog with no
-    // opt-ins at all is unambiguous and still generates.
+    // **Schema 1 is refused outright**, rather than read with a growing list of exceptions.
+    //
+    // The first attempt kept reading it and refused only the one thing it could name — markers
+    // whose opt-in mechanism it could not classify. That was too clever twice over: it scanned the
+    // whole catalog, so one gated component nobody placed refused a screen built entirely from
+    // stable ones; and it protected only the field it happened to be about, while a schema-1 record
+    // also cannot say whether a component needs a context receiver, so those still slipped through
+    // with a persisted `code.call` and produced a call the compiler rejects.
+    //
+    // Both are the same shape: this generator's guarantee rests on fields schema 1 does not have,
+    // and every one of them would need its own exception here. One rule instead of a table of them
+    // — a producer emits schema 2, and a catalog older than that is regenerated rather than
+    // squinted at.
     if (components.schemaVersion < COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA) {
-      val unclassifiable =
-        components.components.filter { it.code?.requiredOptIns?.isNotEmpty() == true }
-      if (unclassifiable.isNotEmpty()) {
-        return Result.Refused(
-          unclassifiable.map {
-            "`${it.canonicalId}` carries opt-in markers from schema ${components.schemaVersion}, " +
-              "which did not record whether each needs `kotlin.OptIn` or " +
-              "`androidx.annotation.OptIn`"
-          }
+      return Result.Refused(
+        listOf(
+          "components.json is schema ${components.schemaVersion}; this generator needs at least " +
+            "$COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA, which is the first to record whether a " +
+            "component needs a context receiver and which opt-in mechanism each marker uses. " +
+            "Re-run discovery to regenerate the catalog."
         )
-      }
+      )
     }
     val byId = components.components.associateBy { it.canonicalId }
     // Two components can share a simple name (`com.a.Badge`, `com.b.Badge`), and a screen can share
@@ -125,10 +131,12 @@ object ScreenGenerator {
       appendLine()
       if (optIns.isNotEmpty()) {
         appendLine(
-          // Qualified, not imported and shortened: two markers can share a simple name from
-          // different packages, and `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` is
-          // ambiguous rather than merely ugly. Same reasoning as the component calls below.
-          optIns.joinToString(", ", "@OptIn(", ")") { "${markerReference(it)}::class" }
+          // Both halves qualified. The markers because two can share a simple name from different
+          // packages, and `@OptIn(ExperimentalApi::class, ExperimentalApi::class)` is ambiguous
+          // rather than merely ugly; the annotation itself because the generated file sits in a
+          // package the caller chose, and a package declaring its own `OptIn` would capture the
+          // bare name — the AndroidX branch below was already written qualified.
+          optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${markerReference(it)}::class" }
         )
       }
       if (androidxOptIns.isNotEmpty()) {
