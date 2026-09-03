@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.69.0](https://github.com/yschimke/compose-ai-tools/compare/v1.68.0...v1.69.0) (2026-09-03)
+
+
+### Features
+
+* **import:** let an import declare Gradle properties for its throwaway checkout ([#5045](https://github.com/yschimke/compose-ai-tools/issues/5045)) ([cc2b0ed](https://github.com/yschimke/compose-ai-tools/commit/cc2b0eddabb5d01adba9d95cb8429b17fa3eedae))
+
+
+### Bug Fixes
+
+* **ci:** say which direction the rc-players pin has drifted ([#5049](https://github.com/yschimke/compose-ai-tools/issues/5049)) ([b82d9f4](https://github.com/yschimke/compose-ai-tools/commit/b82d9f4ff25b9b785cdb99dcf250f7974fce8b8e))
+* **import:** keep a sidecar's diagnosis, drop its suppressed branches, and free repo-wide release ([#5047](https://github.com/yschimke/compose-ai-tools/issues/5047)) ([d8ddacf](https://github.com/yschimke/compose-ai-tools/commit/d8ddacfbaf573bcddff7499b704c10f7dc22dcb2))
+* **import:** write Gradle properties with python, and print the diagnosed sidecar ([#5050](https://github.com/yschimke/compose-ai-tools/issues/5050)) ([e3e96ad](https://github.com/yschimke/compose-ai-tools/commit/e3e96ad8a944069c25d3c796b7fefed740cc5aa8))
+* **render:** a theme fan-out's suffixed outputs count as written ([#5044](https://github.com/yschimke/compose-ai-tools/issues/5044)) ([113cadf](https://github.com/yschimke/compose-ai-tools/commit/113cadf4e171a8204faaa37a0df5b63f253d668a))
+
 ## [1.68.0](https://github.com/yschimke/compose-ai-tools/compare/v1.67.0...v1.68.0) (2026-09-03)
 
 
