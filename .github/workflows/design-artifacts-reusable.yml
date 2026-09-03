@@ -859,7 +859,12 @@ jobs:
           # catalog would look complete while re-rendering something else. `debug` itself is exempt:
           # passing the default explicitly is identical to omitting the input, and refusing it would
           # only punish a caller for being explicit.
-          if [ "$INPUT_VARIANT" != "debug" ] && [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] \
+          # Single-module only. The repository-wide path emits --source-repo and --source-ref and
+          # deliberately NOT --source-module, so its catalog is not source-buildable and there is no
+          # rebuild for a variant to be lost from. Refusing it there would block a legitimate
+          # repository-wide `variant: release` for a contract that is never written.
+          if [ -n "$INPUT_MODULE" ] && [ "$INPUT_MODULES" != "all" ] \
+             && [ "$INPUT_VARIANT" != "debug" ] && [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] \
              && [ "$INPUT_PUBLISH_LIVE_BUNDLE" != "true" ]; then
             echo "::error title=variant input::'${INPUT_VARIANT}' cannot be carried by the" \
                  "source-rebuild live path — the catalog's source block records repo, ref and module" \
@@ -3032,14 +3037,47 @@ jobs:
                   print("  (unparseable sidecar: %s)" % exc)
                   raise SystemExit
               print("  %s: %s" % (d.get("exception", "?"), (d.get("message") or "").strip()))
-              lines = (d.get("stackTrace") or "").splitlines()
+              # `diagnosis` first, and never dropped: on a native-load failure it carries the missing
+              # library or glibc explanation, while the cascade sidecars after it have only a generic
+              # NoClassDefFoundError. Print 25 of those without it and the log again says nothing.
+              diagnosis = (d.get("diagnosis") or "").strip()
+              if diagnosis:
+                  print("  diagnosis: " + diagnosis)
+                  runtime = d.get("runtime") or {}
+                  context = " ".join(
+                      "%s=%s" % (k, runtime[k])
+                      for k in ("javaVersion", "osArch", "ldLibraryPath")
+                      if runtime.get(k)
+                  )
+                  if context:
+                      print("    " + context)
+              # Drop `Suppressed:` branches before looking for causes. printStackTrace nests by indentation
+              # alone: a suppressed throwable's caption, frames AND its own `Caused by:` chain print one level
+              # deeper, so a cleanup exception thrown out of `use {}` would otherwise be reported as a peer of
+              # the real render cause. Same rule as RenderErrorTrace.primaryLines.
+              lines = []
+              suppressed_indent = None
+              for line in (d.get("stackTrace") or "").splitlines():
+                  if not line.strip():
+                      continue
+                  indent = len(line) - len(line.lstrip(" \t"))
+                  if suppressed_indent is not None and indent < suppressed_indent:
+                      suppressed_indent = None
+                  if line.lstrip().startswith("Suppressed:"):
+                      suppressed_indent = indent if suppressed_indent is None else min(suppressed_indent, indent)
+                      continue
+                  if suppressed_indent is not None:
+                      continue
+                  lines.append(line)
               causes = [i for i, l in enumerate(lines) if l.lstrip().startswith("Caused by:")]
               for i in causes:
                   print("  " + lines[i].strip())
                   for frame in lines[i + 1 : i + 3]:
+                      if frame.lstrip().startswith("Caused by:"):
+                          break
                       print("    " + frame.strip())
-              if not causes:
-                  # No cause chain, so the top frames are all there is to show.
+              if not causes and not diagnosis:
+                  # No cause chain and no diagnosis, so the top frames are all there is to show.
                   for frame in lines[1:6]:
                       print("    " + frame.strip())
           SIDECAR_PY
