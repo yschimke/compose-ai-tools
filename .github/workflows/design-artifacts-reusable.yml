@@ -50,6 +50,21 @@ on:
         required: false
         type: string
         default: ''
+      gradle-properties:
+        description: >
+          Comma-separated `key=value` Gradle properties to set in the THROWAWAY checkout's
+          gradle.properties, for an upstream whose build configuration the render needs to differ
+          on. Import mode only.
+
+          The pipeline already rewrites that file for the cases it knows about — dependency
+          verification, Isolated Projects, the render variant — each as its own step with its own
+          reason. This is the escape hatch for the ones it does not: a property an import has
+          established, in its own notes, that its render needs. It is not a general "configure the
+          upstream" knob, and a property that turns out to be needed by more than one import
+          belongs in a step of its own instead.
+        required: false
+        type: string
+        default: ''
       render-runtime-projects:
         description: >
           Comma-separated Gradle project paths to put on the rendered module's RUNTIME classpath
@@ -481,6 +496,7 @@ env:
   INPUT_MODULE: ${{ inputs.module }}
   INPUT_VARIANT: ${{ inputs.variant }}
   INPUT_RENDER_RUNTIME_PROJECTS: ${{ inputs.render-runtime-projects }}
+  INPUT_GRADLE_PROPERTIES: ${{ inputs.gradle-properties }}
   INPUT_MODULES: ${{ inputs.modules }}
   INPUT_EXTRA_MODULE: ${{ inputs.extra-module }}
   INPUT_RENDER_SHARDS: ${{ inputs.render-shards }}
@@ -1490,6 +1506,36 @@ jobs:
           } >> "$build_file"
           echo "added ${INPUT_RENDER_RUNTIME_PROJECTS} to ${build_file#"$RENDER_DIR/"} on runtimeOnly configurations"
 
+      # Properties an import has established its render needs, which the pipeline has no step of
+      # its own for. Written before the steps below so a property those steps own — verification,
+      # Isolated Projects, the variant — still wins over anything named here.
+      - name: Apply the import's Gradle properties to the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.gradle-properties != '' }}
+        env:
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
+        run: |
+          set -euo pipefail
+          IFS=','
+          for composeai_entry in $INPUT_GRADLE_PROPERTIES; do
+            unset IFS
+            composeai_key="${composeai_entry%%=*}"
+            composeai_value="${composeai_entry#*=}"
+            # Escaped for sed's regex, not just interpolated: a Gradle property key is full of dots.
+            composeai_pattern="$(printf '%s' "$composeai_key" | sed 's/[.[\*^$/]/\\&/g')"
+            if [ -f "$GRADLE_PROPERTIES" ] &&
+               grep -q "^[[:space:]]*${composeai_pattern}[[:space:]]*=" "$GRADLE_PROPERTIES"; then
+              sed -i "s|^[[:space:]]*${composeai_pattern}[[:space:]]*=.*|${composeai_key}=${composeai_value}|" \
+                "$GRADLE_PROPERTIES"
+              echo "rewrote ${composeai_key}=${composeai_value} in the throwaway checkout"
+            else
+              printf '\n# compose-preview import: declared by this import.\n%s=%s\n' \
+                "$composeai_key" "$composeai_value" >> "$GRADLE_PROPERTIES"
+              echo "set ${composeai_key}=${composeai_value} in the throwaway checkout"
+            fi
+            IFS=','
+          done
+          unset IFS
+
       - name: Pin the render variant in the upstream checkout
         if: ${{ inputs.upstream-repository != '' && inputs.variant != '' }}
         env:
@@ -2220,6 +2266,36 @@ jobs:
             printf '}\n'
           } >> "$build_file"
           echo "added ${INPUT_RENDER_RUNTIME_PROJECTS} to ${build_file#"$RENDER_DIR/"} on runtimeOnly configurations"
+
+      # Properties an import has established its render needs, which the pipeline has no step of
+      # its own for. Written before the steps below so a property those steps own — verification,
+      # Isolated Projects, the variant — still wins over anything named here.
+      - name: Apply the import's Gradle properties to the upstream checkout
+        if: ${{ inputs.upstream-repository != '' && inputs.gradle-properties != '' }}
+        env:
+          GRADLE_PROPERTIES: ${{ env.RENDER_DIR }}/gradle.properties
+        run: |
+          set -euo pipefail
+          IFS=','
+          for composeai_entry in $INPUT_GRADLE_PROPERTIES; do
+            unset IFS
+            composeai_key="${composeai_entry%%=*}"
+            composeai_value="${composeai_entry#*=}"
+            # Escaped for sed's regex, not just interpolated: a Gradle property key is full of dots.
+            composeai_pattern="$(printf '%s' "$composeai_key" | sed 's/[.[\*^$/]/\\&/g')"
+            if [ -f "$GRADLE_PROPERTIES" ] &&
+               grep -q "^[[:space:]]*${composeai_pattern}[[:space:]]*=" "$GRADLE_PROPERTIES"; then
+              sed -i "s|^[[:space:]]*${composeai_pattern}[[:space:]]*=.*|${composeai_key}=${composeai_value}|" \
+                "$GRADLE_PROPERTIES"
+              echo "rewrote ${composeai_key}=${composeai_value} in the throwaway checkout"
+            else
+              printf '\n# compose-preview import: declared by this import.\n%s=%s\n' \
+                "$composeai_key" "$composeai_value" >> "$GRADLE_PROPERTIES"
+              echo "set ${composeai_key}=${composeai_value} in the throwaway checkout"
+            fi
+            IFS=','
+          done
+          unset IFS
 
       - name: Pin the render variant in the upstream checkout
         if: ${{ inputs.upstream-repository != '' && inputs.variant != '' }}
