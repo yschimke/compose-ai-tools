@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.70.0](https://github.com/yschimke/compose-ai-tools/compare/v1.69.0...v1.70.0) (2026-09-03)
+
+
+### Features
+
+* **discovery:** give a target its source name, JVM name and descriptor ([#5054](https://github.com/yschimke/compose-ai-tools/issues/5054)) ([988f6f8](https://github.com/yschimke/compose-ai-tools/commit/988f6f8fd29a753e6a7c93f9624505f2fe22185c))
+
+
+### Bug Fixes
+
+* **actions:** make install's `latest` mean latest usable, and name the publication window ([#5058](https://github.com/yschimke/compose-ai-tools/issues/5058)) ([67e1201](https://github.com/yschimke/compose-ai-tools/commit/67e120133ba4bcbe064c55064b09c91d61de975a))
+* **cli:** resolve the build root by settings file, and name the plugin publication race ([#5052](https://github.com/yschimke/compose-ai-tools/issues/5052)) ([865eec8](https://github.com/yschimke/compose-ai-tools/commit/865eec84a09d5bc06055c0021341fdbf65f894fa))
+* turn Isolated Projects off for auto-injected runs, and keep the S3.5 clone out of the fixture's static initializer ([#5060](https://github.com/yschimke/compose-ai-tools/issues/5060)) ([312befe](https://github.com/yschimke/compose-ai-tools/commit/312befe1d35ec2a1c645c4c6ff231fd1bcbb31b2))
+
 ## [1.69.0](https://github.com/yschimke/compose-ai-tools/compare/v1.68.0...v1.69.0) (2026-09-03)
 
 
