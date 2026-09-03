@@ -619,3 +619,34 @@ test("a scroll or resize re-aims an unlocked reading", () => {
   assert.match(html, /addEventListener\("scroll", reaim, \{ passive: true, capture: true \}\);/);
   assert.match(html, /addEventListener\("resize", reaim\);/);
 });
+
+test("readiness does not outlive the hover that established it", () => {
+  // Every early return in pickAt is a point that could not be read. Leaving the previous hover's
+  // answer standing lets the click that follows lock onto it — hidden panel, no live hover for
+  // the load to replay, pointer moves ignored: exactly the state the lock guard exists to stop.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /PICK\.ready = false;\n\s*const tr = shot\.closest\("tr\.crow"\);/);
+});
+
+test("the live panel does not become the pointer target", () => {
+  // Docked opposite or not, a 264px fixed panel can fall under the cursor on a narrow viewport;
+  // the pointer target then becomes the panel, #rows sees pointerleave, and the reading flickers.
+  // A frozen panel takes the pointer back so its text can be selected.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /\.pick \{ pointer-events:none; \}/);
+  assert.match(html, /\.pick--locked \{ border-color:var\(--accent\); pointer-events:auto; \}/);
+});
+
+test("only a frozen reading is announced", () => {
+  // pickAt rewrites the whole panel on every pointermove, so a live region around it would queue
+  // a stream of pixel values over everything else a screen-reader user is doing.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.doesNotMatch(html, /<aside class="pick" id="pick" hidden aria-live/);
+  assert.match(html, /<p class="pick-live" id="pick-live" aria-live="polite"><\/p>/);
+  assert.match(html, /if \(PICK\.locked\) announce\(frozenSummary\(\)\);/);
+  // Released readings stop being announced, and a refreshed frozen one is re-announced.
+  assert.match(html, /announce\(""\);/);
+  assert.match(html, /if \(PICK\.locked && LAST\.shot && LAST\.shot\.closest\("tr\.crow"\) === tr\) announce\(frozenSummary\(\)\);/);
+  // Off-screen rather than display:none, which would take it out of the accessibility tree.
+  assert.match(html, /\.pick-live \{ position:absolute; width:1px; height:1px;/);
+});

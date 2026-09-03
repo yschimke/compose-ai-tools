@@ -689,6 +689,23 @@ const SCORER = String.raw`
     for (const m of document.querySelectorAll(".xh")) m.hidden = true;
   }
 
+  // What a screen reader is told, and only when there is something settled to tell: a frozen
+  // reading. During ordinary hover the panel is rewritten on every pointermove, so announcing it
+  // would queue a stream of pixel values over everything else on the page.
+  function announce(text) {
+    const live = pickEl("pick-live");
+    if (live) live.textContent = text;
+  }
+
+  function frozenSummary() {
+    const part = (id) => (pickEl(id) ? pickEl(id).textContent : "");
+    const verdict = part("pick-verdict");
+    return "Frozen reading. " + part("pick-where") +
+      ". figma-svg " + part("pick-svg-val") + ", " + part("pick-svg-sub") +
+      ". render " + part("pick-png-val") + ", " + part("pick-png-sub") +
+      (verdict ? ". " + verdict : "") + ".";
+  }
+
   function hidePick() {
     if (PICK.locked) return;
     // Abandon the pending hover too. An origin-clean copy still in flight resolves into a replay,
@@ -715,6 +732,11 @@ const SCORER = String.raw`
   // the scorer already does before measuring; reusing it is what makes the two reads the
   // same point rather than two points that merely look alike.
   function pickAt(shot, fx, fy) {
+    // Nothing is readable until this call says so. Every return below is a point that could not
+    // be read, and leaving the previous hover's answer standing lets the click that follows lock
+    // onto it — hidden panel, no live hover for the load to replay, and pointer moves ignored,
+    // which is the state the lock exists to prevent.
+    PICK.ready = false;
     const tr = shot.closest("tr.crow");
     const rec = tr && SAMPLES.get(tr);
     const panel = pickEl("pick");
@@ -851,9 +873,11 @@ const SCORER = String.raw`
       if (PICK.locked) {
         PICK.locked = false;
         pickAt(shot, fx, fy);
+        announce("");
       } else {
         pickAt(shot, fx, fy);
         PICK.locked = PICK.ready;
+        if (PICK.locked) announce(frozenSummary());
       }
       const panel = pickEl("pick");
       if (panel) panel.classList.toggle("pick--locked", PICK.locked);
@@ -863,6 +887,7 @@ const SCORER = String.raw`
       PICK.locked = false;
       const panel = pickEl("pick");
       if (panel) panel.classList.remove("pick--locked");
+      announce("");
       hidePick();
     });
   }
@@ -959,8 +984,9 @@ const SCORER = String.raw`
       // Then re-read the point being shown. A frozen reading is the case that needs this: the
       // lock stops pointer moves from refreshing it, so a theme or backdrop change would leave
       // the panel asserting the previous pass's colours — over the previous pass's ground —
-      // against a picture that has moved on.
+      // against a picture that has moved on. Re-announce it too, for the same reason.
       replayPick(tr);
+      if (PICK.locked && LAST.shot && LAST.shot.closest("tr.crow") === tr) announce(frozenSummary());
       const shown = pct.toFixed(1);
       cell.textContent = shown + "%";
       cell.className = "score score--" + grade(pct);
@@ -1301,7 +1327,13 @@ export function renderCompareHtml(catalog, opts = {}) {
     border:1px solid var(--line); border-radius:10px; background:var(--panel); box-shadow:0 8px 28px rgba(0,0,0,0.45);
     font-size:12px; }
   .pick[hidden] { display:none; }
-  .pick--locked { border-color:var(--accent); }
+  /* Transparent to the pointer while it is following the cursor: docked opposite or not, a 264px
+     panel can still fall under the cursor on a narrow viewport, and then the pointer target
+     becomes the panel rather than the row — #rows sees pointerleave, hides it, the row is exposed
+     again, and the reading flickers. A frozen one takes the pointer back so its text can be
+     selected. */
+  .pick { pointer-events:none; }
+  .pick--locked { border-color:var(--accent); pointer-events:auto; }
   .pick--left { left:16px; right:auto; }
   .pick .pick-where { color:var(--muted); font-size:11px; word-break:break-word; }
   .pick .pick-row { display:flex; align-items:center; gap:9px; margin-top:9px; }
@@ -1315,6 +1347,10 @@ export function renderCompareHtml(catalog, opts = {}) {
   .pick .pick-verdict.near { color:var(--warn); }
   .pick .pick-verdict.off { color:var(--bad); }
   .pick .pick-hint { margin-top:8px; color:var(--muted); font-size:10px; }
+  /* The announcement for a frozen reading. Off-screen rather than display:none, which would take
+     it out of the accessibility tree and silence it. */
+  .pick-live { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);
+    clip-path:inset(50%); white-space:nowrap; }
   .badge { position:absolute; top:4px; right:4px; font-size:10px; padding:0 5px; border-radius:999px;
     background:rgba(0,0,0,0.6); color:var(--warn); border:1px solid var(--warn); }
   td.score { text-align:right; font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; white-space:nowrap; width:96px; }
@@ -1366,7 +1402,8 @@ export function renderCompareHtml(catalog, opts = {}) {
   CORS-enabled host: the README's htmlpreview link (images come from <code>raw.githubusercontent.com</code>,
   which allows it) or a local server (<code>python3 -m http.server</code> in the branch).</p>
 </header>
-<aside class="pick" id="pick" hidden aria-live="polite">
+<p class="pick-live" id="pick-live" aria-live="polite"></p>
+<aside class="pick" id="pick" hidden>
   <div class="pick-where" id="pick-where"></div>
   <div class="pick-row">
     <span class="pick-sw" id="pick-svg-sw"></span>
