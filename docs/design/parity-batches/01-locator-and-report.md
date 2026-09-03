@@ -83,6 +83,23 @@ So: override-dependent fields get their own placeholders alongside `RENDER_PLACE
 by `refreshReportLink()` from live viewer state, on the existing **"write an input value, never an
 href"** rule.
 
+> **The viewer went on emitting no locator at all, and that landed later too.** D2 put the form on
+> the focused comparison and the comparison emits a complete block — but the viewer's form was never
+> removed, never redirected, and never taught to write one. It stayed the affordance on every preview
+> page and every catalog grid card, went on telling the reporter that its `parity:` label fed the
+> catalog's issue index, and filed bodies that `buildIssueIndex` skipped as `NO_LOCATOR` by design.
+> Two real reports were lost that way before anyone noticed
+> ([#5000](https://github.com/yschimke/compose-ai-tools/issues/5000)). The viewer now emits the block,
+> naming the preview's first design reference — the same one the comparison link beside it resolves,
+> and a server-side choice rather than the client-side one §6 of the workflow doc found unreliable —
+> and hands the one override-dependent field to its own script as `{{overrides}}`, exactly as this
+> batch prescribed. The `{{rawScores}}` row stays exclusive to the comparison; naming a reference and
+> measuring a score turn out to be two decisions, and inferring the second from the first is what had
+> kept the first off the viewer. The change is the **server's**, so it reaches a catalog when that
+> repository publishes it and reaches this repository's own bundled `serve` when
+> `composeai-preview-serve` is bumped to a release carrying it — the block is not on any deployed
+> viewer until then.
+
 ## Traps
 
 - **Substitute from the displayed frame, not from the controls** — see [D4](00-decisions.md#d4--the-frame-vs-controls-race-in-refreshreportlink).
