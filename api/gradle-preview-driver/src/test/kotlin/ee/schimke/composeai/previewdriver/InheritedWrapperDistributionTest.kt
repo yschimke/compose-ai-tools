@@ -1,10 +1,12 @@
 package ee.schimke.composeai.previewdriver
 
 import java.io.File
+import java.net.URI
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -73,23 +75,83 @@ class InheritedWrapperDistributionTest {
   }
 
   @Test
-  fun `says so when the inherited wrapper pins a checksum it cannot carry over`() {
+  fun `a pinned checksum is refused rather than silently dropped`() {
+    // `useDistribution(URI)` carries a URL and nothing else, so inheriting a pinned distribution
+    // that is not already cached would download and run it with the repository's integrity pin
+    // gone. Refuse — a warning does not protect the invocation that is happening now.
     val repo = dir("pinned")
+    pinnedWrapper(repo)
+    val warnings = mutableListOf<String>()
+    val resolved =
+      inheritedWrapperDistribution(
+        dir("pinned/nested"),
+        warn = { warnings += it },
+        gradleUserHome = dir("empty-gradle-home"),
+      )
+    assertNull(resolved, "a distribution whose checksum cannot be honoured must not be inherited")
+    assertTrue(warnings.single().contains("distributionSha256Sum"), warnings.toString())
+  }
+
+  @Test
+  fun `a pinned distribution already in the wrapper cache is inherited`() {
+    // The wrapper downloaded and verified this copy; reusing it involves no download, so no
+    // unverified bytes reach the build.
+    val repo = dir("cached")
+    pinnedWrapper(repo)
+    val home = dir("cached-gradle-home")
+    val unpacked = File(home, "wrapper/dists/gradle-9.7-bin/a1b2c3")
+    unpacked.mkdirs()
+    File(unpacked, "gradle-9.7-bin.zip.ok").writeText("")
+
+    val warnings = mutableListOf<String>()
+    val resolved =
+      inheritedWrapperDistribution(
+        dir("cached/nested"),
+        warn = { warnings += it },
+        gradleUserHome = home,
+      )
+    assertEquals(
+      "https://services.gradle.org/distributions/gradle-9.7-bin.zip",
+      resolved?.toString(),
+    )
+    assertTrue(warnings.isEmpty(), "nothing to warn about when no download is needed: $warnings")
+  }
+
+  @Test
+  fun `the warning does not leak credentials from a private distribution URL`() {
+    val repo = dir("private")
+    File(repo, "gradle/wrapper").mkdirs()
+    File(repo, "gradle/wrapper/gradle-wrapper.properties")
+      .writeText(
+        "distributionUrl=https\\://ci:s3cr3t-token@dist.internal/gradle-9.7-bin.zip?sig=abc\n" +
+          "distributionSha256Sum=aaaabbbbccccdddd\n"
+      )
+    val warnings = mutableListOf<String>()
+    inheritedWrapperDistribution(
+      dir("private/nested"),
+      warn = { warnings += it },
+      gradleUserHome = dir("empty-home-2"),
+    )
+    val warning = warnings.single()
+    assertFalse(warning.contains("s3cr3t-token"), warning)
+    assertFalse(warning.contains("sig=abc"), warning)
+    assertTrue(warning.contains("dist.internal"), warning)
+  }
+
+  @Test
+  fun `redaction keeps the host and drops userinfo and query`() {
+    assertEquals(
+      "https://dist.internal/gradle-9.7-bin.zip?…",
+      redactedDistribution(URI("https://ci:s3cr3t@dist.internal/gradle-9.7-bin.zip?sig=abc")),
+    )
+  }
+
+  private fun pinnedWrapper(repo: File) {
     File(repo, "gradle/wrapper").mkdirs()
     File(repo, "gradle/wrapper/gradle-wrapper.properties")
       .writeText(
         "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.7-bin.zip\n" +
           "distributionSha256Sum=aaaabbbbccccdddd\n"
       )
-    val warnings = mutableListOf<String>()
-    val resolved = inheritedWrapperDistribution(dir("pinned/nested")) { warnings += it }
-    assertEquals(
-      "https://services.gradle.org/distributions/gradle-9.7-bin.zip",
-      resolved?.toString(),
-    )
-    assertTrue(
-      warnings.single().contains("distributionSha256Sum"),
-      "expected the dropped checksum to be named; got $warnings",
-    )
   }
 }

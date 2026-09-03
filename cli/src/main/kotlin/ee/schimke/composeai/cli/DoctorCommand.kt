@@ -341,6 +341,15 @@ class DoctorCommand(
 
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
+    // `doctor` is the command people run *because* something is wrong, so it is the last place
+    // that should print the generic "check wrapper/cache access" line when the real cause is that
+    // the plugin version this project asks for isn't published yet (issue #5034).
+    val pin = resolveVersionPin(projectDir, args, fileSystem = fileSystem)
+    val pluginVersion = pin?.version ?: BUNDLE_VERSION
+    val pluginVersionSource = pin?.source?.display
+    val diagnosePublicationRace = { text: String ->
+      pluginResolutionGuidance(text, pluginVersion, pluginVersionSource)
+    }
     // Cheap, disk-only, and independent of the Gradle model — so it runs first and still reports
     // when the model query below fails. A wrong pin is one of the reasons a query fails.
     checkVersionPin(projectDir)
@@ -353,6 +362,7 @@ class DoctorCommand(
             verbose = verbose,
             extraArguments = injectArgs + variantGradleArgs() + gradleWriteLocksArgs(),
           )
+          .apply { failureAdvice = diagnosePublicationRace }
           .use { gc ->
             // Daemon-JVM + Gradle-version snapshot. Runs first so other
             // project-scope checks can compare against the daemon's JDK
@@ -381,20 +391,29 @@ class DoctorCommand(
 
     if (model == null) {
       gradleAccessFailure?.let {
+        val raceGuidance =
+          diagnosePublicationRace(listOfNotNull(it.message, it.detail).joinToString("\n"))
         addCheck(
           DoctorCheck(
             id = "project.gradle-access",
             category = "project",
             status = "error",
-            message = "could not query Gradle project model",
+            message =
+              if (raceGuidance != null)
+                "could not query Gradle project model — the compose-preview plugin " +
+                  "$pluginVersion is not resolvable"
+              else "could not query Gradle project model",
             detail =
               "Gradle ${it.operation} failed: ${it.message}" +
                 (it.detail?.let { d -> " Caused by: $d" } ?: ""),
             remediation =
               DoctorRemediation(
                 summary =
-                  "Ensure the CLI can access the Gradle wrapper, distribution cache, and lock files, then rerun doctor.",
-                commands = listOf("./gradlew help"),
+                  raceGuidance
+                    ?: "Ensure the CLI can access the Gradle wrapper, distribution cache, and lock files, then rerun doctor.",
+                commands =
+                  if (raceGuidance != null) listOf("compose-preview pin <previous-version>")
+                  else listOf("./gradlew help"),
               ),
           )
         )
@@ -434,6 +453,7 @@ class DoctorCommand(
               fs.take(10).joinToString("; ") { "${it.path}: ${it.message}" } +
               if (fs.size > 10) " (… and ${fs.size - 10} more)" else ""
           }
+      val raceGuidance = model.failures.firstNotNullOfOrNull { diagnosePublicationRace(it.message) }
       addCheck(
         DoctorCheck(
           id = "project.plugin-applied",
@@ -444,7 +464,8 @@ class DoctorCommand(
           remediation =
             DoctorRemediation(
               summary =
-                if (failureDetail != null)
+                if (raceGuidance != null) raceGuidance
+                else if (failureDetail != null)
                   "Projects failed to configure during discovery — rerun with --verbose for full " +
                     "Gradle output. If the plugin is applied via a convention plugin, the CLI now " +
                     "skips auto-inject automatically; otherwise apply it in your module's " +

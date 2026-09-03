@@ -545,6 +545,7 @@ class GradleConnection(
 internal fun inheritedWrapperDistribution(
   projectDir: File,
   warn: (String) -> Unit = System.err::println,
+  gradleUserHome: File? = defaultGradleUserHome(),
 ): URI? {
   if (wrapperProperties(projectDir) != null) return null
   var dir: File? = projectDir.parentFile
@@ -554,17 +555,22 @@ internal fun inheritedWrapperDistribution(
         val loaded = Properties().apply { props.inputStream().use { load(it) } }
         val url = loaded.getProperty("distributionUrl")?.trim()?.takeIf { it.isNotEmpty() }
         val resolved = url?.let { wrapperDistributionUri(it, props) } ?: return@runCatching null
-        // The Tooling API's `useDistribution(URI)` carries a URL and nothing else — there is no
-        // way to hand it the `distributionSha256Sum` the wrapper would have verified. Say so
-        // rather than silently dropping a repository's integrity pin: the distribution is taken
-        // from the shared wrapper cache, which is where `../gradlew` put the copy it verified.
-        if (loaded.getProperty("distributionSha256Sum")?.isNotBlank() == true) {
+        val pinned = loaded.getProperty("distributionSha256Sum")?.trim()?.takeIf { it.isNotEmpty() }
+        if (pinned != null && !distributionAlreadyInstalled(resolved, gradleUserHome)) {
+          // The Tooling API's `useDistribution(URI)` carries a URL and nothing else — there is
+          // no way to hand it the `distributionSha256Sum` the wrapper would have verified. So
+          // when the distribution is not already in the wrapper's cache, inheriting the URL
+          // would mean downloading and executing it with the repository's integrity pin
+          // dropped. Refuse instead: the Tooling API falls back to its own distribution, which
+          // is at least not a checksum this build asked for and did not get.
           warn(
-            "compose-preview: ${props.path} pins distributionSha256Sum, which the Gradle " +
-              "Tooling API cannot be given. Using the wrapper's distribution URL as-is " +
-              "($resolved); run ./gradlew once from ${props.parentFile?.parentFile?.parent} to " +
-              "have the wrapper download and verify it first."
+            "compose-preview: not inheriting the Gradle distribution from ${props.path} — it " +
+              "pins distributionSha256Sum, the Tooling API cannot be given a checksum, and " +
+              "${redactedDistribution(resolved)} is not in the wrapper cache yet. Run " +
+              "./gradlew once from ${props.parentFile?.parentFile?.path} (which verifies and " +
+              "caches it), or give this build its own gradle/wrapper/gradle-wrapper.properties."
           )
+          return@runCatching null
         }
         resolved
       }
@@ -585,6 +591,39 @@ private fun wrapperDistributionUri(url: String, props: File): URI? = runCatching
   if (uri.isAbsolute) uri else props.parentFile.toURI().resolve(url)
 }
   .getOrNull()
+
+/**
+ * True when [distribution] is already unpacked in the wrapper's own cache, which means the wrapper
+ * downloaded it and — where a `distributionSha256Sum` was pinned — verified it. Reusing that copy
+ * involves no download, so no unverified bytes reach this build.
+ *
+ * Matched by the cache's directory layout (`wrapper/dists/<name>/<hash>/…` with the `.ok` marker
+ * Gradle writes after a successful unpack), not by recomputing Gradle's internal URL hash — the
+ * layout is stable and public, the hash function is neither.
+ */
+private fun distributionAlreadyInstalled(distribution: URI, gradleUserHome: File?): Boolean {
+  val home = gradleUserHome ?: return false
+  val name = distribution.path?.substringAfterLast('/')?.removeSuffix(".zip") ?: return false
+  val dists = File(home, "wrapper/dists/$name")
+  val versions = dists.listFiles()?.filter { it.isDirectory } ?: return false
+  return versions.any { dir -> dir.listFiles()?.any { it.name.endsWith(".ok") } == true }
+}
+
+internal fun defaultGradleUserHome(): File? =
+  System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() }?.let(::File)
+    ?: System.getProperty("user.home")?.takeIf { it.isNotBlank() }?.let { File(it, ".gradle") }
+
+/**
+ * A distribution URL safe to print: userinfo and query string removed.
+ *
+ * A private distribution can carry credentials in either — `https://user:token@host/…` or a signed
+ * `?X-Amz-Signature=…` — and a warning goes to stderr, which in CI means the build log.
+ */
+internal fun redactedDistribution(uri: URI): String = runCatching {
+  URI(uri.scheme, null, uri.host, uri.port, uri.path, null, null).toString() +
+    if (uri.rawQuery != null) "?…" else ""
+}
+  .getOrElse { "(distribution URL withheld)" }
 
 private fun wrapperProperties(dir: File): File? =
   File(dir, "gradle/wrapper/gradle-wrapper.properties").takeIf { it.isFile }
