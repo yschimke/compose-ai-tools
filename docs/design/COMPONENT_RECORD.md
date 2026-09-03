@@ -811,6 +811,33 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > generator that worked in-process while the record persisted something else would have
 > passed the old test and failed every consumer.
 >
+> **Six ways the compile claim was wider than the record could justify.** Persisting
+> the call site drew a review pass over the guarantee itself, and every one of these
+> was real. They share a root cause worth naming: `callSite` was deciding from a
+> *rendered* view of the signature, which is the same trap `nullable` was introduced
+> for one level down.
+>
+> | What broke | Now |
+> | --- | --- |
+> | ``fun `when`(`is`: String)`` printed `when(is = "")` and an import ending `.when` | hard keywords backtick-escaped in the call and every import segment |
+> | merged overloads emitted `Chip()`, which resolves to neither | `overloadsCollided` refuses — the signal was already computed and discarded |
+> | a `@RequiresOptIn` component compiled in its preview and not in a generated wrapper | `code.requiredOptIns` travels with the call; the wrapper applies them |
+> | a `private` composable was advertised as importable | visibility read from metadata; non-public refuses |
+> | `fun <T> Picker(items: List<T> = emptyList())` emitted `Picker()` | a declaration with type parameters refuses |
+> | `com.example.String` got `""`, because it renders exactly like `kotlin.String` | placeholders match `TargetParameter.typeFqn`, never the spelling |
+>
+> The opt-in one is the only one not answered by refusing. Refusing would drop most of
+> Material 3 over something a caller fixes with one annotation on the wrapper it
+> already has to write, so the call is emitted and the markers travel beside it — and
+> the compile gate generates `@OptIn(…)` wrappers, so that half of the contract is
+> compiler-checked rather than asserted.
+>
+> Two of these defaulted permissively on purpose. `callableFromAnotherFile` defaults
+> to true and `typeFqn` falls back to the rendered spelling, because a record written
+> before those fields existed carries neither, and reading "not recorded" as "private"
+> or "not a Kotlin scalar" would silently retract call sites that were already being
+> published.
+>
 > **Measured reach.** Over a 28-component Material 3 surface (buttons, cards, chips,
 > toggles, progress, scaffolding, list and navigation items, dialogs), **26 emit a
 > call site and 2 refuse** — the two being `TextField` / `OutlinedTextField`, whose

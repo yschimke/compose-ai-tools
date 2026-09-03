@@ -12,6 +12,10 @@ class ComponentSnippetsTest {
     receiver: String? = null,
     signatureKnown: Boolean = true,
     parameters: List<TargetParameter> = emptyList(),
+    callableFromAnotherFile: Boolean = true,
+    hasTypeParameters: Boolean = false,
+    overloadsCollided: Boolean = false,
+    requiredOptIns: List<String> = emptyList(),
   ) =
     ComponentRecord(
       canonicalId = "app/$jvmOwner.$name",
@@ -25,6 +29,10 @@ class ComponentSnippetsTest {
         ),
       parameters = parameters,
       signatureKnown = signatureKnown,
+      callableFromAnotherFile = callableFromAnotherFile,
+      hasTypeParameters = hasTypeParameters,
+      overloadsCollided = overloadsCollided,
+      requiredOptIns = requiredOptIns,
     )
 
   private fun parameter(
@@ -33,10 +41,12 @@ class ComponentSnippetsTest {
     hasDefault: Boolean = false,
     composableSlot: Boolean = false,
     nullable: Boolean = false,
+    typeFqn: String? = null,
   ) =
     TargetParameter(
       name = name,
       type = type,
+      typeFqn = typeFqn,
       hasDefault = hasDefault,
       composableSlot = composableSlot,
       nullable = nullable,
@@ -255,5 +265,90 @@ class ComponentSnippetsTest {
 
     assertThat(snippet.code)
       .isEqualTo("Button(count = 0, id = 0L, fraction = 0f, ratio = 0.0, selected = false)")
+  }
+
+  @Test
+  fun `a keyword name is backtick-escaped in both the call and the import`() {
+    // ``fun `when`(`is`: String)`` is a legal declaration, and metadata hands back the bare names.
+    // They pass the import-identifier filter, so without escaping this prints `when(is = "")` and
+    // an import ending `.when` — neither of which parses.
+    val snippet =
+      emitted(
+        record(
+          jvmOwner = "com.example.ControlsKt",
+          name = "when",
+          callable = "com.example.when",
+          parameters = listOf(parameter("is", "String", typeFqn = "kotlin.String")),
+        )
+      )
+
+    assertThat(snippet.code).isEqualTo("`when`(`is` = \"\")")
+    assertThat(snippet.imports).containsExactly("com.example.`when`")
+  }
+
+  @Test
+  fun `a soft keyword is left alone`() {
+    // `data`, `value`, `by` and friends are legal identifiers; escaping them would be noise.
+    val snippet =
+      emitted(
+        record(
+          name = "Card",
+          callable = "androidx.compose.material3.Card",
+          parameters = listOf(parameter("value", "String", typeFqn = "kotlin.String")),
+        )
+      )
+
+    assertThat(snippet.code).isEqualTo("Card(value = \"\")")
+  }
+
+  @Test
+  fun `a domain type that happens to be named String is refused, not given a string literal`() {
+    // `com.example.String` and `kotlin.String` both render as `String`. Choosing the literal off
+    // that spelling emits `value = ""` for a type that does not accept it.
+    val reason =
+      refusal(
+        record(parameters = listOf(parameter("value", "String", typeFqn = "com.example.String")))
+      )
+
+    assertThat(reason).contains("value: String")
+  }
+
+  @Test
+  fun `a real Kotlin scalar is still matched by its qualified name`() {
+    val snippet =
+      emitted(record(parameters = listOf(parameter("count", "Int", typeFqn = "kotlin.Int"))))
+
+    assertThat(snippet.code).isEqualTo("Button(count = 0)")
+  }
+
+  @Test
+  fun `a private composable is refused because a generated file cannot reach it`() {
+    assertThat(refusal(record(callableFromAnotherFile = false))).contains("public or internal")
+  }
+
+  @Test
+  fun `a generic composable is refused because the call cannot infer its type parameters`() {
+    // `fun <T> Picker(items: List<T> = emptyList())` omits every default, leaving nothing to infer
+    // `T` from, and the record carries no type argument a consumer could supply instead.
+    assertThat(refusal(record(hasTypeParameters = true))).contains("type parameters")
+  }
+
+  @Test
+  fun `collided overloads are refused because no single call site identifies one`() {
+    assertThat(refusal(record(overloadsCollided = true))).contains("overloads collided")
+  }
+
+  @Test
+  fun `required opt-ins travel with the emitted call rather than refusing it`() {
+    // Refusing would drop most of Material 3 over something the caller fixes with one annotation
+    // on the wrapper it already has to write.
+    val snippet =
+      emitted(
+        record(requiredOptIns = listOf("androidx.compose.material3.ExperimentalMaterial3Api"))
+      )
+
+    assertThat(snippet.code).isEqualTo("Button()")
+    assertThat(snippet.requiredOptIns)
+      .containsExactly("androidx.compose.material3.ExperimentalMaterial3Api")
   }
 }

@@ -209,13 +209,29 @@ class ComponentCallSiteCompileFunctionalTest {
    * hiding the rest.
    */
   private fun writeGeneratedCallSites(projectDir: File, emitted: Map<String, ComponentCode>) {
-    val imports = emitted.values.flatMap { it.imports }.toSortedSet()
+    // The markers each call needs, imported once and applied per function below. A component
+    // guarded by `@ExperimentalMaterial3Api` compiles in its own preview because that file opted
+    // in; a generated wrapper inherits nothing, so this is the half of the contract the caller
+    // owns — and compiling it here is what stops `requiredOptIns` being an unchecked claim.
+    val imports =
+      (emitted.values.flatMap { it.imports } + emitted.values.flatMap { it.requiredOptIns })
+        .toSortedSet()
     val body =
       emitted.entries
         .sortedBy { it.key }
         .joinToString("\n\n") { (name, code) ->
+          val optIn =
+            if (code.requiredOptIns.isEmpty()) ""
+            else
+              code.requiredOptIns.joinToString(
+                prefix = "@OptIn(",
+                postfix = "::class)\n",
+                separator = "::class, ",
+              ) {
+                it.substringAfterLast('.')
+              }
           """
-          |@Composable
+          |$optIn@Composable
           |fun Generated$name() {
           |    ${code.call}
           |}

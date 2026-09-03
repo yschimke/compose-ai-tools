@@ -224,6 +224,9 @@ object PreviewTargetInference {
         parameters = signature.parameters,
         receiver = signature.receiver,
         signatureKnown = true,
+        callableFromAnotherFile = signature.callableFromAnotherFile,
+        hasTypeParameters = signature.hasTypeParameters,
+        requiredOptIns = signature.requiredOptIns,
       )
     }
   }
@@ -340,6 +343,10 @@ object PreviewTargetInference {
         parameters = signature?.parameters.orEmpty(),
         receiver = signature?.receiver,
         signatureKnown = signature != null,
+        // Null metadata keeps the permissive defaults: "not recovered" must not read as "private".
+        callableFromAnotherFile = signature?.callableFromAnotherFile ?: true,
+        hasTypeParameters = signature?.hasTypeParameters ?: false,
+        requiredOptIns = signature?.requiredOptIns.orEmpty(),
       )
     )
   }

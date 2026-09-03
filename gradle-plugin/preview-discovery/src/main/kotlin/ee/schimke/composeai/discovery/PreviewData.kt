@@ -1445,6 +1445,24 @@ data class PreviewTarget(
    * told apart here rather than left to be guessed at.
    */
   val signatureKnown: Boolean = false,
+  /**
+   * Whether the composable is `public`/`internal`, and so callable from a file a generator writes.
+   *
+   * Defaults to true — the permissive reading — because a target recorded before this field existed
+   * carried no visibility at all, and treating "not recorded" as "private" would silently retract
+   * call sites that were being published. Only meaningful when [signatureKnown].
+   */
+  val callableFromAnotherFile: Boolean = true,
+  /**
+   * Whether the composable declares type parameters, which a call omitting every defaulted argument
+   * gives the compiler nothing to infer. Only meaningful when [signatureKnown].
+   */
+  val hasTypeParameters: Boolean = false,
+  /**
+   * Fully-qualified `@RequiresOptIn` markers the declaration carries, which a generated wrapper
+   * must apply itself — see `ComposableSignatureInfo.requiredOptIns`.
+   */
+  val requiredOptIns: List<String> = emptyList(),
 )
 
 /**
@@ -1456,6 +1474,16 @@ data class PreviewTarget(
 data class TargetParameter(
   val name: String,
   val type: String,
+  /**
+   * The parameter's **fully-qualified** classifier (`kotlin.String`), or null when not recorded or
+   * not a class type.
+   *
+   * [type] is a deliberately lossy rendering — it prints the simple name so a human can read it —
+   * and `com.example.String` and `kotlin.String` render identically as `String`. A generator that
+   * picks a placeholder literal off that spelling writes `""` for a domain type and produces source
+   * that does not compile, which is the same trap [nullable] exists for one level down.
+   */
+  val typeFqn: String? = null,
   /** True when the parameter declares a default value (so a call site may legally omit it). */
   val hasDefault: Boolean = false,
   /**

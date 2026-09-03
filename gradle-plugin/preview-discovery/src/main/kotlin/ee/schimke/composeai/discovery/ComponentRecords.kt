@@ -64,6 +64,9 @@ object ComponentRecords {
             signatureKnown = target.signatureKnown,
             jvmName = target.jvmName,
             descriptor = target.descriptor,
+            callableFromAnotherFile = target.callableFromAnotherFile,
+            hasTypeParameters = target.hasTypeParameters,
+            requiredOptIns = target.requiredOptIns,
           )
         }
       // Overloads share a canonical id and merge into this one record. Both JVM handles identify
@@ -78,9 +81,11 @@ object ComponentRecords {
       // `Chip-a1b2c3d`.
       if (existing.jvmName != target.jvmName) {
         existing.jvmName = null
+        existing.overloadsCollided = true
       }
       if (existing.descriptor != target.descriptor) {
         existing.descriptor = null
+        existing.overloadsCollided = true
       }
       // One component, many previews: keep the richest signature seen. A target resolved through a
       // path that could not read metadata reports no parameters, and letting that overwrite a
@@ -93,6 +98,9 @@ object ComponentRecords {
         existing.parameters = target.parameters
         existing.receiver = target.receiver
         existing.signatureKnown = true
+        existing.callableFromAnotherFile = target.callableFromAnotherFile
+        existing.hasTypeParameters = target.hasTypeParameters
+        existing.requiredOptIns = target.requiredOptIns
       } else if (
         target.signatureKnown == existing.signatureKnown &&
           target.parameters.size > existing.parameters.size
@@ -165,7 +173,16 @@ object ComponentRecords {
     var signatureKnown: Boolean = false,
     var jvmName: String? = null,
     var descriptor: String? = null,
+    var callableFromAnotherFile: Boolean = true,
+    var hasTypeParameters: Boolean = false,
+    var requiredOptIns: List<String> = emptyList(),
   ) {
+    /**
+     * Set when two targets under this id disagreed about which method they are. Distinct from a
+     * null [descriptor], which is also what an unrecorded one looks like.
+     */
+    var overloadsCollided: Boolean = false
+
     var receiver: String? = symbol.receiver
 
     var bindings: List<ComponentBinding> = emptyList()
@@ -184,6 +201,10 @@ object ComponentRecords {
           slots = slotsOf(parameters),
           bindings = resolvedBindings,
           signatureKnown = signatureKnown,
+          callableFromAnotherFile = callableFromAnotherFile,
+          hasTypeParameters = hasTypeParameters,
+          overloadsCollided = overloadsCollided,
+          requiredOptIns = requiredOptIns,
         )
       // Printed from the finished record, so the snippet is answering the same symbol, parameters
       // and receiver a consumer will read beside it.
