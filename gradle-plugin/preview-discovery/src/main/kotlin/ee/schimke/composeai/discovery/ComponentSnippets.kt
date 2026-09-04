@@ -274,7 +274,13 @@ object ComponentSnippets {
     if (!bare.endsWith(" -> Unit")) return false
     val head = bare.removeSuffix(" -> Unit")
     val open = head.indexOf('(')
-    return open != -1 && head.endsWith(")") && head.substring(open + 1, head.length - 1).isBlank()
+    if (open == -1 || !head.endsWith(")")) return false
+    // Neither value parameters nor a receiver. `DrawScope.() -> Unit` has empty parentheses and is
+    // still not an event callback: Compose runs it while drawing, so a generated body that writes
+    // state invalidates what it just drew and the screen redraws forever. The receiver sits before
+    // the parentheses, which is the only thing distinguishing it from `() -> Unit`.
+    if (head.substring(0, open).isNotBlank()) return false
+    return head.substring(open + 1, head.length - 1).isBlank()
   }
 
   internal fun acceptsBareLambda(type: String): Boolean =

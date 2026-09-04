@@ -223,7 +223,11 @@ object ScreenGenerator {
     val bindingNamesTaken =
       document.state.map(ScreenState::name).toSet() +
         components.components.filter { it.canonicalId in simplyImportable }.map { it.symbol.name } +
-        document.name
+        document.name +
+        // And the package roots, for the same reason a state name may not be one: a component that
+        // cannot claim a simple name is called fully qualified, and `val tintInitial = …` above a
+        // `tintInitial.widgets.Text(...)` captures that root exactly as a declaration would.
+        qualifiedRoots
     val declaredSoFar = mutableSetOf<String>()
     val preamble =
       document.state.map { declared ->
@@ -245,7 +249,13 @@ object ScreenGenerator {
             ?: return@map null
         declaredSoFar += declared.name
         val name = ComponentSnippets.escapeIfKeyword(declared.name)
-        val type = ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn)
+        // Nullability is syntax, not part of any segment's name. Escaping the whole spelling
+        // turned the documented `kotlin.String?` into `kotlin.`String?`` — a backticked classifier
+        // rather than a nullable String — so every nullable state stopped compiling.
+        val nullableType = declared.typeFqn.endsWith("?")
+        val type =
+          ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn.removeSuffix("?")) +
+            if (nullableType) "?" else ""
         // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
         // composable read — `MaterialTheme.colorScheme.primary` is the documented example. Kotlin
         // rejects that inside the lambda even though the same expression is legal one line up, so

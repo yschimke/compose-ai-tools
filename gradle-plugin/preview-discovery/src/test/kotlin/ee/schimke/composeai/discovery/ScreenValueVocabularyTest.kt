@@ -1105,6 +1105,49 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a nullable state type keeps its question mark outside the escaping`() {
+    // Nullability is syntax, not part of a segment's name. Escaping the whole spelling produced
+    // `kotlin.`String?`` — a backticked classifier rather than a nullable String — which broke
+    // every nullable state the moment escaping was added.
+    val result =
+      stateful(listOf(ScreenState("caption", "kotlin.String?", ScreenValue.Text("a"))))
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.String?>(\"a\")")
+    assertThat(result.source).doesNotContain("`String?`")
+  }
+
+  @Test
+  fun `a handler on a receiver lambda is refused`() {
+    // `DrawScope.() -> Unit` has empty parentheses and is not an event callback: Compose runs it
+    // while drawing, so a generated body writing state invalidates what it just drew.
+    val canvas =
+      component(
+        "Canvas",
+        "androidx.compose.foundation.Canvas",
+        listOf(TargetParameter("onDraw", "DrawScope.() -> Unit")),
+        componentIds = listOf("foundation/canvas"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "foundation/canvas",
+              handlers = mapOf("onDraw" to listOf(ScreenAction.Toggle("expanded"))),
+            ),
+          state = listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        ),
+        catalog(canvas),
+        expressionPackages = allowed,
+      )
+
+    val reasons = (result as ScreenGenerator.Result.Refused).reasons
+    assertThat(reasons.single()).contains("which a generated handler cannot satisfy")
+  }
+
+  @Test
   fun `a keyword segment in a state type is written escaped`() {
     val result = stateful(listOf(ScreenState("caption", "example.fun.Type", ScreenValue.Text("a"))))
 
