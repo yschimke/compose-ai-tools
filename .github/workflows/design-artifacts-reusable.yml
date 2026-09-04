@@ -393,7 +393,7 @@ on:
         type: string
         default: ''
       exclude-preview-ids:
-        description: 'IMPORT MODE ONLY. Extra comma-separated preview-id glob patterns to leave unrendered, appended to the ones this workflow always applies. For the preview an import cannot render standalone — one wanting a CompositionLocal, a Hilt entry point or a process-wide singleton that only the host application installs — where the alternative is failing the whole run over a handful of them. Name the ids rather than reaching for allow-incomplete: this leaves every OTHER render failure fatal, so a real regression still stops the run.'
+        description: 'IMPORT MODE ONLY. Extra preview-id glob patterns to leave unrendered, appended to the ones this workflow always applies. Preferred form is a compact JSON array (["*.Screen A_foldable", "*.Media Player_*"]), which is the only form that can carry an id containing a SPACE or a COMMA — both of which a @Preview(name = "…") or a widthDp/heightDp fan-out mints routinely. A comma-separated string is still accepted for callers that predate the array form, with that form''s ambiguity. For the preview an import cannot render standalone — one wanting a CompositionLocal, a Hilt entry point or a process-wide singleton that only the host application installs — where the alternative is failing the whole run over a handful of them. Name the ids rather than reaching for allow-incomplete: this leaves every OTHER render failure fatal, so a real regression still stops the run.'
         required: false
         type: string
         default: ''
@@ -701,9 +701,25 @@ env:
   # one render out of fifty-six (bitwarden's BitwardenBasicDialog_preview was exactly that).
   #
   # Appended rather than replacing, so an import that names its own ids does not silently lose the
-  # app-launching guard. The comma is the delimiter both consumers below already split on, and an
-  # empty caller input leaves the value byte-identical to what it was before this existed.
-  IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && (inputs.exclude-preview-ids != '' && format('activity__*,apptour__*,{0}', inputs.exclude-preview-ids) || 'activity__*,apptour__*') || '' }}
+  # app-launching guard.
+  #
+  # This env var is now the always-on pair ALONE, and its job is to say "import mode" to the `if`s
+  # below; the caller's own patterns are no longer concatenated into it. A comma cannot carry them:
+  # a preview id may contain a comma (a `@Preview(widthDp = …, heightDp = …)` mints
+  # `…Button_width=227dp, height=100dp, dpi=320`) and, far more commonly, a SPACE, because a
+  # `@Preview(name = "Content with HTTP auth dialog")` puts one in the id. Both were unexpressible
+  # while the transport was one comma-joined string, and the caller's answer was to forbid them —
+  # which forbade the ids themselves, not just the shape. So the two halves now meet in a
+  # newline-delimited FILE (`import-exclude.txt`, written per job below) that goes to the CLI's
+  # `--exclude-preview-id-file`, where a line break is the delimiter and nothing inside an id can be
+  # one. Same treatment `gradle-properties` took, and for the same reason.
+  IMPORT_EXCLUDE_PREVIEW_IDS: ${{ inputs.upstream-repository != '' && 'activity__*,apptour__*' || '' }}
+  # The caller's half, verbatim: a compact JSON array (preferred — the form that survives a space or
+  # a comma) or the legacy comma-joined string. Parsed where the file is written, never split here.
+  INPUT_EXCLUDE_PREVIEW_IDS: ${{ inputs.exclude-preview-ids }}
+  # Where that file lands. One path for every step that needs it, so a step cannot read a different
+  # file than the one written.
+  IMPORT_EXCLUDE_PREVIEW_IDS_FILE: ${{ github.workspace }}/import-exclude.txt
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
@@ -1513,6 +1529,63 @@ jobs:
           } >> "$build_file"
           echo "added ${INPUT_RENDER_RUNTIME_PROJECTS} to ${build_file#"$RENDER_DIR/"} on runtimeOnly configurations"
 
+      # The preview ids this import leaves unrendered, as a newline-delimited FILE.
+      #
+      # A file rather than a comma-joined command line because a preview id is not comma-safe and,
+      # more often, not space-safe: `@Preview(name = "Content with HTTP auth dialog")` mints
+      # `…FrontendScreen Content with HTTP auth dialog_foldable`, and a `widthDp`/`heightDp` fan-out
+      # mints `…Button_width=227dp, height=100dp, dpi=320`. Neither can be written in a
+      # comma-separated value at all, and the caller's previous answer — a validator forbidding a
+      # space — ruled out the id rather than the ambiguity. A line break cannot occur inside an id,
+      # so one pattern per line is unambiguous; the CLI reads it with `--exclude-preview-id-file`,
+      # which is delimiter-free end to end and hands Gradle the PATH rather than a re-joined string.
+      #
+      # Always written in import mode, even when the caller named nothing, so every consumer below
+      # reads one file whose existence follows from the mode alone.
+      - name: Collect the import's preview-id exclusions
+        if: ${{ inputs.upstream-repository != '' }}
+        run: |
+          set -euo pipefail
+          # Heredoc body at the block scalar's own indent, so what the shell sees starts at column 0:
+          # indent it for readability and python raises IndentationError before the step does anything.
+          python3 <<'COMPOSEAI_EXCLUDE_PY'
+          import json, os
+
+          # The workflow's own always-on pair. Comma-joined because this half is authored HERE and
+          # is known to contain neither a comma nor a space.
+          patterns = [p for p in os.environ["IMPORT_EXCLUDE_PREVIEW_IDS"].split(",") if p]
+
+          raw = (os.environ.get("INPUT_EXCLUDE_PREVIEW_IDS") or "").strip()
+          if raw.startswith("["):
+              caller = json.loads(raw)
+              if not isinstance(caller, list) or not all(isinstance(p, str) for p in caller):
+                  raise SystemExit("::error::exclude-preview-ids must be a JSON array of strings")
+          else:
+              # The comma-joined form this input used to take. Still accepted so that updating this
+              # workflow and updating a caller are independent deploys rather than a window in which
+              # whichever landed first breaks the other. It carries the ambiguity that motivated the
+              # array form — a comma in an id still splits — so callers should send JSON; nothing
+              # here can recover an id the transport already lost.
+              caller = raw.split(",")
+
+          for pattern in caller:
+              pattern = pattern.strip()
+              if not pattern:
+                  continue
+              if "\n" in pattern or "\r" in pattern:
+                  raise SystemExit(
+                      "::error::exclude-preview-ids entry %r contains a newline, which is this "
+                      "file's delimiter" % pattern
+                  )
+              patterns.append(pattern)
+
+          with open(os.environ["IMPORT_EXCLUDE_PREVIEW_IDS_FILE"], "w", encoding="utf-8") as fh:
+              fh.write("".join(p + "\n" for p in patterns))
+          print("import exclusions (%d):" % len(patterns))
+          for pattern in patterns:
+              print("  %s" % pattern)
+          COMPOSEAI_EXCLUDE_PY
+
       # Properties an import has established its render needs, which the pipeline has no step of
       # its own for. Written before the steps below so a property those steps own — verification,
       # Isolated Projects, the variant — still wins over anything named here.
@@ -1871,11 +1944,10 @@ jobs:
           # driver refuses import + render-shards > 1, because the planner does not know about
           # these ids — and kept deliberately so that teaching the planner is the only thing that
           # combination needs, rather than a second omission to rediscover. Belt to that brace.
-          # IMPORT_EXCLUDE_PREVIEW_IDS is the workflow-owned comma-separated pair of glob patterns,
-          # so append each as one line to the same delimiter-free transport the planner produced.
-          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
-            printf '%s\n' "$IMPORT_EXCLUDE_PREVIEW_IDS" | tr ',' '\n' \
-              >> "$GITHUB_WORKSPACE/shard-exclude.txt"
+          # The import exclusions are already one pattern per line — the same delimiter-free
+          # transport the planner produced — so this is a concatenation, not a re-split.
+          if [ -s "${IMPORT_EXCLUDE_PREVIEW_IDS_FILE:-/nonexistent}" ]; then
+            cat "$IMPORT_EXCLUDE_PREVIEW_IDS_FILE" >> "$GITHUB_WORKSPACE/shard-exclude.txt"
           fi
           exclude=()
           if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
@@ -2312,6 +2384,63 @@ jobs:
             printf '}\n'
           } >> "$build_file"
           echo "added ${INPUT_RENDER_RUNTIME_PROJECTS} to ${build_file#"$RENDER_DIR/"} on runtimeOnly configurations"
+
+      # The preview ids this import leaves unrendered, as a newline-delimited FILE.
+      #
+      # A file rather than a comma-joined command line because a preview id is not comma-safe and,
+      # more often, not space-safe: `@Preview(name = "Content with HTTP auth dialog")` mints
+      # `…FrontendScreen Content with HTTP auth dialog_foldable`, and a `widthDp`/`heightDp` fan-out
+      # mints `…Button_width=227dp, height=100dp, dpi=320`. Neither can be written in a
+      # comma-separated value at all, and the caller's previous answer — a validator forbidding a
+      # space — ruled out the id rather than the ambiguity. A line break cannot occur inside an id,
+      # so one pattern per line is unambiguous; the CLI reads it with `--exclude-preview-id-file`,
+      # which is delimiter-free end to end and hands Gradle the PATH rather than a re-joined string.
+      #
+      # Always written in import mode, even when the caller named nothing, so every consumer below
+      # reads one file whose existence follows from the mode alone.
+      - name: Collect the import's preview-id exclusions
+        if: ${{ inputs.upstream-repository != '' }}
+        run: |
+          set -euo pipefail
+          # Heredoc body at the block scalar's own indent, so what the shell sees starts at column 0:
+          # indent it for readability and python raises IndentationError before the step does anything.
+          python3 <<'COMPOSEAI_EXCLUDE_PY'
+          import json, os
+
+          # The workflow's own always-on pair. Comma-joined because this half is authored HERE and
+          # is known to contain neither a comma nor a space.
+          patterns = [p for p in os.environ["IMPORT_EXCLUDE_PREVIEW_IDS"].split(",") if p]
+
+          raw = (os.environ.get("INPUT_EXCLUDE_PREVIEW_IDS") or "").strip()
+          if raw.startswith("["):
+              caller = json.loads(raw)
+              if not isinstance(caller, list) or not all(isinstance(p, str) for p in caller):
+                  raise SystemExit("::error::exclude-preview-ids must be a JSON array of strings")
+          else:
+              # The comma-joined form this input used to take. Still accepted so that updating this
+              # workflow and updating a caller are independent deploys rather than a window in which
+              # whichever landed first breaks the other. It carries the ambiguity that motivated the
+              # array form — a comma in an id still splits — so callers should send JSON; nothing
+              # here can recover an id the transport already lost.
+              caller = raw.split(",")
+
+          for pattern in caller:
+              pattern = pattern.strip()
+              if not pattern:
+                  continue
+              if "\n" in pattern or "\r" in pattern:
+                  raise SystemExit(
+                      "::error::exclude-preview-ids entry %r contains a newline, which is this "
+                      "file's delimiter" % pattern
+                  )
+              patterns.append(pattern)
+
+          with open(os.environ["IMPORT_EXCLUDE_PREVIEW_IDS_FILE"], "w", encoding="utf-8") as fh:
+              fh.write("".join(p + "\n" for p in patterns))
+          print("import exclusions (%d):" % len(patterns))
+          for pattern in patterns:
+              print("  %s" % pattern)
+          COMPOSEAI_EXCLUDE_PY
 
       # Properties an import has established its render needs, which the pipeline has no step of
       # its own for. Written before the steps below so a property those steps own — verification,
@@ -2957,20 +3086,33 @@ jobs:
           }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
           variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
-          # Two scopes, deliberately not one list. IMPORT_EXCLUDE_PREVIEW_IDS is import-wide and
-          # must reach every module; the per-mode ids belong to the PRIMARY module only, for the
-          # same reason its render filter does (see the comment in the loop below). Joined into a
-          # single --exclude-preview-id value rather than passed as a repeated flag, so the
-          # composition is obvious here rather than dependent on how the CLI merges repeats.
+          # Two scopes, deliberately not one list. The import exclusions are import-wide and must
+          # reach every module; the per-mode ids belong to the PRIMARY module only, for the same
+          # reason its render filter does (see the comment in the loop below). Composed into a
+          # single file rather than passed as a repeated flag, so the composition is obvious here
+          # rather than dependent on how the CLI merges repeats.
+          #
+          # In import mode both scopes go through the FILE form, because `--exclude-preview-id-file`
+          # wins over `--exclude-preview-id` outright — passing one of each would silently drop the
+          # flag's half. Outside import mode there is no file and the per-mode ids keep the
+          # comma-separated flag they have always used.
           import_exclude=()
           if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
-            import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
+            import_exclude=(--exclude-preview-id-file "$IMPORT_EXCLUDE_PREVIEW_IDS_FILE")
           fi
-          primary_ids="${IMPORT_EXCLUDE_PREVIEW_IDS:-}"
-          if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
-            primary_ids="${primary_ids:+${primary_ids},}${EXCLUDE_PREVIEW_IDS}"
+          exclude=()
+          if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
+            primary_file="$GITHUB_WORKSPACE/primary-exclude.txt"
+            cp "$IMPORT_EXCLUDE_PREVIEW_IDS_FILE" "$primary_file"
+            # The per-mode ids come from `mode-filter` comma-joined, which is the shape that step
+            # emits; splitting them here is the same split the flag would have done.
+            if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
+              printf '%s\n' "$EXCLUDE_PREVIEW_IDS" | tr ',' '\n' >> "$primary_file"
+            fi
+            exclude=(--exclude-preview-id-file "$primary_file")
+          elif [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
+            exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS")
           fi
-          exclude=(); if [ -n "$primary_ids" ]; then exclude=(--exclude-preview-id "$primary_ids"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           if [ -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
             mkdir -p "$GITHUB_WORKSPACE/module-bundles"
@@ -3083,7 +3225,7 @@ jobs:
           # An extra module is still the imported project, so the app lanes stay excluded here too.
           import_exclude=()
           if [ -n "${IMPORT_EXCLUDE_PREVIEW_IDS:-}" ]; then
-            import_exclude=(--exclude-preview-id "$IMPORT_EXCLUDE_PREVIEW_IDS")
+            import_exclude=(--exclude-preview-id-file "$IMPORT_EXCLUDE_PREVIEW_IDS_FILE")
           fi
           run compose-preview bundle pack --module "$INPUT_EXTRA_MODULE" --with-semantics --progress \
             "${variant[@]}" "${embed[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
