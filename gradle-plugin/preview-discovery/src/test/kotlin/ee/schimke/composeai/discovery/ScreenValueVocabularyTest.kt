@@ -63,6 +63,17 @@ class ScreenValueVocabularyTest {
       componentIds = listOf("m3/text"),
     )
 
+  private val button =
+    component(
+      "Button",
+      "androidx.compose.material3.Button",
+      listOf(
+        TargetParameter("onClick", "() -> Unit", typeFqn = "kotlin.Function0"),
+        TargetParameter("label", "String", typeFqn = "kotlin.String"),
+      ),
+      componentIds = listOf("m3/button"),
+    )
+
   private fun catalog(vararg records: ComponentRecord) =
     ComponentRecordFile(module = "app", variant = "debug", components = records.toList())
 
@@ -888,5 +899,109 @@ class ScreenValueVocabularyTest {
       )
 
     assertThat(reasons).containsExactly("state `caption` is declared more than once")
+  }
+
+  private fun handled(
+    state: List<ScreenState>,
+    handlers: Map<String, List<ScreenAction>>,
+  ) =
+    ScreenGenerator.generate(
+      ScreenDocument(
+        name = "Stateful",
+        root =
+          ScreenNode(
+            componentId = "m3/button",
+            arguments = mapOf("label" to ScreenValue.Text("Go")),
+            handlers = handlers,
+          ),
+        state = state,
+      ),
+      catalog(button),
+      expressionPackages = allowed,
+    )
+
+  private fun handledRefusal(
+    state: List<ScreenState>,
+    handlers: Map<String, List<ScreenAction>>,
+  ) = (handled(state, handlers) as ScreenGenerator.Result.Refused).reasons
+
+  @Test
+  fun `a handler writes declared state from a lambda`() {
+    val result =
+      handled(
+        listOf(
+          ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false)),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
+        ),
+        mapOf(
+          "onClick" to
+            listOf(
+              ScreenAction.Toggle("expanded"),
+              ScreenAction.Set("caption", ScreenValue.Text("tapped")),
+            )
+        ),
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source)
+      .contains("onClick = { expanded.value = !expanded.value; caption.value = \"tapped\" }")
+  }
+
+  @Test
+  fun `toggling something that is not a boolean is refused`() {
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("caption", "kotlin.String", ScreenValue.Text("a"))),
+        mapOf("onClick" to listOf(ScreenAction.Toggle("caption"))),
+      )
+
+    assertThat(reasons.single()).contains("rather than a kotlin.Boolean")
+  }
+
+  @Test
+  fun `setting a variable to the wrong type is refused`() {
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to listOf(ScreenAction.Set("expanded", ScreenValue.Text("yes")))),
+      )
+
+    assertThat(reasons).isNotEmpty()
+  }
+
+  @Test
+  fun `a handler writing an undeclared variable is refused, and says what it has`() {
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to listOf(ScreenAction.Toggle("missing"))),
+      )
+
+    assertThat(reasons.single()).contains("does not declare")
+    assertThat(reasons.single()).contains("expanded")
+  }
+
+  @Test
+  fun `a handler with no actions is refused rather than emitted empty`() {
+    // An empty lambda is a button that looks live and is not, and it compiles.
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to emptyList()),
+      )
+
+    assertThat(reasons.single()).contains("no actions")
+  }
+
+  @Test
+  fun `a handler bound to a parameter the component does not declare is refused`() {
+    // Dropping it silently would ship a screen whose button does nothing, which compiles fine.
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onLongPress" to listOf(ScreenAction.Toggle("expanded"))),
+      )
+
+    assertThat(reasons.single()).contains("has no `onLongPress`")
   }
 }

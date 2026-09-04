@@ -397,9 +397,23 @@ object ScreenGenerator {
       }
 
       val arguments = mutableListOf<String>()
+      // A handler naming a parameter the component does not declare is refused here rather than
+      // silently dropped, exactly as an unknown argument is: a screen whose button does nothing is
+      // not the screen that was designed, and it compiles perfectly.
+      node.handlers.keys
+        .filterNot { key -> record.parameters.any { it.name == key } }
+        .sorted()
+        .forEach { reasons += "`${record.symbol.name}` has no `$it` to bind a handler to" }
       for (parameter in record.parameters) {
         val supplied = node.arguments[parameter.name]
         val children = node.slots[parameter.name]
+        val handler = node.handlers[parameter.name]
+        if (handler != null) {
+          lambda(handler, parameter, record.symbol.name)?.let {
+            arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
+          }
+          continue
+        }
         when {
           supplied != null -> {
             argument(supplied, parameter, record.symbol.name)?.let {
@@ -477,6 +491,67 @@ object ScreenGenerator {
      * Both compare the **qualified** type, so a `com.example.String` property is rejected rather
      * than handed a string literal — the trap the call-site generator was caught by twice.
      */
+    /**
+     * A handler, as a lambda assigning declared state.
+     *
+     * The parameter must be a zero-argument function type. A handler on `onValueChange: (String) ->
+     * Unit` would need a parameter list this generator has no name for, and emitting `{ … }` there
+     * compiles only by accident of the argument being ignored.
+     */
+    fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? {
+      val where = "`$owner`.`${parameter.name}`"
+      if (!ComponentSnippets.acceptsBareLambda(parameter.type)) {
+        reasons += "$where is `${parameter.type}`, which a generated handler cannot satisfy"
+        return null
+      }
+      if (actions.isEmpty()) {
+        // An empty handler is a button that looks live and is not. The document meant something by
+        // binding it, and an empty lambda is the one reading that hides the mistake.
+        reasons += "$where binds a handler with no actions"
+        return null
+      }
+      val statements = actions.map { action ->
+        val declared = state[action.variable]
+        if (declared == null) {
+          reasons +=
+            "$where writes `${action.variable}`, which this screen does not declare" +
+              if (state.isEmpty()) ""
+              else " (it declares ${state.keys.sorted().joinToString(", ")})"
+          return null
+        }
+        val target = name(action.variable, where) ?: return null
+        when (action) {
+          is ScreenAction.Toggle -> {
+            if (declared.typeFqn != "kotlin.Boolean") {
+              reasons +=
+                "$where toggles `${action.variable}`, which is a ${declared.typeFqn} rather " +
+                  "than a kotlin.Boolean"
+              return null
+            }
+            "$target.value = !$target.value"
+          }
+          is ScreenAction.Set -> {
+            if (action.value.typeFqn != null && action.value.typeFqn != declared.typeFqn) {
+              reasons +=
+                "$where sets `${action.variable}` to a ${action.value.typeFqn}, and it is " +
+                  "declared as a ${declared.typeFqn}"
+              return null
+            }
+            // Literals carry no type of their own, so they are checked the way an argument is —
+            // by rendering against the declared type rather than by comparing a claim.
+            val rendered =
+              argument(
+                action.value,
+                TargetParameter(action.variable, declared.typeFqn, typeFqn = declared.typeFqn),
+                owner,
+              ) ?: return null
+            "$target.value = $rendered"
+          }
+        }
+      }
+      return "{ ${statements.joinToString("; ")} }"
+    }
+
     /**
      * A state read, as the `.value` of the declared property.
      *
