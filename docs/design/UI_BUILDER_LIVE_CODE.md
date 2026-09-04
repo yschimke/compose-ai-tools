@@ -11,6 +11,11 @@ shipped contract — [PLAYGROUND.md](PLAYGROUND.md) §4.
 
 ## What already works
 
+**Verified in Chromium**, not inferred: the wasm dist was built, served, and driven
+with Playwright through the whole loop — add a container, select it, add a
+component into it, select that, type a label. Zero page errors. Screenshots in
+[`evidence/ui-builder-wasm/`](evidence/ui-builder-wasm/).
+
 `ScreenBuilderApp` (`samples/cmp-wasm-catalog/.../ScreenBuilder.kt`) runs the loop
 **entirely in the browser** against the real M3 catalog: pick a component, it is
 added to the selected container; select a node, edit its knobs; the middle pane
