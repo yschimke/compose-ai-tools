@@ -987,9 +987,34 @@ internal object RemoteCatalogValues {
   private fun propertyOrNull(receiver: Any, name: String): Any? {
     val getter = "get" + name.replaceFirstChar { it.uppercase() }
     return receiver.javaClass.methods
-      .firstOrNull { it.parameterCount == 0 && it.name.startsWith(getter) }
+      .filter { it.parameterCount == 0 && isGetterFor(it.name, getter) }
+      // `Class.getMethods()` returns its elements in no specified order, so a receiver that somehow
+      // offers two accepted spellings must not resolve by whichever the JVM listed first. Sorting
+      // makes the pick a property of the class rather than of the run.
+      .minByOrNull { it.name }
       ?.invoke(receiver)
   }
+
+  /**
+   * Whether [methodName] is the accessor for [getter] itself — and NOT for a longer role that
+   * merely begins with it.
+   *
+   * This was a `startsWith` test, and `getPrimary` is a prefix of both `getPrimaryDim` and
+   * `getPrimaryContainer`. Eleven of `RemoteColorScheme`'s twenty-nine roles collide that way
+   * (`primary`, `onPrimary`, `secondary`, `onSecondary`, `tertiary`, `onTertiary`,
+   * `surfaceContainer`, `onSurface`, `outline`, `error`, `onError`), so each of them resolved to
+   * whichever sibling [Class.getMethods] happened to list first — an order the JVM explicitly does
+   * not specify. The `Remote theme colours` catalog raster therefore changed colours between runs
+   * with no code change at all: `main` committed four different PNGs for it as its own baseline
+   * across sixteen consecutive updates, `primary` reading `primaryDim`'s value in some of them.
+   *
+   * The suffix still has to be tolerated, which is why the loose test was there: Kotlin mangles a
+   * getter whose return type is an inline class, so `fontStyle` really is `getFontStyle-4Lr2A7w` on
+   * `RemoteTextStyle`. A mangled name is always `<getter>-<hash>`, and `-` cannot occur in a Kotlin
+   * property name, so the hyphen is exactly what separates a mangled accessor from a longer role.
+   */
+  private fun isGetterFor(methodName: String, getter: String): Boolean =
+    methodName == getter || methodName.startsWith("$getter-")
 
   private fun requireRemoteType(value: Any, expected: String) {
     require(value.javaClass.name == expected) {
