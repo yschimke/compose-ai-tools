@@ -194,6 +194,16 @@ object ScreenGenerator {
       )
     val preamble =
       document.state.map { declared ->
+        // The declared type is interpolated into `mutableStateOf<…>`, so it is source, and
+        // `ScreenDocument` is wire data. Every other name this file writes goes through a shape
+        // check first; this one did not, so a malformed type produced source that does not compile
+        // and a crafted one could close the call and splice statements into the composable.
+        if (!isQualifiedName(declared.typeFqn)) {
+          context.reasons +=
+            "state `${declared.name}` is declared as `${declared.typeFqn}`, which is not a " +
+              "qualified Kotlin name"
+          return@map null
+        }
         val initial =
           context.expression(declared.initial, "state `${declared.name}`", depth = 0)
             ?: return@map null
@@ -500,7 +510,11 @@ object ScreenGenerator {
      */
     fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? {
       val where = "`$owner`.`${parameter.name}`"
-      if (!ComponentSnippets.acceptsBareLambda(parameter.type)) {
+      // Zero arguments, not merely "a bare lambda fits". `acceptsBareLambda` is the slot question
+      // and answers true for `(String) -> Unit`, because children placed in a slot may ignore its
+      // receiver. A handler may not: `onValueChange` exists to deliver the new value, and a
+      // generated body that ignores it compiles and silently drops what the control reported.
+      if (!ComponentSnippets.acceptsZeroArgLambda(parameter.type)) {
         reasons += "$where is `${parameter.type}`, which a generated handler cannot satisfy"
         return null
       }

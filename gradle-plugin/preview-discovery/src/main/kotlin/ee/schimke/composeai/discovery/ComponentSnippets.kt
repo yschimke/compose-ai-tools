@@ -259,6 +259,24 @@ object ComponentSnippets {
    * String` accepts children in neither generator, and two answers to that would let one of them
    * emit a lambda the compiler rejects.
    */
+  /**
+   * Whether [type] is a function type taking **no** parameters — the question a generated *handler*
+   * has to answer, which is not the question a slot asks.
+   *
+   * [acceptsBareLambda] is right for a slot: `content: (RowScope) -> Unit` really does take a bare
+   * `{ … }`, because the receiver or argument is simply not used by the children placed in it. A
+   * handler is different. `onValueChange: (String) -> Unit` exists to deliver the new value, and a
+   * generated `{ expanded.value = !expanded.value }` compiles there only by accident of the
+   * argument being ignored — shipping a control that silently drops what it was asked to report.
+   */
+  internal fun acceptsZeroArgLambda(type: String): Boolean {
+    val bare = unwrapNullable(type)
+    if (!bare.endsWith(" -> Unit")) return false
+    val head = bare.removeSuffix(" -> Unit")
+    val open = head.indexOf('(')
+    return open != -1 && head.endsWith(")") && head.substring(open + 1, head.length - 1).isBlank()
+  }
+
   internal fun acceptsBareLambda(type: String): Boolean =
     // A nullable slot renders as `(() -> Unit)?` — parenthesised so the `?` cannot read as part of
     // the return type. Kotlin accepts a non-null `{ … }` for a nullable function type, so the

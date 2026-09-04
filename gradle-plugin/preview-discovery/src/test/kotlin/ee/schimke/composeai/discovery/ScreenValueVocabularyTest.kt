@@ -822,6 +822,28 @@ class ScreenValueVocabularyTest {
   private fun statefulRefusal(state: List<ScreenState>, root: ScreenNode = textNode()) =
     (stateful(state, root) as ScreenGenerator.Result.Refused).reasons
 
+  @Test
+  fun `a declared state type is a name before it is source`() {
+    // `typeFqn` is interpolated into `mutableStateOf<…>` and `ScreenDocument` is wire data, so it
+    // is subject to the same shape check as every other name this generator writes. Without one a
+    // malformed type produced source that does not compile, and a crafted one closed the call and
+    // spliced statements into the composable.
+    val spliced = "kotlin.Boolean>(false); ee.evil.Payload.run(); val ignored = kotlin.Boolean"
+
+    assertThat(statefulRefusal(listOf(ScreenState("expanded", spliced, ScreenValue.Bool(false)))))
+      .containsExactly(
+        "state `expanded` is declared as `$spliced`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
+  fun `an unqualified state type is refused rather than emitted bare`() {
+    assertThat(statefulRefusal(listOf(ScreenState("expanded", "Boolean", ScreenValue.Bool(false)))))
+      .containsExactly(
+        "state `expanded` is declared as `Boolean`, which is not a qualified Kotlin name"
+      )
+  }
+
   private fun readNode(variable: String, typeFqn: String = "kotlin.String") =
     ScreenNode(
       componentId = "m3/text",
@@ -991,6 +1013,43 @@ class ScreenValueVocabularyTest {
       )
 
     assertThat(reasons.single()).contains("no actions")
+  }
+
+  @Test
+  fun `a handler on a callback that takes an argument is refused`() {
+    // `acceptsBareLambda` is the *slot* question and answers true here: children placed in
+    // `content: (RowScope) -> Unit` may ignore the receiver. A handler may not. `onValueChange`
+    // exists to deliver the new value, and a generated body that ignores it compiles and silently
+    // drops what the control reported — the failure this generator's whole refusal set exists to
+    // avoid.
+    val field =
+      component(
+        "TextField",
+        "androidx.compose.material3.TextField",
+        listOf(
+          TargetParameter("value", "String", typeFqn = "kotlin.String"),
+          TargetParameter("onValueChange", "(String) -> Unit", typeFqn = "kotlin.Function1"),
+        ),
+        componentIds = listOf("m3/text-field"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "m3/text-field",
+              arguments = mapOf("value" to ScreenValue.Text("a")),
+              handlers = mapOf("onValueChange" to listOf(ScreenAction.Toggle("expanded"))),
+            ),
+          state = listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        ),
+        catalog(field),
+        expressionPackages = allowed,
+      )
+
+    val reasons = (result as ScreenGenerator.Result.Refused).reasons
+    assertThat(reasons.single()).contains("`(String) -> Unit`, which a generated handler cannot")
   }
 
   @Test
