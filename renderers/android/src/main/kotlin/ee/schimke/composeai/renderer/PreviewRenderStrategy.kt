@@ -1008,13 +1008,22 @@ internal object RemoteCatalogValues {
    * with no code change at all: `main` committed four different PNGs for it as its own baseline
    * across sixteen consecutive updates, `primary` reading `primaryDim`'s value in some of them.
    *
-   * The suffix still has to be tolerated, which is why the loose test was there: Kotlin mangles a
-   * getter whose return type is an inline class, so `fontStyle` really is `getFontStyle-4Lr2A7w` on
-   * `RemoteTextStyle`. A mangled name is always `<getter>-<hash>`, and `-` cannot occur in a Kotlin
-   * property name, so the hyphen is exactly what separates a mangled accessor from a longer role.
+   * A decorated name still has to be tolerated, which is why the loose test was there, and it
+   * carries **two** decorations rather than one:
+   * * `-<hash>` for a getter whose return type is an inline class, so `fontStyle` is really
+   *   `getFontStyle-4Lr2A7w` on `RemoteTextStyle`; and
+   * * `$<module>` for an `internal` one, so `idProvider` — the fallback every catalog colour
+   *   actually resolves through, since a named `RemoteColor` has no public constant — is really
+   *   `getIdProvider$remote_creation_compose` on `RemoteColor`.
+   *
+   * Neither `-` nor `$` can occur in a Kotlin property name, so the character straight after the
+   * getter is exactly what separates a decorated accessor from a longer role.
    */
   private fun isGetterFor(methodName: String, getter: String): Boolean =
-    methodName == getter || methodName.startsWith("$getter-")
+    methodName == getter ||
+      (methodName.length > getter.length &&
+        methodName.startsWith(getter) &&
+        methodName[getter.length].let { it == '-' || it == '$' })
 
   private fun requireRemoteType(value: Any, expected: String) {
     require(value.javaClass.name == expected) {

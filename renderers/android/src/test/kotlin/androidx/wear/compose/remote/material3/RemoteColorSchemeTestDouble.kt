@@ -3,7 +3,7 @@ package androidx.wear.compose.remote.material3
 import androidx.compose.ui.graphics.Color
 
 /**
- * Stand-ins for the two Wear Remote Material 3 types `RemoteCatalogValues` reads by reflection.
+ * Stand-ins for the Wear Remote Material 3 types `RemoteCatalogValues` reads by reflection.
  *
  * They live in androidx's package, and carry androidx's simple names, because that is the contract
  * under test: `RemoteCatalogValues.colorSchemeRoles` gates on the receiver's fully-qualified name
@@ -12,84 +12,116 @@ import androidx.compose.ui.graphics.Color
  * Nothing shadows here. `renderers/android` deliberately declares no dependency on
  * `remote-material3` — the renderer stays reflection-only so it does not pin a fast-moving alpha —
  * so these are the only classes with these names on the test classpath. If that dependency is ever
- * added, this file has to move to a different name and `requireRemoteType` be reached another way.
+ * added, this file has to move and `requireRemoteType` be satisfied another way.
+ *
+ * [named] picks which of the two shapes a role answers with. `false` is the plain public constant;
+ * `true` is what a real catalog actually holds — see [NamedRemoteColor].
  */
-class RemoteColorScheme {
-  // Declared with each longer sibling BEFORE the role it collides with. `Class.getMethods()`
-  // promises no order, but HotSpot reports declared methods in class-file order, so a lookup that
-  // went back to matching on `startsWith` would find the sibling first and fail this test rather
-  // than passing it by luck. The assertions themselves do not depend on that.
-  fun getPrimaryDim(): RemoteColor = role(1)
+class RemoteColorScheme(private val named: Boolean = false) {
+  // Declared with each longer sibling BEFORE the role it collides with, so a lookup that went back
+  // to matching on `startsWith` finds the sibling first and fails these tests rather than passing
+  // them by luck. The assertions themselves do not depend on that ordering.
+  fun getPrimaryDim(): Any = role(1)
 
-  fun getPrimaryContainer(): RemoteColor = role(2)
+  fun getPrimaryContainer(): Any = role(2)
 
-  fun getPrimary(): RemoteColor = role(3)
+  fun getPrimary(): Any = role(3)
 
-  fun getOnPrimaryContainer(): RemoteColor = role(4)
+  fun getOnPrimaryContainer(): Any = role(4)
 
-  fun getOnPrimary(): RemoteColor = role(5)
+  fun getOnPrimary(): Any = role(5)
 
-  fun getSecondaryDim(): RemoteColor = role(6)
+  fun getSecondaryDim(): Any = role(6)
 
-  fun getSecondaryContainer(): RemoteColor = role(7)
+  fun getSecondaryContainer(): Any = role(7)
 
-  fun getSecondary(): RemoteColor = role(8)
+  fun getSecondary(): Any = role(8)
 
-  fun getOnSecondaryContainer(): RemoteColor = role(9)
+  fun getOnSecondaryContainer(): Any = role(9)
 
-  fun getOnSecondary(): RemoteColor = role(10)
+  fun getOnSecondary(): Any = role(10)
 
-  fun getTertiaryDim(): RemoteColor = role(11)
+  fun getTertiaryDim(): Any = role(11)
 
-  fun getTertiaryContainer(): RemoteColor = role(12)
+  fun getTertiaryContainer(): Any = role(12)
 
-  fun getTertiary(): RemoteColor = role(13)
+  fun getTertiary(): Any = role(13)
 
-  fun getOnTertiaryContainer(): RemoteColor = role(14)
+  fun getOnTertiaryContainer(): Any = role(14)
 
-  fun getOnTertiary(): RemoteColor = role(15)
+  fun getOnTertiary(): Any = role(15)
 
-  fun getSurfaceContainerLow(): RemoteColor = role(16)
+  fun getSurfaceContainerLow(): Any = role(16)
 
-  fun getSurfaceContainerHigh(): RemoteColor = role(17)
+  fun getSurfaceContainerHigh(): Any = role(17)
 
-  fun getSurfaceContainer(): RemoteColor = role(18)
+  fun getSurfaceContainer(): Any = role(18)
 
-  fun getOnSurfaceVariant(): RemoteColor = role(19)
+  fun getOnSurfaceVariant(): Any = role(19)
 
-  fun getOnSurface(): RemoteColor = role(20)
+  fun getOnSurface(): Any = role(20)
 
-  fun getOutlineVariant(): RemoteColor = role(21)
+  fun getOutlineVariant(): Any = role(21)
 
-  fun getOutline(): RemoteColor = role(22)
+  fun getOutline(): Any = role(22)
 
-  fun getBackground(): RemoteColor = role(23)
+  fun getBackground(): Any = role(23)
 
-  fun getOnBackground(): RemoteColor = role(24)
+  fun getOnBackground(): Any = role(24)
 
-  fun getErrorDim(): RemoteColor = role(25)
+  fun getErrorDim(): Any = role(25)
 
-  fun getErrorContainer(): RemoteColor = role(26)
+  fun getErrorContainer(): Any = role(26)
 
-  fun getError(): RemoteColor = role(27)
+  fun getError(): Any = role(27)
 
-  fun getOnErrorContainer(): RemoteColor = role(28)
+  fun getOnErrorContainer(): Any = role(28)
 
-  fun getOnError(): RemoteColor = role(29)
+  fun getOnError(): Any = role(29)
+
+  private fun role(index: Int): Any =
+    if (named) NamedRemoteColor(expected(index)) else RemoteColor(expected(index))
 
   companion object {
     /** A colour no other role in this double answers with, so a mix-up names its own culprit. */
     fun expected(index: Int): Color = Color(0xFF000000.toInt() or index)
-
-    private fun role(index: Int): RemoteColor = RemoteColor(expected(index))
   }
 }
 
 /**
- * The shape `remoteColorOrNull` reads first: a real `RemoteColor` answers
- * `getConstantValueOrNull()` with its resolved value when it has one. The id-provider fallback
- * beneath it is a separate mechanism and is not what this double is here to exercise.
+ * The shape `remoteColorOrNull` reads first: a `RemoteColor` that has a resolved constant answers
+ * `getConstantValueOrNull()` with it.
  */
 class RemoteColor(private val value: Color) {
   fun getConstantValueOrNull(): Any = value
 }
+
+/**
+ * The shape it falls back to, which is the one a real colour catalog actually takes.
+ *
+ * A `RemoteColor` built by `createNamedRemoteColor` exposes every role as a named value so a replay
+ * can override it, so its public constant is null and the packed fallback survives only inside the
+ * id-provider lambda. Two details of that are load-bearing and are reproduced here:
+ * * the accessor is `internal`, so Kotlin appends the module name and the real JVM method is
+ *   `getIdProvider$remote_creation_compose`; and
+ * * the packed `Color` is held as the lambda's single captured `long`.
+ *
+ * Narrowing the role lookup to an exact name would silently cut this path — every role would
+ * resolve to null and the sheet would render empty — which is why it is a test and not a comment.
+ */
+class NamedRemoteColor(value: Color) {
+  private val provider = PackedFallback(value.value.toLong())
+
+  fun getConstantValueOrNull(): Any? = null
+
+  // Declared `internal` rather than spelled out, because Kotlin rejects `$` inside a backticked
+  // identifier — the decoration cannot be written by hand. An `internal` member compiles to a
+  // PUBLIC JVM method (which is exactly why it needs mangling to stay module-private), so it
+  // reaches `Class.getMethods()` under a `getIdProvider$<module>` name, the same shape
+  // `remote-creation-compose` publishes. The test asserts the mangling really happened rather than
+  // trusting it.
+  internal fun getIdProvider(): Any = provider
+}
+
+/** Stands in for the capturing lambda: one captured `long`, read back without invoking it. */
+class PackedFallback(@Suppress("unused") private val bits: Long)

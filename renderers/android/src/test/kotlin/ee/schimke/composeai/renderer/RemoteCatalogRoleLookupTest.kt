@@ -1,8 +1,10 @@
 package ee.schimke.composeai.renderer
 
 import androidx.compose.ui.graphics.Color
+import androidx.wear.compose.remote.material3.NamedRemoteColor
 import androidx.wear.compose.remote.material3.RemoteColorScheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -66,6 +68,31 @@ class RemoteCatalogRoleLookupTest {
 
     assertEquals(29, values.size)
     assertEquals(values.size, values.toSet().size)
+  }
+
+  @Test
+  fun `resolves a role through the internal id-provider a real catalog actually uses`() {
+    // The other decoration the loose match was carrying. A named `RemoteColor` has no public
+    // constant, so every colour in a real catalog comes out of `getIdProvider`, which is `internal`
+    // and therefore compiled as `getIdProvider$remote_creation_compose`. Narrowing the lookup to an
+    // exact name would have resolved all 29 roles to null and rendered an empty sheet — a far more
+    // visible break than the one being fixed, and one no colour assertion above would have caught.
+    // Prove the fixture reproduces the decoration before relying on it. If Kotlin ever stopped
+    // mangling internal members, this test would otherwise keep passing while testing nothing.
+    val accessor =
+      NamedRemoteColor(Color.Red).javaClass.methods.single { it.name.startsWith("getIdProvider") }
+    assertTrue(
+      "expected a module-mangled internal accessor, got ${accessor.name}",
+      accessor.name.contains('$'),
+    )
+
+    val roles = catalogColorRoles(RemoteColorScheme(named = true)).toMap()
+
+    assertEquals(29, roles.size)
+    assertEquals(RemoteColorScheme.expected(3), roles["primary"])
+    assertEquals(RemoteColorScheme.expected(18), roles["surfaceContainer"])
+    assertEquals(RemoteColorScheme.expected(20), roles["onSurface"])
+    assertEquals(RemoteColorScheme.expected(16), roles["surfaceContainerLow"])
   }
 
   private fun catalogColorRoles(scheme: Any): List<Pair<String, Color>> =
