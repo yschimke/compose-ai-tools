@@ -203,14 +203,17 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `FocusOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png" width="150" /> |
 | `FocusOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png" width="150" /> |
 | `FocusOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_1.png" width="150" /> |
 | `FocusOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_2.png" width="150" /> |
 | `FocusOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_3.png" width="150" /> |
+| `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0.png" width="150" /> |
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step1_Next.png" width="150" /> |
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step2_Next.png" width="150" /> |
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step3_Previous.png" width="150" /> |
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step4_Next.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5.png" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_0.png" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_1.png" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_2.png" width="150" /> |
@@ -584,6 +587,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `GlimmerListItemDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemDefault_Glimmer_Default-15e249f5.png" width="150" /> |
 | `GlimmerListItemFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png" width="150" /> |
 | `GlimmerListItemPressed` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed-2221a813.png" width="150" /> |
+| `GlimmerListPressedWalk` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2.png" width="150" /> |
 | `GlimmerListPressedWalk` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png" width="150" /> |
 | `GlimmerListPressedWalk` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png" width="150" /> |
 | `GlimmerXrMenuAnimated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuAnimated_Animated_Light-cd194fc2.gif" width="150" /> |

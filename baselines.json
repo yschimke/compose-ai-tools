@@ -3,11 +3,19 @@
     "captureLabel": "",
     "functionName": "FocusOverlayPreview",
     "module": "samples:android-alpha",
+    "renderBasename": "FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
+    "sha256": "b482e2634aad8aee8d58e4452aa904c6f288ae2a376f1213d045195136604393",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#1": {
+    "captureLabel": "",
+    "functionName": "FocusOverlayPreview",
+    "module": "samples:android-alpha",
     "renderBasename": "FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
     "sha256": "b834751a9056e3a847736cfb388951b2ad52ac894c72872dde01351bea87e736",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#1": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#2": {
     "captureLabel": "",
     "functionName": "FocusOverlayPreview",
     "module": "samples:android-alpha",
@@ -15,7 +23,7 @@
     "sha256": "1beb771026734006d10f0193aaca6cfff7a305737b1b47ce5958d851ef8ee892",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#2": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#3": {
     "captureLabel": "",
     "functionName": "FocusOverlayPreview",
     "module": "samples:android-alpha",
@@ -23,7 +31,7 @@
     "sha256": "957cabf52dae78dac84c25ecf0786127924f1d546c5a2d85b23f400241446ada",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#3": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#4": {
     "captureLabel": "",
     "functionName": "FocusOverlayPreview",
     "module": "samples:android-alpha",
@@ -35,11 +43,19 @@
     "captureLabel": "",
     "functionName": "FocusTraversalPreview",
     "module": "samples:android-alpha",
+    "renderBasename": "FocusTraversalPreview_Focus_Traversal-d9e7cbb0.png",
+    "sha256": "b482e2634aad8aee8d58e4452aa904c6f288ae2a376f1213d045195136604393",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#1": {
+    "captureLabel": "",
+    "functionName": "FocusTraversalPreview",
+    "module": "samples:android-alpha",
     "renderBasename": "FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step1_Next.png",
     "sha256": "5831cce4422b1cacb194f11226d133afd77b295ba4802ff76b97e06c5b5bffcc",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#1": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#2": {
     "captureLabel": "",
     "functionName": "FocusTraversalPreview",
     "module": "samples:android-alpha",
@@ -47,7 +63,7 @@
     "sha256": "c3785d50148943d49c69aa2771421b448e67e618b8a352bc67881882ccda50b0",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#2": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#3": {
     "captureLabel": "",
     "functionName": "FocusTraversalPreview",
     "module": "samples:android-alpha",
@@ -55,7 +71,7 @@
     "sha256": "5831cce4422b1cacb194f11226d133afd77b295ba4802ff76b97e06c5b5bffcc",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#3": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#4": {
     "captureLabel": "",
     "functionName": "FocusTraversalPreview",
     "module": "samples:android-alpha",
@@ -67,11 +83,19 @@
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
     "module": "samples:android-alpha",
+    "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5.png",
+    "sha256": "b482e2634aad8aee8d58e4452aa904c6f288ae2a376f1213d045195136604393",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#1": {
+    "captureLabel": "",
+    "functionName": "InsetFocusRingFanOutPreview",
+    "module": "samples:android-alpha",
     "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_0.png",
     "sha256": "5831cce4422b1cacb194f11226d133afd77b295ba4802ff76b97e06c5b5bffcc",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#1": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#2": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
     "module": "samples:android-alpha",
@@ -79,7 +103,7 @@
     "sha256": "c3785d50148943d49c69aa2771421b448e67e618b8a352bc67881882ccda50b0",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#2": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#3": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
     "module": "samples:android-alpha",
@@ -87,7 +111,7 @@
     "sha256": "aa65c0359101c9c43784362df28cd8e3b77118d5c9279f4eeb0112251efcf797",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#3": {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out#4": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
     "module": "samples:android-alpha",
@@ -3987,11 +4011,19 @@
     "captureLabel": "",
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
+    "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2.png",
+    "sha256": "afe74274e2e52e901467d3cd58cc5167c11bbcd7b90bad70db361ce43284f655",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#1": {
+    "captureLabel": "",
+    "functionName": "GlimmerListPressedWalk",
+    "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
     "sha256": "d66dac712ad41dccaf307c61dc28f94b0c696df398c735dc2da58d14695e60f3",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
-  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#1": {
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#2": {
     "captureLabel": "",
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
