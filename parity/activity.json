@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T08:58:19.995Z",
+  "generatedAt": "2026-09-04T10:40:39.378Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "33a46591c1d30e08ed3c082b8648c74948043911",
+        "subject": "fix(design-artifacts): carry import preview-id exclusions in a delimiter-free file (#5085)",
+        "at": "2026-09-04T11:31:07+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0ee33434b66a9fc5a067f1090fb51f8f50603e64",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.71.0 (#5084)",
+        "at": "2026-09-04T09:06:25Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c1e2afea72bbfdaa42685c0adfeb1ddd696c67c2",
         "subject": "chore(main): release 1.71.0 (#5071)",
@@ -467,22 +483,6 @@
         "subject": "feat(gradle-plugin): add a renderGraph DSL to exclude modules from the render graph (#5014)",
         "at": "2026-09-02T22:23:36+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "981e0e15c3afaffe4859eba30ed9ae29a4052a9b",
-        "subject": "fix(bundle): key AAR extraction on content so a snapshot rebuild can't serve stale classes (#5015)",
-        "at": "2026-09-02T22:22:26+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fb33c9dc8b1f5f10af418efc3df9cc56b0576c71",
-        "subject": "chore(main): release 1.65.0 (#5005)",
-        "at": "2026-09-02T22:15:04+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
