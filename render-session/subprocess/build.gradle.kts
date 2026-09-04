@@ -39,6 +39,10 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+
+  // `DescriptorSchemaVersionTest` opens a session against a descriptor that only exists in memory,
+  // which is what the defaulted `fileSystem` parameter on `open` is for — see its KDoc.
+  testImplementation(libs.okio.fakefilesystem)
 }
 
 // `NonGradleContractTest` (see src/test/.../subprocess/NonGradleContractTest.kt) synthesises a
