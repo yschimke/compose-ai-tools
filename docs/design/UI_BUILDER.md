@@ -398,6 +398,12 @@ Figma MCP server — real Compose, mapped to the assembled nodes.
 last to second, because the surface that *runs* generated code already exists, and
 phase 1 is done.
 
+**Two builders now exist, and combining them is designed** in
+[UI_BUILDER_COMBINED.md](UI_BUILDER_COMBINED.md): the `design-parity` Figma plugin
+and the wasm builder edit the same `Screen` document, and the preview pane is a
+two-implementation seam because Android and Wear cannot compose in the browser.
+That document also carries the two open questions blocking the projection.
+
 **Phase 2 has started**, and phase 3 with it: `:screen-model` (the composition
 document, its edits and its codegen) and `ScreenBuilderApp` (the browser builder
 over the M3 catalog) are in. The two things they are missing — syntax highlighting

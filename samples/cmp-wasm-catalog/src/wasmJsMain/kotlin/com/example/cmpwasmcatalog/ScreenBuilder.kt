@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.example.designcatalogm3.shared.CatalogScreen
 import com.example.designcatalogm3.shared.catalogComponentIds
 import com.example.designcatalogm3.shared.catalogComponentSpecs
 import com.example.designcatalogm3.shared.catalogContainerIds
@@ -60,7 +59,7 @@ import ee.schimke.composeai.screen.setKnob
  * source a developer would have written, and the artefact the playground compiles and runs.
  */
 @Composable
-fun ScreenBuilderApp() {
+internal fun ScreenBuilderApp(previewHost: ScreenPreviewHost = WasmCatalogPreviewHost) {
   var screen by remember { mutableStateOf(Screen(name = "My screen")) }
   var selected by remember { mutableStateOf<Int?>(null) }
 
@@ -127,14 +126,14 @@ fun ScreenBuilderApp() {
         Modifier.weight(1f).fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        SectionLabel("Live render")
+        SectionLabel("Live render — ${previewHost.label}")
         Box(
           Modifier.fillMaxWidth()
             .weight(1f)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(8.dp)
         ) {
-          CatalogScreen(screen)
+          previewHost.Preview(screen, Modifier)
         }
 
         SectionLabel("Knobs")
