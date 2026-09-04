@@ -1,11 +1,67 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T12:57:57.509Z",
+  "generatedAt": "2026-09-04T16:58:41.527Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c8cb6a37f1fb847bfef8d7c40e22a964f5ab109b",
+        "subject": "ci(design-artifacts): say why a Remote Compose player lane dropped its column (#5096)",
+        "at": "2026-09-04T17:49:06+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "359b61cc2e4b0187054fbddfad41d87912b5fba9",
+        "subject": "fix(daemon): report the cause chain, not just the head throwable (#5098)",
+        "at": "2026-09-04T17:48:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "25f938816a1f2e28d8dc8d37a680ee7bce2b84a1",
+        "subject": "docs: correct which gap blocks the live-lane sample from migrating (#5097)",
+        "at": "2026-09-04T17:47:23+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bbf60f95050fdbc8d9ff7a9e72b52cbb14c3b89a",
+        "subject": "feat(daemon): declare a preview's parameter knobs to the viewer (#5095)",
+        "at": "2026-09-04T17:10:26+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c34f9f8beb364a374e7937ec8736705a61e73cc1",
+        "subject": "feat(discovery): recover a parameter knob's literal default from the class file (#5093)",
+        "at": "2026-09-04T16:55:47+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "53b8b115c2fad30d4e0baf8a0e2cb274c88d2dc8",
+        "subject": "fix(daemon): refresh the daemon-core ABI dump (#5094)",
+        "at": "2026-09-04T16:54:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f708be0ec6c05818552600a854d7e6bd538c220c",
+        "subject": "feat(daemon): seed parameter knobs on the Robolectric backend too (#5091)",
+        "at": "2026-09-04T14:40:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "8e590a76a4594f00c2ee501abb0628711846d9e8",
         "subject": "chore(ci): update the design-artifacts export driver to v1.72.0 (#5090)",
@@ -426,62 +482,6 @@
         "sha": "e277e978a92938651cae558f8a1369a8629537f5",
         "subject": "ci: give the Maven readiness gate long enough for Central to propagate (#5029)",
         "at": "2026-09-02T23:24:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "89defc6bcb37418f88036933d19f6fda15545703",
-        "subject": "feat(discovery): print a compiling call site for each component (#5028)",
-        "at": "2026-09-02T23:19:16+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "90f633616334ebc3cfef04823c6e6d5f7737252b",
-        "subject": "chore(main): release 1.66.1 (#5024)",
-        "at": "2026-09-02T23:17:03+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "51fa6c76115db94fdd4f03863af72501ecf4ca60",
-        "subject": "ci: reinstate cancellation of superseded main runs (#5023)",
-        "at": "2026-09-02T23:14:09+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "37db480edc41cd60850623b95f37d5cd5f4bfe62",
-        "subject": "fix(import): turn Isolated Projects off for the throwaway render (#5022)",
-        "at": "2026-09-02T22:55:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "294dfd2c9d60d062fa15e318846cfe4410f52889",
-        "subject": "chore(main): release 1.66.0 (#5019)",
-        "at": "2026-09-02T22:45:49+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e0d33b8cacbd91005079a04711693f1cfe91e9ce",
-        "subject": "feat(import): stub google-services.json for an upstream that requires one (#5017)",
-        "at": "2026-09-02T22:43:25+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e0e4f8b112cc1f97cc0e8e2d50f7277cb726a540",
-        "subject": "fix(discovery): declare, package and correct the component record (#5021)",
-        "at": "2026-09-02T22:41:21+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
