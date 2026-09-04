@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T10:40:39.378Z",
+  "generatedAt": "2026-09-04T10:50:10.381Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "a574d4cf7c135ad80415f0a43ba1ec4757fd5390",
+        "subject": "feat(design-artifacts): preflight a catalog spec against a preview-id manifest (#5086)",
+        "at": "2026-09-04T11:31:23+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "33a46591c1d30e08ed3c082b8648c74948043911",
         "subject": "fix(design-artifacts): carry import preview-id exclusions in a delimiter-free file (#5085)",
@@ -474,14 +482,6 @@
         "sha": "780a397a5235ba0b647d120358a2bdb89fca667e",
         "subject": "fix(import): render a verified upstream with lenient verification (#5016)",
         "at": "2026-09-02T22:31:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "78e621b36a2e0676cca078f31f8e85aee4b8e97f",
-        "subject": "feat(gradle-plugin): add a renderGraph DSL to exclude modules from the render graph (#5014)",
-        "at": "2026-09-02T22:23:36+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
