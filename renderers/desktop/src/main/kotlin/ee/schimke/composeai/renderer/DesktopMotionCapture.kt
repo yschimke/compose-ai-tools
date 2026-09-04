@@ -243,7 +243,7 @@ internal fun resolveMotionComposable(
   val clazz =
     if (classLoader != null) Class.forName(className, true, classLoader)
     else Class.forName(className)
-  return (if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
+  return (if (previewArgs.isEmpty()) resolveDefaultedOrPlain(clazz, functionName)
     else findMotionComposableMethod(clazz, functionName, previewArgs))
     .openForInvoke()
 }
@@ -269,6 +269,20 @@ internal fun InvokeMotionComposable(
   instance: Any?,
   previewArgs: List<Any?>,
 ) {
+  // A partial knob seed leaves `null` at every unseeded position, which the plain reflective
+  // invoke cannot pass to a primitive parameter (`Cannot invoke "java.lang.Number.intValue()"`).
+  // `invokeWithDefaultMask` is the same masked invoke the ordinary render path uses — see
+  // [InvokeComposable] — so a seed that names one of two knobs leaves the other on its default
+  // instead of failing the capture.
+  if (
+    PreviewParameterSupport.invokeWithDefaultMask(
+      composableMethod,
+      instance,
+      previewArgs,
+      currentComposer,
+    )
+  )
+    return
   composableMethod.invoke(currentComposer, instance, *previewArgs.toTypedArray())
 }
 

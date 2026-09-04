@@ -148,7 +148,7 @@ fun renderScrollPreview(
     else Class.forName(className)
   // `openForInvoke` keeps `private fun` previews renderable on the scroll path too — issue #3873.
   val composableMethod =
-    (if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
+    (if (previewArgs.isEmpty()) resolveDefaultedOrPlain(clazz, functionName)
       else findComposableMethodForScroll(clazz, functionName, previewArgs))
       .openForInvoke()
 
@@ -163,6 +163,8 @@ fun renderScrollPreview(
   // because END reports `didCapture = true`, the caller skips the fallback that would have written
   // the right one.
   ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+  // …and announce the parameter knobs, which composition never will. See the KDoc there.
+  PreviewKnobBake.recordAmbientDeclarations()
 
   val sceneDensity = Density(density, fontScale)
   runSkikoComposeUiTest(
@@ -890,6 +892,20 @@ private fun InvokeScrollComposable(
   instance: Any?,
   previewArgs: List<Any?>,
 ) {
+  // A partial knob seed leaves `null` at every unseeded position, which the plain reflective
+  // invoke cannot pass to a primitive parameter (`Cannot invoke "java.lang.Number.intValue()"`).
+  // `invokeWithDefaultMask` is the same masked invoke the ordinary render path uses — see
+  // [InvokeComposable] — so a seed that names one of two knobs leaves the other on its default
+  // instead of failing the capture.
+  if (
+    PreviewParameterSupport.invokeWithDefaultMask(
+      composableMethod,
+      instance,
+      previewArgs,
+      currentComposer,
+    )
+  )
+    return
   composableMethod.invoke(currentComposer, instance, *previewArgs.toTypedArray())
 }
 

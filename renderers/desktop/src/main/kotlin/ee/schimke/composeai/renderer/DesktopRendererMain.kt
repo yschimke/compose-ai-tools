@@ -513,7 +513,22 @@ fun main(args: Array<String>) {
   }
   for ((idx, value) in keptValues.withIndex()) {
     val targetFile = targetFiles[idx]
-    val previewArgs = if (value === NO_PARAM) emptyList() else listOf(value)
+    // A `@PreviewParameter` row and a parameter knob are mutually exclusive by construction
+    // (discovery reports knobs only when EVERY value parameter has a default, which a
+    // `@PreviewParameter` one never has), so `NO_PARAM` is the only case a knob seed can bind in.
+    //
+    // Bind it HERE rather than inside `renderPreview`, because the focus, motion and scroll lanes
+    // invoke the composable themselves and never saw the binding: every interaction-state and
+    // scroll cell of a parameter-knob preview rendered the author defaults, so a kit cell seeded
+    // `trailing=true` drew the same pixels as its `false` sibling. `renderPreview` still seeds when
+    // it is handed nothing, so its own path is unchanged.
+    val previewArgs =
+      if (value === NO_PARAM)
+        PreviewKnobBake.seedArgs(
+          PreviewKnobBake.fromSystemProperty(),
+          ee.schimke.composeai.overrides.PreviewOverrideController.seededValues.value,
+        )
+      else listOf(value)
     // Per-value try/catch — the user-facing pain we're addressing is "one
     // broken preview turns the whole panel into 'Build failed'". Catching
     // here lets sibling previews in the same subprocess (i.e. multiple

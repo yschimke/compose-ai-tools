@@ -124,6 +124,27 @@ internal object PreviewKnobBake {
    * this renderer does not know rather than guessing at it, so a newer plugin costs one knob and
    * not the render.
    */
+  /**
+   * Record this render's parameter-knob declarations onto the override controller, reading both the
+   * knob list and the seed from the ambient per-capture channels this subprocess was handed.
+   *
+   * `previewOverride*` records a declaration as a by-product of *reading* each knob during
+   * composition; a parameter knob is read by argument passing and announces nothing, so a lane that
+   * does not do this ships a `<stem>.overrides.json` with the knob missing and `serve` offers no
+   * control for it. [renderPreview] has always done this with the knobs and seed already in hand;
+   * the focus, motion and scroll lanes have neither, which is why they need this ambient form — and
+   * why, before it, an interaction-state capture of a migrated preview served fewer controls than
+   * its own resting capture.
+   *
+   * Call directly after `clearDeclarations()`, which is what makes the set this adds to clean.
+   */
+  fun recordAmbientDeclarations() {
+    val seeds = ee.schimke.composeai.overrides.PreviewOverrideController.seededValues.value
+    declarations(fromSystemProperty(), seeds).forEach {
+      ee.schimke.composeai.overrides.PreviewOverrideController.record(it)
+    }
+  }
+
   fun seedArgs(
     knobs: List<PreviewKnobSpec>,
     seeds: Map<String, PreviewOverrideValue>?,
