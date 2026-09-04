@@ -1053,6 +1053,67 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a state named after a package root the file writes in full is refused`() {
+    // The preamble emits `androidx.compose.runtime.remember` for every declaration. A local `val`
+    // is not in scope in its own initializer, so `val androidx = androidx.compose.runtime…`
+    // compiles — and the *next* declaration then resolves `androidx` to a MutableState. The file
+    // stops compiling one line after the name that broke it.
+    val reasons =
+      statefulRefusal(
+        listOf(
+          ScreenState("androidx", "kotlin.Boolean", ScreenValue.Bool(false)),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
+        )
+      )
+
+    assertThat(reasons.single()).contains("root of a package this screen writes in full")
+  }
+
+  @Test
+  fun `a state named after a package root the file never writes is allowed`() {
+    val result =
+      handled(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to listOf(ScreenAction.Toggle("expanded"))),
+      )
+
+    assertThat(result).isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+  }
+
+  @Test
+  fun `a handler bound to a composable slot is refused`() {
+    // `content: @Composable () -> Unit` records its annotation in `composableSlot`, not in `type`,
+    // so it reads as `() -> Unit` and satisfies every shape check the handler gate makes. Compose
+    // runs the body while composing rather than when anything happens, so a `Toggle` bound here
+    // writes state during composition and invalidates the scope that just wrote it: a screen that
+    // recomposes forever, generated from a document this checker called valid.
+    val card =
+      component(
+        "Card",
+        "androidx.compose.material3.Card",
+        listOf(TargetParameter("content", "() -> Unit", composableSlot = true)),
+        componentIds = listOf("m3/card"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "m3/card",
+              handlers = mapOf("content" to listOf(ScreenAction.Toggle("expanded"))),
+            ),
+          state = listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        ),
+        catalog(card),
+        expressionPackages = allowed,
+      )
+
+    val reasons = (result as ScreenGenerator.Result.Refused).reasons
+    assertThat(reasons.single()).contains("composable slot rather than an event callback")
+  }
+
+  @Test
   fun `a handler bound to a parameter the component does not declare is refused`() {
     // Dropping it silently would ship a screen whose button does nothing, which compiles fine.
     val reasons =

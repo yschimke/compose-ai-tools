@@ -184,6 +184,30 @@ object ScreenGenerator {
         }
       )
     }
+    // The same shadowing one level up. A state name is a local `val` in the composable body, so it
+    // also shadows any package *root* the generated source writes out in full: the preamble emits
+    // `androidx.compose.runtime.remember` for every declaration, a component that cannot claim a
+    // simple name is called by its qualified callable, an allowed expression is written qualified,
+    // and each declared type is interpolated into `mutableStateOf<…>`. A state named `androidx`
+    // compiles on its own line — a local is not in scope in its own initializer — and breaks the
+    // next one, which is the worst place for this to surface.
+    val qualifiedRoots = buildSet {
+      add("androidx")
+      components.components
+        .filterNot { it.canonicalId in simplyImportable }
+        .mapTo(this) { it.symbol.callable.substringBefore('.') }
+      expressionPackages.mapTo(this) { it.substringBefore('.') }
+      document.state.mapTo(this) { it.typeFqn.substringBefore('.') }
+    }
+    val shadowedRoots =
+      document.state.map(ScreenState::name).filter { it in qualifiedRoots }.distinct()
+    if (shadowedRoots.isNotEmpty()) {
+      return Result.Refused(
+        shadowedRoots.sorted().map {
+          "state `$it` is the root of a package this screen writes in full, and would shadow it"
+        }
+      )
+    }
     val context =
       Emission(
         ComponentIndex(components.components),
@@ -510,6 +534,16 @@ object ScreenGenerator {
      */
     fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? {
       val where = "`$owner`.`${parameter.name}`"
+      // A composable slot is not an event callback, however much its type looks like one. The
+      // `@Composable` lives in `composableSlot` rather than in `type`, so `content: @Composable ()
+      // -> Unit` reads as `() -> Unit` and satisfies every shape check below. Compose then runs the
+      // body while composing rather than when anything happens, so a `Toggle` bound here flips its
+      // state on every composition and invalidates the scope that just wrote it — a screen that
+      // recomposes forever, from a document the generator called valid.
+      if (parameter.composableSlot) {
+        reasons += "$where is a composable slot rather than an event callback"
+        return null
+      }
       // Zero arguments, not merely "a bare lambda fits". `acceptsBareLambda` is the slot question
       // and answers true for `(String) -> Unit`, because children placed in a slot may ignore its
       // receiver. A handler may not: `onValueChange` exists to deliver the new value, and a
