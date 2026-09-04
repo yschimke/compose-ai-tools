@@ -217,6 +217,13 @@ object ScreenGenerator {
         expressionPackages,
         document.state.associateBy(ScreenState::name),
       )
+    // Everything a hoisted binding must not shadow: the declarations, the components this file
+    // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
+    // `FooInitial(...)` call captures it exactly the way a state name would.
+    val bindingNamesTaken =
+      document.state.map(ScreenState::name).toSet() +
+        components.components.filter { it.canonicalId in simplyImportable }.map { it.symbol.name } +
+        document.name
     val declaredSoFar = mutableSetOf<String>()
     val preamble =
       document.state.map { declared ->
@@ -259,7 +266,7 @@ object ScreenGenerator {
               "androidx.compose.runtime.mutableStateOf<$type>($initial) }"
           )
         } else {
-          val bound = initialBinding(declared.name, document.state.map(ScreenState::name).toSet())
+          val bound = initialBinding(declared.name, bindingNamesTaken)
           listOf(
             "val $bound = $initial",
             "val $name = androidx.compose.runtime.remember { " +
@@ -1042,8 +1049,9 @@ object ScreenGenerator {
    * The local a hoisted initializer is bound to.
    *
    * Derived from the state's own name so the generated line reads as belonging to it, and bumped
-   * until it collides with no declaration — a screen may legitimately declare both `caption` and
-   * `captionInitial`, and the binding must not shadow the second.
+   * until it collides with nothing this file already writes — a screen may legitimately declare
+   * both `caption` and `captionInitial`, or call a component named `CaptionInitial`, and the
+   * binding must shadow neither.
    */
   private fun initialBinding(name: String, taken: Set<String>): String {
     var candidate = "${name}Initial"

@@ -1150,6 +1150,49 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a hoisted binding does not shadow a component this screen calls`() {
+    // The binding is a plain `val` in the composable body, so it captures a component's call site
+    // exactly the way a state name would. A state named `Tint` derives `TintInitial`, which is a
+    // perfectly ordinary Composable name — putting `val TintInitial = …` directly above the
+    // `TintInitial(...)` this screen calls.
+    val clash =
+      component(
+        "TintInitial",
+        "androidx.compose.material3.TintInitial",
+        listOf(TargetParameter("text", "String", typeFqn = "kotlin.String")),
+        componentIds = listOf("m3/tint-initial"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "m3/tint-initial",
+              arguments = mapOf("text" to ScreenValue.Text("hi")),
+            ),
+          state =
+            listOf(
+              ScreenState(
+                "Tint",
+                "androidx.compose.ui.graphics.Color",
+                ScreenValue.Reference(
+                  rootFqn = "androidx.compose.material3.MaterialTheme",
+                  members = listOf("colorScheme", "primary"),
+                  typeFqn = "androidx.compose.ui.graphics.Color",
+                ),
+              )
+            ),
+        ),
+        catalog(clash),
+        expressionPackages = allowed,
+      ) as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("val TintInitial_ =")
+    assertThat(result.source).contains("TintInitial(text = \"hi\")")
+  }
+
+  @Test
   fun `a hoisted binding does not shadow a state that claims its name`() {
     val result =
       stateful(
