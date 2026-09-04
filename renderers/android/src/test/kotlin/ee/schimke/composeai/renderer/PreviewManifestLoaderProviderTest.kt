@@ -1,5 +1,8 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.data.overrides.OverrideSeed
+import ee.schimke.composeai.data.overrides.OverrideSeedKind
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -34,6 +37,54 @@ class PreviewManifestLoaderProviderTest {
       params = RenderPreviewParams(previewParameterProviderClassName = providerFqn),
       captures = listOf(RenderPreviewCapture(renderOutput = "renders/$id.png")),
     )
+
+  @Test
+  fun `a preview with no provider binds its parameter knobs from the variant seed`() {
+    // The bake-lane half of the knob format: with no `@PreviewParameter` fan-out, a preview's only
+    // arguments are its own defaulted parameters, and an `@OverrideVariant` naming one has to reach
+    // it as an argument (the controller seed the same spec feeds serves the *other* format).
+    val rows =
+      PreviewManifestLoader.expandParameterProvider(
+        RenderPreviewEntry(
+          id = "ShoppingCard",
+          functionName = "ShoppingCard",
+          className = "com.example.PreviewsKt",
+          captures = listOf(RenderPreviewCapture(renderOutput = "renders/ShoppingCard.png")),
+          knobs =
+            listOf(
+              RenderPreviewKnob("title", 0, "STRING", "Shopping list"),
+              RenderPreviewKnob("count", 1, "INT", "3"),
+            ),
+          overrides =
+            OverrideVariantSpec(
+              name = "empty",
+              seeds = listOf(OverrideSeed(key = "count", kind = OverrideSeedKind.INT, raw = "0")),
+            ),
+        )
+      )
+
+    // One row, as for any preview without a provider — but now carrying arguments. The unseeded
+    // `title` stays null so `invokeWithDefaultMask` sets its bit and the compiled default runs.
+    assertEquals(1, rows.size)
+    assertEquals(listOf(null, 0), rows.single().previewArgs)
+  }
+
+  @Test
+  fun `a preview whose knobs nothing seeds keeps the zero-argument invoke`() {
+    val rows =
+      PreviewManifestLoader.expandParameterProvider(
+        RenderPreviewEntry(
+          id = "ShoppingCard",
+          functionName = "ShoppingCard",
+          className = "com.example.PreviewsKt",
+          captures = listOf(RenderPreviewCapture(renderOutput = "renders/ShoppingCard.png")),
+          knobs = listOf(RenderPreviewKnob("title", 0, "STRING", "Shopping list")),
+        )
+      )
+
+    assertEquals(1, rows.size)
+    assertEquals(emptyList<Any?>(), rows.single().previewArgs)
+  }
 
   @Test
   fun `private provider is enumerated instead of throwing IllegalAccessException`() {

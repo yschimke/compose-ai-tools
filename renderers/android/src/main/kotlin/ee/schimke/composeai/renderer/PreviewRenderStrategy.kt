@@ -163,7 +163,21 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
     // constructor, else fall back to null for static methods.
     val receiver = resolvePreviewReceiver(clazz)
     val body: @Composable () -> Unit = {
-      composableMethod.invoke(currentComposer, receiver, *previewArgs.toTypedArray())
+      // A parameter-knob seed leaves a null at every position it did not name, and
+      // `ComposableMethod.invoke` forwards those nulls verbatim — straight into an
+      // `IllegalArgumentException` when one lands on a primitive. `invokeWithDefaultMask` drives
+      // the defaults-mask overload itself for exactly that shape and returns false for every other,
+      // where the ordinary invoke below is already correct.
+      if (
+        !PreviewParameterSupport.invokeWithDefaultMask(
+          composableMethod,
+          receiver,
+          previewArgs,
+          currentComposer,
+        )
+      ) {
+        composableMethod.invoke(currentComposer, receiver, *previewArgs.toTypedArray())
+      }
     }
     val wrapperFqn = preview.params.wrapperClassName
     if (wrapperFqn != null) {

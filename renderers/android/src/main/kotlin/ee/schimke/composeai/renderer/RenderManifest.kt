@@ -404,6 +404,17 @@ data class RenderPreviewEntry(
    * [RenderPreviewArtifact]. The wire field name stays `dataProducts` for back-compat.
    */
   val dataProducts: List<RenderPreviewArtifact> = emptyList(),
+  /**
+   * Editable knobs this preview declares as its own defaulted value parameters — the parameter-knob
+   * override format, the sibling of the `previewOverride*` lookups [overrides] seeds. Empty for
+   * every preview that declares none, so an older manifest and an unmigrated module are unchanged.
+   *
+   * Read here so a **bake** carries them: [PreviewKnobBake] turns them into the declarations the
+   * `renders/<stem>.overrides.json` sidecar publishes, and binds any `@OverrideVariant` seed that
+   * names one onto the composable's argument list. Without this field a migrated preview rendered
+   * offline announced no knobs at all, which is what kept every sample on `previewOverride*`.
+   */
+  val knobs: List<RenderPreviewKnob> = emptyList(),
 ) {
   /**
    * Concise, stable label — the (already-unique, fan-out-suffixed) preview [id]. This is
@@ -416,6 +427,31 @@ data class RenderPreviewEntry(
    */
   override fun toString(): String = id
 }
+
+/**
+ * Renderer-side mirror of the plugin's `PreviewKnob` — one editable value parameter of a preview.
+ *
+ * [type] is carried as the plain enum **name** rather than a renderer-side enum, deliberately: a
+ * newer plugin naming a kind this renderer does not know would otherwise fail to deserialise the
+ * whole manifest, taking every preview in the module down with it. As a string it reaches
+ * [PreviewKnobBake], which drops the one knob it cannot build and renders the rest.
+ *
+ * @property name the Kotlin parameter name, and the seed key that addresses it.
+ * @property index the parameter's zero-based position in the function's **full** value-parameter
+ *   list — which may include defaulted parameters that are not knobs (`modifier: Modifier =
+ *   Modifier`), so it is not an index into a knob list.
+ * @property type the plugin's `PreviewKnobType` name: `STRING`, `BOOLEAN`, `INT`, `LONG`, `FLOAT`
+ *   or `DOUBLE`.
+ * @property default the parameter's literal default as seed text, or null when discovery could not
+ *   recover one (an expression default — `stringResource(...)`, `itemCount + 1`).
+ */
+@Serializable
+data class RenderPreviewKnob(
+  val name: String,
+  val index: Int,
+  val type: String,
+  val default: String? = null,
+)
 
 @Serializable
 data class RenderPreviewCapture(
