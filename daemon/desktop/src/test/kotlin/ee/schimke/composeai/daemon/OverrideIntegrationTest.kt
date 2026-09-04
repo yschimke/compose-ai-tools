@@ -1589,6 +1589,116 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * End-to-end proof for the **parameter-knob** override format: a seed in
+   * `renderNow.overrides.namedOverrides` reaches a preview's own defaulted value parameter and
+   * changes the rendered pixels. Same wire as the `previewOverride*` test above — one seed map
+   * serves both formats — but the value arrives as an ordinary argument rather than through the
+   * process-static controller, so nothing in [KnobbedSquare]'s body knows a harness exists.
+   *
+   * Only `topArgb` is seeded, and the assertion checks **both** bands. The top proves the seed
+   * bound; the bottom proves the unseeded position still ran its compiled default expression rather
+   * than being passed a zero — that is Kotlin's synthetic `$default` mask doing its job, and it is
+   * the whole reason a client can edit one knob of a preview that declares five without having to
+   * send the other four.
+   */
+  @Test
+  fun parameterKnobSeedsOneParameter() {
+    val outputDir = tempFolder.newFolder("renders-parameter-knob")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseSpec =
+      RenderSpec(
+        previewId = "knobbed",
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "KnobbedSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+        knobs =
+          listOf(
+            PreviewKnobDto("topArgb", 0, "LONG"),
+            PreviewKnobDto("bottomArgb", 1, "LONG"),
+            PreviewKnobDto("label", 2, "STRING"),
+          ),
+      )
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+        previewSpecResolver = { id -> baseSpec.takeIf { id == "knobbed" } },
+      )
+    host.start()
+    try {
+      val blue = 0xFF42A5F5L
+      val request =
+        RenderRequest.Render(
+          payload = "previewId=knobbed;overrides=${encodeTextBag("topArgb" to blue.toString())}"
+        )
+      val result = host.submit(request, timeoutMs = 30_000)
+      assertNotNull("pngPath must be populated", result.pngPath)
+      val png = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      val bluePct = pixelMatchPct(png, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      val greenPct = pixelMatchPct(png, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+      assertTrue(
+        "the seeded `topArgb` knob must repaint the top band blue; got " +
+          "${"%.2f".format(bluePct * 100)}% blue",
+        bluePct >= 0.4,
+      )
+      assertTrue(
+        "the unseeded `bottomArgb` knob must keep its compiled default green; got " +
+          "${"%.2f".format(greenPct * 100)}% green — the \$default mask dropped the default",
+        greenPct >= 0.4,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * The unseeded baseline for [parameterKnobSeedsOneParameter]: with no override bag at all,
+   * [KnobbedSquare] renders both compiled defaults. Without this the test above could pass on a
+   * renderer that ignored the seed entirely and happened to paint blue for some other reason.
+   */
+  @Test
+  fun parameterKnobPreviewRendersItsDefaultsUnseeded() {
+    val outputDir = tempFolder.newFolder("renders-parameter-knob-default")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseSpec =
+      RenderSpec(
+        previewId = "knobbed",
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "KnobbedSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+        knobs = listOf(PreviewKnobDto("topArgb", 0, "LONG")),
+      )
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+        previewSpecResolver = { id -> baseSpec.takeIf { id == "knobbed" } },
+      )
+    host.start()
+    try {
+      val result = host.submit(RenderRequest.Render(payload = "previewId=knobbed"), 30_000)
+      assertNotNull("pngPath must be populated", result.pngPath)
+      val png = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      assertTrue(
+        "an unseeded parameter-knob preview must render its author defaults (red top band)",
+        pixelMatchPct(png, expectedRgb = 0xEF5350, perChannelTolerance = 8) >= 0.4,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * End-to-end proof that a `themeProvider` override wraps an arbitrary preview in an app-declared
    * `@ThemeCatalog` theme (the render side of the serve viewer's declared-theme selector). Renders
    * [WallpaperAwareSquare] — which paints the *ambient* `MaterialTheme.colorScheme.primary` with no
@@ -2093,6 +2203,24 @@ class OverrideIntegrationTest {
   private fun encodeNamedBag(key: String, argb: String): String {
     val json = Json { encodeDefaults = false }
     val bag = PreviewOverrides(namedOverrides = mapOf(key to PreviewOverrideValue.ColorValue(argb)))
+    return Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        json.encodeToString(PreviewOverrides.serializer(), bag).toByteArray(Charsets.UTF_8)
+      )
+  }
+
+  /**
+   * A `namedOverrides` bag of plain **text** values — the shape a parameter-knob seed takes.
+   * [encodeNamedBag]'s `ColorValue` has no parameter-knob equivalent (`Color` is not a seedable
+   * kind), so a colour seed is deliberately dropped by `PreviewKnobSeeds` and cannot drive one.
+   */
+  private fun encodeTextBag(vararg entries: Pair<String, String>): String {
+    val json = Json { encodeDefaults = false }
+    val bag =
+      PreviewOverrides(
+        namedOverrides = entries.associate { (k, v) -> k to PreviewOverrideValue.StringValue(v) }
+      )
     return Base64.getUrlEncoder()
       .withoutPadding()
       .encodeToString(

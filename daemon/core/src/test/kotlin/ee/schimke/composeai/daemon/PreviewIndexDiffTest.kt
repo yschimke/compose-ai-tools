@@ -161,6 +161,36 @@ class PreviewIndexDiffTest {
   }
 
   @Test
+  fun `a knobs-less rescan keeps the preview's parameter knobs`() {
+    // `knobs` is read off the *signature*, which the annotation-only incremental rescan never
+    // looks at, so it always comes back empty. Dropping it on a save would leave every seeded
+    // parameter knob rendering its author default — silently, with nothing anywhere saying why —
+    // until the next full rediscovery.
+    val prior =
+      PreviewInfoDto(
+        id = "Knobbed",
+        className = "com.example.KnobbedKt",
+        methodName = "Knobbed",
+        sourceFile = "Knobbed.kt",
+        knobs = listOf(PreviewKnobDto("title", 0, "STRING")),
+      )
+    val fresh = prior.copy(knobs = emptyList())
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Knobbed" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Knobbed.kt"))
+    assertTrue("a knobs-only empty rescan must not be reported as changed", diff.changed.isEmpty())
+    index.applyDiff(diff)
+    assertEquals(prior.knobs, index.byId("Knobbed")?.knobs)
+
+    // A genuine edit alongside the empty knobs still lands, knobs intact.
+    val renamed = prior.copy(displayName = "Y", knobs = emptyList())
+    val realDiff = index.diff(setOf(renamed), Path.of("Knobbed.kt"))
+    assertEquals(listOf("Knobbed"), realDiff.changed.map { it.id })
+    index.applyDiff(realDiff)
+    assertEquals("Y", index.byId("Knobbed")?.displayName)
+    assertEquals(prior.knobs, index.byId("Knobbed")?.knobs)
+  }
+
+  @Test
   fun `a real field change with null params is still reported and preserves params`() {
     // A genuine change (displayName) alongside the incremental scan's null params IS a change — and
     // applyDiff still carries the prior params forward, so the real edit lands without losing size.

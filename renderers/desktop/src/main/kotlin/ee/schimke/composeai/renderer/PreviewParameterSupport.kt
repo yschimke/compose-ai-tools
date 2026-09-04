@@ -79,6 +79,12 @@ object PreviewParameterSupport {
    * The returned method is always opened for reflective invocation ([openForInvoke]) — Kotlin
    * `private fun` previews are idiomatic and resolve fine, but invoking one without that throws
    * `IllegalAccessException`.
+   *
+   * [previewArgs] carries a **parameter knob** seed — a preview's own defaulted value parameters,
+   * the secondary override format — and is meaningful only when there is no provider, since the two
+   * are mutually exclusive: discovery reports knobs only when every value parameter has a default,
+   * which a provider-bound one does not. Empty (the default) resolves the parameterless overload,
+   * falling back to the defaulted shape when the preview has one.
    */
   fun resolve(
     clazz: Class<*>,
@@ -87,9 +93,32 @@ object PreviewParameterSupport {
     limit: Int = Int.MAX_VALUE,
     classLoader: ClassLoader? = null,
     row: String? = null,
+    previewArgs: List<Any?> = emptyList(),
   ): Resolved {
     if (providerClassName.isNullOrBlank()) {
-      return Resolved(clazz.getDeclaredComposableMethod(functionName).openForInvoke(), emptyList())
+      // A preview whose parameters ALL declare defaults is a supported shape — it is what a
+      // production composable annotated `@Preview` in place almost always looks like
+      // (`modifier: Modifier = Modifier`), and it is the whole of the **parameter knob** format.
+      // It compiles to `(realParams…, Composer, int changed, int default)`, which the parameterless
+      // `getDeclaredComposableMethod(name)` lookup — it matches only `(Composer, int)` — cannot
+      // see. Before this fell back, such a preview threw `NoSuchMethodException` on the daemon
+      // before composition started: no PNG, no semantics, just an `.error.json`, and every knob
+      // seed for it moot. The standalone `:renderer-desktop` bake lane had the fallback and the
+      // daemon did not, which is why a parameter-knob preview baked correctly and would not render
+      // live.
+      if (previewArgs.isEmpty()) {
+        val method = runCatching {
+          clazz.getDeclaredComposableMethod(functionName)
+        }
+          .getOrElse { failure ->
+            findDefaultedComposableMethod(clazz, functionName) ?: throw failure
+          }
+        return Resolved(method.openForInvoke(), emptyList())
+      }
+      return Resolved(
+        findComposableMethodWithArgs(clazz, functionName, previewArgs).openForInvoke(),
+        previewArgs,
+      )
     }
     if (limit <= 0) {
       throw PreviewParameterLoadException(
@@ -300,11 +329,120 @@ object PreviewParameterSupport {
     return clazz.getDeclaredComposableMethod(name, *declaredTypes)
   }
 
+  /**
+   * The defaulted-parameter overload of [name] on [clazz], resolved by shape, or null when there
+   * isn't one.
+   *
+   * A `@Composable` function with defaults compiles to `(realParams…, Composer, int changed, int
+   * default)`, so a trailing `(Composer, int, int)` is the signal that Kotlin emitted a `$default`
+   * bridge and every parameter can therefore be left to its default. Resolution goes through
+   * [findComposableMethodWithArgs] with an all-null list so there is one code path deciding what a
+   * null argument means.
+   */
+  fun findDefaultedComposableMethod(clazz: Class<*>, name: String): ComposableMethod? {
+    val candidate =
+      clazz.declaredMethods.firstOrNull { m ->
+        m.name == name &&
+          m.parameterCount >= 3 &&
+          m.parameterTypes[m.parameterCount - 3] == androidx.compose.runtime.Composer::class.java &&
+          m.parameterTypes[m.parameterCount - 2] == Int::class.javaPrimitiveType &&
+          m.parameterTypes[m.parameterCount - 1] == Int::class.javaPrimitiveType
+      } ?: return null
+    val realParams = candidate.parameterCount - 3
+    if (realParams <= 0) return null
+    return findComposableMethodWithArgs(clazz, name, List(realParams) { null })
+  }
+
+  /**
+   * Invokes [composableMethod]'s `$default` bridge directly when [previewArgs] leaves a parameter
+   * unseeded, returning true when it did the call — so a caller falls back to the ordinary
+   * `ComposableMethod.invoke` only when this cannot safely drive the shape.
+   *
+   * `ComposableMethod.invoke` cannot express a partial seed. It derives the default mask from which
+   * arguments are null *and* forwards those same nulls as the parameter values, so a null destined
+   * for a primitive parameter reaches `Method.invoke` as a null `int` and throws
+   * `IllegalArgumentException`. Trailing arguments it never receives are fine — those it pads by
+   * type — so the failure appears exactly when something *after* an unseeded parameter is seeded,
+   * which is precisely the shape a partial knob seed produces (`Button(label = …, enabled =
+   * <default>, size = …)`).
+   *
+   * Doing it here keeps the semantics the format needs: an unseeded position contributes a set bit
+   * to Kotlin's synthetic `$default` mask *and* a type-appropriate zero as its placeholder, so the
+   * compiled default expression runs and the author's default is what renders.
+   *
+   * Returns false whenever the shape is not one this can drive: no null to fix, no `$default`
+   * bridge, an instance method, or more than 31 value parameters (past which Kotlin emits a second
+   * mask word and the single-int layout below no longer holds).
+   */
+  fun invokeWithDefaultMask(
+    composableMethod: ComposableMethod,
+    instance: Any?,
+    previewArgs: List<Any?>,
+    composer: androidx.compose.runtime.Composer,
+  ): Boolean {
+    if (instance != null) return false
+    // Any null at all, not just an interior one: `ComposableMethod.invoke` pads only positions past
+    // `args.size`, so a null *inside* the list — trailing or not — is forwarded verbatim.
+    if (previewArgs.none { it == null }) return false
+    val method = composableMethod.asMethod()
+    val realParams = method.parameterCount - 3
+    if (realParams !in 1..31 || previewArgs.size > realParams) return false
+    val types = method.parameterTypes
+    if (types[realParams] != androidx.compose.runtime.Composer::class.java) return false
+    if (types[realParams + 1] != Int::class.javaPrimitiveType) return false
+    if (types[realParams + 2] != Int::class.javaPrimitiveType) return false
+
+    var mask = 0
+    val arguments = arrayOfNulls<Any?>(method.parameterCount)
+    for (i in 0 until realParams) {
+      val seeded = previewArgs.getOrNull(i)
+      if (seeded == null) {
+        mask = mask or (1 shl i)
+        arguments[i] = zeroValueFor(types[i])
+      } else {
+        arguments[i] = seeded
+      }
+    }
+    arguments[realParams] = composer
+    arguments[realParams + 1] = 0
+    arguments[realParams + 2] = mask
+    method.isAccessible = true
+    method.invoke(null, *arguments)
+    return true
+  }
+
+  /**
+   * The placeholder a defaulted parameter is passed alongside its set mask bit. Kotlin's `$default`
+   * bridge overwrites it with the compiled default expression, so the value never reaches the body
+   * — but the JVM still requires one of the right type, which is the whole reason a null cannot be
+   * used.
+   */
+  private fun zeroValueFor(type: Class<*>): Any? =
+    when (type) {
+      Int::class.javaPrimitiveType -> 0
+      Boolean::class.javaPrimitiveType -> false
+      Long::class.javaPrimitiveType -> 0L
+      Float::class.javaPrimitiveType -> 0f
+      Double::class.javaPrimitiveType -> 0.0
+      Short::class.javaPrimitiveType -> 0.toShort()
+      Byte::class.javaPrimitiveType -> 0.toByte()
+      Char::class.javaPrimitiveType -> '\u0000'
+      else -> null
+    }
+
   private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>): Boolean {
+    // A `@Composable` with defaults ends in `(Composer, int changed, int default)`; without them it
+    // ends in `(Composer, int changed)`. Only the former can honour a null, because that is what
+    // becomes a set bit in Kotlin's synthetic `$default` mask.
+    val carriesDefaultMask = method.parameterCount >= previewArgs.size + 3
     for ((i, arg) in previewArgs.withIndex()) {
       val expected = method.parameterTypes[i]
       if (arg == null) {
-        if (expected.isPrimitive) return false
+        // Without a default mask a null would reach a primitive parameter as 0/false and render a
+        // value the author never wrote, so it still cannot bind there. With one, null is precisely
+        // how a partial seed says "leave this parameter alone" — which is what makes it possible to
+        // seed one knob of a preview without disturbing its primitive siblings.
+        if (expected.isPrimitive && !carriesDefaultMask) return false
         continue
       }
       val actual = arg.javaClass

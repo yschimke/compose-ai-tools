@@ -523,6 +523,12 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       // PreviewManifestRouter does.
       outputBaseName = info.id,
       overrides = bakedOverrides,
+      // The parameter knobs discovery read off the signature. Carried on BOTH the early-return
+      // `defaults` and the fully-resolved spec below — a preview whose `params` block is absent
+      // (the incremental rescan's DTO) still declares the same parameters, and dropping them on
+      // that path would make a seeded knob render its author default for exactly as long as the
+      // manifest stayed un-rediscovered.
+      knobs = info.knobs,
     )
   // A *missing* params block means "params unknown", NOT "params empty" — the incremental
   // source-change path (IncrementalDiscovery.toDto → PreviewIndex.applyDiff) replaces an edited
@@ -622,6 +628,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     gutterTopDp = params.captureGutter?.top ?: 0,
     gutterEndDp = params.captureGutter?.end ?: 0,
     gutterBottomDp = params.captureGutter?.bottom ?: 0,
+    knobs = defaults.knobs,
   )
 }
 

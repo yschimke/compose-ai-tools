@@ -120,6 +120,34 @@ fun OverridableSquare() {
 }
 
 /**
+ * The **parameter-knob** twin of [OverridableSquare]: two editable fills and a label, declared as
+ * the preview's own defaulted value parameters instead of `previewOverride*` lookups in the body.
+ * Discovery reports a knob per parameter (`ComposableSignature.knobsOf`) and the renderer binds a
+ * seed to the parameter's *position*, so this fixture contains no harness call at all.
+ *
+ * Two colours rather than one, on purpose. [OverrideIntegrationTest.parameterKnobSeedsOneParameter]
+ * seeds only [topArgb], so the render proves both halves of the contract at once: the seeded
+ * parameter repaints, and the unseeded [bottomArgb] renders its **compiled default** rather than a
+ * zero — which is what Kotlin's synthetic `$default` mask does for the positions the binder leaves
+ * null, and the only reason a subset of a preview's knobs can be seeded at all. [label] is a third
+ * kind left unseeded, so a `String` position sharing the mask is covered too.
+ */
+@Composable
+fun KnobbedSquare(
+  topArgb: Long = 0xFFEF5350,
+  bottomArgb: Long = 0xFF66BB6A,
+  label: String = "hi",
+) {
+  // `label` is deliberately never drawn: the assertion is a pixel one and a glyph over either band
+  // would only make the two colours harder to measure. It exists to put a String position into the
+  // same `$default` mask as the two Longs, so the test covers a mixed-kind mask and not just Longs.
+  Column(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(topArgb.toInt())))
+    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(bottomArgb.toInt())))
+  }
+}
+
+/**
  * The same `fill` knob as [OverridableSquare], but read **through a keyless `remember`** — the
  * shape every androidx `remember*State` factory has (`rememberTimePickerState`,
  * `rememberDatePickerState`, …), each of which saves through a keyless `rememberSaveable` whose

@@ -358,9 +358,18 @@ class RenderEngine(
           limit = spec.previewParameterLimit,
           classLoader = classLoader,
           row = spec.previewParameterRow,
+          // The seeded **parameter knobs**, which also decide the overload to resolve: a preview
+          // whose parameters all declare defaults compiles to `(realParams…, Composer, int, int)`
+          // and the parameterless lookup cannot see it either way, seeded or not.
+          previewArgs = bindKnobArguments(spec),
         )
       }
     val composableMethod: ComposableMethod? = resolvedInvocation?.method
+    // Either the `@PreviewParameter` provider's bound value or the seeded parameter knobs — never
+    // both. A preview with a provider is never also a parameter-knob preview: discovery reports
+    // knobs only when EVERY value parameter declares a default, and a provider-bound parameter does
+    // not. An empty list is the plain parameterless preview, and also the knob preview nobody
+    // seeded, which is the same invocation.
     val previewArgs: List<Any?> = resolvedInvocation?.args ?: emptyList()
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
@@ -2701,6 +2710,19 @@ data class RenderSpec(
    */
   val previewParameterRow: String? = null,
   /**
+   * The **parameter knobs** this preview declares — its own defaulted value parameters, the
+   * secondary override format beside `previewOverride*` (see
+   * [ee.schimke.composeai.renderer.PreviewKnobArguments]). Carried from `previews.json` by
+   * `renderSpecFromInfo`, or from the `knobs=<name>:<index>:<TYPE>,…` payload token by
+   * [parseFromPayload].
+   *
+   * Empty for every preview that declares none, which is the overwhelming majority: discovery only
+   * reports knobs when **every** value parameter has a default, so a preview cannot acquire one by
+   * accident. A seed in `overrides.namedOverrides` naming one of these binds to the parameter's
+   * position; a seed naming anything else is left for the `previewOverride*` controller.
+   */
+  val knobs: List<PreviewKnobDto> = emptyList(),
+  /**
    * `@CaptureGutter` edges in **dp** (issue #4443). Four flat Ints rather than a nested type
    * because `:daemon:android`'s twin of this class can't see `:preview-data-api`'s
    * `CaptureGutterDp`, and the two RenderSpecs are deliberately kept field-for-field identical so
@@ -2848,6 +2870,7 @@ data class RenderSpec(
         previewParameterLimit =
           map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
         previewParameterRow = map["previewParameterRow"]?.takeIf { it.isNotBlank() },
+        knobs = parseKnobsToken(map["knobs"]),
         gutterStartDp = gutterDp.start,
         gutterTopDp = gutterDp.top,
         gutterEndDp = gutterDp.end,
@@ -2865,6 +2888,28 @@ data class RenderSpec(
       if (parts.size != 4) return GutterDp()
       val edges = parts.map { it.trim().toIntOrNull()?.coerceAtLeast(0) ?: return GutterDp() }
       return GutterDp(edges[0], edges[1], edges[2], edges[3])
+    }
+
+    /**
+     * Parses the `knobs=<name>:<index>:<TYPE>,…` payload token into [RenderSpec.knobs].
+     *
+     * A malformed entry — wrong arity, a non-numeric or negative index, a blank name — is
+     * **skipped** rather than failing the render. The type is kept verbatim, including a name this
+     * daemon doesn't know: an unbindable kind has to degrade to "this parameter takes its author
+     * default", which is exactly what a knob the binder skips already does, and failing the whole
+     * render because a newer plugin named a kind an older daemon can't seed would be far worse than
+     * rendering the preview unseeded.
+     */
+    internal fun parseKnobsToken(token: String?): List<PreviewKnobDto> {
+      if (token.isNullOrBlank()) return emptyList()
+      return token.split(',').mapNotNull { entry ->
+        val parts = entry.split(':')
+        if (parts.size != 3) return@mapNotNull null
+        val name = parts[0].trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val index = parts[1].trim().toIntOrNull()?.takeIf { it >= 0 } ?: return@mapNotNull null
+        val type = parts[2].trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        PreviewKnobDto(name = name, index = index, type = type)
+      }
     }
 
     /** Four dp edges, the parsed shape of a `captureGutter=` token. */
@@ -2904,8 +2949,47 @@ data class RenderSpec(
  * composer. Mirrors `:renderer-desktop`'s private `InvokeComposable`; kept private+top-level so the
  * compose-compiler plugin recognises it as a composable function.
  */
+/**
+ * The argument array that seeds [RenderSpec.knobs] from this render's `namedOverrides` bag — the
+ * **parameter knob** half of the override surface.
+ *
+ * Returns an empty list whenever nothing binds, so a preview with knobs but no seed keeps invoking
+ * through the same zero-argument path it always did. A knob whose declared `type` this daemon does
+ * not know is dropped here rather than at parse time (see [RenderSpec.parseKnobsToken]): the
+ * parameter then takes its compiled default, which is the only safe reading of "a kind I cannot
+ * build".
+ */
+private fun bindKnobArguments(spec: RenderSpec): List<Any?> {
+  if (spec.knobs.isEmpty()) return emptyList()
+  val knobs =
+    spec.knobs.mapNotNull { knob ->
+      val type =
+        ee.schimke.composeai.renderer.PreviewKnobArguments.Type.entries.firstOrNull {
+          it.name == knob.type
+        } ?: return@mapNotNull null
+      ee.schimke.composeai.renderer.PreviewKnobArguments.Knob(knob.name, knob.index, type)
+    }
+  return ee.schimke.composeai.renderer.PreviewKnobArguments.bind(
+    knobs,
+    PreviewKnobSeeds.texts(spec.overrides?.namedOverrides),
+  )
+}
+
 @androidx.compose.runtime.Composable
 private fun InvokeComposable(composableMethod: ComposableMethod, previewArgs: List<Any?>) {
+  // A **partial** knob seed leaves nulls in the list, and `ComposableMethod.invoke` cannot express
+  // that: it forwards a null destined for a primitive parameter verbatim and `Method.invoke` throws
+  // on the null `int`. `invokeWithDefaultMask` drives the `$default` bridge itself when it sees one
+  // and returns false otherwise, so every shape it can't handle stays on the path it always took.
+  if (
+    ee.schimke.composeai.renderer.PreviewParameterSupport.invokeWithDefaultMask(
+      composableMethod,
+      null,
+      previewArgs,
+      currentComposer,
+    )
+  )
+    return
   composableMethod.invoke(currentComposer, null, *previewArgs.toTypedArray())
 }
 
