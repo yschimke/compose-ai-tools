@@ -24,13 +24,19 @@ declared each way. That pair is deliberate and must **not** be collapsed by a mi
 
 ## The verdict
 
-**Still no sample should move — but the reason has changed, and it is now one thing.** Both daemons
-publish a parameter knob as a `PreviewOverrideDeclaration`, so a *live* viewer draws the same
-control it draws for a `previewOverride*` knob. The **offline bake** does not: a bundle's
-`previews/<id>.overrides.json` sidecar is written by draining the controller after a standalone
-render, and the standalone renderers were never taught to record a parameter knob. That sidecar is
-what `compose-preview serve` reads its knob list from — for a daemon-backed host too, which only
-uses the daemon to *render* — so a migrated preview would serve an empty override list.
+**No sample should move from this repository yet, but the wiring no longer stops one.** Both
+daemons publish a parameter knob as a `PreviewOverrideDeclaration`, so a *live* viewer draws the
+same control it draws for a `previewOverride*` knob — and the **Android offline bake** now does too,
+recording the manifest's knobs onto the same controller channel before the render so the existing
+drain writes them into `previews/<id>.overrides.json`. That sidecar is what `compose-preview serve`
+reads its knob list from, for a daemon-backed host too (which only uses the daemon to *render*).
+
+Two things still hold a sample back, and they are different in kind. The **desktop** standalone
+renderer still records nothing — it has no manifest to read — so a CMP sample would still bake an
+empty override list ([gap 6](#gap-6)). And the one Android sample that could now move,
+`android-live-lane`, is the fixture for a suite that lives in another repository and *fails* rather
+than skips: migrating it blind would hand `compose-preview-server` a red required e2e with no local
+signal, so that migration belongs in a change where the suite can actually be run.
 
 Two further limits are unaffected by any wiring: most sample defaults are **expressions**
 (`stringResource(...)`, `Color(0xFF3366FF)`), which cannot be recovered and so cannot be declared;
@@ -157,27 +163,32 @@ A parameter knob only exists on the preview's own signature, so moving either wo
 every knob of every branch onto every preview that could reach it — and `CatalogComponent(id:
 String)` reports no knobs anyway, since `id` has no default.
 
-### <a id="gap-6"></a>6. The offline bake lane does not record a parameter knob
+### <a id="gap-6"></a>6. The desktop bake lane does not record a parameter knob
 
-This is now the gap that decides whether a sample can move, so it is worth being exact about.
+**Android: closed.** **Desktop: open**, and it is what keeps a CMP sample from moving.
 
-A bundle carries each preview's editable knobs in `previews/<id>.overrides.json`. That sidecar is
-written by `DesktopRendererMain.writePreviewOverridesSidecar`, which drains
-`PreviewOverrideController.declarations()` after a standalone render — so it captures whatever the
-`previewOverride*` lookups recorded *during* that render, and nothing else. The standalone renderers
-were never taught that a preview's parameter knobs are declarations too.
-
+A bundle carries each preview's editable knobs in `previews/<id>.overrides.json`, written by
+draining `PreviewOverrideController.declarations()` after a standalone render — so it captures
+whatever the `previewOverride*` lookups recorded *during* that render. A parameter knob is read by
+argument passing and records nothing, so that drain used to come back empty for a migrated preview.
 `compose-preview serve` reads its knob list from that sidecar (`ServeBundleHost.readOverrides`), and
-so does `/api/previews`. **That holds for a daemon-backed host as well** — the daemon supplies
-renders, not the declaration list. So a migrated preview serves an empty override list even though
-the live daemon would happily seed and declare it.
+so does `/api/previews`; **that holds for a daemon-backed host as well**, because the daemon
+supplies renders and not the declaration list.
 
-The fix is small in shape and unglamorous in plumbing: hand the standalone renderers the knobs
-discovery already recorded, and record them into the controller before the render, exactly as both
-daemons now do. The desktop renderer takes positional CLI args plus a `composeai.overrides.seed`
-system property, so the knobs would ride a property beside it; the Android renderer has a manifest
-entry (`RenderPreviewEntry`) and would carry a field. Both then fill the sidecar for free, because
-the drain already exists.
+On the **Android/Robolectric** lane this is now wired. `RenderPreviewEntry` carries the manifest's
+`knobs` (`previews.json` had the field all along — the renderer was dropping it), and
+`PreviewKnobBake` turns them into declarations recorded onto the controller just after the
+`@OverrideVariant` seed and just after `clearDeclarations()`, so the existing drain publishes them.
+The same object binds a seed that names a knob onto the composable's argument list, with the
+defaults-mask invoke a partial seed needs. No plugin change was involved.
+
+The **desktop** renderer is the remaining half, and it is more plumbing than idea: it has no
+manifest to read — `DesktopRendererMain` takes positional CLI args plus the per-capture
+`composeai.overrides.seed` system property — so the knobs need a channel of their own. A property
+beside the seed covers the forked lane; the pooled lane needs the same payload on
+`DesktopRenderWorkerPool`'s request frame, because a worker outlives one capture and must not
+inherit the previous preview's knobs. Everything past that is shared with the Android side: build
+the declarations, record them before the render, and the drain fills the sidecar for free.
 
 The harness-only `PreviewManifestRouter` (`composeai.harness.previewsManifest`) is a separate, much
 smaller hole: its manifest wire type carries no `knobs`, so a knobbed preview rendered through a
@@ -188,8 +199,8 @@ harness fixture renders its defaults. No fixture declares one today.
 | Sample | Knobs | Verdict |
 | --- | --- | --- |
 | `samples/cmp/.../OverridablePreviews.kt` | 4 (`title`, `accent`, `itemCount`, `density`, indexed `rowLabel`) | **Keep as is** — it is the deliberate twin of `ParameterKnobPreviews.kt`; the comparison is what the sample is for |
-| `samples/cmp/.../ParameterKnobPreviews.kt` | 5 parameter knobs | Already migrated — the reference |
-| `samples/android-live-lane/.../LiveLanePreviews.kt` | 1 (`label`, on the `@Preview` itself) | **Blocked by gap 6, not gap 1.** Its default is the literal `"Live lane"`, so the knob would declare on a live daemon — but this sample is the fixture for `serve-lanes.spec.mjs` in [`compose-preview-server`](https://github.com/yschimke/compose-preview-server), which selects on `overrides[].key == "label"` read from the **bundle sidecar** and *fails* rather than skips when no such preview is found. Migrating it before the bake lane records parameter knobs breaks that e2e |
+| `samples/cmp/.../ParameterKnobPreviews.kt` | 5 parameter knobs | Already migrated — the reference. Note it bakes on the **desktop** lane, which still records no declarations ([gap 6](#gap-6)) |
+| `samples/android-live-lane/.../LiveLanePreviews.kt` | 1 (`label`, on the `@Preview` itself) | **Migratable, but not from here.** Its default is the literal `"Live lane"`, and the Android bake now records the declaration into the sidecar ([gap 6](#gap-6)), so the wiring that blocked it is gone. What remains is verification: this sample is the fixture for `serve-lanes.spec.mjs` in [`compose-preview-server`](https://github.com/yschimke/compose-preview-server), which selects on `overrides[].key == "label"` read from the bundle sidecar and *fails* rather than skips. That suite needs a daemon-backed serve under Playwright and cannot run in this repository, so the migration belongs in a change that can actually run it |
 | `design-catalog-m3-shared/.../CatalogComponents.kt` + `CatalogOverrides.kt` (+ actuals) | ~15 across a `when (id)` dispatch | **Cannot** — gap 5, plus `catalogOverrideColor` (gap 2) |
 | `design-catalog-m3/.../CatalogTheme.kt` | 5 (font, colors, shapes, typography, fonts) | **Cannot** — gap 5: read inside the theme wrapper every sticker calls |
 | `design-catalog-m3/.../CatalogTemplates.kt` | `title`, `fab` hoistable; `sender`, `preview` indexed | **Partial at best** — gap 3 |

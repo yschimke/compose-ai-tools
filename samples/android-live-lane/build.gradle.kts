@@ -19,10 +19,12 @@
 // the contract the spec selects on (`overrides[].key == "label"`) — so the Android lane reuses the
 // desktop lane's spec unmodified.
 //
-// **That knob must stay a `previewOverride*` one for now.** The spec reads the override list from
-// the bundle's `previews/<id>.overrides.json` sidecar, which only the `previewOverride*` surface
-// writes; the parameter-knob format is not recorded by the offline bake yet, and the spec FAILS
-// rather than skips when it finds no label-knob preview. See
+// **That knob stays a `previewOverride*` one until someone can run the spec.** The spec reads the
+// override list from the bundle's `previews/<id>.overrides.json` sidecar and FAILS rather than
+// skips when it finds no label-knob preview. The Android bake now records a *parameter* knob into
+// that sidecar too, so the format is no longer the blocker — but the spec needs a daemon-backed
+// serve under Playwright and cannot run from this repository, so migrating the knob here would ship
+// an unverified change to another repo's required e2e. See
 // `docs/design/PARAMETER_KNOB_MIGRATION.md` → gap 6.
 plugins {
   id("composeai.base-conventions")
