@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T08:31:32.240Z",
+  "generatedAt": "2026-09-04T08:58:19.995Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c1e2afea72bbfdaa42685c0adfeb1ddd696c67c2",
+        "subject": "chore(main): release 1.71.0 (#5071)",
+        "at": "2026-09-04T09:26:26+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "457965d28b0cecfaade58cc40df7e69f9fe9f07e",
+        "subject": "fix(semantics): match Font's style getter on its decoration, not a prefix (#5083)",
+        "at": "2026-09-04T09:24:55+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "5253e95e9a62aad9f800809a7e6d9cf28ffe7cb6",
         "subject": "fix(compare): read a fractional root translate instead of dropping it (#5082)",
@@ -467,22 +483,6 @@
         "subject": "chore(main): release 1.65.0 (#5005)",
         "at": "2026-09-02T22:15:04+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c2ac68d829ec64e403376208bdcd8e9e39aca04f",
-        "subject": "feat(discovery): infer the library components a preview demonstrates (#5010)",
-        "at": "2026-09-02T22:11:51+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "06348d6c18a765bc401f0ef3eb4806654c74f6e2",
-        "subject": "feat(import): let an import name the previews it cannot render (#5011)",
-        "at": "2026-09-02T22:11:17+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
