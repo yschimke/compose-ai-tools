@@ -236,18 +236,42 @@ object ScreenGenerator {
         val initial =
           context.expression(declared.initial, "state `${declared.name}`", depth = 0)
             ?: return@map null
+        declaredSoFar += declared.name
+        val name = ComponentSnippets.escapeIfKeyword(declared.name)
+        val type = ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn)
+        // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
+        // composable read — `MaterialTheme.colorScheme.primary` is the documented example. Kotlin
+        // rejects that inside the lambda even though the same expression is legal one line up, so
+        // anything naming an API is bound first and the lambda closes over the binding.
+        //
+        // A literal and a state read stay where they are: neither can be a composable call — one
+        // is a constant, the other reads a local `MutableState` — and hoisting every `""` would
+        // double an ordinary preamble to guard against nothing.
+        val hoisted =
+          declared.initial is ScreenValue.Reference ||
+            declared.initial is ScreenValue.Construct ||
+            declared.initial is ScreenValue.Chain
         // `remember` so the value survives recomposition — without it the screen resets on every
         // frame that touches it, which looks like the state never changing at all.
-        declaredSoFar += declared.name
-        "val ${ComponentSnippets.escapeIfKeyword(declared.name)} = androidx.compose.runtime.remember { " +
-          "androidx.compose.runtime.mutableStateOf<" +
-          "${ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn)}>($initial) }"
+        if (!hoisted) {
+          listOf(
+            "val $name = androidx.compose.runtime.remember { " +
+              "androidx.compose.runtime.mutableStateOf<$type>($initial) }"
+          )
+        } else {
+          val bound = initialBinding(declared.name, document.state.map(ScreenState::name).toSet())
+          listOf(
+            "val $bound = $initial",
+            "val $name = androidx.compose.runtime.remember { " +
+              "androidx.compose.runtime.mutableStateOf<$type>($bound) }",
+          )
+        }
       }
     // The body is not an initializer: every declaration is in scope there.
     context.initializerScope = null
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
-    val declarations = preamble.filterNotNull()
+    val declarations = preamble.filterNotNull().flatten()
 
     // An AndroidX-mechanism marker is reported by both scans, so it is subtracted here rather than
     // written twice under two annotations that would each reject the other's markers.
@@ -998,6 +1022,19 @@ object ScreenGenerator {
    * projection-supplied string into generated source, and a string that is not a name is how one
    * stops being a reference and starts being syntax.
    */
+  /**
+   * The local a hoisted initializer is bound to.
+   *
+   * Derived from the state's own name so the generated line reads as belonging to it, and bumped
+   * until it collides with no declaration — a screen may legitimately declare both `caption` and
+   * `captionInitial`, and the binding must not shadow the second.
+   */
+  private fun initialBinding(name: String, taken: Set<String>): String {
+    var candidate = "${name}Initial"
+    while (candidate in taken) candidate += "_"
+    return ComponentSnippets.escapeIfKeyword(candidate)
+  }
+
   private fun isQualifiedName(fqn: String): Boolean {
     val segments = fqn.split('.')
     return fqn.isNotEmpty() && segments.size >= 2 && segments.all(::isWritableName)

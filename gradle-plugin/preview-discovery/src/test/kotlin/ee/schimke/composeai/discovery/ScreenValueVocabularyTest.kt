@@ -1113,6 +1113,66 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a reference initializer is bound before remember rather than inside it`() {
+    // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
+    // composable read. `MaterialTheme.colorScheme.primary` is legal one line above the lambda and
+    // rejected inside it, so the value is bound first and the lambda closes over the binding.
+    val result =
+      stateful(
+        listOf(
+          ScreenState(
+            "tint",
+            "androidx.compose.ui.graphics.Color",
+            ScreenValue.Reference(
+              rootFqn = "androidx.compose.material3.MaterialTheme",
+              members = listOf("colorScheme", "primary"),
+              typeFqn = "androidx.compose.ui.graphics.Color",
+            ),
+          )
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source)
+      .contains("val tintInitial = androidx.compose.material3.MaterialTheme.colorScheme.primary")
+    assertThat(result.source)
+      .contains("mutableStateOf<androidx.compose.ui.graphics.Color>(tintInitial)")
+  }
+
+  @Test
+  fun `a literal initializer stays inside remember`() {
+    val result =
+      stateful(listOf(ScreenState("caption", "kotlin.String", ScreenValue.Text("a"))))
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.String>(\"a\")")
+    assertThat(result.source).doesNotContain("captionInitial")
+  }
+
+  @Test
+  fun `a hoisted binding does not shadow a state that claims its name`() {
+    val result =
+      stateful(
+        listOf(
+          ScreenState("tintInitial", "kotlin.String", ScreenValue.Text("taken")),
+          ScreenState(
+            "tint",
+            "androidx.compose.ui.graphics.Color",
+            ScreenValue.Reference(
+              rootFqn = "androidx.compose.material3.MaterialTheme",
+              members = listOf("colorScheme", "primary"),
+              typeFqn = "androidx.compose.ui.graphics.Color",
+            ),
+          ),
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source)
+      .contains("val tintInitial_ = androidx.compose.material3.MaterialTheme.colorScheme.primary")
+  }
+
+  @Test
   fun `a state named after a package root the file writes in full is refused`() {
     // The preamble emits `androidx.compose.runtime.remember` for every declaration. A local `val`
     // is not in scope in its own initializer, so `val androidx = androidx.compose.runtime…`
