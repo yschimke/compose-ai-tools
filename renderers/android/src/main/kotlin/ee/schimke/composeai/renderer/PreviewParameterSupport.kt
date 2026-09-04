@@ -1,7 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import androidx.compose.runtime.reflect.ComposableMethod
-import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import kotlin.math.ceil
 
 /**
  * Reflective `@PreviewParameter` support shared by the two Android render bodies — `:renderer
@@ -75,6 +75,12 @@ object PreviewParameterSupport {
    * `private fun` previews are idiomatic and resolve fine, but invoking one without that throws
    * `IllegalAccessException`. Doing it here rather than at each call site is what keeps the
    * daemon's scroll / `figma-svg-long` / held-session paths from each having to remember.
+   *
+   * [previewArgs] carries a **parameter knob** seed — a preview's own defaulted value parameters,
+   * the secondary override format — and is meaningful only when there is no provider, since the two
+   * are mutually exclusive: discovery reports knobs only when every value parameter has a default,
+   * which a provider-bound one does not. Empty (the default) resolves the parameterless overload,
+   * falling back to the defaulted shape when the preview has one.
    */
   fun resolve(
     clazz: Class<*>,
@@ -83,9 +89,28 @@ object PreviewParameterSupport {
     limit: Int = Int.MAX_VALUE,
     classLoader: ClassLoader? = null,
     row: String? = null,
+    previewArgs: List<Any?> = emptyList(),
   ): Resolved {
     if (providerClassName.isNullOrBlank()) {
-      return Resolved(clazz.getDeclaredComposableMethod(functionName).openForInvoke(), emptyList())
+      // [resolveNoArgComposableMethod] rather than the bare lookup: a preview whose parameters all
+      // declare defaults — the whole of the **parameter knob** format, and the shape a production
+      // composable annotated `@Preview` in place almost always has (`modifier: Modifier =
+      // Modifier`)
+      // — compiles to `(realParams…, Composer, changed…, default…)`, which
+      // `getDeclaredComposableMethod(name)` cannot see because it matches only `(Composer, int)`.
+      // The standalone bake lane has resolved it that way since the JetLagged renders; the daemon
+      // reached this seam and threw `NoSuchMethodException` before composition, so a defaulted
+      // preview produced an `.error.json` and no PNG.
+      if (previewArgs.isEmpty()) {
+        return Resolved(
+          resolveNoArgComposableMethod(clazz, functionName).openForInvoke(),
+          emptyList(),
+        )
+      }
+      return Resolved(
+        findComposableMethodWithArgs(clazz, functionName, previewArgs).openForInvoke(),
+        previewArgs,
+      )
     }
     if (limit <= 0) {
       throw PreviewParameterLoadException(
@@ -280,6 +305,99 @@ object PreviewParameterSupport {
       throw PreviewParameterLoadException("$providerFqn.getValues() failed", e)
     }
   }
+
+  /**
+   * Invokes [composableMethod]'s defaults-mask overload directly when [previewArgs] leaves a
+   * parameter unseeded, returning true when it did the call — so a caller falls back to the
+   * ordinary `ComposableMethod.invoke` for every shape this cannot safely drive.
+   *
+   * `ComposableMethod.invoke` cannot express a **partial** seed. It derives the mask from which
+   * arguments are null *and* forwards those same nulls as the parameter values, so a null destined
+   * for a primitive parameter reaches `Method.invoke` as a null `int` and throws
+   * `IllegalArgumentException`. Trailing arguments it never receives are fine — those it pads by
+   * type — so the failure appears exactly when something *after* an unseeded parameter is seeded,
+   * which is precisely the shape a partial parameter-knob seed produces (`Button(label = …, enabled
+   * = <default>, size = …)`).
+   *
+   * Doing it here keeps the semantics the knob format needs: an unseeded position contributes a set
+   * bit to the mask *and* a type-appropriate zero as its placeholder, so the compiled default
+   * expression runs and the author's default is what renders.
+   *
+   * The synthetic tail is reconstructed from the calling convention rather than assumed to be three
+   * ints: a composable with more than [SLOTS_PER_COMPOSABLE_INT] real parameters carries a second
+   * `changed` int, and one with more than [BITS_PER_DEFAULT_INT] carries a second `default` int.
+   * Assuming the small shape would make this abstain on exactly the wide previews whose partial
+   * seed then throws.
+   *
+   * Returns false for an instance method, for a method with no defaults mask, for a tail that does
+   * not match the convention, and when there is no null to place — the shapes where the ordinary
+   * invoke is already correct.
+   */
+  fun invokeWithDefaultMask(
+    composableMethod: ComposableMethod,
+    instance: Any?,
+    previewArgs: List<Any?>,
+    composer: androidx.compose.runtime.Composer,
+  ): Boolean {
+    if (instance != null) return false
+    // Any null at all, not just an interior one: `ComposableMethod.invoke` pads only positions past
+    // `previewArgs.size`, so a null *inside* the list — trailing or not — is forwarded verbatim.
+    if (previewArgs.none { it == null }) return false
+    val method = composableMethod.asMethod()
+    if (!java.lang.reflect.Modifier.isStatic(method.modifiers)) return false
+    if (!method.hasComposableDefaults()) return false
+    val types = method.parameterTypes
+    val realParams = types.indexOfLast { it == androidx.compose.runtime.Composer::class.java }
+    if (realParams <= 0 || previewArgs.size > realParams) return false
+    val changedInts =
+      ceil(realParams.toDouble() / SLOTS_PER_COMPOSABLE_INT).toInt().coerceAtLeast(1)
+    val defaultInts = ceil(realParams.toDouble() / BITS_PER_DEFAULT_INT).toInt().coerceAtLeast(1)
+    if (types.size != realParams + 1 + changedInts + defaultInts) return false
+
+    val masks = IntArray(defaultInts)
+    val arguments = arrayOfNulls<Any?>(types.size)
+    for (i in 0 until realParams) {
+      val seeded = previewArgs.getOrNull(i)
+      if (seeded == null) {
+        masks[i / BITS_PER_DEFAULT_INT] =
+          masks[i / BITS_PER_DEFAULT_INT] or (1 shl (i % BITS_PER_DEFAULT_INT))
+        arguments[i] = zeroValueForComposableParameter(types[i])
+      } else {
+        arguments[i] = seeded
+      }
+    }
+    arguments[realParams] = composer
+    for (c in 0 until changedInts) arguments[realParams + 1 + c] = 0
+    for (d in 0 until defaultInts) arguments[realParams + 1 + changedInts + d] = masks[d]
+    method.isAccessible = true
+    method.invoke(null, *arguments)
+    return true
+  }
+
+  /**
+   * The placeholder an unseeded parameter is passed alongside its set mask bit. The compiled
+   * default expression overwrites it, so the value never reaches the body — but the JVM still
+   * requires one of the right type, which is the whole reason a null cannot be used here.
+   */
+  private fun zeroValueForComposableParameter(type: Class<*>): Any? =
+    when (type) {
+      Int::class.javaPrimitiveType -> 0
+      Boolean::class.javaPrimitiveType -> false
+      Long::class.javaPrimitiveType -> 0L
+      Float::class.javaPrimitiveType -> 0f
+      Double::class.javaPrimitiveType -> 0.0
+      Short::class.javaPrimitiveType -> 0.toShort()
+      Byte::class.javaPrimitiveType -> 0.toByte()
+      Char::class.javaPrimitiveType -> '\u0000'
+      else -> null
+    }
+
+  /**
+   * Real parameters encoded per synthetic `default` int. The Compose compiler's `defaultParamCount`
+   * packs 31 parameters per int (one bit each, the top bit unused), which is *not* the same rate as
+   * the `changed` ints above — mixing the two silently corrupts the mask on a wide preview.
+   */
+  private const val BITS_PER_DEFAULT_INT = 31
 }
 
 /**
