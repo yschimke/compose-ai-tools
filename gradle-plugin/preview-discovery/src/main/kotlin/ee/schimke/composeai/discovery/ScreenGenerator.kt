@@ -244,9 +244,21 @@ object ScreenGenerator {
               "qualified Kotlin name"
           return@map null
         }
+        // Rendered against the declared type, the same way an assignment to this variable is.
+        // The untyped path emits a literal on its own terms, so `kotlin.Float` seeded with `0.5`
+        // produced `mutableStateOf<kotlin.Float>(0.5)` — a Double literal — and a literal of the
+        // wrong kind entirely was emitted rather than refused. Nullability is stripped for the
+        // comparison because every literal this vocabulary has is non-null.
         val initial =
-          context.expression(declared.initial, "state `${declared.name}`", depth = 0)
-            ?: return@map null
+          context.argument(
+            declared.initial,
+            TargetParameter(
+              declared.name,
+              declared.typeFqn.removeSuffix("?"),
+              typeFqn = declared.typeFqn.removeSuffix("?"),
+            ),
+            "state",
+          ) ?: return@map null
         declaredSoFar += declared.name
         val name = ComponentSnippets.escapeIfKeyword(declared.name)
         // Nullability is syntax, not part of any segment's name. Escaping the whole spelling

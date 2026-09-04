@@ -1105,6 +1105,25 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a Float initializer is written as a Float literal`() {
+    // The untyped path emits a literal on its own terms, so this produced
+    // `mutableStateOf<kotlin.Float>(0.5)` — a Double literal behind a Float property.
+    val result =
+      stateful(listOf(ScreenState("opacity", "kotlin.Float", ScreenValue.Fractional(0.5))))
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.Float>(0.5f)")
+  }
+
+  @Test
+  fun `an initializer of the wrong kind is refused rather than emitted`() {
+    val reasons =
+      statefulRefusal(listOf(ScreenState("count", "kotlin.Int", ScreenValue.Text("three"))))
+
+    assertThat(reasons.single()).contains("kotlin.Int, which Text is not")
+  }
+
+  @Test
   fun `a nullable state type keeps its question mark outside the escaping`() {
     // Nullability is syntax, not part of a segment's name. Escaping the whole spelling produced
     // `kotlin.`String?`` — a backticked classifier rather than a nullable String — which broke
@@ -1149,10 +1168,25 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a keyword segment in a state type is written escaped`() {
-    val result = stateful(listOf(ScreenState("caption", "example.fun.Type", ScreenValue.Text("a"))))
+    // The initializer is rendered against the declared type now, so it has to actually be one: a
+    // `Text` literal is a `kotlin.String` and is refused here, correctly.
+    val result =
+      stateful(
+        listOf(
+          ScreenState(
+            "caption",
+            "com.example.fun.Type",
+            ScreenValue.Reference(
+              rootFqn = "com.example.fun.Values",
+              members = listOf("DEFAULT"),
+              typeFqn = "com.example.fun.Type",
+            ),
+          )
+        )
+      )
 
     assertThat((result as ScreenGenerator.Result.Emitted).source)
-      .contains("mutableStateOf<example.`fun`.Type>")
+      .contains("mutableStateOf<com.example.`fun`.Type>")
   }
 
   @Test
@@ -1294,7 +1328,17 @@ class ScreenValueVocabularyTest {
     // emitting a callback Kotlin rejects.
     val reasons =
       handledRefusal(
-        listOf(ScreenState("tint", "androidx.compose.ui.graphics.Color", ScreenValue.Text("x"))),
+        listOf(
+          ScreenState(
+            "tint",
+            "androidx.compose.ui.graphics.Color",
+            ScreenValue.Reference(
+              rootFqn = "androidx.compose.material3.MaterialTheme",
+              members = listOf("colorScheme", "surface"),
+              typeFqn = "androidx.compose.ui.graphics.Color",
+            ),
+          )
+        ),
         mapOf(
           "onClick" to
             listOf(
