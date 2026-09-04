@@ -704,6 +704,14 @@ class RenderEngine(
                             // wrapper.
                             themeProviderFqn = spec.overrides?.themeProvider,
                             previewArgs = previewArgs,
+                            // The preview's parameter knobs, as the declarations a viewer draws
+                            // its controls from — the one-shot render, which is the lane a
+                            // `data/fetch?kind=compose/overrides` reads after.
+                            knobDeclarations =
+                              PreviewKnobDeclarations.of(
+                                spec.knobs,
+                                spec.overrides?.namedOverrides,
+                              ),
                           )
                         }
                       }
@@ -2911,7 +2919,20 @@ internal fun InvokeWithOptionalWrapper(
   wrapperFqnFromSpec: String?,
   themeProviderFqn: String? = null,
   previewArgs: List<Any?> = emptyList(),
+  knobDeclarations: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> =
+    emptyList(),
 ) {
+  // `SideEffect`, not a plain call: the around-composable resets this preview's declarations from a
+  // `DisposableEffect`, and Compose runs every `RememberObserver` before any `SideEffect`, so the
+  // clear always precedes these. On this backend the record also forwards across the Robolectric
+  // sandbox boundary through the bridge, which is how the host-side registry sees it at all.
+  if (knobDeclarations.isNotEmpty()) {
+    androidx.compose.runtime.SideEffect {
+      knobDeclarations.forEach {
+        ee.schimke.composeai.overrides.PreviewOverrideController.record(it)
+      }
+    }
+  }
   val wrappers =
     remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
       resolveWrapperStack(composableMethod, wrapperFqnFromSpec, themeProviderFqn)

@@ -139,6 +139,11 @@ dependencies {
   // `renderNow.overrides.namedOverrides` into the `previewOverride*` lookups and produces the
   // `compose/overrides` data product (the preview's declared editable knobs).
   implementation(project(":data-preview-overrides-connector"))
+  // The controller itself, not just the connector that plans it: the render body records a
+  // parameter knob's declaration through `PreviewOverrideController.record` so both override
+  // formats reach `compose/overrides` on one channel. The connector depends on the runtime with
+  // `implementation`, so it isn't on this module's compile classpath transitively.
+  implementation(project(":data-preview-overrides-runtime"))
   // Launcher-widget container-size connector — same shape as `:data-touch-overlay-connector`
   // (single shared JVM module on both backends). `LauncherWidgetExtension` wraps the preview in
   // a sized `Box` matching the clamped whole-cell footprint, driven from
