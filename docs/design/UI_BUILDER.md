@@ -1,9 +1,9 @@
 # UI builder — assembling screens from the component catalog
 
-Status: **design proposal** (2026-07). Product analysis + architecture for a
-WYSIWYG "assemble a screen from catalog components" surface, built on the seams
-this repo already ships. No code yet; this doc scopes what exists, what's
-missing, and a phased plan.
+Status: **partly built** (revised 2026-09; original proposal 2026-07). The
+original said "no code yet"; that is no longer true, and two things learned since
+change the plan rather than just its progress — read
+[§0](#0-what-changed-since-the-proposal) before the phases.
 
 > **Thesis.** ~70% of a catalog-driven UI builder is already built and running
 > across `compose-ai-tools` and the `design-parity` `figma-plugin`. The Compose
@@ -13,6 +13,109 @@ missing, and a phased plan.
 > add a **persisted screen-composition document**, (3) give each exported layer a
 > **stable per-instance identity**, and (4) eventually **generate real Compose**
 > from a composition. Everything else is wiring seams that already exist.
+
+---
+
+## 0. What changed since the proposal
+
+Three findings, in order of how much they move the plan.
+
+### 0.1 The target is a composition *tree*, not a filled scaffold
+
+The interaction this is for, stated by the person who wants it:
+
+> I want to be able to add a component, say `LazyColumn`, then add a `ListHeader`,
+> edit the text. Then add a `Card`, select the style. Then generate the code from
+> it, or run in the playground.
+
+That is a **tree with per-instance props** — add a container, nest a child in it,
+edit *that child's* values, pick *that child's* variant. [Gap 1](#31-gap-1--scaffolds-arent-slot-fillable-yet-highest-leverage-smallest-change)
+gives fixed **named** slots (`topBar`, `fab`, `content`), which is necessary
+substrate and is not the same thing: a `LazyColumn` takes N arbitrary children,
+not a named region. Slot-filling is a step on the way, not a smaller version of
+the destination.
+
+Two consequences worth stating before more code is written:
+
+* **Per-instance editing needs an indexed knob.** Editing the text of the third
+  `ListHeader` in a list is `previewOverrideString(key, default, index = i)` — the
+  `index` parameter the `previewOverride*` format has and the parameter-knob
+  format structurally cannot (a parameter list is fixed-arity; see
+  [PARAMETER_KNOB_MIGRATION.md](PARAMETER_KNOB_MIGRATION.md) gap 3). Whatever else
+  the two formats do, the builder rides the older one.
+* **"Select the style" is variant selection**, which already exists as
+  `@CatalogVariant` / `@OverrideVariant` cells — a picker over declared variants,
+  not a new mechanism.
+
+### 0.2 The "run it" half is already built — which moves codegen from last to load-bearing
+
+[PLAYGROUND.md](PLAYGROUND.md) is **not** a proposal any more: phases 1–3 (CMP,
+Android, Remote Compose) and the phase-4 per-session sandbox are shipped. It
+compiles Kotlin without Gradle (`BtaCompileSession`), renders it headlessly, and
+streams a **live, clickable** composition over the serve `input` protocol.
+
+So "generate the code from it, **or** run in the playground" is not two futures.
+It is one pipeline:
+
+```
+composition tree  ->  Compose source  ->  BTA compile  ->  live interactive preview
+```
+
+That reorders this document's own plan. Codegen was phase 4, "the dream". It is
+actually the **bridge**, because the thing it feeds already runs in production —
+and it means the tree never needs a runtime interpreter, since its output is just
+Kotlin.
+
+### 0.3 Half of this lands in the other repository
+
+The preview-server split moved the *reader* side out. Checked, not assumed:
+
+* `PreviewSlot` (the writer) is here, in `runtimes/slots/`.
+* The `dp-slot:` **reader** and `/render/<id>.slots` are in
+  [`compose-preview-server`](https://github.com/yschimke/compose-preview-server)
+  (`render-host/.../ServeRenderHost.kt`). `data/layoutinspector/core/PreviewSlots.kt`,
+  which §2 still cites, does not exist in this repository.
+* The **playground** is there too (`server/.../Playground*`).
+
+So phase 2 (`screen.json` + endpoints) and the codegen→playground handoff are
+mostly *that* repository's work, with this one supplying the catalog, the slots
+and the knobs. The §2 table predates the split and still points several rows at
+`cli/.../serve/…` paths that moved with it.
+
+### 0.4 Wear M3 cannot run in the browser, so composition has to stay server-side
+
+Asked directly — does this work for Wear M3, and does it run in wasm? The two
+halves have different answers, and together they constrain the architecture.
+
+**Wear M3 does not compile to `wasmJs`.** `androidx.wear.compose` is Android-only,
+and `:samples:cmp-wasm-catalog` says so in its own build file:
+
+> The Android design-catalog modules can't compile to `wasmJs` (Android-only
+> `@Preview` / `Configuration` / `wear.compose`), so the shared module exposes the
+> same components through a plain id→composable registry instead.
+
+So a builder that composes the catalog **in the browser** is a mobile-M3-only
+builder by construction. That rules out one plausible design outright.
+
+**Wear M3 does run live, server-side.** `wear-m3` is already a shipped live
+streaming lane on `preview.coo.ee` — the Robolectric daemon composes it and the
+serve `input` protocol streams pixels out and events back
+([PLAYGROUND.md](PLAYGROUND.md) §2, phase 2).
+
+The conclusion is a constraint, not a blocker: **the wasm UI is a client, not the
+compositor.** The tree is composed where the catalog can actually run — desktop
+for CMP, Robolectric for Android and Wear — and the browser shows the result and
+sends edits. That is the same shape [§0.2](#02-the-run-it-half-is-already-built--which-moves-codegen-from-last-to-load-bearing)
+already implies, and it is why the codegen→playground path works for Wear while an
+in-browser interpreter never could.
+
+> **A drift risk this turned up.** `slot-preview-runtime` is **forked** into the
+> server repo, and the two copies are byte-identical today — but unlike the
+> `serve-wasm` fork there is no CI gate holding them so
+> (`.github/ci/check_serve_wasm_fork.py` has no sibling for this one). The slot
+> tag grammar is a wire contract between a writer here and a reader there; if the
+> builder is going to lean on it, that fork wants either a gate or a published
+> coordinate.
 
 ---
 
@@ -89,7 +192,12 @@ as a lightweight read-only viewer of a saved composition. So:
 
 ## 2. What already exists (the substrate)
 
-Every row below is a shipped seam. Paths are repo-relative.
+Every row below is a shipped seam. **Paths predate the preview-server split** and
+several `cli/.../serve/…` ones moved to
+[`compose-preview-server`](https://github.com/yschimke/compose-preview-server) with
+it — including the `dp-slot:` reader this table places in
+`data/layoutinspector/core`, which is not in this repository. See
+[§0.3](#03-half-of-this-lands-in-the-other-repository).
 
 | Capability | Seam |
 |---|---|
@@ -107,6 +215,7 @@ Every row below is a shipped seam. Paths are repo-relative.
 | **preview.coo.ee (c)** | `compose-preview serve --public` (`cli/.../serve/ServeWeb.kt`): upload bundle → `?session=<name>` shareable link; catalogs served read-only; live customisable renders; catalog SVG export; `livePreview` deep links in `catalog.json`. |
 | **Catalog format** | `@design-parity/catalog-export` → `catalog.json` (schema `design-parity-catalog/v1`): components, variants (`ideal`/`layout`), tokens, greenlines/redlines, wireframe SVGs, a **`screens[]` graph**, per-image `livePreview` deep links. |
 | **Convert to Compose code with real slots** | **Only partial** — design→code exists as "propose spec → GitHub issue" (`figma-plugin/src/spec.ts`): a Markdown spec, *not* `Scaffold(topBar=…, content=…)` codegen. |
+| **Compile and run generated Compose, live** | `compose-preview-server`'s **playground** — `BtaCompileSession` compiles Kotlin with no Gradle, the daemon renders it headlessly, and the serve `input` protocol streams a clickable composition. Phases 1–3 + the per-session sandbox are shipped ([PLAYGROUND.md](PLAYGROUND.md)). This is the far side of codegen, and it already exists. |
 
 ### 2.1 The existing in-Figma slot flow (what a builder inherits)
 
@@ -133,11 +242,33 @@ persistent.
 
 ## 3. Design — the four gaps
 
-### 3.1 Gap 1 — scaffolds aren't slot-fillable yet (highest leverage, smallest change)
+### 3.1 Gap 1 — scaffolds weren't slot-fillable — **done**
 
-The M3/Wear scaffold templates expose their regions as **knob overrides**
-(`title`, `fab`, `sender[i]`, `edgeLabel`) — you can retext them but can't "drop a
-Chip into the top-bar slot." Cards already use `PreviewSlot`. Example, today:
+`AppScaffoldTemplate` (M3: `topBar`, `fab`, `content`) and
+`TimeTextScaffoldTemplate` (Wear: `header`) now wrap their fillable regions in
+`PreviewSlot`, so they surface through `/render/<id>.slots` as drop targets with
+measured boxes and swap to labelled placeholders under `slotMode`. The knobs
+stayed: a slot's default child is a live example, not an either/or with being
+editable.
+
+Two things the doing of it taught, which the sketch below did not anticipate:
+
+* **A `Scaffold` slot lambda has no layout-scope receiver**, so the scope has to
+  be declared explicitly (`PreviewSlotScope.Box` for `topBar`/`fab`,
+  `PreviewSlotScope.Column` for `content`) rather than inferred by the
+  scope-receiver overload the runtime prefers. Same for a Wear
+  `TransformingLazyColumn` item body, which is not `LazyItemScope`:
+  `PreviewSlotScope.Lazy` says so explicitly, which is what tells a builder its
+  child lands in a scrolling container.
+* **Sizing is per-slot and not obvious.** `topBar` fills horizontally and hugs
+  vertically; `fab` hugs both, because filling would stretch it across the screen;
+  `content` fills both. Getting this wrong is invisible in a normal render and
+  only shows up when something is dropped in.
+
+Remember [§0.1](#01-the-target-is-a-composition-tree-not-a-filled-scaffold): this
+gives **fixed named** slots. It is the substrate for the tree, not the tree.
+
+The original sketch, kept for the shape:
 
 ```kotlin
 // samples/design-catalog-m3/.../CatalogPreviews.kt — AppScaffoldTemplate
@@ -168,9 +299,9 @@ content = { padding ->
 ```
 
 A slot with a default child is both a **placeholder** (empty under `slotMode`) and
-a **live example** (renders its default otherwise) — no either/or. Same for Wear
-`timeText` / `edgeButton` / `content`. Mechanical, no harness change, and it turns
-the plugin's slot flow into the "pick a scaffold → fill its slots" experience.
+a **live example** (renders its default otherwise) — no either/or. Mechanical, no
+harness change, and it turns the plugin's slot flow into the "pick a scaffold →
+fill its slots" experience.
 
 ### 3.2 Gap 2 — no persisted screen-composition document (the real new build; surface c)
 
@@ -237,7 +368,7 @@ slot's child to its Figma node losslessly instead of by tree position. All the
 identity data already exists; it's a threading change in one emitter. (Related:
 issue #2357 already tracks figma-svg fidelity gaps.)
 
-### 3.4 Gap 4 — real Compose codegen from a composition (the dream)
+### 3.4 Gap 4 — real Compose codegen from a composition (**the bridge**, not the dream)
 
 The inverse (Figma → spec → GitHub issue) exists; the ingredients for the forward
 path (slot names, override values, component IDs, Code Connect) all exist. A
@@ -263,12 +394,20 @@ Figma MCP server — real Compose, mapped to the assembled nodes.
 
 ## 4. Phased plan
 
+**Revised** — see [§0](#0-what-changed-since-the-proposal). Codegen moved from
+last to second, because the surface that *runs* generated code already exists, and
+phase 1 is done.
+
 | Phase | Scope | Effort | Unlocks |
 |---|---|---|---|
-| **1** | `PreviewSlot`-ify the scaffold templates (Gap 1). | days | "Pick a scaffold, fill its slots" through the existing plugin flow — no new UI. |
-| **2** | `screen.json` schema + `POST/GET /screens/<name>` on `compose-preview serve`; figma-plugin reads a saved composition (Gap 2). | 1–2 wks | Surface (c): compositions are saved, shared, referenced, rendered as a whole, inserted into Figma. Durable beyond one canvas. |
-| **3** | Stamp stable `ref` onto figma-svg groups (Gap 3); ~~emit **Code Connect** mappings~~ **done** — the catalog export writes `code-connect.json` per component ([scripts/design-artifacts/docs/code-connect.md](../../scripts/design-artifacts/docs/code-connect.md)); `publish-code-connect.mjs` resolves node ids + emits the `send_code_connect_mappings` payload. | ~1 wk | Lossless composition ↔ Figma-node round-trip; screens surface in Dev Mode / MCP. |
-| **4** | `screen.json` → real `Scaffold(...)` Compose codegen (Gap 4). | 2–3 wks | The dream: assembled screen → idiomatic Compose using real slots. |
+| ~~**1**~~ | ~~`PreviewSlot`-ify the scaffold templates.~~ **Done** ([§3.1](#31-gap-1--scaffolds-werent-slot-fillable--done)). | — | "Pick a scaffold, fill its slots" through the existing plugin flow. Fixed named slots only. |
+| **2** | `screen.json` — a tree of `{componentId, variant, knobs{}, children[]}` — plus `POST/GET /screens/<name>`. Mostly [`compose-preview-server`](https://github.com/yschimke/compose-preview-server)'s work ([§0.3](#03-half-of-this-lands-in-the-other-repository)). | 1–2 wks | Compositions persist, are shared, referenced, rendered whole, inserted into Figma. The document everything else reads. |
+| **3** | `screen.json` → **Compose source** → the playground's `BtaCompileSession` → live interactive preview. | 1–2 wks | The loop in [§0.1](#01-the-target-is-a-composition-tree-not-a-filled-scaffold), end to end. Was phase 4; it is the bridge, and the far side of it is already built. |
+| **4** | Stamp stable per-instance `ref` onto figma-svg groups (Gap 3). ~~Code Connect~~ **done** — the catalog export writes `code-connect.json` per component ([scripts/design-artifacts/docs/code-connect.md](../../scripts/design-artifacts/docs/code-connect.md)); `publish-code-connect.mjs` resolves node ids + emits the `send_code_connect_mappings` payload. | ~1 wk | Lossless composition ↔ Figma-node round-trip; screens surface in Dev Mode / MCP. |
+
+Phase 3 does not need phase 4: generated Kotlin is the interchange format, so the
+loop closes without any Figma-node identity at all. Phase 4 is what makes the
+round-trip *back* lossless.
 
 **Interop, not reinvention, at the edges:** keep emitting **DTCG tokens**
 (Supernova / Tokens Studio / Style Dictionary consume them) and adopt **Figma Code
@@ -289,10 +428,15 @@ diffed today.
   the default when not overridden and an empty placeholder under `slotMode`. Is
   that the right dual behaviour, or should scaffolds ship *two* variants (populated
   demo + empty skeleton)? Leaning: one slot, dual behaviour (§3.1).
-- **Where does `screen.json` live?** A new `design-artifacts/<system>` companion
-  file, an uploaded-only server artifact, or committed example compositions in the
-  catalog module? Leaning: uploadable at runtime + a few committed exemplars that
-  the preview-harness diffs.
+- **Where does `screen.json` live? — RESOLVED (2026-09).** Three tiers, not one:
+  1. **Server-only artifact** for a scratch composition — uploaded at runtime,
+     never committed. The default, and what most compositions are.
+  2. **Committed exemplars** in the catalog module, which the preview-harness
+     renders and diffs on every PR, so a renderer or catalog change that breaks a
+     composed screen is caught the same way a broken sticker is.
+  3. **On the `design-artifacts/<system>` delivery branch** for a screen that
+     should ship *editable* — i.e. one a consumer of the published catalog is
+     meant to open and change, rather than only look at.
 - **Nested slots.** Cards already have slots; a card dropped into a scaffold slot
   yields nested `dp-slot:` regions. Does the plugin recurse, or is one level enough
   for v1? Leaning: one level for v1, recurse later.
@@ -303,9 +447,11 @@ diffed today.
 
 ## 6. Related issues
 
-- #2137 — generic interactive preview browser (Showkase-equivalent); a composition
-  browser is a sibling surface.
+- #2137 — generic interactive preview browser (Showkase-equivalent) — **closed as
+  completed**; a composition browser is a sibling surface.
 - #2357 — figma-svg export fidelity (shadow elevation); Gap 3 rides alongside.
 - #2358 — props-only catalog variants not yet supported by catalog-export.
-- #2365 — live-stream knob edits + catalog SVG export; the live-fill path depends
-  on knob overrides reaching the running preview.
+- #2365 — live-stream knob edits + catalog SVG export — **closed as completed**;
+  the live-fill path depends on knob overrides reaching the running preview, which
+  is the [§0.1](#01-the-target-is-a-composition-tree-not-a-filled-scaffold)
+  per-instance editing story.

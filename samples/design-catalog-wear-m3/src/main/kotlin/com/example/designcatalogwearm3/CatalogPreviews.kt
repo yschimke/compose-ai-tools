@@ -60,6 +60,9 @@ import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 import ee.schimke.composeai.preview.slots.PreviewSlot
+import ee.schimke.composeai.preview.slots.PreviewSlotConstraints
+import ee.schimke.composeai.preview.slots.PreviewSlotScope
+import ee.schimke.composeai.preview.slots.PreviewSlotSizing
 
 // ---------------------------------------------------------------------------
 // Buttons — the Wear M3 emphasis levels plus the screen-hugging EdgeButton.
@@ -293,7 +296,31 @@ fun TimeTextScaffoldTemplate() = WearScaffoldTemplate {
           modifier = Modifier.transformedHeight(this, spec),
           transformation = SurfaceTransformation(spec),
         ) {
-          Text(previewOverrideString("header", stringResource(R.string.header_activity)))
+          // The slot wraps the header's **content**, not the `ListHeader` itself. Wrapping the
+          // surface put a plain `Box` between the `TransformingLazyColumn` item and the composable
+          // carrying `transformedHeight` / `SurfaceTransformation`, and the header stopped filling
+          // the item width — the label went from centred to left-aligned and every row below it
+          // shifted (~31% of pixels on the large round breakpoint). Rendering it caught that;
+          // reading the diff did not.
+          //
+          // Slotting the content is also the truer target: a builder dropping a component "into
+          // the header" means replacing what the header shows, not the Wear surface that owns the
+          // list's scaling transformation.
+          //
+          // `Lazy` is declared explicitly because a `TransformingLazyColumn` item body is not
+          // `LazyItemScope`, so the scope-receiver overload does not apply — it tells a builder the
+          // child lands in a scrolling container.
+          PreviewSlot(
+            name = "header",
+            scope = PreviewSlotScope.Lazy,
+            constraints =
+              PreviewSlotConstraints(
+                horizontal = PreviewSlotSizing.Hug,
+                vertical = PreviewSlotSizing.Hug,
+              ),
+          ) {
+            Text(previewOverrideString("header", stringResource(R.string.header_activity)))
+          }
         }
       }
       items(templateListItems) { (titleRes, subtitle) ->

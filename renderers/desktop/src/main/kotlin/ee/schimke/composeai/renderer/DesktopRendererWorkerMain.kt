@@ -44,8 +44,9 @@ import kotlin.system.exitProcess
  * * every `exitProcess` in [main] is on the argument-validation prologue — a *render* failure
  *   writes an `.error.json` sidecar and returns normally, so a broken preview costs a request
  *   rather than a worker;
- * * `@OverrideVariant` seeds are reset per render (see [main]'s `resetForNewSession()` call), so a
- *   capture never inherits the knobs of whatever the worker drew before it.
+ * * `@OverrideVariant` seeds are reset per render (see [main]'s `resetForNewSession()` call) and
+ *   both per-capture properties are cleared after every request, so a capture never inherits the
+ *   seeds or the parameter knobs of whatever the worker drew before it.
  *
  * ## Wire protocol
  *
@@ -61,6 +62,7 @@ import kotlin.system.exitProcess
  * pool -> worker, per request:
  *   int32 MAGIC_REQUEST, int32 requestId,
  *   int32 seedLen, <seedLen bytes UTF-8>,     // `composeai.overrides.seed`, empty for none
+ *   int32 knobsLen, <knobsLen bytes UTF-8>,   // `composeai.preview.knobs`, empty for none (v2+)
  *   int32 argc, argc x (int32 len, <len bytes UTF-8>)
  * worker -> pool, per response:
  *   int32 MAGIC_RESPONSE, int32 requestId, int32 status (0=ok, 1=failed),
@@ -102,6 +104,7 @@ fun desktopRendererWorkerMain() {
 
     val requestId = input.readInt()
     val seed = String(input.readPayload(), Charsets.UTF_8)
+    val knobs = String(input.readPayload(), Charsets.UTF_8)
     val argc = input.readInt()
     if (argc < 0 || argc > MAX_ARGC) {
       System.err.println("compose-preview renderer worker: implausible argc $argc; exiting")
@@ -118,6 +121,11 @@ fun desktopRendererWorkerMain() {
       // property set would make the *next* request look seeded to anything else reading it.
       if (seed.isEmpty()) System.clearProperty(OVERRIDES_SEED_PROPERTY)
       else System.setProperty(OVERRIDES_SEED_PROPERTY, seed)
+      // Same reasoning for the preview's parameter knobs, and the same hazard: a warm worker that
+      // kept the previous capture's knob list would declare another preview's controls into this
+      // one's overrides sidecar, and bind its seeds to parameters of a different function.
+      if (knobs.isEmpty()) System.clearProperty(PreviewKnobBake.KNOBS_PROPERTY)
+      else System.setProperty(PreviewKnobBake.KNOBS_PROPERTY, knobs)
       main(args)
     } catch (e: Exception) {
       // A capture the renderer cannot draw is an ordinary per-request failure. `main()` already
@@ -133,6 +141,7 @@ fun desktopRendererWorkerMain() {
       message = "${t::class.java.simpleName}: ${t.message}"
     } finally {
       System.clearProperty(OVERRIDES_SEED_PROPERTY)
+      System.clearProperty(PreviewKnobBake.KNOBS_PROPERTY)
     }
 
     val payload = message.toByteArray(Charsets.UTF_8)
@@ -177,7 +186,13 @@ private fun DataInputStream.readPayload(): ByteArray {
 internal const val MAGIC_HELLO = 0x43505731 // 'CPW1'
 internal const val MAGIC_REQUEST = 0x43505131 // 'CPQ1'
 internal const val MAGIC_RESPONSE = 0x43505231 // 'CPR1'
-internal const val WORKER_PROTOCOL_VERSION = 1
+// 2 since the request frame gained the per-capture parameter-knob payload. The pool refuses a
+// version it does not recognise and forks per capture instead, which stays correct: the forked lane
+// carries the knobs on `composeai.preview.knobs` like every other per-capture property. Plugin and
+// renderer are resolved at the same version by default
+// (`ee.schimke.composeai:renderer-desktop:<plugin-version>`), so only a deliberately pinned
+// renderer sees the mismatch, and it pays in build time rather than in wrong pixels.
+internal const val WORKER_PROTOCOL_VERSION = 2
 internal const val STATUS_OK = 0
 internal const val STATUS_FAILED = 1
 internal const val OVERRIDES_SEED_PROPERTY = "composeai.overrides.seed"

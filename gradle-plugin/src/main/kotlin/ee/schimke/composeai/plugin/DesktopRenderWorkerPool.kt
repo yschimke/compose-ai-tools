@@ -130,7 +130,7 @@ internal class DesktopRenderWorkerPool(
     Thread(r, "compose-preview-render-worker-watchdog").apply { isDaemon = true }
   }
 
-  fun render(args: List<String>, overridesSeed: String?): WorkerResult {
+  fun render(args: List<String>, overridesSeed: String?, knobs: String? = null): WorkerResult {
     synchronized(lock) {
       disabledReason?.let {
         return WorkerResult.Unusable(it)
@@ -148,7 +148,13 @@ internal class DesktopRenderWorkerPool(
             is StartOutcome.Failed -> return WorkerResult.Unusable(started.reason)
           }
 
-      val result = worker.render(args, overridesSeed.orEmpty(), requestIds.incrementAndGet())
+      val result =
+        worker.render(
+          args,
+          overridesSeed.orEmpty(),
+          knobs.orEmpty(),
+          requestIds.incrementAndGet(),
+        )
       if (result is WorkerResult.Unusable) {
         discard(worker)
         worker = null
@@ -330,14 +336,20 @@ internal class DesktopRenderWorkerPool(
       }
     }
 
-    fun render(args: List<String>, seed: String, requestId: Int): WorkerResult {
+    fun render(args: List<String>, seed: String, knobs: String, requestId: Int): WorkerResult {
       val guard = armWatchdog(RENDER_GUARD_SECONDS)
       try {
         val seedBytes = seed.toByteArray(Charsets.UTF_8)
+        val knobBytes = knobs.toByteArray(Charsets.UTF_8)
         toWorker.writeInt(MAGIC_REQUEST)
         toWorker.writeInt(requestId)
         toWorker.writeInt(seedBytes.size)
         toWorker.write(seedBytes)
+        // Per-capture, exactly like the seed above and for the same reason: a warm worker that
+        // inherited the previous preview's knob list would declare its controls into this capture's
+        // overrides sidecar.
+        toWorker.writeInt(knobBytes.size)
+        toWorker.write(knobBytes)
         toWorker.writeInt(args.size)
         args.forEach {
           val b = it.toByteArray(Charsets.UTF_8)
@@ -416,7 +428,10 @@ internal class DesktopRenderWorkerPool(
     const val MAGIC_HELLO = 0x43505731
     const val MAGIC_REQUEST = 0x43505131
     const val MAGIC_RESPONSE = 0x43505231
-    const val WORKER_PROTOCOL_VERSION = 1
+    // 2 since the request frame gained the per-capture parameter-knob payload. A worker built from
+    // an older renderer answers 1, the handshake refuses it, and the caller forks that capture —
+    // which still renders correctly, because the forked lane passes the knobs as a system property.
+    const val WORKER_PROTOCOL_VERSION = 2
     const val STATUS_OK = 0
 
     const val HANDSHAKE_TIMEOUT_SECONDS = 120L
