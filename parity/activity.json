@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-03T18:51:36.469Z",
+  "generatedAt": "2026-09-03T23:59:59.882Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "8810d4d2fb29412cd94067d81a8fb21e0c4fccf7",
+        "subject": "feat(compare): read the colour under the cursor in both images at once (#5079)",
+        "at": "2026-09-04T00:50:53+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "b29ec96620351e2673a44dbb6430cd0b6b66a53f",
         "subject": "feat(remotecompose): record the player that actually drew each capture (#5075)",
@@ -474,14 +482,6 @@
         "sha": "6cee9cf812de3820715ec29669b0e1759e2d77db",
         "subject": "fix(ci): run the embedded player lanes from rc-players (#5006)",
         "at": "2026-09-02T21:56:45+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ea2bd4b805f4db4af3e7e901e2239679b849664b",
-        "subject": "ci(renderer-desktop): run forwardComposeSystemThemeTest from `test`, not only `check` (#5007)",
-        "at": "2026-09-02T21:56:29+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
