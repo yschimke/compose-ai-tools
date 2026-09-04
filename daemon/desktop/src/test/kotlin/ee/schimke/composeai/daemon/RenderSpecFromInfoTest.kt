@@ -31,6 +31,26 @@ class RenderSpecFromInfoTest {
     PreviewInfoDto(id = "Foo", className = "com.example.FooKt", methodName = "Foo", params = params)
 
   @Test
+  fun `parameter knobs reach the spec on both the params and the no-params path`() {
+    // Both branches of the conversion have to carry them. The early return for a null params block
+    // is the *incremental* rescan's DTO — an edited preview keeps its knobs there via the index's
+    // carry-forward, so dropping them at this seam instead would put the same silent
+    // seed-does-nothing bug one layer down.
+    val knobs = listOf(PreviewKnobDto("title", 0, "STRING"), PreviewKnobDto("count", 1, "INT"))
+    val base =
+      PreviewInfoDto(
+        id = "Foo",
+        className = "com.example.FooKt",
+        methodName = "Foo",
+        knobs = knobs,
+      )
+    assertEquals(knobs, renderSpecFromInfo(base).knobs)
+    assertEquals(knobs, renderSpecFromInfo(base.copy(params = PreviewParamsDto())).knobs)
+    // The overwhelming majority of previews declare none.
+    assertEquals(emptyList<PreviewKnobDto>(), renderSpecFromInfo(info(params = null)).knobs)
+  }
+
+  @Test
   fun `no-size no-device preview wraps to content in the sandbox bound`() {
     // A preview whose (present) params block declares neither an explicit size nor a device (a
     // catalog sticker — it always carries params because it declares showBackground) renders

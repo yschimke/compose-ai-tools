@@ -72,6 +72,54 @@ class PreviewIndexTest {
   }
 
   @Test
+  fun `loadFromFile reads the parameter knobs discovery wrote`() {
+    // The plugin has emitted `knobs` since the parameter-knob format landed, but nothing on the
+    // daemon side read it — so a preview declaring editable value parameters resolved to a spec
+    // with none and every seed for one was silently ignored. This pins the parse.
+    val tmp = Files.createTempFile("previews-knobs", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "previews": [
+          {
+            "id": "Knobbed_1",
+            "className": "com.example.KnobbedKt",
+            "functionName": "Knobbed",
+            "knobs": [
+              { "name": "title", "index": 0, "type": "STRING" },
+              { "name": "accentArgb", "index": 1, "type": "LONG" },
+              { "name": "future", "index": 2, "type": "SOMETHING_NEWER" }
+            ]
+          },
+          {
+            "id": "Plain_1",
+            "className": "com.example.PlainKt",
+            "functionName": "Plain"
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    val index = PreviewIndex.loadFromFile(tmp)
+    assertEquals(
+      listOf(
+        PreviewKnobDto("title", 0, "STRING"),
+        PreviewKnobDto("accentArgb", 1, "LONG"),
+        // A kind this daemon cannot bind survives the parse verbatim — the binder drops it and the
+        // parameter takes its compiled default. Rejecting it here would fail the whole manifest
+        // because a newer plugin named a knob kind, which is the one outcome worse than a preview
+        // rendering unseeded.
+        PreviewKnobDto("future", 2, "SOMETHING_NEWER"),
+      ),
+      index.byId("Knobbed_1")?.knobs,
+    )
+    // A preview that declares none — the overwhelming majority — parses to an empty list, not null.
+    assertEquals(emptyList<PreviewKnobDto>(), index.byId("Plain_1")?.knobs)
+  }
+
+  @Test
   fun `loadFromFile happy path indexes previews by id`() {
     val tmp = Files.createTempFile("previews", ".json")
     Files.writeString(

@@ -102,6 +102,20 @@ public data class PreviewInfoDto(
    */
   val captures: List<PreviewCaptureDto> = emptyList(),
   /**
+   * The **parameter knobs** this preview declares — its own defaulted value parameters, the
+   * secondary override format beside `previewOverride*`. Mirrors the gradle plugin's `PreviewKnob`
+   * (`:gradle-plugin:preview-discovery`); the renderer binds a seed to the parameter's position
+   * rather than to a controller lookup inside the body.
+   *
+   * Optional and additive — a `previews.json` written before the field existed omits it, and the
+   * incremental class-file rescan ([IncrementalDiscovery.toDto]) leaves it empty because it
+   * rebuilds a DTO from the annotation alone and never reads the signature. [diff] and [applyDiff]
+   * carry it forward exactly as they do [params] and [captures], so a save doesn't silently strip a
+   * preview's knobs (which would make every seeded value fall back to the author default) until the
+   * next full rediscovery.
+   */
+  val knobs: List<PreviewKnobDto> = emptyList(),
+  /**
    * `@OverrideVariant` seed for a synthetic variant preview (same `functionName` as its base, a
    * `_VARIANT_<name>` id). Parsed straight into the canonical
    * [ee.schimke.composeai.data.overrides.OverrideVariantSpec] — the wire shape the plugin emits —
@@ -128,6 +142,18 @@ public data class PreviewInfoDto(
  */
 @Serializable
 public data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto? = null)
+
+/**
+ * Daemon-side mirror of the gradle plugin's `PreviewKnob` — one editable value parameter of a
+ * preview. [index] is the parameter's position in the **full** value-parameter list (not among the
+ * knobs), because that is the position the renderer has to place the bound argument at; [type] is
+ * the plugin's `PreviewKnobType` name (`STRING` / `BOOLEAN` / `INT` / `LONG` / `FLOAT` / `DOUBLE`).
+ *
+ * The type is carried as a plain [String] rather than an enum on purpose: a newer plugin may name a
+ * knob kind this daemon cannot bind, and an unknown name has to degrade to "not seedable" — the
+ * author default renders — instead of failing the whole manifest parse.
+ */
+@Serializable public data class PreviewKnobDto(val name: String, val index: Int, val type: String)
 
 /**
  * Daemon-side mirror of the gradle plugin's `Capture` — one planned render of a preview. Only
@@ -580,10 +606,13 @@ internal constructor(
         // `captures` is unrecoverable from the class file for the same reason, and carries the
         // `@ScrollingPreview(END)` drive — so it gets the same normalization, or an END sticker
         // would re-report as `changed` on every save.
+        // `knobs` is read off the *signature*, which the annotation-only rescan never looks at,
+        // so it too always comes back empty and gets the same treatment.
         val normalized =
           fresh
             .let { if (it.params == null) it.copy(params = prior.params) else it }
             .let { if (it.captures.isEmpty()) it.copy(captures = prior.captures) else it }
+            .let { if (it.knobs.isEmpty()) it.copy(knobs = prior.knobs) else it }
         normalized != prior
       }
       // Removed scopes to ids whose previous DTO claimed `sourceFile` matches the saved path.
@@ -637,6 +666,12 @@ internal constructor(
             .let {
               if (it.captures.isEmpty() && !prior?.captures.isNullOrEmpty())
                 it.copy(captures = prior.captures)
+              else it
+            }
+            // And for `knobs`: dropping them would leave every seeded parameter knob rendering its
+            // author default after the first save, with no error anywhere to say why.
+            .let {
+              if (it.knobs.isEmpty() && !prior?.knobs.isNullOrEmpty()) it.copy(knobs = prior.knobs)
               else it
             }
       }
