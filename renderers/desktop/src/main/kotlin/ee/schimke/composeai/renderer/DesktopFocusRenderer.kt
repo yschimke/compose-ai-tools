@@ -15,9 +15,11 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performMouseInput
@@ -516,6 +518,44 @@ private fun focusedNodeBounds(provider: SemanticsNodeInteractionsProvider): Rect
 }
 
 /**
+ * The root this capture should draw, chosen deliberately rather than asked for as "the" root.
+ *
+ * A preview that composes a `Popup`, `Dialog` or `ModalBottomSheet` installs a second semantics
+ * owner, and `isRoot()` matches every owner — so `onRoot()` resolves to two nodes and throws
+ * `Expected exactly '1' node but found '2' nodes that satisfy: (isRoot)`. That throw is not
+ * confined to the focused capture it happens in: it fails the whole preview, so the *undriven*
+ * captures of a `@FocusedPreview` function die with it and the preview publishes no PNG at all.
+ * m3-catalog's `DatePicker/Modal` hit exactly that (yschimke/m3-catalog#277), and so did its range
+ * picker, which composes no dialog — which is what rules out "dialogs" as the shape of the problem
+ * and leaves "more than one owner", whatever opened it.
+ *
+ * The rule is the portable half of Android's [DialogWindowCapture.selectCaptureRoot]: prefer the
+ * owner that actually holds the composition — most descendants, ties broken by area. Desktop has no
+ * decor view to ask about window ownership, and it does not need one, because the owner with the
+ * content is the owner worth capturing either way. A single-root preview keeps `onRoot()` exactly
+ * as before, so nothing that renders today changes shape.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun SemanticsNodeInteractionsProvider.captureRoot(): SemanticsNodeInteraction {
+  val roots = onAllNodes(isRoot()).fetchSemanticsNodes()
+  if (roots.size <= 1) return onRoot()
+  val chosen =
+    roots
+      .withIndex()
+      .maxWithOrNull(
+        compareBy(
+          { (_, node) -> node.descendantCount() },
+          { (_, node) -> node.size.width.toLong() * node.size.height.toLong() },
+        )
+      ) ?: return onRoot()
+  return onAllNodes(isRoot())[chosen.index]
+}
+
+private fun androidx.compose.ui.semantics.SemanticsNode.descendantCount(): Int = runCatching {
+  1 + children.sumOf { it.descendantCount() }
+}.getOrDefault(1)
+
+/**
  * Captures the root and writes it with the same wrap crop / round clip [renderPreview] applies, so
  * a focused capture and the resting one differ only in the state they document.
  */
@@ -533,7 +573,7 @@ private fun captureFocusFrame(
   captureGutter: PreviewCaptureGutter,
   fileSystem: FileSystem,
 ) {
-  val bitmap = provider.onRoot().captureToImage()
+  val bitmap = provider.captureRoot().captureToImage()
   val skiaImage = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
   val pngData = skiaImage.encodePngData() ?: error("Failed to encode focused capture to PNG")
   val bytes =
@@ -578,7 +618,7 @@ private fun captureFocusFrame(
 
 @OptIn(ExperimentalTestApi::class)
 private fun captureRootPngBytes(provider: SemanticsNodeInteractionsProvider): ByteArray {
-  val bitmap = provider.onRoot().captureToImage()
+  val bitmap = provider.captureRoot().captureToImage()
   val image = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
   val data = image.encodePngData() ?: error("Failed to encode interaction probe to PNG")
   return try {

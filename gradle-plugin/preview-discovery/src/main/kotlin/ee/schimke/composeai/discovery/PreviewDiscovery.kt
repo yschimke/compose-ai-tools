@@ -3455,11 +3455,25 @@ object PreviewDiscovery {
     // keep the plain filename (matches the @ScrollingPreview single-mode
     // pattern). Empty → one (null, "") row, same shape as scroll/time
     // when their annotations are absent.
+    //
+    // A MULTI-capture fan-out also keeps the undriven row. Focus is a state a component passes
+    // through, not what the component IS, and a walk that replaced the resting capture left the
+    // preview with no picture of itself: m3-catalog annotated `TimePicker/Input` with a four-step
+    // traversal and its manifest came back listing four focus steps and nothing else, so the
+    // catalog would have published a focused hour field as that component's sticker and the parity
+    // lane would have diffed it against the kit's resting node (yschimke/m3-catalog#277).
+    //
+    // Only in multi-capture mode, because only there is the plain filename free: a single-capture
+    // annotation deliberately takes `renders/<id>.png` for its one focused still, and adding a
+    // resting row beside it would collide on that name — or, if the focus row were suffixed to make
+    // room, rename an output every existing consumer already links to.
     val focusRows: List<Pair<FocusCapture?, String>> =
       when {
         effectiveFocuses.isEmpty() -> listOf(null to "")
         effectiveFocuses.size == 1 -> listOf(effectiveFocuses[0] to "")
-        else -> effectiveFocuses.map { it to "_FOCUS_${focusSuffixOf(it)}" }
+        else ->
+          listOf<Pair<FocusCapture?, String>>(null to "") +
+            effectiveFocuses.map { it to "_FOCUS_${focusSuffixOf(it)}" }
       }
 
     // When ONLY @AnimatedPreview (or @FocusedPreview(gif = true)) is on the function, the

@@ -2593,6 +2593,15 @@ class DiscoveryFunctionalTest {
       fun FocusSettledPreview() {
           Box(modifier = Modifier.size(50.dp).background(Color.Gray))
       }
+
+      // A MULTI-capture focus fan-out. Every step is a state the component passes through, so the
+      // undriven capture has to survive alongside them — see the assertions below.
+      @Preview
+      @FocusedPreview(indices = [0, 1])
+      @Composable
+      fun FocusWalkPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
+      }
       """
         .trimIndent()
     )
@@ -2651,6 +2660,23 @@ class DiscoveryFunctionalTest {
     // Above the floor nothing is touched — the clamp is a floor, not a rewrite.
     val focused = manifest.previews.single { it.functionName == "FocusSettledPreview" }
     assertThat(focused.captures.mapNotNull { it.settle?.afterMs }.toSet()).isEqualTo(setOf(200))
+
+    // A multi-capture walk keeps the preview's own picture. Without the undriven row the component
+    // would publish only states it passes through: m3-catalog's `TimePicker/Input` came back with
+    // four focus steps and no resting sticker, which the parity lane then diffs against the kit's
+    // resting node (yschimke/m3-catalog#277).
+    val walk = manifest.previews.single { it.functionName == "FocusWalkPreview" }
+    assertThat(walk.captures.count { it.focus == null }).isEqualTo(1)
+    assertThat(walk.captures.single { it.focus == null }.renderOutput).doesNotContain("_FOCUS_")
+    assertThat(walk.captures.count { it.focus != null }).isEqualTo(2)
+    assertThat(walk.captures.filter { it.focus != null }.map { it.renderOutput })
+      .comparingElementsUsing(
+        com.google.common.truth.Correspondence.from<String, String>(
+          { actual, expected -> actual!!.contains(expected!!) },
+          "contains",
+        )
+      )
+      .containsExactly("_FOCUS_0", "_FOCUS_1")
   }
 
   @Test
