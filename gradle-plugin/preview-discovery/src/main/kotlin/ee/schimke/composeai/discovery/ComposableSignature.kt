@@ -198,8 +198,13 @@ internal object ComposableSignature {
       }
     if (parameters.isEmpty()) return emptyList()
     if (!parameters.all { it.declaresDefaultValue }) return emptyList()
+    // Read the compiled body only when there is a knob to attach a default to. Most previews have
+    // none, and this is the one place discovery reads a method body rather than its signature.
+    val hasKnob = parameters.any { knobType(it.type) != null }
+    val defaults =
+      if (hasKnob) PreviewKnobDefaults.readFrom(classInfo, method, parameters.size) else emptyMap()
     return parameters.mapIndexedNotNull { index, parameter ->
-      knobType(parameter.type)?.let { PreviewKnob(parameter.name, index, it) }
+      knobType(parameter.type)?.let { PreviewKnob(parameter.name, index, it, defaults[index]) }
     }
   }
 

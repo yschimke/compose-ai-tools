@@ -13,6 +13,7 @@ The two formats, in one line each:
 | How a value is seeded | writing typed values into a process-static controller before composing | ordinary argument passing |
 | What the preview's body contains | a harness call per knob | nothing — no harness dependency at all |
 | Where the declaration is published | `previews/<id>.overrides.json`, `data/fetch?kind=compose/overrides` | *nowhere yet* — see [gap 1](#gap-1) |
+| Where the default value comes from | the author passes it at the call site | read back out of the compiled body (`PreviewKnobDefaults`) |
 
 The reference pair to read side by side is
 [`samples/cmp/.../OverridablePreviews.kt`](../../samples/cmp/src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt)
@@ -24,8 +25,9 @@ declared each way. That pair is deliberate and must **not** be collapsed by a mi
 ## The verdict
 
 **No sample should move today.** Not because the format is wrong, but because a migrated preview
-loses its editor: nothing publishes a parameter knob's declaration, so a viewer has no knob to show
-and no default to show in it. That is [gap 1](#gap-1), and it is the one that decides the answer.
+loses its editor: nothing publishes a parameter knob's declaration, so a viewer has no knob to show.
+That is [gap 1](#gap-1), and it is the one that decides the answer — though the hard half of it,
+recovering a knob's default *value*, is now solved.
 
 Everything below is what the investigation found on the way to that.
 
@@ -91,15 +93,24 @@ $ ls samples/cmp/build/compose-previews/renders/*.overrides.json
 # and no ParameterKnobListPreview sidecar
 ```
 
-The blocker underneath is that **discovery records that a default exists, not what it is**. A
-declaration needs the default *value*, and the Compose compiler leaves default expressions inside
-the function body guarded by the synthetic `$default` mask rather than in a readable constant pool
-entry — recovering a literal one means walking the method's bytecode, and a non-literal one
-(`stringResource(...)`, which most of this repository's samples use) cannot be recovered at all.
+**The blocker underneath is gone.** A declaration needs the default *value*, and Kotlin metadata
+records only that a default exists — the Compose compiler inlines the default expressions into the
+function body behind the `$default` mask. `PreviewKnobDefaults` reads them back out of the compiled
+body, so `previews.json` now carries a knob's literal default where it has one:
 
-So closing this gap means: read constant defaults from the class file where they are literals, and
-publish a declaration with **no** default where they are not. Until then a migrated preview is
-editable only by a client that already knows the knob's name from `previews.json`.
+```json
+{ "name": "title",      "index": 0, "type": "STRING", "default": "Shopping list" },
+{ "name": "accentArgb", "index": 1, "type": "LONG",   "default": "4281558783" }
+```
+
+A default that is an **expression** rather than a literal — `stringResource(...)`,
+`Color(0xFF3366FF)`, `Modifier`, `itemCount + 1` — comes back as no default, deliberately: a viewer
+showing an invented value tells the reader the preview does something it does not, and a control
+with an absent default is still a usable control.
+
+What is left is the publish itself: turning those knobs into `PreviewOverrideDeclaration`s on the
+render, so the sidecar, `compose/overrides` and the viewer's controls pick them up through the
+channel `previewOverride*` already uses.
 
 ### 2. `Color` and `Dp` are not seedable kinds
 

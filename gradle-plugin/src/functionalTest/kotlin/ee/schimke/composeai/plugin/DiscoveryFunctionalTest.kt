@@ -169,6 +169,79 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover records a parameter knob's literal default`() {
+    // The one place the knob-default reader is checked against bytecode the **Compose compiler**
+    // actually emitted. `PreviewKnobDefaultsTest` assembles the instruction shape by hand —
+    // precise,
+    // and worthless if the compiler stops emitting that shape. This compiles a real `@Preview` with
+    // the plugin CI resolves and reads the manifest back, so a compiler change that moves the
+    // defaults out of the function body turns this red instead of silently emptying every default.
+    val projectDir = createCmpTestProject()
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.unit.dp
+
+        @Preview
+        @Composable
+        fun KnobbedPreview(
+            title: String = "Shopping list",
+            accentArgb: Long = 0xFF3366FF,
+            itemCount: Int = 3,
+            ratio: Float = 0.5f,
+            enabled: Boolean = true,
+            // A default that is an *expression*, not a literal: recorded as no default rather than
+            // guessed at, because a viewer showing an invented value misreports the preview.
+            computed: Int = itemCount + 1,
+        ) {
+            Box(modifier = Modifier.size((100 * ratio).dp).background(Color(accentArgb.toInt()))) {
+                Text(if (enabled) "${'$'}title ${'$'}itemCount ${'$'}computed" else "off")
+            }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val knobs = manifest.previews.single { it.functionName == "KnobbedPreview" }.knobs
+
+    assertThat(knobs.map { it.name to it.default })
+      .containsExactly(
+        "title" to "Shopping list",
+        // 0xFF3366FF as the Long the author wrote — the format has no Color kind, so an editable
+        // colour rides an ARGB Long and its default has to survive as that same number.
+        "accentArgb" to 0xFF3366FF.toString(),
+        "itemCount" to "3",
+        "ratio" to "0.5",
+        // `iconst_1` for a Boolean is `true`; the declared type is the only thing that says so.
+        "enabled" to "true",
+        "computed" to null,
+      )
+      .inOrder()
+  }
+
+  @Test
   fun `composePreviewDiscover expands @OverrideVariant into synthetic seeded previews`() {
     val projectDir = createCmpTestProject()
 

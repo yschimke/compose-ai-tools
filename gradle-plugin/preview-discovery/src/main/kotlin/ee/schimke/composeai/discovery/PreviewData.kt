@@ -1161,7 +1161,26 @@ data class CatalogEntry(
  * @property index the parameter's zero-based position in the function's value-parameter list.
  * @property type which seed kind can be bound to it.
  */
-@Serializable data class PreviewKnob(val name: String, val index: Int, val type: PreviewKnobType)
+@Serializable
+data class PreviewKnob(
+  val name: String,
+  val index: Int,
+  val type: PreviewKnobType,
+  /**
+   * The parameter's **literal** default, as the text a seed would carry, or null when it has none a
+   * reader can recover.
+   *
+   * A knob without this is a control an editor cannot fully draw: a declaration carries `default`
+   * and `current`, which is how a viewer shows what a field holds before anyone touches it and how
+   * it offers "reset". Kotlin metadata records only *that* a default exists, so this is read out of
+   * the compiled body — see `PreviewKnobDefaults`, which also says why only a lone constant counts.
+   *
+   * Null is the honest answer for `stringResource(...)`, `Color(0xFF3366FF)`, `Modifier` and every
+   * other default that is an expression rather than a literal. A viewer should show no default
+   * rather than an invented one.
+   */
+  val default: String? = null,
+)
 
 /** The value kinds a [PreviewKnob] can carry — the types the harness can build from a seed. */
 @Serializable
