@@ -63,6 +63,17 @@ class ScreenValueVocabularyTest {
       componentIds = listOf("m3/text"),
     )
 
+  private val button =
+    component(
+      "Button",
+      "androidx.compose.material3.Button",
+      listOf(
+        TargetParameter("onClick", "() -> Unit", typeFqn = "kotlin.Function0"),
+        TargetParameter("label", "String", typeFqn = "kotlin.String"),
+      ),
+      componentIds = listOf("m3/button"),
+    )
+
   private fun catalog(vararg records: ComponentRecord) =
     ComponentRecordFile(module = "app", variant = "debug", components = records.toList())
 
@@ -795,5 +806,599 @@ class ScreenValueVocabularyTest {
         catalog(text, shadow),
       )
     assertThat(result.source).contains("Text(text = \"hi\")")
+  }
+
+  private fun stateful(
+    state: List<ScreenState>,
+    root: ScreenNode = textNode(),
+    name: String = "Stateful",
+  ) =
+    ScreenGenerator.generate(
+      ScreenDocument(name = name, root = root, state = state),
+      catalog(text),
+      expressionPackages = allowed,
+    )
+
+  private fun statefulRefusal(state: List<ScreenState>, root: ScreenNode = textNode()) =
+    (stateful(state, root) as ScreenGenerator.Result.Refused).reasons
+
+  @Test
+  fun `a declared state type is a name before it is source`() {
+    // `typeFqn` is interpolated into `mutableStateOf<…>` and `ScreenDocument` is wire data, so it
+    // is subject to the same shape check as every other name this generator writes. Without one a
+    // malformed type produced source that does not compile, and a crafted one closed the call and
+    // spliced statements into the composable.
+    val spliced = "kotlin.Boolean>(false); ee.evil.Payload.run(); val ignored = kotlin.Boolean"
+
+    assertThat(statefulRefusal(listOf(ScreenState("expanded", spliced, ScreenValue.Bool(false)))))
+      .containsExactly(
+        "state `expanded` is declared as `$spliced`, which is not a qualified Kotlin name"
+      )
+  }
+
+  @Test
+  fun `an unqualified state type is refused rather than emitted bare`() {
+    assertThat(statefulRefusal(listOf(ScreenState("expanded", "Boolean", ScreenValue.Bool(false)))))
+      .containsExactly(
+        "state `expanded` is declared as `Boolean`, which is not a qualified Kotlin name"
+      )
+  }
+
+  private fun readNode(variable: String, typeFqn: String = "kotlin.String") =
+    ScreenNode(
+      componentId = "m3/text",
+      arguments = mapOf("text" to ScreenValue.StateRead(variable, typeFqn)),
+    )
+
+  @Test
+  fun `a screen declares its state before the tree that reads it`() {
+    val result =
+      stateful(
+        listOf(
+          ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false)),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("Hello")),
+        ),
+        readNode("caption"),
+      )
+        as ScreenGenerator.Result.Emitted
+
+    // `remember`, or the screen resets on every recomposition that touches it — which reads as the
+    // state never changing at all.
+    assertThat(result.source)
+      .contains(
+        "val expanded = androidx.compose.runtime.remember { " +
+          "androidx.compose.runtime.mutableStateOf<kotlin.Boolean>(false) }"
+      )
+    // Declaration order is emitted order: a preamble that reshuffles is a diff nobody can review.
+    assertThat(result.source.indexOf("val expanded"))
+      .isLessThan(result.source.indexOf("val caption"))
+    assertThat(result.source).contains("text = caption.value")
+  }
+
+  @Test
+  fun `a read of a variable the screen does not declare is refused, and says what it has`() {
+    val reasons =
+      statefulRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        readNode("missing"),
+      )
+
+    assertThat(reasons).hasSize(1)
+    assertThat(reasons.single()).contains("does not declare")
+    // Naming what it does declare turns a dead end into a typo the reader can fix.
+    assertThat(reasons.single()).contains("expanded")
+  }
+
+  @Test
+  fun `a read whose claimed type disagrees with the declaration is refused`() {
+    val reasons =
+      statefulRefusal(
+        listOf(ScreenState("caption", "kotlin.Boolean", ScreenValue.Bool(false))),
+        readNode("caption"),
+      )
+
+    assertThat(reasons.single()).contains("declared as a")
+  }
+
+  @Test
+  fun `state that would shadow a component this screen calls is refused`() {
+    // The component is imported by simple name, so a property of the same name captures its call
+    // site inside the function body and the screen silently calls the wrong thing.
+    val reasons =
+      statefulRefusal(listOf(ScreenState("Text", "kotlin.String", ScreenValue.Text("x"))))
+
+    assertThat(reasons.single()).contains("would shadow")
+  }
+
+  @Test
+  fun `a state name declared twice is refused once, not per use`() {
+    val reasons =
+      statefulRefusal(
+        listOf(
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("b")),
+        )
+      )
+
+    assertThat(reasons).containsExactly("state `caption` is declared more than once")
+  }
+
+  private fun handled(
+    state: List<ScreenState>,
+    handlers: Map<String, List<ScreenAction>>,
+  ) =
+    ScreenGenerator.generate(
+      ScreenDocument(
+        name = "Stateful",
+        root =
+          ScreenNode(
+            componentId = "m3/button",
+            arguments = mapOf("label" to ScreenValue.Text("Go")),
+            handlers = handlers,
+          ),
+        state = state,
+      ),
+      catalog(button),
+      expressionPackages = allowed,
+    )
+
+  private fun handledRefusal(
+    state: List<ScreenState>,
+    handlers: Map<String, List<ScreenAction>>,
+  ) = (handled(state, handlers) as ScreenGenerator.Result.Refused).reasons
+
+  @Test
+  fun `a handler writes declared state from a lambda`() {
+    val result =
+      handled(
+        listOf(
+          ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false)),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
+        ),
+        mapOf(
+          "onClick" to
+            listOf(
+              ScreenAction.Toggle("expanded"),
+              ScreenAction.Set("caption", ScreenValue.Text("tapped")),
+            )
+        ),
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source)
+      .contains("onClick = { expanded.value = !expanded.value; caption.value = \"tapped\" }")
+  }
+
+  @Test
+  fun `toggling something that is not a boolean is refused`() {
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("caption", "kotlin.String", ScreenValue.Text("a"))),
+        mapOf("onClick" to listOf(ScreenAction.Toggle("caption"))),
+      )
+
+    assertThat(reasons.single()).contains("rather than a kotlin.Boolean")
+  }
+
+  @Test
+  fun `setting a variable to the wrong type is refused`() {
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to listOf(ScreenAction.Set("expanded", ScreenValue.Text("yes")))),
+      )
+
+    assertThat(reasons).isNotEmpty()
+  }
+
+  @Test
+  fun `a handler writing an undeclared variable is refused, and says what it has`() {
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to listOf(ScreenAction.Toggle("missing"))),
+      )
+
+    assertThat(reasons.single()).contains("does not declare")
+    assertThat(reasons.single()).contains("expanded")
+  }
+
+  @Test
+  fun `a handler with no actions is refused rather than emitted empty`() {
+    // An empty lambda is a button that looks live and is not, and it compiles.
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to emptyList()),
+      )
+
+    assertThat(reasons.single()).contains("no actions")
+  }
+
+  @Test
+  fun `a handler on a callback that takes an argument is refused`() {
+    // `acceptsBareLambda` is the *slot* question and answers true here: children placed in
+    // `content: (RowScope) -> Unit` may ignore the receiver. A handler may not. `onValueChange`
+    // exists to deliver the new value, and a generated body that ignores it compiles and silently
+    // drops what the control reported — the failure this generator's whole refusal set exists to
+    // avoid.
+    val field =
+      component(
+        "TextField",
+        "androidx.compose.material3.TextField",
+        listOf(
+          TargetParameter("value", "String", typeFqn = "kotlin.String"),
+          TargetParameter("onValueChange", "(String) -> Unit", typeFqn = "kotlin.Function1"),
+        ),
+        componentIds = listOf("m3/text-field"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "m3/text-field",
+              arguments = mapOf("value" to ScreenValue.Text("a")),
+              handlers = mapOf("onValueChange" to listOf(ScreenAction.Toggle("expanded"))),
+            ),
+          state = listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        ),
+        catalog(field),
+        expressionPackages = allowed,
+      )
+
+    val reasons = (result as ScreenGenerator.Result.Refused).reasons
+    assertThat(reasons.single()).contains("`(String) -> Unit`, which a generated handler cannot")
+  }
+
+  @Test
+  fun `an initializer reading a state declared after it is refused`() {
+    // The preamble emits one `val` per declaration in document order, so this generated
+    // `val first = … second.value …` two lines before `second` exists.
+    val reasons =
+      statefulRefusal(
+        listOf(
+          ScreenState("first", "kotlin.String", ScreenValue.StateRead("second", "kotlin.String")),
+          ScreenState("second", "kotlin.String", ScreenValue.Text("b")),
+        )
+      )
+
+    assertThat(reasons.single()).contains("not declared before it")
+  }
+
+  @Test
+  fun `an initializer reading itself is refused`() {
+    // A local is not in scope in its own initializer, so this is the same defect with one
+    // declaration instead of two.
+    val reasons =
+      statefulRefusal(
+        listOf(ScreenState("only", "kotlin.String", ScreenValue.StateRead("only", "kotlin.String")))
+      )
+
+    assertThat(reasons.single()).contains("not declared before it")
+  }
+
+  @Test
+  fun `an initializer reading a state declared before it is emitted`() {
+    val result =
+      stateful(
+        listOf(
+          ScreenState("first", "kotlin.String", ScreenValue.Text("a")),
+          ScreenState("second", "kotlin.String", ScreenValue.StateRead("first", "kotlin.String")),
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.String>(first.value)")
+  }
+
+  @Test
+  fun `a state type segment that needs backticks is escaped rather than emitted bare`() {
+    // `isQualifiedName` accepts a segment a human would have to backtick — a hard keyword, or one
+    // holding a space — and the type is interpolated straight into `mutableStateOf<…>`. Accepting
+    // it and emitting it bare returns Emitted for source that does not compile.
+    val result = stateful(listOf(ScreenState("value", "example.`bad`.Type", ScreenValue.Text("a"))))
+
+    // The backtick itself is forbidden in a name, so that spelling is refused outright.
+    assertThat(result).isInstanceOf(ScreenGenerator.Result.Refused::class.java)
+  }
+
+  @Test
+  fun `a Float initializer is written as a Float literal`() {
+    // The untyped path emits a literal on its own terms, so this produced
+    // `mutableStateOf<kotlin.Float>(0.5)` — a Double literal behind a Float property.
+    val result =
+      stateful(listOf(ScreenState("opacity", "kotlin.Float", ScreenValue.Fractional(0.5))))
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.Float>(0.5f)")
+  }
+
+  @Test
+  fun `an initializer of the wrong kind is refused rather than emitted`() {
+    val reasons =
+      statefulRefusal(listOf(ScreenState("count", "kotlin.Int", ScreenValue.Text("three"))))
+
+    assertThat(reasons.single()).contains("kotlin.Int, which Text is not")
+  }
+
+  @Test
+  fun `a nullable state type keeps its question mark outside the escaping`() {
+    // Nullability is syntax, not part of a segment's name. Escaping the whole spelling produced
+    // `kotlin.`String?`` — a backticked classifier rather than a nullable String — which broke
+    // every nullable state the moment escaping was added.
+    val result =
+      stateful(listOf(ScreenState("caption", "kotlin.String?", ScreenValue.Text("a"))))
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.String?>(\"a\")")
+    assertThat(result.source).doesNotContain("`String?`")
+  }
+
+  @Test
+  fun `a handler on a receiver lambda is refused`() {
+    // `DrawScope.() -> Unit` has empty parentheses and is not an event callback: Compose runs it
+    // while drawing, so a generated body writing state invalidates what it just drew.
+    val canvas =
+      component(
+        "Canvas",
+        "androidx.compose.foundation.Canvas",
+        listOf(TargetParameter("onDraw", "DrawScope.() -> Unit")),
+        componentIds = listOf("foundation/canvas"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "foundation/canvas",
+              handlers = mapOf("onDraw" to listOf(ScreenAction.Toggle("expanded"))),
+            ),
+          state = listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        ),
+        catalog(canvas),
+        expressionPackages = allowed,
+      )
+
+    val reasons = (result as ScreenGenerator.Result.Refused).reasons
+    assertThat(reasons.single()).contains("which a generated handler cannot satisfy")
+  }
+
+  @Test
+  fun `a keyword segment in a state type is written escaped`() {
+    // The initializer is rendered against the declared type now, so it has to actually be one: a
+    // `Text` literal is a `kotlin.String` and is refused here, correctly.
+    val result =
+      stateful(
+        listOf(
+          ScreenState(
+            "caption",
+            "com.example.fun.Type",
+            ScreenValue.Reference(
+              rootFqn = "com.example.fun.Values",
+              members = listOf("DEFAULT"),
+              typeFqn = "com.example.fun.Type",
+            ),
+          )
+        )
+      )
+
+    assertThat((result as ScreenGenerator.Result.Emitted).source)
+      .contains("mutableStateOf<com.example.`fun`.Type>")
+  }
+
+  @Test
+  fun `a reference initializer is bound before remember rather than inside it`() {
+    // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
+    // composable read. `MaterialTheme.colorScheme.primary` is legal one line above the lambda and
+    // rejected inside it, so the value is bound first and the lambda closes over the binding.
+    val result =
+      stateful(
+        listOf(
+          ScreenState(
+            "tint",
+            "androidx.compose.ui.graphics.Color",
+            ScreenValue.Reference(
+              rootFqn = "androidx.compose.material3.MaterialTheme",
+              members = listOf("colorScheme", "primary"),
+              typeFqn = "androidx.compose.ui.graphics.Color",
+            ),
+          )
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source)
+      .contains("val tintInitial = androidx.compose.material3.MaterialTheme.colorScheme.primary")
+    assertThat(result.source)
+      .contains("mutableStateOf<androidx.compose.ui.graphics.Color>(tintInitial)")
+  }
+
+  @Test
+  fun `a literal initializer stays inside remember`() {
+    val result =
+      stateful(listOf(ScreenState("caption", "kotlin.String", ScreenValue.Text("a"))))
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.String>(\"a\")")
+    assertThat(result.source).doesNotContain("captionInitial")
+  }
+
+  @Test
+  fun `a hoisted binding does not shadow a component this screen calls`() {
+    // The binding is a plain `val` in the composable body, so it captures a component's call site
+    // exactly the way a state name would. A state named `Tint` derives `TintInitial`, which is a
+    // perfectly ordinary Composable name — putting `val TintInitial = …` directly above the
+    // `TintInitial(...)` this screen calls.
+    val clash =
+      component(
+        "TintInitial",
+        "androidx.compose.material3.TintInitial",
+        listOf(TargetParameter("text", "String", typeFqn = "kotlin.String")),
+        componentIds = listOf("m3/tint-initial"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "m3/tint-initial",
+              arguments = mapOf("text" to ScreenValue.Text("hi")),
+            ),
+          state =
+            listOf(
+              ScreenState(
+                "Tint",
+                "androidx.compose.ui.graphics.Color",
+                ScreenValue.Reference(
+                  rootFqn = "androidx.compose.material3.MaterialTheme",
+                  members = listOf("colorScheme", "primary"),
+                  typeFqn = "androidx.compose.ui.graphics.Color",
+                ),
+              )
+            ),
+        ),
+        catalog(clash),
+        expressionPackages = allowed,
+      ) as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("val TintInitial_ =")
+    assertThat(result.source).contains("TintInitial(text = \"hi\")")
+  }
+
+  @Test
+  fun `a hoisted binding does not shadow a state that claims its name`() {
+    val result =
+      stateful(
+        listOf(
+          ScreenState("tintInitial", "kotlin.String", ScreenValue.Text("taken")),
+          ScreenState(
+            "tint",
+            "androidx.compose.ui.graphics.Color",
+            ScreenValue.Reference(
+              rootFqn = "androidx.compose.material3.MaterialTheme",
+              members = listOf("colorScheme", "primary"),
+              typeFqn = "androidx.compose.ui.graphics.Color",
+            ),
+          ),
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source)
+      .contains("val tintInitial_ = androidx.compose.material3.MaterialTheme.colorScheme.primary")
+  }
+
+  @Test
+  fun `a state named after a package root the file writes in full is refused`() {
+    // The preamble emits `androidx.compose.runtime.remember` for every declaration. A local `val`
+    // is not in scope in its own initializer, so `val androidx = androidx.compose.runtime…`
+    // compiles — and the *next* declaration then resolves `androidx` to a MutableState. The file
+    // stops compiling one line after the name that broke it.
+    val reasons =
+      statefulRefusal(
+        listOf(
+          ScreenState("androidx", "kotlin.Boolean", ScreenValue.Bool(false)),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
+        )
+      )
+
+    assertThat(reasons.single()).contains("root of a package this screen writes in full")
+  }
+
+  @Test
+  fun `a state named after a package root the file never writes is allowed`() {
+    val result =
+      handled(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onClick" to listOf(ScreenAction.Toggle("expanded"))),
+      )
+
+    assertThat(result).isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+  }
+
+  @Test
+  fun `a handler setting state from a composable read is refused`() {
+    // `onClick` is not a composable scope, and this vocabulary can name a composable read. The
+    // preamble hoists such an expression because it has a composable scope to hoist into; a
+    // handler is emitted inside the tree with nowhere to put a binding, so it refuses rather than
+    // emitting a callback Kotlin rejects.
+    val reasons =
+      handledRefusal(
+        listOf(
+          ScreenState(
+            "tint",
+            "androidx.compose.ui.graphics.Color",
+            ScreenValue.Reference(
+              rootFqn = "androidx.compose.material3.MaterialTheme",
+              members = listOf("colorScheme", "surface"),
+              typeFqn = "androidx.compose.ui.graphics.Color",
+            ),
+          )
+        ),
+        mapOf(
+          "onClick" to
+            listOf(
+              ScreenAction.Set(
+                "tint",
+                ScreenValue.Reference(
+                  rootFqn = "androidx.compose.material3.MaterialTheme",
+                  members = listOf("colorScheme", "primary"),
+                  typeFqn = "androidx.compose.ui.graphics.Color",
+                ),
+              )
+            )
+        ),
+      )
+
+    assertThat(reasons.single()).contains("an event callback is not a composable scope")
+  }
+
+  @Test
+  fun `a handler bound to a composable slot is refused`() {
+    // `content: @Composable () -> Unit` records its annotation in `composableSlot`, not in `type`,
+    // so it reads as `() -> Unit` and satisfies every shape check the handler gate makes. Compose
+    // runs the body while composing rather than when anything happens, so a `Toggle` bound here
+    // writes state during composition and invalidates the scope that just wrote it: a screen that
+    // recomposes forever, generated from a document this checker called valid.
+    val card =
+      component(
+        "Card",
+        "androidx.compose.material3.Card",
+        listOf(TargetParameter("content", "() -> Unit", composableSlot = true)),
+        componentIds = listOf("m3/card"),
+      )
+    val result =
+      ScreenGenerator.generate(
+        ScreenDocument(
+          name = "Stateful",
+          root =
+            ScreenNode(
+              componentId = "m3/card",
+              handlers = mapOf("content" to listOf(ScreenAction.Toggle("expanded"))),
+            ),
+          state = listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        ),
+        catalog(card),
+        expressionPackages = allowed,
+      )
+
+    val reasons = (result as ScreenGenerator.Result.Refused).reasons
+    assertThat(reasons.single()).contains("composable slot rather than an event callback")
+  }
+
+  @Test
+  fun `a handler bound to a parameter the component does not declare is refused`() {
+    // Dropping it silently would ship a screen whose button does nothing, which compiles fine.
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        mapOf("onLongPress" to listOf(ScreenAction.Toggle("expanded"))),
+      )
+
+    assertThat(reasons.single()).contains("has no `onLongPress`")
   }
 }

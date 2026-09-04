@@ -160,15 +160,147 @@ object ScreenGenerator {
         }
         .map { it.canonicalId }
         .toSet()
+    // Declarations are checked before anything reads them, so a misspelled variable is reported
+    // once against the declaration rather than once per node that names it.
+    val duplicates =
+      document.state.groupingBy(ScreenState::name).eachCount().filterValues { it > 1 }.keys
+    if (duplicates.isNotEmpty()) {
+      return Result.Refused(duplicates.sorted().map { "state `$it` is declared more than once" })
+    }
+    val unusableState = document.state.map(ScreenState::name).filterNot(::isUsableIdentifier)
+    if (unusableState.isNotEmpty()) {
+      return Result.Refused(unusableState.map { "state `$it` is not a usable Kotlin identifier" })
+    }
+    // A state name that collides with a component this file imports by simple name would shadow it
+    // inside the function body, so the component's call site would resolve to the property.
+    val shadowed =
+      document.state.map(ScreenState::name).filter { name ->
+        components.components.any { it.canonicalId in simplyImportable && it.symbol.name == name }
+      }
+    if (shadowed.isNotEmpty()) {
+      return Result.Refused(
+        shadowed.sorted().map {
+          "state `$it` has the same name as a component this screen calls, and would shadow it"
+        }
+      )
+    }
+    // The same shadowing one level up. A state name is a local `val` in the composable body, so it
+    // also shadows any package *root* the generated source writes out in full: the preamble emits
+    // `androidx.compose.runtime.remember` for every declaration, a component that cannot claim a
+    // simple name is called by its qualified callable, an allowed expression is written qualified,
+    // and each declared type is interpolated into `mutableStateOf<…>`. A state named `androidx`
+    // compiles on its own line — a local is not in scope in its own initializer — and breaks the
+    // next one, which is the worst place for this to surface.
+    val qualifiedRoots = buildSet {
+      add("androidx")
+      // Every component, not only the ones that cannot claim a simple name. `node` also writes a
+      // simply-importable component qualified when it sits in a receiver scope, where an import
+      // would not reach it, so its package root is emitted too.
+      components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
+      expressionPackages.mapTo(this) { it.substringBefore('.') }
+      document.state.mapTo(this) { it.typeFqn.substringBefore('.') }
+    }
+    val shadowedRoots =
+      document.state.map(ScreenState::name).filter { it in qualifiedRoots }.distinct()
+    if (shadowedRoots.isNotEmpty()) {
+      return Result.Refused(
+        shadowedRoots.sorted().map {
+          "state `$it` is the root of a package this screen writes in full, and would shadow it"
+        }
+      )
+    }
     val context =
       Emission(
         ComponentIndex(components.components),
         simplyImportable,
         document.name,
         expressionPackages,
+        document.state.associateBy(ScreenState::name),
       )
+    // Everything a hoisted binding must not shadow: the declarations, the components this file
+    // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
+    // `FooInitial(...)` call captures it exactly the way a state name would.
+    val bindingNamesTaken =
+      document.state.map(ScreenState::name).toSet() +
+        components.components.filter { it.canonicalId in simplyImportable }.map { it.symbol.name } +
+        document.name +
+        // And the package roots, for the same reason a state name may not be one: a component that
+        // cannot claim a simple name is called fully qualified, and `val tintInitial = …` above a
+        // `tintInitial.widgets.Text(...)` captures that root exactly as a declaration would.
+        qualifiedRoots
+    val declaredSoFar = mutableSetOf<String>()
+    val preamble =
+      document.state.map { declared ->
+        // Each initializer sees only what precedes it, and the name itself is added after the
+        // initializer is rendered rather than before, because a local is not in scope in its own.
+        context.initializerScope = declaredSoFar.toSet()
+        // The declared type is interpolated into `mutableStateOf<…>`, so it is source, and
+        // `ScreenDocument` is wire data. Every other name this file writes goes through a shape
+        // check first; this one did not, so a malformed type produced source that does not compile
+        // and a crafted one could close the call and splice statements into the composable.
+        if (!isQualifiedName(declared.typeFqn)) {
+          context.reasons +=
+            "state `${declared.name}` is declared as `${declared.typeFqn}`, which is not a " +
+              "qualified Kotlin name"
+          return@map null
+        }
+        // Rendered against the declared type, the same way an assignment to this variable is.
+        // The untyped path emits a literal on its own terms, so `kotlin.Float` seeded with `0.5`
+        // produced `mutableStateOf<kotlin.Float>(0.5)` — a Double literal — and a literal of the
+        // wrong kind entirely was emitted rather than refused. Nullability is stripped for the
+        // comparison because every literal this vocabulary has is non-null.
+        val initial =
+          context.argument(
+            declared.initial,
+            TargetParameter(
+              declared.name,
+              declared.typeFqn.removeSuffix("?"),
+              typeFqn = declared.typeFqn.removeSuffix("?"),
+            ),
+            "state",
+          ) ?: return@map null
+        declaredSoFar += declared.name
+        val name = ComponentSnippets.escapeIfKeyword(declared.name)
+        // Nullability is syntax, not part of any segment's name. Escaping the whole spelling
+        // turned the documented `kotlin.String?` into `kotlin.`String?`` — a backticked classifier
+        // rather than a nullable String — so every nullable state stopped compiling.
+        val nullableType = declared.typeFqn.endsWith("?")
+        val type =
+          ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn.removeSuffix("?")) +
+            if (nullableType) "?" else ""
+        // `remember`'s calculation is `@DisallowComposableCalls`, and this vocabulary can name a
+        // composable read — `MaterialTheme.colorScheme.primary` is the documented example. Kotlin
+        // rejects that inside the lambda even though the same expression is legal one line up, so
+        // anything naming an API is bound first and the lambda closes over the binding.
+        //
+        // A literal and a state read stay where they are: neither can be a composable call — one
+        // is a constant, the other reads a local `MutableState` — and hoisting every `""` would
+        // double an ordinary preamble to guard against nothing.
+        val hoisted =
+          declared.initial is ScreenValue.Reference ||
+            declared.initial is ScreenValue.Construct ||
+            declared.initial is ScreenValue.Chain
+        // `remember` so the value survives recomposition — without it the screen resets on every
+        // frame that touches it, which looks like the state never changing at all.
+        if (!hoisted) {
+          listOf(
+            "val $name = androidx.compose.runtime.remember { " +
+              "androidx.compose.runtime.mutableStateOf<$type>($initial) }"
+          )
+        } else {
+          val bound = initialBinding(declared.name, bindingNamesTaken)
+          listOf(
+            "val $bound = $initial",
+            "val $name = androidx.compose.runtime.remember { " +
+              "androidx.compose.runtime.mutableStateOf<$type>($bound) }",
+          )
+        }
+      }
+    // The body is not an initializer: every declaration is in scope there.
+    context.initializerScope = null
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
+    val declarations = preamble.filterNotNull().flatten()
 
     // An AndroidX-mechanism marker is reported by both scans, so it is subtracted here rather than
     // written twice under two annotations that would each reject the other's markers.
@@ -222,6 +354,7 @@ object ScreenGenerator {
       }
       appendLine("@Composable")
       appendLine("fun ${document.name}() {")
+      declarations.forEach { appendLine("    $it") }
       appendLine(body)
       appendLine("}")
     }
@@ -288,6 +421,8 @@ object ScreenGenerator {
     val simplyImportable: Set<String>,
     val screenName: String,
     val expressionPackages: Set<String>,
+    /** Declared state by name, so a read can be checked against something rather than trusted. */
+    val state: Map<String, ScreenState> = emptyMap(),
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -298,6 +433,17 @@ object ScreenGenerator {
     val optIns = mutableSetOf<String>()
     val androidxOptIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
+
+    /**
+     * The state names in scope while one declaration's own initializer is rendered, or null in the
+     * body, where every declaration is.
+     *
+     * The preamble emits one `val` per declaration in document order and a local is not in scope in
+     * its own initializer, so an initializer may read only what came before it. Without this a
+     * document could put `first`'s initializer on `second.value` and generate a file that names a
+     * variable two lines before declaring it.
+     */
+    var initializerScope: Set<String>? = null
 
     fun node(node: ScreenNode, depth: Int, inReceiverScope: Boolean = false): String {
       val pad = INDENT.repeat(depth)
@@ -358,9 +504,23 @@ object ScreenGenerator {
       }
 
       val arguments = mutableListOf<String>()
+      // A handler naming a parameter the component does not declare is refused here rather than
+      // silently dropped, exactly as an unknown argument is: a screen whose button does nothing is
+      // not the screen that was designed, and it compiles perfectly.
+      node.handlers.keys
+        .filterNot { key -> record.parameters.any { it.name == key } }
+        .sorted()
+        .forEach { reasons += "`${record.symbol.name}` has no `$it` to bind a handler to" }
       for (parameter in record.parameters) {
         val supplied = node.arguments[parameter.name]
         val children = node.slots[parameter.name]
+        val handler = node.handlers[parameter.name]
+        if (handler != null) {
+          lambda(handler, parameter, record.symbol.name)?.let {
+            arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $it"
+          }
+          continue
+        }
         when {
           supplied != null -> {
             argument(supplied, parameter, record.symbol.name)?.let {
@@ -438,6 +598,131 @@ object ScreenGenerator {
      * Both compare the **qualified** type, so a `com.example.String` property is rejected rather
      * than handed a string literal — the trap the call-site generator was caught by twice.
      */
+    /**
+     * A handler, as a lambda assigning declared state.
+     *
+     * The parameter must be a zero-argument function type. A handler on `onValueChange: (String) ->
+     * Unit` would need a parameter list this generator has no name for, and emitting `{ … }` there
+     * compiles only by accident of the argument being ignored.
+     */
+    fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? {
+      val where = "`$owner`.`${parameter.name}`"
+      // A composable slot is not an event callback, however much its type looks like one. The
+      // `@Composable` lives in `composableSlot` rather than in `type`, so `content: @Composable ()
+      // -> Unit` reads as `() -> Unit` and satisfies every shape check below. Compose then runs the
+      // body while composing rather than when anything happens, so a `Toggle` bound here flips its
+      // state on every composition and invalidates the scope that just wrote it — a screen that
+      // recomposes forever, from a document the generator called valid.
+      if (parameter.composableSlot) {
+        reasons += "$where is a composable slot rather than an event callback"
+        return null
+      }
+      // Zero arguments, not merely "a bare lambda fits". `acceptsBareLambda` is the slot question
+      // and answers true for `(String) -> Unit`, because children placed in a slot may ignore its
+      // receiver. A handler may not: `onValueChange` exists to deliver the new value, and a
+      // generated body that ignores it compiles and silently drops what the control reported.
+      if (!ComponentSnippets.acceptsZeroArgLambda(parameter.type)) {
+        reasons += "$where is `${parameter.type}`, which a generated handler cannot satisfy"
+        return null
+      }
+      if (actions.isEmpty()) {
+        // An empty handler is a button that looks live and is not. The document meant something by
+        // binding it, and an empty lambda is the one reading that hides the mistake.
+        reasons += "$where binds a handler with no actions"
+        return null
+      }
+      val statements = actions.map { action ->
+        val declared = state[action.variable]
+        if (declared == null) {
+          reasons +=
+            "$where writes `${action.variable}`, which this screen does not declare" +
+              if (state.isEmpty()) ""
+              else " (it declares ${state.keys.sorted().joinToString(", ")})"
+          return null
+        }
+        val target = name(action.variable, where) ?: return null
+        when (action) {
+          is ScreenAction.Toggle -> {
+            if (declared.typeFqn != "kotlin.Boolean") {
+              reasons +=
+                "$where toggles `${action.variable}`, which is a ${declared.typeFqn} rather " +
+                  "than a kotlin.Boolean"
+              return null
+            }
+            "$target.value = !$target.value"
+          }
+          is ScreenAction.Set -> {
+            if (action.value.typeFqn != null && action.value.typeFqn != declared.typeFqn) {
+              reasons +=
+                "$where sets `${action.variable}` to a ${action.value.typeFqn}, and it is " +
+                  "declared as a ${declared.typeFqn}"
+              return null
+            }
+            // An event callback is not a composable scope. A reference, a construct or a chain
+            // can name a composable read — `MaterialTheme.colorScheme.primary` is the documented
+            // example — and Kotlin rejects one inside an `onClick`. The preamble hoists such an
+            // expression to a binding because it has a composable scope to hoist into; a handler
+            // is emitted inside the tree and has nowhere to put one, so this refuses instead of
+            // returning `Emitted` for source that does not compile.
+            if (
+              action.value is ScreenValue.Reference ||
+                action.value is ScreenValue.Construct ||
+                action.value is ScreenValue.Chain
+            ) {
+              reasons +=
+                "$where sets `${action.variable}` from an expression that names an API, which a " +
+                  "handler cannot evaluate — an event callback is not a composable scope"
+              return null
+            }
+            // Literals carry no type of their own, so they are checked the way an argument is —
+            // by rendering against the declared type rather than by comparing a claim.
+            val rendered =
+              argument(
+                action.value,
+                TargetParameter(action.variable, declared.typeFqn, typeFqn = declared.typeFqn),
+                owner,
+              ) ?: return null
+            "$target.value = $rendered"
+          }
+        }
+      }
+      return "{ ${statements.joinToString("; ")} }"
+    }
+
+    /**
+     * A state read, as the `.value` of the declared property.
+     *
+     * `.value` rather than a `by` delegate, because `by` needs `getValue` and `setValue` imported
+     * and this generator's rule is that nothing it emits can be shadowed by the package it lands
+     * in. Two more imports are two more chances of the conflict the import check already refuses,
+     * bought for a spelling nobody reads twice in generated code.
+     */
+    fun stateRead(value: ScreenValue.StateRead, where: String): String? {
+      val declared = state[value.variable]
+      if (declared == null) {
+        reasons +=
+          "$where reads `${value.variable}`, which this screen does not declare" +
+            if (state.isEmpty()) "" else " (it declares ${state.keys.sorted().joinToString(", ")})"
+        return null
+      }
+      if (declared.typeFqn != value.typeFqn) {
+        reasons +=
+          "$where reads `${value.variable}` as a ${value.typeFqn}, and it is declared as a " +
+            declared.typeFqn
+        return null
+      }
+      initializerScope?.let { inScope ->
+        if (value.variable !in inScope) {
+          reasons +=
+            "$where reads `${value.variable}`, which is not declared before it" +
+              if (value.variable in state) " (a later declaration, or itself)" else ""
+          return null
+        }
+      }
+      val escaped = name(value.variable, where) ?: return null
+      return "$escaped.value"
+    }
+
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
@@ -532,6 +817,7 @@ object ScreenGenerator {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
           }
+        is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.Reference -> {
           val root = qualifiedName(value.rootFqn, where) ?: return null
           val members = value.members.map { name(it, where) ?: return null }
@@ -781,6 +1067,20 @@ object ScreenGenerator {
    * projection-supplied string into generated source, and a string that is not a name is how one
    * stops being a reference and starts being syntax.
    */
+  /**
+   * The local a hoisted initializer is bound to.
+   *
+   * Derived from the state's own name so the generated line reads as belonging to it, and bumped
+   * until it collides with nothing this file already writes — a screen may legitimately declare
+   * both `caption` and `captionInitial`, or call a component named `CaptionInitial`, and the
+   * binding must shadow neither.
+   */
+  private fun initialBinding(name: String, taken: Set<String>): String {
+    var candidate = "${name}Initial"
+    while (candidate in taken) candidate += "_"
+    return ComponentSnippets.escapeIfKeyword(candidate)
+  }
+
   private fun isQualifiedName(fqn: String): Boolean {
     val segments = fqn.split('.')
     return fqn.isNotEmpty() && segments.size >= 2 && segments.all(::isWritableName)
