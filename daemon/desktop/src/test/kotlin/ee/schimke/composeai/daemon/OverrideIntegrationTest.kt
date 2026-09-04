@@ -1657,6 +1657,92 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * The other half of the format, and the last thing between a `previewOverride*` preview and a
+   * parameter-knob one: after the render, the preview's knobs are **declared** — through the same
+   * `PreviewOverrideController` channel `previewOverride*` records into, so the bundle sidecar,
+   * `data/fetch?kind=compose/overrides` and a viewer's control list all pick them up with no change
+   * of their own.
+   *
+   * Reading the controller rather than a fetch result is deliberate: it is the point where the two
+   * formats converge, and on this backend it is also what the registry reads (there is no sandbox,
+   * so the in-classloader controller IS the source of truth — see
+   * `PreviewOverridesDataProductRegistry.readDeclarationsAcrossClassloaders`).
+   *
+   * The assertion covers the pair a control needs and a render cannot supply on its own: `default`
+   * is what the author wrote, so a viewer can offer "reset"; `current` is what is in force, so the
+   * field agrees with the pixels beside it.
+   */
+  @Test
+  fun parameterKnobsAreDeclaredForTheViewerAfterTheRender() {
+    val outputDir = tempFolder.newFolder("renders-parameter-knob-declared")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseSpec =
+      RenderSpec(
+        previewId = "knobbed",
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "KnobbedSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+        // Exactly what `renderSpecFromInfo` reads out of `previews.json`, defaults included.
+        knobs =
+          listOf(
+            PreviewKnobDto("topArgb", 0, "LONG", "4293874512"),
+            PreviewKnobDto("bottomArgb", 1, "LONG", "4284922730"),
+            PreviewKnobDto("label", 2, "STRING", "hi"),
+          ),
+      )
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+        previewSpecResolver = { id -> baseSpec.takeIf { id == "knobbed" } },
+      )
+    host.start()
+    try {
+      val blue = 0xFF42A5F5L
+      host.submit(
+        RenderRequest.Render(
+          payload = "previewId=knobbed;overrides=${encodeTextBag("topArgb" to blue.toString())}"
+        ),
+        timeoutMs = 30_000,
+      )
+
+      val declared =
+        ee.schimke.composeai.overrides.PreviewOverrideController.declarations().associateBy {
+          it.key
+        }
+      assertEquals(
+        "every knob with a recoverable default must be declared",
+        setOf("topArgb", "bottomArgb", "label"),
+        declared.keys,
+      )
+      // `Long` has no declaration type of its own, so it rides as text — the control is a text
+      // field rather than a number field, and nothing else changes.
+      assertEquals(
+        PreviewOverrideValue.StringValue("4293874512"),
+        declared.getValue("topArgb").default,
+      )
+      assertEquals(
+        "the seeded knob's `current` must be the value actually rendered",
+        PreviewOverrideValue.StringValue(blue.toString()),
+        declared.getValue("topArgb").current,
+      )
+      assertEquals(
+        "an unseeded knob's `current` is its author default",
+        PreviewOverrideValue.StringValue("4284922730"),
+        declared.getValue("bottomArgb").current,
+      )
+      assertEquals(PreviewOverrideValue.StringValue("hi"), declared.getValue("label").current)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * The unseeded baseline for [parameterKnobSeedsOneParameter]: with no override bag at all,
    * [KnobbedSquare] renders both compiled defaults. Without this the test above could pass on a
    * renderer that ignored the seed entirely and happened to paint blue for some other reason.

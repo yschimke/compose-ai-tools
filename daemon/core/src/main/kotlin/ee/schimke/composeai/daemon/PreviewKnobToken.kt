@@ -1,8 +1,8 @@
 package ee.schimke.composeai.daemon
 
 /**
- * The `knobs=<name>:<index>:<TYPE>,…` render-payload token — how a preview's **parameter knobs**
- * travel on the wire when the spec itself cannot.
+ * The `knobs=<name>:<index>:<TYPE>[:<default>],…` render-payload token — how a preview's
+ * **parameter knobs** travel on the wire when the spec itself cannot.
  *
  * ### Why a token at all
  *
@@ -22,6 +22,16 @@ package ee.schimke.composeai.daemon
  * parameter has to degrade to its author default while the rest of the preview still seeds. Failing
  * the whole render because a knob kind is unfamiliar would turn a forward-compatible wire into a
  * hard version pin.
+ *
+ * ### The fourth field
+ *
+ * A knob's **literal default** rides as an optional fourth field, base64url-encoded. It is not
+ * there for the render — the compiled default runs on its own when a position is unseeded — but for
+ * the declaration a viewer draws its control from, which has to say what the field held before
+ * anyone touched it. Encoding it is not optional: a default is author-written text and may
+ * legitimately contain `:`, `,`, `;` or `=`, all of which are payload delimiters. A knob with no
+ * recoverable default emits three fields, exactly as before, so a preview whose defaults are all
+ * expressions produces the token it always did.
  */
 public object PreviewKnobToken {
 
@@ -48,7 +58,10 @@ public object PreviewKnobToken {
         !knob.type.hasDelimiter()
     }
     if (entries.isEmpty()) return null
-    return entries.joinToString(ENTRY_SEPARATOR.toString()) { "${it.name}:${it.index}:${it.type}" }
+    return entries.joinToString(ENTRY_SEPARATOR.toString()) { knob ->
+      val head = "${knob.name}:${knob.index}:${knob.type}"
+      knob.default?.let { "$head:${encodeDefault(it)}" } ?: head
+    }
   }
 
   /** The knobs [token] names, skipping any entry that is not well formed. */
@@ -56,13 +69,33 @@ public object PreviewKnobToken {
     if (token.isNullOrBlank()) return emptyList()
     return token.split(ENTRY_SEPARATOR).mapNotNull { entry ->
       val parts = entry.split(FIELD_SEPARATOR)
-      if (parts.size != 3) return@mapNotNull null
+      if (parts.size != 3 && parts.size != 4) return@mapNotNull null
       val name = parts[0].trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
       val index = parts[1].trim().toIntOrNull()?.takeIf { it >= 0 } ?: return@mapNotNull null
       val type = parts[2].trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-      PreviewKnobDto(name = name, index = index, type = type)
+      // A fourth field that will not decode drops the *default*, not the knob: the knob still
+      // seeds, it just cannot be declared. Losing the whole entry would cost the seeding too.
+      val default = parts.getOrNull(3)?.let(::decodeDefault)
+      PreviewKnobDto(name = name, index = index, type = type, default = default)
     }
   }
+
+  /**
+   * Base64url without padding — `=` is a payload delimiter, so the padded alphabet cannot be used
+   * here. An empty default encodes to the empty string, which round-trips as an empty default
+   * rather than as none: `title: String = ""` is a real default a viewer should show.
+   */
+  private fun encodeDefault(default: String): String =
+    java.util.Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(default.toByteArray(Charsets.UTF_8))
+
+  private fun decodeDefault(encoded: String): String? =
+    try {
+      String(java.util.Base64.getUrlDecoder().decode(encoded), Charsets.UTF_8)
+    } catch (_: IllegalArgumentException) {
+      null
+    }
 
   /** `;` too: it separates payload tokens, so a name carrying one truncates the whole token. */
   private fun String.hasDelimiter(): Boolean =

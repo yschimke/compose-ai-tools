@@ -153,7 +153,22 @@ public data class PreviewDataProductDto(val kind: String, val scroll: ScrollCapt
  * knob kind this daemon cannot bind, and an unknown name has to degrade to "not seedable" — the
  * author default renders — instead of failing the whole manifest parse.
  */
-@Serializable public data class PreviewKnobDto(val name: String, val index: Int, val type: String)
+@Serializable
+public data class PreviewKnobDto(
+  val name: String,
+  val index: Int,
+  val type: String,
+  /**
+   * The parameter's **literal** default as discovery recovered it from the compiled body, or null
+   * when it has none a reader could reach (an expression default — `stringResource(...)`,
+   * `Color(0xFF3366FF)`, `itemCount + 1`).
+   *
+   * Carried because a `PreviewOverrideDeclaration` needs it: a viewer's control shows what a field
+   * holds before anyone touches it, and offers "reset" against it. A knob without one is left
+   * undeclared rather than declared with an invented value — see [PreviewKnobDeclarations].
+   */
+  val default: String? = null,
+)
 
 /**
  * Daemon-side mirror of the gradle plugin's `Capture` — one planned render of a preview. Only

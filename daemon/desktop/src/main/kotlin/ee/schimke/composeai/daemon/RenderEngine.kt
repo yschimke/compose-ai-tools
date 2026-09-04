@@ -662,6 +662,15 @@ class RenderEngine(
                       InvokeWithOptionalWrapper(
                         composableMethod!!,
                         spec.wrapperClassName,
+                        // The preview's parameter knobs, as the declarations a viewer draws its
+                        // controls from. Recorded from inside the composition so they land in the
+                        // same window the `previewOverride*` lookups record theirs — after the
+                        // around-composable's `clearDeclarations`, before the registry reads them.
+                        knobDeclarations =
+                          PreviewKnobDeclarations.of(
+                            spec.knobs,
+                            spec.overrides?.namedOverrides,
+                          ),
                         // A `themeProvider` override (an app-declared @ThemeCatalog
                         // `PreviewWrapperProvider` FQN) replaces the preview's own
                         // `@PreviewWrapper`
@@ -2983,7 +2992,20 @@ private fun InvokeWithOptionalWrapper(
   wrapperFqnFromSpec: String?,
   themeProviderFqn: String? = null,
   previewArgs: List<Any?> = emptyList(),
+  knobDeclarations: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> =
+    emptyList(),
 ) {
+  // `SideEffect`, not a plain call: the around-composable resets this preview's declarations from a
+  // `DisposableEffect`, and Compose runs every `RememberObserver` before any `SideEffect`, so the
+  // clear always precedes these. That ordering is the same one the `previewOverride*` host relies
+  // on, which is why both formats can share the one declaration channel.
+  if (knobDeclarations.isNotEmpty()) {
+    androidx.compose.runtime.SideEffect {
+      knobDeclarations.forEach {
+        ee.schimke.composeai.overrides.PreviewOverrideController.record(it)
+      }
+    }
+  }
   val wrappers =
     remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
       resolveWrapperStack(composableMethod, wrapperFqnFromSpec, themeProviderFqn)

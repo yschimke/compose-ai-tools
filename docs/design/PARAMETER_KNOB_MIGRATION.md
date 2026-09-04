@@ -12,7 +12,7 @@ The two formats, in one line each:
 | Where the knob is declared | by **executing a lookup in the composable body** | by the **function signature** |
 | How a value is seeded | writing typed values into a process-static controller before composing | ordinary argument passing |
 | What the preview's body contains | a harness call per knob | nothing — no harness dependency at all |
-| Where the declaration is published | `previews/<id>.overrides.json`, `data/fetch?kind=compose/overrides` | *nowhere yet* — see [gap 1](#gap-1) |
+| Where the declaration is published | `previews/<id>.overrides.json`, `data/fetch?kind=compose/overrides` | `data/fetch?kind=compose/overrides` (daemon lanes); not the bundle sidecar yet |
 | Where the default value comes from | the author passes it at the call site | read back out of the compiled body (`PreviewKnobDefaults`) |
 
 The reference pair to read side by side is
@@ -24,10 +24,12 @@ declared each way. That pair is deliberate and must **not** be collapsed by a mi
 
 ## The verdict
 
-**No sample should move today.** Not because the format is wrong, but because a migrated preview
-loses its editor: nothing publishes a parameter knob's declaration, so a viewer has no knob to show.
-That is [gap 1](#gap-1), and it is the one that decides the answer — though the hard half of it,
-recovering a knob's default *value*, is now solved.
+**A preview whose knobs all carry *literal* defaults can now move without losing its editor.** Both
+daemons publish a parameter knob as a `PreviewOverrideDeclaration`, so a viewer draws the same
+control it draws for a `previewOverride*` knob. What still stops the samples in this repository is
+narrower than it was, and specific: most of their defaults are **expressions**
+(`stringResource(...)`, `Color(0xFF3366FF)`), which cannot be recovered and so cannot be declared —
+plus the structural limits below, which no amount of wiring changes.
 
 Everything below is what the investigation found on the way to that.
 
@@ -77,40 +79,39 @@ A `renderNow.overrides.namedOverrides` seed naming a parameter knob was read by 
 
 ## The gaps that remain
 
-### <a id="gap-1"></a>1. A parameter knob is never *declared* to a client
+### <a id="gap-1"></a>1. A knob defaulted to an expression cannot be declared
 
 `previewOverride*` publishes each knob as a `PreviewOverrideDeclaration` — key, type, label, default
-value, current value — through the controller, into `previews/<id>.overrides.json` and
-`data/fetch?kind=compose/overrides`. That is what a viewer renders its controls from and what
-`preview-harness/serve-lanes.spec.mjs` selects on.
+value, current value — as a by-product of *reading* it, because the lookup knows all five. That fills
+`previews/<id>.overrides.json` and `data/fetch?kind=compose/overrides`, and it is what a viewer's
+control list, the serve `?knob.<key>=` UI and `serve-lanes.spec.mjs` read.
 
-A parameter knob publishes nothing. Rendering the two `samples/cmp` twins side by side shows it
-exactly:
+A parameter knob is declared by a signature and read by ordinary argument passing, so nothing in the
+composition announces it. Both daemons now build the same declarations from `previews.json` and
+record them through the same controller channel, so every consumer downstream works unchanged and
+neither has to know which format a preview used. `PreviewKnobDefaults` supplies the default value the
+declaration needs by reading it back out of the compiled body.
 
-```
-$ ls samples/cmp/build/compose-previews/renders/*.overrides.json
-…/OverridableListPreview_Overridable_List-c264a81f.overrides.json
-# and no ParameterKnobListPreview sidecar
-```
+**What is left is the honest hole in that.** `PreviewOverrideDeclaration.default` is not nullable, so
+a knob whose default this could not recover is left *undeclared* rather than declared with an
+invented value — a viewer would otherwise show a wrong default and offer a "reset" that resets to
+something the preview never said. That bites exactly the defaults the catalogs use:
 
-**The blocker underneath is gone.** A declaration needs the default *value*, and Kotlin metadata
-records only that a default exists — the Compose compiler inlines the default expressions into the
-function body behind the `$default` mask. `PreviewKnobDefaults` reads them back out of the compiled
-body, so `previews.json` now carries a knob's literal default where it has one:
+| Default | Declared? |
+| --- | --- |
+| `title: String = "Shopping list"` | yes |
+| `enabled: Boolean = true`, `count: Int = 3` | yes |
+| `label: String = stringResource(Res.string.label)` | **no** |
+| `accent: Color = Color(0xFF3366FF)` | **no** (and `Color` is not a knob kind anyway — gap 2) |
+| `computed: Int = itemCount + 1` | **no** |
 
-```json
-{ "name": "title",      "index": 0, "type": "STRING", "default": "Shopping list" },
-{ "name": "accentArgb", "index": 1, "type": "LONG",   "default": "4281558783" }
-```
+Closing it properly means a declaration that can say "this knob's default is not knowable", which is
+a change to the published `data-preview-overrides-core` contract rather than to this repository.
 
-A default that is an **expression** rather than a literal — `stringResource(...)`,
-`Color(0xFF3366FF)`, `Modifier`, `itemCount + 1` — comes back as no default, deliberately: a viewer
-showing an invented value tells the reader the preview does something it does not, and a control
-with an absent default is still a usable control.
-
-What is left is the publish itself: turning those knobs into `PreviewOverrideDeclaration`s on the
-render, so the sidecar, `compose/overrides` and the viewer's controls pick them up through the
-channel `previewOverride*` already uses.
+`Long` and `Double` knobs are declared as **text**: `PreviewOverrideType` has `STRING` / `INT` /
+`FLOAT` / `BOOL` / `COLOR` and no wider numerics. That costs the control's shape, not its reach — a
+text seed parses against the knob's own kind on the way in — but it is why an ARGB `Long`, the
+format's stand-in for an editable colour, gets a text box rather than a colour picker.
 
 ### 2. `Color` and `Dp` are not seedable kinds
 
@@ -151,12 +152,16 @@ A parameter knob only exists on the preview's own signature, so moving either wo
 every knob of every branch onto every preview that could reach it — and `CatalogComponent(id:
 String)` reports no knobs anyway, since `id` has no default.
 
-### 6. The offline bake lanes do not seed, and neither does the harness router
+### 6. The offline bake lanes, and the harness router
 
 Both **daemons** — `:daemon:desktop` (live / `serve` / VS Code) and `:daemon:android` (Robolectric)
-— resolve a defaulted preview and seed its parameter knobs. `:renderer-desktop`'s standalone bake
-can bind a seed (`PreviewKnobArguments`, and it resolves the defaulted shape), but nothing hands it
-one: the Gradle render task has no seed to pass. `:renderer-android`'s bake has no bind at all.
+— resolve a defaulted preview, seed its parameter knobs and declare them.
+
+The **offline bake** does neither. `:renderer-desktop` can bind a seed (`PreviewKnobArguments`) but
+nothing hands it one, `:renderer-android` has no bind at all, and neither drains parameter knobs into
+the `previews/<id>.overrides.json` sidecar the way it drains `previewOverride*` ones. So the twin
+comparison that opened this document still comes out uneven for a *baked* bundle, and even for it the
+only thing missing is threading the manifest's knobs into the render shard.
 
 The harness-only `PreviewManifestRouter` (`composeai.harness.previewsManifest`) is the third: its
 manifest wire type carries no `knobs`, so a knobbed preview rendered through a harness fixture
@@ -168,7 +173,7 @@ renders its defaults. No fixture declares one today, which is why it is a note r
 | --- | --- | --- |
 | `samples/cmp/.../OverridablePreviews.kt` | 4 (`title`, `accent`, `itemCount`, `density`, indexed `rowLabel`) | **Keep as is** — it is the deliberate twin of `ParameterKnobPreviews.kt`; the comparison is what the sample is for |
 | `samples/cmp/.../ParameterKnobPreviews.kt` | 5 parameter knobs | Already migrated — the reference |
-| `samples/android-live-lane/.../LiveLanePreviews.kt` | 1 (`label`, on the `@Preview` itself) | **Cleanest candidate, blocked by gap 1 alone** now the Robolectric daemon seeds. `serve-lanes.spec.mjs` asserts `overrides[].key == "label"`, which would go empty |
+| `samples/android-live-lane/.../LiveLanePreviews.kt` | 1 (`label`, on the `@Preview` itself) | **Migratable.** Its default is the literal `"Live lane"`, so the knob declares, and `serve-lanes.spec.mjs`'s `overrides[].key == "label"` still finds it. Not done here — worth doing as its own change, with the lane run to prove it |
 | `design-catalog-m3-shared/.../CatalogComponents.kt` + `CatalogOverrides.kt` (+ actuals) | ~15 across a `when (id)` dispatch | **Cannot** — gap 5, plus `catalogOverrideColor` (gap 2) |
 | `design-catalog-m3/.../CatalogTheme.kt` | 5 (font, colors, shapes, typography, fonts) | **Cannot** — gap 5: read inside the theme wrapper every sticker calls |
 | `design-catalog-m3/.../CatalogTemplates.kt` | `title`, `fab` hoistable; `sender`, `preview` indexed | **Partial at best** — gap 3 |
