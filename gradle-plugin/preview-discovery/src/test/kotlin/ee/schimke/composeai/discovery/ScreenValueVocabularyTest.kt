@@ -1094,6 +1094,25 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a state type segment that needs backticks is escaped rather than emitted bare`() {
+    // `isQualifiedName` accepts a segment a human would have to backtick — a hard keyword, or one
+    // holding a space — and the type is interpolated straight into `mutableStateOf<…>`. Accepting
+    // it and emitting it bare returns Emitted for source that does not compile.
+    val result = stateful(listOf(ScreenState("value", "example.`bad`.Type", ScreenValue.Text("a"))))
+
+    // The backtick itself is forbidden in a name, so that spelling is refused outright.
+    assertThat(result).isInstanceOf(ScreenGenerator.Result.Refused::class.java)
+  }
+
+  @Test
+  fun `a keyword segment in a state type is written escaped`() {
+    val result = stateful(listOf(ScreenState("caption", "example.fun.Type", ScreenValue.Text("a"))))
+
+    assertThat((result as ScreenGenerator.Result.Emitted).source)
+      .contains("mutableStateOf<example.`fun`.Type>")
+  }
+
+  @Test
   fun `a state named after a package root the file writes in full is refused`() {
     // The preamble emits `androidx.compose.runtime.remember` for every declaration. A local `val`
     // is not in scope in its own initializer, so `val androidx = androidx.compose.runtime…`

@@ -235,7 +235,6 @@ sealed interface ScreenValue {
    * @property receiver what the links apply to. `Modifier` as a [Reference], or a literal for the
    *   `16` in `16.dp`.
    */
-  @Serializable
   /**
    * Reads a state variable the document declares.
    *
@@ -246,8 +245,10 @@ sealed interface ScreenValue {
    * Carries no opt-ins of its own: the declaration's [ScreenState.initial] carries them, and it is
    * the expression that actually names an API.
    */
+  @Serializable
   data class StateRead(val variable: String, override val typeFqn: String) : ScreenValue
 
+  @Serializable
   data class Chain(
     val receiver: ScreenValue,
     val links: List<ChainLink>,

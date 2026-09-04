@@ -193,9 +193,10 @@ object ScreenGenerator {
     // next one, which is the worst place for this to surface.
     val qualifiedRoots = buildSet {
       add("androidx")
-      components.components
-        .filterNot { it.canonicalId in simplyImportable }
-        .mapTo(this) { it.symbol.callable.substringBefore('.') }
+      // Every component, not only the ones that cannot claim a simple name. `node` also writes a
+      // simply-importable component qualified when it sits in a receiver scope, where an import
+      // would not reach it, so its package root is emitted too.
+      components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
       expressionPackages.mapTo(this) { it.substringBefore('.') }
       document.state.mapTo(this) { it.typeFqn.substringBefore('.') }
     }
@@ -239,7 +240,8 @@ object ScreenGenerator {
         // frame that touches it, which looks like the state never changing at all.
         declaredSoFar += declared.name
         "val ${ComponentSnippets.escapeIfKeyword(declared.name)} = androidx.compose.runtime.remember { " +
-          "androidx.compose.runtime.mutableStateOf<${declared.typeFqn}>($initial) }"
+          "androidx.compose.runtime.mutableStateOf<" +
+          "${ComponentSnippets.escapeCallableIfKeyword(declared.typeFqn)}>($initial) }"
       }
     // The body is not an initializer: every declaration is in scope there.
     context.initializerScope = null
