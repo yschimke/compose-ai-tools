@@ -1339,7 +1339,7 @@ public class JsonRpcServer(
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: data product onRender failed for $previewId " +
-          "(${t.javaClass.simpleName}: ${t.message})"
+          "(${describeThrowable(t)})"
       )
     }
     val tookMs = result.metrics?.get("tookMs") ?: 0L
@@ -1463,7 +1463,7 @@ public class JsonRpcServer(
         } catch (t: Throwable) {
           System.err.println(
             "compose-ai-daemon: history: failed to read PNG bytes for $previewId at $pngPath " +
-              "(${t.javaClass.simpleName}: ${t.message}); skipping history entry"
+              "(${describeThrowable(t)}); skipping history entry"
           )
           return
         }
@@ -1515,7 +1515,7 @@ public class JsonRpcServer(
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: history: HistoryManager.recordRender($previewId) threw " +
-            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+            "(${describeThrowable(t)}); continuing"
         )
         return
       }
@@ -1541,7 +1541,7 @@ public class JsonRpcServer(
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: history: $kind fetch for $previewId failed " +
-          "(${t.javaClass.simpleName}: ${t.message}); recording entry without it"
+          "(${describeThrowable(t)}); recording entry without it"
       )
       null
     }
@@ -2019,7 +2019,7 @@ public class JsonRpcServer(
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: data product onRenderFailed failed for $previewId " +
-          "(${t.javaClass.simpleName}: ${t.message})"
+          "(${describeThrowable(t)})"
       )
     }
     // D3 — wake any data/fetch waiter that queued this render so it can return
@@ -2629,10 +2629,10 @@ public class JsonRpcServer(
           overrides = params.overrides,
         )
       } catch (t: UnsupportedOperationException) {
-        fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
+        fallbackReason = "${describeThrowable(t)}"
         null
       } catch (t: Throwable) {
-        val reason = "${t.javaClass.simpleName}: ${t.message}"
+        val reason = "${describeThrowable(t)}"
         if (host.supportsInteractive) {
           sendErrorResponse(
             id = req.id,
@@ -2753,7 +2753,7 @@ public class JsonRpcServer(
         sendErrorResponse(
           req.id,
           ERR_INTERNAL,
-          "xr/start: render failed: ${t.javaClass.simpleName}: ${t.message}",
+          "xr/start: render failed: ${describeThrowable(t)}",
         )
         return
       }
@@ -2787,7 +2787,7 @@ public class JsonRpcServer(
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: xr/updatePanels failed for ${params.frameStreamId}: " +
-            "${t.javaClass.simpleName}: ${t.message}"
+            "${describeThrowable(t)}"
         )
         return
       }
@@ -2820,7 +2820,7 @@ public class JsonRpcServer(
         sendErrorResponse(
           req.id,
           ERR_INTERNAL,
-          "xr/structure failed: ${t.javaClass.simpleName}: ${t.message}",
+          "xr/structure failed: ${describeThrowable(t)}",
         )
         return
       }
@@ -2854,7 +2854,7 @@ public class JsonRpcServer(
       // decoder state this method exists to release.
       System.err.println(
         "compose-ai-daemon: xr/stop close failed for ${params.frameStreamId}: " +
-          "${t.javaClass.simpleName}: ${t.message}; continuing"
+          "${describeThrowable(t)}; continuing"
       )
     }
     if (finalFrame != null) {
@@ -2922,7 +2922,7 @@ public class JsonRpcServer(
           overrides = params.overrides,
         )
       } catch (t: UnsupportedOperationException) {
-        fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
+        fallbackReason = "${describeThrowable(t)}"
         null
       } catch (t: Throwable) {
         // Same policy as interactive/start: if the host claims to support held sessions but
@@ -2933,11 +2933,11 @@ public class JsonRpcServer(
             code = ERR_INTERNAL,
             message =
               "stream/start: host advertises held sessions but failed to acquire one for " +
-                "previewId='${params.previewId}': ${t.javaClass.simpleName}: ${t.message}",
+                "previewId='${params.previewId}': ${describeThrowable(t)}",
           )
           return
         }
-        fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
+        fallbackReason = "${describeThrowable(t)}"
         null
       }
     val codec = streamRegistry.negotiateCodec(params.codec)
@@ -3004,7 +3004,7 @@ public class JsonRpcServer(
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: stream/stop: session.close() threw " +
-            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+            "(${describeThrowable(t)}); continuing"
         )
       }
     }
@@ -3049,7 +3049,7 @@ public class JsonRpcServer(
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: interactive/stop: session.close() threw " +
-            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+            "(${describeThrowable(t)}); continuing"
         )
       }
     }
@@ -3508,12 +3508,12 @@ public class JsonRpcServer(
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: recording/start: acquireRecordingSession failed for " +
-            "previewId='${params.previewId}': ${t.javaClass.simpleName}: ${t.message}"
+            "previewId='${params.previewId}': ${describeThrowable(t)}"
         )
         sendErrorResponse(
           id = req.id,
           code = ERR_INTERNAL,
-          message = "recording/start: ${t.javaClass.simpleName}: ${t.message}",
+          message = "recording/start: ${describeThrowable(t)}",
         )
         return
       }
@@ -3536,7 +3536,7 @@ public class JsonRpcServer(
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: recording/script: postScript failed for " +
-          "recordingId='${params.recordingId}': ${t.javaClass.simpleName}: ${t.message}"
+          "recordingId='${params.recordingId}': ${describeThrowable(t)}"
       )
     }
   }
@@ -3556,7 +3556,7 @@ public class JsonRpcServer(
     } catch (t: Throwable) {
       System.err.println(
         "compose-ai-daemon: recording/input: postInput failed for " +
-          "recordingId='${params.recordingId}': ${t.javaClass.simpleName}: ${t.message}"
+          "recordingId='${params.recordingId}': ${describeThrowable(t)}"
       )
     }
   }
@@ -3611,7 +3611,7 @@ public class JsonRpcServer(
             sendErrorResponse(
               id = req.id,
               code = ERR_INTERNAL,
-              message = "recording/stop: ${t.javaClass.simpleName}: ${t.message}",
+              message = "recording/stop: ${describeThrowable(t)}",
             )
           }
         },
@@ -3671,7 +3671,7 @@ public class JsonRpcServer(
       sendErrorResponse(
         id = req.id,
         code = ERR_INTERNAL,
-        message = "recording/generateTest: ${t.javaClass.simpleName}: ${t.message}",
+        message = "recording/generateTest: ${describeThrowable(t)}",
       )
     }
   }
@@ -3722,7 +3722,7 @@ public class JsonRpcServer(
             sendErrorResponse(
               id = req.id,
               code = ERR_INTERNAL,
-              message = "recording/encode: ${t.javaClass.simpleName}: ${t.message}",
+              message = "recording/encode: ${describeThrowable(t)}",
             )
           }
         },
@@ -3985,7 +3985,7 @@ public class JsonRpcServer(
               } catch (t: Throwable) {
                 System.err.println(
                   "compose-ai-daemon: incrementalDiscovery: invalid path '$path' " +
-                    "(${t.javaClass.simpleName}: ${t.message}); skipping"
+                    "(${describeThrowable(t)}); skipping"
                 )
                 return@Thread
               }
@@ -3997,8 +3997,7 @@ public class JsonRpcServer(
             emitDiscoveryUpdated(diff)
           } catch (t: Throwable) {
             System.err.println(
-              "compose-ai-daemon: incrementalDiscovery worker failed " +
-                "(${t.javaClass.simpleName}: ${t.message})"
+              "compose-ai-daemon: incrementalDiscovery worker failed " + "(${describeThrowable(t)})"
             )
             t.printStackTrace(System.err)
           }
@@ -4166,7 +4165,7 @@ public class JsonRpcServer(
       sessions.close()
     } catch (e: Throwable) {
       System.err.println(
-        "compose-ai-daemon: xrSessions.close failed: ${e.javaClass.simpleName}: ${e.message}; " +
+        "compose-ai-daemon: xrSessions.close failed: ${describeThrowable(e)}; " +
           "continuing shutdown"
       )
     }
@@ -4192,7 +4191,7 @@ public class JsonRpcServer(
       } catch (e: Throwable) {
         System.err.println(
           "compose-ai-daemon: closeAllInteractiveSessions: session.close() " +
-            "(${session.previewId}) threw ${e.javaClass.simpleName}: ${e.message}; continuing"
+            "(${session.previewId}) threw ${describeThrowable(e)}; continuing"
         )
       }
     }
@@ -4212,7 +4211,7 @@ public class JsonRpcServer(
       } catch (e: Throwable) {
         System.err.println(
           "compose-ai-daemon: closeAllRecordingSessions: session.close() " +
-            "(${session.previewId}) threw ${e.javaClass.simpleName}: ${e.message}; continuing"
+            "(${session.previewId}) threw ${describeThrowable(e)}; continuing"
         )
       }
     }
