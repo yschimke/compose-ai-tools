@@ -195,7 +195,7 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
  * have the zero values passed through as real arguments (a null `Modifier`, straight into an NPE),
  * which is worse than reporting the miss.
  */
-private fun resolveNoArgComposableMethod(clazz: Class<*>, functionName: String): ComposableMethod {
+internal fun resolveNoArgComposableMethod(clazz: Class<*>, functionName: String): ComposableMethod {
   runCatching { clazz.getDeclaredComposableMethod(functionName) }
     .getOrNull()
     ?.let {
@@ -267,7 +267,7 @@ internal fun findDefaultedComposableMethod(
  * Callers must have established that the method IS composable (`asComposableMethod() != null`)
  * before asking; the arithmetic assumes the synthetic tail is well-formed.
  */
-private fun java.lang.reflect.Method.hasComposableDefaults(): Boolean {
+internal fun java.lang.reflect.Method.hasComposableDefaults(): Boolean {
   val realParams = parameterTypes.indexOfLast {
     it == androidx.compose.runtime.Composer::class.java
   }
@@ -284,7 +284,7 @@ private fun java.lang.reflect.Method.hasComposableDefaults(): Boolean {
  * compiled calling convention (every composable ever compiled encodes it), which is what makes
  * restating it safe: `getDeclaredComposableMethod` depends on the same constant.
  */
-private const val SLOTS_PER_COMPOSABLE_INT = 10
+internal const val SLOTS_PER_COMPOSABLE_INT = 10
 
 /**
  * Resolves the `ComposableMethod` for a preview function that declares `@PreviewParameter`
@@ -321,12 +321,18 @@ internal fun findComposableMethodWithArgs(
 }
 
 private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>): Boolean {
+  // A defaults mask changes what a null MEANS. Without one it is a value being passed, so it can't
+  // land on a primitive; with one it is a **parameter knob** left unseeded — "leave this parameter
+  // alone" — which is exactly how a partial seed sets one knob of a preview without disturbing its
+  // primitive siblings. See [hasComposableDefaults] and [invokeWithDefaultMask].
+  val carriesDefaultMask = method.hasComposableDefaults()
   for ((i, arg) in previewArgs.withIndex()) {
     val expected = method.parameterTypes[i]
     if (arg == null) {
       // A null argument can satisfy any reference parameter; a primitive
-      // JVM parameter can't accept null, so it's an immediate mismatch.
-      if (expected.isPrimitive) return false
+      // JVM parameter can't accept null unless the defaults mask can carry
+      // the intent instead.
+      if (expected.isPrimitive && !carriesDefaultMask) return false
       continue
     }
     val actual = arg.javaClass

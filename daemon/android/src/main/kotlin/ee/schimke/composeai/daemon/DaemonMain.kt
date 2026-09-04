@@ -808,6 +808,12 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       // covers held/render paths and keeps both daemon backends symmetric.
       outputBaseName = info.id,
       overrides = bakedOverrides,
+      // The parameter knobs discovery read off the signature. Carried on BOTH the early-return
+      // `defaults` and the fully-resolved spec below — a preview whose `params` block is absent
+      // (the incremental rescan's DTO) declares the same parameters, and dropping them on that
+      // path would make a seeded knob render its author default for as long as the manifest
+      // stayed un-rediscovered.
+      knobs = info.knobs,
       // Explicit LIGHT, not null. A null uiMode emits no `uiMode=` token in the routed payload,
       // and Robolectric qualifiers apply incrementally (`setQualifiers("+…")`), so a token-less
       // render inherits whatever `night` bit the previous render in the session left behind — a
@@ -897,6 +903,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     gutterTopDp = params.captureGutter?.top ?: 0,
     gutterEndDp = params.captureGutter?.end ?: 0,
     gutterBottomDp = params.captureGutter?.bottom ?: 0,
+    knobs = defaults.knobs,
   )
 }
 

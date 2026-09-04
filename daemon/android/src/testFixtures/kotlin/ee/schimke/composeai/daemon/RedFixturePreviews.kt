@@ -234,6 +234,35 @@ fun OverridableSquare() {
 }
 
 /**
+ * The **parameter-knob** twin of [OverridableSquare]: two editable fills and a label declared as
+ * the preview's own defaulted value parameters instead of `previewOverride*` lookups in the body.
+ * Android twin of `:daemon:desktop`'s fixture of the same name.
+ *
+ * Two colours rather than one, on purpose. [AndroidParameterKnobTest] seeds only [topArgb], so one
+ * render proves both halves of the contract: the seeded parameter repaints, and the unseeded
+ * [bottomArgb] runs its **compiled default expression** rather than being handed a zero — which is
+ * the defaults mask doing its job, and the only reason a subset of a preview's knobs can be seeded.
+ *
+ * This backend has a second thing to prove that desktop does not: composition happens inside the
+ * Robolectric sandbox classloader, so the knobs only arrive if the host encoded them into the
+ * reshaped payload and the sandbox parsed them back out.
+ */
+@Composable
+fun KnobbedSquare(
+  topArgb: Long = 0xFFEF5350,
+  bottomArgb: Long = 0xFF66BB6A,
+  label: String = "hi",
+) {
+  // `label` is deliberately never drawn: the assertion is a pixel one and a glyph over either band
+  // would only make the two colours harder to measure. It exists to put a String position into the
+  // same defaults mask as the two Longs, so the test covers a mixed-kind mask and not just Longs.
+  Column(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(topArgb.toInt())))
+    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(bottomArgb.toInt())))
+  }
+}
+
+/**
  * A clickable square that paints its own **interaction state**: red at rest, blue hovered, orange
  * focused, green pressed. Android twin of `:daemon:desktop`'s fixture of the same name.
  *

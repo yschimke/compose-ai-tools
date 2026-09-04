@@ -2832,6 +2832,20 @@ private fun SemanticsNode.descendantCount(): Int = runCatching {
  */
 @Composable
 private fun InvokeComposable(composableMethod: ComposableMethod, previewArgs: List<Any?>) {
+  // A **partial** parameter-knob seed leaves nulls in the list, and `ComposableMethod.invoke`
+  // cannot express that: it forwards a null destined for a primitive parameter verbatim and
+  // `Method.invoke` throws on the null `int`. `invokeWithDefaultMask` drives the defaults-mask
+  // overload itself when it sees one and returns false otherwise, so every shape it can't handle
+  // stays on the path it always took.
+  if (
+    ee.schimke.composeai.renderer.PreviewParameterSupport.invokeWithDefaultMask(
+      composableMethod,
+      null,
+      previewArgs,
+      currentComposer,
+    )
+  )
+    return
   composableMethod.invoke(currentComposer, null, *previewArgs.toTypedArray())
 }
 
@@ -2858,6 +2872,9 @@ private fun resolvePreviewInvocation(
     limit = spec.previewParameterLimit,
     classLoader = clazz.classLoader,
     row = spec.previewParameterRow,
+    // The seeded parameter knobs, which also decide the overload to resolve: a preview whose
+    // parameters all declare defaults is invisible to the parameterless lookup either way.
+    previewArgs = PreviewKnobSeeds.bind(spec.knobs, spec.overrides?.namedOverrides),
   )
 
 /**
@@ -3330,6 +3347,19 @@ data class RenderSpec(
    */
   val previewParameterRow: String? = null,
   /**
+   * The **parameter knobs** this preview declares — its own defaulted value parameters, the
+   * secondary override format beside `previewOverride*`. Carried from `previews.json` by
+   * `renderSpecFromInfo`, or from the `knobs=<name>:<index>:<TYPE>,…` payload token by
+   * [parseFromPayload]. Field-for-field identical to `:daemon:desktop`'s twin so one payload string
+   * still drives either backend.
+   *
+   * Empty for every preview that declares none, which is the overwhelming majority: discovery only
+   * reports knobs when **every** value parameter has a default, so a preview cannot acquire one by
+   * accident. A seed in `overrides.namedOverrides` naming one binds to the parameter's position; a
+   * seed naming anything else is left for the `previewOverride*` controller.
+   */
+  val knobs: List<PreviewKnobDto> = emptyList(),
+  /**
    * `@CaptureGutter` edges in **dp** (issue #4443) — field-for-field identical to
    * `:daemon:desktop`'s `RenderSpec`, so one payload string drives either backend. All-zero (the
    * default) is every preview without the annotation, and is what a payload written before the
@@ -3439,12 +3469,22 @@ data class RenderSpec(
         previewParameterLimit =
           map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
         previewParameterRow = map["previewParameterRow"]?.takeIf { it.isNotBlank() },
+        knobs = parseKnobsToken(map["knobs"]),
         gutterStartDp = gutterDp[0],
         gutterTopDp = gutterDp[1],
         gutterEndDp = gutterDp[2],
         gutterBottomDp = gutterDp[3],
       )
     }
+
+    /**
+     * Parses the `knobs=<name>:<index>:<TYPE>,…` payload token into [RenderSpec.knobs]. Delegates
+     * to [PreviewKnobToken], the same codec [RobolectricHost.reshapeRenderPayload] emits with — on
+     * this backend the token is the *only* way a knob crosses into the Robolectric sandbox, so
+     * producer and consumer agreeing is load-bearing rather than tidy.
+     */
+    internal fun parseKnobsToken(token: String?): List<PreviewKnobDto> =
+      PreviewKnobToken.parse(token)
 
     /**
      * The `captureGutter=<start>,<top>,<end>,<bottom>` payload token — four dp edges, in that

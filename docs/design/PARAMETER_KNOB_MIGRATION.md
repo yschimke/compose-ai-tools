@@ -53,14 +53,19 @@ Two defects, neither visible from reading the source alone. Both are fixed in th
 document accompanies; both are the reason a migrated preview would have looked broken rather than
 merely un-editable.
 
-**The daemon could not resolve a parameter-knob preview at all.** `getDeclaredComposableMethod(name)`
+**Neither daemon could resolve a parameter-knob preview at all.** `getDeclaredComposableMethod(name)`
 matches only `(Composer, int)` — a preview with no value parameters. One whose parameters all
-declare defaults compiles to `(realParams…, Composer, int changed, int default)`, so the lookup
-threw `NoSuchMethodException` before composition started: no PNG, just an `.error.json`. The
-standalone `:renderer-desktop` bake lane had a fallback for exactly this and the daemon did not,
-which is why `ParameterKnobPreviews.kt` bakes correctly ([render
-evidence](evidence/parameter-knobs/README.md)) and would not have rendered live. The fallback now
-lives in `PreviewParameterSupport`, which both lanes call, instead of privately in one of them.
+declare defaults compiles to `(realParams…, Composer, changed…, default…)`, so the lookup threw
+`NoSuchMethodException` before composition started: no PNG, just an `.error.json`. Both standalone
+bake lanes had a fallback for exactly this and neither daemon did, which is why
+`ParameterKnobPreviews.kt` bakes correctly ([render evidence](evidence/parameter-knobs/README.md))
+and would not have rendered live. The fallback now lives in each renderer's
+`PreviewParameterSupport`, which its daemon already calls, instead of privately in the bake path.
+
+On Android there was a third thing missing behind those two. Composition happens inside a
+Robolectric **sandbox classloader** that never sees the host-side spec — it parses the payload string
+the host reshapes — so the knobs need an encoded `knobs=` token to cross at all. `PreviewKnobToken`
+is that codec, and it is the one place producer and consumer agree.
 
 **Nothing bound a seed to a parameter.** `PreviewKnobArguments` — the binder, with its own tests —
 had no caller outside those tests: no producer of the `knobs=` payload token, no consumer in either
@@ -135,18 +140,16 @@ A parameter knob only exists on the preview's own signature, so moving either wo
 every knob of every branch onto every preview that could reach it — and `CatalogComponent(id:
 String)` reports no knobs anyway, since `id` has no default.
 
-### 6. Only the desktop lanes bind a seed
+### 6. The offline bake lanes do not seed, and neither does the harness router
 
-`:renderer-desktop` (the offline bake) and `:daemon:desktop` (live / `serve` / VS Code) both seed a
-parameter knob. The **Android (Robolectric) daemon** does not: it carries the same `previewArgs`
-seam and the same `resolvePreviewInvocation` shape, but neither the `RenderSpec.knobs` field nor the
-bind, so a parameter knob there renders its defaults — and, until the resolution fix is mirrored,
-a defaulted preview fails to resolve at all. That is what blocks `samples/android-live-lane`
-independently of gap 1.
+Both **daemons** — `:daemon:desktop` (live / `serve` / VS Code) and `:daemon:android` (Robolectric)
+— resolve a defaulted preview and seed its parameter knobs. `:renderer-desktop`'s standalone bake
+can bind a seed (`PreviewKnobArguments`, and it resolves the defaulted shape), but nothing hands it
+one: the Gradle render task has no seed to pass. `:renderer-android`'s bake has no bind at all.
 
-There is also no producer of the `knobs=` payload token yet. The daemon's production lane resolves
-knobs off `previews.json` and never needs it; the token exists so a caller driving the
-`className=`/`functionName=` payload directly can name them, and it is parsed but not written.
+The harness-only `PreviewManifestRouter` (`composeai.harness.previewsManifest`) is the third: its
+manifest wire type carries no `knobs`, so a knobbed preview rendered through a harness fixture
+renders its defaults. No fixture declares one today, which is why it is a note rather than a fix.
 
 ## The samples, one by one
 
@@ -154,7 +157,7 @@ knobs off `previews.json` and never needs it; the token exists so a caller drivi
 | --- | --- | --- |
 | `samples/cmp/.../OverridablePreviews.kt` | 4 (`title`, `accent`, `itemCount`, `density`, indexed `rowLabel`) | **Keep as is** — it is the deliberate twin of `ParameterKnobPreviews.kt`; the comparison is what the sample is for |
 | `samples/cmp/.../ParameterKnobPreviews.kt` | 5 parameter knobs | Already migrated — the reference |
-| `samples/android-live-lane/.../LiveLanePreviews.kt` | 1 (`label`, on the `@Preview` itself) | **Cleanest candidate, blocked** by gaps 1 and 6. `serve-lanes.spec.mjs` asserts `overrides[].key == "label"`, which would go empty |
+| `samples/android-live-lane/.../LiveLanePreviews.kt` | 1 (`label`, on the `@Preview` itself) | **Cleanest candidate, blocked by gap 1 alone** now the Robolectric daemon seeds. `serve-lanes.spec.mjs` asserts `overrides[].key == "label"`, which would go empty |
 | `design-catalog-m3-shared/.../CatalogComponents.kt` + `CatalogOverrides.kt` (+ actuals) | ~15 across a `when (id)` dispatch | **Cannot** — gap 5, plus `catalogOverrideColor` (gap 2) |
 | `design-catalog-m3/.../CatalogTheme.kt` | 5 (font, colors, shapes, typography, fonts) | **Cannot** — gap 5: read inside the theme wrapper every sticker calls |
 | `design-catalog-m3/.../CatalogTemplates.kt` | `title`, `fab` hoistable; `sender`, `preview` indexed | **Partial at best** — gap 3 |

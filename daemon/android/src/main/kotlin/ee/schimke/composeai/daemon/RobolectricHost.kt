@@ -1336,6 +1336,12 @@ open class RobolectricHost(
             ?.takeIf { row -> row.isNotBlank() }
             ?.let { row -> append("previewParameterRow=").append(row).append(';') }
         }
+      // The preview's **parameter knobs**. On this backend the token is the only way they reach
+      // the render: composition happens inside the Robolectric sandbox classloader, which sees the
+      // reshaped payload and never this host-side spec. Dropping it here would leave a seeded knob
+      // silently rendering its author default — the desktop backend has no equivalent emit because
+      // its resolver hands the spec to the render body directly.
+      PreviewKnobToken.encode(base.knobs)?.let { append("knobs=").append(it).append(';') }
       // Key the output PNG on the (unique) previewId, like [PreviewManifestRouter]; the default
       // `className-functionName` stem would collide for the multiple `@Preview` / @WearPreview*
       // variants that share one function, overwriting each other's render.

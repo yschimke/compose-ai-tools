@@ -361,7 +361,7 @@ class RenderEngine(
           // The seeded **parameter knobs**, which also decide the overload to resolve: a preview
           // whose parameters all declare defaults compiles to `(realParams…, Composer, int, int)`
           // and the parameterless lookup cannot see it either way, seeded or not.
-          previewArgs = bindKnobArguments(spec),
+          previewArgs = PreviewKnobSeeds.bind(spec.knobs, spec.overrides?.namedOverrides),
         )
       }
     val composableMethod: ComposableMethod? = resolvedInvocation?.method
@@ -2891,26 +2891,12 @@ data class RenderSpec(
     }
 
     /**
-     * Parses the `knobs=<name>:<index>:<TYPE>,…` payload token into [RenderSpec.knobs].
-     *
-     * A malformed entry — wrong arity, a non-numeric or negative index, a blank name — is
-     * **skipped** rather than failing the render. The type is kept verbatim, including a name this
-     * daemon doesn't know: an unbindable kind has to degrade to "this parameter takes its author
-     * default", which is exactly what a knob the binder skips already does, and failing the whole
-     * render because a newer plugin named a kind an older daemon can't seed would be far worse than
-     * rendering the preview unseeded.
+     * Parses the `knobs=<name>:<index>:<TYPE>,…` payload token into [RenderSpec.knobs]. Delegates
+     * to [PreviewKnobToken] so this backend, `:daemon:android`'s twin, and the Android host-side
+     * producer that emits the token cannot drift apart on what a well-formed entry is.
      */
-    internal fun parseKnobsToken(token: String?): List<PreviewKnobDto> {
-      if (token.isNullOrBlank()) return emptyList()
-      return token.split(',').mapNotNull { entry ->
-        val parts = entry.split(':')
-        if (parts.size != 3) return@mapNotNull null
-        val name = parts[0].trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        val index = parts[1].trim().toIntOrNull()?.takeIf { it >= 0 } ?: return@mapNotNull null
-        val type = parts[2].trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        PreviewKnobDto(name = name, index = index, type = type)
-      }
-    }
+    internal fun parseKnobsToken(token: String?): List<PreviewKnobDto> =
+      PreviewKnobToken.parse(token)
 
     /** Four dp edges, the parsed shape of a `captureGutter=` token. */
     internal data class GutterDp(
@@ -2949,32 +2935,6 @@ data class RenderSpec(
  * composer. Mirrors `:renderer-desktop`'s private `InvokeComposable`; kept private+top-level so the
  * compose-compiler plugin recognises it as a composable function.
  */
-/**
- * The argument array that seeds [RenderSpec.knobs] from this render's `namedOverrides` bag — the
- * **parameter knob** half of the override surface.
- *
- * Returns an empty list whenever nothing binds, so a preview with knobs but no seed keeps invoking
- * through the same zero-argument path it always did. A knob whose declared `type` this daemon does
- * not know is dropped here rather than at parse time (see [RenderSpec.parseKnobsToken]): the
- * parameter then takes its compiled default, which is the only safe reading of "a kind I cannot
- * build".
- */
-private fun bindKnobArguments(spec: RenderSpec): List<Any?> {
-  if (spec.knobs.isEmpty()) return emptyList()
-  val knobs =
-    spec.knobs.mapNotNull { knob ->
-      val type =
-        ee.schimke.composeai.renderer.PreviewKnobArguments.Type.entries.firstOrNull {
-          it.name == knob.type
-        } ?: return@mapNotNull null
-      ee.schimke.composeai.renderer.PreviewKnobArguments.Knob(knob.name, knob.index, type)
-    }
-  return ee.schimke.composeai.renderer.PreviewKnobArguments.bind(
-    knobs,
-    PreviewKnobSeeds.texts(spec.overrides?.namedOverrides),
-  )
-}
-
 @androidx.compose.runtime.Composable
 private fun InvokeComposable(composableMethod: ComposableMethod, previewArgs: List<Any?>) {
   // A **partial** knob seed leaves nulls in the list, and `ComposableMethod.invoke` cannot express

@@ -41,6 +41,65 @@ public object PreviewKnobSeeds {
       is PreviewOverrideValue.ColorValue -> null
     }
 
+  /**
+   * The argument array to invoke a preview declaring [knobs] with, given this render's typed seed
+   * bag — `null` at every position no seed bound, which is how a partial seed says "leave this
+   * parameter alone".
+   *
+   * Returns an empty list when nothing binds — no knobs, no seed that names one, nothing that
+   * parses — so a caller keeps the zero-argument invoke a plain preview has always used rather than
+   * constructing an all-null array that means the same thing.
+   *
+   * The array is sized by the highest knob index plus one rather than by [knobs].size: a knob's
+   * index is its position in the *full* value-parameter list, which may include parameters that are
+   * defaulted but not seedable (`modifier: Modifier = Modifier`). Those positions stay null and
+   * take their defaults.
+   *
+   * A knob whose declared [PreviewKnobDto.type] this daemon does not know is dropped rather than
+   * guessed at: a newer plugin may name a kind an older daemon cannot build, and degrading that one
+   * parameter to its author default while the rest of the preview still seeds beats failing the
+   * render. A seed whose text is not a valid value for its knob's type is dropped for the same
+   * reason — coercing `"yes"` to `true`, or truncating `"1.5"` to an `Int`, would publish a capture
+   * that silently disagrees with what the client asked for.
+   */
+  public fun bind(
+    knobs: List<PreviewKnobDto>,
+    values: Map<String, PreviewOverrideValue>?,
+  ): List<Any?> {
+    if (knobs.isEmpty()) return emptyList()
+    val seeds = texts(values)
+    if (seeds.isEmpty()) return emptyList()
+    val byName = knobs.associateBy { it.name }
+    val bound = seeds.mapNotNull { (name, raw) ->
+      val knob = byName[name] ?: return@mapNotNull null
+      parse(knob.type, raw)?.let { knob.index to it }
+    }
+    if (bound.isEmpty()) return emptyList()
+    val size = knobs.maxOf { it.index } + 1
+    val args = arrayOfNulls<Any?>(size)
+    bound.forEach { (index, value) -> if (index in 0 until size) args[index] = value }
+    return args.toList()
+  }
+
+  /**
+   * The typed value for [raw] under the knob kind [type] names, or null when [type] is a kind this
+   * daemon cannot build or [raw] is not a valid value of it.
+   *
+   * `toBooleanStrictOrNull` rather than `toBoolean`: the lenient form maps every non-`"true"`
+   * string to `false`, so a malformed seed would silently render the opposite of a `true` default
+   * instead of the default itself.
+   */
+  private fun parse(type: String, raw: String): Any? =
+    when (type) {
+      "STRING" -> raw
+      "BOOLEAN" -> raw.toBooleanStrictOrNull()
+      "INT" -> raw.toIntOrNull()
+      "LONG" -> raw.toLongOrNull()
+      "FLOAT" -> raw.toFloatOrNull()
+      "DOUBLE" -> raw.toDoubleOrNull()
+      else -> null
+    }
+
   /** [text] applied across a whole seed bag, dropping the entries with no equivalent. */
   public fun texts(values: Map<String, PreviewOverrideValue>?): Map<String, String> {
     if (values.isNullOrEmpty()) return emptyMap()
