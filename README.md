@@ -1021,7 +1021,7 @@ _No findings._
 
 ### `ParameterKnobListPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ParameterKnobListPreview_Parameter_Knob_List-de590fad.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ParameterKnobListPreview_Parameter_Knob_List-de590fad.a11y.png" width="400" />
 
 _No findings._
 
