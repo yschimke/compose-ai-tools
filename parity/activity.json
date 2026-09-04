@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T16:58:41.527Z",
+  "generatedAt": "2026-09-04T17:45:18.474Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "1ce54c7787efcb082d4b0664dfd81ff967b0a884",
+        "subject": "fix(deps): consume the Remote Compose players at 1.57.0 (#5100)",
+        "at": "2026-09-04T18:35:01+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3a58c5014f1101bab3cf5b6c301049090677db34",
+        "subject": "feat(renderer-android): record a preview's parameter knobs during a bake (#5099)",
+        "at": "2026-09-04T18:18:42+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c8cb6a37f1fb847bfef8d7c40e22a964f5ab109b",
         "subject": "ci(design-artifacts): say why a Remote Compose player lane dropped its column (#5096)",
@@ -466,22 +482,6 @@
         "sha": "65b5e4b1db2a465fc9843947003feeb1817246b7",
         "subject": "fix(import): render the nested build an import named, not its enclosing repo (#5030)",
         "at": "2026-09-02T23:47:55+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "db5d96af5b92c994082540c470d0967641d11ac8",
-        "subject": "fix: capture the font family a Wear clock draws with (#5033)",
-        "at": "2026-09-02T23:43:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e277e978a92938651cae558f8a1369a8629537f5",
-        "subject": "ci: give the Maven readiness gate long enough for Central to propagate (#5029)",
-        "at": "2026-09-02T23:24:41+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
