@@ -506,7 +506,13 @@ object PreviewManifestLoader {
   internal fun expandParameterProvider(entry: RenderPreviewEntry): List<PreviewRow> {
     val providerFqn =
       entry.params.previewParameterProviderClassName
-        ?: return listOf(PreviewRow(entry, emptyList()))
+        // No provider fan-out: the only arguments a preview can take here are its own parameter
+        // knobs, bound from this entry's `@OverrideVariant` seed. Empty for everything that
+        // declares no knob or that nothing seeded, which is the zero-argument invoke every plain
+        // preview has always used.
+        ?: return listOf(
+          PreviewRow(entry, PreviewKnobBake.seedArgs(entry.knobs, overrideSeedMap(entry)))
+        )
     val limit = entry.params.previewParameterLimit.coerceAtLeast(0)
     if (limit == 0) return emptyList()
     val values =
@@ -993,6 +999,15 @@ abstract class RobolectricRenderTestBase(
     // `renderNow.overrides`
     // lane feeds; here the batch render owns the controller lifecycle directly.
     ee.schimke.composeai.overrides.PreviewOverrideController.set(overrideSeedMap(preview))
+    // Announce this preview's *parameter* knobs on the same channel. `previewOverride*` records a
+    // declaration as it reads each knob during composition; a parameter knob is read by argument
+    // passing and announces nothing, so without this the overrides sidecar drained below came back
+    // empty for a migrated preview and `serve` served it no controls at all. Recorded before the
+    // render rather than inside it: the declarations are derived from the manifest and the seed,
+    // both of which are already known here, and `clearDeclarations()` above has just run.
+    PreviewKnobBake.declarations(preview.knobs, overrideSeedMap(preview)).forEach {
+      ee.schimke.composeai.overrides.PreviewOverrideController.record(it)
+    }
     // Arm the per-preview downloadable-font tracker so a face that falls back to Roboto during THIS
     // render is attributed to this preview (drained right after the render below).
     FontResolutionDiagnostics.beginPreview()
