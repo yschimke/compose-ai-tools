@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.73.0](https://github.com/yschimke/compose-ai-tools/compare/v1.72.0...v1.73.0) (2026-09-04)
+
+
+### Features
+
+* **daemon:** declare a preview's parameter knobs to the viewer ([#5095](https://github.com/yschimke/compose-ai-tools/issues/5095)) ([bbf60f9](https://github.com/yschimke/compose-ai-tools/commit/bbf60f95050fdbc8d9ff7a9e72b52cbb14c3b89a))
+* **daemon:** seed parameter knobs on the Robolectric backend too ([#5091](https://github.com/yschimke/compose-ai-tools/issues/5091)) ([f708be0](https://github.com/yschimke/compose-ai-tools/commit/f708be0ec6c05818552600a854d7e6bd538c220c))
+* **discovery:** recover a parameter knob's literal default from the class file ([#5093](https://github.com/yschimke/compose-ai-tools/issues/5093)) ([c34f9f8](https://github.com/yschimke/compose-ai-tools/commit/c34f9f8beb364a374e7937ec8736705a61e73cc1))
+* **renderer-android:** record a preview's parameter knobs during a bake ([#5099](https://github.com/yschimke/compose-ai-tools/issues/5099)) ([3a58c50](https://github.com/yschimke/compose-ai-tools/commit/3a58c5014f1101bab3cf5b6c301049090677db34))
+
+
+### Bug Fixes
+
+* **daemon:** refresh the daemon-core ABI dump ([#5094](https://github.com/yschimke/compose-ai-tools/issues/5094)) ([53b8b11](https://github.com/yschimke/compose-ai-tools/commit/53b8b115c2fad30d4e0baf8a0e2cb274c88d2dc8))
+* **daemon:** report the cause chain, not just the head throwable ([#5098](https://github.com/yschimke/compose-ai-tools/issues/5098)) ([359b61c](https://github.com/yschimke/compose-ai-tools/commit/359b61cc2e4b0187054fbddfad41d87912b5fba9))
+* **deps:** consume the Remote Compose players at 1.57.0 ([#5100](https://github.com/yschimke/compose-ai-tools/issues/5100)) ([1ce54c7](https://github.com/yschimke/compose-ai-tools/commit/1ce54c7787efcb082d4b0664dfd81ff967b0a884))
+
 ## [1.72.0](https://github.com/yschimke/compose-ai-tools/compare/v1.71.0...v1.72.0) (2026-09-04)
 
 
