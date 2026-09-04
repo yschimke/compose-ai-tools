@@ -27,14 +27,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.catalogComponentIds
 import com.example.designcatalogm3.shared.catalogComponentSpecs
 import com.example.designcatalogm3.shared.catalogContainerIds
+import ee.schimke.composeai.screen.CompileCheck
+import ee.schimke.composeai.screen.CompileOutcome
+import ee.schimke.composeai.screen.CompileSeverity
+import ee.schimke.composeai.screen.GeneratedScreen
 import ee.schimke.composeai.screen.Screen
 import ee.schimke.composeai.screen.ScreenCodegen
 import ee.schimke.composeai.screen.ScreenNode
+import ee.schimke.composeai.screen.SourceTokenKind
 import ee.schimke.composeai.screen.addNode
 import ee.schimke.composeai.screen.flatten
 import ee.schimke.composeai.screen.nodeAt
@@ -59,7 +69,10 @@ import ee.schimke.composeai.screen.setKnob
  * source a developer would have written, and the artefact the playground compiles and runs.
  */
 @Composable
-internal fun ScreenBuilderApp(previewHost: ScreenPreviewHost = WasmCatalogPreviewHost) {
+internal fun ScreenBuilderApp(
+  previewHost: ScreenPreviewHost = WasmCatalogPreviewHost,
+  compileHost: String? = null,
+) {
   var screen by remember { mutableStateOf(Screen(name = "My screen")) }
   var selected by remember { mutableStateOf<Int?>(null) }
 
@@ -176,7 +189,7 @@ internal fun ScreenBuilderApp(previewHost: ScreenPreviewHost = WasmCatalogPrevie
             .padding(8.dp)
         ) {
           Text(
-            generated.source,
+            highlight(generated),
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.bodySmall,
           )
@@ -188,6 +201,8 @@ internal fun ScreenBuilderApp(previewHost: ScreenPreviewHost = WasmCatalogPrevie
             color = MaterialTheme.colorScheme.error,
           )
         }
+        // Absent, not empty, without a `?compileHost=`. See `CompilePaneState`.
+        if (compileHost != null) CompilePane(compileHost, generated.source)
       }
     }
   }
@@ -242,4 +257,145 @@ internal fun depthOf(parents: List<Int?>, index: Int): Int {
     at = parents.getOrNull(at)
   }
   return depth
+}
+
+/**
+ * The generated source as an [AnnotatedString], coloured from the spans codegen recorded.
+ *
+ * No lexing happens here, and none should: [GeneratedScreen.tokens] tile the source exactly, so
+ * this is a walk over the list appending each range with its style. A gap or an overlap would show
+ * as mangled text, which is why the model asserts the tiling invariant as a property rather than
+ * leaving it to be noticed here.
+ */
+@Composable
+private fun highlight(generated: GeneratedScreen): AnnotatedString {
+  val palette = sourcePalette()
+  return remember(generated.source, generated.tokens, palette) {
+    if (generated.tokens.isEmpty()) {
+      AnnotatedString(generated.source)
+    } else {
+      buildAnnotatedString {
+        generated.tokens.forEach { token ->
+          val style = palette[token.kind]
+          if (style == null) {
+            append(generated.source, token.start, token.end)
+          } else {
+            withStyle(style) { append(generated.source, token.start, token.end) }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The one place a token kind becomes a colour, derived entirely from `MaterialTheme.colorScheme`.
+ *
+ * **Not a hardcoded IDE palette.** The builder honours `?uiMode=dark`, and a fixed light-theme
+ * scheme is unreadable on the other one. Deriving from the scheme also means the code pane cannot
+ * drift from the surface it sits on when the theme changes.
+ *
+ * Two details are deliberate. Weight carries part of the distinction, because M3 offers three
+ * accent roles and there are more kinds than that — `primary` bold reads differently from `primary`
+ * regular without inventing a colour. And `colorScheme.error` is **not** used for any token: it is
+ * what the "Cannot generate" list below the pane is drawn in, and a string literal wearing the
+ * error colour would say something false.
+ */
+@Composable
+private fun sourcePalette(): Map<SourceTokenKind, SpanStyle> {
+  val scheme = MaterialTheme.colorScheme
+  return mapOf(
+    SourceTokenKind.KEYWORD to SpanStyle(color = scheme.primary, fontWeight = FontWeight.Bold),
+    SourceTokenKind.ANNOTATION to SpanStyle(color = scheme.secondary, fontWeight = FontWeight.Bold),
+    SourceTokenKind.CALL to SpanStyle(color = scheme.primary),
+    SourceTokenKind.STRING to SpanStyle(color = scheme.tertiary),
+    SourceTokenKind.NUMBER to SpanStyle(color = scheme.secondary),
+    SourceTokenKind.COMMENT to
+      SpanStyle(color = scheme.onSurfaceVariant.copy(alpha = COMMENT_ALPHA)),
+    SourceTokenKind.PLAIN to SpanStyle(color = scheme.onSurfaceVariant),
+  )
+}
+
+/** Comments recede rather than compete; still well clear of the 4.5:1 the body text carries. */
+private const val COMMENT_ALPHA = 0.7f
+
+/**
+ * The compile check, and the handoff it comes with.
+ *
+ * One `POST /api/{v}/compiler/run` answers three questions at once: does the generated screen
+ * compile, what does the *server* render for it, and where can it be run interactively. So the pane
+ * shows the diagnostics **and** the "Run it" link — treating the same response as pass/fail only
+ * would throw away the more interesting half.
+ *
+ * The response's first-frame PNG is deliberately **not** drawn here: the live render is already the
+ * pane immediately to the left of this one, showing the same screen from the same document. Adding
+ * a second, staler copy of it would cost a base64 → `ImageBitmap` decode on every result to say
+ * something the user can already see.
+ */
+@Composable
+private fun CompilePane(host: String, source: String) {
+  HorizontalDivider(Modifier.padding(vertical = 4.dp))
+  when (val state = rememberCompileCheck(host, source)) {
+    is CompilePaneState.Discovering ->
+      Text("Asking $host what it can compile…", style = MaterialTheme.typography.bodySmall)
+
+    is CompilePaneState.Unavailable ->
+      Text(
+        "Compile check off: ${state.reason}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+      )
+
+    is CompilePaneState.Ready -> {
+      SectionLabel("Compiles against ${state.target.label}")
+      val outcome = state.outcome
+      when {
+        state.checking && outcome == null ->
+          Text("Compiling…", style = MaterialTheme.typography.bodySmall)
+
+        outcome is CompileOutcome.Failed ->
+          Text(
+            "The host could not run the check: ${outcome.message}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+          )
+
+        outcome is CompileOutcome.Checked -> {
+          val prefix = if (state.checking) "Re-checking… last result: " else ""
+          if (outcome.compiles) {
+            Text(
+              prefix + "Compiles.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.primary,
+            )
+            // The token *is* the handoff — the same call that proved it compiles also opened a
+            // live session for it.
+            outcome.previewUrl?.let { url ->
+              TextButton(onClick = { openInNewTab(CompileCheck.absoluteUrl(host, url)) }) {
+                Text("Run it →", style = MaterialTheme.typography.bodySmall)
+              }
+            }
+          } else {
+            Text(
+              prefix + "${outcome.errors.size} error(s).",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.error,
+            )
+          }
+          outcome.diagnostics.forEach { diagnostic ->
+            Text(
+              listOfNotNull(diagnostic.location(), diagnostic.message).joinToString("  "),
+              style = MaterialTheme.typography.bodySmall,
+              fontFamily = FontFamily.Monospace,
+              color =
+                if (diagnostic.severity == CompileSeverity.ERROR) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+        }
+
+        else -> Text("Edit to check.", style = MaterialTheme.typography.bodySmall)
+      }
+    }
+  }
 }
