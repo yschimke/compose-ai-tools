@@ -143,21 +143,33 @@ function axisValueEquals(key, actual, expected) {
 }
 
 /**
+ * The effective output axes of one image, as the string the exporter would name its PNG from.
+ *
+ * Exported because the build-free spec preflight (`spec-preflight.mjs`, issue #5066) has to answer
+ * the same question against a preview-id manifest, before a render exists to fold. A second
+ * implementation there would drift from this one — and the direction it would drift in is a
+ * preflight that reports a collision the render does not have, or misses the one it does.
+ */
+export function outputAxisKey(image) {
+  const props = Object.fromEntries(
+    Object.entries(image?.props ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+  );
+  return JSON.stringify({
+    variant: image?.variant ?? "ideal",
+    state: image?.state ?? "default",
+    theme: image?.theme ?? null,
+    size: image?.size ?? null,
+    props,
+  });
+}
+
+/**
  * Refuse two images that the exporter would name from the same effective variant axes. Catching
  * this before `buildCatalog` writes either PNG prevents last-write-wins pixels paired with stale
  * manifest metadata.
  */
 function recordOutputKey(seen, image, componentId) {
-  const props = Object.fromEntries(
-    Object.entries(image.props ?? {}).sort(([a], [b]) => a.localeCompare(b)),
-  );
-  const key = JSON.stringify({
-    variant: image.variant ?? "ideal",
-    state: image.state ?? "default",
-    theme: image.theme ?? null,
-    size: image.size ?? null,
-    props,
-  });
+  const key = outputAxisKey(image);
   if (seen.has(key)) {
     throw new Error(
       `catalog component "${componentId}" produces duplicate output axes ${key}; ` +

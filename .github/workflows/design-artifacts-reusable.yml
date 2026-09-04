@@ -1795,6 +1795,52 @@ jobs:
           compose-preview list --json "${variant[@]}" --module "$INPUT_MODULE" \
             > "$GITHUB_WORKSPACE/discovered-previews.json"
 
+      # Build-free preflight of the spec against the ids discovery just minted (issue #5066).
+      #
+      # Nearly every failed cycle is a config-shape error — a `preview` that names nothing, an
+      # `exclude-preview-ids` pattern in the wrong id shape, an exclusion that removes too few arms
+      # of a fan-out so two survivors fight over one sticker path — and each one otherwise costs the
+      # whole render to discover, because the completeness gate and `foldVariants` only speak at the
+      # end. Every one of them is decidable from a list of ids in seconds, and this is the last
+      # point before the render where saying so is still cheap. `validate-catalog-spec` above is the
+      # SOURCE-side half of the same idea; this is the manifest-side half, and it sees what
+      # discovery actually minted rather than what the Kotlin declares.
+      #
+      # Advisory — `--warn-only`, and never a failure. Two reasons, both deliberate:
+      #   * the output-axis report models what the join WOULD produce from manifest params, and an
+      #     axis it cannot see (one derived from pixels, or from an annotation the manifest does not
+      #     carry) would fail a spec that renders fine. The render's own guard stays the gate.
+      #   * an EXTERNAL caller runs the release-pinned export driver, so this script does not exist
+      #     for it until the next release moves `.github/design-artifacts-driver-pin.txt` — hence
+      #     the file guard rather than a hard `node` invocation.
+      # The findings are annotations on the run, minutes in, instead of a red gate 40 minutes in.
+      #
+      # Only the CALLER's `exclude-preview-ids` are checked, not the `activity__*`/`apptour__*`
+      # patterns import mode always appends: those are defensive by construction, and a module with
+      # no activity would otherwise report them as dead every single run.
+      - name: Preflight the spec against the discovered previews
+        env:
+          SPEC: ${{ inputs.spec }}
+          EXCLUDE_PREVIEW_IDS: ${{ inputs.exclude-preview-ids }}
+        run: |
+          set -euo pipefail
+          preflight=compose-ai-tools/scripts/design-artifacts/spec-preflight.mjs
+          manifest="$GITHUB_WORKSPACE/discovered-previews.json"
+          if [ ! -f "$preflight" ]; then
+            echo "::notice title=Driver too old for the spec preflight::This run's export driver predates spec-preflight.mjs, so the spec was not checked against the discovered preview ids. Nothing is lost — the render's own gates still run. External callers get it when the next release moves compose-ai-tools/.github/design-artifacts-driver-pin.txt."
+            exit 0
+          fi
+          if [ ! -s "$manifest" ]; then
+            echo "No discovered preview manifest in this job, so there is nothing to preflight the spec against."
+            exit 0
+          fi
+          exclude=()
+          if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
+            exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS")
+          fi
+          node "$preflight" --spec "$GITHUB_WORKSPACE/$SPEC" --previews "$manifest" \
+            "${exclude[@]}" --warn-only
+
       - name: Derive per-mode render exclusions
         id: mode-filter
         if: ${{ steps.validate-spec.outputs.deferred-modes != '' }}
@@ -2856,6 +2902,52 @@ jobs:
           # A mode that carries no discovered id is a @PreviewParameter row axis: discovery never
           # sees those rows (the renderer expands the provider), so they're skipped by LABEL instead.
           echo "exclude-rows=$(cat "$GITHUB_WORKSPACE/mode-filter-rows.txt")" >> "$GITHUB_OUTPUT"
+
+      # Build-free preflight of the spec against the ids discovery just minted (issue #5066).
+      #
+      # Nearly every failed cycle is a config-shape error — a `preview` that names nothing, an
+      # `exclude-preview-ids` pattern in the wrong id shape, an exclusion that removes too few arms
+      # of a fan-out so two survivors fight over one sticker path — and each one otherwise costs the
+      # whole render to discover, because the completeness gate and `foldVariants` only speak at the
+      # end. Every one of them is decidable from a list of ids in seconds, and this is the last
+      # point before the render where saying so is still cheap. `validate-catalog-spec` above is the
+      # SOURCE-side half of the same idea; this is the manifest-side half, and it sees what
+      # discovery actually minted rather than what the Kotlin declares.
+      #
+      # Advisory — `--warn-only`, and never a failure. Two reasons, both deliberate:
+      #   * the output-axis report models what the join WOULD produce from manifest params, and an
+      #     axis it cannot see (one derived from pixels, or from an annotation the manifest does not
+      #     carry) would fail a spec that renders fine. The render's own guard stays the gate.
+      #   * an EXTERNAL caller runs the release-pinned export driver, so this script does not exist
+      #     for it until the next release moves `.github/design-artifacts-driver-pin.txt` — hence
+      #     the file guard rather than a hard `node` invocation.
+      # The findings are annotations on the run, minutes in, instead of a red gate 40 minutes in.
+      #
+      # Only the CALLER's `exclude-preview-ids` are checked, not the `activity__*`/`apptour__*`
+      # patterns import mode always appends: those are defensive by construction, and a module with
+      # no activity would otherwise report them as dead every single run.
+      - name: Preflight the spec against the discovered previews
+        env:
+          SPEC: ${{ inputs.spec }}
+          EXCLUDE_PREVIEW_IDS: ${{ inputs.exclude-preview-ids }}
+        run: |
+          set -euo pipefail
+          preflight=compose-ai-tools/scripts/design-artifacts/spec-preflight.mjs
+          manifest="$GITHUB_WORKSPACE/discovered-previews.json"
+          if [ ! -f "$preflight" ]; then
+            echo "::notice title=Driver too old for the spec preflight::This run's export driver predates spec-preflight.mjs, so the spec was not checked against the discovered preview ids. Nothing is lost — the render's own gates still run. External callers get it when the next release moves compose-ai-tools/.github/design-artifacts-driver-pin.txt."
+            exit 0
+          fi
+          if [ ! -s "$manifest" ]; then
+            echo "No discovered preview manifest in this job, so there is nothing to preflight the spec against."
+            exit 0
+          fi
+          exclude=()
+          if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then
+            exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS")
+          fi
+          node "$preflight" --spec "$GITHUB_WORKSPACE/$SPEC" --previews "$manifest" \
+            "${exclude[@]}" --warn-only
 
       # Stage bundled fallback fonts into fontconfig before any render, so a
       # desktop (Skiko) render resolves glyphs a preview's FontFamily doesn't
