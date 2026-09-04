@@ -941,6 +941,41 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   so you know why they're absent. When there is no static sibling to point at, the
   entry can instead declare `"capture": "none"` — see below.
 
+- **Preflight against a preview-id manifest** — the manifest-side half of the same
+  idea, and the one that needs no source access at all. It reads a list of preview
+  **ids** (a module's `build/compose-previews/previews.json`, `compose-preview list
+  --json`, or a copy kept from the last good run) and reports, without rendering:
+
+  ```sh
+  node scripts/design-artifacts/spec-preflight.mjs \
+    --spec catalog.spec.json --previews previews.json \
+    --exclude-preview-id 'activity__*,Home_ja'
+  ```
+
+  - a spec `preview` (component or variant) that no manifest id's function answers to;
+  - each exclusion pattern with its match count, flagging any at **0** — the
+    underscores-vs-spaces mistake, where `@Preview(name = "Font scale 1.5x")` mints an
+    id carrying spaces and an underscored pattern silently excludes nothing;
+  - a claimed function whose *every* id is excluded, which can only publish as a
+    missing sticker;
+  - ids that survive exclusion and would **collide on output axes** — the three-arm
+    locale fan-out whose catalog declares no locale axis, where excluding one arm
+    leaves the other two fighting over one sticker path. `foldVariants` throws on this
+    at the very end of a render; here it is a report, and it names every colliding pair
+    rather than the first;
+  - as information, the surviving ids no spec component claims.
+
+  Exits non-zero on findings (`--warn-only` to report without failing, `--json` for the
+  machine-readable form). The manifest for a given import changes rarely while the spec
+  and its exclusions change constantly, so checking the fast-moving half against a
+  cached snapshot of the slow-moving one is where the time is: each of these otherwise
+  costs a full 20–40 minute render to discover. `design-artifacts-reusable.yml` runs it
+  before the render wherever discovery has already produced a manifest, as an advisory
+  step — the output-axis report models what the join *would* produce from manifest
+  params, so an axis it cannot see (one derived from pixels, or from an annotation the
+  manifest does not carry) must not be able to fail a spec that renders fine. The
+  render's own guards remain the gate.
+
 The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).
