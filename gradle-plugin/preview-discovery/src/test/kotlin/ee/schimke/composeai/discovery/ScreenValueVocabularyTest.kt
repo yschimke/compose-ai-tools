@@ -1201,6 +1201,33 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a handler setting state from a composable read is refused`() {
+    // `onClick` is not a composable scope, and this vocabulary can name a composable read. The
+    // preamble hoists such an expression because it has a composable scope to hoist into; a
+    // handler is emitted inside the tree with nowhere to put a binding, so it refuses rather than
+    // emitting a callback Kotlin rejects.
+    val reasons =
+      handledRefusal(
+        listOf(ScreenState("tint", "androidx.compose.ui.graphics.Color", ScreenValue.Text("x"))),
+        mapOf(
+          "onClick" to
+            listOf(
+              ScreenAction.Set(
+                "tint",
+                ScreenValue.Reference(
+                  rootFqn = "androidx.compose.material3.MaterialTheme",
+                  members = listOf("colorScheme", "primary"),
+                  typeFqn = "androidx.compose.ui.graphics.Color",
+                ),
+              )
+            )
+        ),
+      )
+
+    assertThat(reasons.single()).contains("an event callback is not a composable scope")
+  }
+
+  @Test
   fun `a handler bound to a composable slot is refused`() {
     // `content: @Composable () -> Unit` records its annotation in `composableSlot`, not in `type`,
     // so it reads as `() -> Unit` and satisfies every shape check the handler gate makes. Compose

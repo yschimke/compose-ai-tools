@@ -629,6 +629,22 @@ object ScreenGenerator {
                   "declared as a ${declared.typeFqn}"
               return null
             }
+            // An event callback is not a composable scope. A reference, a construct or a chain
+            // can name a composable read — `MaterialTheme.colorScheme.primary` is the documented
+            // example — and Kotlin rejects one inside an `onClick`. The preamble hoists such an
+            // expression to a binding because it has a composable scope to hoist into; a handler
+            // is emitted inside the tree and has nowhere to put one, so this refuses instead of
+            // returning `Emitted` for source that does not compile.
+            if (
+              action.value is ScreenValue.Reference ||
+                action.value is ScreenValue.Construct ||
+                action.value is ScreenValue.Chain
+            ) {
+              reasons +=
+                "$where sets `${action.variable}` from an expression that names an API, which a " +
+                  "handler cannot evaluate — an event callback is not a composable scope"
+              return null
+            }
             // Literals carry no type of their own, so they are checked the way an argument is —
             // by rendering against the declared type rather than by comparing a claim.
             val rendered =
