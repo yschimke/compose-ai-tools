@@ -4892,6 +4892,15 @@ const js_code = {
     'androidx.compose.material3.internal.weakMap_js_code' : () => (new WeakMap()),
     'androidx.compose.material3.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
     'androidx.compose.material3.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
+    'com.example.cmpwasmcatalog.getTextPromise' : (url, timeoutMs) => fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }),
+    'com.example.cmpwasmcatalog.postJsonPromise' : (url, body, timeoutMs) => fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: body,
+            signal: AbortSignal.timeout(timeoutMs)
+          }).then(function (r) { return r.text(); }),
+    'com.example.cmpwasmcatalog.openUrl' : (url) => { window.open(url, '_blank', 'noopener'); },
     'com.example.cmpwasmcatalog.flattenFontsManifest' : (json) => (function () {
           try {
             var m = JSON.parse(json), out = [];
