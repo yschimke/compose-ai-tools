@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 
 /**
  * Fixture for [DesktopFocusRendererTest] — the CMP-desktop twin of `:samples:android-alpha`'s
@@ -63,6 +64,31 @@ fun ScrollableFocusableColumn() {
       items(20) { index ->
         Button(onClick = {}, modifier = Modifier.padding(8.dp)) { Text("Item " + (index + 1)) }
       }
+    }
+  }
+}
+
+/**
+ * A focusable row with a `Popup` open beside it — the **two-roots** fixture.
+ *
+ * A popup composes into its own semantics owner, so `isRoot()` matches twice and the naive
+ * `onRoot()` the focus capture used to call threw `Expected exactly '1' node but found '2' nodes
+ * that satisfy: (isRoot)`. That failure took the whole preview down, undriven captures included:
+ * m3-catalog's `DatePicker/Modal` published no PNG at all under `@FocusedPreview`
+ * (yschimke/m3-catalog#277), and its range picker — no dialog anywhere in it — did the same, which
+ * is what ruled the dialog out as the cause and left the extra owner as the real one.
+ *
+ * The popup is deliberately empty of focusables: the walk still belongs to the row, so a capture
+ * that resolves the wrong root would come back blank rather than merely differently framed.
+ */
+@Composable
+fun FocusableRowBesidePopup() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Row(modifier = Modifier.padding(16.dp)) {
+      listOf("Save", "Edit", "Share").forEach { label ->
+        Button(onClick = {}, modifier = Modifier.padding(end = 8.dp)) { Text(label) }
+      }
+      Popup { Text("elsewhere") }
     }
   }
 }

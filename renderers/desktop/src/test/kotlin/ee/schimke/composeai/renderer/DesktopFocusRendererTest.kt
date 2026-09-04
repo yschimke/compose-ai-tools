@@ -261,6 +261,31 @@ class DesktopFocusRendererTest {
    * Nothing focusable → decline, so the caller falls back to the undriven capture rather than
    * publishing a PNG under a focus label that no component could have taken.
    */
+  /**
+   * A preview with a popup in it has two semantics roots, and the capture has to pick one rather
+   * than asking for "the" root and throwing. Before this, the throw took down every capture of the
+   * preview — the undriven ones too — so the sticker published nothing at all.
+   */
+  @Test
+  fun capturesAPreviewThatOpensASecondRoot() {
+    val (plain, _) =
+      render("desktop-focus-popup-none", null, functionName = "FocusableRowBesidePopup")
+    val (focused, drove) =
+      render(
+        "desktop-focus-popup-0",
+        DesktopFocusIntent(tabIndex = 0),
+        functionName = "FocusableRowBesidePopup",
+      )
+    assertTrue("the walk must land on the row beside the popup", drove)
+    val image = decode(focused)
+    assertTrue("capture must have real pixels", image.width > 0 && image.height > 0)
+    assertNotEquals(
+      "focusing the first button must change pixels, popup or no popup",
+      bytes(plain),
+      bytes(focused),
+    )
+  }
+
   @Test
   fun declinesWhenNothingCanTakeFocus() {
     val (_, drove) =
