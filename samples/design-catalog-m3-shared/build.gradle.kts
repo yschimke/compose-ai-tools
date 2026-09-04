@@ -90,6 +90,11 @@ kotlin {
         // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode
         // sticker.
         api(project(":slot-preview-runtime"))
+        // The composition document a builder assembles (`Screen` / `ScreenNode`) and the component
+        // spec table this catalog supplies to its codegen. `api` so the wasm app can hold a
+        // `Screen` in its own state without re-declaring the model. No Compose dependency of its
+        // own — it is data, and it compiles to wasmJs, which is where the builder runs.
+        api(project(":screen-model"))
       }
     }
 

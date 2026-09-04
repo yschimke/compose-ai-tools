@@ -398,6 +398,13 @@ Figma MCP server — real Compose, mapped to the assembled nodes.
 last to second, because the surface that *runs* generated code already exists, and
 phase 1 is done.
 
+**Phase 2 has started**, and phase 3 with it: `:screen-model` (the composition
+document, its edits and its codegen) and `ScreenBuilderApp` (the browser builder
+over the M3 catalog) are in. The two things they are missing — syntax highlighting
+and a real compile check — are specced ready-to-start in
+[UI_BUILDER_LIVE_CODE.md](UI_BUILDER_LIVE_CODE.md), including the shipped
+`/api/{version}/compiler/run` contract the compile check rides.
+
 | Phase | Scope | Effort | Unlocks |
 |---|---|---|---|
 | ~~**1**~~ | ~~`PreviewSlot`-ify the scaffold templates.~~ **Done** ([§3.1](#31-gap-1--scaffolds-werent-slot-fillable--done)). | — | "Pick a scaffold, fill its slots" through the existing plugin flow. Fixed named slots only. |

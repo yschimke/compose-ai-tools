@@ -254,6 +254,39 @@ class ScreenCodegenTest {
   }
 
   @Test
+  fun `a required argument and a content knob make the call one a developer would write`() {
+    // Without these the generated `Button` would be missing `onClick` (which the compiler demands)
+    // and would try to pass its label as an argument that does not exist.
+    val button =
+      ComponentSpec(
+        call = "Button",
+        imports = listOf("androidx.compose.material3.Button", "androidx.compose.material3.Text"),
+        knobs = mapOf("enabled" to KnobSpec("enabled", KnobKind.BOOLEAN)),
+        requiredArgs = listOf("onClick = {}"),
+        contentKnob = "label",
+      )
+    val generated =
+      ScreenCodegen.generate(
+        Screen(
+          "one button",
+          listOf(
+            ScreenNode(
+              "button-filled",
+              knobs = mapOf("label" to "Open", "enabled" to "false"),
+            )
+          ),
+        ),
+        mapOf("button-filled" to button),
+      )
+
+    assertEquals(emptyList<String>(), generated.problems)
+    assertTrue(
+      generated.source,
+      generated.source.contains("""Button(onClick = {}, enabled = false) { Text("Open") }"""),
+    )
+  }
+
+  @Test
   fun `a screen round-trips through JSON`() {
     val json = Json { prettyPrint = true }
     val text = json.encodeToString(Screen.serializer(), listScreen)
@@ -278,5 +311,70 @@ class ScreenCodegenTest {
         "  // (empty screen)\n}\n",
       generated.source,
     )
+  }
+}
+
+/** The edits a builder makes, which are pure functions over an immutable document. */
+class ScreenEditsTest {
+
+  private val base =
+    Screen(
+      "s",
+      listOf(
+        ScreenNode("column", children = listOf(ScreenNode("a"), ScreenNode("b"))),
+        ScreenNode("c"),
+      ),
+    )
+
+  // Pre-order: column=0, a=1, b=2, c=3.
+
+  @Test
+  fun `adding appends to the named container, or to the roots`() {
+    assertEquals(
+      listOf("column", "a", "b", "added", "c"),
+      base.addNode(0, ScreenNode("added")).flatten().map { it.node.componentId },
+    )
+    assertEquals(
+      listOf("column", "a", "b", "c", "added"),
+      base.addNode(null, ScreenNode("added")).flatten().map { it.node.componentId },
+    )
+  }
+
+  @Test
+  fun `a knob is set on the selected instance and nothing else`() {
+    val edited = base.setKnob(2, "label", "Second")
+    assertEquals(mapOf("label" to "Second"), edited.nodeAt(2)?.knobs)
+    assertEquals(emptyMap<String, String>(), edited.nodeAt(1)?.knobs)
+    // …and it lands on the seed key that instance renders under.
+    assertEquals(mapOf("label[2]" to "Second"), edited.knobSeeds())
+  }
+
+  @Test
+  fun `clearing a knob removes it rather than storing an empty value`() {
+    // An empty string is a real value for a label; "unset" has to be the absence of the key, or a
+    // generated call would pass `text = ""` where the author meant "leave the default".
+    val edited = base.setKnob(1, "label", "x").setKnob(1, "label", "")
+    assertEquals(emptyMap<String, String>(), edited.nodeAt(1)?.knobs)
+  }
+
+  @Test
+  fun `removing takes the whole subtree, and renumbers what follows`() {
+    val edited = base.removeNode(0)
+    assertEquals(listOf("c"), edited.flatten().map { it.node.componentId })
+    // `c` was index 3 and is now 0 — an index cached across an edit points at the wrong node, which
+    // is why the UI re-reads it rather than holding one.
+    assertEquals("c", edited.nodeAt(0)?.componentId)
+
+    assertEquals(
+      listOf("column", "b", "c"),
+      base.removeNode(1).flatten().map { it.node.componentId },
+    )
+  }
+
+  @Test
+  fun `an edit at an index that does not exist leaves the document alone`() {
+    assertEquals(base, base.mapNode(99) { it.copy(componentId = "nope") })
+    assertEquals(base, base.removeNode(99))
+    assertEquals(null, base.nodeAt(99))
   }
 }

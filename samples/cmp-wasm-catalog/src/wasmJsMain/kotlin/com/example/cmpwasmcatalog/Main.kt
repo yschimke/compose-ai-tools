@@ -7,6 +7,9 @@
 
 package com.example.cmpwasmcatalog
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,6 +78,17 @@ fun main() {
     }
     val loaded = fonts as? FontsState.Ready ?: return@ComposeViewport
     val params by renderParams
+    // `?mode=builder` mounts the UI builder instead of the single-sticker viewer: the same catalog,
+    // the same knob lookups, assembled into a composition rather than shown one component at a
+    // time. Kept behind a param so the embedding viewer's own use of this app is untouched.
+    if (params["mode"] == "builder") {
+      MaterialTheme(
+        colorScheme = if (params["uiMode"] == "dark") darkColorScheme() else lightColorScheme()
+      ) {
+        ScreenBuilderApp()
+      }
+      return@ComposeViewport
+    }
     val id = params["id"] ?: catalogComponentIds.first()
     val dark = params["uiMode"] == "dark"
     // Clamp to the viewer slider's range so a crafted query can't blow up layout.

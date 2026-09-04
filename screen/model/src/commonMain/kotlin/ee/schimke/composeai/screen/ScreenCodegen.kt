@@ -51,6 +51,25 @@ public data class ComponentSpec(
   val knobs: Map<String, KnobSpec> = emptyMap(),
   val container: Boolean = false,
   val slots: Map<String, String> = emptyMap(),
+  /**
+   * Arguments emitted verbatim on every call, ahead of the knobs.
+   *
+   * Real composables have required parameters a screen document has no opinion about — `Button`
+   * needs an `onClick`. Without these the generated file would be missing an argument the compiler
+   * demands, which is exactly the "looks like Kotlin, does not compile" outcome this table exists
+   * to avoid.
+   */
+  val requiredArgs: List<String> = emptyList(),
+  /**
+   * A knob that becomes the call's **content** rather than an argument — `Button(onClick = {}) {
+   * Text("Open") }`.
+   *
+   * The catalog's `label` knob is a button's child, not a parameter, and there is no `label =` to
+   * pass it to. [contentCall] wraps its value, so the generated line is the one a developer writes.
+   * Ignored on a [container], whose content is its children.
+   */
+  val contentKnob: String? = null,
+  val contentCall: String = "Text",
 )
 
 /** The generated file, plus everything codegen could not express. */
@@ -131,6 +150,8 @@ public object ScreenCodegen {
     imports += spec.imports
 
     val args = ArrayList<String>()
+    args.addAll(spec.requiredArgs)
+    var content: String? = null
     // Sorted by key so a document generates the same source every time, whatever order a builder
     // happened to write its knobs in. `toSortedMap` is JVM-only; this is the multiplatform
     // spelling.
@@ -138,7 +159,11 @@ public object ScreenCodegen {
       .sortedBy { it.key }
       .forEach { (key, value) ->
         val knob = spec.knobs[key]
-        if (knob == null) {
+        if (key == spec.contentKnob && !spec.container) {
+          // The catalog's `label` is a button's child, not a parameter — there is no `label =` to
+          // pass it to, so it becomes the trailing content the developer would have written.
+          content = spec.contentCall + "(" + quote(value) + ")"
+        } else if (knob == null) {
           problems += "component '${node.componentId}' has no parameter for knob '$key'"
           out
             .append(pad)
@@ -189,7 +214,10 @@ public object ScreenCodegen {
     out.append(pad).append(spec.call).append('(')
     if (args.isNotEmpty()) out.append(args.joinToString(", "))
     out.append(')')
-    if (spec.container && ordered.isNotEmpty()) {
+    val contentText = content
+    if (contentText != null) {
+      out.append(" { ").append(contentText).append(" }")
+    } else if (spec.container && ordered.isNotEmpty()) {
       out.append(" {\n")
       ordered.forEach { emit(it, specs, imports, problems, out, depth + 2) }
       out.append(pad).append("}")
