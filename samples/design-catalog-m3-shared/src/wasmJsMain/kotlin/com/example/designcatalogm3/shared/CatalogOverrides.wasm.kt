@@ -28,9 +28,28 @@ val LocalWasmCatalogKnobs: ProvidableCompositionLocal<Map<String, String>> = com
 private fun wasmSeedKey(key: String, index: Int?): String =
   if (index == null) key else "$key[$index]"
 
+/**
+ * This knob's seeded value, resolving the **instance** it belongs to before the bare key.
+ *
+ * A catalog body asks for `label` without knowing whether it is a lone sticker or the third button
+ * on an assembled screen. [LocalCatalogInstance] is what tells it apart: inside a `CatalogScreen`
+ * each node composes under its own index, so `label` resolves `label[3]` and two buttons on one
+ * screen carry different text — the thing a screen builder exists for and the thing a bare key
+ * cannot express.
+ *
+ * The bare key remains the fallback, so a viewer pushing a plain `knob.label` still reaches every
+ * instance, and a lone sticker (no instance provided) resolves exactly as it always has.
+ */
 @Composable
-private fun seededKnob(key: String, index: Int?): String? =
-  LocalWasmCatalogKnobs.current[wasmSeedKey(key, index)]
+private fun seededKnob(key: String, index: Int?): String? {
+  val knobs = LocalWasmCatalogKnobs.current
+  val instance = index ?: LocalCatalogInstance.current
+  if (instance != null)
+    knobs[wasmSeedKey(key, instance)]?.let {
+      return it
+    }
+  return knobs[key]
+}
 
 @Composable
 actual fun catalogOverrideString(key: String, default: String, index: Int?): String =

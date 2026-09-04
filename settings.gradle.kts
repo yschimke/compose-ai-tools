@@ -364,6 +364,13 @@ include(":slot-preview-runtime")
 
 project(":slot-preview-runtime").projectDir = file("runtimes/slots")
 
+// The composition document a UI builder assembles (a tree of component ids + per-instance knob
+// values) and the Compose source it generates. Pure data + codegen, no Compose dependency, jvm +
+// wasmJs so the browser builder and the JVM tests share one model. See docs/design/UI_BUILDER.md.
+include(":screen-model")
+
+project(":screen-model").projectDir = file("screen/model")
+
 include(":wear-preview-runtime")
 
 project(":wear-preview-runtime").projectDir = file("runtimes/wear-preview")
