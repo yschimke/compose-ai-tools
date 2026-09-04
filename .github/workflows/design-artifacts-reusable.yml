@@ -4197,6 +4197,63 @@ jobs:
           # Where the harnesses live, bound once for the three invocations below.
           RC_PLAYERS="$GITHUB_WORKSPACE/rc-players"
 
+          # WHY a lane dropped its column, not merely that it did.
+          #
+          # Each of the three branches below used to report "produced no renders", which is the one
+          # thing already obvious from the missing column. The reason was sitting in the output
+          # directory the whole time: every harness catches per-document failures and writes an
+          # `<id>.error` beside the PNGs it did manage, so a lane that fails on EVERY document
+          # exits ZERO with a directory full of identical explanations and no images. Gradle runs
+          # `--quiet` here, so its own output said nothing either.
+          #
+          # That is not hypothetical. `remote-m3` published no `androidx-embedded` column at all
+          # while every one of its 476 documents wrote
+          # `IllegalStateException: Embedded player is disabled. Set
+          # RemoteComposePlayerFlags.isEmbeddedPlayerEnabled = true to enable.`
+          # (yschimke/rc-players#30). CI reported only the absence, so finding a one-line fix took
+          # reproducing the harness by hand.
+          #
+          # Grouped and counted rather than dumped: 476 copies of one message is ONE finding, and
+          # the grouping is what distinguishes a systematically broken lane from one that lost a
+          # handful of documents. The `.error` files carry no trailing newline, hence the loop
+          # rather than a bare `cat` — concatenating them would produce a single unreadable line
+          # that `uniq` could never group.
+          report_dropped_lane() {
+            local label="$1" outdir="$2" log="$3"
+            echo "::warning::${label} lane produced no renders; publishing rc-compare without its column"
+            [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+            {
+              echo "### ${label} lane dropped its column"
+              echo
+              local errors=0
+              if [ -d "$outdir" ]; then
+                errors=$(find "$outdir" -maxdepth 1 -name '*.error' 2>/dev/null | wc -l)
+              fi
+              if [ "$errors" -gt 0 ]; then
+                echo "The harness ran and failed on every document it was given: **${errors}** \`.error\` file(s), no PNGs."
+                echo
+                echo "Distinct reasons, most common first:"
+                echo
+                echo '```'
+                for f in "$outdir"/*.error; do
+                  [ -f "$f" ] && { cat "$f"; echo; }
+                done | sort | uniq -c | sort -rn | head -5
+                echo '```'
+              else
+                echo "The harness wrote nothing at all — no PNGs and no \`.error\` files, so it did not reach the documents."
+                echo
+                if [ -s "$log" ]; then
+                  echo "Last lines of its Gradle output:"
+                  echo
+                  echo '```'
+                  tail -n 30 "$log"
+                  echo '```'
+                fi
+              fi
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
           if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ] || [ "$INPUT_RC_EMBEDDED_JVM_LANE" = "true" ]; then
             if [ ! -x "$RC_PLAYERS/gradlew" ]; then
               # The checkout is guarded on the same two inputs as this block, so this is only
@@ -4230,32 +4287,36 @@ jobs:
             # task "succeeds" having written nothing. Verified: a third identical run reports
             # `testDebugUnitTest UP-TO-DATE` and leaves RC_OUT empty. Ephemeral GitHub runners never
             # hit it, but `runs-on` is an input, so self-hosted callers would.
+            # Captured rather than streamed: `--quiet` already limits this to errors, and the
+            # only reader is `report_dropped_lane` on the failure path.
+            RC_LOG="$RUNNER_TEMP/rc-embedded.log"
             if (cd "$RC_PLAYERS" && \
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
                   --tests ee.schimke.composeai.rcembedded.RcEmbeddedRenderHarness \
                   -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT" \
-                  -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
+                  -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") >"$RC_LOG" 2>&1 \
                && [ -n "$(find "$RC_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded "$RC_OUT")
             else
               # Belt and braces: the PNG check above is what actually decides, so any cause of an
               # empty RC_OUT — a skipped task, a harness that died before writing, a wiped temp dir
               # — falls back to a page without the column instead of publishing empty cells.
-              echo "::warning::vendored embedded-player lane produced no renders; publishing rc-compare without its column"
+              report_dropped_lane "vendored embedded-player" "$RC_OUT" "$RC_LOG"
             fi
 
             RC_ANDROIDX_OUT="$RUNNER_TEMP/rc-androidx-embedded-out"
             rm -rf "$RC_ANDROIDX_OUT"
+            RC_ANDROIDX_LOG="$RUNNER_TEMP/rc-androidx-embedded.log"
             if (cd "$RC_PLAYERS" && \
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
                   --tests ee.schimke.composeai.rcembedded.RcAndroidxEmbeddedRenderHarness \
                   -Prc.androidx.embedded.input="$RC_IN" \
                   -Prc.androidx.embedded.output="$RC_ANDROIDX_OUT" \
-                  -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
+                  -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") >"$RC_ANDROIDX_LOG" 2>&1 \
                && [ -n "$(find "$RC_ANDROIDX_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--androidx-embedded "$RC_ANDROIDX_OUT")
             else
-              echo "::warning::upstream embedded-player lane produced no renders; publishing rc-compare without its column"
+              report_dropped_lane "upstream embedded-player" "$RC_ANDROIDX_OUT" "$RC_ANDROIDX_LOG"
             fi
           fi
 
@@ -4283,15 +4344,16 @@ jobs:
             fi
             RC_JVM_OUT="$RUNNER_TEMP/rc-embedded-jvm-out"
             rm -rf "$RC_JVM_OUT"
+            RC_JVM_LOG="$RUNNER_TEMP/rc-embedded-jvm.log"
             if (cd "$RC_PLAYERS" && \
                 xvfb-run -a -s "-screen 0 2000x1400x24" \
                   ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun --quiet \
                     -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT" \
-                    -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
+                    -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") >"$RC_JVM_LOG" 2>&1 \
                && [ -n "$(find "$RC_JVM_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded-jvm "$RC_JVM_OUT")
             else
-              echo "::warning::cmp-jvm player lane produced no renders; publishing rc-compare without the cmp-jvm column"
+              report_dropped_lane "cmp-jvm player" "$RC_JVM_OUT" "$RC_JVM_LOG"
             fi
           fi
 
