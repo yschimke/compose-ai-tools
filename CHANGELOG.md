@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.71.0](https://github.com/yschimke/compose-ai-tools/compare/v1.70.0...v1.71.0) (2026-09-04)
+
+
+### Features
+
+* **compare:** read the colour under the cursor in both images at once ([#5079](https://github.com/yschimke/compose-ai-tools/issues/5079)) ([8810d4d](https://github.com/yschimke/compose-ai-tools/commit/8810d4d2fb29412cd94067d81a8fb21e0c4fccf7))
+* **discovery:** generate a compiling screen from a builder's document ([#5076](https://github.com/yschimke/compose-ai-tools/issues/5076)) ([ab5e96a](https://github.com/yschimke/compose-ai-tools/commit/ab5e96a2c707e92f1c28b306085eb458dce11f96))
+* **discovery:** generate a screen that holds state and handlers that write it ([#5081](https://github.com/yschimke/compose-ai-tools/issues/5081)) ([184657f](https://github.com/yschimke/compose-ai-tools/commit/184657fe215a5520abbea7465bce463ca4196a1e))
+* **discovery:** persist each component's call site in components.json ([#5068](https://github.com/yschimke/compose-ai-tools/issues/5068)) ([fea523d](https://github.com/yschimke/compose-ai-tools/commit/fea523d667269e39f9e7afb45ad4e7475efa97bc))
+* **discovery:** widen a screen value past the four literals ([#5077](https://github.com/yschimke/compose-ai-tools/issues/5077)) ([a9fc68b](https://github.com/yschimke/compose-ai-tools/commit/a9fc68b34c54852d1922b74c49a4c23d5b3615b2))
+* **remotecompose:** record the player that actually drew each capture ([#5075](https://github.com/yschimke/compose-ai-tools/issues/5075)) ([b29ec96](https://github.com/yschimke/compose-ai-tools/commit/b29ec96620351e2673a44dbb6430cd0b6b66a53f))
+
+
+### Bug Fixes
+
+* **compare:** read a fractional root translate instead of dropping it ([#5082](https://github.com/yschimke/compose-ai-tools/issues/5082)) ([5253e95](https://github.com/yschimke/compose-ai-tools/commit/5253e95e9a62aad9f800809a7e6d9cf28ffe7cb6))
+* **discovery:** close six ways an emitted call site could fail to compile ([#5073](https://github.com/yschimke/compose-ai-tools/issues/5073)) ([32780aa](https://github.com/yschimke/compose-ai-tools/commit/32780aabd21ed9699eac433dce62123ef91e1e0b))
+* **harness:** clone S3.5's fixture without recomputing frames ([#5078](https://github.com/yschimke/compose-ai-tools/issues/5078)) ([b752d11](https://github.com/yschimke/compose-ai-tools/commit/b752d11079c0a37d7bdb7bb31c7cafa09c60e81e))
+* **harness:** clone S3.5's MutableSquare from the target's own fixture ([#5069](https://github.com/yschimke/compose-ai-tools/issues/5069)) ([4342f07](https://github.com/yschimke/compose-ai-tools/commit/4342f07d687123003942c08e02a13514f0667469))
+* **renderer:** read a catalog role's own getter, not a longer sibling's ([#5080](https://github.com/yschimke/compose-ai-tools/issues/5080)) ([b872827](https://github.com/yschimke/compose-ai-tools/commit/b872827802cb933ae6380ef36e6bd70c67114a92))
+* **semantics:** match Font's style getter on its decoration, not a prefix ([#5083](https://github.com/yschimke/compose-ai-tools/issues/5083)) ([457965d](https://github.com/yschimke/compose-ai-tools/commit/457965d28b0cecfaade58cc40df7e69f9fe9f07e))
+
 ## [1.70.0](https://github.com/yschimke/compose-ai-tools/compare/v1.69.0...v1.70.0) (2026-09-03)
 
 
