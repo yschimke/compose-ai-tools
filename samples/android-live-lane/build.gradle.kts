@@ -21,7 +21,7 @@
 //
 // **That knob stays a `previewOverride*` one until someone can run the spec.** The spec reads the
 // override list from the bundle's `previews/<id>.overrides.json` sidecar and FAILS rather than
-// skips when it finds no label-knob preview. The Android bake now records a *parameter* knob into
+// skips when it finds no label-knob preview. Both bake lanes now record a *parameter* knob into
 // that sidecar too, so the format is no longer the blocker — but the spec needs a daemon-backed
 // serve under Playwright and cannot run from this repository, so migrating the knob here would ship
 // an unverified change to another repo's required e2e. See

@@ -34,8 +34,8 @@ class DesktopRenderWorkerPoolTest {
 
       // `#2` is the point of the pool: the second capture was drawn by the same process, so it
       // paid no JVM boot. A fresh worker would report `#1` again.
-      assertEquals("2:#1", first.readText())
-      assertEquals("2:#2", second.readText())
+      assertEquals("2::#1", first.readText())
+      assertEquals("2::#2", second.readText())
       assertEquals(2, pool.servedWarm.get())
     }
   }
@@ -51,7 +51,24 @@ class DesktopRenderWorkerPoolTest {
       // Same worker, different seeds — the per-capture seed must not stick to the process, or a
       // preview would render with the variant knobs of whatever ran before it.
       assertTrue(seeded.readText(), seeded.readText().contains("""{"name":"v"}"""))
-      assertEquals("2:#2", plain.readText())
+      assertEquals("2::#2", plain.readText())
+    }
+  }
+
+  @Test
+  fun theParameterKnobsRideTheRequestRatherThanTheWorkerEnvironment() {
+    pool().use { pool ->
+      val knobbed = tempFolder.newFile("knobbed.txt")
+      val plain = tempFolder.newFile("plain.txt")
+      val payload = """[{"name":"title","index":0,"type":"STRING","default":"hi"}]"""
+      pool.render(argsFor(knobbed), null, payload)
+      pool.render(argsFor(plain), null)
+
+      // Same worker, different previews. A knob list left in the process would declare one
+      // preview's controls into the NEXT capture's overrides sidecar and bind its seeds to
+      // parameters of a different function — the same hazard the override seed above has.
+      assertTrue(knobbed.readText(), knobbed.readText().contains(payload))
+      assertEquals("2::#2", plain.readText())
     }
   }
 
@@ -127,8 +144,8 @@ class DesktopRenderWorkerPoolTest {
       pool.render(argsFor(first), null)
       pool.render(argsFor(second), null)
       // Both `#1`: the budget of one retired the first worker, bounding any native leak.
-      assertEquals("2:#1", first.readText())
-      assertEquals("2:#1", second.readText())
+      assertEquals("2::#1", first.readText())
+      assertEquals("2::#1", second.readText())
     }
   }
 

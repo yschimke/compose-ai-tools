@@ -1284,12 +1284,23 @@ internal fun renderPreview(
   // annotation.
   captureGutter: PreviewCaptureGutter = PreviewCaptureGutter.None,
   fileSystem: FileSystem = SystemFileSystem,
+  knobs: List<PreviewKnobSpec> = PreviewKnobBake.fromSystemProperty(),
 ) {
   val clazz = Class.forName(className)
+  // The seed `main` already applied, read back rather than re-parsed, so the two override formats
+  // cannot disagree about what this capture was asked for: the controller serves `previewOverride*`
+  // from this map and the binder below serves the parameter knobs from the same one.
+  val knobSeeds = ee.schimke.composeai.overrides.PreviewOverrideController.seededValues.value
+  // A `@PreviewParameter` fan-out value and a parameter knob are mutually exclusive by
+  // construction: discovery reports knobs only when EVERY value parameter has a default, and a
+  // `@PreviewParameter` one never does. So a non-empty `previewArgs` is always the provider's row,
+  // and an empty one is the only place a knob seed can bind.
+  val resolvedArgs =
+    if (previewArgs.isEmpty()) PreviewKnobBake.seedArgs(knobs, knobSeeds) else previewArgs
   // `openForInvoke` is what lets a `private fun` preview render here — see that function for why
   // the resolution succeeds but the invoke would not (issue #3873).
   val composableMethod =
-    if (previewArgs.isEmpty()) {
+    if (resolvedArgs.isEmpty()) {
         // `getDeclaredComposableMethod(name)` with no argument types searches for the exact
         // signature `(Composer, int)` — a preview with NO value parameters. A preview whose
         // parameters all declare defaults is a supported shape (`allParametersHaveDefaults` admits
@@ -1304,13 +1315,21 @@ internal fun renderPreview(
               ?: throw failure
           }
       } else {
-        findComposableMethodWithArgs(clazz, functionName, previewArgs)
+        findComposableMethodWithArgs(clazz, functionName, resolvedArgs)
       }
       .openForInvoke()
 
   // Arm the named-override capture for this render: drop any knobs a prior preview declared so this
   // preview's `previewOverride*` lookups accumulate a clean set (drained into the sidecar below).
   ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+  // Announce this preview's *parameter* knobs on the same channel. `previewOverride*` records a
+  // declaration as it reads each knob during composition; a parameter knob is read by argument
+  // passing and announces nothing, so without this the sidecar drained below came back empty for a
+  // migrated preview and `serve` served it no controls at all. Recorded here rather than inside the
+  // composition: both inputs are already known, and the clear above has just run.
+  PreviewKnobBake.declarations(knobs, knobSeeds).forEach {
+    ee.schimke.composeai.overrides.PreviewOverrideController.record(it)
+  }
 
   // Second half of applying `localeTag` (the first is the RTL flip below): point the JVM default
   // Locale at the override so CMP `stringResource(...)` — which reads
@@ -1439,7 +1458,7 @@ internal fun renderPreview(
             gutter = captureGutter,
             onMeasured = { w, h -> measured = IntSize(w, h) },
           ) {
-            InvokeComposable(composableMethod, null, previewArgs)
+            InvokeComposable(composableMethod, null, resolvedArgs)
           }
         }
         // `@PreviewWrapper(Provider::class)` — instantiate the provider reflectively

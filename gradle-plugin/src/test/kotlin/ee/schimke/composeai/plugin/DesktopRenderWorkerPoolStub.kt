@@ -21,8 +21,11 @@ import kotlin.system.exitProcess
  * real renderer diagnostics arrive in), `failed` reports a render failure, `hang` never answers,
  * `crash` exits mid-request, and `badVersion` sends an unrecognised protocol version.
  *
- * On success it writes `"<argc>:<seed>#<n>"` into the output file, where `n` counts the requests
- * this process has served — which is how a test tells a reused warm worker from a fresh one.
+ * On success it writes `"<argc>:<seed>:<knobs>#<n>"` into the output file, where `n` counts the
+ * requests this process has served — which is how a test tells a reused warm worker from a fresh
+ * one. Reading the knobs payload is not optional decoration: it is the second length-prefixed field
+ * of the request frame, so a stub that skipped it would desynchronise the stream and every
+ * subsequent assertion would be about a corrupt frame rather than about the pool.
  */
 object DesktopRenderWorkerPoolStub {
 
@@ -51,6 +54,7 @@ object DesktopRenderWorkerPoolStub {
 
       val requestId = input.readInt()
       val seed = String(input.readPayload(), Charsets.UTF_8)
+      val knobs = String(input.readPayload(), Charsets.UTF_8)
       val argc = input.readInt()
       val argv = List(argc) { String(input.readPayload(), Charsets.UTF_8) }
 
@@ -69,7 +73,7 @@ object DesktopRenderWorkerPoolStub {
         message = "stub refused request $requestId"
       } else {
         // Last argv entry is the renderer's output path in the real protocol.
-        argv.lastOrNull()?.let { File(it).writeText("$argc:$seed#$served") }
+        argv.lastOrNull()?.let { File(it).writeText("$argc:$seed:$knobs#$served") }
       }
 
       val payload = message.toByteArray(Charsets.UTF_8)

@@ -2,6 +2,7 @@ package ee.schimke.composeai.plugin
 
 import ee.schimke.composeai.discovery.*
 import javax.inject.Inject
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -693,6 +694,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
       )
     val overridesSeed =
       preview.overrides?.let { OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it) }
+    // This preview's editable value parameters, for the renderer to declare into the capture's
+    // `<stem>.overrides.json` sidecar and to bind an `@OverrideVariant` seed onto. The desktop
+    // subprocess has no manifest to read them from — unlike the Android backend, which reads
+    // `previews.json` itself — so they ride a per-capture channel beside the seed.
+    // `previews.json`'s
+    // own `knobs` array, serialized unchanged, so producer and consumer share one shape.
+    val knobsPayload =
+      preview.knobs
+        .takeIf { it.isNotEmpty() }
+        ?.let { OVERRIDES_JSON.encodeToString(ListSerializer(PreviewKnob.serializer()), it) }
 
     // Warm path: a pooled worker draws this on an already-booted JVM instead of paying JVM +
     // Compose Desktop + Skiko startup again for one capture. It calls the renderer's own `main()`,
@@ -700,7 +711,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // fork below — a `Failed` is the renderer's real answer about this capture, and re-running it
     // cold would double the cost of every capture that cannot be drawn.
     lane.pool?.let { pool ->
-      when (val pooled = pool.render(rendererArgs, overridesSeed)) {
+      when (val pooled = pool.render(rendererArgs, overridesSeed, knobsPayload)) {
         is DesktopRenderWorkerPool.WorkerResult.Ok -> return
         is DesktopRenderWorkerPool.WorkerResult.Failed ->
           throw GradleException(
@@ -780,6 +791,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
           OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it),
         )
       }
+      // The forked lane's half of the knob channel. Set only when the preview declares one, so an
+      // ordinary capture's command line — and therefore every unknobbed run's task inputs — is
+      // exactly as it was.
+      knobsPayload?.let { systemProperty("composeai.preview.knobs", it) }
       args = rendererArgs
     }
   }

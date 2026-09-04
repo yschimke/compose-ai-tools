@@ -118,12 +118,16 @@ class DesktopRendererWorkerProtocolTest {
     args: List<String>,
     requestId: Int,
     seed: String = "",
+    knobs: String = "",
   ): Int {
     val seedBytes = seed.toByteArray(Charsets.UTF_8)
+    val knobBytes = knobs.toByteArray(Charsets.UTF_8)
     toWorker.writeInt(MAGIC_REQUEST)
     toWorker.writeInt(requestId)
     toWorker.writeInt(seedBytes.size)
     toWorker.write(seedBytes)
+    toWorker.writeInt(knobBytes.size)
+    toWorker.write(knobBytes)
     toWorker.writeInt(args.size)
     args.forEach {
       val b = it.toByteArray(Charsets.UTF_8)
