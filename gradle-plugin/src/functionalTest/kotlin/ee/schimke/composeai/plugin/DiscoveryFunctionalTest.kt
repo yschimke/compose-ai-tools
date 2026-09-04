@@ -3967,6 +3967,89 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `a capturing content lambda does not cost a preview its target`() {
+    // Mirrors the shape a parameter knob produces: the preview calls ONE project composable (a
+    // sticker wrapper), and the wrapper's content lambda calls several more from the same file.
+    //
+    // A lambda capturing nothing is lifted into a `ComposableSingletons$...` class; one that
+    // captures compiles to a `<preview>$lambda$N` method of the preview's OWN class, which the
+    // nested-method walk follows. Adding a single defaulted parameter flips a preview from the
+    // first shape to the second — so everything inside the lambda joined the preview's own call
+    // set, inflated the "how many project composables did this call?" count, and penalised every
+    // candidate below the emit threshold. The preview reported no target at all, for a body that
+    // had not changed.
+    //
+    // **This test guards the invariant; it does not reproduce the bug.** The Compose compiler does
+    // not lift this small a lambda into the same-class `$lambda$N` shape, so it passes with and
+    // without the fix. The reproduction is a real catalog — `m3-catalog`'s
+    // `ListDetailPaneScaffoldSticker`, whose target went from `AdaptiveSticker`/HIGH to nothing on
+    // the commit that gave it a `twoPanesOnMedium` knob, and came back with this change. Keep this
+    // test as the statement of what must hold; reach for a real project to see it fail.
+    val projectDir = createCmpTestProject()
+
+    val srcDir = File(projectDir, "src/main/kotlin/test")
+    File(srcDir, "Previews.kt").delete()
+
+    File(srcDir, "Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Composable
+        fun Sticker(content: @Composable (Int) -> Unit) {
+            content(1)
+        }
+
+        @Composable
+        fun Pane(count: Int) {
+            Text("pane ${'$'}count")
+        }
+
+        @Composable
+        fun Caption(count: Int) {
+            Text("caption ${'$'}count")
+        }
+
+        @Preview
+        @Composable
+        fun ScaffoldSticker(doubled: Boolean = false) = Sticker { count ->
+            val scaled = if (doubled) count * 2 else count
+            Pane(scaled)
+            Caption(scaled)
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val preview = manifest.previews.single { it.functionName == "ScaffoldSticker" }
+    // The knob is what makes the lambda capture, so this really is the shape under test.
+    assertThat(preview.knobs.map { it.name }).containsExactly("doubled")
+
+    // `Sticker` is the one composable the preview calls itself. `Pane` and `Caption` are the inside
+    // of that one thing, not two more subjects beside it.
+    val target = preview.targets.single()
+    assertThat(target.functionName).isEqualTo("Sticker")
+    assertThat(target.signals).contains(TargetSignal.SINGLE_PROJECT_COMPOSABLE_CALL)
+  }
+
+  @Test
   fun `composePreviewDiscover looks through theme and catalog lambdas and names mangled targets`() {
     val projectDir = createCmpTestProject()
 

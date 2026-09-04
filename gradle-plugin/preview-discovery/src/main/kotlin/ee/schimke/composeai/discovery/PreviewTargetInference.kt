@@ -119,11 +119,31 @@ object PreviewTargetInference {
   private const val CMP_PREVIEW_FQN = PreviewDiscovery.CMP_PREVIEW_FQN
   private const val COMPOSABLE_FQN = "androidx.compose.runtime.Composable"
 
-  /** Single bytecode call site, as captured from the preview method body. */
+  /**
+   * Single bytecode call site, as captured from the preview method body.
+   *
+   * [viaLambda] marks a call the walk reached by descending into one of the preview's content
+   * lambdas rather than one the preview body makes itself. The distinction has to be recorded here
+   * because the two are indistinguishable afterwards, and because **whether a lambda is even
+   * reachable depends on the Kotlin compiler, not on the preview**: a non-capturing composable
+   * lambda is lifted into a `ComposableSingletons$…` class (walked, narrowly, by
+   * [extractComposeSingletonLambdaCalls]), while one that captures compiles to a
+   * `<preview>$lambda$N` method of the preview's own class, which the nested-method walk follows
+   * wholesale. Adding a single defaulted parameter to a preview flips it from the first shape to
+   * the second, so without this flag `infer`'s "how many project composables did this preview
+   * call?" count — and with it the target — changes for a preview whose body did not.
+   *
+   * Only the nested-method descent is tagged. [extractComposeSingletonLambdaCalls]'s results are
+   * lambda contents by the same argument and arguably belong here too, but tagging them changes the
+   * target of previews that have nothing to do with this bug — a `Theme { … }` sticker whose
+   * candidates were all suppressed by the survivor penalty starts reporting the frame it wraps — so
+   * that half is deliberately left alone rather than settled as a side effect of this fix.
+   */
   internal data class Invocation(
     val ownerFqn: String,
     val methodName: String,
     val descriptor: String,
+    val viaLambda: Boolean = false,
   )
 
   private data class Candidate(
@@ -290,7 +310,26 @@ object PreviewTargetInference {
 
     if (candidates.isEmpty()) return emptyList()
 
-    val survivors = candidates.size
+    // Count the composables the preview body calls ITSELF, and fall back to the lambda-reached
+    // ones only when it calls none directly — the `Theme { Screen() }` shape, where the wrapper is
+    // filtered out and the subject is only reachable through the lambda.
+    //
+    // A call reached by descending into a content lambda is not evidence that the preview renders
+    // several things side by side; it is the inside of the one thing it wraps. Counting both
+    // together made the penalty below depend on whether that lambda captured — a Kotlin compiler
+    // decision that a single defaulted parameter flips, silently changing the target of a preview
+    // whose body did not change. See [Invocation.viaLambda].
+    val directCallKeys =
+      calls
+        .asSequence()
+        .filterNot { it.viaLambda }
+        .mapTo(mutableSetOf()) { it.ownerFqn to it.methodName }
+    fun key(candidate: ResolvedCandidate) = candidate.ownerFqn to candidate.method.name
+    val directCandidates = candidates.filter { (candidate, _) -> key(candidate) in directCallKeys }
+    // The candidates the count is taken over. Anything outside it is still allowed to win, but on
+    // its own merits (name match, cross-file, …) rather than by being "the only call".
+    val counted = (directCandidates.ifEmpty { candidates }).mapTo(mutableSetOf()) { key(it.first) }
+    val survivors = counted.size
     // Keep each candidate paired with its score so the winner's resolved metadata is in hand below
     // rather than read a second time.
     val scored = candidates.map { (candidate, signature) ->
@@ -315,6 +354,7 @@ object PreviewTargetInference {
             } == true,
           wrapperUnwrapped = candidate.ownerFqn to candidate.method.name in unwrappedTargets,
           totalSurvivors = survivors,
+          counted = key(candidate) in counted,
           resolveSourceFile = resolveSourceFile,
         )
     }
@@ -443,7 +483,9 @@ object PreviewTargetInference {
       val key = pending.removeFirst()
       if (!visited.add(key)) continue
       val body = bodies[key] ?: continue
-      collected += body.calls
+      // Only a root body's calls are the preview's own; everything a followed nested method calls
+      // was reached by descending into a lambda. See [Invocation.viaLambda].
+      collected += if (isRoot(key)) body.calls else body.calls.map { it.copy(viaLambda = true) }
       pending.addAll(body.nestedMethods.filter(shouldFollow))
     }
     return collected
@@ -639,16 +681,20 @@ object PreviewTargetInference {
     callerMethodHasComposableParam: Boolean,
     wrapperUnwrapped: Boolean,
     totalSurvivors: Int,
+    counted: Boolean,
     resolveSourceFile: (String) -> String?,
   ): ScoredCandidate {
     var score = 0
     val signals = mutableListOf<TargetSignal>()
 
-    // +3 if this is the only project-local non-wrapper composable left after filtering.
-    if (totalSurvivors == 1) {
+    // +3 if this is the only project-local non-wrapper composable left after filtering. Only a
+    // candidate inside the counted set can earn it: when a preview calls one composable directly
+    // and that composable's lambda calls others, "the only call" describes the direct one, and
+    // handing the bonus to a lambda-reached sibling would let it tie and win on call order.
+    if (totalSurvivors == 1 && counted) {
       score += 3
       signals += TargetSignal.SINGLE_PROJECT_COMPOSABLE_CALL
-    } else {
+    } else if (totalSurvivors > 1) {
       // Multiple survivors penalise *each* candidate by (n-1) so the top one still has a
       // chance to clear the threshold when it independently matches by name.
       score -= (totalSurvivors - 1)
