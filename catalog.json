@@ -381,7 +381,7 @@
       "wireframe": "wireframes/button-filled.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 82,
+      "bodyLine": 85,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "FilledButton",
       "parameters": [
@@ -513,7 +513,7 @@
       "wireframe": "wireframes/button-tonal.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 91,
+      "bodyLine": 94,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "FilledTonalButtonSticker",
       "parameters": [
@@ -645,7 +645,7 @@
       "wireframe": "wireframes/button-outlined.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 100,
+      "bodyLine": 103,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "OutlinedButtonSticker",
       "parameters": [
@@ -777,7 +777,7 @@
       "wireframe": "wireframes/button-child.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 109,
+      "bodyLine": 112,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "ChildButtonSticker",
       "parameters": [
@@ -964,7 +964,7 @@
       "wireframe": "wireframes/edgebutton-smallround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 156,
+      "bodyLine": 159,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "EdgeButtonSticker",
       "parameters": [
@@ -1151,7 +1151,7 @@
       "wireframe": "wireframes/edgebutton-largeround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 156,
+      "bodyLine": 159,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "EdgeButtonSticker",
       "parameters": [
@@ -1338,7 +1338,7 @@
       "wireframe": "wireframes/edgebutton-xlround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 156,
+      "bodyLine": 159,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "EdgeButtonSticker",
       "parameters": [
@@ -1447,7 +1447,7 @@
       "wireframe": "wireframes/iconbutton.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 653,
+      "bodyLine": 680,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "IconButtonSticker",
       "parameters": [
@@ -1580,7 +1580,7 @@
       "wireframe": "wireframes/compactbutton.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 670,
+      "bodyLine": 697,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "CompactButtonSticker",
       "parameters": [
@@ -1745,7 +1745,7 @@
       "wireframe": "wireframes/buttongroup.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 682,
+      "bodyLine": 709,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "ButtonGroupSticker",
       "parameters": [
@@ -1991,7 +1991,7 @@
       "wireframe": "wireframes/switchbutton-on.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 370,
+      "bodyLine": 397,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "SwitchButtonOn",
       "parameters": [
@@ -2101,7 +2101,7 @@
       "wireframe": "wireframes/card.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 392,
+      "bodyLine": 419,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "CardSticker",
       "parameters": [
@@ -2212,7 +2212,7 @@
       "wireframe": "wireframes/card-outlined.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 409,
+      "bodyLine": 436,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "OutlinedCardSticker",
       "parameters": [
@@ -2340,7 +2340,7 @@
       "wireframe": "wireframes/titlecard.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 420,
+      "bodyLine": 447,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "TitleCardSticker",
       "parameters": [
@@ -2451,7 +2451,7 @@
       "wireframe": "wireframes/appcard.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 699,
+      "bodyLine": 726,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "AppCardSticker",
       "parameters": [
@@ -2613,7 +2613,7 @@
       "wireframe": "wireframes/transforminglazycolumn-smallround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 218,
+      "bodyLine": 221,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "ScalingListSticker",
       "parameters": [
@@ -2775,7 +2775,7 @@
       "wireframe": "wireframes/transforminglazycolumn-largeround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 218,
+      "bodyLine": 221,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "ScalingListSticker",
       "parameters": [
@@ -2937,7 +2937,7 @@
       "wireframe": "wireframes/transforminglazycolumn-xlround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 218,
+      "bodyLine": 221,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "ScalingListSticker",
       "parameters": [
@@ -3099,7 +3099,7 @@
       "wireframe": "wireframes/template-timetext-smallround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 282,
+      "bodyLine": 285,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "TimeTextScaffoldTemplate",
       "parameters": [
@@ -3261,7 +3261,7 @@
       "wireframe": "wireframes/template-timetext-largeround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 282,
+      "bodyLine": 285,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "TimeTextScaffoldTemplate",
       "parameters": [
@@ -3423,7 +3423,7 @@
       "wireframe": "wireframes/template-timetext-xlround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 282,
+      "bodyLine": 285,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "TimeTextScaffoldTemplate",
       "parameters": [
@@ -3526,7 +3526,7 @@
       "wireframe": "wireframes/template-pageindicator-smallround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 326,
+      "bodyLine": 353,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "PageIndicatorScaffoldTemplate",
       "parameters": [
@@ -3629,7 +3629,7 @@
       "wireframe": "wireframes/template-pageindicator-largeround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 326,
+      "bodyLine": 353,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "PageIndicatorScaffoldTemplate",
       "parameters": [
@@ -3732,7 +3732,7 @@
       "wireframe": "wireframes/template-pageindicator-xlround.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 326,
+      "bodyLine": 353,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "PageIndicatorScaffoldTemplate",
       "parameters": [
@@ -3808,7 +3808,7 @@
       "wireframe": "wireframes/progress-circular.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 440,
+      "bodyLine": 467,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "CircularProgressSticker",
       "parameters": [
@@ -3890,7 +3890,7 @@
       "wireframe": "wireframes/progress-circular-indeterminate.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 471,
+      "bodyLine": 498,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "IndeterminateCircularProgressSticker",
       "parameters": [
@@ -3985,7 +3985,7 @@
       "wireframe": "wireframes/text-maxlines-truncated.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 505,
+      "bodyLine": 532,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "TextMaxLinesTruncated",
       "parameters": [
@@ -4062,7 +4062,7 @@
       "wireframe": "wireframes/icon.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 715,
+      "bodyLine": 742,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "IconSticker",
       "parameters": [
@@ -4139,7 +4139,7 @@
       "wireframe": "wireframes/typography.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 726,
+      "bodyLine": 753,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "TypographySpecimen",
       "parameters": [
@@ -4216,7 +4216,7 @@
       "wireframe": "wireframes/colorscheme.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "sourceModule": ":samples:design-catalog-wear-m3",
-      "bodyLine": 741,
+      "bodyLine": 768,
       "sourceDirectory": "samples/design-catalog-wear-m3",
       "sourceFunction": "ColorSchemeSpecimen",
       "parameters": [
@@ -4231,8 +4231,8 @@
   "library": [
     "androidx.wear.compose:compose-material3"
   ],
-  "renderer": "compose-preview 1.72.1-SNAPSHOT",
-  "generatedAt": "2026-09-04T17:45:11.351Z",
+  "renderer": "compose-preview 1.73.1-SNAPSHOT",
+  "generatedAt": "2026-09-04T19:51:19.700Z",
   "display": {
     "surface": "dark",
     "hero": "Template/TimeText/largeRound"

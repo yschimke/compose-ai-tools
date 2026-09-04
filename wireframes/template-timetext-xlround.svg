@@ -30,6 +30,9 @@
     <rect x="193" y="77" width="95" height="33" fill="none" fill-opacity="0" stroke="#5B6470" stroke-width="1" stroke-opacity="0.5"/>
   </g>
   <g>
+    <rect x="193" y="77" width="95" height="33" fill="none" fill-opacity="0" stroke="#2E7D6B" stroke-width="1" stroke-opacity="0.5"/>
+  </g>
+  <g>
     <path d="M90,165 H390 A40,40 0 0 1 430,205 V205 A40,40 0 0 1 390,245 H90 A40,40 0 0 1 50,205 V205 A40,40 0 0 1 90,165 Z" fill="#332E3C" fill-opacity="1" stroke="#7A7A33" stroke-width="1.5" stroke-opacity="1"/>
     <text x="53" y="177" font-family="system-ui, sans-serif" font-size="9" fill="#7A7A33">#FF332E3C  pad 12.0dp</text>
   </g>

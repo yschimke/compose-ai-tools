@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T17:45:18.474Z",
+  "generatedAt": "2026-09-04T19:51:25.987Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "43b091434677e728331e1b8ffd17c79c65317f66",
+        "subject": "feat(catalog): make the scaffold templates slot-fillable (#5107)",
+        "at": "2026-09-04T20:42:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "246b08ebed2d08817df3af3a44386dd1865e3c0e",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.73.0 (#5101)",
+        "at": "2026-09-04T18:12:53Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "97c391d6667af2f3b819a4f89ff589f711571cb5",
+        "subject": "chore(main): release 1.73.0 (#5092)",
+        "at": "2026-09-04T19:01:59+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "1ce54c7787efcb082d4b0664dfd81ff967b0a884",
         "subject": "fix(deps): consume the Remote Compose players at 1.57.0 (#5100)",
@@ -458,30 +482,6 @@
         "sha": "02a435245167a14f9836f5959c7fca4150d8ce4b",
         "subject": "feat(import): let a caller name the Android variant to render (#5037)",
         "at": "2026-09-03T00:18:17+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "92efd7ea195a58ea3daf66b1880130693e1fea18",
-        "subject": "chore(main): release 1.67.0 (#5032)",
-        "at": "2026-09-02T23:54:21+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "03fbd761587468964b48fbab5ea793a3257642f4",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.66.1 (#5025)",
-        "at": "2026-09-02T23:54:08+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "65b5e4b1db2a465fc9843947003feeb1817246b7",
-        "subject": "fix(import): render the nested build an import named, not its enclosing repo (#5030)",
-        "at": "2026-09-02T23:47:55+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []

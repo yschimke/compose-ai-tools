@@ -46,6 +46,42 @@
         },
         "space": "render-pixels"
       }
+    },
+    "template-timetext-smallround__ideal__default__smallround": {
+      "dp-slot:header;scope=lazy;scroll=1": {
+        "count": 1,
+        "bounds": {
+          "x": 138,
+          "y": 72,
+          "width": 108,
+          "height": 38
+        },
+        "space": "render-pixels"
+      }
+    },
+    "template-timetext-largeround__ideal__default__largeround": {
+      "dp-slot:header;scope=lazy;scroll=1": {
+        "count": 1,
+        "bounds": {
+          "x": 176,
+          "y": 77,
+          "width": 102,
+          "height": 35
+        },
+        "space": "render-pixels"
+      }
+    },
+    "template-timetext-xlround__ideal__default__xlround": {
+      "dp-slot:header;scope=lazy;scroll=1": {
+        "count": 1,
+        "bounds": {
+          "x": 192,
+          "y": 76,
+          "width": 96,
+          "height": 34
+        },
+        "space": "render-pixels"
+      }
     }
   }
 }
