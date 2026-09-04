@@ -1,5 +1,10 @@
-// `:samples:android-live-lane` — the fixture behind the **Android (Robolectric) serve lane** e2e
-// (`.github/workflows/serve-lanes-e2e.yml`, job `serve-lanes-android`).
+// `:samples:android-live-lane` — the fixture behind the **Android (Robolectric) serve lane** e2e.
+//
+// That e2e lives in the split-out `yschimke/compose-preview-server`
+// (`preview-harness/serve-lanes.spec.mjs`, driven by `serve-lanes-boot.sh`), NOT in this
+// repository — the workflow and spec this comment used to name were moved with the preview server
+// and nothing here builds or runs them. This module is still the fixture they consume, so it is
+// load-bearing for a suite whose failures surface in the other repo.
 //
 // It is packed into a bundle and live-rendered by a daemon-backed `compose-preview serve`,
 // reproducing the shape that let #2669 ship broken: a merged manifest naming an `Application` the
@@ -11,8 +16,14 @@
 //
 // Deliberately tiny (one preview file, no resources, no theme) so the e2e's cold Robolectric start
 // dominates rather than the build. The single `@Preview` declares a `label` string knob, which is
-// the contract `preview-harness/serve-lanes.spec.mjs` looks for — so the Android lane reuses the
+// the contract the spec selects on (`overrides[].key == "label"`) — so the Android lane reuses the
 // desktop lane's spec unmodified.
+//
+// **That knob must stay a `previewOverride*` one for now.** The spec reads the override list from
+// the bundle's `previews/<id>.overrides.json` sidecar, which only the `previewOverride*` surface
+// writes; the parameter-knob format is not recorded by the offline bake yet, and the spec FAILS
+// rather than skips when it finds no label-knob preview. See
+// `docs/design/PARAMETER_KNOB_MIGRATION.md` → gap 6.
 plugins {
   id("composeai.base-conventions")
   id("composeai.android-conventions")

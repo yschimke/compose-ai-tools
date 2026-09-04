@@ -16,10 +16,11 @@ import ee.schimke.composeai.overrides.previewOverrideString
  * The preview the Android serve-lane e2e renders.
  *
  * The declared `label` string knob is the contract `preview-harness/serve-lanes.spec.mjs` selects
- * on (`overrides[].key == "label"`), so this preview drives the same PNG / SVG / Live-WebSocket
- * assertions the desktop `compose-m3` lane runs — only here the render comes from the Robolectric
- * daemon, whose sandbox has to survive this module's deliberately unresolvable manifest
- * `Application` (see `AndroidManifest.xml`).
+ * on (`overrides[].key == "label"`) — that spec lives in the split-out
+ * `yschimke/compose-preview-server`, not here — so this preview drives the same PNG / SVG /
+ * Live-WebSocket assertions the desktop `compose-m3` lane runs — only here the render comes from
+ * the Robolectric daemon, whose sandbox has to survive this module's deliberately unresolvable
+ * manifest `Application` (see `AndroidManifest.xml`).
  *
  * Text-only on purpose: the assertions compare bytes across a knob flip, so the label has to be the
  * dominant thing on screen, and nothing here should need app resources or a theme the bundle would
