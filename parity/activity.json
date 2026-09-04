@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T10:50:10.381Z",
+  "generatedAt": "2026-09-04T12:57:57.509Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "8e590a76a4594f00c2ee501abb0628711846d9e8",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.72.0 (#5090)",
+        "at": "2026-09-04T12:42:32Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b2ec0d771bbe758c4e7d681efbc3bf3f5c43991d",
+        "subject": "chore(main): release 1.72.0 (#5087)",
+        "at": "2026-09-04T12:30:41Z",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a1da7f3782b318a32c161556a359fd37907e827f",
+        "subject": "feat(daemon): seed a preview's parameter knobs from the override bag (#5089)",
+        "at": "2026-09-04T13:26:07+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "611ee7b49d6f4156f4d12e613497ee9ed0e0b7f4",
+        "subject": "fix(focus): keep the resting capture, and pick a root when there are two (#5088)",
+        "at": "2026-09-04T13:15:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "a574d4cf7c135ad80415f0a43ba1ec4757fd5390",
         "subject": "feat(design-artifacts): preflight a catalog spec against a preview-id manifest (#5086)",
@@ -450,38 +482,6 @@
         "sha": "e0e4f8b112cc1f97cc0e8e2d50f7277cb726a540",
         "subject": "fix(discovery): declare, package and correct the component record (#5021)",
         "at": "2026-09-02T22:41:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2f745ed9e509f139decb1ac6aeaa6b6113fe98ee",
-        "subject": "ci: let main CI runs finish instead of cancelling them on the next merge (#5020)",
-        "at": "2026-09-02T22:40:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "244a15c66edec8bfb2580be6173ed90619cb63f6",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.65.0 (#5018)",
-        "at": "2026-09-02T22:36:34+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "aa636c7dec67fbff25b1d8442ae0fe2a9fdfe679",
-        "subject": "feat(discovery): publish components.json beside previews.json (#5013)",
-        "at": "2026-09-02T22:35:42+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "780a397a5235ba0b647d120358a2bdb89fca667e",
-        "subject": "fix(import): render a verified upstream with lenient verification (#5016)",
-        "at": "2026-09-02T22:31:40+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
