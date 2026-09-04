@@ -781,7 +781,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=github-tags depName=yschimke/rc-players
-  RC_PLAYERS_PIN: v1.56.1
+  RC_PLAYERS_PIN: v1.57.0
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
