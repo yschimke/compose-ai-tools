@@ -796,4 +796,97 @@ class ScreenValueVocabularyTest {
       )
     assertThat(result.source).contains("Text(text = \"hi\")")
   }
+
+  private fun stateful(
+    state: List<ScreenState>,
+    root: ScreenNode = textNode(),
+    name: String = "Stateful",
+  ) =
+    ScreenGenerator.generate(
+      ScreenDocument(name = name, root = root, state = state),
+      catalog(text),
+      expressionPackages = allowed,
+    )
+
+  private fun statefulRefusal(state: List<ScreenState>, root: ScreenNode = textNode()) =
+    (stateful(state, root) as ScreenGenerator.Result.Refused).reasons
+
+  private fun readNode(variable: String, typeFqn: String = "kotlin.String") =
+    ScreenNode(
+      componentId = "m3/text",
+      arguments = mapOf("text" to ScreenValue.StateRead(variable, typeFqn)),
+    )
+
+  @Test
+  fun `a screen declares its state before the tree that reads it`() {
+    val result =
+      stateful(
+        listOf(
+          ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false)),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("Hello")),
+        ),
+        readNode("caption"),
+      )
+        as ScreenGenerator.Result.Emitted
+
+    // `remember`, or the screen resets on every recomposition that touches it — which reads as the
+    // state never changing at all.
+    assertThat(result.source)
+      .contains(
+        "val expanded = androidx.compose.runtime.remember { " +
+          "androidx.compose.runtime.mutableStateOf<kotlin.Boolean>(false) }"
+      )
+    // Declaration order is emitted order: a preamble that reshuffles is a diff nobody can review.
+    assertThat(result.source.indexOf("val expanded"))
+      .isLessThan(result.source.indexOf("val caption"))
+    assertThat(result.source).contains("text = caption.value")
+  }
+
+  @Test
+  fun `a read of a variable the screen does not declare is refused, and says what it has`() {
+    val reasons =
+      statefulRefusal(
+        listOf(ScreenState("expanded", "kotlin.Boolean", ScreenValue.Bool(false))),
+        readNode("missing"),
+      )
+
+    assertThat(reasons).hasSize(1)
+    assertThat(reasons.single()).contains("does not declare")
+    // Naming what it does declare turns a dead end into a typo the reader can fix.
+    assertThat(reasons.single()).contains("expanded")
+  }
+
+  @Test
+  fun `a read whose claimed type disagrees with the declaration is refused`() {
+    val reasons =
+      statefulRefusal(
+        listOf(ScreenState("caption", "kotlin.Boolean", ScreenValue.Bool(false))),
+        readNode("caption"),
+      )
+
+    assertThat(reasons.single()).contains("declared as a")
+  }
+
+  @Test
+  fun `state that would shadow a component this screen calls is refused`() {
+    // The component is imported by simple name, so a property of the same name captures its call
+    // site inside the function body and the screen silently calls the wrong thing.
+    val reasons =
+      statefulRefusal(listOf(ScreenState("Text", "kotlin.String", ScreenValue.Text("x"))))
+
+    assertThat(reasons.single()).contains("would shadow")
+  }
+
+  @Test
+  fun `a state name declared twice is refused once, not per use`() {
+    val reasons =
+      statefulRefusal(
+        listOf(
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
+          ScreenState("caption", "kotlin.String", ScreenValue.Text("b")),
+        )
+      )
+
+    assertThat(reasons).containsExactly("state `caption` is declared more than once")
+  }
 }

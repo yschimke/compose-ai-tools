@@ -160,15 +160,51 @@ object ScreenGenerator {
         }
         .map { it.canonicalId }
         .toSet()
+    // Declarations are checked before anything reads them, so a misspelled variable is reported
+    // once against the declaration rather than once per node that names it.
+    val duplicates =
+      document.state.groupingBy(ScreenState::name).eachCount().filterValues { it > 1 }.keys
+    if (duplicates.isNotEmpty()) {
+      return Result.Refused(duplicates.sorted().map { "state `$it` is declared more than once" })
+    }
+    val unusableState = document.state.map(ScreenState::name).filterNot(::isUsableIdentifier)
+    if (unusableState.isNotEmpty()) {
+      return Result.Refused(unusableState.map { "state `$it` is not a usable Kotlin identifier" })
+    }
+    // A state name that collides with a component this file imports by simple name would shadow it
+    // inside the function body, so the component's call site would resolve to the property.
+    val shadowed =
+      document.state.map(ScreenState::name).filter { name ->
+        components.components.any { it.canonicalId in simplyImportable && it.symbol.name == name }
+      }
+    if (shadowed.isNotEmpty()) {
+      return Result.Refused(
+        shadowed.sorted().map {
+          "state `$it` has the same name as a component this screen calls, and would shadow it"
+        }
+      )
+    }
     val context =
       Emission(
         ComponentIndex(components.components),
         simplyImportable,
         document.name,
         expressionPackages,
+        document.state.associateBy(ScreenState::name),
       )
+    val preamble =
+      document.state.map { declared ->
+        val initial =
+          context.expression(declared.initial, "state `${declared.name}`", depth = 0)
+            ?: return@map null
+        // `remember` so the value survives recomposition — without it the screen resets on every
+        // frame that touches it, which looks like the state never changing at all.
+        "val ${ComponentSnippets.escapeIfKeyword(declared.name)} = androidx.compose.runtime.remember { " +
+          "androidx.compose.runtime.mutableStateOf<${declared.typeFqn}>($initial) }"
+      }
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
+    val declarations = preamble.filterNotNull()
 
     // An AndroidX-mechanism marker is reported by both scans, so it is subtracted here rather than
     // written twice under two annotations that would each reject the other's markers.
@@ -222,6 +258,7 @@ object ScreenGenerator {
       }
       appendLine("@Composable")
       appendLine("fun ${document.name}() {")
+      declarations.forEach { appendLine("    $it") }
       appendLine(body)
       appendLine("}")
     }
@@ -288,6 +325,8 @@ object ScreenGenerator {
     val simplyImportable: Set<String>,
     val screenName: String,
     val expressionPackages: Set<String>,
+    /** Declared state by name, so a read can be checked against something rather than trusted. */
+    val state: Map<String, ScreenState> = emptyMap(),
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -438,6 +477,32 @@ object ScreenGenerator {
      * Both compare the **qualified** type, so a `com.example.String` property is rejected rather
      * than handed a string literal — the trap the call-site generator was caught by twice.
      */
+    /**
+     * A state read, as the `.value` of the declared property.
+     *
+     * `.value` rather than a `by` delegate, because `by` needs `getValue` and `setValue` imported
+     * and this generator's rule is that nothing it emits can be shadowed by the package it lands
+     * in. Two more imports are two more chances of the conflict the import check already refuses,
+     * bought for a spelling nobody reads twice in generated code.
+     */
+    fun stateRead(value: ScreenValue.StateRead, where: String): String? {
+      val declared = state[value.variable]
+      if (declared == null) {
+        reasons +=
+          "$where reads `${value.variable}`, which this screen does not declare" +
+            if (state.isEmpty()) "" else " (it declares ${state.keys.sorted().joinToString(", ")})"
+        return null
+      }
+      if (declared.typeFqn != value.typeFqn) {
+        reasons +=
+          "$where reads `${value.variable}` as a ${value.typeFqn}, and it is declared as a " +
+            declared.typeFqn
+        return null
+      }
+      val escaped = name(value.variable, where) ?: return null
+      return "$escaped.value"
+    }
+
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
@@ -532,6 +597,7 @@ object ScreenGenerator {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
           }
+        is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.Reference -> {
           val root = qualifiedName(value.rootFqn, where) ?: return null
           val members = value.members.map { name(it, where) ?: return null }
