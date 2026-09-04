@@ -551,9 +551,9 @@ private fun SemanticsNodeInteractionsProvider.captureRoot(): SemanticsNodeIntera
   return onAllNodes(isRoot())[chosen.index]
 }
 
-private fun androidx.compose.ui.semantics.SemanticsNode.descendantCount(): Int = runCatching {
-  1 + children.sumOf { it.descendantCount() }
-}.getOrDefault(1)
+private fun androidx.compose.ui.semantics.SemanticsNode.descendantCount(): Int {
+  return runCatching { 1 + children.sumOf { it.descendantCount() } }.getOrDefault(1)
+}
 
 /**
  * Captures the root and writes it with the same wrap crop / round clip [renderPreview] applies, so
