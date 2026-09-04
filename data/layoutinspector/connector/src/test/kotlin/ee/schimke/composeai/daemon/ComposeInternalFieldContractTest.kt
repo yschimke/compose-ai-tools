@@ -12,6 +12,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertTrue
@@ -180,6 +183,39 @@ class ComposeInternalFieldContractTest {
       "CutCornerShape renamed to ${shape.javaClass.simpleName}; ModifierTokenResolver would " +
         "now report a cut-corner shape as rounded.",
       shape.javaClass.simpleName == "CutCornerShape",
+    )
+  }
+
+  @Test
+  fun `a real Font offers exactly one zero-arg getStyle accessor`() {
+    // `ComposeSemanticsDataProducer.isItalic` reads `Font.style` reflectively, because it is a
+    // value-class getter whose JVM name carries a signature hash (`getStyle-_-LCdwA`) and the
+    // daemon runs against the consumer's compose-ui, not ours. The reflection therefore cannot
+    // match the name exactly — it matches `getStyle` plus a decoration.
+    //
+    // That is only unambiguous while `getStyle` is no other accessor's prefix. The day androidx
+    // adds a second zero-arg `getStyleXxx` to a Font implementation, the lookup has two candidates
+    // and `Class.getMethods()` orders them however it likes — the face whose family and variation
+    // axes get reported would then change between runs, silently, because a non-Int return just
+    // reads as "not italic". This is the canary for that day; the same collision, on
+    // `getPrimary`/`getPrimaryDim`, is what made a colour catalog render four different PNGs.
+    val bytes = checkNotNull(javaClass.getResourceAsStream("/fonts/DroidSansMono.ttf")).readBytes()
+    val font: Any = Font("DroidSansMono", bytes, FontWeight.Normal, FontStyle.Italic)
+
+    val styleAccessors =
+      font.javaClass.methods.filter { it.parameterCount == 0 && it.name.startsWith("getStyle") }
+
+    assertTrue(
+      "Expected exactly one zero-arg getStyle* accessor on ${font.javaClass.name}, found " +
+        styleAccessors.map { it.name } +
+        "; ComposeSemanticsDataProducer.isItalic now has to choose between them.",
+      styleAccessors.size == 1,
+    )
+    // And the decoration is the mangling the loose match exists for, not a plain name.
+    assertTrue(
+      "Font.style is no longer a mangled value-class getter (${styleAccessors.single().name}); " +
+        "isItalic could read it by exact name now.",
+      styleAccessors.single().name.startsWith("getStyle-"),
     )
   }
 

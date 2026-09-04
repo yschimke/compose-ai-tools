@@ -713,13 +713,35 @@ object ComposeSemanticsDataProducer {
     return candidates.firstOrNull { it.weight.weight == chosenWeight } ?: candidates.firstOrNull()
   }
 
+  /**
+   * Whether this face is the italic one, read reflectively because `Font.style` is a value-class
+   * getter whose JVM name carries a signature hash (`getStyle-_-LCdwA`). Compiling a direct call
+   * would pin that hash, and the daemon runs against the *consumer's* compose-ui, so the tolerance
+   * is the point.
+   *
+   * Matched on the decoration rather than on a bare prefix. `getStyle` is a prefix of any longer
+   * `getStyleXxx` a future `Font` subtype might declare, and `Class.getMethods()` returns its
+   * elements in no specified order, so a prefix match would pick between them per run — silently,
+   * since a non-`Int` return just reads as "not italic" and mis-selects the face whose family and
+   * variation axes get reported. That is the defect `RemoteCatalogValues` shipped with, where
+   * `getPrimary` matched `getPrimaryDim`; nothing collides here today, and this keeps it that way.
+   * `-` (inline-class mangling) and `$` (an `internal` member's module suffix) are the only things
+   * that may follow, since neither can occur in a Kotlin property name.
+   */
   private fun Font.isItalic(): Boolean =
     runCatching {
       javaClass.methods
-        .firstOrNull { it.name.startsWith("getStyle") && it.parameterCount == 0 }
+        .filter { it.parameterCount == 0 && isStyleGetter(it.name) }
+        .minByOrNull { it.name }
         ?.invoke(this) as? Int
     }
       .getOrNull() == 1
+
+  private fun isStyleGetter(methodName: String): Boolean =
+    methodName == "getStyle" ||
+      (methodName.length > "getStyle".length &&
+        methodName.startsWith("getStyle") &&
+        methodName["getStyle".length].let { it == '-' || it == '$' })
 
   /**
    * Stable identity for a resolved [Font]: a downloadable face's Google-Fonts name, then the
