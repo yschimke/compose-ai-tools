@@ -304,17 +304,22 @@ object ScreenGenerator {
 
     // An AndroidX-mechanism marker is reported by both scans, so it is subtracted here rather than
     // written twice under two annotations that would each reject the other's markers.
-    val androidxOptIns = context.androidxOptIns.toSortedSet().toList()
-    val optIns = (context.optIns - context.androidxOptIns).toSortedSet().toList()
+    val androidxOptIns = context.androidxOptIns.distinct().sorted()
+    val optIns = (context.optIns - context.androidxOptIns).distinct().sorted()
     val imports =
       (context.imports + context.extensionImports + "androidx.compose.runtime.Composable")
-        .toSortedSet()
+        .distinct()
+        .sorted()
     // Kotlin calls two imports of one simple name a conflicting import and compiles neither. The
     // component half of this can't collide — `simplyImportable` already withholds a simple name two
     // records want — but an extension link is imported from wherever a projection said, so
     // `foundation.layout.padding` and `some.other.padding` in one screen have to be caught here.
     val conflicts =
-      imports.groupBy { it.substringAfterLast('.') }.filterValues { it.size > 1 }.toSortedMap()
+      imports
+        .groupBy { it.substringAfterLast('.') }
+        .filterValues { it.size > 1 }
+        .toList()
+        .sortedBy { it.first }
     if (conflicts.isNotEmpty()) {
       return Result.Refused(
         conflicts.map { (name, fqns) ->
