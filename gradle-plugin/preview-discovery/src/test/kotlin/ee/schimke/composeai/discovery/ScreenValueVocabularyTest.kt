@@ -1053,6 +1053,47 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `an initializer reading a state declared after it is refused`() {
+    // The preamble emits one `val` per declaration in document order, so this generated
+    // `val first = … second.value …` two lines before `second` exists.
+    val reasons =
+      statefulRefusal(
+        listOf(
+          ScreenState("first", "kotlin.String", ScreenValue.StateRead("second", "kotlin.String")),
+          ScreenState("second", "kotlin.String", ScreenValue.Text("b")),
+        )
+      )
+
+    assertThat(reasons.single()).contains("not declared before it")
+  }
+
+  @Test
+  fun `an initializer reading itself is refused`() {
+    // A local is not in scope in its own initializer, so this is the same defect with one
+    // declaration instead of two.
+    val reasons =
+      statefulRefusal(
+        listOf(ScreenState("only", "kotlin.String", ScreenValue.StateRead("only", "kotlin.String")))
+      )
+
+    assertThat(reasons.single()).contains("not declared before it")
+  }
+
+  @Test
+  fun `an initializer reading a state declared before it is emitted`() {
+    val result =
+      stateful(
+        listOf(
+          ScreenState("first", "kotlin.String", ScreenValue.Text("a")),
+          ScreenState("second", "kotlin.String", ScreenValue.StateRead("first", "kotlin.String")),
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+
+    assertThat(result.source).contains("mutableStateOf<kotlin.String>(first.value)")
+  }
+
+  @Test
   fun `a state named after a package root the file writes in full is refused`() {
     // The preamble emits `androidx.compose.runtime.remember` for every declaration. A local `val`
     // is not in scope in its own initializer, so `val androidx = androidx.compose.runtime…`

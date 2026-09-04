@@ -216,8 +216,12 @@ object ScreenGenerator {
         expressionPackages,
         document.state.associateBy(ScreenState::name),
       )
+    val declaredSoFar = mutableSetOf<String>()
     val preamble =
       document.state.map { declared ->
+        // Each initializer sees only what precedes it, and the name itself is added after the
+        // initializer is rendered rather than before, because a local is not in scope in its own.
+        context.initializerScope = declaredSoFar.toSet()
         // The declared type is interpolated into `mutableStateOf<…>`, so it is source, and
         // `ScreenDocument` is wire data. Every other name this file writes goes through a shape
         // check first; this one did not, so a malformed type produced source that does not compile
@@ -233,9 +237,12 @@ object ScreenGenerator {
             ?: return@map null
         // `remember` so the value survives recomposition — without it the screen resets on every
         // frame that touches it, which looks like the state never changing at all.
+        declaredSoFar += declared.name
         "val ${ComponentSnippets.escapeIfKeyword(declared.name)} = androidx.compose.runtime.remember { " +
           "androidx.compose.runtime.mutableStateOf<${declared.typeFqn}>($initial) }"
       }
+    // The body is not an initializer: every declaration is in scope there.
+    context.initializerScope = null
     val body = context.node(document.root, depth = 1)
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
     val declarations = preamble.filterNotNull()
@@ -371,6 +378,17 @@ object ScreenGenerator {
     val optIns = mutableSetOf<String>()
     val androidxOptIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
+
+    /**
+     * The state names in scope while one declaration's own initializer is rendered, or null in the
+     * body, where every declaration is.
+     *
+     * The preamble emits one `val` per declaration in document order and a local is not in scope in
+     * its own initializer, so an initializer may read only what came before it. Without this a
+     * document could put `first`'s initializer on `second.value` and generate a file that names a
+     * variable two lines before declaring it.
+     */
+    var initializerScope: Set<String>? = null
 
     fun node(node: ScreenNode, depth: Int, inReceiverScope: Boolean = false): String {
       val pad = INDENT.repeat(depth)
@@ -621,6 +639,14 @@ object ScreenGenerator {
           "$where reads `${value.variable}` as a ${value.typeFqn}, and it is declared as a " +
             declared.typeFqn
         return null
+      }
+      initializerScope?.let { inScope ->
+        if (value.variable !in inScope) {
+          reasons +=
+            "$where reads `${value.variable}`, which is not declared before it" +
+              if (value.variable in state) " (a later declaration, or itself)" else ""
+          return null
+        }
       }
       val escaped = name(value.variable, where) ?: return null
       return "$escaped.value"
