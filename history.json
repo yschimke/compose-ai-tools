@@ -1,8 +1,23 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "8e97eeb249081aefd4de95bb2b2cbb3a54451f90",
+    "generatedFrom": "9ec72bdc19024e2faa2ae60d7d30619636f4aa4b",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
+            "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
+            "versions": [
+                {
+                    "blob": "852f6f6a991125f6203cffb649a6d6722883d956",
+                    "commit": "9ec72bdc19024e2faa2ae60d7d30619636f4aa4b",
+                    "date": "2026-09-04T12:29:33Z",
+                    "sourceSha": "611ee7b4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#1": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
             "versions": [
                 {
@@ -17,7 +32,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#1": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#2": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_1.png",
             "versions": [
                 {
@@ -32,7 +47,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#2": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#3": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_2.png",
             "versions": [
                 {
@@ -47,7 +62,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#3": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#4": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_3.png",
             "versions": [
                 {
@@ -63,6 +78,21 @@
             "flapCount": 0
         },
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal": {
+            "path": "renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0.png",
+            "versions": [
+                {
+                    "blob": "852f6f6a991125f6203cffb649a6d6722883d956",
+                    "commit": "9ec72bdc19024e2faa2ae60d7d30619636f4aa4b",
+                    "date": "2026-09-04T12:29:33Z",
+                    "sourceSha": "611ee7b4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#1": {
             "path": "renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step1_Next.png",
             "versions": [
                 {
@@ -77,7 +107,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#1": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#2": {
             "path": "renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step2_Next.png",
             "versions": [
                 {
@@ -92,7 +122,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#2": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#3": {
             "path": "renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step3_Previous.png",
             "versions": [
                 {
@@ -107,7 +137,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#3": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#4": {
             "path": "renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step4_Next.png",
             "versions": [
                 {
@@ -123,6 +153,21 @@
             "flapCount": 0
         },
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out": {
+            "path": "renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5.png",
+            "versions": [
+                {
+                    "blob": "852f6f6a991125f6203cffb649a6d6722883d956",
+                    "commit": "9ec72bdc19024e2faa2ae60d7d30619636f4aa4b",
+                    "date": "2026-09-04T12:29:33Z",
+                    "sourceSha": "611ee7b4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#1": {
             "path": "renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_0.png",
             "versions": [
                 {
@@ -137,7 +182,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#1": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#2": {
             "path": "renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_1.png",
             "versions": [
                 {
@@ -152,7 +197,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#2": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#3": {
             "path": "renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_2.png",
             "versions": [
                 {
@@ -167,7 +212,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#3": {
+        "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring — fan-out#4": {
             "path": "renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_3.png",
             "versions": [
                 {
@@ -8421,6 +8466,21 @@
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer · Pressed Walk": {
+            "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2.png",
+            "versions": [
+                {
+                    "blob": "161b05bab9d97a179fff3edac7341b6d3fae0fed",
+                    "commit": "9ec72bdc19024e2faa2ae60d7d30619636f4aa4b",
+                    "date": "2026-09-04T12:29:33Z",
+                    "sourceSha": "611ee7b4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer · Pressed Walk#1": {
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
             "versions": [
                 {
@@ -8435,7 +8495,7 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer · Pressed Walk#1": {
+        "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer · Pressed Walk#2": {
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
             "versions": [
                 {
