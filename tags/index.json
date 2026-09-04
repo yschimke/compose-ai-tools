@@ -180,6 +180,70 @@
         },
         "space": "render-pixels"
       }
+    },
+    "template-appscaffold__ideal__default__dark__compact": {
+      "dp-slot:content;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 0,
+          "y": 231,
+          "width": 1078,
+          "height": 2105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:topBar;scope=box": {
+        "count": 1,
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1078,
+          "height": 231
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:fab;scope=box": {
+        "count": 1,
+        "bounds": {
+          "x": 889,
+          "y": 2147,
+          "width": 147,
+          "height": 147
+        },
+        "space": "render-pixels"
+      }
+    },
+    "template-appscaffold__ideal__default__light__compact": {
+      "dp-slot:content;scope=column": {
+        "count": 1,
+        "bounds": {
+          "x": 0,
+          "y": 231,
+          "width": 1078,
+          "height": 2105
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:topBar;scope=box": {
+        "count": 1,
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1078,
+          "height": 231
+        },
+        "space": "render-pixels"
+      },
+      "dp-slot:fab;scope=box": {
+        "count": 1,
+        "bounds": {
+          "x": 889,
+          "y": 2147,
+          "width": 147,
+          "height": 147
+        },
+        "space": "render-pixels"
+      }
     }
   }
 }

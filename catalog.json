@@ -5865,7 +5865,7 @@
       "wireframe": "wireframes/template-appscaffold.svg",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTemplates.kt",
       "sourceModule": ":samples:design-catalog-m3",
-      "bodyLine": 65,
+      "bodyLine": 70,
       "sourceDirectory": "samples/design-catalog-m3",
       "sourceFunction": "AppScaffoldTemplate",
       "parameters": [
@@ -6982,7 +6982,7 @@
     "androidx.compose.material3.adaptive:adaptive (planned)"
   ],
   "renderer": "compose-preview 1.73.1-SNAPSHOT",
-  "generatedAt": "2026-09-04T18:33:35.821Z",
+  "generatedAt": "2026-09-04T19:54:46.023Z",
   "display": {
     "hero": "Template/AppScaffold"
   },
