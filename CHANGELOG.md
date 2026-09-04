@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.72.0](https://github.com/yschimke/compose-ai-tools/compare/v1.71.0...v1.72.0) (2026-09-04)
+
+
+### Features
+
+* **daemon:** seed a preview's parameter knobs from the override bag ([#5089](https://github.com/yschimke/compose-ai-tools/issues/5089)) ([a1da7f3](https://github.com/yschimke/compose-ai-tools/commit/a1da7f3782b318a32c161556a359fd37907e827f))
+* **design-artifacts:** preflight a catalog spec against a preview-id manifest ([#5086](https://github.com/yschimke/compose-ai-tools/issues/5086)) ([a574d4c](https://github.com/yschimke/compose-ai-tools/commit/a574d4cf7c135ad80415f0a43ba1ec4757fd5390))
+
+
+### Bug Fixes
+
+* **design-artifacts:** carry import preview-id exclusions in a delimiter-free file ([#5085](https://github.com/yschimke/compose-ai-tools/issues/5085)) ([33a4659](https://github.com/yschimke/compose-ai-tools/commit/33a46591c1d30e08ed3c082b8648c74948043911))
+* **focus:** keep the resting capture, and pick a root when there are two ([#5088](https://github.com/yschimke/compose-ai-tools/issues/5088)) ([611ee7b](https://github.com/yschimke/compose-ai-tools/commit/611ee7b49d6f4156f4d12e613497ee9ed0e0b7f4))
+
 ## [1.71.0](https://github.com/yschimke/compose-ai-tools/compare/v1.70.0...v1.71.0) (2026-09-04)
 
 
