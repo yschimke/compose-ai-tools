@@ -727,19 +727,19 @@ _No findings._
 
 ### `FocusOverlayPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.a11y.png" width="400" />
 
 _No findings._
 
 ### `FocusTraversalPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step1_Next.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-alpha/FocusTraversalPreview_Focus_Traversal-d9e7cbb0.a11y.png" width="400" />
 
 _No findings._
 
 ### `InsetFocusRingFanOutPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_0.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5.a11y.png" width="400" />
 
 _No findings._
 
@@ -1788,7 +1788,7 @@ _No findings._
 
 ### `GlimmerListPressedWalk` · `spec:width=960,height=720,dpi=160`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2.a11y.png" width="400" />
 
 _No findings._
 
