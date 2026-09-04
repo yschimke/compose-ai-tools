@@ -1,11 +1,59 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-04T19:51:25.987Z",
+  "generatedAt": "2026-09-04T22:11:48.249Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "2f1e6a2c6826baf8619a18683bde5591e4ab79a8",
+        "subject": "chore(main): release 1.74.0 (#5108)",
+        "at": "2026-09-04T22:30:22+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f5c0c460f7f782b685e9b8bcb2c4781a3fb1115f",
+        "subject": "fix(discovery): keep a preview's target when its content lambda captures (#5112)",
+        "at": "2026-09-04T22:14:20+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "38b481b5ee84348f3f27bcfae8cc7add5586f15c",
+        "subject": "feat(builder): make the preview pane a seam, and design the combined builder (#5111)",
+        "at": "2026-09-04T22:05:42+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1940a90e40091f36c8f0b59e1262df501369f4bb",
+        "subject": "feat(builder): highlight the generated source and compile-check it (#5110)",
+        "at": "2026-09-04T21:56:43+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ae9cfb7ed1fad4f9641e316bad8b9bfacc2ce547",
+        "subject": "feat(builder): assemble and edit a screen from the M3 catalog in the browser (#5109)",
+        "at": "2026-09-04T21:26:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "67efcc606cca430e156baaf2d07cd05ddbb97bf8",
+        "subject": "feat(renderer-desktop): record a preview's parameter knobs during a bake (#5103)",
+        "at": "2026-09-04T20:42:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "43b091434677e728331e1b8ffd17c79c65317f66",
         "subject": "feat(catalog): make the scaffold templates slot-fillable (#5107)",
@@ -434,54 +482,6 @@
         "sha": "fa62dee7c038dca07cce6e326fdc5a4e7036689a",
         "subject": "fix(cli): bundle pack dropped --variant; feat(import): render-runtime-projects (#5042)",
         "at": "2026-09-03T06:39:36+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c35bb2b9ff333f68f85477dfe9b60b65f5f61f42",
-        "subject": "fix(rc): take the rc-players 1.56.1 image-painter fix, and print the gate's failures (#5043)",
-        "at": "2026-09-03T06:38:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5ab99c1be405f2888e7ed3bbcb4183e53a63b516",
-        "subject": "feat(discovery): compile the printed call sites, and fix what that caught (#5036)",
-        "at": "2026-09-03T06:32:25+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0b47e343d9f57c74a7417615322ccbe2270dd42a",
-        "subject": "fix(import): refuse the two variant combinations that would publish a wrong catalog (#5040)",
-        "at": "2026-09-03T06:30:56+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3f024613637d6c86bab8890d25d2e7a242da5926",
-        "subject": "fix(import): print a sidecar's cause, not the first 4000 bytes of its stack (#5041)",
-        "at": "2026-09-03T06:29:39+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "60c45e280c5525ce6065104e02d57048e3b96fc6",
-        "subject": "fix(import): surface the renderer's .error.json sidecars when a render fails (#5035)",
-        "at": "2026-09-03T00:18:23+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "02a435245167a14f9836f5959c7fca4150d8ce4b",
-        "subject": "feat(import): let a caller name the Android variant to render (#5037)",
-        "at": "2026-09-03T00:18:17+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
