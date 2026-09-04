@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.74.0](https://github.com/yschimke/compose-ai-tools/compare/v1.73.0...v1.74.0) (2026-09-04)
+
+
+### Features
+
+* **builder:** assemble and edit a screen from the M3 catalog in the browser ([#5109](https://github.com/yschimke/compose-ai-tools/issues/5109)) ([ae9cfb7](https://github.com/yschimke/compose-ai-tools/commit/ae9cfb7ed1fad4f9641e316bad8b9bfacc2ce547))
+* **builder:** highlight the generated source and compile-check it ([#5110](https://github.com/yschimke/compose-ai-tools/issues/5110)) ([1940a90](https://github.com/yschimke/compose-ai-tools/commit/1940a90e40091f36c8f0b59e1262df501369f4bb))
+* **builder:** make the preview pane a seam, and design the combined builder ([#5111](https://github.com/yschimke/compose-ai-tools/issues/5111)) ([38b481b](https://github.com/yschimke/compose-ai-tools/commit/38b481b5ee84348f3f27bcfae8cc7add5586f15c))
+* **catalog:** make the scaffold templates slot-fillable ([#5107](https://github.com/yschimke/compose-ai-tools/issues/5107)) ([43b0914](https://github.com/yschimke/compose-ai-tools/commit/43b091434677e728331e1b8ffd17c79c65317f66))
+* **renderer-desktop:** record a preview's parameter knobs during a bake ([#5103](https://github.com/yschimke/compose-ai-tools/issues/5103)) ([67efcc6](https://github.com/yschimke/compose-ai-tools/commit/67efcc606cca430e156baaf2d07cd05ddbb97bf8))
+
+
+### Bug Fixes
+
+* **discovery:** keep a preview's target when its content lambda captures ([#5112](https://github.com/yschimke/compose-ai-tools/issues/5112)) ([f5c0c46](https://github.com/yschimke/compose-ai-tools/commit/f5c0c460f7f782b685e9b8bcb2c4781a3fb1115f))
+
 ## [1.73.0](https://github.com/yschimke/compose-ai-tools/compare/v1.72.0...v1.73.0) (2026-09-04)
 
 
