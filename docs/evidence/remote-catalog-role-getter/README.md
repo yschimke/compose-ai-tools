@@ -23,3 +23,21 @@ some general instability in the renderer, the explanation.
 Across the sixteen most recent baseline updates that touched this file, `main` committed
 four distinct PNGs for it and returned to earlier ones repeatedly; in fourteen of the
 fifteen whose parent is available, it was the only file under `renders/` that moved.
+
+## What the fixed render turned out to be
+
+`after.png` is **byte-identical to `c8fc1c6d`**, one of the four PNGs `main` was already
+rotating through (it committed that content four of the sixteen times). So one of the four
+was right all along; the fix does not introduce a new rendering, it makes the render land
+on the correct one every time instead of one time in four.
+
+The token sidecar confirms the roles the collision used to swap:
+
+| role | before (`before-alternate.png`) | after |
+| --- | --- | --- |
+| `primary` | `#FFD0BCFF` — `primaryDim`'s | `#FFE9DDFF` |
+| `surfaceContainer` | `#FF272430` — `surfaceContainerLow`'s | `#FF332E3C` |
+| `onSurface` | `#FFCAC4D0` — `onSurfaceVariant`'s | `#FFF6EDFF` |
+
+`onPrimaryContainer` and `onSurface` are both `#FFF6EDFF` after the fix. That one is real:
+their getter names do not collide, and Wear M3 genuinely gives them the same colour.

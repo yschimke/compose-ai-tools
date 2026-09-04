@@ -62,8 +62,10 @@ class RemoteCatalogRoleLookupTest {
 
   @Test
   fun `no two roles answer with the same colour`() {
-    // The property that makes the sheet trustworthy, stated directly. A prefix mix-up always shows
-    // up here as a duplicate, whichever way `getMethods()` happened to order the class that run.
+    // Every role in this double answers with its own sentinel, so a prefix mix-up always shows up
+    // here as a duplicate, whichever way `getMethods()` happened to order the class that run. It is
+    // a property of the double, not a rule about themes: real Wear M3 gives `onPrimaryContainer`
+    // and `onSurface` the same `#FFF6EDFF`, and that is not a mix-up.
     val values = catalogColorRoles(RemoteColorScheme()).map { it.second }
 
     assertEquals(29, values.size)
