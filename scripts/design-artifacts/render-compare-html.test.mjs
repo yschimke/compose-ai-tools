@@ -652,3 +652,16 @@ test("only a frozen reading is announced", () => {
   // Off-screen rather than display:none, which would take it out of the accessibility tree.
   assert.match(html, /\.pick-live \{ position:absolute; width:1px; height:1px;/);
 });
+
+test("a fractional root translate is read, not dropped", () => {
+  // Figma emits fractional positions routinely. An integer-only pattern does not round one — it
+  // fails to match at all, so the whole offset becomes the origin, integer part included, and the
+  // two columns silently mis-register. The scorer then reports drift that is the alignment rather
+  // than the component, which is the most misleading answer this page can give.
+  // compose-preview-server's own scorer hit this and fixed it in scorer/svgTranslate.ts.
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  assert.match(html, /\(-\?\(\?:\\d\+\(\?:\\\.\\d\+\)\?\|\\\.\\d\+\)\)/);
+  assert.doesNotMatch(html, /translate\\\(\\s\*\(-\?\\d\+\)\\s\*,/);
+  // Number, not parseFloat: the pattern has established the shape already.
+  assert.match(html, /return m \? \{ tx: Number\(m\[1\]\), ty: Number\(m\[2\]\) \}/);
+});
