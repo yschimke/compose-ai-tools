@@ -1,8 +1,8 @@
 # Live source in the UI builder — highlighting, and a real compile check
 
-Status: **spec, ready to start** (2026-09). The side-by-side live generation is
-built; this scopes the two things it is missing. Written to be picked up by
-someone (or something) that has not read the rest of this session.
+Status: **built** (2026-09). Both work items below have landed; the sections are
+kept as the record of what was specified and what the build actually found. Two
+things the spec got wrong are corrected in place and marked **Correction**.
 
 Parent design: [UI_BUILDER.md](UI_BUILDER.md). The compile half rides an existing
 shipped contract — [PLAYGROUND.md](PLAYGROUND.md) §4.
@@ -45,7 +45,7 @@ document server-side on the Robolectric lane. See UI_BUILDER.md §0.4.
 
 ---
 
-## Work item 1 — syntax highlighting
+## Work item 1 — syntax highlighting — **done**
 
 **Do not write a Kotlin lexer.** The builder highlights source *it generated*, and
 codegen knows what every token is at the moment it writes it. Re-lexing its own
@@ -94,9 +94,21 @@ from `MaterialTheme.colorScheme` so it works in both themes — the builder hono
 
 **Effort: small.** One file in the model, one composable change, no new deps.
 
+### What landed
+
+As specified, with one strengthening. The spec's acceptance said every offset is
+covered by **at most** one token; the implementation guarantees **exactly** one —
+`SpanBuilder.tile()` fills the gaps with maximal `PLAIN` runs. That is the
+difference between a renderer that walks the list and one that also has to
+reconstruct the gaps, and it makes the tiling assertion total rather than
+one-sided. Asserted over a corpus of nine screens (`ScreenTokensTest`) that
+deliberately includes every unrepresentable case, because the `// TODO` paths
+append out of line with the call being written and are exactly where an offset
+goes wrong.
+
 ---
 
-## Work item 2 — the compile check
+## Work item 2 — the compile check — **done**, and the risk below is real
 
 The Kotlin compiler does not run in wasm. It does not have to: the preview server
 already exposes a compile endpoint, and it returns more than a yes/no.
@@ -141,18 +153,85 @@ UI_BUILDER.md §0.2 describes.
 * A slow host does not block editing: the render and code panes stay live while a
   check is in flight.
 
-### The honest risk
+### The honest risk — settled, and the spec was wrong about it
 
-The generated file imports `androidx.compose.material3.*`. The compile host must
-have those on its classpath — that is what `confType` selects, and the M3 catalog
-mode is the one to use. **Verify this before building the UI**: post a
-hand-written `Button(onClick = {}) { Text("x") }` to a real serve host and confirm
-it compiles. If the available `confType` does not carry M3, that is a
-server-side gap and belongs in `compose-preview-server`, not here — find it out
-first, cheaply, rather than after the client is written.
+The generated file imports `androidx.compose.material3.*`, so the compile host
+must carry those. The spec said "that is what `confType` selects". It is not.
+
+> **Correction.** `confType` selects the **renderer** — `PlaygroundMode.CMP` /
+> `ANDROID` / `REMOTE_COMPOSE`, i.e. desktop Skiko vs Robolectric vs an `.rc`
+> capture. `PlaygroundMode.fromConfType` defaults *everything it does not
+> recognise* to `CMP`, so it can never report "no M3 here". What puts
+> `androidx.compose.material3.*` on the compile classpath is the **`catalog`**
+> field of `PlaygroundRunRequest` (or, absent one, the host's pinned
+> `--playground-bundle`). `compose-m3` is the catalog to name: its resolved
+> classpath *is* the unminimized Material 3 library jar, which
+> `PlaygroundCompileService`'s own KDoc states outright. The server already has
+> a lane that does this — `UiBuilderGeneratedPreviewAdapter` **requires** an
+> exact catalog target and refuses to fall back to a default, on the grounds
+> that compiling against somebody else's design system would report the wrong
+> thing as an error rather than as unavailable.
+
+So a client that sent only a `confType` would land on whatever the host pinned
+and blame the screen for every unresolved reference. This one sends
+`catalog = "compose-m3"` and, before that, **asks**: `GET
+/api/{version}/compiler/catalogs` advertises each served catalog and the modes
+it supports, and `CompileCheck.targetFor` returns null rather than substituting
+when none of them is M3. The classpath question is therefore answered per host,
+at runtime, in the product — not assumed once at design time.
+
+### The probe, and what it found
+
+The spec asked for a hand-written `Button(onClick = {}) { Text("x") }` posted to
+a real serve host. Done, against this repo's own public host
+(`composePreview.serveUrl` = `https://preview.coo.ee`):
+
+| Request | Result |
+|---|---|
+| `GET /api/1/compiler/catalogs` | `404` |
+| `POST /api/1/compiler/run` (`confType=compose-cmp`, `catalog=compose-m3`) | `404` |
+| `GET /playground` | `503` — *"the playground is not enabled on this server."* |
+
+The route exists and answers; the lane is switched off. So the answer is neither
+"M3 works" nor "M3 is missing" — **there is no reachable host running the
+playground lane to ask**. That is an operator/deployment gap, not a code gap:
+the flag exists (`--playground-bundle compose-m3`), nothing in
+`compose-preview-server` needs changing, and the client cannot be end-to-end
+verified against a live compile until some host is started with it.
+
+This is precisely why the client discovers rather than assumes. Against
+`preview.coo.ee` today it reports *"could not reach … HTTP 404"* in the compile
+pane and the browser-only loop carries on untouched — which is the specified
+behaviour for a host that cannot compile, reached by the honest route.
 
 **Effort: medium**, and mostly in the two things that are not the happy path —
 debouncing/staleness, and the classpath question above.
+
+---
+
+### Where the code went, and why the split is not where the spec put it
+
+The spec said "a `CompileClient` in the wasm app". It is split instead:
+
+| Piece | Where | Why |
+|---|---|---|
+| Wire types, target selection, request building, response reading, `?compileHost=` validation, `StaleGuard` | `screen/model/.../CompileCheck.kt` | All pure functions of text — and the wasm module has **no test lane** (`:kotlinWasmToolingSetup` needs karma). In the model they are 14 JVM tests; in the app they would be verified by clicking. |
+| `fetch`, the Compose state, the pane | `samples/cmp-wasm-catalog/.../CompileClient.kt` | The only genuinely untestable part is the one that talks to the network. |
+
+**On staleness there are two mechanisms and both are wanted.** Keying the effect
+on the source means a new edit *cancels* the in-flight check, so its continuation
+never resumes; `StaleGuard`'s sequence then makes that explicit where the result
+is applied. The first is a property of structured concurrency that a reader has
+to derive; the second is one integer and a test.
+
+### Verified in a browser
+
+Chromium, against the built wasm dist, on top of the browser run #5109 already
+did for the loop itself — see
+[`evidence/ui-builder-live-code/`](evidence/ui-builder-live-code/). The pane is
+**absent** with no `?compileHost=`; with one pointing at a host that cannot
+compile, the render and code panes stay fully live while the compile pane states
+the reason.
 
 ---
 

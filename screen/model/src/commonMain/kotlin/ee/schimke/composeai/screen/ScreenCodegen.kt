@@ -84,6 +84,15 @@ public data class GeneratedScreen(
    * three outcomes: the user sees code that is missing something with no clue what.
    */
   val problems: List<String> = emptyList(),
+  /**
+   * Spans describing what every character of [source] is, for a highlighter.
+   *
+   * Recorded by codegen as it writes, never re-derived: the builder highlights source *it
+   * generated*, and re-lexing that output would be a second parser that can disagree with the thing
+   * it parses. The list **tiles [source] exactly** — sorted, non-overlapping, every offset covered
+   * once — so a renderer walks it in order with no gap handling.
+   */
+  val tokens: List<SourceToken> = emptyList(),
 )
 
 /**
@@ -110,22 +119,36 @@ public object ScreenCodegen {
   public fun generate(screen: Screen, specs: Map<String, ComponentSpec>): GeneratedScreen {
     val problems = ArrayList<String>()
     val imports = mutableSetOf("androidx.compose.runtime.Composable")
-    val body = StringBuilder()
+    val body = SpanBuilder()
 
     screen.roots.forEach { node -> emit(node, specs, imports, problems, body, depth = 2) }
 
-    val source = buildString {
-      append("import ")
-      // Sorted here rather than kept in a sorted set: `sortedSetOf` is JVM-only and this module
-      // compiles to wasmJs, where the builder runs.
-      append(imports.sorted().joinToString("\nimport "))
-      append("\n\n@Composable\nfun ")
-      append(functionNameFor(screen.name))
-      append("() {\n")
-      if (body.isEmpty()) append("  // (empty screen)\n") else append(body)
-      append("}\n")
+    val out = SpanBuilder()
+    // Sorted here rather than kept in a sorted set: `sortedSetOf` is JVM-only and this module
+    // compiles to wasmJs, where the builder runs.
+    imports.sorted().forEachIndexed { index, fqName ->
+      if (index > 0) out.plain("\n")
+      out.token("import", SourceTokenKind.KEYWORD)
+      out.plain(" ")
+      out.plain(fqName)
     }
-    return GeneratedScreen(source, problems)
+    out.plain("\n\n")
+    out.token("@Composable", SourceTokenKind.ANNOTATION)
+    out.plain("\n")
+    out.token("fun", SourceTokenKind.KEYWORD)
+    out.plain(" ")
+    out.token(functionNameFor(screen.name), SourceTokenKind.CALL)
+    out.plain("() {\n")
+    if (body.isEmpty()) {
+      out.plain("  ")
+      out.token("// (empty screen)", SourceTokenKind.COMMENT)
+      out.plain("\n")
+    } else {
+      out.splice(body)
+    }
+    out.plain("}\n")
+
+    return GeneratedScreen(out.build(), problems, out.tile())
   }
 
   private fun emit(
@@ -133,14 +156,14 @@ public object ScreenCodegen {
     specs: Map<String, ComponentSpec>,
     imports: MutableSet<String>,
     problems: MutableList<String>,
-    out: StringBuilder,
+    out: SpanBuilder,
     depth: Int,
   ) {
     val pad = " ".repeat(depth)
     val spec = specs[node.componentId]
     if (spec == null) {
       problems += "no spec for component '${node.componentId}'"
-      out.append(pad).append("// TODO unknown component '").append(node.componentId).append("'\n")
+      out.comment(pad, "// TODO unknown component '${node.componentId}'")
       // Its children are still the user's work, so they are emitted at this level rather than
       // dropped with the parent — losing a subtree because its container is unknown would throw
       // away far more than it reports.
@@ -149,9 +172,9 @@ public object ScreenCodegen {
     }
     imports += spec.imports
 
-    val args = ArrayList<String>()
-    args.addAll(spec.requiredArgs)
-    var content: String? = null
+    val args = ArrayList<SpanBuilder>()
+    spec.requiredArgs.forEach { arg -> args += SpanBuilder().also { it.plain(arg) } }
+    var content: SpanBuilder? = null
     // Sorted by key so a document generates the same source every time, whatever order a builder
     // happened to write its knobs in. `toSortedMap` is JVM-only; this is the multiplatform
     // spelling.
@@ -162,20 +185,25 @@ public object ScreenCodegen {
         if (key == spec.contentKnob && !spec.container) {
           // The catalog's `label` is a button's child, not a parameter — there is no `label =` to
           // pass it to, so it becomes the trailing content the developer would have written.
-          content = spec.contentCall + "(" + quote(value) + ")"
+          content =
+            SpanBuilder().apply {
+              token(spec.contentCall, SourceTokenKind.CALL)
+              plain("(")
+              token(quote(value), SourceTokenKind.STRING)
+              plain(")")
+            }
         } else if (knob == null) {
           problems += "component '${node.componentId}' has no parameter for knob '$key'"
-          out
-            .append(pad)
-            .append("// TODO knob '")
-            .append(key)
-            .append("' has no parameter on ")
-            .append(spec.call)
-            .append("\n")
+          out.comment(pad, "// TODO knob '$key' has no parameter on ${spec.call}")
         } else {
           if (knob.kind == KnobKind.COLOR) imports += "androidx.compose.ui.graphics.Color"
           if (knob.kind == KnobKind.DP) imports += "androidx.compose.ui.unit.dp"
-          args += "${knob.parameter} = ${literal(knob.kind, value)}"
+          args +=
+            SpanBuilder().apply {
+              plain(knob.parameter)
+              plain(" = ")
+              splice(literal(knob.kind, value))
+            }
         }
       }
 
@@ -186,72 +214,108 @@ public object ScreenCodegen {
       val parameter = spec.slots[child.slot]
       if (parameter == null) {
         problems += "component '${node.componentId}' has no slot '${child.slot}'"
-        out
-          .append(pad)
-          .append("// TODO no slot '")
-          .append(child.slot)
-          .append("' on ")
-          .append(spec.call)
-          .append("\n")
+        out.comment(pad, "// TODO no slot '${child.slot}' on ${spec.call}")
       } else {
-        val nested = StringBuilder()
+        val nested = SpanBuilder()
         emit(child, specs, imports, problems, nested, depth + 2)
-        args += "$parameter = {\n$nested$pad}"
+        args +=
+          SpanBuilder().apply {
+            plain(parameter)
+            plain(" = {\n")
+            splice(nested)
+            plain(pad)
+            plain("}")
+          }
       }
     }
 
     if (ordered.isNotEmpty() && !spec.container) {
       problems += "component '${node.componentId}' takes no children but has ${ordered.size}"
-      out
-        .append(pad)
-        .append("// TODO ")
-        .append(spec.call)
-        .append(" takes no children; ")
-        .append(ordered.size)
-        .append(" dropped\n")
+      out.comment(pad, "// TODO ${spec.call} takes no children; ${ordered.size} dropped")
     }
 
-    out.append(pad).append(spec.call).append('(')
-    if (args.isNotEmpty()) out.append(args.joinToString(", "))
-    out.append(')')
-    val contentText = content
-    if (contentText != null) {
-      out.append(" { ").append(contentText).append(" }")
-    } else if (spec.container && ordered.isNotEmpty()) {
-      out.append(" {\n")
-      ordered.forEach { emit(it, specs, imports, problems, out, depth + 2) }
-      out.append(pad).append("}")
+    out.plain(pad)
+    out.token(spec.call, SourceTokenKind.CALL)
+    out.plain('(')
+    args.forEachIndexed { index, arg ->
+      if (index > 0) out.plain(", ")
+      out.splice(arg)
     }
-    out.append('\n')
+    out.plain(')')
+    val contentSpans = content
+    if (contentSpans != null) {
+      out.plain(" { ")
+      out.splice(contentSpans)
+      out.plain(" }")
+    } else if (spec.container && ordered.isNotEmpty()) {
+      out.plain(" {\n")
+      ordered.forEach { emit(it, specs, imports, problems, out, depth + 2) }
+      out.plain(pad)
+      out.plain("}")
+    }
+    out.plain('\n')
+  }
+
+  /** An indented whole-line `// TODO …`, the one shape codegen uses to mark what it dropped. */
+  private fun SpanBuilder.comment(pad: String, text: String) {
+    plain(pad)
+    token(text, SourceTokenKind.COMMENT)
+    plain("\n")
   }
 
   /**
-   * A knob's value as a Kotlin literal.
+   * A knob's value as a Kotlin literal, with its spans.
    *
    * A value that does not parse as its declared kind falls back to a **quoted string plus a
    * comment**, not to a zero: a `0` where the user typed `abc` compiles and is wrong, which is the
    * one outcome worse than not compiling.
    */
-  private fun literal(kind: KnobKind, value: String): String =
+  private fun literal(kind: KnobKind, value: String): SpanBuilder =
     when (kind) {
-      KnobKind.STRING -> quote(value)
-      KnobKind.INT -> value.trim().toIntOrNull()?.toString() ?: badLiteral(value)
-      KnobKind.FLOAT -> value.trim().toFloatOrNull()?.let { "${it}f" } ?: badLiteral(value)
-      KnobKind.BOOLEAN -> value.trim().toBooleanStrictOrNull()?.toString() ?: badLiteral(value)
-      KnobKind.DP -> value.trim().toFloatOrNull()?.let { "${it}.dp" } ?: badLiteral(value)
+      KnobKind.STRING -> SpanBuilder().apply { token(quote(value), SourceTokenKind.STRING) }
+      KnobKind.INT -> value.trim().toIntOrNull()?.let { number(it.toString()) } ?: badLiteral(value)
+      KnobKind.FLOAT -> value.trim().toFloatOrNull()?.let { number("${it}f") } ?: badLiteral(value)
+      KnobKind.BOOLEAN ->
+        value.trim().toBooleanStrictOrNull()?.let { boolean ->
+          SpanBuilder().apply { token(boolean.toString(), SourceTokenKind.KEYWORD) }
+        } ?: badLiteral(value)
+      // `4.0.dp` is a number *and* a property read; the number stops at the dot, which is where an
+      // IDE stops colouring it too.
+      KnobKind.DP ->
+        value.trim().toFloatOrNull()?.let { dp ->
+          SpanBuilder().apply {
+            token(dp.toString(), SourceTokenKind.NUMBER)
+            plain(".dp")
+          }
+        } ?: badLiteral(value)
       KnobKind.COLOR -> colorLiteral(value) ?: badLiteral(value)
     }
 
-  private fun badLiteral(value: String): String = "${quote(value)} /* TODO not a valid value */"
+  private fun number(text: String): SpanBuilder =
+    SpanBuilder().apply { token(text, SourceTokenKind.NUMBER) }
+
+  private fun badLiteral(value: String): SpanBuilder =
+    SpanBuilder().apply {
+      token(quote(value), SourceTokenKind.STRING)
+      plain(" ")
+      token("/* TODO not a valid value */", SourceTokenKind.COMMENT)
+    }
 
   /** `#AARRGGBB` / `#RRGGBB`, with or without the `#`, as `Color(0xAARRGGBB)`. */
-  private fun colorLiteral(value: String): String? {
+  private fun colorLiteral(value: String): SpanBuilder? {
     val raw = value.trim().removePrefix("#")
-    val parsed = raw.toLongOrNull(16) ?: return null
-    return when (raw.length) {
-      8 -> "Color(0x${raw.uppercase()})"
-      6 -> "Color(0xFF${raw.uppercase()})"
-      else -> null
+    raw.toLongOrNull(16) ?: return null
+    val hex =
+      when (raw.length) {
+        8 -> "0x${raw.uppercase()}"
+        6 -> "0xFF${raw.uppercase()}"
+        else -> return null
+      }
+    return SpanBuilder().apply {
+      token("Color", SourceTokenKind.CALL)
+      plain("(")
+      token(hex, SourceTokenKind.NUMBER)
+      plain(")")
     }
   }
 

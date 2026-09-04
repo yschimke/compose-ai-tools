@@ -27,6 +27,7 @@ import androidx.compose.ui.window.ComposeViewport
 import com.example.designcatalogm3.shared.CatalogApp
 import com.example.designcatalogm3.shared.LocalWasmCatalogKnobs
 import com.example.designcatalogm3.shared.catalogComponentIds
+import ee.schimke.composeai.screen.CompileCheck
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.io.encoding.Base64
@@ -85,7 +86,7 @@ fun main() {
       MaterialTheme(
         colorScheme = if (params["uiMode"] == "dark") darkColorScheme() else lightColorScheme()
       ) {
-        ScreenBuilderApp()
+        ScreenBuilderApp(compileHost = CompileCheck.hostFrom(params))
       }
       return@ComposeViewport
     }
