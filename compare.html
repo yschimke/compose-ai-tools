@@ -432,11 +432,24 @@
   // DEFAULT_PADDING and draws the tree under translate(tx, ty) with tx = padding - minX,
   // in the same px scale as the render PNG (dp->px already applied). The render PNG is
   // padding-free with content at (0,0), so aligning means cropping that translate back
-  // out — matching the daemon's FigmaSvgFidelity.alignToRender. Integer-only, first match,
-  // exactly as the Kotlin harness parses it; defaults to (0,0) for an un-translated SVG.
+  // out — matching the daemon's FigmaSvgFidelity.alignToRender. First match, because the
+  // root group's transform is what the exporter writes first and inner transforms are the
+  // component's own geometry; defaults to (0,0) for an un-translated SVG.
+  //
+  // FRACTIONAL offsets are read. Figma emits them routinely, and an integer-only pattern does
+  // not merely round one — "translate(12.5, 40)" fails to match AT ALL, so the whole offset
+  // becomes the origin, integer part included. A component sitting at x=340.5 is then compared
+  // against a vector drawn 340px away from it, which reads as the component being wrong rather
+  // than as the two frames being in different places. compose-preview-server's scorer hit this
+  // and fixed it in scorer/svgTranslate.ts; this is the same pattern, for the same reason.
   function translateOf(svgText) {
-    const m = /translate\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/.exec(svgText);
-    return m ? { tx: parseInt(m[1], 10), ty: parseInt(m[2], 10) } : { tx: 0, ty: 0 };
+    const m =
+      /translate\(\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*\)/.exec(
+        svgText,
+      );
+    // Number, not parseFloat: the pattern has already established the shape, and parseFloat
+    // would quietly accept a trailing tail the pattern refused.
+    return m ? { tx: Number(m[1]), ty: Number(m[2]) } : { tx: 0, ty: 0 };
   }
 
   // The grounds a comparison is scored on, worst result winning. One opaque ground is not a
