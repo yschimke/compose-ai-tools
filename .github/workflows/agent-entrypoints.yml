@@ -16,19 +16,14 @@ name: Agent Entrypoints
 # in the repository and expensive on the PR, which is why it gets a gate of its own
 # rather than a comment asking someone to remember.
 #
-# Runs on every PR and every merge-queue batch: the files it guards are markdown,
-# which the path-scoped CI classifier deliberately ignores, so this workflow
-# carries no path filter.
+# Runs on every PR and every push: the files it guards are markdown, which the
+# path-scoped CI classifier deliberately ignores, so this workflow carries no path
+# filter.
 
 on:
   pull_request:
-  # Verification of the merge result, replacing `push: [main]` (#5063). A
-  # merge-queue run tests the tree GitHub is about to fast-forward `main` to,
-  # so the push it produces needs no second run of the same suite — and unlike
-  # that push run, it is not cancelled by the next merge landing four minutes
-  # later.
-  merge_group:
-    types: [checks_requested]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
