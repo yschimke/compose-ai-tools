@@ -431,4 +431,109 @@ class MissingPreviewMessageTest {
     assertThat(frame?.file).isEqualTo("AmbientAwareActivity.kt")
     assertThat(frame?.line).isEqualTo(76)
   }
+
+  @Test
+  fun `formatMissingPreviewsMessage names the merged unit-test R jar behind a missing R class`() {
+    // The shape element-x renders with: every preview in the module dies at class-init because
+    // compose-ui's PoolingContainer reads an R table that is not on the render classpath. Without
+    // the hint the list below reads as 321 independently broken previews.
+    val manifest =
+      PreviewManifest(
+        module = "designsystem",
+        variant = "debug",
+        previews =
+          listOf(
+            previewWithCapture("A", "renders/A.png"),
+            previewWithCapture("B", "renders/B.png"),
+          ),
+      )
+    val sidecar =
+      ComposePreviewTasks.ErrorSidecar(
+        exception = "java.lang.NoClassDefFoundError",
+        message = "androidx/customview/poolingcontainer/R\$id",
+      )
+
+    val msg =
+      ComposePreviewTasks.formatMissingPreviewsMessage(
+        manifest = manifest,
+        missingIds = listOf("A", "B"),
+        sidecars = mapOf("A" to sidecar, "B" to sidecar),
+      )
+
+    // Reported once, in dotted form, whatever the slashed form the JVM used.
+    assertThat(msg).contains("androidx.customview.poolingcontainer.R\$id")
+    assertThat(msg).contains("is an AGP-generated resource table")
+    assertThat(msg).contains("compile_and_runtime_r_class_jar")
+    assertThat(msg).contains("test<Variant>UnitTest")
+  }
+
+  @Test
+  fun `the R-jar hint stays out of an ordinary preview failure`() {
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews = listOf(previewWithCapture("A", "renders/A.png")),
+      )
+
+    val msg =
+      ComposePreviewTasks.formatMissingPreviewsMessage(
+        manifest = manifest,
+        missingIds = listOf("A"),
+        sidecars =
+          mapOf(
+            "A" to
+              ComposePreviewTasks.ErrorSidecar(
+                exception = "java.lang.IllegalStateException",
+                message = "missing state",
+              )
+          ),
+      )
+
+    assertThat(msg).doesNotContain("compile_and_runtime_r_class_jar")
+  }
+
+  @Test
+  fun `missingAgpRClass only fires on a class-loading failure over an R table`() {
+    fun insight(exception: String, message: String, chain: String = "") =
+      ComposePreviewTasks.RenderErrorInsight(
+        exception = exception,
+        message = message,
+        frame = null,
+        chain = chain,
+      )
+
+    assertThat(
+        ComposePreviewTasks.missingAgpRClass(
+          insight("java.lang.ClassNotFoundException", "androidx.customview.poolingcontainer.R\$id")
+        )
+      )
+      .isEqualTo("androidx.customview.poolingcontainer.R\$id")
+    // The cascade every other preview reports: the wrapper is an initialiser error and only the
+    // chain names the class-loading failure.
+    assertThat(
+        ComposePreviewTasks.missingAgpRClass(
+          insight(
+            "java.lang.ExceptionInInitializerError",
+            "androidx/customview/poolingcontainer/R\$id",
+            chain = "ExceptionInInitializerError \u2192 NoClassDefFoundError",
+          )
+        )
+      )
+      .isEqualTo("androidx.customview.poolingcontainer.R\$id")
+    // A class-loading failure over something that is not a resource table.
+    assertThat(
+        ComposePreviewTasks.missingAgpRClass(
+          insight("java.lang.ClassNotFoundException", "com.example.PreviewsKt")
+        )
+      )
+      .isNull()
+    // An R table named by a failure that is not about loading a class.
+    assertThat(
+        ComposePreviewTasks.missingAgpRClass(
+          insight("java.lang.IllegalStateException", "androidx.customview.poolingcontainer.R\$id")
+        )
+      )
+      .isNull()
+  }
 }

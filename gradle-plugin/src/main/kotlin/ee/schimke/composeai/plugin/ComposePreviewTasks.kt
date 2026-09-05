@@ -1993,6 +1993,58 @@ internal object ComposePreviewTasks {
    */
   internal const val CASCADE_DIAGNOSIS_PREFIX = "Cascade of the first native-load failure"
 
+  /** The two ways a JVM reports a class that is not on the classpath. */
+  private val CLASS_LOADING_EXCEPTIONS = setOf("ClassNotFoundException", "NoClassDefFoundError")
+
+  /**
+   * A class name of the shape AGP generates for Android resources — `<package>.R`, or one of its
+   * `R$id` / `R$style` nested tables — in either the dotted form `ClassNotFoundException` reports
+   * or the slashed form `NoClassDefFoundError` reports.
+   */
+  private val AGP_R_CLASS = Regex("""\b\w+(?:[./]\w+)*[./]R(?:\$\w+)?\b""")
+
+  /**
+   * The missing AGP resource table behind a class-loading failure, or null when the failure is
+   * something else.
+   *
+   * Worth singling out because it is never a broken preview and never looks like a classpath
+   * problem in the report: compose-ui reads `androidx.customview.poolingcontainer.R.id.*` from
+   * `PoolingContainer.<clinit>`, so on a library module whose merged unit-test `R.jar` is missing
+   * EVERY preview dies at class-init with the same `NoClassDefFoundError` and the per-preview list
+   * reads as if a thousand previews were each independently broken
+   * (yschimke/compose-preview-imports element-x, compose-ai-tools#5026).
+   */
+  internal fun missingAgpRClass(insight: RenderErrorInsight): String? {
+    val classLoadingFailure =
+      insight.exception.substringAfterLast('.') in CLASS_LOADING_EXCEPTIONS ||
+        insight.chain.split(" \u2192 ").any { it in CLASS_LOADING_EXCEPTIONS }
+    if (!classLoadingFailure) return null
+    return AGP_R_CLASS.find(insight.message)?.value?.replace('/', '.')
+  }
+
+  /**
+   * What to check when [missingAgpRClass] fired. The mechanism is the one [AndroidPreviewSupport]
+   * relies on (issue #136) and it is invisible from the outside: the jar is a raw file dependency
+   * on `<variant>UnitTestRuntimeClasspath` with no `artifactType`, so the render's attribute-
+   * filtered artifact view drops it and only AGP's own `test<Variant>UnitTest` task classpath
+   * carries it.
+   */
+  internal fun missingRClassHint(rClass: String): String =
+    "`$rClass` is an AGP-generated resource table, not preview code, so this is a classpath " +
+      "fault rather than a preview that is individually broken. On an Android library every " +
+      "Compose preview fails the same way when the merged unit-test R.jar is missing, because " +
+      "compose-ui reads androidx.customview.poolingcontainer.R.id.* from " +
+      "PoolingContainer.<clinit> at class-init." +
+      "\n  That jar is `build/intermediates/compile_and_runtime_r_class_jar/<variant>UnitTest/" +
+      "process<Variant>UnitTestResources/R.jar`. It reaches the render only through AGP's own " +
+      "`test<Variant>UnitTest` task classpath — it is a raw file dependency with no " +
+      "`artifactType`, so the render's filtered view of `<variant>UnitTestRuntimeClasspath` " +
+      "never sees it (issue #136)." +
+      "\n  Check, in order: that `test<Variant>UnitTest` exists for the rendered variant (run " +
+      "`composePreviewDoctor` to see which variant that is); that " +
+      "`process<Variant>UnitTestResources` ran; and that the jar it wrote actually contains " +
+      "$rClass."
+
   /**
    * Per-preview error-sidecar payload as the gradle plugin reads it. We mirror only the fields used
    * by [formatMissingPreviewsMessage]; the sidecar schema itself lives next to the renderer that
@@ -2190,6 +2242,12 @@ internal object ComposePreviewTasks {
         if (withSidecar.size > shown) {
           sb.append("\n  (+").append(withSidecar.size - shown).append(" more with sidecars)")
         }
+        // One line of the list above says `NoClassDefFoundError: androidx/customview/
+        // poolingcontainer/R$id` and the reader has no way to tell that from a broken preview.
+        // Name the mechanism once, for the first such failure — the rest are the same one.
+        insights.values
+          .firstNotNullOfOrNull { missingAgpRClass(it) }
+          ?.let { sb.append("\n\n").append(missingRClassHint(it)) }
       }
       if (withoutSidecar.isNotEmpty()) {
         sb
