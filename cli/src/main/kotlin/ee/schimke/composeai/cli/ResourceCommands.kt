@@ -115,6 +115,32 @@ data class ResourcePreviewResult(
 internal fun ResourcePreviewResult.anyChanged(): Boolean = captures.any { it.changed == true }
 
 /**
+ * `skipped` in [ResourceCaptureResult.errorStatus] — the renderer met a known degradation (an
+ * unsupported drawable form) rather than failing. The resource-side counterpart of `Capture
+ * .optional`: the missing PNG is expected, so the text tag says so instead of reading as a render
+ * failure (issue #5174).
+ */
+internal const val RESOURCE_ERROR_STATUS_SKIPPED = "skipped"
+
+/** Tag for one `show-resources` row — see `previewStatusTag` for the composable-side rule. */
+internal fun resourceStatusTag(r: ResourcePreviewResult): String =
+  when {
+    r.pngPath != null -> if (r.anyChanged()) " [changed]" else ""
+    r.captures.isNotEmpty() &&
+      r.captures.all { it.pngPath != null || it.errorStatus == RESOURCE_ERROR_STATUS_SKIPPED } ->
+      " [no PNG, skipped]"
+    else -> " [no PNG]"
+  }
+
+/** [resourceStatusTag] for one capture row of a multi-variant resource. */
+internal fun resourceCaptureStatusTag(c: ResourceCaptureResult): String =
+  when {
+    c.pngPath != null -> if (c.changed == true) " [changed]" else ""
+    c.errorStatus == RESOURCE_ERROR_STATUS_SKIPPED -> " [no PNG, skipped]"
+    else -> " [no PNG]"
+  }
+
+/**
  * Versioned envelope for `compose-preview show-resources --json`. Distinct schema from the
  * composable side (`compose-preview-show/v1`) so agents can dispatch on shape without inspecting
  * field names — bump the version when [ResourcePreviewResult]'s shape changes.
@@ -470,24 +496,14 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
         println("[${r.module}]")
         lastModule = r.module
       }
-      val statusTag =
-        when {
-          r.pngPath == null -> " [no PNG]"
-          r.anyChanged() -> " [changed]"
-          else -> ""
-        }
+      val statusTag = resourceStatusTag(r)
       val shaTag = r.sha256?.let { "  sha=${it.take(12)}" } ?: ""
       println("${r.id} (${r.type})$statusTag$shaTag")
       if (r.captures.size <= 1) {
         if (r.pngPath != null) println("  ${r.pngPath}")
       } else {
         for (c in r.captures) {
-          val tag =
-            when {
-              c.pngPath == null -> " [no PNG]"
-              c.changed == true -> " [changed]"
-              else -> ""
-            }
+          val tag = resourceCaptureStatusTag(c)
           val coord =
             listOfNotNull(c.variant?.qualifiers, c.variant?.shape).joinToString(" · ").ifEmpty {
               "default"
