@@ -1,0 +1,174 @@
+{
+  "$comment": [
+    "Golden table for the preview-selector rule: does one preview satisfy an invocation's",
+    "--id / --filter / --preview request? Two implementations answer it, in two repositories,",
+    "and nothing else pins them against each other (compose-ai-tools#5185):",
+    "  * previewIdMatchesRequest        — cli/.../Commands.kt, this repository",
+    "  * previewIdMatchesStandaloneRequest — server/.../StandaloneServerMain.kt,",
+    "    yschimke/compose-preview-server, which builds ServeCommandOptions itself now that",
+    "    `compose-preview serve` is a launcher (#5177) and no longer passes the CLI's rule in.",
+    "This file is that pin. Both suites run every case; a one-sided change to either rule turns",
+    "one of them red. Same shape as docs/daemon/protocol-fixtures/, and the same obligation:",
+    "change the rule, change the table, in the same PR.",
+    "A case with no className/functionName is a call site that only holds an id (a resolved id",
+    "list rather than a manifest entry) — the metadata forms of --preview cannot fire there."
+  ],
+  "cases": [
+    {
+      "name": "no selectors keep every preview",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": {},
+      "expected": true,
+      "why": "An unfiltered invocation renders the module."
+    },
+    {
+      "name": "--id matches its preview exactly",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview" },
+      "expected": true
+    },
+    {
+      "name": "--id is case-sensitive",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "homepreview" },
+      "expected": false,
+      "why": "Unlike --filter. An id is a name, not a search term."
+    },
+    {
+      "name": "--id is not a prefix rule",
+      "preview": { "id": "HomePreviewDark", "className": "com.example.HomeKt", "functionName": "HomePreviewDark" },
+      "selectors": { "exactId": "HomePreview" },
+      "expected": false,
+      "why": "Row addressing (Foo -> Foo_Crimson) is a separate pass; this predicate never widens --id."
+    },
+    {
+      "name": "--filter is a case-insensitive substring of the id",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "filter": "homeprev" },
+      "expected": true
+    },
+    {
+      "name": "--filter reads the id, not the class or function",
+      "preview": { "id": "HomePreview", "className": "com.example.SettingsKt", "functionName": "SettingsPreview" },
+      "selectors": { "filter": "Settings" },
+      "expected": false,
+      "why": "Only --preview consults the metadata."
+    },
+    {
+      "name": "an empty --filter excludes nothing",
+      "preview": { "id": "HomePreview" },
+      "selectors": { "filter": "" },
+      "expected": true,
+      "why": "Substring containment of the empty string. Pinned because the two rules must agree on it."
+    },
+    {
+      "name": "--preview takes an exact id",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "previewRef": "HomePreview" },
+      "expected": true
+    },
+    {
+      "name": "--preview takes the fully-qualified Class.function form",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "previewRef": "com.example.HomeKt.HomePreview" },
+      "expected": true,
+      "why": "The form `record --preview` and the Gradle --preview option accept; unreachable by substring."
+    },
+    {
+      "name": "the Class.function form needs both halves of the metadata",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt" },
+      "selectors": { "previewRef": "com.example.HomeKt.HomePreview" },
+      "expected": false,
+      "why": "No functionName, so the ref falls back to its id-only forms and none of them hold."
+    },
+    {
+      "name": "--preview takes a bare function name even when the id is decorated",
+      "preview": { "id": "Home_Crimson", "className": "com.example.HomeKt", "functionName": "Home" },
+      "selectors": { "previewRef": "Home" },
+      "expected": true
+    },
+    {
+      "name": "a bare function name matches on functionName alone, with no className",
+      "preview": { "id": "Row_1", "functionName": "Home" },
+      "selectors": { "previewRef": "Home" },
+      "expected": true,
+      "why": "The functionName form is independent of className in both rules. Pinned so it stays so."
+    },
+    {
+      "name": "--preview falls back to the case-insensitive substring rule",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "previewRef": "homeprev" },
+      "expected": true,
+      "why": "The loose form people already typed at --filter keeps working."
+    },
+    {
+      "name": "--preview matches more than one preview, deliberately",
+      "preview": { "id": "FooBar", "className": "com.example.FooKt", "functionName": "FooBar" },
+      "selectors": { "previewRef": "Foo" },
+      "expected": true,
+      "why": "The forms are OR'ed, not staged, so --preview Foo selects Foo and FooBar. Reach for --id for exactly one."
+    },
+    {
+      "name": "an unrelated --preview matches nothing",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "previewRef": "Settings" },
+      "expected": false
+    },
+    {
+      "name": "an empty --preview excludes nothing",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "previewRef": "" },
+      "expected": true,
+      "why": "Reaches the substring form, like an empty --filter."
+    },
+    {
+      "name": "--id and --filter intersect",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview", "filter": "home" },
+      "expected": true
+    },
+    {
+      "name": "--id does not override a --filter that misses",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview", "filter": "settings" },
+      "expected": false,
+      "why": "The selectors intersect. A precise selector does not promote a preview past a loose one."
+    },
+    {
+      "name": "--id and --preview intersect",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview", "previewRef": "com.example.HomeKt.HomePreview" },
+      "expected": true
+    },
+    {
+      "name": "--preview can exclude a preview that --id names",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview", "previewRef": "Settings" },
+      "expected": false
+    },
+    {
+      "name": "--filter and --preview intersect",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "filter": "home", "previewRef": "HomePreview" },
+      "expected": true
+    },
+    {
+      "name": "--filter can exclude a preview that --preview names exactly",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "filter": "settings", "previewRef": "HomePreview" },
+      "expected": false
+    },
+    {
+      "name": "all three selectors hold at once",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview", "filter": "PREVIEW", "previewRef": "com.example.HomeKt.HomePreview" },
+      "expected": true
+    },
+    {
+      "name": "one of three failing is enough to drop the preview",
+      "preview": { "id": "HomePreview", "className": "com.example.HomeKt", "functionName": "HomePreview" },
+      "selectors": { "exactId": "HomePreview", "filter": "PREVIEW", "previewRef": "Settings" },
+      "expected": false
+    }
+  ]
+}

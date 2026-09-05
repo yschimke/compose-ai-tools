@@ -1329,6 +1329,14 @@ internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
  * a manifest or a [PreviewResult] where the metadata is available, or from an already-resolved id
  * list where it isn't). They only affect `--preview`: without them the `Class.function` and bare
  * function-name forms can't be recognised and the ref falls back to its id-only forms.
+ *
+ * **This rule is stated twice.** `compose-preview serve` is a launcher (#5177), so the server
+ * builds its own `ServeCommandOptions` and answers the same question with
+ * `previewIdMatchesStandaloneRequest` in yschimke/compose-preview-server. The two live in separate
+ * repositories and are pinned against each other by a shared golden table,
+ * `docs/serve/preview-selector-fixtures.json`, which both suites run (#5185). Change the rule here
+ * and the table changes in the same PR, or the other side silently disagrees — and a preview that
+ * stops matching raises no error anywhere.
  */
 internal fun previewIdMatchesRequest(
   id: String,

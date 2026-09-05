@@ -7,6 +7,7 @@ After the split (#4732) two consumers live elsewhere:
 
   * yschimke/compose-preview-vscode    — the VS Code extension
   * yschimke/compose-preview-contracts — the published wire contracts
+  * yschimke/compose-preview-server    — the preview server behind `serve`
 
 Both pin a *released* version of this repository and vendor copies of what they
 need. Their own gates catch drift — but only against the release they pin, which
@@ -39,6 +40,7 @@ SENTINEL = "NO_CONTRACT_SURFACES"
 
 EXT = "yschimke/compose-preview-vscode"
 CONTRACTS = "yschimke/compose-preview-contracts"
+SERVER = "yschimke/compose-preview-server"
 
 # Each entry: the surface, the paths that constitute it, and per consumer what
 # that consumer has to do once this change is released. Keep the follow-ups
@@ -115,6 +117,27 @@ SURFACES: list[dict] = [
                 "**no gate covers it** — `--check` here compares only the Kotlin and C++ "
                 "mirrors, because this repository cannot write into that one. Regenerate it "
                 "there with `gen-spatial-scene.mjs --emit-typescript`."
+            ),
+        },
+    },
+    {
+        "name": "Preview selector fixtures",
+        "patterns": ["docs/serve/preview-selector-fixtures.json"],
+        "why": (
+            "The golden table for `--id` / `--filter` / `--preview`. Two implementations "
+            "answer that question — `previewIdMatchesRequest` here and "
+            "`previewIdMatchesStandaloneRequest` in the server, which builds "
+            "`ServeCommandOptions` itself now that `serve` is a launcher (#5177) — and this "
+            "table is the only thing pinning them together (#5185). The failure mode is "
+            "silent: a preview that stops matching produces no error, it is just absent."
+        ),
+        "consumers": {
+            SERVER: (
+                "vendors this at `docs/serve/preview-selector-fixtures.json` and runs it through "
+                "its own rule in `PreviewSelectorFixturesTest`. Its `selector-fixtures` CI job "
+                "diffs that copy against the compose-ai-tools release its `composeai-tools` "
+                "version pin names, so it goes red on the pin bump unless the same commit runs "
+                "`scripts/sync-preview-selector-fixtures.sh`."
             ),
         },
     },
