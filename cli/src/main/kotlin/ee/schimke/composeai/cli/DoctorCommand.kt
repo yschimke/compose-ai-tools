@@ -144,6 +144,7 @@ class DoctorCommand(
     checkOs()
     checkJava()
     checkPathJava()
+    checkArgEncoding()
     checkClaudeCloud()
 
     val projectDir = resolveProjectDir()
@@ -307,6 +308,44 @@ class DoctorCommand(
    * `scripts/install.sh` is the intended bootstrap path. Suppressed when no Claude cloud env vars
    * are set.
    */
+  /**
+   * Whether this JVM can carry a non-ASCII preview id across a process boundary (issue #5172).
+   *
+   * `sun.jnu.encoding` is what the JVM encodes process arguments with, and it comes from the
+   * process locale, not from `file.encoding`: a container with no locale configured, a CI runner,
+   * and most cloud agent sandboxes all run at `ANSI_X3.4-1968`. There, every non-ASCII character in
+   * an argument is replaced by `?` in transit — so a preview named `Cadence — Sync ready` used to
+   * fail a narrowed render with an id it could never match. The CLI now routes such ids through a
+   * file, but the Gradle daemon inherits the same locale, so the warning is still worth a line: it
+   * turns the next encoding-shaped failure into a preflight note.
+   */
+  private fun checkArgEncoding() {
+    val encoding = System.getProperty("sun.jnu.encoding") ?: System.getProperty("file.encoding")
+    val utf8 = encoding != null && runCatching { charset(encoding) }.getOrNull() == Charsets.UTF_8
+    addCheck(
+      DoctorCheck(
+        id = "env.arg-encoding",
+        category = "env",
+        status = if (utf8) "ok" else "warning",
+        message = "process argument encoding: ${encoding ?: "unknown"}",
+        detail =
+          if (utf8) null
+          else
+            "sun.jnu.encoding is not UTF-8, so non-ASCII characters (an em dash in a @Preview " +
+              "name, say) are replaced by '?' when they cross a process boundary. Renders still " +
+              "work; a Gradle daemon started under this locale can mangle preview ids it is " +
+              "asked for by name.",
+        remediation =
+          if (utf8) null
+          else
+            DoctorRemediation(
+              summary = "run with a UTF-8 locale (any UTF-8 locale the image has will do)",
+              commands = listOf("export LC_ALL=C.UTF-8 LANG=C.UTF-8", "compose-preview doctor"),
+            ),
+      )
+    )
+  }
+
   private fun checkClaudeCloud() {
     if (!inClaudeCloud) return
     val sessionId = System.getenv("CLAUDE_CODE_SESSION_ID").orEmpty()

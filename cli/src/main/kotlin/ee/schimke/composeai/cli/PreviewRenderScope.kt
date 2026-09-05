@@ -35,6 +35,14 @@ internal object PreviewRenderScope {
   const val GRADLE_PROPERTY: String = "composePreview.idFilter"
 
   /**
+   * The delimiter- and encoding-safe form of [GRADLE_PROPERTY]: a **path** to a newline-delimited
+   * UTF-8 list of the same patterns (issue #5172), the positive twin of
+   * `composePreview.idExcludeFile`. Used only when the comma-joined property cannot carry the
+   * selection — see [forRequest].
+   */
+  const val FILE_GRADLE_PROPERTY: String = "composePreview.idFilterFile"
+
+  /**
    * Mirror of `PreviewNameFilter.ANCHOR` — the prefix that makes a pattern an exact match rather
    * than a substring one. Load-bearing here: ids are hierarchical, so an unanchored `Button` would
    * also select `Button_Dark` and every `@PreviewParameter` row under it, quietly re-widening the
@@ -72,6 +80,9 @@ internal object PreviewRenderScope {
    * (`Foo`) because the render applies its id filter before expanding — see
    * `RenderPreviewsTask.render`.
    *
+   * [filesDir] is where the `$FILE_GRADLE_PROPERTY` fallback file is written when the comma-joined
+   * property can't carry the selection; `null` means the JVM temp dir. Tests pass their own.
+   *
    * Returns [FULL] when there is no request, when nothing matched (the caller renders no module at
    * all in that case), or when the request selects every discovered preview.
    */
@@ -82,6 +93,7 @@ internal object PreviewRenderScope {
     previewRef: String? = null,
     permutations: List<String> = emptyList(),
     rowAware: Boolean = true,
+    filesDir: java.io.File? = null,
   ): Scope {
     if (exactId == null && filter == null && previewRef == null) return FULL
     if (manifests.isEmpty()) return FULL
@@ -131,21 +143,77 @@ internal object PreviewRenderScope {
     if (selected.isEmpty()) return FULL
     if (selected.size == discovered) return FULL
 
+    val patterns = selected.filter(String::isNotBlank).map { ANCHOR + it }
+    if (patterns.isEmpty()) return FULL
+
     // `previewIdFilterProperty` splits the property on `,`, so an id carrying a comma would be torn
     // into two patterns that each match nothing — and a filter matching nothing *fails* the render.
     // No discovered id should contain one (ids derive from Kotlin identifiers and are
-    // path-sanitised), so this is a guard rather than a code path: decline the narrowing and render
-    // wide instead of breaking the run.
-    val unsafe = selected.filter { it.contains(',') || it.isBlank() }
-    if (unsafe.isNotEmpty()) {
-      return Scope(
-        note =
-          "could not narrow the Gradle render: ${unsafe.size} matching preview id(s) contain a " +
-            "comma, which $GRADLE_PROPERTY cannot express (e.g. '${unsafe.first()}')"
-      )
+    // path-sanitised), so this is a guard rather than a code path.
+    val joined = patterns.joinToString(",")
+    val commaSafe = patterns.none { it.contains(',') }
+    // Issue #5172 — process arguments are encoded with the JVM's `sun.jnu.encoding`, so on a
+    // C/POSIX-locale JVM (`ANSI_X3.4-1968`: containers, CI runners, cloud agent sandboxes) every
+    // non-ASCII character in this argument is replaced by `?` before Gradle ever sees it. A preview
+    // named `Cadence — Sync ready` then resolves to an id the render worker can never match, so the
+    // narrowed path failed for exactly the previews it was meant to speed up.
+    val argSafe = platformArgEncodable(joined)
+    if (commaSafe && argSafe) {
+      return Scope(gradleArgs = listOf("-P$GRADLE_PROPERTY=$joined"), renderedIds = renderedIds)
     }
 
-    val patterns = selected.joinToString(",") { ANCHOR + it }
-    return Scope(gradleArgs = listOf("-P$GRADLE_PROPERTY=$patterns"), renderedIds = renderedIds)
+    // Both problems are transport problems, and a UTF-8 file behind an ASCII path solves both: the
+    // path is what crosses the argument boundary, and newlines delimit ids a comma cannot. Mirrors
+    // `composePreview.idExcludeFile`, which exists for the comma half of the same story.
+    val file = writeIdFilterFile(patterns, filesDir)
+    if (file == null || !platformArgEncodable(file.path)) {
+      val why =
+        if (!commaSafe) "contain a comma, which $GRADLE_PROPERTY cannot express"
+        else "cannot be passed through this JVM's argument encoding ($PLATFORM_ARG_ENCODING)"
+      return Scope(
+        note =
+          "could not narrow the Gradle render: ${patterns.size} matching preview id(s) $why, and " +
+            "the $FILE_GRADLE_PROPERTY fallback was unusable (e.g. '${patterns.first()}')"
+      )
+    }
+    return Scope(
+      gradleArgs = listOf("-P$FILE_GRADLE_PROPERTY=${file.path}"),
+      renderedIds = renderedIds,
+    )
   }
+
+  /**
+   * The charset the JVM encodes process arguments (and environment) with — `sun.jnu.encoding`.
+   * Unrelated to `file.encoding`: it comes from the process locale, so a container with no locale
+   * configured runs at `ANSI_X3.4-1968` (US-ASCII) even on a JDK whose default charset is UTF-8.
+   */
+  internal val PLATFORM_ARG_ENCODING: String
+    get() = System.getProperty("sun.jnu.encoding") ?: System.getProperty("file.encoding") ?: "UTF-8"
+
+  /** Whether [value] survives the trip through [PLATFORM_ARG_ENCODING] unchanged. */
+  internal fun platformArgEncodable(value: String): Boolean =
+    runCatching { java.nio.charset.Charset.forName(PLATFORM_ARG_ENCODING) }
+      .getOrNull()
+      ?.newEncoder()
+      ?.canEncode(value) ?: true
+
+  /**
+   * Write [patterns] as a newline-delimited UTF-8 file for `-P$FILE_GRADLE_PROPERTY`, or `null`
+   * when the file can't be created (a read-only temp dir — the caller then renders wide rather than
+   * failing the run).
+   *
+   * Written under the JVM temp dir rather than the project's `build/`, because the project path is
+   * exactly as likely to be un-encodable as the ids are, and the path is what has to reach Gradle
+   * intact. Deleted on exit: the Gradle invocation reads it during configuration of the same run.
+   */
+  private fun writeIdFilterFile(patterns: List<String>, dir: java.io.File?): java.io.File? =
+    runCatching {
+      val file =
+        java.io.File.createTempFile("compose-preview-id-filter-", ".txt", dir).apply {
+          deleteOnExit()
+        }
+      file.writeText(patterns.joinToString("\n"), Charsets.UTF_8)
+      file
+    }
+    .getOrNull()
 }

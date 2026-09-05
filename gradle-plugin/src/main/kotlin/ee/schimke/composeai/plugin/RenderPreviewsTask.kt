@@ -1178,6 +1178,7 @@ internal fun selectNamedPreviews(
       append("composePreviewRender --preview matched no previews for ")
       append(cleaned.joinToString(", ") { "'$it'" })
       append(".")
+      appendEncodingHint(cleaned)
       appendManifestContext(previews, manifestPath)
       if (available.isEmpty()) {
         append(" This module has no discovered previews — run composePreviewDiscover to confirm.")
@@ -1230,6 +1231,7 @@ internal fun selectPreviewIds(
       append("composePreviewRender --preview-id matched no previews for ")
       append(cleaned.joinToString(", ") { "'$it'" })
       append(".")
+      appendEncodingHint(cleaned)
       appendManifestContext(manifestPreviews, manifestPath)
       if (available.isEmpty()) {
         append(" This module has no discovered previews — run composePreviewDiscover to confirm.")
@@ -1244,6 +1246,28 @@ internal fun selectPreviewIds(
         }
       }
     }
+  )
+}
+
+/**
+ * Names the likeliest cause when a filter that should have matched carries a `?` (issue #5172).
+ *
+ * Preview ids reach this task as process arguments, encoded with the JVM's `sun.jnu.encoding`. On a
+ * C/POSIX-locale JVM (`ANSI_X3.4-1968` — containers, CI runners, cloud agent sandboxes) every
+ * non-ASCII character is replaced by `?` in transit, so a preview named `Cadence — Sync ready` is
+ * asked for as `Cadence ? Sync ready` and can never match. Without this line the failure reads as a
+ * typo in a filter the caller never typed: `compose-preview --filter` resolves an ASCII request to
+ * full ids itself, and it is those ids that get mangled.
+ */
+private fun StringBuilder.appendEncodingHint(filters: List<String>) {
+  if (filters.none { it.contains('?') }) return
+  val encoding = System.getProperty("sun.jnu.encoding") ?: return
+  if (encoding.equals("UTF-8", ignoreCase = true)) return
+  append(
+    " A requested id contains '?' and this JVM encodes process arguments as $encoding, so a" +
+      " non-ASCII character in the id (an em dash, say) was replaced on the way in: re-run with a" +
+      " UTF-8 locale (LC_ALL=C.UTF-8) or pass the ids as -PcomposePreview.idFilterFile=<path to a" +
+      " newline-delimited UTF-8 list>."
   )
 }
 

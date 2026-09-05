@@ -1581,10 +1581,42 @@ internal object ComposePreviewTasks {
    * Android modules where several catalogs actually live.
    */
   internal fun previewIdFilterProperty(project: Project): Provider<List<String>> =
-    project.providers
-      .gradleProperty("composePreview.idFilter")
-      .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
+    previewIdFilterFileProperty(project)
+      .map { path ->
+        val file = java.io.File(path)
+        check(file.isFile) {
+          "composePreview.idFilterFile names '$path', which is not a readable file. Refusing to " +
+            "fall back to an unfiltered render, which would render every preview and look like " +
+            "success."
+        }
+        file.readLines(Charsets.UTF_8).map(String::trim).filter(String::isNotEmpty)
+      }
+      .orElse(
+        project.providers.gradleProperty("composePreview.idFilter").map { v ->
+          v.split(",").map(String::trim).filter(String::isNotEmpty)
+        }
+      )
       .orElse(emptyList())
+
+  /**
+   * `Provider<String>` for the `composePreview.idFilterFile` Gradle property — a **path** to a
+   * newline-delimited UTF-8 pattern list, the delimiter- and encoding-safe form of
+   * [previewIdFilterProperty] and the positive twin of [previewIdExcludeFileProperty].
+   *
+   * Exists for issue #5172: a JVM whose `sun.jnu.encoding` is not UTF-8 (a C/POSIX-locale
+   * container, a CI runner, a cloud agent sandbox — `ANSI_X3.4-1968`) replaces every non-ASCII
+   * character of a process argument with `?`, so `-PcomposePreview.idFilter==…_Cadence — Sync
+   * ready` reached the render as `…_Cadence ? Sync ready` and matched nothing, failing the task for
+   * exactly the previews the narrowing exists to speed up. A path is ASCII in practice and the file
+   * is read as UTF-8 here, inside the build, so the ids arrive intact — and, like the exclude file,
+   * it can carry an id containing a comma. Set by `compose-preview show --filter/--id`, which falls
+   * back to it only when the comma-joined property cannot carry the selection. When present it
+   * REPLACES `composePreview.idFilter`.
+   */
+  internal fun previewIdFilterFileProperty(project: Project): Provider<String> =
+    project.providers.gradleProperty("composePreview.idFilterFile").map(String::trim).filter {
+      it.isNotEmpty()
+    }
 
   /**
    * `Provider<List<String>>` for the `composePreview.idExclude` Gradle property — the

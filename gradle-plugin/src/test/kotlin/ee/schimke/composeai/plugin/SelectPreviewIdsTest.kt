@@ -96,6 +96,44 @@ class SelectPreviewIdsTest {
     assertThat(message).contains("FilledButton_Light")
   }
 
+  /**
+   * Issue #5172: `compose-preview --filter` resolves an ASCII request to full preview ids itself,
+   * so a `?` in the requested id is not something the caller typed — it is a non-ASCII character
+   * the platform argument encoding replaced in transit. Say that, or the failure reads as a typo in
+   * a filter nobody wrote.
+   */
+  @Test
+  fun `a mangled non-ASCII id names the argument encoding`() {
+    val previous = System.getProperty("sun.jnu.encoding")
+    System.setProperty("sun.jnu.encoding", "ANSI_X3.4-1968")
+    val thrown =
+      try {
+        selectPreviewIds(all, listOf("=FilledButton_Cadence ? Sync ready"))
+        null
+      } catch (e: GradleException) {
+        e
+      } finally {
+        if (previous == null) System.clearProperty("sun.jnu.encoding")
+        else System.setProperty("sun.jnu.encoding", previous)
+      }
+    val message = thrown!!.message!!
+    assertThat(message).contains("ANSI_X3.4-1968")
+    assertThat(message).contains("LC_ALL=C.UTF-8")
+    assertThat(message).contains("composePreview.idFilterFile")
+  }
+
+  @Test
+  fun `an unmatched ASCII id says nothing about encodings`() {
+    val thrown =
+      try {
+        selectPreviewIds(all, listOf("=NoSuchPreview"))
+        null
+      } catch (e: GradleException) {
+        e
+      }
+    assertThat(thrown!!.message).doesNotContain("argument")
+  }
+
   @Test
   fun `no match with no discovered previews explains the empty module`() {
     val thrown =
