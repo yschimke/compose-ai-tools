@@ -303,6 +303,14 @@
     "sha256": "06361724a0330d4ec6aba520a73caea4e3a783bde320821b471a0be7e4f38d28",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AnimatedPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.DefaultedGlanceWidgetPreview": {
+    "captureLabel": "",
+    "functionName": "DefaultedGlanceWidgetPreview",
+    "module": "samples:android",
+    "renderBasename": "DefaultedGlanceWidgetPreview-81c975f6.png",
+    "sha256": "ccffd263eea2664aa20634e9604f9c81b68360ad52eefac26dc40d2653b36c49",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget via helper API \u2014 4\u00d72": {
     "captureLabel": "",
     "functionName": "GlanceWeatherWidgetPreview",
