@@ -256,6 +256,63 @@ system's own. Because M3 role labels repeat across themes, that made a system's 
 whichever sheet the bundle happened to yield last; splitting them fixed the system set as well as
 adding the themes.
 
+### Themes an imported project cannot declare (`themes` in `catalog.spec.json`)
+
+Every mechanism above starts at a `@ThemeCatalog` provider, which is an annotation from this
+toolchain. An **import** — somebody else's repository, built by
+[`compose-preview-imports`](https://github.com/yschimke/compose-preview-imports) without their
+involvement — has no dependency on it and never will. So for as long as themes were annotation-only,
+every imported catalog served an **empty Theme control**: not because the upstream had one theme, but
+because nothing could say it had more. Pocket Casts ships nine palettes, Twine twelve, and
+Thunderbird's Bolt two brands crossed with light and dark; `preview.coo.ee` could show none of them,
+even though each import now publishes an executable live bundle that could re-render under any of
+them on request.
+
+A spec's `themes[]` closes it, the same way `groups` closes the missing `@CatalogComponent`
+annotations: the inventory is written down in the import, and
+[`generate-theme-catalogs.mjs`](../../scripts/design-artifacts/generate-theme-catalogs.mjs) writes
+the providers into the **throwaway checkout** before anything compiles — beside the module's own
+sources, so an `internal` theme composable (Twine's `AppTheme`) is reachable. Discovery then scans an
+ordinary module that declares its themes, and nothing downstream learns that an import exists: the
+chips, `?theme=theme:<providerFqn>`, and one `themes/<fqn>.dtcg.json` per theme all follow.
+
+An entry is a **shape**, not a snippet, because across fifteen imports the upstreams reach for the
+same four — and a shape carries what a snippet throws away: which themes are one family, which are
+light and which dark, and what a reviewer is agreeing to in the import's pull request. The shapes are
+in [`theme-adapters.mjs`](../../scripts/design-artifacts/theme-adapters.mjs), which is pure and
+unit-tested without an `npm ci`:
+
+| `kind` | The upstream shape | Seen in |
+| --- | --- | --- |
+| `enum` | one theme composable over an enum's constants — `AppThemeWithBackground(LIGHT) { }` | Pocket Casts (9), Twine (12) |
+| `functions` | a whole composable per theme — `ThunderbirdBoltTheme { }` | Thunderbird's Bolt (2 brands) |
+| `modes` | one composable with a boolean dark parameter — `ElementTheme(darkTheme = true) { }` | Element X, Bitwarden |
+| `arguments` | one composable, a named-argument list per theme | the general form of the three above |
+| `wrapper` | a raw Kotlin body | the escape hatch |
+
+```json
+"themes": [
+  { "kind": "enum", "group": "Pocket Casts",
+    "composable": "au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground",
+    "enum": "au.com.shiftyjelly.pocketcasts.ui.theme.Theme.ThemeType",
+    "values": ["LIGHT", "DARK", "EXTRA_DARK", "ELECTRIC"] }
+]
+```
+
+Two decisions worth stating, because both look like omissions:
+
+- **The constants are listed, not reflected.** Generation runs before the upstream compiles, so
+  there is nothing to reflect against — and a listed constant that does not exist fails the module's
+  compile *by name*, which is a better error than a catalog that is quietly one palette short.
+- **Nothing extra is baked.** The generated themes are a *live* axis: the switcher re-renders through
+  the published bundle and the serve host's theme cache, exactly as `modePriority`'s deferred
+  palettes do. Baking nine palettes × every component is the cost that design was built to avoid, and
+  an import — re-rendered nightly for a project we do not control — is the last place to pay it.
+
+First-party catalogs annotate their providers beside the code and omit `themes` entirely. The step
+runs for them too and is a no-op, so the seam is not import-only by construction; it is import-only
+by who needs it.
+
 ### Delivery-branch history
 
 Each publish **appends a commit on top of the branch tip** rather than

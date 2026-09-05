@@ -1755,7 +1755,56 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
-
+      # ---- Themes an imported project cannot declare for itself ---------------------------------
+      #
+      # A catalog's Theme control is fed by `@ThemeCatalog` providers, an annotation from this
+      # toolchain — so a project imported without its maintainers' involvement can never fill it,
+      # and every imported catalog served an empty control no matter how many palettes the upstream
+      # actually has (Pocket Casts nine, Twine twelve, Thunderbird's Bolt two brands). The spec
+      # describes them; this writes the providers into the throwaway checkout before anything
+      # compiles, and the rest of the pipeline sees an ordinary module that declares its themes.
+      #
+      # Runs for FIRST-PARTY callers too, and is a no-op for them: a spec that declares no `themes`
+      # exits having written nothing, so this needs no `upstream-repository` guard and a first-party
+      # catalog that ever wants a generated theme is not locked out of one.
+      - name: Generate declared theme providers
+        env:
+          SPEC: ${{ inputs.spec }}
+          MODULE: ${{ inputs.module }}
+          WORKDIR: ${{ inputs.working-directory }}
+          SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
+        run: |
+          set -euo pipefail
+          if ! grep -q '"themes"' "$SPEC"; then
+            echo "spec declares no themes — nothing to generate"
+            exit 0
+          fi
+          if [ -z "${MODULE:-}" ]; then
+            echo "::error::a spec declaring 'themes' must also name the 'module' the providers" \
+                 "compile into — they have to see the theme composables, which repository-wide" \
+                 "discovery cannot pick a home for."
+            exit 1
+          fi
+          # Same module-path resolution as the runtime-projects step: the derived path first, then
+          # whatever settings.gradle remaps `projectDir` to, because `project(":app").projectDir =
+          # file(...)` puts a module where its Gradle path does not say.
+          root="${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}"
+          derived="$(printf '%s' "${MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${root}settings.gradle" "${root}settings.gradle.kts" 2>/dev/null |
+              sed -n "s|.*project(['\"]${MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then derived="$remapped"; fi
+          module_dir="${root}${derived}"
+          [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
+          # The generated providers reference @ThemeCatalog, so the module needs the annotation
+          # artifact. Pinned to the CLI actually installed rather than written here a second time:
+          # the two ship from one release, and a hardcoded version would rot at the next one.
+          version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+          [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
+          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs" \
+            --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
         working-directory: compose-ai-tools
@@ -2682,6 +2731,56 @@ jobs:
           path: compose-ai-tools
           persist-credentials: false
 
+      # ---- Themes an imported project cannot declare for itself ---------------------------------
+      #
+      # A catalog's Theme control is fed by `@ThemeCatalog` providers, an annotation from this
+      # toolchain — so a project imported without its maintainers' involvement can never fill it,
+      # and every imported catalog served an empty control no matter how many palettes the upstream
+      # actually has (Pocket Casts nine, Twine twelve, Thunderbird's Bolt two brands). The spec
+      # describes them; this writes the providers into the throwaway checkout before anything
+      # compiles, and the rest of the pipeline sees an ordinary module that declares its themes.
+      #
+      # Runs for FIRST-PARTY callers too, and is a no-op for them: a spec that declares no `themes`
+      # exits having written nothing, so this needs no `upstream-repository` guard and a first-party
+      # catalog that ever wants a generated theme is not locked out of one.
+      - name: Generate declared theme providers
+        env:
+          SPEC: ${{ inputs.spec }}
+          MODULE: ${{ inputs.module }}
+          WORKDIR: ${{ inputs.working-directory }}
+          SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
+        run: |
+          set -euo pipefail
+          if ! grep -q '"themes"' "$SPEC"; then
+            echo "spec declares no themes — nothing to generate"
+            exit 0
+          fi
+          if [ -z "${MODULE:-}" ]; then
+            echo "::error::a spec declaring 'themes' must also name the 'module' the providers" \
+                 "compile into — they have to see the theme composables, which repository-wide" \
+                 "discovery cannot pick a home for."
+            exit 1
+          fi
+          # Same module-path resolution as the runtime-projects step: the derived path first, then
+          # whatever settings.gradle remaps `projectDir` to, because `project(":app").projectDir =
+          # file(...)` puts a module where its Gradle path does not say.
+          root="${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}"
+          derived="$(printf '%s' "${MODULE#:}" | tr ':' '/')"
+          remapped="$(
+            cat "${root}settings.gradle" "${root}settings.gradle.kts" 2>/dev/null |
+              sed -n "s|.*project(['\"]${MODULE}['\"])\.projectDir[[:space:]]*=[[:space:]]*[Ff]ile(['\"]\([^'\"]*\)['\"]).*|\1|p" |
+              head -1
+          )" || true
+          if [ -n "$remapped" ]; then derived="$remapped"; fi
+          module_dir="${root}${derived}"
+          [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
+          # The generated providers reference @ThemeCatalog, so the module needs the annotation
+          # artifact. Pinned to the CLI actually installed rather than written here a second time:
+          # the two ship from one release, and a hardcoded version would rot at the next one.
+          version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+          [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
+          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs" \
+            --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       # ---- The two embedded player lanes' harness, when a caller asked for them ----------------
       #
       # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and
