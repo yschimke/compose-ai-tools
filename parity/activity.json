@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T17:24:43.860Z",
+  "generatedAt": "2026-09-05T18:55:46.890Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "bf54588b24f2d800e6bec4d724626c918d382cc2",
+        "subject": "chore(main): release 1.82.0 (#5209)",
+        "at": "2026-09-05T19:27:53+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b8c8e5778d997589ec477099681c51fb18b7e6d8",
+        "subject": "feat(screen): express a scoped modifier, so a layout weight is generable (#5212)",
+        "at": "2026-09-05T19:19:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e7f54d3dee1508232fc4b508961337625abdc150",
+        "subject": "feat(cli): check the JVM the server will run on before launching it (#5211)",
+        "at": "2026-09-05T18:39:17+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "1af7bbf699a8f47a103de4add9bb27f6584e2658",
         "subject": "fix(design-artifacts): carry locator `scope` in the issue index, and mirror the producer (#5210)",
@@ -458,30 +482,6 @@
         "sha": "c6903ee175f7b0a1ac1dab7fd9cf13436ebbb7c2",
         "subject": "feat(render-host): bring the render host home from the preview server (#5137)",
         "at": "2026-09-05T08:43:23+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1db5da43cb14f180c50c46b4f20004a8f7f9d1f5",
-        "subject": "chore(main): release 1.76.0 (#5121)",
-        "at": "2026-09-05T08:29:32+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "919a47a4cd924855419878d5d6eb30287d5db1a9",
-        "subject": "fix(render): name the merged unit-test R.jar when a preview cannot load an R class (#5136)",
-        "at": "2026-09-05T08:27:14+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ebc8a9999d9f5948e077f92e6726375e9cea00c7",
-        "subject": "feat(screen-model): publish it, so a wasm builder can generate (#5134)",
-        "at": "2026-09-05T08:26:41+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
