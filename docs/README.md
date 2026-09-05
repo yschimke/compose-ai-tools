@@ -70,6 +70,7 @@ them — `:daemon:core`'s `bta/` package and the VS Code extension's daemon clie
 The `design/` tree used to hold many speculative proposals; what remains are the
 specs the code actually depends on:
 
+- [design/REPOSITORY_LAYERS.md](design/REPOSITORY_LAYERS.md) — **normative**: which repository a module belongs in. Four layers (contracts = shape; compose-ai-tools = offline behaviour; compose-preview-server = HTTP and the surfaces over it; vscode/xr = leaves), a dependency may only point down, and the consequences that follow — why the Gradle Tooling API is permanently compose-ai-tools', and why a fourth repository is not the answer to a misplaced module.
 - [design/SPATIAL_SCENE_CONTRACT.md](design/SPATIAL_SCENE_CONTRACT.md) — the XR scene wire format (schema-generated Kotlin/TS/C++ mirrors).
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
 - [design/USAGE_SNIPPET_CORPUS.md](design/USAGE_SNIPPET_CORPUS.md) — **measurement**: whether the Source panel's "plain Compose" actually compiles. Samples previews from real catalog checkouts, cleans them with each catalog's own rules, and compiles the result against a *consumer's* classpath (Compose + material3 only, deliberately not the catalog's). Records the current ratios, the failure taxonomy, and why one catalog's zero is structural rather than a missing rules file.
