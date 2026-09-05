@@ -26,6 +26,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "devices" to { a -> DevicesCommand(a).run() },
     "browse" to { a -> BrowseCommand(a).run() },
     "serve" to { a -> ServeCommand(a).run() },
+    "ui-builder" to { a -> UiBuilderCommand(a).run() },
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -141,7 +142,7 @@ private fun printUsage(full: Boolean = false) {
     Command groups (each command is also callable directly by its name):
       inspect   a11y · diff-semantics · devices · extensions · history · profile
       capture   render-matrix · record · bundle
-      share     serve · share-preview
+      share     serve · ui-builder · share-preview
       setup     update · init-script · pin · auth
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
@@ -212,6 +213,9 @@ private fun printFullUsage() {
                        serves them as PNGs with overrides, so you can open or share a network-local
                        link to a specific preview. Read-only; loopback by default, --lan to expose.
                        The shareable link carries an unguessable token (see `serve --help`).
+      ui-builder       Build this project's previews and open the Compose UI builder against
+                       them, so exported code calls your composables. Launches the preview
+                       server's `ui` command; see `ui-builder --help` for its options.
       share-preview    Share rendered previews (a markdown report + images, or a directory of
                        PNGs) somewhere openable. Picks the mechanism by what's available: a gist
                        when the GitHub CLI is installed + authenticated, otherwise a push to a

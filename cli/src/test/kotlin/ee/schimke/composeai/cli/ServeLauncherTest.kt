@@ -88,6 +88,23 @@ class ServeLauncherTest {
   fun `serve adds no browse defaults`() {
     assertFalse(argv().contains("--component-browser"))
   }
+
+  /**
+   * `ui-builder` launches the server's `ui` command and nothing else: unlike `browse` it adds no
+   * defaults here, because every choice `ui` implies is the server's — and the server is the half
+   * that knows where the packaged builder and the module's component record are.
+   */
+  @Test
+  fun `ui-builder launches the server's ui command with the caller's argv`() {
+    assertEquals(
+      listOf("/opt/compose-preview-server", "ui", "--module", "app", "--no-open"),
+      ServeCommand(
+          listOf("--module", "app", "--no-open"),
+          serverCommand = UiBuilderCommand.SERVER_COMMAND,
+        )
+        .launchCommand("/opt/compose-preview-server"),
+    )
+  }
 }
 
 class ServerBinaryDiscoveryTest {

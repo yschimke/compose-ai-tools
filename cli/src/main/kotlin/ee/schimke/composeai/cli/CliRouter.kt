@@ -43,7 +43,9 @@ internal object CliRouter {
       // half of `serve`, addressed over a pipe instead of linked in-process
       // (yschimke/compose-preview-server#180). Machine-facing rather than hidden — a command a
       // server spawns is still a command, and one that cannot be found is one nobody can debug.
-      "share" to listOf("serve", "build-host", "share-preview"),
+      // `ui-builder` joins them because all three are the same binary: `serve` hosts it,
+      // `build-host` is the Gradle half it spawns, and `ui-builder` launches its `ui` command.
+      "share" to listOf("serve", "ui-builder", "build-host", "share-preview"),
       "setup" to listOf("update", "init-script", "pin", "auth"),
     )
 
