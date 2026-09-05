@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.77.0](https://github.com/yschimke/compose-ai-tools/compare/v1.76.0...v1.77.0) (2026-09-05)
+
+
+### Features
+
+* **knobs:** add an enum knob kind so a closed value set keeps its picker ([#5142](https://github.com/yschimke/compose-ai-tools/issues/5142)) ([e662619](https://github.com/yschimke/compose-ai-tools/commit/e66261968364ddbe29397129c5e502572168db84))
+* **render-host:** bring the render host home from the preview server ([#5137](https://github.com/yschimke/compose-ai-tools/issues/5137)) ([c6903ee](https://github.com/yschimke/compose-ai-tools/commit/c6903ee175f7b0a1ac1dab7fd9cf13436ebbb7c2))
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-server to v2.21.0 ([#5140](https://github.com/yschimke/compose-ai-tools/issues/5140)) ([532ff52](https://github.com/yschimke/compose-ai-tools/commit/532ff52f4309e08e38fbff155eaf95d5d655cd6a))
+* **deps:** update dependency playwright to ^1.63.0 ([#5141](https://github.com/yschimke/compose-ai-tools/issues/5141)) ([b736d8f](https://github.com/yschimke/compose-ai-tools/commit/b736d8f988e478e3f577cc7442bfef7cf6ab56ca))
+* **deps:** update okio to v3.18.2 ([#5138](https://github.com/yschimke/compose-ai-tools/issues/5138)) ([02d10cd](https://github.com/yschimke/compose-ai-tools/commit/02d10cd480fefb9f11a2736b39990a24a78462a1))
+
 ## [1.76.0](https://github.com/yschimke/compose-ai-tools/compare/v1.75.0...v1.76.0) (2026-09-05)
 
 
