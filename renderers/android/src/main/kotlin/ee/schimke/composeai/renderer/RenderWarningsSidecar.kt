@@ -60,9 +60,18 @@ object RenderWarningsSidecar {
     imageLoads: List<CoilLoadDiagnostics.UnresolvedLoad> = emptyList(),
     unsettled: List<VisualSettleDiagnostics.UnsettledCapture> = emptyList(),
     pinned: List<VisualSettleDiagnostics.PinnedCapture> = emptyList(),
+    unlandedScrollSteps: List<ScrollDriveDiagnostics.UnlandedStep> = emptyList(),
+    unverifiedScrollSeams: List<ScrollDriveDiagnostics.UnverifiedSeam> = emptyList(),
     fileSystem: FileSystem = SystemFileSystem,
   ) {
-    if (fallbacks.isEmpty() && imageLoads.isEmpty() && unsettled.isEmpty() && pinned.isEmpty()) {
+    if (
+      fallbacks.isEmpty() &&
+        imageLoads.isEmpty() &&
+        unsettled.isEmpty() &&
+        pinned.isEmpty() &&
+        unlandedScrollSteps.isEmpty() &&
+        unverifiedScrollSeams.isEmpty()
+    ) {
       deleteStale(pngFile)
       return
     }
@@ -70,7 +79,16 @@ object RenderWarningsSidecar {
       val sidecar = pathFor(pngFile)
       sidecar.parentFile?.mkdirs()
       fileSystem.write(sidecar.path.toPath()) {
-        writeUtf8(encode(fallbacks, imageLoads, unsettled, pinned))
+        writeUtf8(
+          encode(
+            fallbacks,
+            imageLoads,
+            unsettled,
+            pinned,
+            unlandedScrollSteps,
+            unverifiedScrollSeams,
+          )
+        )
       }
     } catch (writeFailure: Throwable) {
       System.err.println(
@@ -88,16 +106,18 @@ object RenderWarningsSidecar {
   /**
    * The JSON body. Pure + internal so a unit test can assert the shape without touching disk.
    *
-   * `unresolvedImages`, `unsettledCaptures` and `phasePinnedCaptures` are additive: a reader that
-   * only knows about `fontFallbacks` (every reader that predates issue #2952) keeps working
-   * unchanged, and an empty array is still written when there are none of that kind so the shape is
-   * stable.
+   * `unresolvedImages`, `unsettledCaptures`, `phasePinnedCaptures`, `unlandedScrollSteps` and
+   * `unverifiedScrollSeams` are additive: a reader that only knows about `fontFallbacks` (every
+   * reader that predates issue #2952) keeps working unchanged, and an empty array is still written
+   * when there are none of that kind so the shape is stable.
    */
   internal fun encode(
     fallbacks: List<FontResolutionDiagnostics.FontFallback>,
     imageLoads: List<CoilLoadDiagnostics.UnresolvedLoad> = emptyList(),
     unsettled: List<VisualSettleDiagnostics.UnsettledCapture> = emptyList(),
     pinned: List<VisualSettleDiagnostics.PinnedCapture> = emptyList(),
+    unlandedScrollSteps: List<ScrollDriveDiagnostics.UnlandedStep> = emptyList(),
+    unverifiedScrollSeams: List<ScrollDriveDiagnostics.UnverifiedSeam> = emptyList(),
   ): String {
     val sb = StringBuilder()
     sb.append('{')
@@ -143,6 +163,38 @@ object RenderWarningsSidecar {
       sb.append("\"outcome\":").append(jsonString("phase_pinned")).append(',')
       sb.append("\"atMs\":").append(capture.atMs).append(',')
       sb.append("\"message\":").append(jsonString(VisualSettleDiagnostics.describe(capture)))
+      sb.append('}')
+    }
+    sb.append("],\"unlandedScrollSteps\":[")
+    unlandedScrollSteps.forEachIndexed { i, entry ->
+      if (i > 0) sb.append(',')
+      val step = entry.step
+      sb.append('{')
+      sb.append("\"role\":").append(jsonString(entry.role)).append(',')
+      sb.append("\"step\":").append(step.index).append(',')
+      sb.append("\"requestedPx\":").append(step.requestedPx).append(',')
+      sb.append("\"measuredPx\":")
+      if (step.measuredPx == null) sb.append("null") else sb.append(step.measuredPx)
+      sb.append(',')
+      sb.append("\"corrections\":").append(step.corrections).append(',')
+      sb.append("\"settled\":").append(step.settled).append(',')
+      sb.append("\"message\":").append(jsonString(ScrollDriveDiagnostics.describe(entry)))
+      sb.append('}')
+    }
+    sb.append("],\"unverifiedScrollSeams\":[")
+    unverifiedScrollSeams.forEachIndexed { i, entry ->
+      if (i > 0) sb.append(',')
+      val seam = entry.seam
+      sb.append('{')
+      sb.append("\"role\":").append(jsonString(entry.role)).append(',')
+      sb.append("\"seam\":").append(seam.index).append(',')
+      sb.append("\"verdict\":").append(jsonString(seam.verdict.name.lowercase())).append(',')
+      sb.append("\"hintPx\":").append(seam.hintPx).append(',')
+      sb.append("\"shiftPx\":").append(seam.shiftPx).append(',')
+      sb.append("\"overlapRows\":").append(seam.overlapRows).append(',')
+      sb.append("\"informativeRows\":").append(seam.informativeRows).append(',')
+      sb.append("\"residualPerPixel\":").append(seam.weightedSadPerPixel).append(',')
+      sb.append("\"message\":").append(jsonString(ScrollDriveDiagnostics.describe(entry)))
       sb.append('}')
     }
     sb.append("]}")

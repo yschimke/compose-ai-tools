@@ -139,10 +139,11 @@ class ScrollSliceStitcherTest {
       }
 
     val out = tmp.newFile("stitched_text.png")
-    stitchSlices(slices, viewport, out) ?: error("stitchSlices returned null")
+    val seams = mutableListOf<ScrollSeam>()
+    stitchSlices(slices, viewport, out) { seams += it } ?: error("stitchSlices returned null")
 
     val stitched = ImageIO.read(out)
-    assertEquals(500, stitched.height)
+    assertEquals(seams.joinToString("\n") { it.describe() }, 500, stitched.height)
     assertPixelsEqual(source, stitched)
   }
 

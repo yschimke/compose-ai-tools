@@ -95,6 +95,24 @@ fun driveScrollToEnd(
  *
  * Differs from [driveScrollToEnd] in that each step is a fixed size, not "all remaining" — the
  * caller wants a slice per viewport, not a single jump to the bottom.
+ *
+ * **Every step is verified against the content, not the scroller's word for it.** `ScrollBy`
+ * dispatches `animateScrollBy`, and a scroller's `ScrollAxisRange.value` is not a pixel position on
+ * a lazy list (a `LazyColumn` publishes `index × 500 + offset`; a Wear `ScalingLazyColumn` inherits
+ * that), so neither "did the spring land yet" nor "how far did the content move" can be read off
+ * the semantics range. Instead the driver snapshots the on-screen positions of the scrollable's
+ * descendant semantics nodes before the step ([ContentAnchors]), then after dispatching:
+ * 1. advances the paused clock frame by frame until those positions stop changing
+ *    ([SETTLE_MAX_FRAMES] bound), so a slice is never captured mid-animation;
+ * 2. measures how far the content actually travelled (the median displacement of the nodes seen on
+ *    both sides of the step) and, when that misses [stepPx] by more than [LANDING_TOLERANCE_PX]
+ *    while the scroller still has room, dispatches a corrective `ScrollBy` for the shortfall /
+ *    overshoot — up to [MAX_CORRECTIONS] times — until the slice sits where the plan put it.
+ *
+ * The offset handed to [onSlice] is the *measured* cumulative travel whenever anchors were
+ * available, so the stitcher's hint is the truth about the pixels rather than an estimate. Every
+ * step's outcome is reported to [onStep] (see [ScrollStep]) so the caller can surface a step that
+ * never landed as a render warning instead of a silently mis-stitched seam.
  */
 @Suppress("LongParameterList")
 fun driveScrollByViewport(
@@ -104,6 +122,9 @@ fun driveScrollByViewport(
   maxScrollPx: Int,
   maxIterations: Int = DEFAULT_MAX_ITERATIONS,
   advanceMsPerStep: Long = DEFAULT_ADVANCE_MS_PER_STEP,
+  onStep: ((ScrollStep) -> Unit)? = null,
+  /** Verbose per-frame trace of the anchor bookkeeping, for a developer keeping slices. */
+  trace: ((String) -> Unit)? = null,
   onSlice: (scrolledPx: Float) -> Unit,
 ): ScrollDriveResult {
   require(stepPx > 0f) { "stepPx must be positive, got $stepPx" }
@@ -130,7 +151,7 @@ fun driveScrollByViewport(
   // past its cap by up to a full stride.
   var scrolledPx = 0f
   var dispatchedPx = 0f
-  repeat(maxIterations) {
+  repeat(maxIterations) { iteration ->
     val node = interaction.fetchSemanticsNode()
     val range: ScrollAxisRange =
       node.config.getOrNull(axisKey) ?: return ScrollDriveResult.Completed(scrolledPx)
@@ -152,26 +173,235 @@ fun driveScrollByViewport(
     // truncating a long list. Wear's `TransformingLazyColumn` reports a true extent from the first
     // frame and was never affected; it keeps its exact strides through [creditedPx].
     val before = range.value()
+    val anchorsBefore = ContentAnchors.snapshot(interaction, axis)
+    trace?.invoke("step $iteration before: ${ContentAnchors.describe(anchorsBefore)}")
     val step = minOf(stepPx, headroom)
-    val (dx, dy) =
-      when (axis) {
-        ScrollAxis.VERTICAL -> 0f to step
-        ScrollAxis.HORIZONTAL -> step to 0f
-      }
-    scrollByAction.invoke(dx, dy)
+    dispatchScrollBy(scrollByAction, axis, step)
     dispatchedPx += step
     rule.mainClock.advanceTimeBy(advanceMsPerStep)
+    var settle = ContentAnchors.settle(rule, interaction, axis, trace)
+
+    // Verify the landing against the pixels the content actually moved, and correct it.
+    var measured = ContentAnchors.displacement(anchorsBefore, settle.anchors)
+    trace?.invoke(
+      "step $iteration after: ${ContentAnchors.describe(settle.anchors)} measured=$measured " +
+        "deltas=${ContentAnchors.deltas(anchorsBefore, settle.anchors)}"
+    )
+    var corrections = 0
+    var correctedPx = 0f
+    while (
+      measured != null &&
+        kotlin.math.abs(measured - step) > LANDING_TOLERANCE_PX &&
+        corrections < MAX_CORRECTIONS
+    ) {
+      val shortfall = step - measured
+      // Fell short because the content ran out, not because the spring is still travelling:
+      // accept the clamped landing.
+      if (shortfall > 0f && remainingOf(interaction, axisKey) <= SETTLED_EPSILON_PX) break
+      dispatchScrollBy(scrollByAction, axis, shortfall)
+      correctedPx += shortfall
+      corrections++
+      rule.mainClock.advanceTimeBy(advanceMsPerStep)
+      settle = ContentAnchors.settle(rule, interaction, axis, trace)
+      measured = ContentAnchors.displacement(anchorsBefore, settle.anchors)
+      trace?.invoke(
+        "step $iteration correction $corrections by $shortfall: " +
+          "${ContentAnchors.describe(settle.anchors)} measured=$measured " +
+          "deltas=${ContentAnchors.deltas(anchorsBefore, settle.anchors)}"
+      )
+    }
 
     val after = interaction.fetchSemanticsNode().config.getOrNull(axisKey)?.value?.invoke()
-    scrolledPx += creditedPx(before, after, step)
+    val credited = measured ?: creditedPx(before, after, step)
+    val landed =
+      measured == null ||
+        kotlin.math.abs(measured - step) <= LANDING_TOLERANCE_PX ||
+        remainingOf(interaction, axisKey) <= SETTLED_EPSILON_PX
+    onStep?.invoke(
+      ScrollStep(
+        index = iteration,
+        requestedPx = step,
+        measuredPx = measured,
+        reportedPx = if (after == null) null else after - before,
+        corrections = corrections,
+        correctedPx = correctedPx,
+        settleFrames = settle.frames,
+        settled = settle.settled,
+        landed = landed,
+        anchors = settle.anchors.size,
+      )
+    )
+    scrolledPx += credited
     // Nothing moved ⇒ the content end, so don't emit another slice of the same frame.
-    if (after != null && kotlin.math.abs(after - before) <= SETTLED_EPSILON_PX) {
-      return ScrollDriveResult.Completed(scrolledPx)
-    }
+    val moved =
+      if (measured != null) kotlin.math.abs(measured) > SETTLED_EPSILON_PX
+      else after == null || kotlin.math.abs(after - before) > SETTLED_EPSILON_PX
+    if (!moved) return ScrollDriveResult.Completed(scrolledPx)
 
     onSlice(scrolledPx)
   }
   return ScrollDriveResult.IterationCapReached(scrolledPx)
+}
+
+/**
+ * What one stride of [driveScrollByViewport] did, for the caller's diagnostics.
+ *
+ * [measuredPx] is how far the content really moved, read off the descendant semantics bounds
+ * ([ContentAnchors]); `null` when the scrollable exposes no measurable descendants (then the driver
+ * falls back to the scroller's own [reportedPx] / the requested stride, exactly as before).
+ * [landed] is false only when the step measurably missed [requestedPx] after every correction and
+ * the scroller still had room — the one case the stitched seam cannot be trusted.
+ */
+data class ScrollStep(
+  val index: Int,
+  val requestedPx: Float,
+  val measuredPx: Float?,
+  val reportedPx: Float?,
+  val corrections: Int,
+  val correctedPx: Float,
+  val settleFrames: Int,
+  val settled: Boolean,
+  val landed: Boolean,
+  val anchors: Int,
+) {
+  /** One-line, human-readable summary for logs and the warnings sidecar. */
+  fun describe(): String =
+    "step $index: requested ${"%.1f".format(java.util.Locale.ROOT, requestedPx)}px, " +
+      (if (measuredPx == null) "content unmeasured (no anchors)"
+      else "content moved ${"%.1f".format(java.util.Locale.ROOT, measuredPx)}px") +
+      (if (corrections > 0)
+        " after $corrections correction(s) (${"%.1f".format(java.util.Locale.ROOT, correctedPx)}px)"
+      else "") +
+      (if (reportedPx != null)
+        ", scroller reported ${"%.1f".format(java.util.Locale.ROOT, reportedPx)}"
+      else "") +
+      ", settled in $settleFrames frame(s)" +
+      (if (!settled) " (still moving)" else "") +
+      (if (!landed) " — DID NOT LAND" else "")
+}
+
+private fun dispatchScrollBy(
+  scrollByAction: (Float, Float) -> Boolean,
+  axis: ScrollAxis,
+  deltaPx: Float,
+) {
+  val (dx, dy) =
+    when (axis) {
+      ScrollAxis.VERTICAL -> 0f to deltaPx
+      ScrollAxis.HORIZONTAL -> deltaPx to 0f
+    }
+  scrollByAction.invoke(dx, dy)
+}
+
+private fun remainingOf(
+  interaction: androidx.compose.ui.test.SemanticsNodeInteraction,
+  axisKey: androidx.compose.ui.semantics.SemanticsPropertyKey<ScrollAxisRange>,
+): Float {
+  val range = interaction.fetchSemanticsNode().config.getOrNull(axisKey) ?: return 0f
+  return (range.maxValue() - range.value()).coerceAtLeast(0f)
+}
+
+/**
+ * The on-screen positions of a scrollable's descendant semantics nodes, keyed by node id — the only
+ * pixel-accurate account of where the content is that a lazy list offers. Semantics ids are stable
+ * for as long as a composable stays composed, so a node present before and after a scroll pins the
+ * exact distance the content travelled, whatever the scroller's `ScrollAxisRange` says.
+ */
+internal object ContentAnchors {
+  /**
+   * The outcome of [settle]: the last snapshot, how many frames it took, and whether it stopped.
+   */
+  data class Settled(val anchors: Map<Int, Float>, val frames: Int, val settled: Boolean)
+
+  /**
+   * Leading edge (top for vertical, left for horizontal) of every descendant, by semantics id.
+   *
+   * Read off `positionInRoot`, never `boundsInRoot`: the latter is clipped to the ancestors'
+   * bounds, so an item sliding out under the top edge of the viewport reports `top = 0` however far
+   * it has gone, and its displacement saturates at wherever it started. Measured on horologist's
+   * sectioned list: three of four tracked items had been clipped that way, the median "moved 292"
+   * against a real 307, and every correction the driver then sent moved the content another 15 px
+   * without the measurement changing at all.
+   */
+  fun snapshot(
+    interaction: androidx.compose.ui.test.SemanticsNodeInteraction,
+    axis: ScrollAxis,
+  ): Map<Int, Float> {
+    val out = HashMap<Int, Float>()
+    fun walk(node: androidx.compose.ui.semantics.SemanticsNode) {
+      for (child in node.children) {
+        val size = child.size
+        if (size.width > 0 && size.height > 0) {
+          val position = child.positionInRoot
+          out[child.id] = if (axis == ScrollAxis.VERTICAL) position.y else position.x
+        }
+        walk(child)
+      }
+    }
+    walk(interaction.fetchSemanticsNode())
+    return out
+  }
+
+  /**
+   * Advances the paused clock one frame at a time until two consecutive snapshots agree (every node
+   * seen in both within [SETTLED_EPSILON_PX]), or [SETTLE_MAX_FRAMES] is spent.
+   */
+  fun settle(
+    rule: AndroidComposeTestRule<*, *>,
+    interaction: androidx.compose.ui.test.SemanticsNodeInteraction,
+    axis: ScrollAxis,
+    trace: ((String) -> Unit)? = null,
+  ): Settled {
+    var previous = snapshot(interaction, axis)
+    repeat(SETTLE_MAX_FRAMES) { frame ->
+      rule.mainClock.advanceTimeByFrame()
+      val current = snapshot(interaction, axis)
+      trace?.invoke("  settle frame ${frame + 1}: ${describe(current)}")
+      if (stable(previous, current)) return Settled(current, frame + 1, settled = true)
+      previous = current
+    }
+    return Settled(previous, SETTLE_MAX_FRAMES, settled = false)
+  }
+
+  /** Compact `id@pos` listing of [anchors], sorted by id, for [driveScrollByViewport]'s trace. */
+  fun describe(anchors: Map<Int, Float>): String =
+    anchors.entries
+      .sortedBy { it.key }
+      .joinToString(" ") { "${it.key}@${"%.1f".format(java.util.Locale.ROOT, it.value)}" }
+
+  /** Every per-node delta between two snapshots, for the trace. */
+  fun deltas(before: Map<Int, Float>, after: Map<Int, Float>): String =
+    before.entries
+      .sortedBy { it.key }
+      .mapNotNull { (id, pos) -> after[id]?.let { "$id:${"%.1f".format(pos - it)}" } }
+      .joinToString(" ")
+
+  private fun stable(a: Map<Int, Float>, b: Map<Int, Float>): Boolean {
+    var common = 0
+    for ((id, pos) in a) {
+      val other = b[id] ?: continue
+      common++
+      if (kotlin.math.abs(pos - other) > SETTLED_EPSILON_PX) return false
+    }
+    // No shared node between two frames means the whole population was replaced — a lazy list
+    // mid-fling — so that is not stability either, unless there is simply nothing to compare.
+    return common > 0 || (a.isEmpty() && b.isEmpty())
+  }
+
+  /**
+   * Median distance the content travelled between two snapshots, positive in the scroll direction;
+   * `null` when no node is present in both (nothing to measure against).
+   */
+  fun displacement(before: Map<Int, Float>, after: Map<Int, Float>): Float? {
+    val deltas = ArrayList<Float>()
+    for ((id, pos) in before) {
+      val now = after[id] ?: continue
+      deltas += pos - now
+    }
+    if (deltas.isEmpty()) return null
+    deltas.sort()
+    return deltas[deltas.size / 2]
+  }
 }
 
 /**
@@ -333,6 +563,25 @@ private fun creditedPx(before: Float, after: Float?, requested: Float): Float {
 
 private const val DEFAULT_MAX_ITERATIONS = 30
 private const val DEFAULT_ADVANCE_MS_PER_STEP = 250L
+
+/**
+ * How far a measured landing may miss the requested stride before [driveScrollByViewport] sends a
+ * corrective `ScrollBy`. One layout pixel: the stitcher only needs the hint to be close, but a
+ * stride that is short by a whole item because the spring had not landed is a mis-stitched seam.
+ */
+private const val LANDING_TOLERANCE_PX = 1f
+
+/**
+ * Corrective strides per step. Two is plenty for a spring tail; more is a scroller fighting back.
+ */
+private const val MAX_CORRECTIONS = 3
+
+/**
+ * Frames of paused-clock time [ContentAnchors.settle] will spend waiting for the content to stop
+ * moving after a `ScrollBy` — about a second at 16 ms, the same order as the post-scroll settle the
+ * renderer already grants an EdgeButton reveal.
+ */
+private const val SETTLE_MAX_FRAMES = 60
 
 // Sub-pixel remainder from fractional density scaling shouldn't keep us spinning.
 private const val SETTLED_EPSILON_PX = 0.5f
