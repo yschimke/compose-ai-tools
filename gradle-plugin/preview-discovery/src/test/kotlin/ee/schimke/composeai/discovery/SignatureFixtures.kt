@@ -21,6 +21,19 @@ fun scopedSlotComponent(content: @Composable TestRowScope.(Int) -> Unit) {}
 
 class TestRowScope
 
+/**
+ * The shape `LazyColumn` has: a receiver lambda that is **not** `@Composable`, whose children are
+ * declared through members of the receiver rather than composed into it.
+ */
+@Suppress("unused", "UNUSED_PARAMETER")
+fun scopeDslComponent(content: TestListScope.() -> Unit) {}
+
+/** An ordinary callback, to prove the signal is about the receiver and not about being a lambda. */
+@Suppress("unused", "UNUSED_PARAMETER")
+fun callbackComponent(onValueChange: (String) -> Unit) {}
+
+class TestListScope
+
 @Suppress("unused") fun noParams() {}
 
 /**

@@ -297,6 +297,29 @@ class ComposableSignatureTest {
     assertThat(content.name).isEqualTo("content")
     assertThat(content.type).isEqualTo("TestRowScope.(Int) -> Unit")
     assertThat(content.composableSlot).isTrue()
+    // A composable slot is not a scope DSL. The two are filled in opposite ways — children
+    // composed in, versus children declared through the receiver — so a consumer that conflated
+    // them would emit `item { … }` inside a `RowScope`.
+    assertThat(content.scopeDslReceiver).isNull()
+  }
+
+  @Test
+  fun `a non-composable receiver lambda records its scope, which is what a lazy list needs`() {
+    // `LazyColumn(content: LazyListScope.() -> Unit)` is this shape. It is not a `@Composable`
+    // slot, so `composableSlot` is false and a generator reading only that refuses the whole
+    // container; the receiver is what says the children are `item { … }` rather than composables.
+    val content = parametersOf("scopeDslComponent").single()
+
+    assertThat(content.composableSlot).isFalse()
+    assertThat(content.scopeDslReceiver)
+      .isEqualTo("ee.schimke.composeai.discovery.TestListScope")
+  }
+
+  @Test
+  fun `an ordinary callback is not a scope DSL`() {
+    // The signal is the receiver, not the lambda. `(String) -> Unit` has no receiver, so nothing
+    // is in scope inside it and there is no member a child could be wrapped in.
+    assertThat(parametersOf("callbackComponent").single().scopeDslReceiver).isNull()
   }
 
   // --- constructibility of a required parameter's type (issue #5067) ----------------------------

@@ -588,7 +588,7 @@ object ScreenGenerator {
         val rejected =
           when {
             parameter == null -> "`${record.symbol.name}` has no slot `$slot`"
-            !parameter.composableSlot ->
+            !fillable(parameter, node.slotItems[slot]) ->
               "`${record.symbol.name}`.`$slot` is a parameter, not a @Composable slot"
             else -> null
           }
@@ -601,6 +601,17 @@ object ScreenGenerator {
           children.forEach { node(it, depth + 1) }
         }
       }
+      // A wrapper for a slot the node does not fill names nothing. The emission below reads
+      // `slotItems` only where there are children, so an unmatched key would be dropped in
+      // silence — and a document that says `item` about the wrong slot is exactly the stale
+      // document every other refusal here exists to name.
+      node.slotItems.keys
+        .filterNot { it in node.slots }
+        .sorted()
+        .forEach {
+          reasons +=
+            "`${record.symbol.name}`.`$it` wraps its children in a slot item and has no children"
+        }
 
       val arguments = mutableListOf<String>()
       // A handler naming a parameter the component does not declare is refused here rather than
@@ -637,13 +648,13 @@ object ScreenGenerator {
             if (children != null) {
               reasons +=
                 "`${record.symbol.name}`.`${parameter.name}` is set as both a value and a slot"
-              if (parameter.composableSlot) {
+              if (fillable(parameter, node.slotItems[parameter.name])) {
                 children.forEach { node(it, depth + 1) }
               }
             }
           }
           children != null &&
-            parameter.composableSlot &&
+            fillable(parameter, node.slotItems[parameter.name]) &&
             !ComponentSnippets.acceptsBareLambda(parameter.type) -> {
             // `code.call` may have been emittable only because this slot was defaulted away. A
             // `(Int, Int) -> Unit` or `() -> String` slot cannot be satisfied by `{ children }`.
@@ -654,12 +665,30 @@ object ScreenGenerator {
             // unresolved id and a slot the component never declared. All three now walk on.
             children.forEach { node(it, depth + 1) }
           }
-          children != null && parameter.composableSlot -> {
+          children != null && fillable(parameter, node.slotItems[parameter.name]) -> {
+            // A DSL slot declares its children through its receiver rather than composing them —
+            // `item { … }` inside a `LazyListScope` — so the wrapper, when the document names one,
+            // is resolved and checked before anything is emitted. See [SlotItem].
+            val declared = node.slotItems[parameter.name]
+            val wrapper = declared?.let { slotItem(it, parameter, record.symbol.name) }
+            if (declared != null && wrapper == null) {
+              // The fifth branch that rejects a node and would otherwise drop its subtree.
+              children.forEach { node(it, depth + 1) }
+              continue
+            }
             val outer = slotScope
-            slotScope = parameter.composableSlotReceiver
+            // Inside a wrapper the receiver is the wrapper's own, which nothing attests, so the
+            // children sit under no scope and a scoped link there refuses by name — the honest
+            // answer, and the one [SlotItem] documents.
+            slotScope = if (wrapper == null) parameter.composableSlotReceiver else null
+            val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
-                children.joinToString("\n") { node(it, depth + 1) }
+                if (wrapper == null) children.joinToString("\n") { node(it, depth + 1) }
+                else
+                  children.joinToString("\n") { child ->
+                    "$inner$wrapper {\n${node(child, depth + 2)}\n$inner}"
+                  }
               } finally {
                 slotScope = outer
               }
@@ -692,6 +721,48 @@ object ScreenGenerator {
           ComponentSnippets.escapeIfKeyword(record.symbol.name)
         else qualified
       return "$pad$name(${arguments.joinToString(", ")})"
+    }
+
+    /**
+     * Whether this parameter can take children at all.
+     *
+     * A `@Composable` slot always can. A **scope DSL** — `LazyColumn`'s `content: LazyListScope.()
+     * -> Unit`, which is a receiver lambda and not `@Composable` — can only when the document says
+     * how, because its children are declared through the receiver rather than composed into it.
+     * Without a [SlotItem] there is nothing to write them as, and the honest answer is the refusal
+     * a lazy container got before any of this existed.
+     */
+    private fun fillable(parameter: TargetParameter, item: SlotItem?): Boolean =
+      parameter.composableSlot || (item != null && parameter.scopeDslReceiver != null)
+
+    /**
+     * The call each of a DSL slot's children is wrapped in — `item`, `item(key = "a")` — or null
+     * having recorded why this one cannot be written.
+     *
+     * The scope check is the whole point. `item` is a member of `LazyListScope` supplied by the
+     * lambda's receiver, so it is never imported and resolves only inside a slot that composes
+     * under exactly that type; a document claiming it about a `ColumnScope` slot would otherwise
+     * emit an unresolved reference the generator had already called compilable. The same argument
+     * [ChainLink.receiverScopeFqn] makes for a scoped modifier, one level out.
+     */
+    private fun slotItem(
+      item: SlotItem,
+      parameter: TargetParameter,
+      component: String,
+    ): String? {
+      val where = "`$component`.`${parameter.name}`"
+      val scope = parameter.scopeDslReceiver ?: parameter.composableSlotReceiver
+      if (scope != item.receiverScopeFqn) {
+        reasons +=
+          "$where wraps its children in `${item.callable}`, which is declared on " +
+            "`${item.receiverScopeFqn}`, and this slot composes under " +
+            (scope?.let { "`$it`" } ?: "no receiver")
+        return null
+      }
+      val callable = name(item.callable, where) ?: return null
+      if (item.positional.isEmpty() && item.named.isEmpty()) return callable
+      val arguments = arguments(item.positional, item.named, where, 0) ?: return null
+      return "$callable($arguments)"
     }
 
     /**

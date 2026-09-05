@@ -860,6 +860,51 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > content slot instead, and widening that is a separate decision about what counts as
 > a component.
 >
+> **A slot whose children are a DSL, not a composition.** `ScreenNode.slots` emits
+> `parameter = { child; child }`, which is exactly what a `@Composable () -> Unit`
+> takes and is wrong for a whole family of containers. `LazyColumn`'s `content` is a
+> `LazyListScope.() -> Unit`: the lambda's *type* is satisfied by a bare `{ … }`, so
+> nothing refused, and the children of a lazy list are not composed in it — they are
+> declared with `item { … }`, a member of the receiver. The generated file would have
+> compiled in the generator's own head and failed on `Text` being unresolvable in a
+> `LazyListScope`.
+>
+> The consequence downstream was not a missing table row. Five of the m3 catalog's
+> layout containers — both lazy lists, the lazy grid, the carousel and the supporting
+> pane scaffold — had **no component record at all**, and the reason given for each was
+> the same one: the slot is a scope's DSL
+> ([compose-preview-server#394](https://github.com/yschimke/compose-preview-server/issues/394)).
+> A list is not an exotic screen, and a vocabulary that cannot write one is not
+> finished.
+>
+> `ScreenNode.slotItems` is the shape that was missing: per slot, the `SlotItem` each
+> child is wrapped in — a member name and the scope declaring it. It is
+> `ChainLink.receiverScopeFqn` one level out and earns its keep the same way. `item` is
+> supplied by the lambda's receiver, so it is never imported and resolves only inside a
+> slot composing under exactly that type; the generator compares the claim against the
+> slot's own recorded receiver and refuses a mismatch by name rather than taking a
+> projection's word for it. One wrapper per child, because `item { a; b }` is a single
+> list entry holding two composables, which is a different screen from the two-row list
+> somebody designed.
+>
+> **The record had to learn to say it.** `LazyColumn`'s `content` is not `@Composable` —
+> a `LazyListScope.() -> Unit` is an ordinary receiver lambda — so `composableSlot` was
+> false and the container refused as "a parameter, not a @Composable slot" before the
+> emission question was ever reached. `TargetParameter.scopeDslReceiver` is the
+> structural signal that separates a scope DSL from an ordinary callback, read from
+> `kotlin/ExtensionFunctionType` on the metadata type rather than from `type`'s
+> spelling — the rule `nullable` and `typeFqn` were both introduced for. A slot is
+> fillable through a `SlotItem` only when it carries one, and a scope-DSL slot with no
+> `SlotItem` stays refused, which is the honest answer: the generator has nothing to
+> write the children as.
+>
+> What it deliberately does not carry is the receiver of the wrapper's **own** trailing
+> lambda. `LazyListScope.item` composes its body under a `LazyItemScope`, which is what
+> `Modifier.fillParentMaxWidth` needs, and no record attests it — so a child inside an
+> item sits under no receiver as far as the generator is concerned and a scoped link
+> there refuses exactly as one at the root does. A field claiming it would be a second
+> fact taken on trust, and the check above exists to have one fewer.
+>
 > **Six ways the compile claim was wider than the record could justify.** Persisting
 > the call site drew a review pass over the guarantee itself, and every one of these
 > was real. They share a root cause worth naming: `callSite` was deciding from a

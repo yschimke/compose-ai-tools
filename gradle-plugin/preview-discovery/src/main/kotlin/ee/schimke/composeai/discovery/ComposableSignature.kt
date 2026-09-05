@@ -401,6 +401,11 @@ internal object ComposableSignature {
 
   private fun KmValueParameter.toTargetParameter(): TargetParameter {
     val slot = isComposableFunctionType(type)
+    // A receiver lambda that is not `@Composable` is a scope DSL, not a slot: `LazyColumn`'s
+    // `content: LazyListScope.() -> Unit` is filled with `item { … }` rather than with children.
+    // `receiverFqnOf` answers null for a function type with no receiver, so an ordinary
+    // `(String) -> Unit` callback stays what it was.
+    val dsl = if (slot) null else receiverFqnOf(type)
     return TargetParameter(
       name = name,
       type = renderType(type),
@@ -410,6 +415,7 @@ internal object ComposableSignature {
       composableSlot = slot,
       composableSlotReceiver = if (slot) receiverFqnOf(type) else null,
       nullable = type.isNullable,
+      scopeDslReceiver = dsl,
     )
   }
 
