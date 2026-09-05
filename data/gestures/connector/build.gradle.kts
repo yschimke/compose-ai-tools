@@ -12,6 +12,12 @@
 //    plumbing planned from `renderNow.overrides.gestures`: force-shows hints (immediate mode) or
 //    invokes a registered handler (interactive mode), and toggles `LocalOneHandedGestureEnabled`.
 //  - `GestureDataProductRegistry` — `compose/gestures` registry serving the captured payload.
+//  - `oneHandedGestureAvailable()` — the public "can a gesture reach this composable?" signal
+//    (issue #5102). AndroidX exposes the app's opt-*out* (`LocalOneHandedGestureEnabled`) but not
+//    whether a gesture SOURCE exists, so consumers were reflecting on `com.google.wear.Sdk`'s
+//    presence — conclusive only in the absent direction. This asks the library's own bridge, which
+//    the shadow below already replaces under a render, so one read is right on a device and under
+//    the daemon.
 //
 // Android-library only — the gesture API is Android/Wear-only, so the desktop daemon doesn't
 // register this connector. Published so `:daemon:android`'s external POM can resolve its transitive
