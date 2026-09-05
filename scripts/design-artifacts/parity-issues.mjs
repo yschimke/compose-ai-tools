@@ -56,6 +56,7 @@ const REQUIRED_FIELDS = ["repository", "system", "component", "preview", "refere
  * `v1` therefore accepts only the space both producers actually emit.
  */
 const OPTIONAL_FIELDS = ["element", "bounds"];
+const SCOPES = new Set(["component", "variant"]);
 const BOUNDS_SPACE = "render-pixels";
 /** Code-point order, which is what [canonicalJson] produces and what the writer emits. */
 const BOUNDS_KEYS = ["height", "space", "width", "x", "y"];
@@ -253,7 +254,10 @@ function parseLocatorBlock(content) {
     if (parsed.error) return { ok: false, error: parsed.error };
     bounds = parsed.bounds;
   }
-  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, overrides: canonicalOverrides, element, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
+  const scope = fields.scope ?? "component";
+  if (!SCOPES.has(scope)) return { ok: false, error: "scope must be component or variant" };
+  const explicitScope = Object.hasOwn(fields, "scope") ? { scope } : {};
+  return { ok: true, locator: { repository: fields.repository.toLowerCase(), system: fields.system, component: fields.component, previewId: fields.preview, referenceId: fields.reference, variant: fields.variant, ...explicitScope, overrides: canonicalOverrides, element, bounds, revision: Object.hasOwn(fields, "revision") ? fields.revision : null } };
 }
 
 function labelValue(labels, prefix, allowed) {
@@ -298,6 +302,7 @@ export function buildIssueIndex(issues, { generatedAt = new Date().toISOString()
         parity: labelValue(issue?.labels, "parity:", PARITY),
         system: locator.system,
         component: locator.component,
+        scope: locator.scope ?? "component",
         previewIds: [locator.previewId],
         referenceIds: [locator.referenceId],
       };
