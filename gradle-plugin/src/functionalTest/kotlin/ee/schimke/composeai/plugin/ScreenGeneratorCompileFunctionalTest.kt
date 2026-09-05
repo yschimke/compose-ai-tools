@@ -8,6 +8,7 @@ import ee.schimke.composeai.discovery.ScreenDocument
 import ee.schimke.composeai.discovery.ScreenGenerator
 import ee.schimke.composeai.discovery.ScreenNode
 import ee.schimke.composeai.discovery.ScreenValue
+import ee.schimke.composeai.discovery.SlotItem
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.testkit.runner.GradleRunner
@@ -92,6 +93,8 @@ class ScreenGeneratorCompileFunctionalTest {
         """
         package test
 
+        import androidx.compose.foundation.lazy.LazyColumn
+        import androidx.compose.foundation.lazy.LazyListScope
         import androidx.compose.material3.Button
         import androidx.compose.material3.Card
         import androidx.compose.material3.Text
@@ -114,6 +117,21 @@ class ScreenGeneratorCompileFunctionalTest {
         @Composable
         fun ContainerPreview() {
             Card { Text(text = "Inside") }
+        }
+
+        // A scope DSL: `content` is a receiver lambda and is NOT `@Composable`, so its children
+        // are declared with `item { … }` rather than composed into it. `LazyColumn` itself is not
+        // a discovery target — inference scopes library components to the material packages — so
+        // the shape is carried by a project-local wrapper, which is discovered like any other.
+        @Composable
+        fun Feed(content: LazyListScope.() -> Unit) {
+            LazyColumn(content = content)
+        }
+
+        @Preview
+        @Composable
+        fun FeedPreview() {
+            Feed { item { Text(text = "Row") } }
         }
         """
           .trimIndent()
@@ -260,6 +278,83 @@ class ScreenGeneratorCompileFunctionalTest {
 
     // `GradleRunner.build()` throws on failure, so reaching this line is the gate: the Kotlin
     // compiler accepted a screen assembled entirely from the discovered catalog.
+    val compile = runGradle(projectDir, "compileKotlin")
+    assertThat(compile.task(":compileKotlin")?.outcome)
+      .isIn(listOf(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE))
+  }
+
+  @Test
+  fun `a lazy list built through its scope's DSL compiles`() {
+    // The half `slots` alone could never write. `Feed`'s `content` is a `LazyListScope.() -> Unit`
+    // whose lambda type a bare `{ Text(…) }` satisfies — so nothing refused — and which does not
+    // compile, because `Text` is not a member of `LazyListScope`. Five of the m3 catalog's layout
+    // containers had no component record at all for exactly this reason
+    // (yschimke/compose-preview-server#394). What settles it is the compile at the end.
+    val projectDir = createTestProject()
+
+    val discover = runGradle(projectDir, "composePreviewDiscover")
+    assertThat(discover.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    val components =
+      json.decodeFromString(
+        ComponentRecordFile.serializer(),
+        File(projectDir, "build/compose-previews/components.json").readText(),
+      )
+
+    // Discovery, not this test, is what says the slot is a scope DSL — and it is the signal that
+    // makes the container fillable at all.
+    val feed = components.components.single { it.symbol.name == "Feed" }
+    val content = feed.parameters.single { it.name == "content" }
+    assertThat(content.composableSlot).isFalse()
+    assertThat(content.scopeDslReceiver).isEqualTo("androidx.compose.foundation.lazy.LazyListScope")
+
+    val screen =
+      ScreenDocument(
+        name = "FeedScreen",
+        root =
+          ScreenNode(
+            componentId = idOf(components, "Feed"),
+            slots =
+              mapOf(
+                "content" to
+                  listOf(
+                    ScreenNode(
+                      componentId = idOf(components, "Text"),
+                      arguments = mapOf("text" to ScreenValue.Text("First")),
+                    ),
+                    ScreenNode(
+                      componentId = idOf(components, "Text"),
+                      arguments = mapOf("text" to ScreenValue.Text("Second")),
+                    ),
+                  )
+              ),
+            slotItems =
+              mapOf(
+                "content" to SlotItem("item", "androidx.compose.foundation.lazy.LazyListScope")
+              ),
+          ),
+      )
+
+    val result =
+      ScreenGenerator.generate(screen, components, expressionPackages = setOf("androidx.compose"))
+    val emitted =
+      assertWithMessage(
+          "generation refused: %s",
+          (result as? ScreenGenerator.Result.Refused)?.reasons,
+        )
+        .that(result)
+        .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+        .let { result as ScreenGenerator.Result.Emitted }
+
+    // One wrapper per child: two rows, not one entry holding two composables.
+    assertThat(emitted.source.split("item {")).hasSize(3)
+    assertThat(emitted.source).contains("""Text(text = "First")""")
+    // `item` comes from the lambda's receiver, so importing it is what would break the file.
+    assertThat(emitted.source).doesNotContain("import androidx.compose.foundation.lazy.item")
+
+    val generated = File(projectDir, "src/main/kotlin/generated")
+    generated.mkdirs()
+    File(generated, "FeedScreen.kt").writeText(emitted.source)
+
     val compile = runGradle(projectDir, "compileKotlin")
     assertThat(compile.task(":compileKotlin")?.outcome)
       .isIn(listOf(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE))

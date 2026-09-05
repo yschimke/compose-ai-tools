@@ -1048,4 +1048,194 @@ class ScreenGeneratorTest {
     assertThat(reasons).hasSize(2)
     assertThat(reasons.joinToString()).contains("AlsoGone")
   }
+
+  private val lazyListScope = "androidx.compose.foundation.lazy.LazyListScope"
+
+  private val columnScope = "androidx.compose.foundation.layout.ColumnScope"
+
+  /**
+   * A container whose slot is a **DSL** rather than a composable region.
+   *
+   * `LazyColumn(content: LazyListScope.() -> Unit)` is the shape that had no expression at all: a
+   * bare `{ Text(…) }` satisfies the lambda's type and does not compile, because the children of a
+   * lazy list are declared with `item { … }` and `Text` is not a member of `LazyListScope`. That is
+   * why every lazy container was left out of the m3 catalog's component record rather than guessed
+   * at (compose-preview-server#394).
+   */
+  private val lazyColumn =
+    component(
+      "LazyColumn",
+      "androidx.compose.foundation.lazy.LazyColumn",
+      listOf(
+        // Not `composableSlot`, which is the half that made this a record nobody could write:
+        // `LazyColumn`'s `content` is a plain receiver lambda, so the whole container used to
+        // refuse as "a parameter, not a @Composable slot".
+        TargetParameter("content", "LazyListScope.() -> Unit", scopeDslReceiver = lazyListScope)
+      ),
+    )
+
+  /** `Card`, but with the receiver its slot really has, which [card] leaves unset. */
+  private val scopedCard =
+    component(
+      "ScopedCard",
+      "androidx.compose.material3.ScopedCard",
+      listOf(
+        TargetParameter(
+          "content",
+          "ColumnScope.() -> Unit",
+          composableSlot = true,
+          composableSlotReceiver = columnScope,
+        )
+      ),
+    )
+
+  private fun textNode(value: String) =
+    ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text(value)))
+
+  private fun list(item: SlotItem, vararg children: ScreenNode) =
+    ScreenDocument(
+      name = "HomeScreen",
+      root =
+        ScreenNode(
+          componentId = lazyColumn.canonicalId,
+          slots = if (children.isEmpty()) emptyMap() else mapOf("content" to children.toList()),
+          slotItems = mapOf("content" to item),
+        ),
+    )
+
+  @Test
+  fun `a DSL slot declares each child through its receiver's member`() {
+    val source =
+      emitted(
+          list(SlotItem("item", lazyListScope), textNode("a"), textNode("b")),
+          catalog(lazyColumn, text),
+        )
+        .source
+
+    assertThat(source).contains("content = {")
+    // One wrapper per child, not one around the lot: `item { a; b }` is a single list entry
+    // holding two composables, which is a different screen from the two-row list designed.
+    assertThat(source.split("item {")).hasSize(3)
+    assertThat(source).contains("""Text(text = "a")""")
+    assertThat(source).contains("""Text(text = "b")""")
+    // `item` is a member supplied by the lambda's receiver. Importing it is the one thing that
+    // turns a compiling file into a file that fails on its import line.
+    assertThat(source).doesNotContain("import androidx.compose.foundation.lazy.LazyListScope")
+    assertThat(source).doesNotContain("import androidx.compose.foundation.lazy.item")
+  }
+
+  @Test
+  fun `a slot item may carry arguments, and takes no parentheses without them`() {
+    val keyed = SlotItem("item", lazyListScope, named = mapOf("key" to ScreenValue.Text("row")))
+    assertThat(emitted(list(keyed, textNode("a")), catalog(lazyColumn, text)).source)
+      .contains("""item(key = "row") {""")
+    assertThat(
+        emitted(list(SlotItem("item", lazyListScope), textNode("a")), catalog(lazyColumn, text))
+          .source
+      )
+      .doesNotContain("item()")
+  }
+
+  @Test
+  fun `a slot item claiming the wrong scope is refused, naming both`() {
+    // The check that makes the claim worth making, and the same one a scoped `ChainLink` gets.
+    // `item` is in scope inside a `LazyListScope` lambda and nowhere else, so a document that says
+    // it about a `ColumnScope` slot is an unresolved reference in a file this generator would
+    // otherwise have called compilable.
+    val document =
+      ScreenDocument(
+        name = "HomeScreen",
+        root =
+          ScreenNode(
+            componentId = scopedCard.canonicalId,
+            slots = mapOf("content" to listOf(textNode("a"))),
+            slotItems = mapOf("content" to SlotItem("item", lazyListScope)),
+          ),
+      )
+
+    assertThat(refusal(document, catalog(scopedCard, text)))
+      .contains(
+        "`ScopedCard`.`content` wraps its children in `item`, which is declared on " +
+          "`$lazyListScope`, and this slot composes under `$columnScope`"
+      )
+  }
+
+  @Test
+  fun `a slot item on a slot with no receiver is refused too`() {
+    val document =
+      ScreenDocument(
+        name = "HomeScreen",
+        root =
+          ScreenNode(
+            componentId = card.canonicalId,
+            slots = mapOf("content" to listOf(textNode("a"))),
+            slotItems = mapOf("content" to SlotItem("item", lazyListScope)),
+          ),
+      )
+
+    assertThat(refusal(document, catalog(card, text)))
+      .contains(
+        "`Card`.`content` wraps its children in `item`, which is declared on `$lazyListScope`, " +
+          "and this slot composes under no receiver"
+      )
+  }
+
+  @Test
+  fun `a refused slot item still names what was inside it`() {
+    // The fifth branch that rejects a node and would otherwise drop its subtree. A document whose
+    // wrapper is stale is exactly the document most likely to be stale further down, and one
+    // export per problem is what the refusal list exists to avoid.
+    val document =
+      ScreenDocument(
+        name = "HomeScreen",
+        root =
+          ScreenNode(
+            componentId = card.canonicalId,
+            slots = mapOf("content" to listOf(ScreenNode("app/Gone.Gone"))),
+            slotItems = mapOf("content" to SlotItem("item", lazyListScope)),
+          ),
+      )
+
+    assertThat(refusal(document, catalog(card)))
+      .contains("no component `app/Gone.Gone` in this catalog")
+  }
+
+  @Test
+  fun `a slot item for a slot with no children names nothing and says so`() {
+    assertThat(refusal(list(SlotItem("item", lazyListScope)), catalog(lazyColumn)))
+      .contains("`LazyColumn`.`content` wraps its children in a slot item and has no children")
+  }
+
+  @Test
+  fun `a scope DSL slot with no slot item stays refused, rather than composing into it`() {
+    // The failure this whole shape exists to keep: `{ Text(…) }` type-checks against
+    // `LazyListScope.() -> Unit` and does not compile, because `Text` is not a member of
+    // `LazyListScope`. Without a wrapper the generator has nothing to write the children as, so it
+    // says so instead of emitting a file it would wrongly have called compilable.
+    val document =
+      ScreenDocument(
+        name = "HomeScreen",
+        root =
+          ScreenNode(
+            componentId = lazyColumn.canonicalId,
+            slots = mapOf("content" to listOf(textNode("a"))),
+          ),
+      )
+
+    assertThat(refusal(document, catalog(lazyColumn, text)))
+      .contains("`LazyColumn`.`content` is a parameter, not a @Composable slot")
+  }
+
+  @Test
+  fun `a slot item whose member is not an identifier is refused rather than written`() {
+    // A `SlotItem` arrives over the wire like everything else in a `ScreenDocument`, and its
+    // member is emitted as a name. One holding a dot escapes nothing — `` `it.em` `` is not a
+    // backticked identifier, it is two — so it goes through the same check every other name does.
+    assertThat(
+        refusal(list(SlotItem("it.em", lazyListScope), textNode("a")), catalog(lazyColumn, text))
+      )
+      .contains(
+        "`LazyColumn`.`content` names `it.em`, which cannot be written as a Kotlin identifier"
+      )
+  }
 }

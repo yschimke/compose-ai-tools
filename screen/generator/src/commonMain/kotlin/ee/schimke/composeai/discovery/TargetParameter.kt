@@ -82,4 +82,24 @@ data class TargetParameter(
    * one of those being a way `rememberT()` fails to compile.
    */
   val noArgFactory: String? = null,
+  /**
+   * For a function-typed parameter that is a **scope DSL** — a receiver lambda that is *not*
+   * `@Composable` — the fully-qualified receiver type
+   * (`androidx.compose.foundation.lazy.LazyListScope`). Null for everything else, including every
+   * [composableSlot].
+   *
+   * The two are recorded separately because they are filled in opposite ways and only the metadata
+   * can tell them apart. `Card(content: @Composable ColumnScope.() -> Unit)` takes children
+   * *composed* into it, and `LazyColumn(content: LazyListScope.() -> Unit)` takes children
+   * *declared* through members of the receiver — `item { … }`, which is not a composable. A
+   * consumer that read only [composableSlot] saw the second as a plain parameter and refused a lazy
+   * list outright; one that treated it as a composable slot would emit `{ Text(…) }`, which
+   * type-checks against the lambda and does not compile, because `Text` is not a member of
+   * `LazyListScope`.
+   *
+   * Structural, from `kotlin/ExtensionFunctionType` on the metadata type, never inferred from
+   * [type]'s spelling — the same rule [typeFqn] and [nullable] were introduced for. What a
+   * generator does with it is `ScreenNode.slotItems`.
+   */
+  val scopeDslReceiver: String? = null,
 )
