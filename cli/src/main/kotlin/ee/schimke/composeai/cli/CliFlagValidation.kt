@@ -113,6 +113,9 @@ internal object CliFlagValidation {
           "--plugin-version",
           "--project",
           "--report",
+          // Doctor's discovery pass runs under the same budget every other command uses, so the
+          // flag that raises it has to be accepted here too (issue #5171).
+          "--timeout",
           "--variant",
           "--verbose",
           "-v",
