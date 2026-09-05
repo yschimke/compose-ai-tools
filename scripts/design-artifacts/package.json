@@ -16,7 +16,7 @@
     "@design-parity/catalog-export": "1.0.4",
     "fflate": "^0.8.2",
     "pixelmatch": "^7.0.0",
-    "playwright": "^1.49.0",
+    "playwright": "^1.63.0",
     "pngjs": "^7.0.0"
   }
 }
