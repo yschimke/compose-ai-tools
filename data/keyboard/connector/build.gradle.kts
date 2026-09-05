@@ -11,8 +11,10 @@
 //    overlays a fake Gboard-shaped band on top of preview content when the IME is up. Planner
 //    always emits the extension so the observer is in place even without an explicit override —
 //    the renderer's "default behaviour when this app state changes" surface.
-//  - `SoftKeyboardBand` — internal composable rendering the band; not part of the public API.
-//    Consumers don't reach for it directly; they get the band for free through the extension.
+//
+// The band composable itself lives in `:data-keyboard-band` — one copy, shared with
+// `:data-keyboard-connector-desktop` (#5165). Consumers don't reach for it directly; they get the
+// band for free through the extension.
 
 plugins {
   id("composeai.base-conventions")
@@ -30,6 +32,11 @@ dependencies {
   // `:renderer-android`) can refer to `Material3KeyboardProduct.KIND` without adding a second
   // `project` dependency.
   api(project(":data-keyboard-core"))
+
+  // The band composable and its layout tokens (`KEYBOARD_HEIGHT_DP`,
+  // `MIN_SCREEN_HEIGHT_FOR_BAND_DP`), shared with `:data-keyboard-connector-desktop`. Plain JVM and
+  // Compose-less at runtime (see that module), so it adds nothing to this AAR's dependency shape.
+  implementation(project(":data-keyboard-band"))
 
   // DataExtension / AroundComposableExtension. Re-exported so the planner / extension classes can
   // be referenced from `RobolectricHost`'s `previewOverrideExtensions` list without a second
