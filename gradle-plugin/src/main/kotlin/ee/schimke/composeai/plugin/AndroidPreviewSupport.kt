@@ -2236,6 +2236,26 @@ internal object AndroidPreviewSupport {
         outputDir.set(robolectricPropertiesDir)
       }
 
+    // A stand-in `androidx.customview.poolingcontainer.R$id`, appended to the END of every render
+    // classpath below so a real merged `R.jar` always wins and this is inert. It is the floor for
+    // the module where AGP's unit-test R.jar never arrives, which loses EVERY preview to one
+    // `PoolingContainer.<clinit>` failure — see [GeneratePoolingContainerRTask] for why two
+    // fabricated ints are the correct answer for these two ids specifically, and issue #5026.
+    val poolingContainerRDir =
+      project.layout.buildDirectory.dir("generated/composeai/r-shim/$variantName")
+    val generatePoolingContainerRTask =
+      project.tasks.register(
+        "composePreviewGeneratePoolingContainerR",
+        GeneratePoolingContainerRTask::class.java,
+      ) {
+        group = "compose preview"
+        description =
+          "Generate a fallback androidx.customview.poolingcontainer.R\$id for composePreviewRender"
+        ids.set(GeneratePoolingContainerRTask.TAG_IDS)
+        outputDir.set(poolingContainerRDir)
+      }
+    val poolingContainerRFiles = project.files(generatePoolingContainerRTask.map { it.outputDir })
+
     // Renderer classpath FIRST — renderer depends on kotlinx-serialization
     // 1.11.x and Roborazzi 1.59+ while consumer apps may transitively drag
     // in older versions (Compose BOM, etc). Gradle's FileCollection.from()
@@ -2526,14 +2546,14 @@ internal object AndroidPreviewSupport {
             legacyClasspathUnion = legacyClasspathUnion,
           )
         classpath =
-          if (compileShardsTask != null) {
+          (if (compileShardsTask != null) {
             resolvedClasspath +
               project.files(compileShardsTask.map { it.destinationDirectory }) +
               (agpTestTask?.testClassesDirs ?: project.files()) +
               agpTestClasspath
           } else {
             resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
-          }
+          }) + poolingContainerRFiles
         if (shardsEnabled) {
           include("**/RobolectricRenderTest_Shard*.class")
           maxParallelForks = shardCount
@@ -2800,7 +2820,10 @@ internal object AndroidPreviewSupport {
             legacyClasspathUnion = legacyClasspathUnion,
           )
         classpath =
-          resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
+          resolvedClasspath +
+            (agpTestTask?.testClassesDirs ?: project.files()) +
+            agpTestClasspath +
+            poolingContainerRFiles
         include("**/ResourcePreviewRenderTest.class")
         useJUnit()
         validateComposeFloorTask?.let { dependsOn(it) }
@@ -2899,7 +2922,10 @@ internal object AndroidPreviewSupport {
           (resolvedClasspath +
               xrRendererClassDirs +
               (agpTestTask?.testClassesDirs ?: project.files()) +
-              agpTestClasspath)
+              agpTestClasspath +
+              // Last here too, and inside the filter below — which only drops scenecore's spatial
+              // backends, so the generated directory passes through untouched.
+              poolingContainerRFiles)
             // Drop scenecore's on-device spatial backends (`scenecore-spatial-core` /
             // `scenecore-spatial-rendering`, runtime deps of `androidx.xr.scenecore:scenecore`
             // since alpha16). Their `SpatialCoreXrExtensionsHolderProvider`'s static init
