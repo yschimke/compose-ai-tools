@@ -21,7 +21,7 @@ import kotlinx.serialization.Serializable
 
 /** Which renderer + permalink target a snippet compiles for. See PLAYGROUND.md §3. */
 @Serializable
-enum class PlaygroundMode {
+public enum class PlaygroundMode {
   /** Compose Multiplatform, desktop (Skiko) daemon → live streaming session. */
   @SerialName("compose-cmp") CMP,
   /** Jetpack Compose, Robolectric daemon → live streaming session. */
@@ -29,7 +29,7 @@ enum class PlaygroundMode {
   /** Snippet emits a RemoteDocument → `/d/<id>` document permalink, played client-side. */
   @SerialName("remote-compose") REMOTE_COMPOSE;
 
-  companion object {
+  public companion object {
     /**
      * Resolve the request's `confType` to a mode. Accepts our own ids (the [SerialName]s above) and
      * tolerates the stock `kotlin-playground` target ids so an unmodified frontend still lands on a
@@ -37,7 +37,7 @@ enum class PlaygroundMode {
      * [CMP], everything else defaults to [CMP] as well — the one mode a from-source box can always
      * serve. An empty/absent `confType` is [CMP].
      */
-    fun fromConfType(confType: String?): PlaygroundMode =
+    public fun fromConfType(confType: String?): PlaygroundMode =
       when (confType?.trim()?.lowercase()) {
         "compose-android",
         "android" -> ANDROID
@@ -58,7 +58,7 @@ enum class PlaygroundMode {
  * compiler, since Kotlin does not require a file name to match its declarations.
  */
 @Serializable
-data class PlaygroundFile(val name: String, val text: String, val publicId: String = "")
+public data class PlaygroundFile(val name: String, val text: String, val publicId: String = "")
 
 /**
  * A Stage-1 run request. Mirrors the `kotlin-compiler-server` body so a stock frontend fits; [args]
@@ -69,7 +69,7 @@ data class PlaygroundFile(val name: String, val text: String, val publicId: Stri
  * `--playground-bundle` default exactly as before.
  */
 @Serializable
-data class PlaygroundRunRequest(
+public data class PlaygroundRunRequest(
   val args: String = "",
   val files: List<PlaygroundFile> = emptyList(),
   val confType: String = "",
@@ -92,7 +92,7 @@ data class PlaygroundRunRequest(
 
 /** Result of explicitly acquiring the host's one stateful Playground editing lease. */
 @Serializable
-data class PlaygroundEditLeaseResponse(
+public data class PlaygroundEditLeaseResponse(
   val acquired: Boolean,
   val lease: String? = null,
   val expiresAtEpochMs: Long? = null,
@@ -102,11 +102,11 @@ data class PlaygroundEditLeaseResponse(
 )
 
 /** Body for `POST /api/{version}/compiler/edit-lease`. [client] is unique to one browser tab. */
-@Serializable data class PlaygroundEditLeaseAcquireRequest(val client: String = "")
+@Serializable public data class PlaygroundEditLeaseAcquireRequest(val client: String = "")
 
 /** Body for `POST /api/{version}/compiler/edit-lease/release`. */
 @Serializable
-data class PlaygroundEditLeaseReleaseRequest(
+public data class PlaygroundEditLeaseReleaseRequest(
   val lease: String = "",
   /** Empty preserves the original whole-lease release contract for non-browser API callers. */
   val client: String = "",
@@ -121,7 +121,7 @@ data class PlaygroundEditLeaseReleaseRequest(
  * entry instead of offering modes the host would then refuse.
  */
 @Serializable
-data class PlaygroundCatalogInfo(
+public data class PlaygroundCatalogInfo(
   /** The `catalog` value to send back on a run. Empty for the host's pinned default entry. */
   val id: String,
   /** What the selector shows. */
@@ -141,11 +141,13 @@ data class PlaygroundCatalogInfo(
 
 /** `GET /api/{version}/compiler/catalogs`: what the editor's catalog selector may offer. */
 @Serializable
-data class PlaygroundCatalogsResponse(val catalogs: List<PlaygroundCatalogInfo> = emptyList())
+public data class PlaygroundCatalogsResponse(
+  val catalogs: List<PlaygroundCatalogInfo> = emptyList()
+)
 
 /** Severity of a compiler diagnostic, spelled the way the editor's highlight lane expects. */
 @Serializable
-enum class PlaygroundSeverity {
+public enum class PlaygroundSeverity {
   @SerialName("error") ERROR,
   @SerialName("warning") WARNING,
   @SerialName("info") INFO,
@@ -156,7 +158,7 @@ enum class PlaygroundSeverity {
  * `kotlin-playground` renders against); a null position is a file-level diagnostic with no anchor.
  */
 @Serializable
-data class PlaygroundDiagnostic(
+public data class PlaygroundDiagnostic(
   val severity: PlaygroundSeverity,
   val message: String,
   val file: String? = null,
@@ -167,11 +169,11 @@ data class PlaygroundDiagnostic(
 )
 
 /** A CodeMirror position in the stock `errors`-map shape (0-based line + char). */
-@Serializable data class PlaygroundPosition(val line: Int, val ch: Int)
+@Serializable public data class PlaygroundPosition(val line: Int, val ch: Int)
 
 /** A `[start, end)` span in the stock `errors`-map shape. */
 @Serializable
-data class PlaygroundInterval(val start: PlaygroundPosition, val end: PlaygroundPosition)
+public data class PlaygroundInterval(val start: PlaygroundPosition, val end: PlaygroundPosition)
 
 /**
  * One diagnostic in the **stock `kotlin-compiler-server`** `errors`-map shape — the wire form a
@@ -182,7 +184,7 @@ data class PlaygroundInterval(val start: PlaygroundPosition, val end: Playground
  * projects our diagnostics into this shape.
  */
 @Serializable
-data class PlaygroundStockError(
+public data class PlaygroundStockError(
   val interval: PlaygroundInterval,
   val message: String,
   val severity: String,
@@ -214,7 +216,7 @@ data class PlaygroundStockError(
  * richer [diagnostics] instead; both are populated, so neither client is second-class.
  */
 @Serializable
-data class PlaygroundRunResponse(
+public data class PlaygroundRunResponse(
   val diagnostics: List<PlaygroundDiagnostic> = emptyList(),
   val errors: Map<String, List<PlaygroundStockError>> = emptyMap(),
   val text: String = "",
@@ -242,7 +244,7 @@ data class PlaygroundRunResponse(
  * never open the panel — so a page load must not pay for it.
  */
 @Serializable
-data class UsageSnippetResponse(
+public data class UsageSnippetResponse(
   /** The cleaned Kotlin. */
   val text: String,
   /** The declaration the card's render comes from, for the panel's caption. */
@@ -279,7 +281,7 @@ data class UsageSnippetResponse(
  * stays free to carry things the viewer has no use for.
  */
 @Serializable
-data class ApiDocLink(
+public data class ApiDocLink(
   /** The name as the snippet writes it — an `as` alias where the code renamed one. */
   val name: String,
   /** The imported fully-qualified name, shown as the link's tooltip. */

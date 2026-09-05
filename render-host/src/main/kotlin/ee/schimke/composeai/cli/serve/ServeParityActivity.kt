@@ -43,7 +43,7 @@ import okio.Path.Companion.toPath
  * file, so a catalog declaring `javascript:…` produces no link instead of an attacker-chosen href.
  */
 @Serializable
-data class ParityActivity(
+public data class ParityActivity(
   val schema: String = SCHEMA,
   /** ISO-8601 instant the feed was snapshotted. Shown as the feed's "as of". */
   val generatedAt: String? = null,
@@ -54,16 +54,16 @@ data class ParityActivity(
   /** Gaps only the producer can see — the server derives preview-side coverage itself. */
   val gaps: List<MappingGap> = emptyList(),
 ) {
-  companion object {
-    const val SCHEMA = "compose-preview-activity/v1"
-    const val DIRECTORY = "parity"
-    const val FILE = "activity.json"
+  public companion object {
+    public const val SCHEMA: String = "compose-preview-activity/v1"
+    public const val DIRECTORY: String = "parity"
+    public const val FILE: String = "activity.json"
   }
 }
 
 /** Recent commits to the code side of the parity pair. */
 @Serializable
-data class CodeLane(
+public data class CodeLane(
   /** `owner/name` of the source repo, used to rebuild commit URLs. */
   val repo: String? = null,
   /** Branch or ref the commits were read from. */
@@ -73,7 +73,7 @@ data class CodeLane(
 
 /** One commit that touched a file backing at least one catalog preview. */
 @Serializable
-data class CodeEvent(
+public data class CodeEvent(
   val sha: String,
   val subject: String,
   /** ISO-8601 author date. */
@@ -90,7 +90,7 @@ data class CodeEvent(
 
 /** Recent activity on the Figma file the catalog is specified by. */
 @Serializable
-data class FigmaLane(
+public data class FigmaLane(
   /** Figma file key. Validated before any deep link is built from it. */
   val fileKey: String? = null,
   val fileName: String? = null,
@@ -100,7 +100,7 @@ data class FigmaLane(
 
 /** One named version / autosave checkpoint in the Figma file's history. */
 @Serializable
-data class FigmaVersionEvent(
+public data class FigmaVersionEvent(
   val id: String,
   /** ISO-8601. */
   val at: String,
@@ -117,7 +117,7 @@ data class FigmaVersionEvent(
  * preview's reference-vs-render comparison.
  */
 @Serializable
-data class FigmaCommentEvent(
+public data class FigmaCommentEvent(
   val id: String,
   /** ISO-8601. */
   val at: String,
@@ -136,7 +136,7 @@ data class FigmaCommentEvent(
  * here — publishing it would let a stale `activity.json` contradict the live catalog.
  */
 @Serializable
-data class MappingGap(
+public data class MappingGap(
   /** One of [Kind]; an unknown token drops the record rather than rendering as a mystery row. */
   val kind: String,
   /** Human summary — what is missing, in the producer's own words. */
@@ -150,17 +150,18 @@ data class MappingGap(
   val component: String? = null,
 ) {
   /** The gap kinds the dashboard groups and explains. */
-  object Kind {
+  public object Kind {
     /** `design-map.json` names a preview id the published catalog does not contain. */
-    const val DANGLING_MAPPING = "dangling-mapping"
+    public const val DANGLING_MAPPING: String = "dangling-mapping"
 
     /** A mapped Figma node exists but its reference raster could not be published. */
-    const val UNRENDERED_REFERENCE = "unrendered-reference"
+    public const val UNRENDERED_REFERENCE: String = "unrendered-reference"
 
     /** A component published in the Figma file that no code entry maps to. */
-    const val UNMAPPED_DESIGN_NODE = "unmapped-design-node"
+    public const val UNMAPPED_DESIGN_NODE: String = "unmapped-design-node"
 
-    val ALL = setOf(DANGLING_MAPPING, UNRENDERED_REFERENCE, UNMAPPED_DESIGN_NODE)
+    public val ALL: Set<String> =
+      setOf(DANGLING_MAPPING, UNRENDERED_REFERENCE, UNMAPPED_DESIGN_NODE)
   }
 }
 
@@ -172,7 +173,7 @@ data class MappingGap(
  * go), an over-long free-text field is truncated rather than dropped (the text is display-only),
  * and a gap with an unknown [MappingGap.Kind] is dropped.
  */
-object ServeParityActivityStore {
+public object ServeParityActivityStore {
 
   /** Feed rows kept per lane. A catalog cannot make a page arbitrarily large. */
   private const val MAX_EVENTS = 100
@@ -201,7 +202,7 @@ object ServeParityActivityStore {
    * The catalog's activity feed, or null when it publishes none (the common case) or publishes one
    * that does not parse. Never throws.
    */
-  fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ParityActivity? {
+  public fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ParityActivity? {
     val path = bundleDir.toOkioPath() / ParityActivity.DIRECTORY.toPath() / ParityActivity.FILE
     val raw =
       runCatching {
@@ -217,7 +218,7 @@ object ServeParityActivityStore {
    * private to [load]) because it is the whole of the trust boundary and is what the unit tests
    * exercise — no filesystem needed.
    */
-  fun sanitize(raw: ParityActivity): ParityActivity? {
+  public fun sanitize(raw: ParityActivity): ParityActivity? {
     if (raw.schema != ParityActivity.SCHEMA) return null
     val code =
       raw.code?.let { lane ->
@@ -317,7 +318,7 @@ object ServeParityActivityStore {
    * The github.com commit URL for [sha] in [repo], or null when either is not the exact shape the
    * URL is built from. Assembled from a literal origin, never taken from the catalog.
    */
-  fun commitUrl(repo: String?, sha: String): String? {
+  public fun commitUrl(repo: String?, sha: String): String? {
     val owner = repo?.trim()?.takeIf { REPO.matches(it) } ?: return null
     val id = sha.trim().lowercase().takeIf { SHA.matches(it) } ?: return null
     return "https://github.com/$owner/commit/$id"
@@ -327,14 +328,14 @@ object ServeParityActivityStore {
    * The figma.com deep link for [nodeId] in [fileKey], or null when either is malformed. Figma's
    * URL form spells a node id `73-6` where the API and the design map use `73:6`.
    */
-  fun nodeUrl(fileKey: String?, nodeId: String?): String? {
+  public fun nodeUrl(fileKey: String?, nodeId: String?): String? {
     val key = fileKey?.trim()?.takeIf { FILE_KEY.matches(it) } ?: return null
     val node = nodeId?.trim()?.takeIf { NODE_ID.matches(it) } ?: return null
     return "https://www.figma.com/design/$key?node-id=${node.replace(':', '-')}"
   }
 
   /** The figma.com file URL for [fileKey], or null when it is not a key. */
-  fun fileUrl(fileKey: String?): String? {
+  public fun fileUrl(fileKey: String?): String? {
     val key = fileKey?.trim()?.takeIf { FILE_KEY.matches(it) } ?: return null
     return "https://www.figma.com/design/$key"
   }

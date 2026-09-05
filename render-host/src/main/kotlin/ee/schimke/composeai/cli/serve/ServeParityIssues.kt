@@ -9,13 +9,13 @@ import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 
 /** Source-compatible names for the wire types now owned by compose-preview-contracts. */
-typealias ParityIssues = ee.schimke.composeai.parityissues.protocol.ParityIssues
+public typealias ParityIssues = ee.schimke.composeai.parityissues.protocol.ParityIssues
 
-typealias ParityIssue = ee.schimke.composeai.parityissues.protocol.ParityIssue
+public typealias ParityIssue = ee.schimke.composeai.parityissues.protocol.ParityIssue
 
 /** Fail-soft trust boundary for `parity/issues.json`. */
-object ServeParityIssuesStore {
-  const val MAX_ISSUES = 2000
+public object ServeParityIssuesStore {
+  public const val MAX_ISSUES: Int = 2000
   private const val MAX_TEXT = 300
   private val REPOSITORY = Regex("[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
   private val ID = Regex("[^\\p{Cc}]{1,300}")
@@ -30,7 +30,7 @@ object ServeParityIssuesStore {
     setOf("regression", "known-difference", "verification-needed", "upstream", "catalog")
   private val JSON = Json { ignoreUnknownKeys = true }
 
-  fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ParityIssues? {
+  public fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ParityIssues? {
     val path = bundleDir.toOkioPath() / ParityIssues.DIRECTORY.toPath() / ParityIssues.FILE
     val raw =
       runCatching {
@@ -41,7 +41,7 @@ object ServeParityIssuesStore {
     return sanitize(raw)
   }
 
-  fun sanitize(raw: ParityIssues): ParityIssues? {
+  public fun sanitize(raw: ParityIssues): ParityIssues? {
     if (raw.schema != ParityIssues.SCHEMA || raw.issues.size > MAX_ISSUES) return null
     val generatedAt = raw.generatedAt?.trim()?.takeIf(::isTimestamp)
     // Identity is repository + number + **component**, not repository + number. One issue may name

@@ -10,8 +10,8 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /** Opens one upstream daemon stream. Matches [ServeRenderHost.startStream]. */
-fun interface StreamOpener {
-  fun open(
+public fun interface StreamOpener {
+  public fun open(
     previewId: String,
     overrides: PreviewOverrides,
     codec: StreamCodec?,
@@ -39,7 +39,7 @@ fun interface StreamOpener {
  * shared session and its [StreamHandle.close] drops just that watcher (closing the shared upstream
  * only when it was the last).
  */
-class ServeBroadcastHub(private val opener: StreamOpener) {
+public class ServeBroadcastHub(private val opener: StreamOpener) {
 
   private val lock = ReentrantLock()
   private val broadcasts = HashMap<String, Broadcast>()
@@ -49,7 +49,7 @@ class ServeBroadcastHub(private val opener: StreamOpener) {
    * this is the first watcher. Returns `null` (and opens nothing) when the backend can't stream, so
    * the caller falls back to the snapshot lane — same contract as [ServeRenderHost.startStream].
    */
-  fun subscribe(
+  public fun subscribe(
     previewId: String,
     overrides: PreviewOverrides,
     codec: StreamCodec? = null,
@@ -76,7 +76,7 @@ class ServeBroadcastHub(private val opener: StreamOpener) {
   }
 
   /** Live shared upstream streams (one per distinct key). For tests / diagnostics. */
-  fun activeStreamCount(): Int = lock.withLock { broadcasts.size }
+  public fun activeStreamCount(): Int = lock.withLock { broadcasts.size }
 
   private fun release(broadcast: Broadcast, watcher: Broadcast.Watcher) {
     lock.withLock {

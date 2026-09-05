@@ -48,7 +48,7 @@ import ee.schimke.composeai.data.theme.ThemePayload
  * may therefore contain multiple honest candidates when two roles resolve identically. A node that
  * resolved no typography (or no container tokens) simply contributes no annotation to that layer.
  */
-object ServeDesignAnnotations {
+public object ServeDesignAnnotations {
 
   /**
    * The typography, theme and layout annotations for one render, in depth-first order (the order
@@ -64,7 +64,7 @@ object ServeDesignAnnotations {
    * parent, so a chain of wrappers that all reproduce one box collapses to one rectangle instead of
    * comparing each node only against the one directly above it and emitting the whole stack.
    */
-  fun annotations(
+  public fun annotations(
     payload: ComposeSemanticsPayload,
     theme: ThemePayload? = null,
     layout: LayoutInspectorPayload? = null,

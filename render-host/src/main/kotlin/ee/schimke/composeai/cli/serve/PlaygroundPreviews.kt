@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-object PlaygroundPreviews {
+public object PlaygroundPreviews {
 
   private val json = Json {
     encodeDefaults = true
@@ -25,7 +25,7 @@ object PlaygroundPreviews {
    * `functionName` (the id is `"$className.$functionName"`, per [PlaygroundPreviewDiscoverer]),
    * ordered as the snippet declared them so entry 0 is the one the still frame drew.
    */
-  fun previewManifestJson(snippet: PlaygroundTokenStore.PlaygroundSnippet): String {
+  public fun previewManifestJson(snippet: PlaygroundTokenStore.PlaygroundSnippet): String {
     val manifest =
       PreviewManifest(
         module = snippet.moduleName,

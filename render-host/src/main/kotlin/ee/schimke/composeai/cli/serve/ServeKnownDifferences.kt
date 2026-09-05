@@ -61,10 +61,10 @@ import okio.Path.Companion.toPath
  * The source repo commits them under `.design-parity/`; `@design-parity/catalog-export` is what
  * carries them across.
  */
-object ServeKnownDifferences {
-  const val DIRECTORY = "parity"
-  const val DOCUMENT_FILE = "known-differences.json"
-  const val ARTIFACT_DIRECTORY = "known-differences"
+public object ServeKnownDifferences {
+  public const val DIRECTORY: String = "parity"
+  public const val DOCUMENT_FILE: String = "known-differences.json"
+  public const val ARTIFACT_DIRECTORY: String = "known-differences"
 
   /**
    * The producer's own list of the artifacts it published, beside the document.
@@ -81,10 +81,10 @@ object ServeKnownDifferences {
    * transport convenience between a producer and a host, which is why a catalog without it still
    * works.
    */
-  const val ARTIFACT_INDEX_FILE = "known-differences-index.json"
+  public const val ARTIFACT_INDEX_FILE: String = "known-differences-index.json"
 
   /** The index's schema token; a document declaring another is ignored rather than guessed at. */
-  const val ARTIFACT_INDEX_SCHEMA = "compose-preview-known-difference-artifacts/v1"
+  public const val ARTIFACT_INDEX_SCHEMA: String = "compose-preview-known-difference-artifacts/v1"
 
   /**
    * The document's schema token, mirrored for the same one job the record cap is: the staging path
@@ -94,7 +94,7 @@ object ServeKnownDifferences {
    * Not a licence to interpret the document — nothing here decides a record's verdict. Pinned to
    * the contract by [ServeKnownDifferencesTest] like the ceilings beside it.
    */
-  const val SCHEMA = "compose-preview-known-differences/v1"
+  public const val SCHEMA: String = "compose-preview-known-differences/v1"
 
   /**
    * The two ceilings, versioned with the schema and **not** per-catalog settings.
@@ -105,8 +105,8 @@ object ServeKnownDifferences {
    * same device the scorer's tuning mirror uses: two copies are fine while something fails when
    * they disagree.
    */
-  const val MAX_DOCUMENT_BYTES = 1024 * 1024
-  const val MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+  public const val MAX_DOCUMENT_BYTES: Int = 1024 * 1024
+  public const val MAX_ARTIFACT_BYTES: Int = 8 * 1024 * 1024
 
   /**
    * The record cap, mirrored for the one job the host has that needs it: the staging path
@@ -116,7 +116,7 @@ object ServeKnownDifferences {
    * It bounds a fetch list, never a verdict. Checked against `BUDGET.maxAcceptances` by the same
    * mirror test the two byte ceilings use.
    */
-  const val MAX_ACCEPTANCES = 256
+  public const val MAX_ACCEPTANCES: Int = 256
 
   /**
    * §4's portable path grammar, restated: the character class, the length, and the three shapes a
@@ -156,17 +156,17 @@ object ServeKnownDifferences {
    * them into the record's verdict, and inventing a fourth here would be a rule with no conformance
    * case behind it.
    */
-  sealed interface Artifact {
-    class Bytes(val bytes: ByteArray) : Artifact
+  public sealed interface Artifact {
+    public class Bytes(public val bytes: ByteArray) : Artifact
 
     /** The path resolves outside the acceptance's own directory. */
-    data object NotContained : Artifact
+    public data object NotContained : Artifact
 
     /** The file is past [MAX_ARTIFACT_BYTES], refused from its length rather than read. */
-    data object TooLarge : Artifact
+    public data object TooLarge : Artifact
 
     /** No file, a directory, or a spelling the filesystem resolved case-insensitively. */
-    data object Unreadable : Artifact
+    public data object Unreadable : Artifact
   }
 
   /**
@@ -178,10 +178,10 @@ object ServeKnownDifferences {
    * apart cannot report the second one. It is refused *here* rather than handed over, so nothing
    * allocates a hostile document to discover its size.
    */
-  fun document(bundleDir: File, fileSystem: FileSystem = FileSystem.SYSTEM): Document? =
+  public fun document(bundleDir: File, fileSystem: FileSystem = FileSystem.SYSTEM): Document? =
     document(bundleDir.toOkioPath(), fileSystem)
 
-  fun document(bundleRoot: Path, fileSystem: FileSystem): Document? {
+  public fun document(bundleRoot: Path, fileSystem: FileSystem): Document? {
     val path = bundleRoot / DIRECTORY.toPath() / DOCUMENT_FILE.toPath()
     val metadata = runCatching { fileSystem.metadataOrNull(path) }.getOrNull() ?: return null
     if (metadata.isDirectory) return null
@@ -195,10 +195,10 @@ object ServeKnownDifferences {
     return Document.Text(text)
   }
 
-  sealed interface Document {
-    data class Text(val text: String) : Document
+  public sealed interface Document {
+    public data class Text(val text: String) : Document
 
-    data object TooLarge : Document
+    public data object TooLarge : Document
   }
 
   /**
@@ -208,7 +208,7 @@ object ServeKnownDifferences {
    * The `<id>` is the first segment and is a path segment in its own right, which is why a record's
    * `id` is grammar-checked at all — it names a directory on every consumer's disk.
    */
-  fun artifact(
+  public fun artifact(
     bundleDir: File,
     relativePath: String,
     fileSystem: FileSystem = FileSystem.SYSTEM,
@@ -226,13 +226,13 @@ object ServeKnownDifferences {
    * The filesystem half — containment inside the record's own directory, exact case, the byte cap —
    * stays in [artifact], where there is a resolved path to ask about.
    */
-  fun isLookupPath(relativePath: String): Boolean {
+  public fun isLookupPath(relativePath: String): Boolean {
     val segments = relativePath.split('/')
     if (segments.size < 2) return false
     return segments.all { isPortableSegment(it) }
   }
 
-  fun artifact(bundleRoot: Path, relativePath: String, fileSystem: FileSystem): Artifact {
+  public fun artifact(bundleRoot: Path, relativePath: String, fileSystem: FileSystem): Artifact {
     val segments = relativePath.split('/')
     // Lexical first, and cheaply: an absolute path, a backslash, a `..`, an over-long segment or a
     // Windows-reserved name never reaches the filesystem. The engine refuses these too — this is
@@ -290,7 +290,7 @@ object ServeKnownDifferences {
  * miss the very comparison it was authored on.
  */
 @Serializable
-data class KnownDifferenceContext(
+public data class KnownDifferenceContext(
   val documentUrl: String,
   /**
    * Prefix and suffix an artifact URL is built from: `artifactBase + "<id>/<file>" +
@@ -310,7 +310,7 @@ data class KnownDifferenceContext(
 )
 
 @Serializable
-data class KnownDifferenceIssue(
+public data class KnownDifferenceIssue(
   val repository: String,
   val number: Int,
   val state: String,
@@ -326,7 +326,7 @@ data class KnownDifferenceIssue(
  * silently withheld itself from a catalog publishing a perfectly good index.
  */
 @Serializable
-data class KnownDifferenceScope(
+public data class KnownDifferenceScope(
   val system: String,
   val component: String,
   val previewId: String,
@@ -355,7 +355,7 @@ data class KnownDifferenceScope(
 private val CONTEXT_JSON = Json { encodeDefaults = true }
 
 /** As an inline `application/json` payload, with `<` escaped so it cannot close the script tag. */
-fun encodeKnownDifferenceContext(context: KnownDifferenceContext): String =
+public fun encodeKnownDifferenceContext(context: KnownDifferenceContext): String =
   CONTEXT_JSON.encodeToString(context).replace("<", "\\u003c")
 
 /**
@@ -373,7 +373,7 @@ fun encodeKnownDifferenceContext(context: KnownDifferenceContext): String =
  * `variant` here would report every acceptance in the catalog as an orphan.
  */
 @Serializable
-data class KnownDifferenceAuditContext(
+public data class KnownDifferenceAuditContext(
   val documentUrl: String,
   val artifactBase: String,
   val artifactQuery: String,
@@ -384,7 +384,7 @@ data class KnownDifferenceAuditContext(
 
 /** One served preview, as an acceptance's scope names it. */
 @Serializable
-data class KnownDifferenceCatalogPreview(
+public data class KnownDifferenceCatalogPreview(
   val system: String,
   val id: String,
   /** Null when the preview declares no component — it can then match no acceptance. */
@@ -394,5 +394,5 @@ data class KnownDifferenceCatalogPreview(
 )
 
 /** As an inline `application/json` payload, with `<` escaped so it cannot close the script tag. */
-fun encodeKnownDifferenceAuditContext(context: KnownDifferenceAuditContext): String =
+public fun encodeKnownDifferenceAuditContext(context: KnownDifferenceAuditContext): String =
   CONTEXT_JSON.encodeToString(context).replace("<", "\\u003c")

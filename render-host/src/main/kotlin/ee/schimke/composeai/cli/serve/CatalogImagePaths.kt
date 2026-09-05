@@ -13,9 +13,9 @@ package ee.schimke.composeai.cli.serve
  * Shape and a pure function, deliberately. Nothing here reads a file, so both sides of the module
  * boundary can agree on the convention without either owning the other's I/O.
  */
-object CatalogImagePaths {
+public object CatalogImagePaths {
   /** Directory, relative to the catalog root, holding the baked preview PNGs. */
-  const val IMAGES_DIR = "images"
+  public const val IMAGES_DIR: String = "images"
 
   /**
    * The single-path-segment preview id for a catalog image path. The serve routes (`/p/{name}`,
@@ -26,6 +26,6 @@ object CatalogImagePaths {
    * like `button-filled__ideal__default__dark`. The design-parity catalog exporter derives the
    * `livePreview` deep link the same way so the link resolves to this id.
    */
-  fun previewIdFor(imagePath: String): String =
+  public fun previewIdFor(imagePath: String): String =
     imagePath.removePrefix("$IMAGES_DIR/").removeSuffix(".png").replace("/", "__")
 }

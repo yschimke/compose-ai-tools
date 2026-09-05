@@ -20,7 +20,7 @@ import kotlinx.serialization.json.encodeToJsonElement
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-object ServeAnnotationsPayload {
+public object ServeAnnotationsPayload {
 
   private val json = Json { ignoreUnknownKeys = true }
 
@@ -28,7 +28,7 @@ object ServeAnnotationsPayload {
    * `{"previewId":…, "annotations":[…], "tags":{…}}` — the annotations the viewer draws, plus
    * [ServeSemanticsTags]' tag index over the same frame (empty where the source carries none).
    */
-  fun encode(
+  public fun encode(
     previewId: String,
     annotations: List<DesignAnnotation>,
     tags: Map<String, ServeSemanticsTags.TagEntry>,
@@ -61,7 +61,10 @@ object ServeAnnotationsPayload {
    * catalog's published `tags/index.json` and performs no render, so it has no annotation layer to
    * describe and must not look as though it found none.
    */
-  fun encodeTags(previewId: String, tags: Map<String, ServeSemanticsTags.TagEntry>): ByteArray =
+  public fun encodeTags(
+    previewId: String,
+    tags: Map<String, ServeSemanticsTags.TagEntry>,
+  ): ByteArray =
     json
       .encodeToString(
         JsonObject.serializer(),

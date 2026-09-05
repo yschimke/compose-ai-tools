@@ -27,7 +27,7 @@ private val FIGMA_RASTER_HREF = Regex("href=\"([^\"]*figma-raster/[^\"]+)\"")
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-fun figmaRasterHrefs(svg: String): List<String> =
+public fun figmaRasterHrefs(svg: String): List<String> =
   FIGMA_RASTER_HREF.findAll(svg).map { it.groupValues[1] }.toList()
 
 /**
@@ -53,7 +53,7 @@ internal const val MAX_INLINE_RASTER_EDGE_PX: Int = MAX_FIGMA_RASTER_EDGE_PX
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-fun inlineFigmaRasters(
+public fun inlineFigmaRasters(
   fileSystem: FileSystem,
   dir: Path,
   svg: String,
@@ -83,7 +83,7 @@ fun inlineFigmaRasters(
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-fun linkFigmaRasters(svg: String, baseUrl: String): String {
+public fun linkFigmaRasters(svg: String, baseUrl: String): String {
   if (!svg.contains("figma-raster/")) return svg
   val base = baseUrl.trimEnd('/')
   return FIGMA_RASTER_HREF.replace(svg) { match ->
@@ -123,7 +123,7 @@ private val FONT_FACE_BLOCK = Regex("@font-face\\{[^}]*\\}")
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-fun webModeSvg(svg: String): String {
+public fun webModeSvg(svg: String): String {
   val faces = FONT_FACE_BLOCK.findAll(svg).mapNotNull { parseWebFontFace(it.value) }.toList()
   if (faces.isEmpty()) return svg
   val importUrl = googleFontsImportUrl(faces) ?: return svg

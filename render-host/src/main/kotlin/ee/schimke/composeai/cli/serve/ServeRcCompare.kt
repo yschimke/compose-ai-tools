@@ -37,7 +37,7 @@ import okio.Path.Companion.toOkioPath
  * per *daemon* id, so two catalog ids sharing a source preview share one set of files.
  */
 @Serializable
-data class RcCompareManifest(
+public data class RcCompareManifest(
   val schema: String = SCHEMA,
   /**
    * The pixelmatch threshold the build-time diffs used, carried so the client-side player↔player
@@ -48,18 +48,18 @@ data class RcCompareManifest(
   val lanes: List<RcCompareLane> = emptyList(),
   val rows: List<RcCompareRow> = emptyList(),
 ) {
-  companion object {
-    const val SCHEMA = "compose-preview-rc-compare/v1"
-    const val DEFAULT_THRESHOLD = 0.1
+  public companion object {
+    public const val SCHEMA: String = "compose-preview-rc-compare/v1"
+    public const val DEFAULT_THRESHOLD: Double = 0.1
   }
 }
 
 /** One player column. [short] is the compact label used on the per-row score chips. */
-@Serializable data class RcCompareLane(val id: String, val label: String, val short: String)
+@Serializable public data class RcCompareLane(val id: String, val label: String, val short: String)
 
 /** One preview's row: the published renders keyed by lane id. */
 @Serializable
-data class RcCompareRow(
+public data class RcCompareRow(
   /** Served catalog preview id — the same id `/p/<id>` and `/render/<id>.png` use. */
   val previewId: String,
   val width: Int = 0,
@@ -75,7 +75,7 @@ data class RcCompareRow(
 
 /** One lane's published result for one preview. */
 @Serializable
-data class RcCompareCell(
+public data class RcCompareCell(
   val rendered: Boolean = false,
   /**
    * Staged image name (`<lane>/<slot>.png`), served under `/<system>/rc-compare/`. Empty ⇒ none.
@@ -101,7 +101,7 @@ data class RcCompareCell(
  */
 // Public with `ServeRcCompare` above, which exposes `LANES: List<RcLaneSource>`: `internal` is
 // module-scoped and the `:server` call sites moved out of this module.
-data class RcLaneSource(
+public data class RcLaneSource(
   val id: String,
   val label: String,
   val short: String,
@@ -118,10 +118,10 @@ data class RcLaneSource(
 
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-object ServeRcCompare {
+public object ServeRcCompare {
   /** Staged subdir under the served catalog root, and the URL segment it is served at. */
-  const val DIRECTORY = "rc-compare"
-  const val INDEX_FILE = "index.json"
+  public const val DIRECTORY: String = "rc-compare"
+  public const val INDEX_FILE: String = "index.json"
 
   /**
    * The manifest a catalog with nothing to show writes anyway — no lanes, no rows.
@@ -130,7 +130,7 @@ object ServeRcCompare {
    * comparison, which is a different state from "the lane hasn't finished yet". Only the second one
    * makes the compare page's shape provisional, and only that one must stay out of caches.
    */
-  val NONE = RcCompareManifest()
+  public val NONE: RcCompareManifest = RcCompareManifest()
 
   /**
    * Whether the staging lane runs for a session whose catalog-id → daemon-id bridge is [alias].
@@ -141,12 +141,12 @@ object ServeRcCompare {
    * meaningful when a lane is actually coming — so they share this one expression rather than each
    * spelling it out.
    */
-  fun stagesFor(alias: Map<String, String>): Boolean = alias.isNotEmpty()
+  public fun stagesFor(alias: Map<String, String>): Boolean = alias.isNotEmpty()
 
   /** The published summary, branch-relative — the source this whole view is derived from. */
-  const val SUMMARY_FILE = "rc-compare-summary.json"
+  public const val SUMMARY_FILE: String = "rc-compare-summary.json"
 
-  val LANES: List<RcLaneSource> =
+  public val LANES: List<RcLaneSource> =
     listOf(
       RcLaneSource(
         id = "baked",
@@ -243,7 +243,7 @@ object ServeRcCompare {
    * question nothing precomputed can answer.
    */
   @Serializable
-  data class ClientModel(
+  public data class ClientModel(
     val threshold: Double,
     val lanes: List<RcCompareLane>,
     val rows: List<ClientRow>,
@@ -251,7 +251,7 @@ object ServeRcCompare {
 
   /** One row as the browser sees it: [RcCompareCell]s whose paths have been resolved to URLs. */
   @Serializable
-  data class ClientRow(
+  public data class ClientRow(
     val label: String,
     val referenceBlank: Boolean,
     val lanes: Map<String, RcCompareCell>,
@@ -260,10 +260,10 @@ object ServeRcCompare {
   private val MODEL_JSON = Json { encodeDefaults = true }
 
   /** Encode a [ClientModel] for inlining — `<` escaped so a player note can't close the script. */
-  fun encodeClientModel(model: ClientModel): String =
+  public fun encodeClientModel(model: ClientModel): String =
     MODEL_JSON.encodeToString(ClientModel.serializer(), model).replace("<", "\\u003c")
 
-  fun parseSummary(bytes: ByteArray): RcSummary? = runCatching {
+  public fun parseSummary(bytes: ByteArray): RcSummary? = runCatching {
     JSON.decodeFromString<RcSummary>(bytes.decodeToString())
   }
     .getOrNull()
@@ -281,7 +281,7 @@ object ServeRcCompare {
    * Returns null when nothing published matches this catalog, which is the common case (most
    * systems ship no `ir/<id>.rc` at all).
    */
-  fun plan(summary: RcSummary, alias: Map<String, String>): RcComparePlan? {
+  public fun plan(summary: RcSummary, alias: Map<String, String>): RcComparePlan? {
     val byDaemonId = summary.rows.associateBy { it.id }
     val matched = alias.mapNotNull { (catalogId, daemonId) ->
       byDaemonId[daemonId]?.let { catalogId to it }
@@ -347,7 +347,7 @@ object ServeRcCompare {
    * Returns null when nothing survived — there is no page worth publishing then, and the absent
    * manifest is what makes the compare page keep its client-rendered lane.
    */
-  fun retainStaged(manifest: RcCompareManifest, staged: Set<String>): RcCompareManifest? {
+  public fun retainStaged(manifest: RcCompareManifest, staged: Set<String>): RcCompareManifest? {
     val rows =
       manifest.rows.map { row ->
         row.copy(
@@ -374,7 +374,7 @@ object ServeRcCompare {
    * from being a file-read primitive: a request that isn't literally of this shape never reaches
    * the filesystem.
    */
-  fun isStagedImageName(name: String): Boolean {
+  public fun isStagedImageName(name: String): Boolean {
     val (dir, file) = name.split('/').takeIf { it.size == 2 } ?: return false
     val lane = dir.removeSuffix("-diff")
     if (lane !in LANE_IDS) return false
@@ -386,7 +386,7 @@ object ServeRcCompare {
 /** The manifest to stage plus the branch assets (`source path → staged name`) it references. */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-data class RcComparePlan(val manifest: RcCompareManifest, val assets: Map<String, String>)
+public data class RcComparePlan(val manifest: RcCompareManifest, val assets: Map<String, String>)
 
 /**
  * A published `rc-compare-summary.json`, cut down to the per-row verdicts the serve page replays.
@@ -394,11 +394,14 @@ data class RcComparePlan(val manifest: RcCompareManifest, val assets: Map<String
  * they belong to the parity gate, not to a side-by-side viewer.
  */
 @Serializable
-data class RcSummary(val threshold: Double? = null, val rows: List<RcSummaryRow> = emptyList())
+public data class RcSummary(
+  val threshold: Double? = null,
+  val rows: List<RcSummaryRow> = emptyList(),
+)
 
 /** One preview as the offline run scored it, keyed by the **daemon** preview id. */
 @Serializable
-data class RcSummaryRow(
+public data class RcSummaryRow(
   val id: String = "",
   val width: Int? = null,
   val height: Int? = null,
@@ -434,12 +437,12 @@ data class RcSummaryRow(
  * and only pick the page up on the next refresh. Once a manifest has been read it is kept — a
  * published comparison is a snapshot, and a refresh rebuilds the host anyway.
  */
-class ServeRcCompareStore
+public class ServeRcCompareStore
 private constructor(private val root: Path, private val fileSystem: FileSystem) {
 
   @Volatile private var settled: RcCompareManifest? = null
 
-  fun manifest(): RcCompareManifest? = read()?.takeIf { it.rows.isNotEmpty() }
+  public fun manifest(): RcCompareManifest? = read()?.takeIf { it.rows.isNotEmpty() }
 
   /**
    * True while the background staging lane has yet to write anything — so this catalog's compare
@@ -450,7 +453,7 @@ private constructor(private val root: Path, private val fileSystem: FileSystem) 
    * catalog's page is served uncacheable instead; once the lane settles (with a comparison or with
    * [ServeRcCompare.NONE]) the page is stable and caches like every other one.
    */
-  fun pending(): Boolean = read() == null
+  public fun pending(): Boolean = read() == null
 
   private fun read(): RcCompareManifest? {
     settled?.let {
@@ -469,17 +472,19 @@ private constructor(private val root: Path, private val fileSystem: FileSystem) 
   }
 
   /** Bytes for a staged lane image, or null for anything this catalog didn't stage. */
-  fun image(name: String): ByteArray? {
+  public fun image(name: String): ByteArray? {
     if (!ServeRcCompare.isStagedImageName(name)) return null
     val path = root / ServeRcCompare.DIRECTORY / name
     if (!fileSystem.exists(path)) return null
     return runCatching { fileSystem.read(path) { readByteArray() } }.getOrNull()
   }
 
-  companion object {
+  public companion object {
     private val JSON = Json { ignoreUnknownKeys = true }
 
-    fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ServeRcCompareStore =
-      ServeRcCompareStore(bundleDir.toOkioPath(), fileSystem)
+    public fun load(
+      bundleDir: File,
+      fileSystem: FileSystem = SystemFileSystem,
+    ): ServeRcCompareStore = ServeRcCompareStore(bundleDir.toOkioPath(), fileSystem)
   }
 }

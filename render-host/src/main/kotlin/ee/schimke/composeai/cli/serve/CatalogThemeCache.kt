@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 
 /** Progress for one catalog generation's server-side theme-cache optimization. */
 @Serializable
-data class ThemeOptimizationSnapshot(
+public data class ThemeOptimizationSnapshot(
   val state: String,
   val total: Int,
   val cached: Int,
@@ -126,7 +126,7 @@ data class ThemeOptimizationSnapshot(
  * the second one costs I/O on every render for nothing.
  */
 @Serializable
-data class CatalogRenderCacheSnapshot(
+public data class CatalogRenderCacheSnapshot(
   val entries: Int,
   val bytes: Long,
   val maxBytes: Long,
@@ -181,7 +181,7 @@ data class CatalogRenderCacheSnapshot(
  * builds a fresh session state and therefore a fresh cache, so entries accumulate for exactly as
  * long as the catalog content they were rendered from remains current.
  */
-class CatalogThemeCache(
+public class CatalogThemeCache(
   maxBytes: Long =
     System.getProperty("composeai.serve.catalogRenderCacheMaxBytes")?.toLongOrNull()
       ?: DEFAULT_MAX_BYTES,
@@ -202,7 +202,7 @@ class CatalogThemeCache(
    */
   private val persistenceOffReason: String? = null,
 ) {
-  val maxBytes: Long = maxBytes.coerceAtLeast(0)
+  public val maxBytes: Long = maxBytes.coerceAtLeast(0)
   private val renderLock = Any()
   // Access-order map: the byte cap evicts the least-recently-read render first.
   private val renders = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
@@ -250,12 +250,12 @@ class CatalogThemeCache(
   private val optimizerProduced = java.util.concurrent.atomic.AtomicInteger(0)
 
   /** The idle gate handed the pass its turn. */
-  fun recordTurnGranted() {
+  public fun recordTurnGranted() {
     turnsGranted.incrementAndGet()
   }
 
   /** Traffic took the turn back. */
-  fun recordTurnYielded() {
+  public fun recordTurnYielded() {
     turnsYielded.incrementAndGet()
   }
 
@@ -263,18 +263,18 @@ class CatalogThemeCache(
    * The ceiling granted a turn the gate would not have. Counted in [recordTurnGranted] too, so
    * `turnsGranted` stays the total and this is the slice of it the box never actually offered.
    */
-  fun recordTurnForced() {
+  public fun recordTurnForced() {
     turnsForced.incrementAndGet()
     turnsGranted.incrementAndGet()
   }
 
   /** Wall-clock the idle gate withheld a turn because the box looked busy. */
-  fun recordGateWait(millis: Long) {
+  public fun recordGateWait(millis: Long) {
     if (millis > 0) gateWaitMillis.addAndGet(millis)
   }
 
   /** Wall-clock spent holding a turn but queued behind other catalogs for a render permit. */
-  fun recordPermitWait(millis: Long) {
+  public fun recordPermitWait(millis: Long) {
     if (millis > 0) permitWaitMillis.addAndGet(millis)
   }
 
@@ -282,14 +282,14 @@ class CatalogThemeCache(
    * One batch completed. [width] is the peak number of daemons that rendered **concurrently**, not
    * the job count — see [ThemeOptimizationSnapshot.lastBatchWidth] for why those differ.
    */
-  fun recordBatch(width: Int, millis: Long) {
+  public fun recordBatch(width: Int, millis: Long) {
     lastBatchWidth.set(width)
     maxBatchWidth.accumulateAndGet(width, ::maxOf)
     if (millis > 0) batchMillis.addAndGet(millis)
   }
 
   /** Entries this batch actually produced — the rate's numerator. */
-  fun recordProduced(count: Int) {
+  public fun recordProduced(count: Int) {
     if (count > 0) optimizerProduced.addAndGet(count)
   }
 
@@ -299,11 +299,11 @@ class CatalogThemeCache(
    * bucket made a cold catalog report a rate it was nowhere near. But it is kept apart from
    * [recordBatch] time because it produces no entries and does not recur per entry.
    */
-  fun recordWarm(millis: Long) {
+  public fun recordWarm(millis: Long) {
     if (millis > 0) warmMillis.addAndGet(millis)
   }
 
-  fun configureTargets(keys: Collection<String>) {
+  public fun configureTargets(keys: Collection<String>) {
     targetKeys += keys
     configurePersistable(keys)
     refreshCompletion()
@@ -323,7 +323,7 @@ class CatalogThemeCache(
    * Kept out of [targetKeys] so `/status` still reports no optimization row for a disabled pass,
    * rather than one parked at "waiting" forever.
    */
-  fun configurePersistable(keys: Collection<String>) {
+  public fun configurePersistable(keys: Collection<String>) {
     persistableKeys += keys
   }
 
@@ -333,7 +333,7 @@ class CatalogThemeCache(
    * The disk read is on the miss path only, so a warm working set costs exactly what it did before
    * persistence existed.
    */
-  fun get(key: String): ByteArray? {
+  public fun get(key: String): ByteArray? {
     synchronized(renderLock) { renders[key] }
       ?.let {
         memoryHits.incrementAndGet()
@@ -396,7 +396,7 @@ class CatalogThemeCache(
    * spec. This is the second queue, worked once the gaps are filled, so the store converges on
    * pixels this renderer actually produced instead of trusting a version boundary forever.
    */
-  fun dirtyTargets(): List<String> {
+  public fun dirtyTargets(): List<String> {
     val store = persistence ?: return emptyList()
     if (store.dirtyCount() == 0) return emptyList()
     // Walked from the TARGETS, not from the directory: the store holds hashed file names and the
@@ -415,7 +415,7 @@ class CatalogThemeCache(
    * queue to work, so a wake buys nothing and costs a resumed host, a possible Android daemon cold
    * start and a live seat.
    */
-  val hasOptimizationTargets: Boolean
+  public val hasOptimizationTargets: Boolean
     get() = targetKeys.isNotEmpty()
 
   /**
@@ -425,7 +425,7 @@ class CatalogThemeCache(
    * fingerprint sees. Deliberately not a delete: the entries keep serving while the background pass
    * replaces them.
    */
-  fun markPersistedDirty(): Int {
+  public fun markPersistedDirty(): Int {
     val store = persistence ?: return 0
     // A pass that was never given targets cannot regenerate anything. With
     // `-Dcomposeai.serve.themeOptimization=false` the startup configures `persistableKeys` and
@@ -446,7 +446,7 @@ class CatalogThemeCache(
    * The memory window is cleared with it. Leaving it would keep serving the very renders just
    * declared wrong, from the tier in front of the one that was emptied.
    */
-  fun dropPersisted(): Boolean {
+  public fun dropPersisted(): Boolean {
     // `true` when there is no disk tier: the memory window below is all this cache has, clearing it
     // is the whole of the drop, and it cannot fail. Reporting false would send the caller into a
     // retry loop against a generation write lock that does not exist — the route turns false into a
@@ -467,10 +467,10 @@ class CatalogThemeCache(
   }
 
   /** Whether [key] is warm in either tier, without paying to read the bytes. */
-  fun contains(key: String): Boolean =
+  public fun contains(key: String): Boolean =
     synchronized(renderLock) { renders.containsKey(key) } || persistence?.contains(key) == true
 
-  fun put(key: String, png: ByteArray) {
+  public fun put(key: String, png: ByteArray) {
     // Disk first, and NOT gated on the memory cap: the disk tier has its own budget and is the
     // authoritative store behind a deliberately smaller memory window, so a render too large for
     // that window must still be persisted rather than silently re-rendered after every restart.
@@ -558,7 +558,7 @@ class CatalogThemeCache(
    *
    * Returns true if the generation is trustworthy (verified, or nothing to verify).
    */
-  fun verifySample(
+  public fun verifySample(
     sampleSize: Int = VERIFY_SAMPLE,
     render: (String) -> ByteArray?,
   ): VerifyOutcome {
@@ -621,7 +621,7 @@ class CatalogThemeCache(
   }
 
   /** What [verifySample] managed to establish. */
-  enum class VerifyOutcome {
+  public enum class VerifyOutcome {
     /** At least one persisted render was re-rendered and matched. */
     VERIFIED,
     /** No disk tier, or nothing adopted from it — there is nothing that could be stale. */
@@ -645,16 +645,16 @@ class CatalogThemeCache(
     MISMATCH_UNDISCARDED;
 
     /** Whether the persisted renders may be trusted from here on. */
-    val settled: Boolean
+    public val settled: Boolean
       get() = this == VERIFIED || this == NOTHING_TO_VERIFY
   }
 
-  fun markRunning(nowMillis: Long) {
+  public fun markRunning(nowMillis: Long) {
     startedAt.compareAndSet(0, nowMillis)
     state.set("running")
   }
 
-  fun markPaused() {
+  public fun markPaused() {
     if (!snapshot().fullyOptimized) state.set("paused")
   }
 
@@ -667,7 +667,7 @@ class CatalogThemeCache(
    * terminal for [failureReason]. Without that distinction, three `Busy` outcomes during a warm
    * would tell the next visitor the preview can never render.
    */
-  fun markFailed(key: String, reason: String? = null) {
+  public fun markFailed(key: String, reason: String? = null) {
     failedKeys += key
     reason?.let { failureReasons[key] = it }
   }
@@ -685,7 +685,7 @@ class CatalogThemeCache(
    * [FAILURE_LATCH] rather than one strike because a first failure can be a cold-start timeout or a
    * daemon restart; a successful [put] clears the count, so only a run of failures latches.
    */
-  fun recordRenderFailure(key: String, reason: String): Boolean {
+  public fun recordRenderFailure(key: String, reason: String): Boolean {
     failureReasons[key] = reason
     val count = failureCounts.merge(key, 1, Int::plus) ?: 1
     if (count < FAILURE_LATCH) return false
@@ -709,7 +709,7 @@ class CatalogThemeCache(
    * how many previews are stuck. A successful [put] clears the count, so a genuinely contended key
    * that eventually renders is never penalised.
    */
-  fun recordBackgroundBusy(key: String): Boolean {
+  public fun recordBackgroundBusy(key: String): Boolean {
     val count = busyCounts.merge(key, 1, Int::plus) ?: 1
     if (count < BUSY_LATCH) return false
     failedKeys += key
@@ -728,9 +728,10 @@ class CatalogThemeCache(
    * contended during the optimization pass would be reported as permanently dead to every later
    * visitor.
    */
-  fun failureReason(key: String): String? = if (key in failedKeys) failureReasons[key] else null
+  public fun failureReason(key: String): String? =
+    if (key in failedKeys) failureReasons[key] else null
 
-  fun markPassFinished(nowMillis: Long) {
+  public fun markPassFinished(nowMillis: Long) {
     if (targetKeys.all(::contains)) {
       completedAt.compareAndSet(0, nowMillis)
       state.set("complete")
@@ -739,7 +740,7 @@ class CatalogThemeCache(
     }
   }
 
-  fun snapshot(): ThemeOptimizationSnapshot {
+  public fun snapshot(): ThemeOptimizationSnapshot {
     // Counted across BOTH tiers. Counting memory alone would report a fully warmed catalog as
     // partially cached the moment the 128 MB window started evicting, which is precisely the
     // condition persistence exists to create.
@@ -810,7 +811,7 @@ class CatalogThemeCache(
     )
   }
 
-  fun renderCacheSnapshot(): CatalogRenderCacheSnapshot {
+  public fun renderCacheSnapshot(): CatalogRenderCacheSnapshot {
     // Read once and derive, for the reason [snapshot] gives: a rate computed from counters read
     // separately can publish a hit rate that does not match the counts printed beside it.
     val memory = memoryHits.get()
@@ -847,8 +848,8 @@ class CatalogThemeCache(
     }
   }
 
-  companion object {
-    const val DEFAULT_MAX_BYTES: Long = 128L * 1024 * 1024
+  public companion object {
+    public const val DEFAULT_MAX_BYTES: Long = 128L * 1024 * 1024
 
     /**
      * Persisted renders re-rendered and compared when a generation is adopted.
@@ -858,12 +859,12 @@ class CatalogThemeCache(
      * question as well as a thousand would, at a cost (a few seconds) that a startup can absorb
      * against the 28 hours of rendering it is protecting.
      */
-    const val VERIFY_SAMPLE: Int = 5
+    public const val VERIFY_SAMPLE: Int = 5
 
     /**
      * Consecutive on-demand render failures before a key is treated as permanently unrenderable.
      */
-    const val FAILURE_LATCH = 3
+    public const val FAILURE_LATCH: Int = 3
 
     /**
      * Consecutive `Busy` outcomes on the BACKGROUND lane before a key is treated as one the
@@ -883,6 +884,6 @@ class CatalogThemeCache(
      * server could never honour, which the grid's three retries then burned before showing "Theme
      * preview unavailable".
      */
-    const val BUSY_LATCH = 12
+    public const val BUSY_LATCH: Int = 12
   }
 }

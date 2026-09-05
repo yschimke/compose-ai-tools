@@ -25,15 +25,16 @@ import kotlinx.serialization.json.Json
  * - **process isolated** — the serve host's own pid must not be visible in the child's `/proc`.
  * - **work dir writable** — the containment must not be so total that a real render can't run.
  */
-object PlaygroundSandboxProbe {
+public object PlaygroundSandboxProbe {
 
   /**
    * The single line the in-jail probe prints, so ordinary JVM noise on stdout can't be mistaken.
    */
-  const val REPORT_PREFIX = "PLAYGROUND_SANDBOX_PROBE "
+  public const val REPORT_PREFIX: String = "PLAYGROUND_SANDBOX_PROBE "
 
   /** Main class of the in-jail probe; spawned as `java -cp <cli classpath> <this>`. */
-  const val PROBE_MAIN_CLASS = "ee.schimke.composeai.cli.serve.PlaygroundSandboxProbeMain"
+  public const val PROBE_MAIN_CLASS: String =
+    "ee.schimke.composeai.cli.serve.PlaygroundSandboxProbeMain"
 
   private val json = Json { ignoreUnknownKeys = true }
 
@@ -43,7 +44,7 @@ object PlaygroundSandboxProbe {
    * are then meaningless and left false.
    */
   @Serializable
-  data class Report(
+  public data class Report(
     val ran: Boolean = false,
     val detail: String = "",
     val egressBlocked: Boolean = false,
@@ -52,7 +53,7 @@ object PlaygroundSandboxProbe {
     val workDirWritable: Boolean = false,
   ) {
     /** Human-readable list of the properties this jail failed to provide; empty ⇒ clean. */
-    fun failedChecks(): List<String> = buildList {
+    public fun failedChecks(): List<String> = buildList {
       if (!ran) add("the probe JVM never reported")
       if (!egressBlocked) add("outbound network reachable from inside the sandbox")
       if (!filesystemContained) add("host files outside the session work dir are readable")
@@ -60,7 +61,7 @@ object PlaygroundSandboxProbe {
       if (!workDirWritable) add("the session work dir is not writable (a render could not run)")
     }
 
-    fun summary(): String =
+    public fun summary(): String =
       if (!ran) "sandbox preflight did not run: $detail"
       else
         "sandbox preflight: egressBlocked=$egressBlocked filesystemContained=$filesystemContained " +
@@ -68,7 +69,7 @@ object PlaygroundSandboxProbe {
   }
 
   /** One spawned probe's raw outcome; injected in tests instead of forking a JVM. */
-  data class Launch(val exitCode: Int, val stdout: String, val stderr: String)
+  public data class Launch(val exitCode: Int, val stdout: String, val stderr: String)
 
   /**
    * Run the preflight for [sandbox].
@@ -79,7 +80,7 @@ object PlaygroundSandboxProbe {
    * @param workRoot the playground work root; the probe gets a fresh writable dir under it.
    * @param launcher spawns argv and returns its outcome; defaults to a real subprocess.
    */
-  fun run(
+  public fun run(
     sandbox: PlaygroundSandbox,
     javaHome: File,
     classpath: List<String>,
@@ -198,7 +199,7 @@ object PlaygroundSandboxProbe {
       }
 
   /** A cold JVM inside a fresh namespace; generous, but the whole preflight is once per startup. */
-  const val DEFAULT_TIMEOUT_SECONDS = 60L
+  public const val DEFAULT_TIMEOUT_SECONDS: Long = 60L
 }
 
 /**
@@ -209,10 +210,10 @@ object PlaygroundSandboxProbe {
  *
  * `argv`: `<writable work dir> <canary path outside the jail> <serve host pid>`.
  */
-object PlaygroundSandboxProbeMain {
+public object PlaygroundSandboxProbeMain {
 
   @JvmStatic
-  fun main(args: Array<String>) {
+  public fun main(args: Array<String>) {
     val workDir = File(args.getOrElse(0) { "." })
     val canary = File(args.getOrElse(1) { "/nonexistent-canary" })
     val hostPid = args.getOrNull(2)?.toLongOrNull()
@@ -224,7 +225,7 @@ object PlaygroundSandboxProbeMain {
   }
 
   /** Exposed for tests: the same measurement, without the process/stdout wrapper. */
-  fun probe(workDir: File, canary: File, hostPid: Long?): PlaygroundSandboxProbe.Report =
+  public fun probe(workDir: File, canary: File, hostPid: Long?): PlaygroundSandboxProbe.Report =
     PlaygroundSandboxProbe.Report(
       ran = true,
       detail = "probed from pid ${ProcessHandle.current().pid()}",

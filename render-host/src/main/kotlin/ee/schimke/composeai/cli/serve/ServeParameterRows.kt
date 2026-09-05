@@ -30,10 +30,10 @@ import okio.Path.Companion.toPath
  * — a bundle-backed session, or a render that failed), expands to nothing and keeps its bare id, so
  * this only ever adds rows that genuinely exist.
  */
-object ServeParameterRows {
+public object ServeParameterRows {
 
   /** One row of a parameterized preview: the addressable id plus the token that names it. */
-  data class Row(val id: String, val label: String)
+  public data class Row(val id: String, val label: String)
 
   /**
    * The rows of [preview] found under [moduleDir]`/build/compose-previews/`, in the fan-out's own
@@ -43,7 +43,7 @@ object ServeParameterRows {
    * [siblingOutputs] must be every *other* preview's capture outputs, used to reject files this
    * preview doesn't own.
    */
-  fun rowsFor(
+  public fun rowsFor(
     preview: PreviewInfo,
     moduleDir: Path,
     siblingOutputs: Set<String>,
@@ -77,13 +77,13 @@ object ServeParameterRows {
    * Every capture output claimed by [previews], as `renderOutput`-relative paths — the exclusion
    * set [rowsFor] needs so one preview's render can't be read as another's row.
    */
-  fun claimedOutputs(previews: List<PreviewInfo>): Set<String> =
+  public fun claimedOutputs(previews: List<PreviewInfo>): Set<String> =
     previews.flatMapTo(mutableSetOf()) { p ->
       p.captures.map { it.renderOutput }.filter { it.isNotBlank() }
     }
 
   /** Convenience for callers holding a `java.io.File` project dir (the Tooling API's shape). */
-  fun rowsFor(
+  public fun rowsFor(
     preview: PreviewInfo,
     moduleDir: java.io.File,
     siblingOutputs: Set<String>,

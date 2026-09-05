@@ -49,12 +49,12 @@ import kotlinx.serialization.Serializable
  * failure mode a mismatch here produces — a wrong `element-moved` verdict from bounds nobody
  * converted.
  */
-object ServeSemanticsTags {
+public object ServeSemanticsTags {
 
   /**
    * The coordinate space [TagEntry.bounds] is in. See the class KDoc for why this is on the wire.
    */
-  const val RENDER_PIXELS = "render-pixels"
+  public const val RENDER_PIXELS: String = "render-pixels"
 
   /**
    * One tag's occupancy of the tree. [count] is every node carrying the tag; [bounds] is the first
@@ -73,7 +73,7 @@ object ServeSemanticsTags {
    */
   @OptIn(ExperimentalSerializationApi::class)
   @Serializable
-  data class TagEntry(
+  public data class TagEntry(
     val count: Int,
     val bounds: AnnotationBounds? = null,
     @EncodeDefault val space: String = RENDER_PIXELS,
@@ -85,7 +85,7 @@ object ServeSemanticsTags {
    * Blank tags are skipped: `testTag = ""` is not an identity anything can resolve, and admitting
    * it would give every untagged-but-present node one shared key.
    */
-  fun index(payload: ComposeSemanticsPayload): Map<String, TagEntry> {
+  public fun index(payload: ComposeSemanticsPayload): Map<String, TagEntry> {
     val out = LinkedHashMap<String, TagEntry>()
     fun walk(node: ComposeSemanticsNode) {
       // A trial-measured copy is not a second use of the tag: it was never placed, so it is not on

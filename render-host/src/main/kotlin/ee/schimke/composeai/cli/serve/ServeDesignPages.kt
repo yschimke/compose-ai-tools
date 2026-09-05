@@ -45,9 +45,9 @@ import okio.Path.Companion.toPath
  * origin ([ServeFigmaSpec]) rather than taken from the file, so a manifest declaring `javascript:…`
  * yields no link instead of an attacker-chosen href.
  */
-class ServeDesignPageStore
+public class ServeDesignPageStore
 private constructor(
-  val pages: List<DesignPage>,
+  public val pages: List<DesignPage>,
   /** Sanitized markup per page id, ready to inline. Built at load; see the class comment. */
   private val markup: Map<String, String>,
   private val manifest: DesignPagesManifest? = null,
@@ -55,9 +55,9 @@ private constructor(
   private val byId: Map<String, DesignPage> = pages.associateBy { it.id }
 
   /** The Figma file the pages came from, or empty when the manifest named no well-formed one. */
-  val fileKey: String = manifest?.fileKey?.takeIf(::isSafeFileKey).orEmpty()
+  public val fileKey: String = manifest?.fileKey?.takeIf(::isSafeFileKey).orEmpty()
 
-  fun page(pageId: String): DesignPage? = byId[pageId]
+  public fun page(pageId: String): DesignPage? = byId[pageId]
 
   /**
    * Sanitized SVG for a previously advertised page, or null.
@@ -67,7 +67,7 @@ private constructor(
    * export from the catalog branch would get markup this server has already judged unsafe to
    * inline, and shipping two different answers for one URL is how a check gets bypassed.
    */
-  fun svg(pageId: String): String? = markup[pageId]
+  public fun svg(pageId: String): String? = markup[pageId]
 
   /**
    * The design ref for [node] — the producer's own, or the one it would have written.
@@ -76,20 +76,20 @@ private constructor(
    * node with no ref can still deep-link back into the design tool. That matters most for an
    * *unlinked* node, where the design-tool link is the only one there is.
    */
-  fun refFor(node: PageNode): String = manifest?.refFor(node) ?: node.ref.orEmpty()
+  public fun refFor(node: PageNode): String = manifest?.refFor(node) ?: node.ref.orEmpty()
 
-  companion object {
+  public companion object {
     /** Directory (bundle-relative) the manifest and its cached SVGs live in. */
-    const val DIRECTORY = "pages"
+    public const val DIRECTORY: String = "pages"
 
-    const val INDEX_FILE = "index.json"
+    public const val INDEX_FILE: String = "index.json"
 
     /**
      * How many nodes one page may carry. The kit's densest definition sheet — `Buttons` — holds a
      * few hundred component nodes; this is above that and far below anything that would turn one
      * page into an enormous response. Every node becomes a list row and a hotspot.
      */
-    const val MAX_NODES_PER_PAGE = 500
+    public const val MAX_NODES_PER_PAGE: Int = 500
 
     private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,160}")
 
@@ -100,9 +100,12 @@ private constructor(
       Regex("""\A\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--.*?-->\s*)*<svg\b""", RegexOption.DOT_MATCHES_ALL)
 
     /** An empty store — the state every host without a page manifest is in. */
-    fun empty(): ServeDesignPageStore = ServeDesignPageStore(emptyList(), emptyMap())
+    public fun empty(): ServeDesignPageStore = ServeDesignPageStore(emptyList(), emptyMap())
 
-    fun load(bundleDir: File, fileSystem: FileSystem = SystemFileSystem): ServeDesignPageStore {
+    public fun load(
+      bundleDir: File,
+      fileSystem: FileSystem = SystemFileSystem,
+    ): ServeDesignPageStore {
       val root = bundleDir.toOkioPath()
       val manifestPath = root / DIRECTORY / INDEX_FILE
       val manifest =
@@ -147,7 +150,7 @@ private constructor(
      * written into the staging tree, not only when it is read back — the same split
      * [ServeParityActivityStore.sanitize] uses.
      */
-    fun drawablePages(manifest: DesignPagesManifest): List<DesignPage> {
+    public fun drawablePages(manifest: DesignPagesManifest): List<DesignPage> {
       if (!manifest.isSupported) return emptyList()
       val seen = HashSet<String>()
       return manifest.pages
@@ -156,7 +159,7 @@ private constructor(
     }
 
     /** A Figma file key is URL-safe alphanumerics; anything else is not a key we will link to. */
-    fun isSafeFileKey(value: String): Boolean = Regex("[A-Za-z0-9_-]{1,64}").matches(value)
+    public fun isSafeFileKey(value: String): Boolean = Regex("[A-Za-z0-9_-]{1,64}").matches(value)
 
     /**
      * `.svg` and `.json` are **reserved**, because the export and the page's data come off the same
@@ -194,7 +197,7 @@ private constructor(
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-val PageNodeLink.wire: String
+public val PageNodeLink.wire: String
   get() =
     when (this) {
       PageNodeLink.CODE_CONNECT -> "code-connect"

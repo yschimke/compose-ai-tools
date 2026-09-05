@@ -21,23 +21,23 @@ import java.security.MessageDigest
  * in-browser [LIVE] transport (CMP→JS) slots into the same `/p/{id}` surface instead of a parallel
  * one. See the plan's "design both now, build PNG first" decision.
  */
-enum class PreviewMode(val wire: String) {
+public enum class PreviewMode(public val wire: String) {
   /** Daemon renders server-side; the browser shows PNG bytes. Universal (Android + Desktop). */
   SNAPSHOT("snapshot"),
   /** Composable compiled to Kotlin/Wasm and run live in the browser. CMP-only; not yet built. */
   LIVE("live");
 
-  companion object {
-    fun parse(raw: String?): PreviewMode? =
+  public companion object {
+    public fun parse(raw: String?): PreviewMode? =
       raw?.lowercase()?.let { v -> entries.firstOrNull { it.wire == v } }
   }
 }
 
 /** Outcome of parsing query-string overrides — either a typed [PreviewOverrides] or a reason. */
-sealed interface OverrideParse {
-  data class Ok(val overrides: PreviewOverrides) : OverrideParse
+public sealed interface OverrideParse {
+  public data class Ok(val overrides: PreviewOverrides) : OverrideParse
 
-  data class Invalid(val message: String) : OverrideParse
+  public data class Invalid(val message: String) : OverrideParse
 }
 
 /**
@@ -46,10 +46,10 @@ sealed interface OverrideParse {
  * `render-matrix` axes ([ee.schimke.composeai.mcp.MatrixCell]) plus the extra display knobs the
  * daemon already honours, so behaviour matches the rest of the CLI.
  */
-object ServeOverrides {
+public object ServeOverrides {
 
   /** Query keys `/render` understands. Unknown keys are ignored (forward-compatible). */
-  val SUPPORTED_KEYS: Set<String> =
+  public val SUPPORTED_KEYS: Set<String> =
     setOf(
       "uiMode",
       "device",
@@ -132,7 +132,7 @@ object ServeOverrides {
    * it, so it is skipped rather than rejected — the viewer builds these URLs itself and a
    * half-typed number field must not 400 the page it came from.
    */
-  const val KNOB_PREFIX = "knob."
+  public const val KNOB_PREFIX: String = "knob."
 
   /**
    * Prefix for Remote Compose named-value seeds: `rc.<name>=<value>`, e.g. `rc.label=Tap me` or
@@ -145,7 +145,7 @@ object ServeOverrides {
    * tag ([RC_KNOWN_KINDS], default `string`). Daemon-only + Android-only — a desktop/static session
    * has no Remote Compose runtime and ignores it. Dynamic keys, so not listed in [SUPPORTED_KEYS].
    */
-  const val RC_NAMED_PREFIX = "rc."
+  public const val RC_NAMED_PREFIX: String = "rc."
 
   /**
    * True when [key] is a param [parse] consumes — a fixed [SUPPORTED_KEYS] axis, an author-declared
@@ -155,7 +155,7 @@ object ServeOverrides {
    * the WebSocket live/stream sessions send is already scoped, so it is passed to [parse]
    * wholesale.
    */
-  fun isOverrideParam(key: String): Boolean =
+  public fun isOverrideParam(key: String): Boolean =
     key in SUPPORTED_KEYS || key.startsWith(KNOB_PREFIX) || key.startsWith(RC_NAMED_PREFIX)
 
   /**
@@ -166,7 +166,7 @@ object ServeOverrides {
    * returns [OverrideParse.Invalid] for the daemon lanes. Both read the same `<kind>:` grammar
    * ([RC_KNOWN_KINDS], default `string`).
    */
-  fun rcNamedValueSeeds(params: Map<String, String>): Map<String, RemoteNamedValue> {
+  public fun rcNamedValueSeeds(params: Map<String, String>): Map<String, RemoteNamedValue> {
     val seeds = mutableMapOf<String, RemoteNamedValue>()
     for ((rawKey, raw) in params) {
       if (!rawKey.startsWith(RC_NAMED_PREFIX)) continue
@@ -213,7 +213,7 @@ object ServeOverrides {
    * so what may be stripped is exactly what [parse] treats as a type tag, and the two must agree
    * for the control and the pixels to.
    */
-  fun knobControlValue(raw: String, declaredKind: String?): String? {
+  public fun knobControlValue(raw: String, declaredKind: String?): String? {
     val sep = raw.indexOf(':')
     val prefix =
       if (sep > 0) {
@@ -247,7 +247,7 @@ object ServeOverrides {
    * explicit tag that agrees, or no tag at all on a `string` knob. Anything else — a bare value on
    * a typed knob, a `float:` on an `int` — leaves the control showing what the render used.
    */
-  fun rcControlValue(raw: String, declaredKind: String): String? {
+  public fun rcControlValue(raw: String, declaredKind: String): String? {
     // A blank `rc.<name>=` is skipped wholesale by [parse] — unlike a knob, not even a string RC
     // seed accepts one — so the declaration stands and the control has to keep showing it.
     if (raw.isBlank()) return null
@@ -269,7 +269,7 @@ object ServeOverrides {
    * Map a `compose/overrides` declaration `type` to the [PreviewOverrideValue] wire kind. Shared
    * with the viewer's control rendering so the inferred type always matches the widget shown.
    */
-  fun knobKind(type: String): String =
+  public fun knobKind(type: String): String =
     when (type.lowercase()) {
       "int" -> "int"
       "float",
@@ -286,7 +286,7 @@ object ServeOverrides {
    * [ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration.seedKey]). Empty when the
    * preview is unknown or declares no knobs — a bare value then falls back to string.
    */
-  fun declaredKnobKinds(preview: ServePreview?): Map<String, String> =
+  public fun declaredKnobKinds(preview: ServePreview?): Map<String, String> =
     preview?.overrides?.associate { it.seedKey to knobKind(it.type) } ?: emptyMap()
 
   /**
@@ -309,7 +309,7 @@ object ServeOverrides {
    * set** means the session declares none, so any `themeProvider` is rejected — nothing could apply
    * it.
    */
-  fun parse(
+  public fun parse(
     params: Map<String, String>,
     knobKinds: Map<String, String> = emptyMap(),
     declaredThemeFqns: Set<String>? = null,
@@ -754,7 +754,7 @@ object ServeOverrides {
    * coalesce to one render and the key is safe as a map key. Only the fields tier 1 supports
    * participate; adding a field here is the one place to keep in lockstep with [parse].
    */
-  fun cacheKey(previewId: String, o: PreviewOverrides): String {
+  public fun cacheKey(previewId: String, o: PreviewOverrides): String {
     val canonical = buildString {
       append(previewId).append(' ')
       append("w=").append(o.widthPx).append('|')

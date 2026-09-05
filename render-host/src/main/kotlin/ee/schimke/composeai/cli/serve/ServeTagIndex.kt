@@ -44,13 +44,13 @@ import okio.Path.Companion.toPath
  * `gate-element-vanished` in the conformance fixtures is what keeps both engines there.
  */
 @Serializable
-data class TagIndexManifest(
+public data class TagIndexManifest(
   val schema: String = SCHEMA,
   /** Keyed by the **served** preview id (`button-filled__ideal__default__light`). */
   val previews: Map<String, Map<String, WireTagEntry>> = emptyMap(),
 ) {
-  companion object {
-    const val SCHEMA = "compose-preview-tags/v1"
+  public companion object {
+    public const val SCHEMA: String = "compose-preview-tags/v1"
   }
 }
 
@@ -67,28 +67,28 @@ data class TagIndexManifest(
  * entries are converted to the producer type.
  */
 @Serializable
-data class WireTagEntry(
+public data class WireTagEntry(
   val count: Int = 0,
   val bounds: AnnotationBounds? = null,
   val space: String? = null,
 )
 
 /** Validated, read-only view of a catalog's `tags/index.json`. */
-class ServeTagIndexStore
+public class ServeTagIndexStore
 private constructor(private val byPreview: Map<String, Map<String, ServeSemanticsTags.TagEntry>>) {
 
   /** The tag index for [previewId], empty when the catalog published none for it. */
-  fun forPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
+  public fun forPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
     byPreview[previewId].orEmpty()
 
-  val isEmpty: Boolean = byPreview.isEmpty()
+  public val isEmpty: Boolean = byPreview.isEmpty()
 
   /** Previews the catalog published an index for. */
-  val previewIds: Set<String> = byPreview.keys
+  public val previewIds: Set<String> = byPreview.keys
 
-  companion object {
-    const val DIRECTORY = "tags"
-    const val INDEX_FILE = "index.json"
+  public companion object {
+    public const val DIRECTORY: String = "tags"
+    public const val INDEX_FILE: String = "index.json"
 
     /**
      * Cap on indexed previews. A catalog is third-party data and this file is read at staging time
@@ -96,19 +96,21 @@ private constructor(private val byPreview: Map<String, Map<String, ServeSemantic
      * hostile or broken publisher cannot raise. Generous against real use — the largest published
      * catalog is in the hundreds of stickers.
      */
-    const val MAX_PREVIEWS = 4096
+    public const val MAX_PREVIEWS: Int = 4096
 
     private val JSON = Json { ignoreUnknownKeys = true }
 
     /**
      * Empty store — a catalog that publishes no index at all, which is every catalog until it does.
      */
-    val EMPTY = ServeTagIndexStore(emptyMap())
+    public val EMPTY: ServeTagIndexStore = ServeTagIndexStore(emptyMap())
 
-    fun load(bundleDir: File, fileSystem: FileSystem = FileSystem.SYSTEM): ServeTagIndexStore =
-      load(bundleDir.toOkioPath(), fileSystem)
+    public fun load(
+      bundleDir: File,
+      fileSystem: FileSystem = FileSystem.SYSTEM,
+    ): ServeTagIndexStore = load(bundleDir.toOkioPath(), fileSystem)
 
-    fun load(bundleRoot: Path, fileSystem: FileSystem): ServeTagIndexStore {
+    public fun load(bundleRoot: Path, fileSystem: FileSystem): ServeTagIndexStore {
       val index = bundleRoot / DIRECTORY.toPath() / INDEX_FILE.toPath()
       if (!fileSystem.exists(index)) return EMPTY
       val manifest =

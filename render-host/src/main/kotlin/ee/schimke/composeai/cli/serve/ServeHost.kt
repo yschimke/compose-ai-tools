@@ -15,42 +15,42 @@ import ee.schimke.composeai.daemon.protocol.UiMode
  * The HTTP routes and the registry only need this surface, so either kind can be served at
  * `?session=<id>` uniformly.
  */
-interface ServeHost : AutoCloseable {
+public interface ServeHost : AutoCloseable {
   /** The whole servable preview set for this session. */
-  val previews: List<ServePreview>
+  public val previews: List<ServePreview>
 
   /** One same-origin asset from a preview's portable spatial scene, or null when unavailable. */
-  fun spatialAsset(previewId: String, relativePath: String): ServeSpatialAsset? = null
+  public fun spatialAsset(previewId: String, relativePath: String): ServeSpatialAsset? = null
 
   /** Whether the server can return a self-contained executable bundle for this preview. */
-  fun canDownloadExecutableBundle(previewId: String): Boolean = false
+  public fun canDownloadExecutableBundle(previewId: String): Boolean = false
 
   /** A hydrated, self-contained PNG+ZIP preview bundle, or null when this host has no such lane. */
-  fun executableBundle(previewId: String): ByteArray? = null
+  public fun executableBundle(previewId: String): ByteArray? = null
 
   /** Independently-authored design references mapped to [previewId], if this host carries any. */
-  fun designReferencesFor(previewId: String): List<DesignReference> = emptyList()
+  public fun designReferencesFor(previewId: String): List<DesignReference> = emptyList()
 
   /** Canonical PNG bytes for a previously advertised design [referenceId]. */
-  fun designReferenceRaster(referenceId: String): ByteArray? = null
+  public fun designReferenceRaster(referenceId: String): ByteArray? = null
 
   /**
    * Design pages this session publishes (`pages/index.json`), or empty when it publishes none — the
    * common case, and the one every host defaults to. See [ServeDesignPages].
    */
-  fun designPages(): ServeDesignPageStore = ServeDesignPageStore.empty()
+  public fun designPages(): ServeDesignPageStore = ServeDesignPageStore.empty()
 
   /** Sanitized SVG markup for a previously advertised page. */
-  fun designPageSvg(pageId: String): String? = designPages().svg(pageId)
+  public fun designPageSvg(pageId: String): String? = designPages().svg(pageId)
 
   /**
    * Typography / layout annotations over this preview's *rendered* frame, if the session carries
    * any. Empty by default — a host with no annotation manifest serves the compare page unchanged.
    */
-  fun annotationsForPreview(previewId: String): List<DesignAnnotation> = emptyList()
+  public fun annotationsForPreview(previewId: String): List<DesignAnnotation> = emptyList()
 
   /** Typography / layout annotations over a design reference's raster. */
-  fun annotationsForReference(referenceId: String): List<DesignAnnotation> = emptyList()
+  public fun annotationsForReference(referenceId: String): List<DesignAnnotation> = emptyList()
 
   /**
    * The **published** tag index for [previewId] — `testTag → {count, bounds}`, the element identity
@@ -64,7 +64,8 @@ interface ServeHost : AutoCloseable {
    * from. Two producers, one projection, deliberately not one code path: only one of them has a
    * daemon.
    */
-  fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> = emptyMap()
+  public fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
+    emptyMap()
 
   /**
    * The design-parity activity feed this catalog published (`parity/activity.json`), or null when
@@ -72,10 +73,10 @@ interface ServeHost : AutoCloseable {
    * `/<system>/parity` view's code / Figma feeds; the coverage half of that page is derived from
    * [previews] + [designReferencesFor] and needs no feed at all.
    */
-  fun parityActivity(): ParityActivity? = null
+  public fun parityActivity(): ParityActivity? = null
 
   /** The validated GitHub issue snapshot this catalog published. */
-  fun parityIssues(): ParityIssues? = null
+  public fun parityIssues(): ParityIssues? = null
 
   /**
    * The parity **verdict** this catalog published for one comparison (`parity/findings.json`) — the
@@ -85,7 +86,7 @@ interface ServeHost : AutoCloseable {
    * Keyed by the PAIR rather than by the preview alone because that is what a finding describes;
    * see [ServeParityFindingStore.forComparison] for what an unscoped set means.
    */
-  fun parityFindingsFor(previewId: String, referenceId: String): List<ParityFindingSet> =
+  public fun parityFindingsFor(previewId: String, referenceId: String): List<ParityFindingSet> =
     emptyList()
 
   /**
@@ -98,7 +99,7 @@ interface ServeHost : AutoCloseable {
    * would be a third implementation of the same rules with no conformance suite behind it. See
    * [ServeKnownDifferences].
    */
-  fun knownDifferences(): ServeKnownDifferences.Document? = null
+  public fun knownDifferences(): ServeKnownDifferences.Document? = null
 
   /**
    * One of that document's artifacts, addressed as the document addresses it (`<id>/<path>`).
@@ -107,7 +108,7 @@ interface ServeHost : AutoCloseable {
    * with no artifact tree and a path that resolves to no file are the same answer to the consumer:
    * the record's bytes could not be read.
    */
-  fun knownDifferenceArtifact(relativePath: String): ServeKnownDifferences.Artifact =
+  public fun knownDifferenceArtifact(relativePath: String): ServeKnownDifferences.Artifact =
     ServeKnownDifferences.Artifact.Unreadable
 
   /**
@@ -117,7 +118,7 @@ interface ServeHost : AutoCloseable {
    * (`themeProvider` needs the daemon to load the provider off the app classpath), so it stays
    * empty and the selector shows only the built-in light/dark axis.
    */
-  val declaredThemes: List<ServeTheme>
+  public val declaredThemes: List<ServeTheme>
     get() = emptyList()
 
   /**
@@ -131,7 +132,7 @@ interface ServeHost : AutoCloseable {
    * [ServeBundleHost] (the baked host [ServeCatalogStore] terminally registers) carries a populated
    * list.
    */
-  val degradations: List<ServeDegradation>
+  public val degradations: List<ServeDegradation>
     get() = emptyList()
 
   /**
@@ -146,7 +147,7 @@ interface ServeHost : AutoCloseable {
    * browse (there is no baked PNG to replay — see [CatalogLiveRouting.daemonIdForRender]), and the
    * viewer can badge the card as live-only. Empty for every ordinary session.
    */
-  val liveOnlyPreviewIds: Set<String>
+  public val liveOnlyPreviewIds: Set<String>
     get() = emptySet()
 
   /**
@@ -160,7 +161,7 @@ interface ServeHost : AutoCloseable {
    * conservative one — an unnamed theme routes a `uiMode` request to a real render rather than
    * replaying a sticker whose mode nothing established.
    */
-  fun bakedTheme(previewId: String): UiMode? = ServeBakedTheme.token(previewId)
+  public fun bakedTheme(previewId: String): UiMode? = ServeBakedTheme.token(previewId)
 
   /**
    * The Remote Compose player [previewId]'s **baked** pixels were drawn with, or null when this
@@ -190,10 +191,10 @@ interface ServeHost : AutoCloseable {
    * exporter carries it). A catalog published before that field existed reads back null and keeps
    * naming its player, which is the behaviour that predates this seam.
    */
-  fun bakedRcPlayer(previewId: String): RemoteComposePlayerKind? = null
+  public fun bakedRcPlayer(previewId: String): RemoteComposePlayerKind? = null
 
   /** Human label for the tenant (module Gradle path, `module@rev`, or a bundle name). */
-  val label: String
+  public val label: String
 
   /**
    * Whether editing an override actually re-renders. `true` for a daemon-backed host
@@ -201,7 +202,7 @@ interface ServeHost : AutoCloseable {
    * replay the baked PNGs — the viewer then shows the preview's declared knobs as disabled,
    * informational controls.
    */
-  val canApplyOverrides: Boolean
+  public val canApplyOverrides: Boolean
     get() = false
 
   /**
@@ -214,7 +215,7 @@ interface ServeHost : AutoCloseable {
    * and instant) but `canRenderOverrides = true` — an override-bearing `/render` re-renders through
    * the carried daemon on demand, so a `?knob.<key>=…` (or display-axis) URL returns fresh pixels.
    */
-  val canRenderOverrides: Boolean
+  public val canRenderOverrides: Boolean
     get() = canApplyOverrides
 
   /**
@@ -226,7 +227,7 @@ interface ServeHost : AutoCloseable {
    * theme) as disabled/informational rather than enabled-but-dead (an override on such a preview
    * falls back to the baked PNG, which ignores it).
    */
-  fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
+  public fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
    * The **named-value overrides that apply a declared theme to an already-recorded document** —
@@ -248,7 +249,7 @@ interface ServeHost : AutoCloseable {
    * re-running the composable, which reaches everything a theme does — including the typeface,
    * which has no named value to carry it.
    */
-  fun themeReplayColors(providerFqn: String): Map<String, String> = emptyMap()
+  public fun themeReplayColors(providerFqn: String): Map<String, String> = emptyMap()
 
   /**
    * The declared themes a **replayed** preview can actually be rendered under — those this host
@@ -259,7 +260,7 @@ interface ServeHost : AutoCloseable {
    * whole declared set because *one* of them is mapped puts the unmapped ones back on the terminal
    * 409 the gate exists to prevent.
    */
-  fun replayableThemes(): List<ServeTheme> = declaredThemes.filter {
+  public fun replayableThemes(): List<ServeTheme> = declaredThemes.filter {
     themeReplayColors(it.providerFqn).isNotEmpty()
   }
 
@@ -269,7 +270,7 @@ interface ServeHost : AutoCloseable {
    * per-preview daemons may opt into a larger temporary burst; the HTTP server still clamps it to
    * its render slots and shares that burst across every active page for the same catalog.
    */
-  val themeRenderBurstCapacity: Int
+  public val themeRenderBurstCapacity: Int
     get() = 1
 
   /**
@@ -277,7 +278,7 @@ interface ServeHost : AutoCloseable {
    * no cache return null. [render] remains the authoritative path and must recheck its cache after
    * admission to close the lookup/render race.
    */
-  fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
+  public fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
 
   /**
    * Serve [previewId] from pixels **already on this box** — a baked PNG on disk — or null when
@@ -293,7 +294,7 @@ interface ServeHost : AutoCloseable {
    * Must be cheap and non-blocking: no daemon, no network, no waiting. Returning null is always
    * safe — the caller falls back to the admitted [render] path.
    */
-  fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
+  public fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
 
   /**
    * Make [previewId]'s published pixels local, if this host can fetch them and has not already.
@@ -313,7 +314,7 @@ interface ServeHost : AutoCloseable {
    * attempt retries. Default does nothing, which is right for every host with no published bytes
    * behind it.
    */
-  fun warmBakedRender(previewId: String) {}
+  public fun warmBakedRender(previewId: String) {}
 
   /**
    * [previewId]'s baked render size in pixels, read from the PNG header alone — no decode, no
@@ -325,7 +326,7 @@ interface ServeHost : AutoCloseable {
    * build to learn two integers. Null is always safe: the page then omits the dimensions and the
    * unfurler measures the image itself.
    */
-  fun bakedRenderSize(previewId: String): Pair<Int, Int>? = null
+  public fun bakedRenderSize(previewId: String): Pair<Int, Int>? = null
 
   /**
    * The bytes of one published animated capture, or null when this host has none to serve.
@@ -343,7 +344,7 @@ interface ServeHost : AutoCloseable {
    * say but 404, and the reader with "could not be loaded" for both. Defaults to
    * [BranchFetch.NotFound] — a host with no branch behind it publishes no captures.
    */
-  fun motionRead(motionId: String, extension: String): BranchFetch = BranchFetch.NotFound
+  public fun motionRead(motionId: String, extension: String): BranchFetch = BranchFetch.NotFound
 
   /**
    * A visitor is present on this session's pages right now (see `POST /api/presence`) — get its
@@ -359,7 +360,7 @@ interface ServeHost : AutoCloseable {
    * implementation must return immediately and do nothing at all once its lane is ready. Hosts with
    * no live lane (a static baked bundle) keep the default no-op.
    */
-  fun keepLiveWarm() {}
+  public fun keepLiveWarm() {}
 
   /**
    * Aggregate render-performance counters for this host's live render lane, surfaced on `/status`
@@ -368,7 +369,7 @@ interface ServeHost : AutoCloseable {
    *   record every serve-side render round-trip; composites ([ServeCatalogLiveHost]) forward their
    *   carried daemon's stats.
    */
-  fun renderPerfStats(): RenderPerfSnapshot? = null
+  public fun renderPerfStats(): RenderPerfSnapshot? = null
 
   /**
    * This lane's open render breaker, or null while it is rendering normally (the healthy case, and
@@ -378,23 +379,23 @@ interface ServeHost : AutoCloseable {
    * that schedule background render work must consult it and stand down: feeding a broken renderer
    * is what burned 275s of render gate and a ~7h ETA in issue #3448.
    */
-  fun renderBreaker(): RenderBreakerSnapshot? = null
+  public fun renderBreaker(): RenderBreakerSnapshot? = null
 
   /**
    * Bounded child-daemon pools owned by this host, surfaced on `/status.json` so production
    * monitors can distinguish "one catalog daemon is up" from "a catalog daemon plus N per-preview
    * daemons are resident". Empty for ordinary hosts.
    */
-  fun daemonPoolStats(): List<DaemonPoolSnapshot> = emptyList()
+  public fun daemonPoolStats(): List<DaemonPoolSnapshot> = emptyList()
 
   /** Server-side catalog theme optimization progress, or null for hosts without that cache. */
-  fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? = null
+  public fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? = null
 
   /** Memory occupancy of this catalog generation's durable rendered-preview cache. */
-  fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot? = null
+  public fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot? = null
 
   /** True while low-priority work still needs this host resident. */
-  val backgroundWorkActive: Boolean
+  public val backgroundWorkActive: Boolean
     get() = false
 
   /**
@@ -405,7 +406,7 @@ interface ServeHost : AutoCloseable {
    * `@GestureHintPreview` component doesn't show a toggle that would do nothing on a desktop-backed
    * session. Defaults false (a static bundle has no daemon; a desktop daemon doesn't support it).
    */
-  val gesturesRenderable: Boolean
+  public val gesturesRenderable: Boolean
     get() = false
 
   /**
@@ -414,7 +415,7 @@ interface ServeHost : AutoCloseable {
    * `figma/<slug>.svg` vectors (a design catalog). Drives whether the viewer offers a copyable SVG
    * download URL alongside the PNG one. Defaults to false (a plain bundle 404s the `.svg` lane).
    */
-  val hasSvgExport: Boolean
+  public val hasSvgExport: Boolean
     get() = false
 
   /**
@@ -425,14 +426,14 @@ interface ServeHost : AutoCloseable {
    * isn't offered on a preview that would then render "failed" (issue #2352). Defaults to the
    * session-wide [hasSvgExport] — a daemon-backed host exports any of its previews.
    */
-  fun hasSvgExportFor(previewId: String): Boolean = hasSvgExport
+  public fun hasSvgExportFor(previewId: String): Boolean = hasSvgExport
 
   /** Whether this host can produce the tall raster `render/scroll/long` export. */
-  val hasScrollExport: Boolean
+  public val hasScrollExport: Boolean
     get() = false
 
   /** Per-preview refinement of [hasScrollExport]. */
-  fun hasScrollExportFor(previewId: String): Boolean = hasScrollExport
+  public fun hasScrollExportFor(previewId: String): Boolean = hasScrollExport
 
   /**
    * Whether a **live daemon stream** ("Live (stream)") is available for this session — distinct
@@ -451,7 +452,7 @@ interface ServeHost : AutoCloseable {
    * all — a static baked bundle — must report 0 rather than inherit a truthy default, or the page
    * would tell a visitor a purely static catalog has a render server connected.
    */
-  val daemonProcessCount: Int
+  public val daemonProcessCount: Int
     get() = 0
 
   /**
@@ -463,14 +464,14 @@ interface ServeHost : AutoCloseable {
    * every host with nothing to defer (baked bundles, and daemon hosts handed an already-open
    * session), so their reporting is unchanged.
    */
-  val daemonStarted: Boolean
+  public val daemonStarted: Boolean
     get() = true
 
-  val hasLiveStream: Boolean
+  public val hasLiveStream: Boolean
     get() = canApplyOverrides
 
   /** Render [previewId] at [overrides] (cached where possible). */
-  fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
+  public fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 
   /**
    * Why this host has permanently given up on rendering [previewId] at [overrides], or null while
@@ -480,7 +481,7 @@ interface ServeHost : AutoCloseable {
    * say) otherwise reads to the browser as "try again", forever. Hosts with no such memory report
    * null and behave exactly as before.
    */
-  fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? = null
+  public fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? = null
 
   /**
    * Close daemon subprocesses this host has held idle for [idleMillis] without closing the host
@@ -493,14 +494,14 @@ interface ServeHost : AutoCloseable {
    * replica and per-preview pools forever. This is the narrower action — shed the processes, keep
    * the host.
    */
-  fun releaseIdleDaemons(idleMillis: Long): Int = 0
+  public fun releaseIdleDaemons(idleMillis: Long): Int = 0
 
   /**
    * Render a request admitted by the server's short-lived catalog theme lease. Hosts that cannot
    * parallelise keep the ordinary [render] behaviour. A catalog backed by a replica pool overrides
    * this to borrow an independent shared daemon, so only explicitly leased batches grow the pool.
    */
-  fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+  public fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     render(previewId, overrides)
 
   /**
@@ -510,7 +511,7 @@ interface ServeHost : AutoCloseable {
    * daemon render). Defaults to null: only a bundle host that carries the `ir/` sidecars returns
    * bytes; a daemon-only host has none.
    */
-  fun remoteComposeDoc(previewId: String): ByteArray? = null
+  public fun remoteComposeDoc(previewId: String): ByteArray? = null
 
   /**
    * Whether [previewId] carries a captured Remote Compose document ([remoteComposeDoc]) the viewer
@@ -519,7 +520,7 @@ interface ServeHost : AutoCloseable {
    * [remoteComposeDoc]; a bundle host overrides it with a cheap existence check so the per-preview
    * page render doesn't read the whole doc just to know it's there.
    */
-  fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
+  public fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
 
   /**
    * The **published** Remote Compose player comparison this catalog carries — every player's render
@@ -531,14 +532,14 @@ interface ServeHost : AutoCloseable {
    * Null for every host but a catalog whose delivery branch published one — a plain uploaded
    * bundle, or a system that ships no `ir/<id>.rc`, keeps the client-rendered lane.
    */
-  fun rcCompare(): RcCompareManifest? = null
+  public fun rcCompare(): RcCompareManifest? = null
 
   /**
    * Bytes for one staged rc-compare lane image ([RcCompareCell.render] / [RcCompareCell.diff]),
    * served over `GET /<system>/rc-compare/<lane>/<slot>.png`. Null for anything the host didn't
    * stage — the name vocabulary is fixed, so this is never a general file read.
    */
-  fun rcCompareImage(name: String): ByteArray? = null
+  public fun rcCompareImage(name: String): ByteArray? = null
 
   /**
    * The **published** render of [previewId] by [backend], from this catalog's `rc-compare` staging
@@ -566,7 +567,7 @@ interface ServeHost : AutoCloseable {
    * Reads the manifest, not the images: this runs per preview while building a page, and whether a
    * lane was staged is a field on the row.
    */
-  fun stagedRcPlayers(previewId: String): List<RcPlayerBackend> {
+  public fun stagedRcPlayers(previewId: String): List<RcPlayerBackend> {
     val row = rcCompare()?.rows?.firstOrNull { it.previewId == previewId } ?: return emptyList()
     return RcPlayerBackend.UNIVERSE.filter { backend ->
       val cell = backend.rcCompareLane?.let { row.lanes[it] }
@@ -574,7 +575,7 @@ interface ServeHost : AutoCloseable {
     }
   }
 
-  fun publishedRcPlayerRender(previewId: String, backend: RcPlayerBackend): ByteArray? {
+  public fun publishedRcPlayerRender(previewId: String, backend: RcPlayerBackend): ByteArray? {
     val lane = backend.rcCompareLane ?: return null
     val cell = rcCompare()?.rows?.firstOrNull { it.previewId == previewId }?.lanes?.get(lane)
     val name = cell?.takeIf { it.rendered }?.render?.takeIf { it.isNotEmpty() } ?: return null
@@ -591,7 +592,7 @@ interface ServeHost : AutoCloseable {
    * the pre-manifest shape for minutes after the lanes had landed. False everywhere else: a host
    * with no staging lane is never provisional.
    */
-  fun rcComparePending(): Boolean = false
+  public fun rcComparePending(): Boolean = false
 
   /**
    * The pixel size and density a **cmp-jvm** render of [previewId] should use — matched to the
@@ -600,14 +601,14 @@ interface ServeHost : AutoCloseable {
    * missing), in which case the cmp-jvm chip stays disabled. Only a bundle/catalog host that
    * carries both the `ir/<id>.rc` sidecar and the baked `previews/<id>.png` returns a spec.
    */
-  fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? = null
+  public fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? = null
 
   /**
    * Whether the server-side **cmp-jvm** lane can render [previewId]: the host carries the captured
    * document and a render spec, and the isolated desktop-player subprocess is installed
    * ([RcJvmServerRenderer.isAvailable]). Hosts fold this into [enabledRcPlayersFor].
    */
-  fun supportsCmpJvm(previewId: String): Boolean =
+  public fun supportsCmpJvm(previewId: String): Boolean =
     hasRemoteComposeDoc(previewId) &&
       remoteComposeRenderSpec(previewId) != null &&
       RcJvmServerRenderer.isAvailable()
@@ -638,12 +639,12 @@ interface ServeHost : AutoCloseable {
    * Factored here rather than spelled out at each site, because three copies of one fact drifting
    * apart is the bug this whole seam exists to stop.
    */
-  fun bakedRcPlayerBackend(previewId: String): RcPlayerBackend? =
+  public fun bakedRcPlayerBackend(previewId: String): RcPlayerBackend? =
     bakedRcPlayer(previewId)?.let { kind ->
       RcPlayerBackend.entries.firstOrNull { it.playerKind == kind }
     }
 
-  fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> =
+  public fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> =
     if (hasRemoteComposeDoc(previewId)) {
       buildList {
         add(RcPlayerBackend.JS)
@@ -675,7 +676,7 @@ interface ServeHost : AutoCloseable {
    * whether [enabledRcPlayersFor] offers the server-side lanes, so the viewer never shows a backend
    * chip that would re-render to the same image. Defaults false.
    */
-  val remoteComposePlayerSelectable: Boolean
+  public val remoteComposePlayerSelectable: Boolean
     get() = false
 
   /**
@@ -683,7 +684,8 @@ interface ServeHost : AutoCloseable {
    * when this host can't produce SVG. Defaults to `NotFound`: only the daemon-backed
    * [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to export one.
    */
-  fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome = SvgOutcome.NotFound
+  public fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
+    SvgOutcome.NotFound
 
   /**
    * The figma-svg export tailored for **web/document** viewing (`?mode=web`): where possible the
@@ -694,7 +696,7 @@ interface ServeHost : AutoCloseable {
    * font-`@import` rewrite still applies on top either way. Only the catalog-backed
    * [ServeBundleHost] (which knows the `repo@branch` its crops were published to) overrides this.
    */
-  fun renderSvgForWeb(previewId: String, overrides: PreviewOverrides): SvgOutcome =
+  public fun renderSvgForWeb(previewId: String, overrides: PreviewOverrides): SvgOutcome =
     renderSvg(previewId, overrides)
 
   /**
@@ -705,14 +707,14 @@ interface ServeHost : AutoCloseable {
    * re-render needs a daemon; a static bundle has none). A non-scrolling preview yields its
    * ordinary viewport SVG. See [docs/design/SCROLLING_SVG.md].
    */
-  fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
+  public fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
     SvgOutcome.NotFound
 
   /**
    * Render [previewId]'s full-page raster scroll capture (`render/scroll/long`) at [overrides], or
    * [RenderOutcome.NotFound] when this host has no daemon-backed scroll producer.
    */
-  fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+  public fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     RenderOutcome.NotFound
 
   /**
@@ -721,7 +723,7 @@ interface ServeHost : AutoCloseable {
    * daemon-backed [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to
    * capture a semantics tree.
    */
-  fun renderSlots(previewId: String, overrides: PreviewOverrides): SlotsOutcome =
+  public fun renderSlots(previewId: String, overrides: PreviewOverrides): SlotsOutcome =
     SlotsOutcome.NotFound
 
   /**
@@ -730,25 +732,26 @@ interface ServeHost : AutoCloseable {
    * Defaults to false — only the daemon-backed [ServeRenderHost] carries an a11y producer, and a
    * static bundle has no daemon to walk a semantics tree.
    */
-  val hasA11yOverlay: Boolean
+  public val hasA11yOverlay: Boolean
     get() = false
 
   /** Per-preview accessibility availability; composite hosts may only map part of a catalog. */
-  fun hasA11yOverlayFor(previewId: String): Boolean = hasA11yOverlay
+  public fun hasA11yOverlayFor(previewId: String): Boolean = hasA11yOverlay
 
   /**
    * Fetch [previewId]'s merged accessibility products at [overrides] as JSON (`{previewId, nodes,
    * findings, touchTargets}`), or [A11yOutcome.NotFound] when this host can't produce them. See
    * [ServeRenderHost.renderA11y].
    */
-  fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome = A11yOutcome.NotFound
+  public fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome =
+    A11yOutcome.NotFound
 
   /**
    * Whether this host can derive the viewer's typography, theme and layout inspection layers from a
    * render's `compose/semantics` tree ([renderAnnotations]). Tracks [canApplyOverrides]: capturing
    * a semantics tree needs a daemon, exactly like [renderSlots].
    */
-  val hasDesignAnnotations: Boolean
+  public val hasDesignAnnotations: Boolean
     get() = canApplyOverrides
 
   /**
@@ -757,7 +760,7 @@ interface ServeHost : AutoCloseable {
    * offering the Typography / Theme / Layout layers on a preview whose fetch can only 404 is
    * exactly the dead control [hasDesignAnnotations] exists to avoid.
    */
-  fun hasDesignAnnotationsFor(previewId: String): Boolean = hasDesignAnnotations
+  public fun hasDesignAnnotationsFor(previewId: String): Boolean = hasDesignAnnotations
 
   /**
    * Whether this host can answer `.annotations` for [previewId] from the catalog's **published**
@@ -771,7 +774,7 @@ interface ServeHost : AutoCloseable {
    * Typography layer on a catalog that published it, or offer a Theme checkbox with nothing behind
    * it. Defaults to false — a host with no published annotation manifest has neither.
    */
-  fun hasPublishedTypographyFor(previewId: String): Boolean = false
+  public fun hasPublishedTypographyFor(previewId: String): Boolean = false
 
   /**
    * Render [previewId] at [overrides] and return its typography + theme inspection layers as JSON
@@ -792,7 +795,7 @@ interface ServeHost : AutoCloseable {
    * [AnnotationKind.publishedLayersSuffice] — a typography-only request can be answered off a
    * published bundle without a daemon, which is worth 16-22s on an idle catalog.
    */
-  fun renderAnnotations(
+  public fun renderAnnotations(
     previewId: String,
     overrides: PreviewOverrides,
     layers: Set<String>? = null,
@@ -814,7 +817,7 @@ interface ServeHost : AutoCloseable {
    * withholds annotation-box selection on them — the layers still draw, since being a render out of
    * date costs a reading aid nothing.
    */
-  val annotationsFollowBakedFrame: Boolean
+  public val annotationsFollowBakedFrame: Boolean
     get() = false
 
   /**
@@ -828,7 +831,7 @@ interface ServeHost : AutoCloseable {
    * re-rendered snapshots instead of the opaque "input requires a live stream". Not called on
    * success (a non-null return).
    */
-  fun subscribeStream(
+  public fun subscribeStream(
     previewId: String,
     overrides: PreviewOverrides,
     codec: StreamCodec?,
@@ -838,7 +841,7 @@ interface ServeHost : AutoCloseable {
   ): StreamHandle?
 
   /** Count of live upstream streams (0 for hosts without a live lane). */
-  fun activeStreamCount(): Int
+  public fun activeStreamCount(): Int
 }
 
 /**
@@ -851,5 +854,5 @@ interface ServeHost : AutoCloseable {
  * implemented a pair and missed a member of it. An extension cannot be overridden, so there is one
  * place to implement and no way to implement the wrong one.
  */
-fun ServeHost.motionBytes(motionId: String, extension: String): ByteArray? =
+public fun ServeHost.motionBytes(motionId: String, extension: String): ByteArray? =
   motionRead(motionId, extension).bytesOrNull

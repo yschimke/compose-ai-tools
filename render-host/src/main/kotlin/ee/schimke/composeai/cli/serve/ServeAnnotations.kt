@@ -23,21 +23,21 @@ import okio.Path.Companion.toPath
  * never measures pixels or fetches design URLs itself.
  */
 @Serializable
-data class AnnotationManifest(
+public data class AnnotationManifest(
   val schema: String = SCHEMA,
   /** Annotations over a preview's *rendered* frame, keyed by exact serve/catalog preview id. */
   val previews: Map<String, List<DesignAnnotation>> = emptyMap(),
   /** Annotations over a *reference* raster, keyed by [DesignReference.id]. */
   val references: Map<String, List<DesignAnnotation>> = emptyMap(),
 ) {
-  companion object {
-    const val SCHEMA = "compose-preview-annotations/v1"
+  public companion object {
+    public const val SCHEMA: String = "compose-preview-annotations/v1"
   }
 }
 
 /** Which spec layer an annotation belongs to; the compare page toggles them independently. */
-object AnnotationKind {
-  const val TYPOGRAPHY = "typography"
+public object AnnotationKind {
+  public const val TYPOGRAPHY: String = "typography"
 
   /**
    * Box geometry and the tokens that shaped it — size, padding, arrangement gap, `defaultMinSize`.
@@ -45,7 +45,7 @@ object AnnotationKind {
    * derived live from a render's own semantics tree by [ServeDesignAnnotations], so the viewer's
    * inspection layers can show the code side of the same redline.
    */
-  const val LAYOUT = "layout"
+  public const val LAYOUT: String = "layout"
 
   /**
    * Resolved theme attributes of a container — fill / border colour, corner radius, shape. Produced
@@ -53,9 +53,9 @@ object AnnotationKind {
    * inspection layers, rather than authored in a bundle's `annotations/index.json` (the compare
    * page's producer-side layers are [TYPOGRAPHY] / [LAYOUT] only).
    */
-  const val THEME = "theme"
+  public const val THEME: String = "theme"
 
-  val KNOWN = setOf(TYPOGRAPHY, LAYOUT, THEME)
+  public val KNOWN: Set<String> = setOf(TYPOGRAPHY, LAYOUT, THEME)
 
   /**
    * The layers a **published bundle** can answer on its own, without a daemon.
@@ -71,7 +71,7 @@ object AnnotationKind {
    * [publishedLayersSuffice] is the predicate; this set is the reason it is not simply "whatever
    * the bundle happens to carry".
    */
-  val PUBLISHABLE = setOf(TYPOGRAPHY)
+  public val PUBLISHABLE: Set<String> = setOf(TYPOGRAPHY)
 
   /**
    * Whether a `.annotations` request naming exactly [layers] can be answered from a bundle's
@@ -81,14 +81,14 @@ object AnnotationKind {
    * which is what every client did before `layers=` existed, and what a hand-typed URL still does.
    * Answering those from published bytes is precisely the regression #224 reverted.
    */
-  fun publishedLayersSuffice(layers: Set<String>?): Boolean =
+  public fun publishedLayersSuffice(layers: Set<String>?): Boolean =
     layers != null && layers.isNotEmpty() && PUBLISHABLE.containsAll(layers)
 
   /**
    * The `layers=` query value parsed into a validated kind set, or null when the request named none
    * (or none that this build knows). Null means "every layer", the pre-`layers=` behaviour.
    */
-  fun parseLayers(raw: String?): Set<String>? =
+  public fun parseLayers(raw: String?): Set<String>? =
     raw?.split(',')?.map { it.trim() }?.filter { it in KNOWN }?.toSet()?.takeIf { it.isNotEmpty() }
 }
 
@@ -100,7 +100,7 @@ object AnnotationKind {
  * page scales each layer to its panel rather than assuming a shared coordinate space.
  */
 @Serializable
-data class DesignAnnotation(
+public data class DesignAnnotation(
   /** One of [AnnotationKind.KNOWN]. Unknown kinds are dropped on load. */
   val kind: String,
   val bounds: AnnotationBounds,
@@ -117,7 +117,7 @@ data class DesignAnnotation(
 
 /** Both panels' layers, as embedded in the compare page for the client to draw. */
 @Serializable
-data class AnnotationPayload(
+public data class AnnotationPayload(
   val reference: List<DesignAnnotation> = emptyList(),
   val actual: List<DesignAnnotation> = emptyList(),
 )
@@ -132,11 +132,12 @@ private val ANNOTATION_JSON = Json { encodeDefaults = false }
  * string value, which ends the block early; `<` is a valid JSON escape for `<` and closes that hole
  * without touching the parsed value.
  */
-fun encodeAnnotationPayload(payload: AnnotationPayload): String =
+public fun encodeAnnotationPayload(payload: AnnotationPayload): String =
   ANNOTATION_JSON.encodeToString(payload).replace("<", "\\u003c")
 
 /** A region in the annotated image's pixel space. */
-@Serializable data class AnnotationBounds(val x: Int, val y: Int, val width: Int, val height: Int)
+@Serializable
+public data class AnnotationBounds(val x: Int, val y: Int, val width: Int, val height: Int)
 
 /**
  * Validated, read-only view of a bundle/catalog's `annotations/index.json`.
@@ -145,29 +146,32 @@ fun encodeAnnotationPayload(payload: AnnotationPayload): String =
  * kind, or a nonsensical box is dropped while the rest of the session serves normally. An
  * annotation layer is a reading aid — losing one must never take the compare page down with it.
  */
-class ServeAnnotationStore
+public class ServeAnnotationStore
 private constructor(
   private val byPreview: Map<String, List<DesignAnnotation>>,
   private val byReference: Map<String, List<DesignAnnotation>>,
 ) {
-  fun forPreview(previewId: String): List<DesignAnnotation> = byPreview[previewId].orEmpty()
+  public fun forPreview(previewId: String): List<DesignAnnotation> = byPreview[previewId].orEmpty()
 
-  fun forReference(referenceId: String): List<DesignAnnotation> = byReference[referenceId].orEmpty()
+  public fun forReference(referenceId: String): List<DesignAnnotation> =
+    byReference[referenceId].orEmpty()
 
-  val isEmpty: Boolean = byPreview.isEmpty() && byReference.isEmpty()
+  public val isEmpty: Boolean = byPreview.isEmpty() && byReference.isEmpty()
 
-  companion object {
-    const val DIRECTORY = "annotations"
-    const val INDEX_FILE = "index.json"
+  public companion object {
+    public const val DIRECTORY: String = "annotations"
+    public const val INDEX_FILE: String = "index.json"
     private val JSON = Json { ignoreUnknownKeys = true }
 
     /** Empty store — a session that carries no annotations at all. */
-    val EMPTY = ServeAnnotationStore(emptyMap(), emptyMap())
+    public val EMPTY: ServeAnnotationStore = ServeAnnotationStore(emptyMap(), emptyMap())
 
-    fun load(bundleDir: File, fileSystem: FileSystem = FileSystem.SYSTEM): ServeAnnotationStore =
-      load(bundleDir.toOkioPath(), fileSystem)
+    public fun load(
+      bundleDir: File,
+      fileSystem: FileSystem = FileSystem.SYSTEM,
+    ): ServeAnnotationStore = load(bundleDir.toOkioPath(), fileSystem)
 
-    fun load(bundleRoot: Path, fileSystem: FileSystem): ServeAnnotationStore {
+    public fun load(bundleRoot: Path, fileSystem: FileSystem): ServeAnnotationStore {
       val index = bundleRoot / DIRECTORY.toPath() / INDEX_FILE.toPath()
       if (!fileSystem.exists(index)) return EMPTY
       val manifest =

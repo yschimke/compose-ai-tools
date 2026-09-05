@@ -28,7 +28,7 @@ import java.io.File
  * Everything here is pure — [parseGitLog] takes the text of one `git log` invocation and the git
  * call itself is isolated in [read] — so the collapse rules are unit-testable without a repo.
  */
-object PreviewHistory {
+public object PreviewHistory {
 
   /**
    * The `git log` arguments this parser expects, over [pathspec] on [ref].
@@ -49,7 +49,7 @@ object PreviewHistory {
    * belongs to. Turning quoting off is not sufficient on its own (see [unquotePath]), but it keeps
    * the common case exact rather than round-tripping every path through an unescaper.
    */
-  fun logArgs(ref: String, pathspec: String): List<String> =
+  public fun logArgs(ref: String, pathspec: String): List<String> =
     listOf(
       "-c",
       "core.quotePath=false",
@@ -117,7 +117,7 @@ object PreviewHistory {
   }
 
   /** One commit on the delivery branch in which a given render had particular bytes. */
-  data class Observation(
+  public data class Observation(
     /** Delivery-branch commit sha. */
     val commit: String,
     /** Author date, ISO-8601, as git emitted it. */
@@ -145,7 +145,7 @@ object PreviewHistory {
    * A maximal run of consecutive commits whose render bytes were identical — one *visible* version
    * of a preview, however many publishes it survived.
    */
-  data class Version(
+  public data class Version(
     /** Content sha of the render. */
     val blob: String,
     /** Path on the delivery branch, e.g. `renders/samples:wear/Foo.png`. */
@@ -169,7 +169,7 @@ object PreviewHistory {
   }
 
   /** The full history of one render path, newest version first. */
-  data class Timeline(
+  public data class Timeline(
     val path: String,
     /** Newest first. */
     val versions: List<Version>,
@@ -253,7 +253,7 @@ object PreviewHistory {
    * Deletions terminate a path's history rather than becoming a version: a preview that was removed
    * and later re-added should not read as having "returned" to its old bytes and so score a flap.
    */
-  fun collapse(observations: Map<String, List<Observation>>): Map<String, Timeline> =
+  public fun collapse(observations: Map<String, List<Observation>>): Map<String, Timeline> =
     observations.mapValues { (path, rows) ->
       collapseOne(path, rows)
     }
@@ -291,7 +291,7 @@ object PreviewHistory {
    * line arriving before any header (impossible from git, possible from a truncated capture) is
    * dropped for the same reason.
    */
-  fun parseGitLog(output: String): Map<String, List<Observation>> {
+  public fun parseGitLog(output: String): Map<String, List<Observation>> {
     val byPath = LinkedHashMap<String, MutableList<Observation>>()
     var commit: String? = null
     var date = ""
@@ -337,7 +337,7 @@ object PreviewHistory {
    * the ref is absent (a clone that never fetched the delivery branch) rather than throwing — the
    * history surface is additive, and a viewer without it should degrade to no timeline, not fail.
    */
-  fun read(
+  public fun read(
     repoRoot: File,
     ref: String,
     pathspec: String = "renders",
@@ -349,7 +349,7 @@ object PreviewHistory {
   }
 
   /** Two returns to previously-seen bytes before a preview is called unstable. See [Timeline]. */
-  const val UNSTABLE_FLAP_THRESHOLD: Int = 2
+  public const val UNSTABLE_FLAP_THRESHOLD: Int = 2
 
   private const val HEADER_MARK = "\u0001"
   private const val FIELD_SEP = "\u001F"

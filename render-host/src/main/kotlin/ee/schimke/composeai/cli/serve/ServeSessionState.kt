@@ -14,7 +14,7 @@ import java.io.File
  * additionally retain its bounded `previews × declaredThemes` PNG cache here so idle daemon
  * suspension does not discard completed optimization work.
  */
-data class ServeSessionState(
+public data class ServeSessionState(
   /** `build/compose-previews/daemon-launch.json` the daemon relaunches from. */
   val descriptor: File,
   val workspaceRoot: File,

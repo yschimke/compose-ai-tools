@@ -33,7 +33,7 @@ import kotlinx.serialization.Serializable
  * Both knobs are process-wide: one instance is built per `serve` run and shared by every catalog
  * host it opens.
  */
-class ServeBackgroundWork(
+public class ServeBackgroundWork(
   /**
    * Background renders admitted at once, server-wide. Defaults to the conservative single lane; a
    * server that knows its seat budget passes [renderLaneFor] instead.
@@ -122,7 +122,7 @@ class ServeBackgroundWork(
    * admin registration is fetching one right now. Background work treats this as "busy" even though
    * no visitor is waiting, because a catalog that loads slowly enough loses its live lane.
    */
-  val catalogsLoading: Boolean
+  public val catalogsLoading: Boolean
     get() = initialLoadPending.get() || loadsInFlight.get() > 0
 
   /**
@@ -130,18 +130,18 @@ class ServeBackgroundWork(
    * built — not when it runs — so the window between "server up" and "first catalog load" is busy
    * too, rather than a gap the optimizer can start in.
    */
-  fun expectInitialCatalogLoad() {
+  public fun expectInitialCatalogLoad() {
     initialLoadPending.set(true)
   }
 
   /** The startup pass is done (however it ended — loaded, failed, or shut down mid-pass). */
-  fun initialCatalogLoadFinished() {
+  public fun initialCatalogLoadFinished() {
     initialLoadPending.set(false)
     lastCatalogLoadFinishedAt.set(clock())
   }
 
   /** Run one catalog load, counted so background work stays parked for its duration. */
-  fun <T> whileLoadingCatalog(block: () -> T): T {
+  public fun <T> whileLoadingCatalog(block: () -> T): T {
     loadsInFlight.incrementAndGet()
     try {
       return block()
@@ -156,7 +156,7 @@ class ServeBackgroundWork(
    * clock restarts at zero when startup, refresh, or admin registration finishes. The catalog host
    * applies its quiet-window threshold to the smaller of this and request/render idleness.
    */
-  fun idleClock(idleMillis: () -> Long?): () -> Long? =
+  public fun idleClock(idleMillis: () -> Long?): () -> Long? =
     composeIdleClock(idleMillis).also {
       // Every catalog host asks for one and they all wrap the same registry, so last-wins is the
       // same clock each time. Retained purely so status can read it; nothing here drives behaviour.
@@ -195,7 +195,7 @@ class ServeBackgroundWork(
    * a parked catalog re-checks the idle gate rather than sleeping through the quiet window it was
    * waiting for.
    */
-  fun <T : Any> withOptimizerSlot(system: String, waitMillis: Long, block: () -> T): T? {
+  public fun <T : Any> withOptimizerSlot(system: String, waitMillis: Long, block: () -> T): T? {
     if (!acquireOptimizerLane(system, waitMillis)) {
       optimizerRefusals.incrementAndGet()
       return null
@@ -325,7 +325,7 @@ class ServeBackgroundWork(
    * this read one too high and the resumed pass simply queues, which is what a challenger does
    * anyway.
    */
-  fun optimizerResumeSlots(): Int =
+  public fun optimizerResumeSlots(): Int =
     if (optimizersPaused()) 0
     else
       admissionLock.run {
@@ -339,12 +339,12 @@ class ServeBackgroundWork(
       }
 
   /** A catalog with optimization left to do had its host released to reclaim its daemon's RAM. */
-  fun recordOptimizerHostSuspended() {
+  public fun recordOptimizerHostSuspended() {
     optimizerHostSuspensions.incrementAndGet()
   }
 
   /** A parked catalog was made resident again so it could take a lane. */
-  fun recordOptimizerHostResumed() {
+  public fun recordOptimizerHostResumed() {
     optimizerHostResumes.incrementAndGet()
   }
 
@@ -381,7 +381,7 @@ class ServeBackgroundWork(
    *
    * Returns the epoch instant the pause lifts.
    */
-  fun pauseOptimizers(millis: Long, reason: String): Long {
+  public fun pauseOptimizers(millis: Long, reason: String): Long {
     val until = clock() + millis.coerceAtLeast(0)
     optimizerPausedUntil.set(until)
     optimizerPauseReason["reason"] = reason.take(MAX_PAUSE_REASON_CHARS)
@@ -397,17 +397,17 @@ class ServeBackgroundWork(
   }
 
   /** Lift a pause early. */
-  fun resumeOptimizers() {
+  public fun resumeOptimizers() {
     optimizerPausedUntil.set(Long.MIN_VALUE)
     optimizerPauseReason.clear()
   }
 
   /** Whether optimizer passes are currently stood down. Cheap enough for a per-batch check. */
-  fun optimizersPaused(): Boolean =
+  public fun optimizersPaused(): Boolean =
     clock() < optimizerPausedUntil.get() || pressureGate?.snapshot()?.constrained == true
 
   /** Counters for `/status.json`; see [ThemeOptimizerAdmissionSnapshot]. */
-  fun optimizerAdmissionSnapshot(): ThemeOptimizerAdmissionSnapshot {
+  public fun optimizerAdmissionSnapshot(): ThemeOptimizerAdmissionSnapshot {
     val until = optimizerPausedUntil.get()
     val manuallyPaused = clock() < until
     val pressure = pressureGate?.snapshot()
@@ -456,7 +456,7 @@ class ServeBackgroundWork(
     )
   }
 
-  fun <T : Any> withRenderPermit(block: () -> T): T? {
+  public fun <T : Any> withRenderPermit(block: () -> T): T? {
     try {
       renderPermits.acquire()
     } catch (_: InterruptedException) {
@@ -470,7 +470,7 @@ class ServeBackgroundWork(
     }
   }
 
-  companion object {
+  public companion object {
     /**
      * Whole-server quiet the idle theme-optimizer gate requires before a cold pass may start.
      *
@@ -483,14 +483,14 @@ class ServeBackgroundWork(
      * Public rather than `internal`: `ServeCatalogLiveHost` is in `:server` now, and `internal` is
      * module-scoped.
      */
-    fun themeOptimizationIdleMillisDefault(): Long =
+    public fun themeOptimizationIdleMillisDefault(): Long =
       System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L
 
     /**
      * The historical lane: one background render server-wide. Still the right answer when nothing
      * else bounds daemon count — see [renderLaneFor].
      */
-    const val CONSERVATIVE_MAX_CONCURRENT_RENDERS: Int = 1
+    public const val CONSERVATIVE_MAX_CONCURRENT_RENDERS: Int = 1
 
     /**
      * Catalogs allowed inside an optimizer pass at once. Two, not one: a single lane would leave
@@ -498,27 +498,27 @@ class ServeBackgroundWork(
      * warming is where a pass spends most of its time. Two overlaps one catalog's warm with
      * another's renders without recreating the free-for-all.
      */
-    const val DEFAULT_MAX_CONCURRENT_OPTIMIZERS: Int = 2
+    public const val DEFAULT_MAX_CONCURRENT_OPTIMIZERS: Int = 2
 
     /**
      * The one queued challenger [optimizerResumeSlots] keeps beyond the lanes themselves, so a
      * parked catalog can actually win a turn instead of waiting for an incumbent to finish.
      */
-    const val PLUS_ONE_CHALLENGER: Int = 1
+    public const val PLUS_ONE_CHALLENGER: Int = 1
 
-    const val HOST_COORDINATION_RETRY_MILLIS: Long = 100L
+    public const val HOST_COORDINATION_RETRY_MILLIS: Long = 100L
 
     /** Pause reasons are bounded before they reach a status page. */
-    const val MAX_PAUSE_REASON_CHARS: Int = 200
+    public const val MAX_PAUSE_REASON_CHARS: Int = 200
 
     /** [ThemeOptimizerAdmissionSnapshot.idleBlockedBy]: a session holds an open lease. */
-    const val IDLE_BLOCKED_BY_SESSION_LEASE: String = "session-lease"
+    public const val IDLE_BLOCKED_BY_SESSION_LEASE: String = "session-lease"
 
     /** [ThemeOptimizerAdmissionSnapshot.idleBlockedBy]: catalogs are still loading. */
-    const val IDLE_BLOCKED_BY_CATALOG_LOAD: String = "catalog-load"
+    public const val IDLE_BLOCKED_BY_CATALOG_LOAD: String = "catalog-load"
 
     /** Widest lane [renderLaneFor] will derive on its own. Beyond this, ask for it explicitly. */
-    const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
+    public const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
 
     /**
      * How many background renders this server admits at once, given its live-seat budget.
@@ -546,7 +546,7 @@ class ServeBackgroundWork(
      * `-Dcomposeai.serve.backgroundRenders=<n>` overrides both, for a deployment that knows better
      * than either rule.
      */
-    fun renderLaneFor(seats: LiveSeatLimiter?): Int {
+    public fun renderLaneFor(seats: LiveSeatLimiter?): Int {
       System.getProperty("composeai.serve.backgroundRenders")?.toIntOrNull()?.let {
         return it.coerceAtLeast(1)
       }
@@ -576,7 +576,7 @@ class ServeBackgroundWork(
  * being turned away and nothing said the same system was being turned away every time.
  */
 @Serializable
-data class ThemeOptimizerAdmissionSnapshot(
+public data class ThemeOptimizerAdmissionSnapshot(
   val lanes: Int,
   val running: Int,
   val runningSystems: List<String>,

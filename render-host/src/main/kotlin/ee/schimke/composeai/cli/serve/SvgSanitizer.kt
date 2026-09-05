@@ -54,7 +54,7 @@ import org.xml.sax.InputSource
  * fail-soft, like every other reader on this surface. A page that cannot be sanitized is a page the
  * catalog serves without, never a page it serves unsafely.
  */
-object SvgSanitizer {
+public object SvgSanitizer {
 
   /**
    * A ceiling on the export this will parse into a DOM.
@@ -64,7 +64,7 @@ object SvgSanitizer {
    * O(bytes) in both time and heap, it happens at catalog load, and a delivery branch is not
    * trusted to be sane about what it publishes.
    */
-  const val MAX_BYTES: Int = 16 * 1024 * 1024
+  public const val MAX_BYTES: Int = 16 * 1024 * 1024
 
   /**
    * What a specimen sheet is made of: shapes, paint, and text.
@@ -236,7 +236,7 @@ object SvgSanitizer {
   private val UNSAFE_STYLE =
     Regex("""(?i)@import|expression\s*\(|javascript:|url\s*\(\s*(?!#|'#|"#)""")
 
-  fun sanitize(svg: String): String? {
+  public fun sanitize(svg: String): String? {
     val bytes = svg.toByteArray()
     if (bytes.isEmpty() || bytes.size > MAX_BYTES) return null
     val document =

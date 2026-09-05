@@ -40,7 +40,7 @@ import kotlinx.serialization.json.Json
  * records the inputs so a drop is *explainable* ("renderer 1.13.0 to 1.14.0 invalidated 8,412
  * entries") instead of being another unexplained return to zero.
  */
-class ThemeCacheStore(
+public class ThemeCacheStore(
   private val root: File,
   /**
    * Ceiling for the whole store across every catalog and generation.
@@ -102,7 +102,7 @@ class ThemeCacheStore(
    * Null rather than an exception: persistence is an optimisation, and a box with a read-only or
    * full disk must serve catalogs exactly as it did before this existed.
    */
-  fun open(system: String, fingerprint: String, inputs: GenerationInputs): Generation? {
+  public fun open(system: String, fingerprint: String, inputs: GenerationInputs): Generation? {
     val safeSystem = system.safeName() ?: return null
     val safeFingerprint = fingerprint.safeName() ?: return null
     val dir = File(File(root, safeSystem), safeFingerprint)
@@ -282,7 +282,7 @@ class ThemeCacheStore(
    * The mark is not a lock and does not claim to be one. It cannot stop the old replica writing; it
    * makes what the old replica writes untrusted, which is the outcome that was wanted.
    */
-  fun evictAll(): Int {
+  public fun evictAll(): Int {
     var deleted = 0
     for (systemDir in root.listFiles()?.filter { it.isDirectory }.orEmpty()) {
       for (generationDir in systemDir.listFiles()?.filter { it.isDirectory }.orEmpty()) {
@@ -337,7 +337,7 @@ class ThemeCacheStore(
    * than acted on: it means the cap is too small for the catalog set, which is a configuration
    * answer and not something this can quietly fix.
    */
-  fun sweep(live: Set<GenerationId>, onlySystems: Set<String>? = null): SweepResult {
+  public fun sweep(live: Set<GenerationId>, onlySystems: Set<String>? = null): SweepResult {
     val youngerThan = clock() - graceMillis
     val beforeScan = knownBytes.get()
     val liveDirs = live.mapNotNull { it.dir() }.toSet()
@@ -407,7 +407,7 @@ class ThemeCacheStore(
   }
 
   /** Every system with a directory in the store, whether or not this server still serves it. */
-  fun systems(): Set<String> =
+  public fun systems(): Set<String> =
     root.listFiles()?.filter { it.isDirectory }?.map { it.name }?.toSet().orEmpty()
 
   /**
@@ -420,7 +420,7 @@ class ThemeCacheStore(
    * on the way past and writes add to it from there. Slightly stale between sweeps, which is the
    * right trade for a number nobody acts on within a second.
    */
-  fun snapshot(): ThemeCacheStoreSnapshot =
+  public fun snapshot(): ThemeCacheStoreSnapshot =
     ThemeCacheStoreSnapshot(
       root = root.path,
       generations = knownGenerations.get(),
@@ -454,7 +454,7 @@ class ThemeCacheStore(
   }
 
   /** One `(system, fingerprint)` generation's directory of PNGs. */
-  inner class Generation
+  public inner class Generation
   internal constructor(
     private val dir: File,
     private val system: String,
@@ -484,10 +484,10 @@ class ThemeCacheStore(
       }
 
     /** How many renders were already on disk when this generation was opened. */
-    val loadedEntries: Int = present.size
+    public val loadedEntries: Int = present.size
 
     /** This generation's directory name — the fingerprint it was opened under. */
-    val fingerprint: String = dir.name
+    public val fingerprint: String = dir.name
 
     /**
      * Renders written before this instant came from a build that is not the one running, and are
@@ -625,7 +625,7 @@ class ThemeCacheStore(
     }
 
     /** Whether [cacheKey] is on disk from an older build and has not been re-rendered since. */
-    fun isDirty(cacheKey: String): Boolean = isDirtyName(fileName(cacheKey))
+    public fun isDirty(cacheKey: String): Boolean = isDirtyName(fileName(cacheKey))
 
     /**
      * The same question asked of a **file name** rather than a cache key.
@@ -645,7 +645,7 @@ class ThemeCacheStore(
      * reconcile hangs — see [reconcileAtRiskWrites] for why that costs nothing on the ordinary
      * path.
      */
-    fun dirtyCount(): Int {
+    public fun dirtyCount(): Int {
       reconcileAtRiskWrites()
       return dirtyNames.size
     }
@@ -658,7 +658,7 @@ class ThemeCacheStore(
      * it. Deliberately not a delete: the entries keep serving while the background pass replaces
      * them, so asking for a refresh does not cost every preview a cold render.
      */
-    fun markAllDirty(): Int {
+    public fun markAllDirty(): Int {
       // Under the generation write lock, because the transition races the one thing that undoes it.
       // A render publishing the last dirty entry calls `clearDirtyBoundary` from inside `put`,
       // which holds this lock — so an unlocked mark could write its boundary, be overwritten by
@@ -715,11 +715,11 @@ class ThemeCacheStore(
       }
 
     /** Whether [cacheKey] came from a previous process rather than from this one. */
-    fun wasAdopted(cacheKey: String): Boolean = fileName(cacheKey) in adopted
+    public fun wasAdopted(cacheKey: String): Boolean = fileName(cacheKey) in adopted
 
-    fun contains(cacheKey: String): Boolean = fileName(cacheKey) in present
+    public fun contains(cacheKey: String): Boolean = fileName(cacheKey) in present
 
-    fun get(cacheKey: String): ByteArray? {
+    public fun get(cacheKey: String): ByteArray? {
       val name = fileName(cacheKey)
       if (name !in present) {
         misses.incrementAndGet()
@@ -748,7 +748,7 @@ class ThemeCacheStore(
      * Written to a temp file and renamed, so a crash or a full disk leaves no half-PNG that a later
      * process would read as a valid cached render.
      */
-    fun put(cacheKey: String, png: ByteArray, replaceExisting: Boolean = false) {
+    public fun put(cacheKey: String, png: ByteArray, replaceExisting: Boolean = false) {
       val name = fileName(cacheKey)
       // Presence alone is not proof that no write is needed. While a generation is quarantined a
       // foreground request deliberately misses the adopted copy and renders fresh bytes; returning
@@ -835,7 +835,7 @@ class ThemeCacheStore(
      * Returns -1 when the generation write lock could not be taken, matching [discard]'s "could
      * not" so the caller can keep the entries quarantined rather than assume they are gone.
      */
-    fun discardDirty(): Int {
+    public fun discardDirty(): Int {
       if (dirtyBefore <= 0L) return 0
       return discardNames(dirtyNames.toList(), "dirty")
     }
@@ -855,7 +855,7 @@ class ThemeCacheStore(
      * the sample was drawn from. Adoption is the boundary the sample actually tests, so it is the
      * boundary the discard has to use.
      */
-    fun discardAdopted(): Int = discardNames(adopted.toList(), "adopted")
+    public fun discardAdopted(): Int = discardNames(adopted.toList(), "adopted")
 
     /**
      * Delete [names] under the generation write lock, all-or-nothing, reporting how many went or -1
@@ -914,7 +914,7 @@ class ThemeCacheStore(
         .onFailure { recordFailure(system, "manifest: ${it.message}") }
     }
 
-    fun discard(): Boolean {
+    public fun discard(): Boolean {
       // Retried, because the contended case is transient and the consequence of giving up is not.
       // The lock is held only for the length of one PNG write, so a foreground render that happens
       // to be publishing right now clears in milliseconds; the caller, on the other hand, has just
@@ -995,7 +995,7 @@ class ThemeCacheStore(
      * [ThemeCacheGenerationSnapshot.adopted] is the load-bearing number: it is the only evidence
      * that persistence carried anything across a process boundary at all.
      */
-    fun stats(): ThemeCacheGenerationSnapshot =
+    public fun stats(): ThemeCacheGenerationSnapshot =
       ThemeCacheGenerationSnapshot(
         fingerprint = fingerprint,
         adopted = loadedEntries,
@@ -1012,7 +1012,7 @@ class ThemeCacheStore(
   }
 
   /** A generation's coordinates, for [sweep]'s live set. */
-  data class GenerationId(val system: String, val fingerprint: String)
+  public data class GenerationId(val system: String, val fingerprint: String)
 
   private fun GenerationId.dir(): File? {
     val safeSystem = system.safeName() ?: return null
@@ -1020,12 +1020,12 @@ class ThemeCacheStore(
     return File(File(root, safeSystem), safeFingerprint)
   }
 
-  companion object {
-    const val DEFAULT_MAX_BYTES: Long = 8L * 1024 * 1024 * 1024
+  public companion object {
+    public const val DEFAULT_MAX_BYTES: Long = 8L * 1024 * 1024 * 1024
 
     /** Long enough to cover a rollout's readiness window, short enough to reclaim the same day. */
-    const val DEFAULT_SWEEP_GRACE_MILLIS: Long = 60L * 60 * 1000
-    const val MANIFEST_NAME: String = "manifest.json"
+    public const val DEFAULT_SWEEP_GRACE_MILLIS: Long = 60L * 60 * 1000
+    public const val MANIFEST_NAME: String = "manifest.json"
 
     /**
      * Store-root marker recording the epoch millis of the last [evictAll].
@@ -1035,8 +1035,8 @@ class ThemeCacheStore(
      * survive is what gets written next. A plain integer in a plain file so that an operator
      * looking at a mounted volume can read and clear it without tooling.
      */
-    const val EVICTED_NAME: String = "evicted-at"
-    const val MAX_REASON_CHARS: Int = 200
+    public const val EVICTED_NAME: String = "evicted-at"
+    public const val MAX_REASON_CHARS: Int = 200
     private const val PNG_SUFFIX = ".png"
     private const val TEMP_SUFFIX = ".png.tmp"
     private const val GENERATION_WRITE_LOCK = ".write.lock"
@@ -1079,7 +1079,7 @@ class ThemeCacheStore(
  * can answer "why did the cache reset" from the box itself.
  */
 @Serializable
-data class GenerationInputs(
+public data class GenerationInputs(
   val system: String,
   val fingerprint: String,
   /**
@@ -1112,7 +1112,7 @@ data class GenerationInputs(
 )
 
 /** What one [ThemeCacheStore.sweep] reclaimed. */
-data class SweepResult(
+public data class SweepResult(
   val deletedGenerations: Int,
   val reclaimedBytes: Long,
   val bytes: Long,
@@ -1135,7 +1135,7 @@ data class SweepResult(
  *   stated in two numbers.
  */
 @Serializable
-data class ThemeCacheGenerationSnapshot(
+public data class ThemeCacheGenerationSnapshot(
   /** The generation directory this catalog is reading and writing — its cache key. */
   val fingerprint: String,
   /** Renders already on disk when this process opened the generation. */
@@ -1152,7 +1152,7 @@ data class ThemeCacheGenerationSnapshot(
 
 /** Disk-tier counters for `/status.json` (`themeCache`). */
 @Serializable
-data class ThemeCacheStoreSnapshot(
+public data class ThemeCacheStoreSnapshot(
   val root: String,
   val generations: Int,
   /**

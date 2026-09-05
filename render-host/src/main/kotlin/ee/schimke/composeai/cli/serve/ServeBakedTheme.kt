@@ -36,7 +36,7 @@ import ee.schimke.composeai.daemon.protocol.UiMode
  * dark-first catalog that bakes a light pair still names its light renders with an explicit
  * `__light` token, which [token] reads.
  */
-object ServeBakedTheme {
+public object ServeBakedTheme {
 
   /**
    * The explicit `light` / `dark` token a flattened catalog id carries, or null when it carries
@@ -47,7 +47,7 @@ object ServeBakedTheme {
    * in an otherwise-light variant, wrongly treating `uiMode=dark` as a no-op and dropping the
    * override.
    */
-  fun token(previewId: String): UiMode? =
+  public fun token(previewId: String): UiMode? =
     when (previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }) {
       "dark" -> UiMode.DARK
       "light" -> UiMode.LIGHT
@@ -64,7 +64,7 @@ object ServeBakedTheme {
    * Null is the honest answer, not a default: it leaves a `uiMode` request routed to a real render,
    * which is what a session that cannot name the sticker's theme owes the caller.
    */
-  fun resolve(
+  public fun resolve(
     previewId: String,
     declaredTheme: String? = null,
     publishesId: (String) -> Boolean = { false },
@@ -96,7 +96,7 @@ object ServeBakedTheme {
    * `theme: "light"` explicitly, and 44 of `m3-catalog`'s do. Untagged is tried first — it is what
    * the default mode actually produces.
    */
-  fun twinIn(previewId: String, theme: UiMode, publishesId: (String) -> Boolean): String? {
+  public fun twinIn(previewId: String, theme: UiMode, publishesId: (String) -> Boolean): String? {
     val segments = previewId.split(THEME_SEPARATOR)
     // Everything but the theme axis: the identity the pair shares. Drops the token [token] found,
     // scanning from the same end so the two cannot disagree about which segment is the theme.
