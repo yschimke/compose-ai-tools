@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.80.0](https://github.com/yschimke/compose-ai-tools/compare/v1.79.0...v1.80.0) (2026-09-05)
+
+
+### Features
+
+* **cli:** add `ui-builder`, the launcher for the server's `ui` command ([#5195](https://github.com/yschimke/compose-ai-tools/issues/5195)) ([7377d9c](https://github.com/yschimke/compose-ai-tools/commit/7377d9c70639d954d581bf52de7f37989053b430))
+* **design-artifacts:** expose an imported project's themes ([#5158](https://github.com/yschimke/compose-ai-tools/issues/5158)) ([3e13ee0](https://github.com/yschimke/compose-ai-tools/commit/3e13ee0eb9fb2a192c44c3216ff9b7c4c029f59f))
+* **render-host:** enable explicitApi() and check an ABI dump ([#5190](https://github.com/yschimke/compose-ai-tools/issues/5190)) ([28fb93b](https://github.com/yschimke/compose-ai-tools/commit/28fb93b586de8d5cffb07db10df40658ff1a87a2))
+* **serve:** fetch the preview server on first use instead of demanding one ([#5194](https://github.com/yschimke/compose-ai-tools/issues/5194)) ([861afdc](https://github.com/yschimke/compose-ai-tools/commit/861afdc199e724cc72c7f9b57e572a7a63b46577))
+* **serve:** launch the published server instead of linking it ([#5177](https://github.com/yschimke/compose-ai-tools/issues/5177)) ([b839f9f](https://github.com/yschimke/compose-ai-tools/commit/b839f9fd39c363f5269314328114899688069b47))
+
+
+### Bug Fixes
+
+* **ci:** follow a sysprop mirror that reads the shared constant ([#5191](https://github.com/yschimke/compose-ai-tools/issues/5191)) ([7a1359c](https://github.com/yschimke/compose-ai-tools/commit/7a1359cacfd9bfb371f0e34a7306115e0d5cd4d8))
+* **ci:** let only the release-PR merge run cut a release, and sweep stranded drafts ([#5160](https://github.com/yschimke/compose-ai-tools/issues/5160)) ([105a5a6](https://github.com/yschimke/compose-ai-tools/commit/105a5a6a0b18446518dca984eff3a96388fab9ed))
+* **cli:** carry non-ASCII preview ids through a file, not a process argument ([#5186](https://github.com/yschimke/compose-ai-tools/issues/5186)) ([ac87b28](https://github.com/yschimke/compose-ai-tools/commit/ac87b283e70f8cb00ad961aec06ab327e696afcd))
+* **cli:** depend on the local :render-host instead of the retired coordinate ([#5178](https://github.com/yschimke/compose-ai-tools/issues/5178)) ([a42dd16](https://github.com/yschimke/compose-ai-tools/commit/a42dd16b53c73c8f4c1f78300d109e51053a7c95))
+* **cli:** make optional captures visible in show output ([#5192](https://github.com/yschimke/compose-ai-tools/issues/5192)) ([190b6c8](https://github.com/yschimke/compose-ai-tools/commit/190b6c89eea8944237cea03ba184efa640b4b77e))
+* **cli:** report a cancelled discovery as a timeout, not a missing plugin ([#5181](https://github.com/yschimke/compose-ai-tools/issues/5181)) ([4183c1d](https://github.com/yschimke/compose-ai-tools/commit/4183c1ded6e29a807a00565596663af1c9e00244))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3 ([#5164](https://github.com/yschimke/compose-ai-tools/issues/5164)) ([2ee93ec](https://github.com/yschimke/compose-ai-tools/commit/2ee93ec58aebf2d94e24f95b8fa8831be699b6a3))
+* **design-artifacts:** warn instead of failing when the pinned driver has no theme generator ([#5162](https://github.com/yschimke/compose-ai-tools/issues/5162)) ([3e43c01](https://github.com/yschimke/compose-ai-tools/commit/3e43c016224befaabb46ccca85a00fe94c8441f6))
+* **scroll:** verify every LONG stride and seam, and stop black overlaps winning the stitch ([#5187](https://github.com/yschimke/compose-ai-tools/issues/5187)) ([f018302](https://github.com/yschimke/compose-ai-tools/commit/f018302ec908782bec533d5c5b4689ee6f7f313d))
+
 ## [1.79.0](https://github.com/yschimke/compose-ai-tools/compare/v1.78.1...v1.79.0) (2026-09-05)
 
 
