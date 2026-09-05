@@ -11,12 +11,13 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.glance.GlanceId
 import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.composeForPreview
 import androidx.glance.appwidget.provideContent
+import ee.schimke.composeai.renderer.GlanceComposeForPreview.compose
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -29,8 +30,11 @@ import kotlinx.coroutines.runBlocking
  * 1. Build a [SyntheticGlanceAppWidget] whose `providePreview(...)` invokes the user's
  *    `@Composable` via [resolveNoArgComposableMethod] inside `provideContent { ... }` — the Glance
  *    composition block where `@GlanceComposable` calls resolve.
- * 2. `composeForPreview(context, widgetCategory, info)` runs the composition and materialises a
- *    `RemoteViews` tree (Glance 1.2.0+).
+ * 2. The composer [GlanceComposeForPreview] resolved against the *project's* Glance runs the
+ *    composition and materialises a `RemoteViews` tree — `composeForPreview(context,
+ *    widgetCategory, info)` on Glance 1.2.0+, the `compose(context, …, size, …)` extension on
+ *    1.0.0-1.1.x, which has no `composeForPreview` at all. Resolution is reflective because the
+ *    render classpath is the imported project's, not ours (compose-ai-tools#5056).
  * 3. `RemoteViews.apply(context, parent)` inflates the tree into a `View` we host inside the
  *    `AndroidView` factory — the same path `AppWidgetHost.createView(...)` walks on-device.
  *
@@ -66,11 +70,14 @@ fun GlanceAppWidgetPreviewComposable(
           minWidth = with(density) { widthDp.dp.toPx() }.toInt()
           minHeight = with(density) { heightDp.dp.toPx() }.toInt()
         }
+      val plan = GlanceComposeForPreview.resolve(widget.javaClass.classLoader)
       val remoteViews = runBlocking {
-        widget.composeForPreview(
+        plan.compose(
+          widget = widget,
           context = context,
           widgetCategory = AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN,
           info = info,
+          size = DpSize(widthDp.dp, heightDp.dp),
         )
       }
       val view = remoteViews.apply(context, parent)
@@ -104,8 +111,12 @@ fun GlanceAppWidgetPreviewComposable(
  * static methods on the file's synthetic `FooKt` class) and class-hosted previews (e.g. inside a
  * `class ScreenshotTest`) both work.
  *
- * `provideGlance(...)` is a no-op — the production runtime path is invoked when the launcher binds
- * a real widget, not when rendering an off-device preview.
+ * `providePreview(...)` and `provideGlance(...)` share one body. The production runtime path is
+ * invoked when the launcher binds a real widget, never when rendering an off-device preview — but
+ * `provideGlance` is also what Glance's pre-1.2.0 `compose(…)` extension composes through, and that
+ * is the fallback [GlanceComposeForPreview] resolves on a project whose Glance has no
+ * `composeForPreview` (compose-ai-tools#5056). Providing the same content from both keeps the
+ * preview identical whichever entry point the project's Glance version offers.
  */
 private class SyntheticGlanceAppWidget(
   private val className: String,
@@ -113,6 +124,14 @@ private class SyntheticGlanceAppWidget(
   private val classLoader: ClassLoader?,
 ) : GlanceAppWidget() {
   override suspend fun providePreview(context: android.content.Context, widgetCategory: Int) {
+    providePreviewContent()
+  }
+
+  /**
+   * The user's `@Composable`, provided as this widget's content. Never returns, by Glance's
+   * contract for `provideContent`: it suspends until the composition session ends.
+   */
+  private suspend fun providePreviewContent(): Nothing {
     provideContent {
       val cls =
         Class.forName(className, true, classLoader ?: Thread.currentThread().contextClassLoader)
@@ -135,6 +154,10 @@ private class SyntheticGlanceAppWidget(
   }
 
   override suspend fun provideGlance(context: android.content.Context, id: GlanceId) {
-    // Production runtime not exercised by previews.
+    // Not the production runtime path — a preview never binds a real widget. It is the entry point
+    // Glance's pre-1.2.0 `compose(…)` extension composes through, though, since `providePreview`
+    // only exists from 1.2.0 on, so it provides the same content rather than doing nothing
+    // (compose-ai-tools#5056). On 1.2.0+ this is dead code and `providePreview` above runs instead.
+    providePreviewContent()
   }
 }
