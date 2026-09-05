@@ -77,13 +77,13 @@ jobs:
   # third-party tooling) can consume the daemon by coordinate. See
   # docs/daemon/DESIGN.md § 17 for the publishing decision and § 19 for the
   # captureToImage fallback if Roborazzi's API ever does break binary compat.
-  # `mcp` is published because `render-session-subprocess` and
-  # `render-session-embedded-desktop` compile-time-reference its `DaemonClient`
-  # + `SubprocessDaemonClientFactory` types; without it on Central, downstream
-  # `SubprocessRenderSessions.open(...)` calls fail with a linkage error. The
-  # standalone MCP server still ships as a `compose-preview-mcp-*.tar.gz`
-  # GitHub Release asset (see `build-applications` below) — the Maven jar is
-  # the library face of the same code.
+  # `mcp` is NOT among them any more. The module moved to compose-preview-server
+  # (#5176 — it needs an HTTP server to do its job, which is that repository's
+  # layer), and `compose-preview mcp serve` execs the `compose-preview-mcp`
+  # binary published from there. The `DaemonClient` +
+  # `SubprocessDaemonClientFactory` types that made the jar load-bearing for
+  # `render-session-subprocess` were lifted into `daemon-client` first (#3824),
+  # which is published above and keeps that linkage intact.
   publish-gradle-plugin:
     # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
     # remains buildable from source, but its per-OS packages are no longer core release artifacts.
@@ -107,7 +107,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Publish plugin, renderer-android, renderer-desktop, data-*, preview-annotations, daemon-*, mcp, serve to Maven Central
+      - name: Publish plugin, renderer-android, renderer-desktop, data-*, preview-annotations, daemon-*, render-matrix to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
@@ -130,19 +130,22 @@ jobs:
   # All of it lives in yschimke/rc-players now, on the same version line: this repo published those
   # coordinates through 1.53.1, and that repository's manifest continues from there.
 
-  # Build the runnable applications shipped on each GitHub Release: the CLI
-  # (`compose-preview-*`) and the standalone MCP server (`compose-preview-mcp-*`).
-  # The CLI tarball already implementation-bundles `:mcp`, so the standalone MCP
-  # archive is for consumers who only want `compose-preview-mcp` on its own (e.g.
-  # wiring it into an MCP client without dragging the CLI in).
+  # Build the runnable application shipped on each GitHub Release: the CLI
+  # (`compose-preview-*`).
   #
-  # Each dist is uploaded as its own artifact so `actions/upload-artifact`'s
-  # lowest-common-ancestor logic collapses to the single `*/build/distributions/`
-  # dir, leaving the artifact contents flat. A previous attempt that listed
-  # both `cli/build/distributions/...` and `mcp/build/distributions/...` under
-  # one artifact pushed the LCA back to the workspace root, so the files
-  # landed nested inside the artifact and silently fell off the shallow
-  # upload glob in the `release` job (zero assets shipped on v0.10.2–v0.10.5).
+  # The standalone MCP server used to ship beside it as `compose-preview-mcp-*`.
+  # It is compose-preview-server's release asset now (#5176), and the CLI fetches
+  # it on first use of `mcp serve` exactly as it fetches the preview server —
+  # so nothing here builds or uploads it, and an agent host still points at
+  # `compose-preview mcp serve`.
+  #
+  # The dist is uploaded as its own artifact so `actions/upload-artifact`'s
+  # lowest-common-ancestor logic collapses to the single `cli/build/distributions/`
+  # dir, leaving the artifact contents flat. A previous attempt that listed two
+  # modules' distribution directories under one artifact pushed the LCA back to
+  # the workspace root, so the files landed nested inside the artifact and
+  # silently fell off the shallow upload glob in the `release` job (zero assets
+  # shipped on v0.10.2–v0.10.5).
   build-applications:
     runs-on: ubuntu-latest
     steps:
@@ -155,25 +158,17 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Build CLI and MCP distributions
+      - name: Build CLI distribution
         run: |
           ./gradlew \
             :cli:distZip :cli:distTar \
-            :cli:packageAndroidDaemon \
-            :mcp:distZip :mcp:distTar
+            :cli:packageAndroidDaemon
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-dist
           path: |
             cli/build/distributions/compose-preview-*.zip
             cli/build/distributions/compose-preview-*.tar.gz
-          retention-days: 1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: mcp-dist
-          path: |
-            mcp/build/distributions/compose-preview-mcp-*.zip
-            mcp/build/distributions/compose-preview-mcp-*.tar.gz
           retention-days: 1
 
   # `@yschimke/compose-design-map` — the design-map projection (`design-map/`), published to npm so

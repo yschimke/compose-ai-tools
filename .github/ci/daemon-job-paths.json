@@ -8,7 +8,6 @@
     "scripts/**",
     "cli/**",
     "bundle-viewer/**",
-    "mcp/**",
     "**/*.md",
     "LICENSE",
     ".gitignore",

@@ -15,12 +15,12 @@ import org.gradle.api.tasks.TaskAction
  * had no gate asserting the "no HTTP server" half of it — `checkRenderHostIsServerFree` makes that
  * claim for one module, and nothing made it for the rest.
  *
- * The exemptions are `:mcp` and the `:cli` that bundles it, and they are temporary: #5176 decided
- * that `:mcp` is layer 2 by the letter of the rule and is moving to compose-preview-server, rather
- * than the rule growing a carve-out for it. Until that move lands the two projects genuinely carry
- * five `ktor-server-*` artifacts, so the honest gate is a two-entry allowlist that goes to empty
- * when `:mcp` leaves — the same shape as [CheckLayerBoundary]'s allowlist, which emptied when the
- * `serve` edge closed. A third entry is a diff someone has to justify.
+ * **The allowlist is empty, and that is what finishing #5176 looks like.** It held `:mcp` and the
+ * `:cli` that bundled it while the MCP server was still here; both went when that module moved to
+ * compose-preview-server and `compose-preview mcp serve` became a launcher over the published
+ * binary. An empty positive allowlist means any HTTP server engine reaching any runtime classpath
+ * in this build fails, with no exceptions to argue from — the same shape, and the same proof, as
+ * [CheckLayerBoundary]'s allowlist emptying when the `serve` edge closed.
  *
  * **Resolved identity, not declared dependencies**, for the reason `:cli` proves: it declares no
  * `ktor-server-*` line at all — the five artifacts arrive through `:mcp` and the MCP Kotlin SDK.
@@ -52,24 +52,23 @@ abstract class CheckHttpServerFloor : DefaultTask() {
       "An HTTP server engine reached ${path.substringBeforeLast(':')}'s runtime classpath: " +
         offenders.joinToString(", ") +
         ". compose-ai-tools is layer 1: a module that needs an HTTP server to do its job belongs " +
-        "in compose-preview-server — see docs/design/REPOSITORY_LAYERS.md. The only exemptions " +
-        "are ${httpServerProjects.joinToString(", ")}, and they are the MCP server on its way out " +
-        "of this repository (#5176), not a precedent."
+        "in compose-preview-server — see docs/design/REPOSITORY_LAYERS.md. There are no " +
+        "exemptions; the last two went when the MCP server moved (#5176). If the new code serves " +
+        "previews, a catalog, the UI builder or an agent, it belongs in that repository, and this " +
+        "CLI launches it the way `serve` and `mcp serve` do."
     }
   }
 
   companion object {
     /**
-     * The projects allowed a server engine on their runtime classpath, and the measure of #5176's
-     * completion: when `:mcp` moves to compose-preview-server this list is empty.
+     * The projects allowed a server engine on their runtime classpath: **none**.
      *
-     * `:mcp` runs the Streamable HTTP endpoint the MCP SDK's protocol routes sit on, and `:cli`
-     * bundles `:mcp` so `compose-preview mcp serve` starts it in-process. Nothing else depends on
-     * `:mcp`; `:render-session-subprocess` used to, which is why `DaemonClient` was lifted into
-     * `:daemon-client` (#3824), and `:cli`'s offline `render-matrix` command did, which is why
-     * `MatrixAxes` and `ContactSheet` were lifted into `:render-matrix`.
+     * It held `:mcp` and `:cli` for exactly as long as the move took. `:mcp` is
+     * compose-preview-server's now, `compose-preview mcp serve` execs the binary published from
+     * there, and nothing in this repository binds a port. A new entry here is a diff someone has
+     * to justify against the layer rule rather than a dependency that arrives.
      */
-    val httpServerProjects: List<String> = listOf(":mcp", ":cli")
+    val httpServerProjects: List<String> = emptyList()
 
     /**
      * What counts as a server. Ktor is what is here today; Jetty and Undertow are named because the

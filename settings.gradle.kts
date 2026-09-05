@@ -625,12 +625,11 @@ include(":daemon-client")
 
 project(":daemon-client").projectDir = file("daemon/client")
 
-include(":mcp")
-
 // Render-matrix axes (`MatrixAxes`/`MatrixCell`) and the contact-sheet stitcher, shared by the
-// CLI's offline `render-matrix` command and the MCP server's `render_matrix` tool. Lifted out of
-// `:mcp` so an offline CLI command stops compiling against the MCP server, which is what has to be
-// true before `:mcp` moves to compose-preview-server (#5176). Same shape as `:daemon-client`.
+// CLI's offline `render-matrix` command and the MCP server's `render_matrix` tool. It was lifted
+// out of `:mcp` for exactly that reason, and it is why `:mcp` could then move to
+// compose-preview-server (#5176) without taking an offline CLI command with it: what layer 1 still
+// calls stays in layer 1. The MCP server consumes it as a published coordinate now.
 include(":render-matrix")
 
 // The render host, the bundle daemon and the git-backed preview history — daemon-backed rendering,

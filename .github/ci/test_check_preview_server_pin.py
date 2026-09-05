@@ -76,9 +76,12 @@ class RepoAgreement(unittest.TestCase):
 
 class AssetName(unittest.TestCase):
     def test_matches_the_provisioner_derivation(self):
-        # Byte-for-byte what `ServerDistributionProvision.assetName` builds, and what
-        # compose-preview-server's release workflow uploads.
-        self.assertEqual(gate.asset_name("3.0.0"), "compose-preview-server-3.0.0.tar.gz")
+        # Byte-for-byte what `ServerDistributionProvision.assetName` builds for each
+        # `ReleasedDistribution`, and what compose-preview-server's release workflow uploads.
+        self.assertEqual(
+            gate.asset_names("3.0.0"),
+            ["compose-preview-server-3.0.0.tar.gz", "compose-preview-mcp-3.0.0.tar.gz"],
+        )
 
 
 def _http_error(code: int) -> urllib.error.HTTPError:
@@ -150,9 +153,15 @@ class EndToEnd(unittest.TestCase):
         with mock.patch.object(gate.sys, "argv", ["x", "--offline"]):
             self.assertEqual(gate.main(), 0)
 
-    def test_a_release_carrying_the_distribution_passes(self):
+    def test_a_release_carrying_both_distributions_passes(self):
         pin = gate.current_pin()
-        self.assertEqual(self._run([], return_value={gate.asset_name(pin)}), 0)
+        self.assertEqual(self._run([], return_value=set(gate.asset_names(pin))), 0)
+
+    def test_a_release_carrying_only_the_server_fails(self):
+        # The shape #5176 introduced: `serve` would work and `mcp serve` would exit with an
+        # installation hint for an archive nobody attached. One pin, both archives, or neither.
+        pin = gate.current_pin()
+        self.assertEqual(self._run([], return_value={gate.asset_names(pin)[0]}), 1)
 
     def test_a_missing_release_fails(self):
         self.assertEqual(self._run([], return_value=None), 1)
@@ -163,11 +172,11 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(self._run([], return_value={"checksums.txt"}), 1)
 
     def test_another_versions_distribution_does_not_count(self):
-        self.assertEqual(self._run([], return_value={gate.asset_name("0.0.1")}), 1)
+        self.assertEqual(self._run([], return_value=set(gate.asset_names("0.0.1"))), 1)
 
     def test_extra_assets_are_ignored(self):
         pin = gate.current_pin()
-        assets = {gate.asset_name(pin), "checksums.txt"}
+        assets = set(gate.asset_names(pin)) | {"checksums.txt"}
         self.assertEqual(self._run([], return_value=assets), 0)
 
     def test_an_unanswered_api_passes(self):

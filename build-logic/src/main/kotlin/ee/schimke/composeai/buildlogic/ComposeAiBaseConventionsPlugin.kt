@@ -116,13 +116,14 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
   }
 
   /**
-   * Wires [CheckHttpServerFloor] onto every project that has a `runtimeClasspath`, skipping the two
-   * projects that are allowed to carry a server engine.
+   * Wires [CheckHttpServerFloor] onto every project that has a `runtimeClasspath`, skipping any
+   * project allowed to carry a server engine.
    *
-   * The skip is a not-registered task rather than an empty check so that `:mcp` and `:cli` cannot
-   * quietly pass a floor they are exempt from; the exemption lives in one list
-   * ([CheckHttpServerFloor.httpServerProjects]) and `docs/design/REPOSITORY_LAYERS.md` explains why
-   * those two are on it.
+   * That list is empty since the MCP server moved (#5176), so today this skips nothing and every
+   * JVM module is checked. The branch stays because it is what makes an exemption *visible*: a
+   * project on the list gets no task at all rather than a task that quietly passes, so adding one
+   * is a diff in [CheckHttpServerFloor.httpServerProjects] that a reviewer reads against
+   * `docs/design/REPOSITORY_LAYERS.md`.
    */
   private fun registerHttpServerFloorCheck(project: Project) {
     if (project.path in CheckHttpServerFloor.httpServerProjects) return

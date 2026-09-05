@@ -11,7 +11,6 @@
     "docs/**",
     "gradle-plugin/**",
     "gradle/**",
-    "mcp/**",
     "render-session/**",
     "renderers/**",
     "renders/**",
