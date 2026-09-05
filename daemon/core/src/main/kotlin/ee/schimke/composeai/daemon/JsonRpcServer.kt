@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.daemon.history.HistoryDataDiff
 import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
 import ee.schimke.composeai.daemon.history.HistoryEntry
@@ -144,8 +145,7 @@ public class JsonRpcServer(
   private val host: RenderHost,
   private val daemonVersion: String = DEFAULT_DAEMON_VERSION,
   private val historyDir: String = DEFAULT_HISTORY_DIR,
-  private val idleTimeoutMs: Long =
-    System.getProperty(IDLE_TIMEOUT_PROP)?.toLongOrNull() ?: DEFAULT_IDLE_TIMEOUT_MS,
+  private val idleTimeoutMs: Long = DaemonProperties.idleTimeoutMs.read(),
   /**
    * B2.1 Tier-1 fingerprint detector. When non-null, the server captures a [Snapshot] at
    * construction time and re-checks it on every `fileChanged({ kind: "classpath" })` notification;
@@ -158,9 +158,7 @@ public class JsonRpcServer(
    * Grace window between emitting `classpathDirty` and calling [onExit]. PROTOCOL.md § 6 documents
    * this as `daemon.classpathDirtyGraceMs`, default 2000ms. Public so tests can shorten it.
    */
-  private val classpathDirtyGraceMs: Long =
-    System.getProperty(CLASSPATH_DIRTY_GRACE_PROP)?.toLongOrNull()
-      ?: DEFAULT_CLASSPATH_DIRTY_GRACE_MS,
+  private val classpathDirtyGraceMs: Long = DaemonProperties.classpathDirtyGraceMs.read(),
   /**
    * B2.2 phase 1 — the in-memory preview index, parsed from `previews.json` at daemon startup by
    * [DaemonMain]. Surfaced to clients via `initialize.manifest`. Defaults to [PreviewIndex.empty]
@@ -192,8 +190,7 @@ public class JsonRpcServer(
    * Configurable via the [DISCOVERY_WATCHDOG_PROP] sysprop; the harness lowers it to a few hundred
    * ms in scenarios that don't issue a render between the save and the assertion.
    */
-  private val discoveryWatchdogMs: Long =
-    System.getProperty(DISCOVERY_WATCHDOG_PROP)?.toLongOrNull() ?: DEFAULT_DISCOVERY_WATCHDOG_MS,
+  private val discoveryWatchdogMs: Long = DaemonProperties.discoveryWatchdogMs.read(),
   /**
    * H1+H2 — when non-null, every successful render produces a sidecar + index entry on disk
    * (HISTORY.md § "What this PR lands § H1") and emits a `historyAdded` notification. The
@@ -244,9 +241,7 @@ public class JsonRpcServer(
    * Default 30000ms per the spec. Overridable via the [DATA_FETCH_RERENDER_BUDGET_PROP] sysprop or
    * the constructor (tests pin it small).
    */
-  private val dataFetchRerenderBudgetMs: Long =
-    System.getProperty(DATA_FETCH_RERENDER_BUDGET_PROP)?.toLongOrNull()
-      ?: DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS,
+  private val dataFetchRerenderBudgetMs: Long = DaemonProperties.dataFetchRerenderBudgetMs.read(),
   private val interactiveFrameIntervalMs: Long = INTERACTIVE_FRAME_INTERVAL_MS,
   private val interactiveBurstIntervalMs: Long = INTERACTIVE_BURST_INTERVAL_MS,
   private val interactiveBurstMs: Long = INTERACTIVE_BURST_MS,
@@ -378,8 +373,7 @@ public class JsonRpcServer(
    */
   @Volatile
   private var renderTimeoutMs: Long =
-    System.getProperty(RENDER_TIMEOUT_PROP)?.toLongOrNull()?.takeIf { it > 0 }
-      ?: DEFAULT_RENDER_TIMEOUT_MS
+    DaemonProperties.renderTimeoutMs.read().takeIf { it > 0 } ?: DEFAULT_RENDER_TIMEOUT_MS
 
   /**
    * D1 — sticky `(previewId, kind)` subscriptions installed by `data/subscribe`. All read / write /
@@ -4412,11 +4406,12 @@ public class JsonRpcServer(
      */
     public val EXIT_PROCESS: (Int) -> Unit = { code -> exitProcess(code) }
 
-    public const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
+    public const val IDLE_TIMEOUT_PROP: String = DaemonProperties.Names.IDLE_TIMEOUT_MS
     public const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L
 
     /** PROTOCOL.md § 6 — `daemon.classpathDirtyGraceMs`, default 2000ms. */
-    public const val CLASSPATH_DIRTY_GRACE_PROP: String = "composeai.daemon.classpathDirtyGraceMs"
+    public const val CLASSPATH_DIRTY_GRACE_PROP: String =
+      DaemonProperties.Names.CLASSPATH_DIRTY_GRACE_MS
     public const val DEFAULT_CLASSPATH_DIRTY_GRACE_MS: Long = 2_000L
 
     /**
@@ -4426,7 +4421,7 @@ public class JsonRpcServer(
      * integration tests pin it sub-second so the timeout branch is fast).
      */
     public const val DATA_FETCH_RERENDER_BUDGET_PROP: String =
-      "composeai.daemon.dataFetchRerenderBudgetMs"
+      DaemonProperties.Names.DATA_FETCH_RERENDER_BUDGET_MS
     public const val DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS: Long = 30_000L
 
     /**
@@ -4437,7 +4432,7 @@ public class JsonRpcServer(
      * metadata reconcile responsive without racing fast renders. Tests override to a few hundred ms
      * via the sysprop.
      */
-    public const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
+    public const val DISCOVERY_WATCHDOG_PROP: String = DaemonProperties.Names.DISCOVERY_WATCHDOG_MS
     public const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
 
     /**
@@ -4466,7 +4461,7 @@ public class JsonRpcServer(
      * debugging-friendly window before the client's `initialize.options.maxRenderMs` lands. Unset /
      * non-positive values keep [DEFAULT_RENDER_TIMEOUT_MS].
      */
-    public const val RENDER_TIMEOUT_PROP: String = "composeai.daemon.renderTimeoutMs"
+    public const val RENDER_TIMEOUT_PROP: String = DaemonProperties.Names.RENDER_TIMEOUT_MS
 
     /** RECORDING.md — default `recording/start.fps` when the caller doesn't specify one. */
     public const val DEFAULT_RECORDING_FPS: Int = 30

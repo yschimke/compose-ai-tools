@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon.history
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
+
 /**
  * H4 — pruning policy configuration. See HISTORY.md § "Pruning policy".
  *
@@ -39,29 +41,25 @@ public data class HistoryPruneConfig(
         autoPruneIntervalMs <= 0L
 
   public companion object {
-    public const val PROP_MAX_ENTRIES: String = "composeai.daemon.history.maxEntriesPerPreview"
-    public const val PROP_MAX_AGE_DAYS: String = "composeai.daemon.history.maxAgeDays"
+    public const val PROP_MAX_ENTRIES: String =
+      DaemonProperties.Names.HISTORY_MAX_ENTRIES_PER_PREVIEW
+    public const val PROP_MAX_AGE_DAYS: String = DaemonProperties.Names.HISTORY_MAX_AGE_DAYS
     public const val PROP_MAX_TOTAL_SIZE_BYTES: String =
-      "composeai.daemon.history.maxTotalSizeBytes"
+      DaemonProperties.Names.HISTORY_MAX_TOTAL_SIZE_BYTES
     public const val PROP_AUTO_PRUNE_INTERVAL_MS: String =
-      "composeai.daemon.history.autoPruneIntervalMs"
+      DaemonProperties.Names.HISTORY_AUTO_PRUNE_INTERVAL_MS
 
     /**
      * Builds a config from system properties, falling back to defaults for any unset / unparseable
      * value. Production daemon mains call this; tests construct [HistoryPruneConfig] directly.
      */
-    public fun fromSysprops(props: (String) -> String? = System::getProperty): HistoryPruneConfig {
-      val defaults = HistoryPruneConfig()
-      return HistoryPruneConfig(
-        maxEntriesPerPreview =
-          props(PROP_MAX_ENTRIES)?.toIntOrNull() ?: defaults.maxEntriesPerPreview,
-        maxAgeDays = props(PROP_MAX_AGE_DAYS)?.toIntOrNull() ?: defaults.maxAgeDays,
-        maxTotalSizeBytes =
-          props(PROP_MAX_TOTAL_SIZE_BYTES)?.toLongOrNull() ?: defaults.maxTotalSizeBytes,
-        autoPruneIntervalMs =
-          props(PROP_AUTO_PRUNE_INTERVAL_MS)?.toLongOrNull() ?: defaults.autoPruneIntervalMs,
+    public fun fromSysprops(props: (String) -> String? = System::getProperty): HistoryPruneConfig =
+      HistoryPruneConfig(
+        maxEntriesPerPreview = DaemonProperties.historyMaxEntriesPerPreview.read(props),
+        maxAgeDays = DaemonProperties.historyMaxAgeDays.read(props),
+        maxTotalSizeBytes = DaemonProperties.historyMaxTotalSizeBytes.read(props),
+        autoPruneIntervalMs = DaemonProperties.historyAutoPruneIntervalMs.read(props),
       )
-    }
   }
 }
 

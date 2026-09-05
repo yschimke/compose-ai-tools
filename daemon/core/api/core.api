@@ -984,18 +984,20 @@ public final class ee/schimke/composeai/daemon/PreviewKnobDeclarations {
 
 public final class ee/schimke/composeai/daemon/PreviewKnobDto {
 	public static final field Companion Lee/schimke/composeai/daemon/PreviewKnobDto$Companion;
-	public fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()I
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/daemon/PreviewKnobDto;
-	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/PreviewKnobDto;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/daemon/PreviewKnobDto;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;)Lee/schimke/composeai/daemon/PreviewKnobDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/PreviewKnobDto;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/daemon/PreviewKnobDto;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDefault ()Ljava/lang/String;
 	public final fun getIndex ()I
 	public final fun getName ()Ljava/lang/String;
+	public final fun getOptions ()Ljava/util/List;
 	public final fun getType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -1660,6 +1662,186 @@ public abstract interface class ee/schimke/composeai/daemon/XrSessions : java/la
 
 public final class ee/schimke/composeai/daemon/XrSessions$DefaultImpls {
 	public static synthetic fun open$default (Lee/schimke/composeai/daemon/XrSessions;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lee/schimke/composeai/daemon/XrFrame;
+}
+
+public final class ee/schimke/composeai/daemon/config/BooleanProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;)V
+	public fun getTypeLabel ()Ljava/lang/String;
+	public fun parse (Ljava/lang/String;)Ljava/lang/Boolean;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+}
+
+public final class ee/schimke/composeai/daemon/config/CsvListProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun getDefaultLabel ()Ljava/lang/String;
+	public fun getTypeLabel ()Ljava/lang/String;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+	public fun parse (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/daemon/config/DaemonProperties {
+	public static final field INSTANCE Lee/schimke/composeai/daemon/config/DaemonProperties;
+	public final fun getALL ()Ljava/util/List;
+	public final fun getAtrace ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getBY_NAME ()Ljava/util/Map;
+	public final fun getBackgroundSandboxBoot ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getBtaCompileClasspath ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getBtaCompilerPlugins ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getBtaIcWorkingDir ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getBtaImplClasspath ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getBtaIneligibilityReason ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getBtaModuleName ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getBtaOutputDir ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getBundleManifestPath ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getCheapSignalFiles ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getClasspathDirtyGraceMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getCompositionTrace ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getDataFetchRerenderBudgetMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getDefaultLocale ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getDiscoveryWatchdogMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getGROUPS ()Ljava/util/List;
+	public final fun getGitRefHistory ()Lee/schimke/composeai/daemon/config/CsvListProperty;
+	public final fun getGitRefHistoryDebounceMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getGitRefHistoryPublishPolicy ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getGitRefHistorySyncMode ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getHistoryAutoPruneIntervalMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getHistoryDir ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getHistoryMaxAgeDays ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getHistoryMaxEntriesPerPreview ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getHistoryMaxTotalSizeBytes ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getIdleTimeoutMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getInteractiveIdleLeaseMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getIrDir ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getMaxHeapMb ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getMaxRendersPerSandbox ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getModuleId ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getModulePath ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getModuleProjectDir ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getPerfettoTrace ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getPreviewsJsonPath ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getProtocolVersion ()Lee/schimke/composeai/daemon/config/StringProperty;
+	public final fun getRecordingsDir ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun getRenderTimeoutMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getResDirs ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getSandboxBootTimeoutMs ()Lee/schimke/composeai/daemon/config/LongProperty;
+	public final fun getSandboxCount ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getSandboxWorkerPort ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getSandboxWorkerSlot ()Lee/schimke/composeai/daemon/config/IntProperty;
+	public final fun getStartupQuiet ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getUseConsumerApplication ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getUserClassDirs ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getUserClassPackages ()Lee/schimke/composeai/daemon/config/PathListProperty;
+	public final fun getWarmRenderOnBoot ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getWarmSpare ()Lee/schimke/composeai/daemon/config/BooleanProperty;
+	public final fun getWorkspaceRoot ()Lee/schimke/composeai/daemon/config/PathProperty;
+	public final fun renderMarkdown ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/daemon/config/DaemonProperties$Names {
+	public static final field ATRACE Ljava/lang/String;
+	public static final field BACKGROUND_SANDBOX_BOOT Ljava/lang/String;
+	public static final field BTA_COMPILER_PLUGINS Ljava/lang/String;
+	public static final field BTA_COMPILE_CLASSPATH Ljava/lang/String;
+	public static final field BTA_IC_WORKING_DIR Ljava/lang/String;
+	public static final field BTA_IMPL_CLASSPATH Ljava/lang/String;
+	public static final field BTA_INELIGIBILITY_REASON Ljava/lang/String;
+	public static final field BTA_MODULE_NAME Ljava/lang/String;
+	public static final field BTA_OUTPUT_DIR Ljava/lang/String;
+	public static final field BUNDLE_MANIFEST_PATH Ljava/lang/String;
+	public static final field CHEAP_SIGNAL_FILES Ljava/lang/String;
+	public static final field CLASSPATH_DIRTY_GRACE_MS Ljava/lang/String;
+	public static final field COMPOSITION_TRACE Ljava/lang/String;
+	public static final field DATA_FETCH_RERENDER_BUDGET_MS Ljava/lang/String;
+	public static final field DEFAULT_LOCALE Ljava/lang/String;
+	public static final field DISCOVERY_WATCHDOG_MS Ljava/lang/String;
+	public static final field GIT_REF_HISTORY Ljava/lang/String;
+	public static final field GIT_REF_HISTORY_DEBOUNCE_MS Ljava/lang/String;
+	public static final field GIT_REF_HISTORY_PUBLISH_POLICY Ljava/lang/String;
+	public static final field GIT_REF_HISTORY_SYNC_MODE Ljava/lang/String;
+	public static final field HISTORY_AUTO_PRUNE_INTERVAL_MS Ljava/lang/String;
+	public static final field HISTORY_DIR Ljava/lang/String;
+	public static final field HISTORY_MAX_AGE_DAYS Ljava/lang/String;
+	public static final field HISTORY_MAX_ENTRIES_PER_PREVIEW Ljava/lang/String;
+	public static final field HISTORY_MAX_TOTAL_SIZE_BYTES Ljava/lang/String;
+	public static final field IDLE_TIMEOUT_MS Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/daemon/config/DaemonProperties$Names;
+	public static final field INTERACTIVE_IDLE_LEASE_MS Ljava/lang/String;
+	public static final field IR_DIR Ljava/lang/String;
+	public static final field MAX_HEAP_MB Ljava/lang/String;
+	public static final field MAX_RENDERS_PER_SANDBOX Ljava/lang/String;
+	public static final field MODULE_ID Ljava/lang/String;
+	public static final field MODULE_PATH Ljava/lang/String;
+	public static final field MODULE_PROJECT_DIR Ljava/lang/String;
+	public static final field PERFETTO_TRACE Ljava/lang/String;
+	public static final field PREVIEWS_JSON_PATH Ljava/lang/String;
+	public static final field PROTOCOL_VERSION Ljava/lang/String;
+	public static final field RECORDINGS_DIR Ljava/lang/String;
+	public static final field RENDER_TIMEOUT_MS Ljava/lang/String;
+	public static final field RES_DIRS Ljava/lang/String;
+	public static final field SANDBOX_BOOT_TIMEOUT_MS Ljava/lang/String;
+	public static final field SANDBOX_COUNT Ljava/lang/String;
+	public static final field SANDBOX_WORKER_PORT Ljava/lang/String;
+	public static final field SANDBOX_WORKER_SLOT Ljava/lang/String;
+	public static final field STARTUP_QUIET Ljava/lang/String;
+	public static final field USER_CLASS_DIRS Ljava/lang/String;
+	public static final field USER_CLASS_PACKAGES Ljava/lang/String;
+	public static final field USE_CONSUMER_APPLICATION Ljava/lang/String;
+	public static final field WARM_RENDER_ON_BOOT Ljava/lang/String;
+	public static final field WARM_SPARE Ljava/lang/String;
+	public static final field WORKSPACE_ROOT Ljava/lang/String;
+}
+
+public abstract class ee/schimke/composeai/daemon/config/DaemonProperty {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getDefaultLabel ()Ljava/lang/String;
+	public final fun getDefaultValue ()Ljava/lang/Object;
+	public final fun getDoc ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public abstract fun getTypeLabel ()Ljava/lang/String;
+	public abstract fun parse (Ljava/lang/String;)Ljava/lang/Object;
+	public final fun read (Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+	public static synthetic fun read$default (Lee/schimke/composeai/daemon/config/DaemonProperty;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/lang/Object;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/daemon/config/IntProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getTypeLabel ()Ljava/lang/String;
+	public fun parse (Ljava/lang/String;)Ljava/lang/Integer;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+}
+
+public final class ee/schimke/composeai/daemon/config/LongProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;Ljava/lang/Long;)V
+	public synthetic fun <init> (Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;Ljava/lang/Long;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getTypeLabel ()Ljava/lang/String;
+	public fun parse (Ljava/lang/String;)Ljava/lang/Long;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+}
+
+public final class ee/schimke/composeai/daemon/config/PathListProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun getDefaultLabel ()Ljava/lang/String;
+	public fun getTypeLabel ()Ljava/lang/String;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+	public fun parse (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/daemon/config/PathProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun getTypeLabel ()Ljava/lang/String;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+	public fun parse (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/daemon/config/StringProperty : ee/schimke/composeai/daemon/config/DaemonProperty {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getTypeLabel ()Ljava/lang/String;
+	public synthetic fun parse (Ljava/lang/String;)Ljava/lang/Object;
+	public fun parse (Ljava/lang/String;)Ljava/lang/String;
 }
 
 public final class ee/schimke/composeai/daemon/forensics/ClassloaderForensics {

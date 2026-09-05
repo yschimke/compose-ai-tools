@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import java.io.File
 import java.security.MessageDigest
 
@@ -121,7 +122,7 @@ public class ClasspathFingerprint(
      * (`File.pathSeparator`) list of absolute paths in the cheap-signal file set. Read by
      * [parseCheapSignalFilesSysprop] at daemon startup.
      */
-    public const val CHEAP_SIGNAL_FILES_PROP: String = "composeai.daemon.cheapSignalFiles"
+    public const val CHEAP_SIGNAL_FILES_PROP: String = DaemonProperties.Names.CHEAP_SIGNAL_FILES
 
     /** SHA-256 hash size — used by tests to assert hex-string length. */
     public const val SHA_256_HEX_LENGTH: Int = 64
@@ -139,10 +140,7 @@ public class ClasspathFingerprint(
      */
     public fun parseCheapSignalFilesSysprop(
       value: String? = System.getProperty(CHEAP_SIGNAL_FILES_PROP)
-    ): List<File> {
-      if (value.isNullOrBlank()) return emptyList()
-      return value.split(File.pathSeparator).filter { it.isNotBlank() }.map { File(it.trim()) }
-    }
+    ): List<File> = DaemonProperties.cheapSignalFiles.parse(value).map { File(it) }
 
     private fun longToBytes(v: Long): ByteArray {
       val out = ByteArray(8)

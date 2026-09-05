@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
@@ -38,9 +39,9 @@ public object BundleIrReplayStore {
     public val resourcesBytes: ByteArray?,
   )
 
-  public const val BUNDLE_MANIFEST_PATH_PROP: String = "composeai.daemon.bundleManifestPath"
+  public const val BUNDLE_MANIFEST_PATH_PROP: String = DaemonProperties.Names.BUNDLE_MANIFEST_PATH
 
-  public const val IR_DIR_PROP: String = "composeai.daemon.irDir"
+  public const val IR_DIR_PROP: String = DaemonProperties.Names.IR_DIR
 
   @Volatile private var cached: Map<String, Entry>? = null
 
@@ -91,8 +92,8 @@ public object BundleIrReplayStore {
   }
 
   private fun load(): Map<String, Entry> {
-    val manifestPath = System.getProperty(BUNDLE_MANIFEST_PATH_PROP) ?: return emptyMap()
-    val irDirPath = System.getProperty(IR_DIR_PROP) ?: return emptyMap()
+    val manifestPath = DaemonProperties.bundleManifestPath.read() ?: return emptyMap()
+    val irDirPath = DaemonProperties.irDir.read() ?: return emptyMap()
     val manifestFile = File(manifestPath)
     val irDir = File(irDirPath)
     if (!manifestFile.isFile || !irDir.isDirectory) return emptyMap()

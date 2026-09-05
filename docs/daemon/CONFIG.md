@@ -19,6 +19,11 @@ composePreview {
 The block used to live under `experimental`; new builds should use the top-level
 `composePreview.daemon { ... }` block.
 
+The DSL covers the knobs a consumer normally sets. The daemon JVM understands a wider set of
+`composeai.daemon.*` system properties — timeouts, history pruning, sandbox-pool and tracing
+knobs — enumerated in **[TUNABLES.md](TUNABLES.md)**, which is generated from the typed
+`DaemonProperties` registry in `:daemon:core` rather than hand-maintained.
+
 ## Fields
 
 ### `enabled: Boolean`

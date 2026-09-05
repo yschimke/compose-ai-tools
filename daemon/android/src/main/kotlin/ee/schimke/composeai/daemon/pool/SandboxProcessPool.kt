@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon.pool
 
 import ee.schimke.composeai.daemon.RenderRequest
 import ee.schimke.composeai.daemon.RenderResult
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -331,10 +332,10 @@ class SandboxProcessPool(
   }
 
   companion object {
-    const val WORKER_PORT_PROP: String = "composeai.daemon.sandboxWorker.port"
-    const val WORKER_SLOT_PROP: String = "composeai.daemon.sandboxWorker.slot"
+    const val WORKER_PORT_PROP: String = DaemonProperties.Names.SANDBOX_WORKER_PORT
+    const val WORKER_SLOT_PROP: String = DaemonProperties.Names.SANDBOX_WORKER_SLOT
 
-    private const val SANDBOX_COUNT_PROP = "composeai.daemon.sandboxCount"
+    private const val SANDBOX_COUNT_PROP = DaemonProperties.Names.SANDBOX_COUNT
 
     private val FORWARDED_PREFIXES = listOf("composeai.", "robolectric.", "android.", "roborazzi.")
 
@@ -346,8 +347,8 @@ class SandboxProcessPool(
     private val WORKER_OVERRIDDEN_PROPS =
       setOf(
         SANDBOX_COUNT_PROP,
-        "composeai.daemon.backgroundSandboxBoot",
-        "composeai.daemon.warmRenderOnBoot",
+        DaemonProperties.Names.BACKGROUND_SANDBOX_BOOT,
+        DaemonProperties.Names.WARM_RENDER_ON_BOOT,
         WORKER_PORT_PROP,
         WORKER_SLOT_PROP,
       )

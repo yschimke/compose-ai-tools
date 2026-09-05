@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.data.render.PerfettoTraceDataProducer
 
 /**
@@ -32,12 +33,12 @@ import ee.schimke.composeai.data.render.PerfettoTraceDataProducer
 internal object AndroidxTraceSections : PerfettoTraceDataProducer.TraceSectionBackend {
 
   /** Sysprop turning the atrace mirror on. Default off — see the class KDoc for why. */
-  const val ENABLED_PROP: String = "composeai.daemon.atrace"
+  const val ENABLED_PROP: String = DaemonProperties.Names.ATRACE
 
   /** `android.os.Trace` truncates section names beyond this; cut cleanly instead. */
   private const val MAX_SECTION_NAME_LENGTH = 127
 
-  fun enabled(): Boolean = System.getProperty(ENABLED_PROP) == "true"
+  fun enabled(): Boolean = DaemonProperties.atrace.read()
 
   /**
    * Registers this backend on [PerfettoTraceDataProducer.sectionBackend] when [enabled]. Idempotent

@@ -2,6 +2,7 @@
 
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
@@ -443,13 +444,13 @@ fun runDaemon(
  * property, default 5s).
  */
 /** HISTORY.md § "What this PR lands § H1" — null disables history. */
-private const val HISTORY_DIR_PROP = "composeai.daemon.historyDir"
+private const val HISTORY_DIR_PROP = DaemonProperties.Names.HISTORY_DIR
 
 /** Optional override for git-provenance resolution; defaults to JVM CWD. */
-private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
+private const val WORKSPACE_ROOT_PROP = DaemonProperties.Names.WORKSPACE_ROOT
 
 /** Module project path stamped into every history entry's `module` field. */
-private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
+private const val MODULE_ID_PROP = DaemonProperties.Names.MODULE_ID
 
 /**
  * Adapts a [PreviewIndex] into the `(previewId) -> RenderSpec?` lambda [DesktopHost] consumes for

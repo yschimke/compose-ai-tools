@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import java.lang.ref.WeakReference
 import java.net.URL
 import java.net.URLClassLoader
@@ -206,7 +207,7 @@ public class UserClassLoaderHolder(
      * — the gradle plugin's daemon launch descriptor sets it; both backends' [DaemonMain] reads it
      * and constructs a [UserClassLoaderHolder] with the resolved URLs.
      */
-    public const val USER_CLASS_DIRS_PROP: String = "composeai.daemon.userClassDirs"
+    public const val USER_CLASS_DIRS_PROP: String = DaemonProperties.Names.USER_CLASS_DIRS
 
     /**
      * Whether [name] must be resolved via the parent loader instead of child-first (used by
@@ -278,15 +279,8 @@ public class UserClassLoaderHolder(
      * ordering carries semantics we don't want to scramble.
      */
     public fun urlsFromSysprop(): List<URL> {
-      val raw = System.getProperty(USER_CLASS_DIRS_PROP) ?: return emptyList()
-      if (raw.isBlank()) return emptyList()
       val files =
-        raw
-          .split(java.io.File.pathSeparator)
-          .map { it.trim() }
-          .filter { it.isNotEmpty() }
-          .map { java.io.File(it) }
-          .filter { it.exists() }
+        DaemonProperties.userClassDirs.read().map { java.io.File(it) }.filter { it.exists() }
       return files.sortedBy { if (it.isDirectory) 0 else 1 }.map { it.toURI().toURL() }
     }
 
