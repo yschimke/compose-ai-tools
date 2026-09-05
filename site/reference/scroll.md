@@ -98,6 +98,17 @@ head of every slice, a 12-row all-black overlap at the far end of the window
 out-scored the true shift and the next slice was painted from its top row,
 `10:10` and all.
 
+**Chrome that appears at the foot of a slice is set aside.** The last stride of
+a Wear walk lands at the content end, and landing there reveals the
+`ScreenScaffold`'s `EdgeButton`: the last slice's bottom fifth is a bright
+button where the previous slice had background. At the true shift every row
+above it agrees exactly and every row of it disagrees violently, which
+misalignment never looks like (it spreads disagreement across the overlap). A
+candidate's score therefore walks up from the bottom of the overlap past a
+contiguous run of disagreeing rows, caps it at a third of the overlap, and
+scores only the rows above; the run is reported as `revealedRows` on the seam.
+`RevealedBottomChromeSeamTest` pins this on the real slice pair.
+
 **What is reported.** Each seam gets a verdict — `verified`, `low_signal` (too
 little varied content in the overlap to decide on) or `mismatch` (no shift made
 the two slices agree) — and each stride a landed/not-landed outcome. The stitch
