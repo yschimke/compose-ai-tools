@@ -66,6 +66,13 @@ data class ScrollSeam(
   val plainSadPerPixel: Double,
   /** Whether [hintPx] was measured off the content by the driver ([SliceCapture.measured]). */
   val measuredHint: Boolean = false,
+  /**
+   * Rows at the foot of the overlap the matcher set aside as chrome that *appeared* in the later
+   * slice (a Wear `EdgeButton` revealing at the content end, a FAB, a snackbar) — a contiguous run
+   * of rows that disagree while everything above them agrees. Not counted in [overlapRows],
+   * [signal] or the residuals. See `findOverlapShift`.
+   */
+  val revealedRows: Int = 0,
 ) {
   enum class Verdict {
     /** Enough signal in the overlap and the two slices agree at [shiftPx]. */
@@ -100,8 +107,9 @@ data class ScrollSeam(
   /** One-line, human-readable summary for logs and the warnings sidecar. */
   fun describe(): String =
     "seam $index: shift ${shiftPx}px (hint ${hintPx}px) over $overlapRows rows " +
-      "($informativeRows with signal, ${"%.0f".format(java.util.Locale.ROOT, signal)} total), " +
-      "residual ${"%.1f".format(java.util.Locale.ROOT, weightedSadPerPixel)}/px" +
+      "($informativeRows with signal, ${"%.0f".format(java.util.Locale.ROOT, signal)} total" +
+      (if (revealedRows > 0) ", $revealedRows revealed rows set aside" else "") +
+      "), residual ${"%.1f".format(java.util.Locale.ROOT, weightedSadPerPixel)}/px" +
       when (verdict) {
         Verdict.VERIFIED -> ""
         Verdict.MEASURED -> " (no signal in the overlap; placed by the measured stride)"
@@ -234,23 +242,18 @@ fun stitchSlicesWithFinalFrame(
   // frame actually shows an edge-hugging button shape; falls through on
   // any mismatch so non-Wear and non-EdgeButton LONG captures keep the
   // established overlay path.
+  // Every seam is reported, the ones under the EdgeButton anchor's cut included: a seam whose
+  // later slice reveals the button still verifies on the rows above it (see the revealed-chrome
+  // rule in [findOverlapShift]), so a mismatch there is real information, not reveal noise.
+  onSeam?.let { report -> content.seams.forEach(report) }
   if (isRound) {
     val anchored = anchorByEdgeButton(content, finalImage)
     if (anchored != null) {
-      // Only the seams whose painted band survived the cut are in the output. The last one or
-      // two are usually below it — the EdgeButton reveal shifts the tail cards while they are
-      // captured, so those seams score as mismatches, and none of their rows made it into the PNG.
-      onSeam?.let { report ->
-        content.seams.forEach { (seam, bandStart) -> if (bandStart < anchored.cutY) report(seam) }
-      }
       outputFile.parentFile?.mkdirs()
-      fileSystem.write(outputFile.path.toPath()) {
-        ImageIO.write(anchored.image, "PNG", outputStream())
-      }
+      fileSystem.write(outputFile.path.toPath()) { ImageIO.write(anchored, "PNG", outputStream()) }
       return outputFile
     }
   }
-  onSeam?.let { report -> content.seams.forEach { (seam, _) -> report(seam) } }
 
   val diffStart = findFirstDifferingRow(content.lastSliceImage, finalImage)
   if (diffStart < 0) {
@@ -365,8 +368,8 @@ private data class StitchedContent(
   val sliceH: Int,
   val contentYEnd: Int,
   val lastSliceImage: BufferedImage,
-  /** Every seam the matcher cut, in order, with the output row its painted band starts at. */
-  val seams: List<Pair<ScrollSeam, Int>> = emptyList(),
+  /** Every seam the matcher cut, in order. */
+  val seams: List<ScrollSeam> = emptyList(),
 )
 
 /**
@@ -476,6 +479,7 @@ private fun buildStitchedContent(
         weightedSadPerPixel = match.weightedSadPerPixel,
         plainSadPerPixel = match.plainSadPerPixel,
         measuredHint = measured,
+        revealedRows = match.revealedRows,
       )
   }
 
@@ -492,7 +496,6 @@ private fun buildStitchedContent(
   val totalHeight = contentHeight + tailHeight
 
   val stitched = BufferedImage(width, totalHeight, BufferedImage.TYPE_INT_ARGB)
-  val seamBands = mutableListOf<Pair<ScrollSeam, Int>>()
   val g = stitched.createGraphics()
   try {
     // First slice: paint only the list region. The pinned tail stays
@@ -503,7 +506,6 @@ private fun buildStitchedContent(
     var yPrev = pinnedBottomTop
     for (i in 1 until images.size) {
       val rows = rowsPainted[i - 1]
-      seamBands += seams[i - 1] to yPrev
       if (rows <= 0) continue
       // Source rows [pinnedBottomTop - rows, pinnedBottomTop) — the
       // new content added at the bottom of the list region since
@@ -527,16 +529,15 @@ private fun buildStitchedContent(
   } finally {
     g.dispose()
   }
-  // The plain (no final frame) callers keep every seam; [stitchSlicesWithFinalFrame] filters by
-  // what its anchored cut actually kept before it reports.
-  if (onSeam != null && !deferSeams) seamBands.forEach { (seam, _) -> onSeam(seam) }
+  // [stitchSlicesWithFinalFrame] reports the seams itself, after the whole composition.
+  if (onSeam != null && !deferSeams) seams.forEach(onSeam)
   return StitchedContent(
     image = stitched,
     pinnedBottomTop = pinnedBottomTop,
     sliceH = sliceH,
     contentYEnd = contentHeight,
     lastSliceImage = images.last(),
-    seams = seamBands,
+    seams = seams,
   )
 }
 
@@ -624,6 +625,7 @@ private data class ShiftMatch(
   val signal: Double,
   val weightedSadPerPixel: Double,
   val plainSadPerPixel: Double,
+  val revealedRows: Int = 0,
 )
 
 /**
@@ -660,6 +662,18 @@ private data class ShiftMatch(
  * cut through their bodies. Candidates within [TIE_MARGIN_PER_PIXEL] of the best score are a tie,
  * and the one nearest [hintPx] wins, so an ambiguous overlap defers to what the scroller said
  * instead of to whichever repeat the search visited first.
+ *
+ * **Chrome that appears at the foot of the later slice is set aside, not scored.** The last stride
+ * of a Wear walk lands at the content end, and landing there reveals the `ScreenScaffold`'s
+ * `EdgeButton`: the last slice's bottom fifth is a bright button where the previous slice, one
+ * stride earlier, had black background. At the true shift every row above it agrees exactly and
+ * every row of it disagrees violently — scored together, the pair read as a 40/px mismatch, and
+ * with a reported hint a 203 px shift that lined the button up with a card body out-scored the
+ * truth. Misalignment does not look like that: it spreads disagreement across the overlap. So a
+ * candidate's score walks up from the bottom of the overlap past a contiguous run of rows that
+ * disagree by more than [REVEALED_ROW_MIN_SAD_PER_PIXEL], caps that run at [MAX_REVEALED_FRAC] of
+ * the overlap (longer is misalignment, and then nothing is set aside), and scores only the rows
+ * above it. The run is reported as [ShiftMatch.revealedRows].
  *
  * **A reported hint bounds the search above, not below.** A scroller clamps at its content end, so
  * the last stride of a walk can move the content anywhere from nothing to the full step while the
@@ -741,6 +755,7 @@ private fun findOverlapShift(
   val weightedScores = DoubleArray(count) { Double.POSITIVE_INFINITY }
   val plainScores = DoubleArray(count) { Double.POSITIVE_INFINITY }
   val overlapRows = IntArray(count)
+  val revealedRows = IntArray(count)
   val informativeRows = IntArray(count)
   val signals = DoubleArray(count)
   var bestWeightedScore = Double.POSITIVE_INFINITY
@@ -758,14 +773,18 @@ private fun findOverlapShift(
     if (nFullOverlap <= 0) break
     val n = minOf(nFullOverlap, maxOf(0, rowLimit - d))
     if (n <= 0) continue
+    // Per-row costs first, so the revealed run at the foot can be measured before scoring.
+    val rowCosts = LongArray(n) { k -> rowSad(prevLum[d + k], nextLum[k]) }
+    val revealed = revealedTailRows(rowCosts, rowWidth)
+    val scored = n - revealed
     var weightSum = 0.0
     var weightedCost = 0.0
     var plainCost = 0.0
     var informative = 0
     var signal = 0.0
-    for (k in 0 until n) {
+    for (k in 0 until scored) {
       val w = max(prevW[d + k], nextW[k])
-      val sad = rowSad(prevLum[d + k], nextLum[k])
+      val sad = rowCosts[k]
       plainCost += sad
       if (w > 0.0) {
         weightedCost += w * sad
@@ -777,10 +796,11 @@ private fun findOverlapShift(
       }
     }
     val idx = d - lo
-    overlapRows[idx] = n
+    overlapRows[idx] = scored
+    revealedRows[idx] = revealed
     informativeRows[idx] = informative
     signals[idx] = signal
-    val plainScore = plainCost / n
+    val plainScore = plainCost / scored
     plainScores[idx] = plainScore
     if (plainScore < bestPlainScore) {
       bestPlainScore = plainScore
@@ -847,6 +867,7 @@ private fun findOverlapShift(
       signal = signals[idx],
       weightedSadPerPixel = weightedScores[idx] / perPixel,
       plainSadPerPixel = plainScores[idx] / perPixel,
+      revealedRows = revealedRows[idx],
     )
   } else {
     // No candidate cleared the signal floor: nothing varied enough to align on. Fall back to the
@@ -860,8 +881,25 @@ private fun findOverlapShift(
       signal = if (count > 0) signals[idx] else 0.0,
       weightedSadPerPixel = bestPlainScore / perPixel,
       plainSadPerPixel = bestPlainScore / perPixel,
+      revealedRows = if (count > 0) revealedRows[idx] else 0,
     )
   }
+}
+
+/**
+ * Length of the contiguous run of rows at the foot of an overlap that disagree by more than
+ * [REVEALED_ROW_MIN_SAD_PER_PIXEL] — chrome that appeared in the later slice — or 0 when the run is
+ * longer than [MAX_REVEALED_FRAC] of the overlap (then it is misalignment, and every row counts).
+ * See [findOverlapShift].
+ */
+private fun revealedTailRows(rowCosts: LongArray, rowWidth: Int): Int {
+  val n = rowCosts.size
+  if (n == 0 || rowWidth <= 0) return 0
+  val threshold = (REVEALED_ROW_MIN_SAD_PER_PIXEL * rowWidth).toLong()
+  var run = 0
+  while (run < n && rowCosts[n - 1 - run] > threshold) run++
+  val cap = (n * MAX_REVEALED_FRAC).toInt()
+  return if (run in 1..cap && run < n) run else 0
 }
 
 /** The overlap floor for a [sliceH]-row viewport — see [findOverlapShift]. */
@@ -999,6 +1037,21 @@ const val MIN_OVERLAP_SIGNAL: Double = 30.0
 private const val TIE_MARGIN_PER_PIXEL = 1.5
 
 /**
+ * Per-pixel luminance SAD above which a row at the foot of an overlap counts as disagreeing for
+ * [revealedTailRows]. The same bar as [SEAM_MAX_WEIGHTED_SAD_PER_PIXEL]: a revealed `EdgeButton`
+ * against black scores 40–160/px, an aligned list row under 10/px.
+ */
+private const val REVEALED_ROW_MIN_SAD_PER_PIXEL = 20.0
+
+/**
+ * Largest fraction of an overlap that may be set aside as revealed chrome. An `EdgeButton` is a
+ * fifth of a Wear viewport, a FAB or snackbar less; a disagreeing run past a third of the overlap
+ * is a misaligned pair, and setting it aside would let a wrong shift pass on the rows that happen
+ * to agree.
+ */
+private const val MAX_REVEALED_FRAC = 0.34
+
+/**
  * Half-width of the search window around a *measured* hint (see [SliceCapture.measured]), as a
  * fraction of the viewport. The driver reads the displacement off semantics bounds in layout
  * pixels; the slack covers the layout→image rounding and a sub-pixel landing, nothing more.
@@ -1049,10 +1102,10 @@ private const val EDGE_BUTTON_MIN_PURPLE_CAST = 10.0
  * match is found in the stitched content. Callers fall back to the established final-frame overlay
  * path in that case.
  */
-/** [anchorByEdgeButton]'s output and the stitched row it cut the prefix at. */
-private data class Anchored(val image: BufferedImage, val cutY: Int)
-
-private fun anchorByEdgeButton(content: StitchedContent, finalImage: BufferedImage): Anchored? {
+private fun anchorByEdgeButton(
+  content: StitchedContent,
+  finalImage: BufferedImage,
+): BufferedImage? {
   val width = content.image.width
   val finalH = finalImage.height
 
@@ -1117,7 +1170,7 @@ private fun anchorByEdgeButton(content: StitchedContent, finalImage: BufferedIma
   } finally {
     g.dispose()
   }
-  return Anchored(out, prefixHeight)
+  return out
 }
 
 /**

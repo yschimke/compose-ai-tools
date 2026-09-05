@@ -71,4 +71,11 @@ class RevealedBottomChromeSeamTest {
     assertEquals(seam.describe(), ScrollSeam.Verdict.VERIFIED, seam.verdict)
     assertEquals(viewport + trueShift.toInt(), stitched.height)
   }
+
+  @Test
+  fun `the seam reports how many revealed rows it set aside`() {
+    val (seam, _) = stitch(measured = true, hint = trueShift)
+    // 298 overlap rows, of which the bottom 48 are the button: a real count, not a guess.
+    assertTrue(seam.describe(), seam.revealedRows in 40..60)
+  }
 }
