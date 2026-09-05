@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.82.0](https://github.com/yschimke/compose-ai-tools/compare/v1.81.0...v1.82.0) (2026-09-05)
+
+
+### Features
+
+* **cli:** check the JVM the server will run on before launching it ([#5211](https://github.com/yschimke/compose-ai-tools/issues/5211)) ([e7f54d3](https://github.com/yschimke/compose-ai-tools/commit/e7f54d3dee1508232fc4b508961337625abdc150))
+* **screen:** express a scoped modifier, so a layout weight is generable ([#5212](https://github.com/yschimke/compose-ai-tools/issues/5212)) ([b8c8e57](https://github.com/yschimke/compose-ai-tools/commit/b8c8e5778d997589ec477099681c51fb18b7e6d8))
+
+
+### Bug Fixes
+
+* **design-artifacts:** carry locator `scope` in the issue index, and mirror the producer ([#5210](https://github.com/yschimke/compose-ai-tools/issues/5210)) ([1af7bbf](https://github.com/yschimke/compose-ai-tools/commit/1af7bbf699a8f47a103de4add9bb27f6584e2658))
+* **screen:** import a generated screen's references instead of qualifying them ([#5207](https://github.com/yschimke/compose-ai-tools/issues/5207)) ([4977d0a](https://github.com/yschimke/compose-ai-tools/commit/4977d0aeccc76524a9ebba73e404a7150c7652d9))
+
 ## [1.81.0](https://github.com/yschimke/compose-ai-tools/compare/v1.80.0...v1.81.0) (2026-09-05)
 
 
