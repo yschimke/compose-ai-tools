@@ -154,7 +154,7 @@ class M3PaletteScreenTest {
     val source = source(screen)
     assertTrue(
       source,
-      source.contains("color = androidx.compose.material3.MaterialTheme.colorScheme.background"),
+      source.contains("color = MaterialTheme.colorScheme.background"),
     )
     assertTrue(source, source.contains("Modifier.fillMaxWidth().padding(16.dp)"))
     assertTrue(source, source.contains("Arrangement.spacedBy(12.dp)"))
