@@ -1,3 +1,4 @@
+import { localeOfPreviewId } from "./catalog-priority.mjs";
 import { findPreview } from "./preview-id-alias.mjs";
 
 /**
@@ -18,14 +19,29 @@ import { findPreview } from "./preview-id-alias.mjs";
  *
  * @param {Array<{previewId?: string, componentId: string, functionName?: string, images?: Array<object>}>} candidates
  * @param {Array<{id: string, params?: object, captures?: Array<{params?: object}>}>} previews
+ * A locale fan-out is promoted the same way (issue #5059). A bilingual app renders one function
+ * per locale — `@LocalePreviews` mints `LanguageToggleButtonPreview_en` and `…_ja` — and the
+ * catalog's axes (`variant` / `state` / `theme` / `size` / `props`) had no place for "this is the
+ * Japanese one", so both arms folded onto the same output key and the whole catalog build was
+ * refused. Declaring `locales` in the spec turns the id's trailing segment into `props.locale`,
+ * which is the axis this codebase ALREADY spells locale with: a spec writes
+ * `{ state: "rtl", props: { locale: "ar-XB" } }` by hand, `bridge-live-preview-ids` scores
+ * `props.locale` when matching a sticker to a live preview, and `catalogImagePath` gives it a
+ * `__locale-ja` path segment. A new top-level `image.locale` would have to be understood by
+ * `buildCatalog` in the pinned `@design-parity/catalog-export` package, which drops any field it
+ * has not been taught — the way the motion axis went missing — so it would publish nothing.
+ *
  * @param {Map<string, string>} [aliases] raw preview id → bundle-entry id (see preview-id-alias.mjs)
- * @returns {{fontScales: number, duplicates: number}} applied axis and duplicate counts
+ * @param {string[]} [locales] the locales the spec declares (`spec.locales`); empty tags nothing.
+ * @returns {{fontScales: number, duplicates: number, locales: number}} applied axis and duplicate
+ *   counts
  */
-export function applyCatalogPreviewAxes(candidates, previews, aliases) {
+export function applyCatalogPreviewAxes(candidates, previews, aliases, locales) {
   const previewById = new Map(previews.map((preview) => [preview.id, preview]));
   const seenByFunction = new Map();
   let fontScales = 0;
   let duplicates = 0;
+  let localesTagged = 0;
 
   for (const candidate of candidates) {
     // Raw discovery id vs sanitised bundle-entry id — see preview-id-alias.mjs. Without this the
@@ -36,6 +52,12 @@ export function applyCatalogPreviewAxes(candidates, previews, aliases) {
       aliases,
     );
     if (!preview) continue;
+    // Read off the PREVIEW's own id, not the candidate's: the candidate may carry the sanitised
+    // bundle-entry form, and a locale is resolved against what the annotation actually minted.
+    // Applied to every image of the candidate — a locale is a property of the render, not of one
+    // capture within it — and only when the id names a DECLARED locale, so an untagged render
+    // stays the component's primary sticker.
+    const locale = localeOfPreviewId(preview.id, locales);
     const captures =
       Array.isArray(preview.captures) && preview.captures.length > 0
         ? preview.captures
@@ -49,6 +71,10 @@ export function applyCatalogPreviewAxes(candidates, previews, aliases) {
         ...(preview.params ?? {}),
         ...(captures[index]?.params ?? {}),
       };
+      if (locale) {
+        image.props = { ...(image.props ?? {}), locale };
+        localesTagged += 1;
+      }
       const fontScale = params.fontScale;
       if (typeof fontScale === "number" && Number.isFinite(fontScale) && fontScale !== 1) {
         image.props = { ...(image.props ?? {}), fontScale: formatFontScale(fontScale) };
@@ -74,7 +100,7 @@ export function applyCatalogPreviewAxes(candidates, previews, aliases) {
     });
   }
 
-  return { fontScales, duplicates };
+  return { fontScales, duplicates, locales: localesTagged };
 }
 
 function formatFontScale(value) {

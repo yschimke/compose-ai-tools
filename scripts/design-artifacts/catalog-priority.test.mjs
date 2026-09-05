@@ -9,6 +9,7 @@ import {
   entryPriority,
   variantPriority,
   isImageDeferred,
+  localeOfPreviewId,
   modePriority,
   previewForImage,
   previewNamesByPriority,
@@ -339,3 +340,21 @@ test("previewForImage resolves a variant's sticker back to the variant's own @Pr
   // A theme the spec never folded in (a multipreview's own dark render) stays on the component.
   assert.equal(previewForImage({ componentId: "B", preview: "Beta" }, { theme: "dark" }), "Beta");
 });
+
+test("localeOfPreviewId reads a declared locale off an id's trailing segment", () => {
+  assert.equal(localeOfPreviewId("com.a.ToggleKt.TogglePreview_ja", ["en", "ja"]), "ja");
+  assert.equal(localeOfPreviewId("com.a.ToggleKt.TogglePreview_en", ["en", "ja"]), "en");
+  // Undeclared, so untagged: the primary sticker keeps no locale (issue #5059).
+  assert.equal(localeOfPreviewId("com.a.ToggleKt.TogglePreview", ["en", "ja"]), null);
+  assert.equal(localeOfPreviewId("com.a.ToggleKt.TogglePreview_ja", []), null);
+});
+
+test("localeOfPreviewId shares the mode matcher's boundary and longest-first rules", () => {
+  // Mid-word: `ja` inside `Ninja` is not a locale, exactly as `on` inside `SwitchOn` is not a mode.
+  assert.equal(localeOfPreviewId("com.a.NinjaKt.SomethingNinja", ["ja"]), null);
+  // Longest first, so a short tag cannot shadow a longer one that also ends the id.
+  assert.equal(localeOfPreviewId("Foo_pt_BR", ["pt", "pt_BR"]), "pt_BR");
+  // Case-insensitive, like `modes: ["light"]` against `name = "Light"`.
+  assert.equal(localeOfPreviewId("Foo_JA", ["ja"]), "ja");
+});
+

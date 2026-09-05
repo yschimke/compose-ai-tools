@@ -33,6 +33,11 @@
       "description": "Informational: the theme modes the sticker sheet covers (e.g. [\"light\", \"dark\"]).",
       "items": { "type": "string" }
     },
+    "locales": {
+      "type": "array",
+      "description": "The locales the sticker sheet covers (e.g. [\"en\", \"ja\"]). Unlike `modes` this is not informational: a preview id ending in a declared locale is tagged with a `locale` props axis, so the arms of a locale multipreview fan-out (`Foo_en` / `Foo_ja`) are distinct renders instead of two images folding onto one output key. Match is case-insensitive and only at a segment boundary, as for `modes`. An id naming no declared locale stays untagged and remains the component's primary sticker. Omit for a single-locale catalog.",
+      "items": { "type": "string" }
+    },
     "modePriority": {
       "type": "object",
       "description": "Per-axis render priority for the theme modes: which palettes must be baked into the published bundle and which the preview server produces on demand. Keys are mode names from `modes` plus the `*` wildcard; values are \"required\" (default) or \"deferred\". e.g. { \"light\": \"required\", \"*\": \"deferred\" } bakes one sticker per component and leaves the rest to the serve host's theme switcher. Only stickers that NAME a theme can be deferred, so a component always keeps its primary render. Requires a live path (publish-live-bundle or a buildable `source`) — the export refuses to publish deferred coverage a serve host could not re-render.",

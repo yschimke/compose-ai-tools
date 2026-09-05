@@ -106,22 +106,50 @@ export function modePriority(spec, mode) {
  * unrelated tail and silently defer a required render.
  */
 export function modeOfPreviewId(id, modes) {
+  return declaredSuffixOfPreviewId(id, modes);
+}
+
+/**
+ * The declared value from [values] that [id] ends with, or null.
+ *
+ * The mechanism [modeOfPreviewId] describes is not specific to themes: any axis whose fan-out lives
+ * inside one `@Preview` function leaves its name as the id's trailing segment, and locale is the
+ * second such axis (`LanguageToggleButtonPreview_en` / `…_ja`, issue #5059). Shared rather than
+ * copied, because the fiddly parts — longest-first so `dark` cannot shadow `highContrastDark`,
+ * case-insensitive so `modes: ["light"]` matches `name = "Light"`, and the segment boundary that
+ * stops a mode named `on` matching `ButtonSwitchOn` — are exactly what a second copy would get
+ * subtly wrong.
+ */
+export function declaredSuffixOfPreviewId(id, values) {
   const text = String(id ?? "");
   if (text.length === 0) return null;
-  const declared = (modes ?? [])
+  const declared = (values ?? [])
     .filter((m) => typeof m === "string" && m.length > 0)
     .sort((a, b) => b.length - a.length);
   const lower = text.toLowerCase();
-  for (const mode of declared) {
-    const suffix = mode.toLowerCase();
+  for (const value of declared) {
+    const suffix = value.toLowerCase();
     if (!lower.endsWith(suffix)) continue;
     const start = text.length - suffix.length;
-    if (start === 0) return mode;
+    if (start === 0) return value;
     const before = text[start - 1];
     const boundary = /[^A-Za-z0-9]/.test(before) || /[A-Z]/.test(text[start]);
-    if (boundary) return mode;
+    if (boundary) return value;
   }
   return null;
+}
+
+/**
+ * The declared locale a **daemon preview id** renders in, or null when the id names none.
+ *
+ * The counterpart of [modeOfPreviewId] for `locales` (issue #5059). A bilingual app fans a preview
+ * out with a locale multipreview — `@LocalePreviews` mints `Foo_en` and `Foo_ja` off one function —
+ * and before this the catalog had no axis those two could differ on, so both folded onto the same
+ * output key and the build was refused. An id naming no declared locale stays untagged, exactly as
+ * an id naming no mode does: the untagged render is the component's primary sticker.
+ */
+export function localeOfPreviewId(id, locales) {
+  return declaredSuffixOfPreviewId(id, locales);
 }
 
 /**
