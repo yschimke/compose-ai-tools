@@ -1,11 +1,67 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T08:25:51.882Z",
+  "generatedAt": "2026-09-05T08:49:53.673Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "5d71ce8cad8cb683ffbea5fa26eec9801d9b481c",
+        "subject": "fix(render): supply the poolingcontainer R class when AGP's merged R.jar does not (#5154)",
+        "at": "2026-09-05T09:41:34+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "368cfd41a51ad9242519bcd65214c26fb15c1056",
+        "subject": "chore(main): release 1.78.1 (#5152)",
+        "at": "2026-09-05T09:38:46+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d71ff34890edf21346d62b63b7f84ffb9d3340f7",
+        "subject": "fix(renderer-android): let Glance default its own composer parameters (#5151)",
+        "at": "2026-09-05T09:37:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cd8757c2da4b5f9f40750ef6769f45968a73a812",
+        "subject": "fix(daemon): recognise Compose Multiplatform's own @Preview in incremental discovery (#5150)",
+        "at": "2026-09-05T09:23:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "da690ad5d6d7b74c271ca2f2081abebf71de52df",
+        "subject": "fix(renderer-android): resolve Glance's preview composer against the project's Glance (#5149)",
+        "at": "2026-09-05T09:23:14+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "972d74ac9f9c09aba474c96774e18e52191e633e",
+        "subject": "chore(main): release 1.78.0 (#5148)",
+        "at": "2026-09-05T09:22:20+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1f4f80268f2d85586a0e1dbde68dae3aa24bc27c",
+        "subject": "feat(build-host): serve the server's Gradle work over a process boundary (#5147)",
+        "at": "2026-09-05T09:20:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "186e838121a66475af3aeac765e24a71258a45ff",
         "subject": "chore(ci): update the design-artifacts export driver to v1.77.0 (#5146)",
@@ -427,62 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v1.72.0 (#5090)",
         "at": "2026-09-04T12:42:32Z",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b2ec0d771bbe758c4e7d681efbc3bf3f5c43991d",
-        "subject": "chore(main): release 1.72.0 (#5087)",
-        "at": "2026-09-04T12:30:41Z",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a1da7f3782b318a32c161556a359fd37907e827f",
-        "subject": "feat(daemon): seed a preview's parameter knobs from the override bag (#5089)",
-        "at": "2026-09-04T13:26:07+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "611ee7b49d6f4156f4d12e613497ee9ed0e0b7f4",
-        "subject": "fix(focus): keep the resting capture, and pick a root when there are two (#5088)",
-        "at": "2026-09-04T13:15:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a574d4cf7c135ad80415f0a43ba1ec4757fd5390",
-        "subject": "feat(design-artifacts): preflight a catalog spec against a preview-id manifest (#5086)",
-        "at": "2026-09-04T11:31:23+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "33a46591c1d30e08ed3c082b8648c74948043911",
-        "subject": "fix(design-artifacts): carry import preview-id exclusions in a delimiter-free file (#5085)",
-        "at": "2026-09-04T11:31:07+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0ee33434b66a9fc5a067f1090fb51f8f50603e64",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.71.0 (#5084)",
-        "at": "2026-09-04T09:06:25Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c1e2afea72bbfdaa42685c0adfeb1ddd696c67c2",
-        "subject": "chore(main): release 1.71.0 (#5071)",
-        "at": "2026-09-04T09:26:26+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
