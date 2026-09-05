@@ -766,6 +766,17 @@ include(":mcp")
 // consumer (CLI, MCP server, third-party tooling) compiles against; `:render-session-subprocess`
 // is the daemon-subprocess-backed implementation. Future `:render-session-embedded` will host the
 // in-process Robolectric driver once that's viable.
+// The render host, the bundle daemon and the git-backed preview history — daemon-backed rendering,
+// packed-bundle materialisation and manifest reads, with no web server underneath.
+//
+// Moved here from yschimke/compose-preview-server, where it published as
+// `compose-preview-render-host`. It is offline behaviour, which `docs/design/REPOSITORY_LAYERS.md`
+// places in layer 1, and it had zero project dependencies inside the server — it lived there only
+// because it was written inside the `serve` package and went along when the server was extracted.
+// Depending on it from `:cli` is half of the dependency cycle in
+// yschimke/compose-preview-server#180, and the half with no reason to exist.
+include(":render-host")
+
 include(":render-session-api")
 
 project(":render-session-api").projectDir = file("render-session/api")

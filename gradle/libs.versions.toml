@@ -410,6 +410,9 @@ composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layo
 composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core", version.ref = "composeai-contracts" }
 composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core", version.ref = "composeai-contracts" }
 composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref = "composeai-contracts" }
+# `ServeHost.parityIssues()` — the shape a catalog publishes for component-parity issues. Contracts
+# (layer 0) owns the wire shape; `:render-host` owns validation and storage over it.
+composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol", version.ref = "composeai-contracts" }
 
 # The preview server (see `composeai-preview-serve`). `-test-fixtures` rides the same coordinates
 # as a Gradle feature variant, so `testFixtures(libs.composeai.preview.serve)` picks it up without
