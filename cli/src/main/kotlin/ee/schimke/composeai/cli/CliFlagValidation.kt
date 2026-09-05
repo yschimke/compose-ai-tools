@@ -220,6 +220,11 @@ internal object CliFlagValidation {
             "--trust-store",
             "--wasm-dir",
           ),
+      // The flags a preview server passes when it spawns the Gradle half of `serve`. Deliberately
+      // narrow: this command is machine-facing, and every flag here is one the server has to know
+      // to send. `--stdio` selects the transport; `--module` and `--variant` are the two selectors
+      // that change what a build produces, so the server forwards its own.
+      "build-host" to setOf("--stdio", "--module", "--variant", "--verbose", "-v"),
       "share-preview" to
         setOf(
           "--allow-non-preview-branch",

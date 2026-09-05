@@ -39,7 +39,11 @@ internal object CliRouter {
           "profile",
         ),
       "capture" to listOf("render-matrix", "record", "bundle"),
-      "share" to listOf("serve", "share-preview"),
+      // `build-host` sits beside `serve` because it exists only to serve one: it is the Gradle
+      // half of `serve`, addressed over a pipe instead of linked in-process
+      // (yschimke/compose-preview-server#180). Machine-facing rather than hidden — a command a
+      // server spawns is still a command, and one that cannot be found is one nobody can debug.
+      "share" to listOf("serve", "build-host", "share-preview"),
       "setup" to listOf("update", "init-script", "pin", "auth"),
     )
 

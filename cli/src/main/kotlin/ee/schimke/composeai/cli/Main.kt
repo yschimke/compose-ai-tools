@@ -26,6 +26,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "devices" to { a -> DevicesCommand(a).run() },
     "browse" to { a -> BrowseCommand(a).run() },
     "serve" to { a -> ServeCommand(a).run() },
+    "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
     "mcp" to { a -> McpCommand(a).run() },
