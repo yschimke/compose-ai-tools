@@ -27,6 +27,13 @@
     "mirroredConstants: string constants carried inside the descriptor that another module",
     "re-declares privately. Same hazard as the schema version, one level down.",
     "",
+    "constantRegistries: qualifier -> the file declaring the constants behind it, e.g.",
+    "`DaemonProperties.Names`. A mirror that READS the shared constant instead of re-typing the",
+    "string cannot disagree with it, which is strictly better than a mirror \u2014 but the scanner then",
+    "reads `DaemonProperties.Names.SANDBOX_COUNT` where it expects a string, so the reference is",
+    "followed here and the literal behind it is what gets compared. An unregistered qualifier fails:",
+    "the gate never passes on a value it could not read.",
+    "",
     "versionStampAliases: an identifier that appears as `schemaVersion = \u2026` at a construction site",
     "but is not itself one of the registered constants \u2014 an indirection that forwards one. Recorded",
     "so discovery-by-use can insist on a known name without banning the indirection.",
@@ -100,6 +107,9 @@
       ],
       "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block \u2014 so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
     }
+  },
+  "constantRegistries": {
+    "DaemonProperties.Names": "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/config/DaemonProperties.kt"
   },
   "mirroredConstants": {
     "SANDBOX_COUNT_PROP": {
