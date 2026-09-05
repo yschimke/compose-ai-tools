@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.renderer.ShadowFontsContractCompat
 import ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer
 import org.junit.runners.model.FrameworkMethod
@@ -72,9 +73,7 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
   @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
   override fun buildGlobalConfig(): Config {
     val parent = super.buildGlobalConfig()
-    val useConsumerApp =
-      System.getProperty("composeai.daemon.useConsumerApplication", "false").toBoolean()
-    if (useConsumerApp) return parent
+    if (DaemonProperties.useConsumerApplication.read()) return parent
     return Config.Builder(parent).setApplication(android.app.Application::class.java).build()
   }
 
@@ -107,14 +106,7 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     }
     // B2.0: optional user-package exclusion. Empty when sysprop is unset; existing in-process
     // tests that rely on the default sandbox-classpath path are unaffected.
-    val raw = System.getProperty("composeai.daemon.userClassPackages")
-    if (!raw.isNullOrBlank()) {
-      raw
-        .split(java.io.File.pathSeparator)
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .forEach { builder.doNotAcquirePackage(it) }
-    }
+    DaemonProperties.userClassPackages.read().forEach { builder.doNotAcquirePackage(it) }
     return builder.build()
   }
 

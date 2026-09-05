@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
@@ -976,6 +977,6 @@ open class DesktopHost(
      * plugin's daemon launch descriptor in production; left unset in tests, in which case
      * [recordingsRootDir] falls back to a sibling of [RenderEngine.OUTPUT_DIR_PROP].
      */
-    const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
+    const val RECORDINGS_DIR_PROP: String = DaemonProperties.Names.RECORDINGS_DIR
   }
 }

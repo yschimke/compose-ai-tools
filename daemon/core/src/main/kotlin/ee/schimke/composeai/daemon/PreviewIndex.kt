@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.data.overrides.OverrideVariantInteraction
 import java.nio.file.Files
 import java.nio.file.Path
@@ -765,7 +766,7 @@ internal constructor(
      * [DaemonClasspathDescriptor.systemProperties]); when unset, the daemon comes up with [empty] —
      * preserves pre-B2.2 in-process / fake-mode behaviour.
      */
-    public const val PREVIEWS_JSON_PATH_PROP: String = "composeai.daemon.previewsJsonPath"
+    public const val PREVIEWS_JSON_PATH_PROP: String = DaemonProperties.Names.PREVIEWS_JSON_PATH
 
     private val JSON: Json = Json {
       ignoreUnknownKeys = true
