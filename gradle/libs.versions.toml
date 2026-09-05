@@ -376,13 +376,20 @@ composeai-contracts = "2.5.0"
 # this repository (compose-preview-server#289), and 3.0.0 retired the old coordinate at its final
 # 2.x. `:cli` depends on `project(":render-host")`; there is no version ref to share any more.
 #
-# This pin is also RUNTIME-load-bearing, not just a compile-time coordinate. `compose-preview serve`
-# is a launcher, and since #5183 the CLI fetches the server itself on first use: the pin is baked
-# into the jar as `SERVE_VERSION` and names the release whose `compose-preview-server-<pin>.tar.gz`
-# `ServerDistributionProvision` downloads. So a pin naming a release that does not exist, or one
-# with no distribution attached, is a `serve` that cannot start — `check_preview_server_pin.py`
-# fails the PR rather than letting that reach an install. docs/VERSIONING.md § 8.1.
-composeai-preview-serve = "3.0.0"
+# This pin is also RUNTIME-load-bearing, not just a compile-time coordinate, and for TWO commands
+# since #5176. `compose-preview serve` is a launcher, and since #5183 the CLI fetches the server
+# itself on first use: the pin is baked into the jar as `SERVE_VERSION` and names the release whose
+# `compose-preview-server-<pin>.tar.gz` `ServerDistributionProvision` downloads. `compose-preview
+# mcp serve` is a launcher over `compose-preview-mcp-<pin>.tar.gz` from the SAME release, so one pin
+# governs the pair. A pin naming a release that does not exist, or one carrying only one of the two
+# archives, is a command that cannot start — `check_preview_server_pin.py` fails the PR rather than
+# letting that reach an install, and it checks both. docs/VERSIONING.md § 8.1.
+#
+# 3.2.0 is the first release carrying the MCP distribution: compose-preview-server#308 moved the
+# module there and #314 released it. 3.1.0 carried the archive but published a `compose-preview-serve`
+# POM naming an unpublished project (`ui-builder-export-jvm:unspecified`), so it resolves for nobody;
+# compose-preview-server#316 fixed that and rides in this release too.
+composeai-preview-serve = "3.2.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
