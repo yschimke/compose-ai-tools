@@ -274,34 +274,61 @@ dependencies {
   // the second half of that move and what this line finishes.
   //
   // `api`, like the server dependency below and for the same reason: the call sites reference these
-  // types in-package (`ee.schimke.composeai.cli.serve`).
+  // types in-package (`ee.schimke.composeai.cli.serve`), which the published artifact keeps.
+  // The render host, the bundle daemon and the git-backed preview history — what the OFFLINE
+  // commands actually use. This was `compose-preview-render-host`, published by the preview server,
+  // until yschimke/compose-preview-server#180 moved the module to the repository everything it
+  // depends on already lived in. It is a project here now, so `bundle render`, `render matrix` and
+  // `history manifest` compile against the source tree they ship beside rather than against
+  // whichever server release this module happened to pin.
   api(project(":render-host"))
 
-  // The preview server, published from yschimke/compose-preview-server (#4732).
+  // The preview server is NO LONGER on this module's compile or runtime classpath.
   //
-  // Down to FOUR main-source symbols since 2.2.0 — `ServeRunner`, `ServeCommandOptions`,
-  // `ServeDiscovery`, `ServeBuildHost` — and all four are reached from one file, `ServeCommand.kt`,
-  // which backs `compose-preview serve` and its `browse` front-end. That is the whole of what this
-  // module still needs a web server for.
+  // `serve` and `browse` were the last things holding it there, and they are launchers now: they
+  // exec the published `compose-preview-server` binary instead of linking `ServeRunner`. That
+  // removes the forward edge of the dependency cycle in yschimke/compose-preview-server#180, and it
+  // is why `CheckLayerBoundary`'s allowlist of known layer-2 edges is now empty.
   //
-  // So the Ktor floor `bundle render` used to carry is NOT gone yet, and this bump does not remove
-  // it: `serve` is still a CLI command, so `ktor-server-*`, `jmdns` and `kotlin-reflect` are still
-  // on the distribution's classpath. What changed is that they are now attributable to one command
-  // instead of being load-bearing for four. Dropping this dependency means deciding where the
-  // `serve` command surface lives (#4832's "Also decide", and compose-preview-server#9) — a product
-  // question, not a build one, and deliberately not answered here.
+  // What that actually removes from the distribution, measured rather than claimed: the
+  // `compose-preview-serve` jar itself, `jmdns` (the `serve --lan` advertiser), and two Ktor
+  // plugins nothing else asks for — `ktor-server-compression` and `-auto-head-response`.
+  // Seventy-two jars to sixty-nine.
   //
-  // The server's POM depends back on this repository's 1.53.0 contracts. Gradle resolves each of
-  // those to the workspace project of the same coordinates (`ee.schimke.composeai:daemon-core` ->
-  // `project(":daemon:core")`, and so on), so nothing here is built against a stale published copy.
-  api(libs.composeai.preview.serve)
+  // `ktor-server-core`, `-cio`, `-content-negotiation`, `-sse` and `-websockets` do NOT leave, and
+  // never were serve's to take: they arrive through `:mcp` and the MCP Kotlin SDK, because
+  // `compose-preview mcp` runs a server of its own. An earlier draft of this comment claimed the
+  // Ktor floor left with `serve`. It did not — checked against the built distribution, which is the
+  // only way that claim was ever checkable.
+  //
+  // It survives as a TEST dependency, deliberately and narrowly. Two tests drive the CLI's own
+  // HTTP clients against a real `ServeHttpServer`, and their whole purpose is to catch the two
+  // repositories' independently-declared wire types drifting apart:
+  //
+  //   * `AgentAccessClientIntegrationTest` — the device-grant flow. Five of its cases approve or
+  //     deny a grant by reaching into the server's store, which is only possible in-process.
+  //   * `SharePreviewServeUploadTest` — one case, `a real serve host and this client agree`. The
+  //     rest of that file drives a bare JDK `HttpServer` and needs nothing from here.
+  //
+  // A stub would make both tests pass while testing nothing they exist for: the point is checking
+  // the halves against *each other*, not each against its own idea of the other. So the edge stays
+  // where it earns its keep, and nowhere else.
+  //
+  // The exclusion is not optional. Today's `compose-preview-serve` POM still names the server's old
+  // `compose-preview-render-host`, whose classes are the same classes, in the same package, as
+  // `:render-host` above — two copies on one test classpath. Gradle substitutes a published
+  // coordinate for a workspace project only when `<group>:<projectName>` matches, and
+  // `compose-preview-render-host` does not match `render-host`, so it has to be said explicitly.
+  // Once a server release names the new coordinate this becomes a no-op that can go.
+  testImplementation(libs.composeai.preview.serve) {
+    exclude(group = "ee.schimke.composeai", module = "compose-preview-render-host")
+  }
 
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(libs.composeai.common.io)
 
   // mDNS/DNS-SD advertiser for `serve --lan` — publishes `_composeai._tcp` so the mobile/wear
   // session-viewer clients (`:clients:*`) discover the server on the LAN without a typed URL.
-  implementation(libs.jmdns)
 
   implementation(libs.kotlinx.serialization.json)
 
@@ -331,13 +358,8 @@ dependencies {
   // that fronts a long-lived render session over HTTP. CIO is pure-Kotlin/coroutines (no Netty),
   // keeping the transitive + logging surface minimal. Same `ktor` version ref as the client above,
   // so the strict slf4j pin in the `constraints {}` block below covers the server too.
-  implementation(libs.ktor.server.core)
-  implementation(libs.ktor.server.cio)
   // WebSockets plugin: the `serve` streamed-frame lane (`/ws/{id}`) — tier-2 streaming spike.
-  implementation(libs.ktor.server.websockets)
-  implementation(libs.ktor.server.compression)
   // HEAD answers GET across the whole site — the probe link unfurlers send before downloading.
-  implementation(libs.ktor.server.auto.head.response)
 
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
@@ -435,8 +457,9 @@ dependencies {
   //     Unable to find a variant of ee.schimke.composeai:compose-preview-serve:2.0.0 with the
   //     requested capability: feature 'test-fixtures'
   //
-  // We consumed it by naming that capability explicitly. That workaround is gone twice over: the
-  // fixture is not in the server artifact any more, and this is no longer a published coordinate.
+  // We consumed it by naming that capability explicitly. Upstream has since fixed the server's
+  // spelling too (keeping the legacy name alongside, so the workaround would still resolve), but
+  // there is no reason to keep it: the fixture is not in that artifact any more.
   testImplementation(testFixtures(project(":render-host")))
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
