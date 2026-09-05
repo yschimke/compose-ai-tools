@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T18:55:46.890Z",
+  "generatedAt": "2026-09-05T20:08:21.321Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "26608e78bc12c930ff03d09075f74ec2f7185656",
+        "subject": "feat(design-artifacts): check that parity locators still name a cell the catalog draws (#5214)",
+        "at": "2026-09-05T21:00:28+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0c3c6527974bfa62b9f7d2ce23a7bd2e2a8f930e",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.82.0 (#5213)",
+        "at": "2026-09-05T19:05:59Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "bf54588b24f2d800e6bec4d724626c918d382cc2",
         "subject": "chore(main): release 1.82.0 (#5209)",
@@ -467,22 +483,6 @@
         "subject": "fix(deps): update compose-preview-server to v2.21.0 (#5140)",
         "at": "2026-09-05T08:43:48+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b736d8f988e478e3f577cc7442bfef7cf6ab56ca",
-        "subject": "fix(deps): update dependency playwright to ^1.63.0 (#5141)",
-        "at": "2026-09-05T08:43:41+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c6903ee175f7b0a1ac1dab7fd9cf13436ebbb7c2",
-        "subject": "feat(render-host): bring the render host home from the preview server (#5137)",
-        "at": "2026-09-05T08:43:23+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
