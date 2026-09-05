@@ -185,17 +185,6 @@ class KeyboardOverrideExtension(
      */
     private const val UI_MODE_NIGHT_MASK = 0x30
     private const val UI_MODE_NIGHT_YES = 0x20
-
-    /**
-     * Shortest surface the band will draw on when nothing else identifies the render as a screen:
-     * two band-heights, so the keyboard never takes more than half the frame.
-     *
-     * Two, not three: a plain `@Preview(widthDp = 360, heightDp = 640)` is a phone — the shape the
-     * repo's own `SoftKeyboardIdlePreview` / `ImeAwareListShownPreview` samples use — and a third
-     * of the frame would have excluded it. Anything shorter that really is a screen (a landscape
-     * phone, a wearable) says so through `device` / `showSystemUi` and never reaches this rule.
-     */
-    internal const val MIN_SCREEN_HEIGHT_FOR_BAND_DP = KEYBOARD_HEIGHT_DP * 2
   }
 }
 

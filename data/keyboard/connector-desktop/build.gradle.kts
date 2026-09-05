@@ -11,6 +11,10 @@
 // itself only depends on `androidx.compose.runtime` + `androidx.compose.ui` + foundation widgets,
 // all available on Compose Multiplatform Desktop. Mirrors `:data-focus-connector-desktop`'s layout
 // — see the comment header there for the platform-split rationale.
+//
+// That argument covers the *Android-flavoured* plumbing only. The band composable, which needs
+// none of it, is not duplicated: it lives once in the plain-JVM `:data-keyboard-band`, which both
+// connectors depend on (#5165).
 
 plugins {
   id("composeai.base-conventions")
@@ -22,6 +26,7 @@ plugins {
 
 dependencies {
   api(project(":data-keyboard-core"))
+  implementation(project(":data-keyboard-band"))
   api(project(":daemon:core"))
   api(project(":data-render-compose"))
 

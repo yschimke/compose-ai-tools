@@ -645,6 +645,10 @@ include(":data-keyboard-core")
 
 project(":data-keyboard-core").projectDir = file("data/keyboard/core")
 
+include(":data-keyboard-band")
+
+project(":data-keyboard-band").projectDir = file("data/keyboard/band")
+
 include(":data-keyboard-connector")
 
 project(":data-keyboard-connector").projectDir = file("data/keyboard/connector")
