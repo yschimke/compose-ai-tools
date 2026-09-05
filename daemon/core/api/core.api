@@ -2573,7 +2573,6 @@ public abstract interface class ee/schimke/composeai/daemon/rpc/RpcMethodHandler
 
 public final class ee/schimke/composeai/daemon/rpc/RpcMethodRegistry {
 	public static final field Companion Lee/schimke/composeai/daemon/rpc/RpcMethodRegistry$Companion;
-	public synthetic fun <init> (Ljava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getMethods ()Ljava/util/Set;
 	public final fun handler (Ljava/lang/String;)Lee/schimke/composeai/daemon/rpc/RpcMethodHandler;
 }
@@ -2594,3 +2593,4 @@ public abstract interface class ee/schimke/composeai/daemon/rpc/RpcPeer {
 	public abstract fun sendErrorResponse (Ljava/lang/Long;ILjava/lang/String;)V
 	public abstract fun sendResponse (JLkotlinx/serialization/json/JsonElement;)V
 }
+
