@@ -389,8 +389,11 @@ object ScreenGenerator {
         .sorted()
     // Kotlin calls two imports of one simple name a conflicting import and compiles neither. The
     // component half of this can't collide — `simplyImportable` already withholds a simple name two
-    // records want — but an extension link is imported from wherever a projection said, so
-    // `foundation.layout.padding` and `some.other.padding` in one screen have to be caught here.
+    // records want — but everything else here is imported from wherever a projection said: an
+    // extension link, and since `importedName`, a reference's root and a construct's callable too.
+    // So `foundation.layout.padding` and `some.other.padding` in one screen, or two `Color`s from
+    // two packages, have to be caught here. This is the check that makes importing references safe
+    // enough to be worth the readability.
     val conflicts =
       imports
         .groupBy { it.substringAfterLast('.') }
@@ -909,12 +912,12 @@ object ScreenGenerator {
           }
         is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.Reference -> {
-          val root = qualifiedName(value.rootFqn, where) ?: return null
+          val root = importedName(value.rootFqn, where) ?: return null
           val members = value.members.map { name(it, where) ?: return null }
           (listOf(root) + members).joinToString(".")
         }
         is ScreenValue.Construct -> {
-          val callable = qualifiedName(value.callableFqn, where) ?: return null
+          val callable = importedName(value.callableFqn, where) ?: return null
           val arguments = arguments(value.positional, value.named, where, depth) ?: return null
           "$callable($arguments)"
         }
@@ -1036,6 +1039,55 @@ object ScreenGenerator {
         return null
       }
       return ComponentSnippets.escapeIfKeyword(name)
+    }
+
+    /**
+     * A name **imported** and written the way a person writes it, or null having said why not.
+     *
+     * The rule this replaces qualified every reference and construct in place —
+     * `androidx.compose.ui.Modifier.size(24.dp)`, `androidx.compose.ui.Alignment.Start` — and
+     * imported neither. `ScreenDocument` gave the reason and the reason was real but narrower than
+     * the cost: an import can be shadowed by a same-named declaration in the package the caller
+     * chose for the generated file, and a qualified path cannot.
+     *
+     * Three things were already true when that was written, and together they make the shadowing
+     * case small enough to trade away. Conflicting imports are refused for the whole file, so two
+     * roots claiming one simple name cannot silently pick one. `simplyImportable` already withholds
+     * a simple name two component records both want. And an import shadowed by the caller's own
+     * declaration fails **at the import line**, loudly, rather than resolving to the wrong thing —
+     * which keeps the generator's promise that its output compiles or it refuses.
+     *
+     * What was traded away for that is every generated file: `Modifier` and `MaterialTheme` appear
+     * once per node, so the qualification was paid on every line and read like nothing anybody
+     * writes. The one thing this cannot check is the caller's own package, because the generator is
+     * writing into it rather than reading it.
+     *
+     * **What gets imported is the qualifier a reader expects to see.** A top-level declaration
+     * imports itself — `RoundedCornerShape`, `Color`, `Modifier`. A member of an object imports its
+     * **owner**, so `CardDefaults.cardColors(…)` keeps the `CardDefaults` a person would write
+     * instead of collapsing to a bare `cardColors(…)`. The two are told apart by the qualifier's
+     * case, exactly as a chain link tells a member extension from a top-level one: Kotlin packages
+     * are lower case and classifiers are capitalised by universal convention.
+     */
+    private fun importedName(fqn: String, where: String): String? {
+      qualifiedName(fqn, where) ?: return null
+      val owner = fqn.substringBeforeLast('.')
+      // A capitalised penultimate segment names a classifier, so the declaration is a member of it
+      // and the classifier is what imports. Same convention, same caveat, as the chain-link check.
+      val memberOfClassifier = owner.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
+      val imported = if (memberOfClassifier) owner else fqn
+      val simple = imported.substringAfterLast('.')
+      if (simple == screenName) {
+        // The generated function shadows an import of its own name, so the expression would name
+        // the screen rather than the declaration. The chain-link path refuses this already.
+        reasons += "$where imports `$simple`, which is the screen's own name"
+        return null
+      }
+      imports += ComponentSnippets.escapeCallableIfKeyword(imported)
+      val written = ComponentSnippets.escapeIfKeyword(simple)
+      return if (memberOfClassifier)
+        "$written.${name(fqn.substringAfterLast('.'), where) ?: return null}"
+      else written
     }
 
     /** A dotted path, each segment escaped, or null having said why. */
