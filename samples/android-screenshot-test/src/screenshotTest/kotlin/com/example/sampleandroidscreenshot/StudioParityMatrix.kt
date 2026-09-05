@@ -183,3 +183,35 @@ fun ParityWearDevicePreview() {
 fun ParityDeviceSpecPreview() {
   CanvasProbe("spec")
 }
+
+// --- Signature shapes --------------------------------------------------------------------------
+
+/**
+ * A preview whose value parameters **all declare defaults** — the shape the **parameter knob**
+ * format is built on, and the one a production composable annotated `@Preview` in place almost
+ * always already has (`modifier: Modifier = Modifier`).
+ *
+ * It renders differently from every other fixture here in one respect that is invisible in the
+ * picture: it compiles to `(realParams…, Composer, int changed, int default)` rather than
+ * `(Composer, int)`, so a renderer that looks the preview up by the parameterless signature cannot
+ * see it at all. That cost this project four separate defects across the desktop focus, motion and
+ * scroll lanes (compose-ai-tools#5115) — each found only by migrating a real catalog, because no
+ * fixture in this repository had the shape.
+ *
+ * This is that fixture, and it is here rather than in `:samples:android` because the question it
+ * settles is a **parity** one: Layoutlib is the engine Google's `com.android.compose.screenshot`
+ * plugin and Studio's preview pane both draw with, so a reference generated for this preview is
+ * evidence that the shape is renderable by the tool an Android consumer would reach for — not just
+ * by ours.
+ */
+@PreviewTest
+@Preview(name = "defaulted-params", showBackground = true)
+@Composable
+fun ParityDefaultedParamsPreview(label: String = "defaults", boxes: Int = 2) {
+  Column(modifier = Modifier.padding(8.dp)) {
+    Text(text = label, color = Color.Black, fontSize = 12.sp)
+    repeat(boxes) {
+      Box(Modifier.size(40.dp, 16.dp).padding(top = 2.dp).background(Color(0xFF3366FF)))
+    }
+  }
+}

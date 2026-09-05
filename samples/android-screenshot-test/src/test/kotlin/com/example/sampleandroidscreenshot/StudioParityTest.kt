@@ -74,6 +74,14 @@ class StudioParityTest {
       "ParityFixedWidthPreview" to Parity(630 to 210, 630 to 210),
       // Round Wear device previews are circularly clipped with transparent corners.
       "ParityWearDevicePreview" to Parity(384 to 384, 384 to 384),
+      // Defaulted value parameters: both engines apply the declared defaults and wrap to the
+      // resulting content. The picture is unremarkable; that both engines *find* the preview at all
+      // is the point, since it compiles to a `$default` bridge rather than `(Composer, int)`.
+      // Looser tolerance than the rest: the differing pixels are confined to the one text row
+      // (rows 25-50 of 163; the two boxes below are byte-identical), and this fixture is small
+      // enough that the same glyph-edge noise is 2.5% of it rather than the sub-1% it is on a
+      // 525x263 frame. The fraction is a property of the frame size, not of the divergence.
+      "ParityDefaultedParamsPreview" to Parity(154 to 163, 154 to 163, maxDiffFraction = 0.03),
     )
 
   @Test
