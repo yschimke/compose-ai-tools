@@ -2,6 +2,7 @@ package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import ee.schimke.composeai.discovery.ChainLink
 import ee.schimke.composeai.discovery.ComponentRecordFile
 import ee.schimke.composeai.discovery.ScreenDocument
 import ee.schimke.composeai.discovery.ScreenGenerator
@@ -170,7 +171,32 @@ class ScreenGeneratorCompileFunctionalTest {
                   listOf(
                     ScreenNode(
                       componentId = idOf(components, "Text"),
-                      arguments = mapOf("text" to ScreenValue.Text("Good morning")),
+                      arguments =
+                        mapOf(
+                          "text" to ScreenValue.Text("Good morning"),
+                          // `Modifier.weight` is declared on `ColumnScope`, and this `Text` is in
+                          // `Card`'s `ColumnScope` content slot. Nothing in the value says it
+                          // compiles — the generator checks the claim against the slot it emitted
+                          // this node into, and the compile below is what settles it.
+                          "modifier" to
+                            ScreenValue.Chain(
+                              receiver =
+                                ScreenValue.Reference(
+                                  "androidx.compose.ui.Modifier",
+                                  typeFqn = "androidx.compose.ui.Modifier",
+                                ),
+                              links =
+                                listOf(
+                                  ChainLink(
+                                    "androidx.compose.foundation.layout.ColumnScope.weight",
+                                    positional = listOf(ScreenValue.Fractional32(1f)),
+                                    receiverScopeFqn =
+                                      "androidx.compose.foundation.layout.ColumnScope",
+                                  )
+                                ),
+                              typeFqn = "androidx.compose.ui.Modifier",
+                            ),
+                        ),
                     ),
                     ScreenNode(
                       componentId = idOf(components, "Button"),
@@ -190,7 +216,12 @@ class ScreenGeneratorCompileFunctionalTest {
           ),
       )
 
-    val result = ScreenGenerator.generate(screen, components)
+    val result =
+      ScreenGenerator.generate(
+        screen,
+        components,
+        expressionPackages = setOf("androidx.compose"),
+      )
     val emitted =
       assertWithMessage(
           "generation refused: %s",
@@ -201,7 +232,12 @@ class ScreenGeneratorCompileFunctionalTest {
         .let { result as ScreenGenerator.Result.Emitted }
 
     // The designed values reached the source, rather than the placeholders a call site prints.
-    assertThat(emitted.source).contains("""Text(text = "Good morning")""")
+    assertThat(emitted.source).contains("""Text(text = "Good morning""")
+    // A scoped modifier, by simple name and imported nowhere: `weight` is a member of `ColumnScope`
+    // and comes from the lambda's receiver, so an import of it would not resolve.
+    assertThat(emitted.source).contains("modifier = Modifier.weight(1.0f)")
+    assertThat(emitted.source)
+      .doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
     assertThat(emitted.source).contains("""Text(text = "Continue")""")
     // And by their *simple* names, imported once. Both `Text`s sit inside a receiver slot —
     // `Card`'s `ColumnScope` and `Button`'s `RowScope` — which the generator used to qualify on

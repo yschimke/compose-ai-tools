@@ -179,6 +179,23 @@ sealed interface ScreenValue {
   @Serializable data class Fractional(val value: Double) : ScreenValue
 
   /**
+   * A `Float` literal — `1f`.
+   *
+   * Distinct from [Fractional] because the two differ only in a **spelling** the generator cannot
+   * recover anywhere else. Against a declared parameter it does not need to: `Fractional` renders
+   * as `1f` for a `kotlin.Float` and `1.0` for a `kotlin.Double`, because the parameter decides. In
+   * a **nested** position — a constructor argument, a chain link's argument — there is no declared
+   * type to render against, so the rule there is one fixed spelling per literal kind and a fraction
+   * is always a `Double`.
+   *
+   * That rule left `Modifier.weight(…)` inexpressible. It takes a `Float`, it is an argument to a
+   * chain link, and `weight(1.0)` does not compile — so a layout weight, which is one of the first
+   * things anybody sets in a design tool, had no expression at all. This is the narrow addition
+   * that gives it one, rather than making a nested `Fractional` guess at its own precision.
+   */
+  @Serializable data class Fractional32(val value: Float) : ScreenValue
+
+  /**
    * A read through a fully-qualified path — `androidx.compose.material3.MaterialTheme.colorScheme
    * .primary`, `androidx.compose.ui.text.style.TextAlign.Center`.
    *
@@ -285,4 +302,22 @@ data class ChainLink(
   val positional: List<ScreenValue> = emptyList(),
   val named: Map<String, ScreenValue> = emptyMap(),
   val property: Boolean = false,
+  /**
+   * The **implicit receiver** this link's extension is declared on, when it is a member extension
+   * of a slot's scope rather than a top-level one — `androidx.compose.foundation.layout.RowScope`
+   * for `Modifier.weight`, `androidx.compose.foundation.layout.BoxScope` for `matchParentSize`.
+   *
+   * Such a link is *not* imported. `RowScope.weight` is a member of `RowScope`, supplied by the
+   * lambda's receiver, and neither `import …layout.RowScope.weight` nor a package-level
+   * `…layout.weight` resolves — which is why a capitalised qualifier is otherwise refused outright.
+   * What makes it legal instead is **where the node sits**: inside a slot whose
+   * [TargetParameter.composableSlotReceiver] is this type, the receiver is in scope and the simple
+   * name resolves.
+   *
+   * So this is a claim the generator **checks** rather than trusts, and it is the only thing that
+   * makes a scoped modifier expressible without guessing. A node in a `Column` claiming `RowScope`
+   * is refused by name, as is one claiming any scope at the root, where there is no receiver at
+   * all. Null for an ordinary top-level extension, which imports as before.
+   */
+  val receiverScopeFqn: String? = null,
 )
