@@ -1,14 +1,11 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.history.HistoryDataDiff
-import ee.schimke.composeai.daemon.history.HistoryDiffArtifacts
-import ee.schimke.composeai.daemon.history.HistoryEntry
-import ee.schimke.composeai.daemon.history.HistoryFilter
-import ee.schimke.composeai.daemon.history.HistoryImageDiff
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
+import ee.schimke.composeai.daemon.history.HistoryRpcHandlers
 import ee.schimke.composeai.daemon.history.PreviewMetadataSnapshot
 import ee.schimke.composeai.daemon.history.PruneReason
+import ee.schimke.composeai.daemon.history.encodeHistoryEntry
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
 import ee.schimke.composeai.daemon.protocol.CompileResultKind
@@ -29,18 +26,8 @@ import ee.schimke.composeai.daemon.protocol.ExtensionsListResult
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.HistoryAddedParams
-import ee.schimke.composeai.daemon.protocol.HistoryDiffMode
-import ee.schimke.composeai.daemon.protocol.HistoryDiffParams
-import ee.schimke.composeai.daemon.protocol.HistoryDiffResult
-import ee.schimke.composeai.daemon.protocol.HistoryListParams
-import ee.schimke.composeai.daemon.protocol.HistoryListResult
 import ee.schimke.composeai.daemon.protocol.HistoryPruneOptions
-import ee.schimke.composeai.daemon.protocol.HistoryPruneParams
-import ee.schimke.composeai.daemon.protocol.HistoryPruneResult
-import ee.schimke.composeai.daemon.protocol.HistoryPruneSourceResult
 import ee.schimke.composeai.daemon.protocol.HistoryPrunedParams
-import ee.schimke.composeai.daemon.protocol.HistoryReadParams
-import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
@@ -75,9 +62,9 @@ import ee.schimke.composeai.daemon.protocol.XrStopParams
 import ee.schimke.composeai.daemon.protocol.XrStructureParams
 import ee.schimke.composeai.daemon.protocol.XrStructureResult
 import ee.schimke.composeai.daemon.protocol.XrUpdatePanelsParams
-import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.daemon.rpc.RpcMethodRegistry
+import ee.schimke.composeai.daemon.rpc.RpcPeer
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
-import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
@@ -296,6 +283,35 @@ public class JsonRpcServer(
     ignoreUnknownKeys = true
     encodeDefaults = false
   }
+
+  /**
+   * The connection port handed to handlers that live outside this class (issue #5166). An adapter
+   * object rather than `JsonRpcServer : RpcPeer`, so the reply helpers stay private to this file
+   * and the server's public API is unchanged by the extraction.
+   */
+  private val rpcPeer: RpcPeer =
+    object : RpcPeer {
+      override val json: Json
+        get() = this@JsonRpcServer.json
+
+      override fun sendResponse(id: Long, result: JsonElement) {
+        this@JsonRpcServer.sendResponse(id, result)
+      }
+
+      override fun sendErrorResponse(id: Long?, code: Int, message: String) {
+        this@JsonRpcServer.sendErrorResponse(id, code, message)
+      }
+
+      override fun <T> decodeParams(params: JsonElement?, serializer: KSerializer<T>): T =
+        this@JsonRpcServer.decodeParams(params, serializer)
+
+      override fun <T> encode(serializer: KSerializer<T>, value: T): JsonElement =
+        this@JsonRpcServer.encode(serializer, value)
+    }
+
+  /** The `history/…` method handlers — see [HistoryRpcHandlers]. */
+  private val historyRpcHandlers =
+    HistoryRpcHandlers(rpcPeer, historyManager, historyDiffExperimental)
 
   init {
     // H4 — wire the manager's prune listener so non-empty prune passes (auto or manual) emit a
@@ -722,59 +738,49 @@ public class JsonRpcServer(
       )
       return
     }
-    when (req.method) {
-      "initialize" -> handleInitialize(req)
-      "renderNow" -> handleRenderNow(req)
-      "preview/rows" -> handlePreviewRows(req)
-      "compileSources" -> handleCompileSources(req)
-      "shutdown" -> handleShutdown(req)
-      // History wire surface gated to 1.1 (see [HistoryFeature]). When disabled, every `history/*`
-      // method short-circuits to method-not-found — clients that pre-handle that error code (the
-      // VS Code panel's `historySource` falls back to "no entries" when it sees -32601) degrade
-      // gracefully without coding against a half-shipped surface. When re-enabled for 1.1 the
-      // `handleHistoryList` / `handleHistoryRead` / `handleHistoryPrune` handlers are unchanged.
-      "history/list" ->
-        if (HistoryFeature.ENABLED) handleHistoryList(req)
-        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
-      "history/read" ->
-        if (HistoryFeature.ENABLED) handleHistoryRead(req)
-        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
-      "history/diff" ->
-        if (HistoryFeature.ENABLED && historyDiffExperimental) handleHistoryDiff(req)
-        else
-          sendErrorResponse(
-            id = req.id,
-            code = ERR_METHOD_NOT_FOUND,
-            message =
-              if (!HistoryFeature.ENABLED) HISTORY_DISABLED_MESSAGE
-              else
-                "history/diff is experimental in 1.0 and disabled by default; " +
-                  "set -D$HISTORY_DIFF_EXPERIMENTAL_PROP=true to enable",
-          )
-      "history/prune" ->
-        if (HistoryFeature.ENABLED) handleHistoryPrune(req)
-        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
-      "data/fetch" -> handleDataFetch(req)
-      "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
-      "data/unsubscribe" -> handleDataSubscribe(req, subscribe = false)
-      "extensions/list" -> handleExtensionsList(req)
-      "extensions/enable" -> handleExtensionsEnable(req)
-      "extensions/disable" -> handleExtensionsDisable(req)
-      "interactive/start" -> handleInteractiveStart(req)
-      "stream/start" -> handleStreamStart(req)
-      "xr/start" -> handleXrStart(req)
-      "xr/structure" -> handleXrStructure(req)
-      "recording/start" -> handleRecordingStart(req)
-      "recording/stop" -> handleRecordingStop(req)
-      "recording/encode" -> handleRecordingEncode(req)
-      "recording/generateTest" -> handleRecordingGenerateTest(req)
-      else ->
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_METHOD_NOT_FOUND,
-          message = "method not found: ${req.method}",
-        )
+    val handler = methodHandlers.handler(req.method)
+    if (handler == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_METHOD_NOT_FOUND,
+        message = "method not found: ${req.method}",
+      )
+      return
     }
+    handler.handle(req)
+  }
+
+  /**
+   * The daemon's request surface, built once at construction (issue #5166). Replaces the
+   * ever-growing `when (req.method)` this class used to dispatch from: a feature registers the
+   * methods it serves, and a method whose handler lives beside its feature — `history/…` in
+   * [HistoryRpcHandlers] — is registered from there rather than pulled back into this file.
+   *
+   * A method absent from the registry is `method not found`. Methods that exist but are gated
+   * (history's 1.1 feature flag, the `history/diff` experiment) register a handler that replies
+   * with the gate's error, so the absent case stays unambiguous.
+   */
+  private val methodHandlers: RpcMethodRegistry = RpcMethodRegistry.build {
+    register("initialize") { handleInitialize(it) }
+    register("renderNow") { handleRenderNow(it) }
+    register("preview/rows") { handlePreviewRows(it) }
+    register("compileSources") { handleCompileSources(it) }
+    register("shutdown") { handleShutdown(it) }
+    historyRpcHandlers.registerInto(this)
+    register("data/fetch") { handleDataFetch(it) }
+    register("data/subscribe") { handleDataSubscribe(it, subscribe = true) }
+    register("data/unsubscribe") { handleDataSubscribe(it, subscribe = false) }
+    register("extensions/list") { handleExtensionsList(it) }
+    register("extensions/enable") { handleExtensionsEnable(it) }
+    register("extensions/disable") { handleExtensionsDisable(it) }
+    register("interactive/start") { handleInteractiveStart(it) }
+    register("stream/start") { handleStreamStart(it) }
+    register("xr/start") { handleXrStart(it) }
+    register("xr/structure") { handleXrStructure(it) }
+    register("recording/start") { handleRecordingStart(it) }
+    register("recording/stop") { handleRecordingStop(it) }
+    register("recording/encode") { handleRecordingEncode(it) }
+    register("recording/generateTest") { handleRecordingGenerateTest(it) }
   }
 
   private fun handleInitialize(req: JsonRpcRequest) {
@@ -1524,7 +1530,7 @@ public class JsonRpcServer(
         "historyAdded",
         encode(
           HistoryAddedParams.serializer(),
-          HistoryAddedParams(entry = encodeHistoryEntry(entry)),
+          HistoryAddedParams(entry = encodeHistoryEntry(json, entry)),
         ),
       )
     }
@@ -1545,468 +1551,6 @@ public class JsonRpcServer(
       )
       null
     }
-
-  // Strips the heavy captured snapshots (semantics #1785, a11y/theme data products #1869) before
-  // echoing an entry on the wire: `history/list` / `history/read` / `historyAdded` / metadata-mode
-  // `history/diff` only want metadata. The payloads are read back off the sidecar exclusively by
-  // `history/diff mode=SEMANTICS` and (later) the data-diff surfaces.
-  private fun encodeHistoryEntry(entry: HistoryEntry): JsonElement =
-    json.encodeToJsonElement(
-      HistoryEntry.serializer(),
-      entry.copy(
-        semantics = null,
-        a11yAtf = null,
-        a11yHierarchy = null,
-        a11yTouchTargets = null,
-        theme = null,
-      ),
-    )
-
-  private fun handleHistoryList(req: JsonRpcRequest) {
-    val params =
-      try {
-        decodeParams(req.params, HistoryListParams.serializer())
-      } catch (e: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INVALID_PARAMS,
-          message = "invalid history/list params: ${e.message}",
-        )
-        return
-      }
-    val mgr = historyManager
-    if (mgr == null || !mgr.isEnabled) {
-      sendResponse(
-        req.id,
-        encode(
-          HistoryListResult.serializer(),
-          HistoryListResult(entries = emptyList(), nextCursor = null, totalCount = 0),
-        ),
-      )
-      return
-    }
-    val filter =
-      HistoryFilter(
-        previewId = params.previewId,
-        since = params.since,
-        until = params.until,
-        limit = params.limit,
-        cursor = params.cursor,
-        branch = params.branch,
-        branchPattern = params.branchPattern,
-        commit = params.commit,
-        worktreePath = params.worktreePath,
-        agentId = params.agentId,
-        sourceKind = params.sourceKind,
-        sourceId = params.sourceId,
-        ref = params.ref,
-      )
-    val page =
-      try {
-        mgr.list(filter)
-      } catch (t: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INTERNAL,
-          message = "history/list failed: ${t.message}",
-        )
-        return
-      }
-    val result =
-      HistoryListResult(
-        entries = page.entries.map { encodeHistoryEntry(it) },
-        nextCursor = page.nextCursor,
-        totalCount = page.totalCount,
-      )
-    sendResponse(req.id, encode(HistoryListResult.serializer(), result))
-  }
-
-  private fun handleHistoryRead(req: JsonRpcRequest) {
-    val params =
-      try {
-        decodeParams(req.params, HistoryReadParams.serializer())
-      } catch (e: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INVALID_PARAMS,
-          message = "invalid history/read params: ${e.message}",
-        )
-        return
-      }
-    val mgr = historyManager
-    if (mgr == null || !mgr.isEnabled) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_ENTRY_NOT_FOUND,
-        message = "history not configured",
-      )
-      return
-    }
-    val read =
-      try {
-        mgr.read(params.id, includeBytes = params.inline, ref = params.ref)
-      } catch (t: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INTERNAL,
-          message = "history/read failed: ${t.message}",
-        )
-        return
-      }
-    if (read == null) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_ENTRY_NOT_FOUND,
-        message = "history entry not found: ${params.id}",
-      )
-      return
-    }
-    val previewMetadataElem =
-      read.previewMetadata?.let {
-        json.encodeToJsonElement(PreviewMetadataSnapshot.serializer(), it)
-      }
-    val pngBase64 = read.pngBytes?.let { Base64.getEncoder().encodeToString(it) }
-    val dto =
-      HistoryReadResultDto(
-        entry = encodeHistoryEntry(read.entry),
-        previewMetadata = previewMetadataElem,
-        pngPath = read.pngPath,
-        pngBytes = pngBase64,
-      )
-    sendResponse(req.id, encode(HistoryReadResultDto.serializer(), dto))
-  }
-
-  /**
-   * H3 — `history/diff` metadata mode. Gated experimental in 1.0 (see [historyDiffExperimental]);
-   * the dispatcher returns method-not-found unless the gate is on, so this body only runs in tests
-   * or with `-D$HISTORY_DIFF_EXPERIMENTAL_PROP=true`. TODO(1.1): drop the gate.
-   *
-   * Resolves [from] and [to] entry ids via the [historyManager] (which iterates configured sources
-   * in priority order, so a cross-source diff "LocalFs vs GitRef preview/main" works the same as an
-   * intra-source diff). Emits:
-   *
-   * - `HistoryEntryNotFound` (-32010) when either id is missing.
-   * - `HistoryDiffMismatch` (-32011) when the two entries belong to different previews.
-   * - `ERR_HISTORY_SEMANTICS_NOT_CAPTURED` (-32013) when `mode = semantics` but one of the two
-   *   entries has no captured `compose/semantics` snapshot (issue #1785).
-   *
-   * The metadata-mode response is `pngHashChanged + fromMetadata + toMetadata` (full sidecars);
-   * pixel-mode fields stay null there by design. PIXEL mode (H5, issue #1873) decodes both archived
-   * frames and populates `diffPx` + `ssim` + `diffPngPath` (a marked-diff PNG written under
-   * `<historyDir>/<previewId>/.diffs/`) via [HistoryImageDiff]. SEMANTICS mode (issue #1785) adds
-   * `semanticsDelta`, the typed structural diff of the two entries' captured semantics trees. DATA
-   * mode (issue #1873) rolls the captured `compose/semantics`, `a11y/atf` and `compose/theme`
-   * snapshots into one versioned `dataDelta` via [HistoryDataDiff] — each section present only when
-   * both entries carry that product. The `-32012` "pixel not implemented" sentinel is retired now
-   * that H5 has landed.
-   */
-  private fun handleHistoryDiff(req: JsonRpcRequest) {
-    val params =
-      try {
-        decodeParams(req.params, HistoryDiffParams.serializer())
-      } catch (e: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INVALID_PARAMS,
-          message = "invalid history/diff params: ${e.message}",
-        )
-        return
-      }
-    val mgr = historyManager
-    if (mgr == null || !mgr.isEnabled) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_ENTRY_NOT_FOUND,
-        message = "history not configured",
-      )
-      return
-    }
-    // PIXEL mode needs the actual frame bytes; metadata / semantics modes don't, so only pay the
-    // PNG read when the caller asked for a pixel diff.
-    val includeBytes = params.mode == HistoryDiffMode.PIXEL
-    val from =
-      try {
-        mgr.read(params.from, includeBytes = includeBytes, ref = params.ref)
-      } catch (t: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INTERNAL,
-          message = "history/diff: read(${params.from}) failed: ${t.message}",
-        )
-        return
-      }
-    if (from == null) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_ENTRY_NOT_FOUND,
-        message = "history entry not found: ${params.from}",
-      )
-      return
-    }
-    val to =
-      try {
-        mgr.read(params.to, includeBytes = includeBytes, ref = params.ref)
-      } catch (t: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INTERNAL,
-          message = "history/diff: read(${params.to}) failed: ${t.message}",
-        )
-        return
-      }
-    if (to == null) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_ENTRY_NOT_FOUND,
-        message = "history entry not found: ${params.to}",
-      )
-      return
-    }
-    if (from.entry.previewId != to.entry.previewId) {
-      sendErrorResponse(
-        id = req.id,
-        code = ERR_HISTORY_DIFF_MISMATCH,
-        message =
-          "history/diff: from.previewId='${from.entry.previewId}' but " +
-            "to.previewId='${to.entry.previewId}'; a diff across previews would be meaningless",
-      )
-      return
-    }
-    // SEMANTICS mode (issue #1785) — diff the two entries' captured `compose/semantics` trees.
-    // Each entry's snapshot is frozen at record time in the sidecar (stripped from the lean index),
-    // so the diff is the pixel-free regression signal: "Button 'Submit' lost its label" instead of
-    // "some pixels moved". The differ ([SemanticsDiff]) ignores positional bounds + the volatile
-    // nodeId, matching nodes by their stable `ref`.
-    if (params.mode == HistoryDiffMode.SEMANTICS) {
-      val missing =
-        when {
-          from.entry.semantics == null -> params.from
-          to.entry.semantics == null -> params.to
-          else -> null
-        }
-      if (missing != null) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_HISTORY_SEMANTICS_NOT_CAPTURED,
-          message =
-            "history/diff: entry '$missing' has no captured compose/semantics snapshot; " +
-              "mode='semantics' needs both entries to have been recorded with semantics",
-        )
-        return
-      }
-      val delta =
-        try {
-          val base =
-            json.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), from.entry.semantics!!)
-          val head =
-            json.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), to.entry.semantics!!)
-          SemanticsDiff.diff(base, head)
-        } catch (t: Throwable) {
-          sendErrorResponse(
-            id = req.id,
-            code = ERR_INTERNAL,
-            message = "history/diff: semantics diff failed: ${t.message}",
-          )
-          return
-        }
-      val result =
-        HistoryDiffResult(
-          pngHashChanged = from.entry.pngHash != to.entry.pngHash,
-          fromMetadata = encodeHistoryEntry(from.entry),
-          toMetadata = encodeHistoryEntry(to.entry),
-          semanticsDelta = delta,
-        )
-      sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
-      return
-    }
-    // DATA mode (issue #1873) — the data-product diff. Like SEMANTICS, it reads the snapshots
-    // frozen
-    // in each entry's sidecar (no PNG bytes), so it works the same off the local FS or a reporting
-    // ref. Sections (semantics / a11y / theme) are populated only when both entries carry that
-    // product; an absent product simply leaves its section null rather than erroring — DATA is a
-    // best-effort roll-up, not the strict single-product SEMANTICS contract.
-    if (params.mode == HistoryDiffMode.DATA) {
-      val delta =
-        try {
-          HistoryDataDiff.diff(from.entry, to.entry, json)
-        } catch (t: Throwable) {
-          sendErrorResponse(
-            id = req.id,
-            code = ERR_INTERNAL,
-            message = "history/diff: data diff failed: ${t.message}",
-          )
-          return
-        }
-      val result =
-        HistoryDiffResult(
-          pngHashChanged = from.entry.pngHash != to.entry.pngHash,
-          fromMetadata = encodeHistoryEntry(from.entry),
-          toMetadata = encodeHistoryEntry(to.entry),
-          dataDelta = delta,
-        )
-      sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
-      return
-    }
-    // PIXEL mode (H5, issue #1873) — decode both archived frames, compute diffPx + ssim, and write
-    // a
-    // reviewer-facing marked-diff PNG to `<historyDir>/<previewId>/.diffs/`. The frame bytes were
-    // read above (includeBytes); a null here means the source couldn't supply them (e.g. the PNG
-    // was
-    // moved out from under the archive) — treat as internal, not entry-not-found, since the index
-    // entry resolved fine.
-    if (params.mode == HistoryDiffMode.PIXEL) {
-      val fromBytes = from.pngBytes
-      val toBytes = to.pngBytes
-      if (fromBytes == null || toBytes == null) {
-        val missing = if (fromBytes == null) params.from else params.to
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INTERNAL,
-          message = "history/diff: entry '$missing' has no PNG bytes to pixel-diff",
-        )
-        return
-      }
-      val diff =
-        try {
-          HistoryImageDiff.diff(fromBytes, toBytes)
-        } catch (t: Throwable) {
-          sendErrorResponse(
-            id = req.id,
-            code = ERR_INTERNAL,
-            message = "history/diff: pixel diff failed: ${t.message}",
-          )
-          return
-        }
-      val diffPngPath =
-        diff.markedPng?.let { bytes -> writeDiffPng(to.pngPath, from.entry.id, to.entry.id, bytes) }
-      val result =
-        HistoryDiffResult(
-          pngHashChanged = from.entry.pngHash != to.entry.pngHash,
-          fromMetadata = encodeHistoryEntry(from.entry),
-          toMetadata = encodeHistoryEntry(to.entry),
-          diffPx = diff.diffPx,
-          ssim = diff.ssim,
-          diffPngPath = diffPngPath,
-        )
-      sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
-      return
-    }
-    val result =
-      HistoryDiffResult(
-        pngHashChanged = from.entry.pngHash != to.entry.pngHash,
-        fromMetadata = encodeHistoryEntry(from.entry),
-        toMetadata = encodeHistoryEntry(to.entry),
-        diffPx = null,
-        ssim = null,
-        diffPngPath = null,
-      )
-    sendResponse(req.id, encode(HistoryDiffResult.serializer(), result))
-  }
-
-  /**
-   * Writes the marked-diff [pngBytes] to `<previewDir>/.diffs/<fromId>__<toId>.png`, where
-   * `previewDir` is derived from the `to` entry's archived PNG path ([toPngPath]). Best-effort:
-   * returns the absolute path on success, or null if the write fails (the pixel metrics are still
-   * useful without the artefact). The `.diffs/` subdir is dot-prefixed so `LocalFsHistorySource`'s
-   * per-preview sidecar resolution (which addresses `<id>.json` by name) never trips over it.
-   */
-  private fun writeDiffPng(
-    toPngPath: String,
-    fromId: String,
-    toId: String,
-    pngBytes: ByteArray,
-  ): String? =
-    try {
-      val previewDir = java.nio.file.Path.of(toPngPath).toAbsolutePath().parent
-      val diffsDir = previewDir.resolve(HistoryDiffArtifacts.DIFFS_DIR_NAME)
-      java.nio.file.Files.createDirectories(diffsDir)
-      val out = diffsDir.resolve(HistoryDiffArtifacts.fileName(fromId, toId))
-      java.nio.file.Files.write(out, pngBytes)
-      out.toString()
-    } catch (t: Throwable) {
-      System.err.println("compose-ai-daemon: history/diff writeDiffPng failed: ${t.message}")
-      null
-    }
-
-  /**
-   * H4 — `history/prune` manual prune trigger. Resolves [HistoryPruneParams] over the daemon's
-   * configured defaults (explicit param wins; null leaves the default). When
-   * [HistoryPruneParams.dryRun] is true, returns the would-remove set without touching disk and
-   * does NOT emit a `historyPruned` notification. Otherwise mutates and (if non-empty) emits
-   * `historyPruned` with `reason: "manual"`.
-   *
-   * See HISTORY.md § "Pruning policy" for the order-of-passes contract.
-   */
-  private fun handleHistoryPrune(req: JsonRpcRequest) {
-    val params =
-      try {
-        decodeParams(req.params, HistoryPruneParams.serializer())
-      } catch (e: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INVALID_PARAMS,
-          message = "invalid history/prune params: ${e.message}",
-        )
-        return
-      }
-    val mgr = historyManager
-    if (mgr == null || !mgr.isEnabled) {
-      // No history is configured → returns an empty result rather than a hard error. Mirrors how
-      // history/list degrades: the consumer asked "did anything get pruned?" and the answer is
-      // honestly "no" because nothing's recorded.
-      sendResponse(
-        req.id,
-        encode(
-          HistoryPruneResult.serializer(),
-          HistoryPruneResult(
-            removedEntries = emptyList(),
-            freedBytes = 0L,
-            sourceResults = emptyMap(),
-          ),
-        ),
-      )
-      return
-    }
-    // Compose effective config from the manager's defaults + per-call overrides.
-    val baseConfig = mgr.pruneConfig
-    val effective =
-      HistoryPruneConfig(
-        maxEntriesPerPreview = params.maxEntriesPerPreview ?: baseConfig.maxEntriesPerPreview,
-        maxAgeDays = params.maxAgeDays ?: baseConfig.maxAgeDays,
-        maxTotalSizeBytes = params.maxTotalSizeBytes ?: baseConfig.maxTotalSizeBytes,
-        autoPruneIntervalMs = baseConfig.autoPruneIntervalMs,
-      )
-    val aggregate =
-      try {
-        mgr.pruneNow(
-          config = effective,
-          dryRun = params.dryRun,
-          reason = if (params.dryRun) null else PruneReason.MANUAL,
-        )
-      } catch (t: Throwable) {
-        sendErrorResponse(
-          id = req.id,
-          code = ERR_INTERNAL,
-          message = "history/prune failed: ${t.message}",
-        )
-        return
-      }
-    val perSource =
-      aggregate.sourceResults.mapValues { (_, r) ->
-        HistoryPruneSourceResult(removedEntryIds = r.removedEntryIds, freedBytes = r.freedBytes)
-      }
-    sendResponse(
-      req.id,
-      encode(
-        HistoryPruneResult.serializer(),
-        HistoryPruneResult(
-          removedEntries = aggregate.removedEntryIds,
-          freedBytes = aggregate.freedBytes,
-          sourceResults = perSource,
-        ),
-      ),
-    )
-  }
 
   private fun emitRenderFailed(failure: RenderResultOrFailure.Failure) {
     val previewId = hostIdToPreviewId.remove(failure.hostId) ?: failure.hostId.toString()
@@ -4523,10 +4067,6 @@ public class JsonRpcServer(
 
     private const val DEFAULT_DAEMON_VERSION: String = "0.0.0-dev"
     private const val DEFAULT_HISTORY_DIR: String = ".compose-preview-history"
-
-    /** Message returned for history method requests when [HistoryFeature.ENABLED] is `false`. */
-    private const val HISTORY_DISABLED_MESSAGE: String =
-      "history methods are post-1.0 and disabled in this daemon build; tracking for 1.1+"
 
     // JSON-RPC error codes — PROTOCOL.md § 2.
     public const val ERR_PARSE: Int = -32700
