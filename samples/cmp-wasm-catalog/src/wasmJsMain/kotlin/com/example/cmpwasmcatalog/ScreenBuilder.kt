@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,107 +35,113 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.example.designcatalogm3.shared.catalogComponentIds
-import com.example.designcatalogm3.shared.catalogComponentSpecs
-import com.example.designcatalogm3.shared.catalogContainerIds
+import ee.schimke.composeai.discovery.ChainLink
+import ee.schimke.composeai.discovery.ScreenDocument
+import ee.schimke.composeai.discovery.ScreenGenerator
+import ee.schimke.composeai.discovery.ScreenNode
+import ee.schimke.composeai.discovery.ScreenValue
 import ee.schimke.composeai.screen.CompileCheck
 import ee.schimke.composeai.screen.CompileOutcome
 import ee.schimke.composeai.screen.CompileSeverity
-import ee.schimke.composeai.screen.GeneratedScreen
-import ee.schimke.composeai.screen.Screen
-import ee.schimke.composeai.screen.ScreenCodegen
-import ee.schimke.composeai.screen.ScreenNode
+import ee.schimke.composeai.screen.M3Palette
+import ee.schimke.composeai.screen.SourceHighlighter
 import ee.schimke.composeai.screen.SourceTokenKind
 import ee.schimke.composeai.screen.addNode
-import ee.schimke.composeai.screen.flatten
+import ee.schimke.composeai.screen.flattenNodes
 import ee.schimke.composeai.screen.nodeAt
 import ee.schimke.composeai.screen.removeNode
-import ee.schimke.composeai.screen.setKnob
+import ee.schimke.composeai.screen.setArgument
 
 /**
- * The UI builder, running entirely in the browser against the real M3 catalog.
+ * The UI builder, over the **real** screen document and the **real** generator.
  *
- * ### Why this can exist at all
+ * A screen starts as a `Scaffold` — the thing an app screen is — and grows by adding containers and
+ * components into a selected node's slot. Selecting a node exposes its arguments and its modifier
+ * chain; every edit rebuilds the document, which re-renders the middle pane and regenerates the
+ * source on the right in the same recomposition.
  *
- * The M3 catalog compiles to `wasmJs` (the Wear one cannot — `androidx.wear.compose` is
- * Android-only), and the catalog's knob lookups already read a `key[index]` map from a composition
- * local. So a composition can be assembled, *edited per instance*, and rendered here with no
- * daemon, no server round-trip and no change to a single component body: the document flattens to
- * the knob map the catalog already reads, and each node composes under its own instance index.
- *
- * ### The loop
- *
- * Pick a component, it is added to the selected container (or the screen). Select a node, edit its
- * knobs, watch the live render change. The generated Compose updates with every edit — the same
- * source a developer would have written, and the artefact the playground compiles and runs.
+ * Nothing here generates code. `ScreenGenerator` does — the one in `preview-discovery`, shared as
+ * source so it compiles to `wasmJs` too, which is what lets the browser generate with no server.
+ * When it refuses, the refusals are shown: they name the node and the reason, and that is more
+ * useful than a blank pane.
  */
 @Composable
 internal fun ScreenBuilderApp(
   previewHost: ScreenPreviewHost = WasmCatalogPreviewHost,
   compileHost: String? = null,
 ) {
-  var screen by remember { mutableStateOf(Screen(name = "My screen")) }
-  var selected by remember { mutableStateOf<Int?>(null) }
+  var document by remember { mutableStateOf(newScreen()) }
+  var selected by remember { mutableStateOf(0) }
 
   Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
     Row(
       Modifier.fillMaxSize().padding(12.dp),
       horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      // ---- Left: what to add, and what is in the screen ----
       Column(
-        Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+        Modifier.width(250.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        SectionLabel("Add a container")
-        catalogContainerIds.forEach { id ->
-          AddRow(id) {
-            screen = screen.addNode(containerTargetFor(screen, selected), ScreenNode(id))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+          SectionLabel("Screen")
+          TextButton(
+            onClick = {
+              document = newScreen()
+              selected = 0
+            }
+          ) {
+            Text("reset")
           }
         }
-        SectionLabel("Add a component")
-        catalogComponentIds.forEach { id ->
-          AddRow(id) {
-            screen = screen.addNode(containerTargetFor(screen, selected), ScreenNode(id))
-          }
-        }
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        SectionLabel("Screen")
-        val nodes = screen.flatten()
-        if (nodes.isEmpty()) {
-          Text("empty — add something", style = MaterialTheme.typography.bodySmall)
-        }
-        nodes.forEach { (index, node, parent) ->
-          val depth = depthOf(nodes.map { it.parentIndex }, index)
+        val nodes = document.flattenNodes()
+        nodes.forEach { indexed ->
+          val depth = depthOf(nodes.map { it.parentIndex }, indexed.index)
           Row(
             Modifier.fillMaxWidth()
               .background(
-                if (selected == index) MaterialTheme.colorScheme.secondaryContainer
+                if (selected == indexed.index) MaterialTheme.colorScheme.secondaryContainer
                 else MaterialTheme.colorScheme.surface
               )
-              .clickable { selected = index }
+              .clickable { selected = indexed.index }
               .padding(start = (depth * 12).dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
           ) {
-            Text("[$index] ${node.componentId}", style = MaterialTheme.typography.bodySmall)
-            TextButton(
-              onClick = {
-                screen = screen.removeNode(index)
-                selected = null
+            Text(
+              "[${indexed.index}] ${indexed.node.componentId}",
+              style = MaterialTheme.typography.bodySmall,
+            )
+            if (indexed.index != 0) {
+              TextButton(
+                onClick = {
+                  document = document.removeNode(indexed.index)
+                  selected = 0
+                }
+              ) {
+                Text("x")
               }
-            ) {
-              Text("x")
             }
           }
-          // `parent` is unused in the label but proves the tree is what is being listed rather than
-          // a flat set — the indent above is derived from it.
-          @Suppress("UNUSED_EXPRESSION") parent
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        val target = document.nodeAt(selected)
+        val slot = slotFor(target?.componentId)
+        SectionLabel(
+          if (slot == null) "Selected node takes no children" else "Add into [$selected].$slot"
+        )
+        if (slot != null) {
+          SectionLabel("Containers")
+          M3Palette.containerIds.forEach { id ->
+            AddRow(id) { document = document.addNode(selected, slot, ScreenNode(id)) }
+          }
+          SectionLabel("Components")
+          M3Palette.componentIds.forEach { id ->
+            AddRow(id) { document = document.addNode(selected, slot, ScreenNode(id)) }
+          }
         }
       }
 
-      // ---- Middle: the live render, and the knobs of what is selected ----
       Column(
         Modifier.weight(1f).fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -146,41 +153,62 @@ internal fun ScreenBuilderApp(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(8.dp)
         ) {
-          previewHost.Preview(screen, Modifier)
+          previewHost.Preview(document, Modifier)
         }
 
-        SectionLabel("Knobs")
-        val index = selected
-        val node = index?.let { screen.nodeAt(it) }
-        if (index == null || node == null) {
-          Text("select a node to edit its values", style = MaterialTheme.typography.bodySmall)
-        } else {
-          val keys = editableKnobKeys(node.componentId)
-          if (keys.isEmpty()) {
-            Text(
-              "'${node.componentId}' declares no knobs this builder knows about",
-              style = MaterialTheme.typography.bodySmall,
-            )
-          }
-          keys.forEach { key ->
+        val node = document.nodeAt(selected)
+        SectionLabel("Arguments" + if (node == null) "" else " — ${node.componentId}")
+        if (node != null) {
+          // `text` is the one argument this palette's components take by value; everything else a
+          // screen sets is a slot, a handler or the modifier below.
+          if (node.componentId == "text") {
             OutlinedTextField(
-              value = node.knobs[key].orEmpty(),
-              onValueChange = { screen = screen.setKnob(index, key, it) },
-              label = { Text(key) },
+              value = (node.arguments["text"] as? ScreenValue.Text)?.value.orEmpty(),
+              onValueChange = { typed ->
+                document =
+                  document.setArgument(
+                    selected,
+                    "text",
+                    if (typed.isEmpty()) null else ScreenValue.Text(typed),
+                  )
+              },
+              label = { Text("text") },
               singleLine = true,
               modifier = Modifier.fillMaxWidth(),
             )
           }
+          SectionLabel("Modifiers")
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            M3Palette.modifierLinks.forEach { (label, link) ->
+              // A `FilterChip` rather than a button with a tick in its label: the selected state is
+              // the chip's own container colour, so it needs no glyph. A `✓` prefix was the first
+              // attempt and rendered as tofu — the catalog's self-hosted fonts have no U+2713, and
+              // the browser cannot fall back inside a Skia composition the way it would in the DOM.
+              FilterChip(
+                selected = node.hasLink(link),
+                onClick = { document = document.toggleModifier(selected, link) },
+                label = { Text(label, style = MaterialTheme.typography.bodySmall) },
+              )
+            }
+          }
         }
       }
 
-      // ---- Right: the Kotlin this screen is ----
       Column(
-        Modifier.width(360.dp).fillMaxHeight(),
+        Modifier.width(400.dp).fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         SectionLabel("Generated Compose")
-        val generated = ScreenCodegen.generate(screen, catalogComponentSpecs)
+        // Regenerated in composition, so the pane is a function of the document: every add,
+        // remove, argument and modifier lands here in the same frame it lands in the render.
+        val result =
+          ScreenGenerator.generate(
+            document,
+            M3Palette.records,
+            packageName = "generated.screen",
+            expressionPackages = M3Palette.expressionPackages,
+          )
+        val source = (result as? ScreenGenerator.Result.Emitted)?.source
         Box(
           Modifier.fillMaxWidth()
             .weight(1f)
@@ -188,24 +216,78 @@ internal fun ScreenBuilderApp(
             .verticalScroll(rememberScrollState())
             .padding(8.dp)
         ) {
-          Text(
-            highlight(generated),
-            fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.bodySmall,
-          )
+          if (source != null) {
+            Text(
+              highlight(source),
+              fontFamily = FontFamily.Monospace,
+              style = MaterialTheme.typography.bodySmall,
+            )
+          } else {
+            Text(
+              "Cannot generate:\n" +
+                (result as ScreenGenerator.Result.Refused).reasons.joinToString("\n") { "• $it" },
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.error,
+            )
+          }
         }
-        if (generated.problems.isNotEmpty()) {
-          Text(
-            "Cannot generate:\n" + generated.problems.joinToString("\n") { "• $it" },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-          )
-        }
-        // Absent, not empty, without a `?compileHost=`. See `CompilePaneState`.
-        if (compileHost != null) CompilePane(compileHost, generated.source)
+        if (compileHost != null && source != null) CompilePane(compileHost, source)
       }
     }
   }
+}
+
+/** A new screen: the `Scaffold` an app screen starts as. */
+private fun newScreen(): ScreenDocument =
+  ScreenDocument(name = "MyScreen", root = ScreenNode("scaffold"))
+
+/**
+ * The slot a child is added into for [componentId], or null when it takes none.
+ *
+ * One slot per container keeps the palette honest: `Scaffold` has a `topBar` too, and offering it
+ * needs a slot picker rather than a guess about which one an add meant.
+ */
+private fun slotFor(componentId: String?): String? =
+  when (componentId) {
+    "scaffold",
+    "lazy-column",
+    "column",
+    "card",
+    "button" -> "content"
+    else -> null
+  }
+
+private fun ScreenNode.hasLink(link: ChainLink): Boolean =
+  (arguments["modifier"] as? ScreenValue.Chain)?.links?.any {
+    it.callableFqn == link.callableFqn
+  } == true
+
+/**
+ * Adds or removes [link] from the node's modifier chain.
+ *
+ * A modifier is a [ScreenValue.Chain] on `Modifier` — the generator's own vocabulary — not text
+ * spliced into source. Clearing the last link removes the argument entirely rather than leaving a
+ * bare `Modifier`, which would generate `modifier = Modifier` for a node nobody modified.
+ */
+private fun ScreenDocument.toggleModifier(index: Int, link: ChainLink): ScreenDocument {
+  val node = nodeAt(index) ?: return this
+  val existing = (node.arguments["modifier"] as? ScreenValue.Chain)?.links ?: emptyList()
+  val links =
+    if (existing.any { it.callableFqn == link.callableFqn }) {
+      existing.filterNot { it.callableFqn == link.callableFqn }
+    } else {
+      existing + link
+    }
+  if (links.isEmpty()) return setArgument(index, "modifier", null)
+  return setArgument(
+    index,
+    "modifier",
+    ScreenValue.Chain(
+      receiver = M3Palette.modifierReceiver,
+      links = links,
+      typeFqn = "androidx.compose.ui.Modifier",
+    ),
+  )
 }
 
 @Composable
@@ -220,34 +302,6 @@ private fun AddRow(id: String, onAdd: () -> Unit) {
   }
 }
 
-/**
- * Where a newly added node goes: **inside** the selection when it is a container, beside it
- * otherwise, and at the top level when nothing is selected.
- *
- * Adding into a selected leaf would build a tree the catalog cannot render (a button has no
- * children), and dropping to the root instead would silently ignore the selection. Adding to the
- * selected leaf's *parent* is the one behaviour that respects both.
- */
-internal fun containerTargetFor(screen: Screen, selected: Int?): Int? {
-  val index = selected ?: return null
-  val node = screen.nodeAt(index) ?: return null
-  if (node.componentId in catalogContainerIds) return index
-  return screen.flatten().firstOrNull { it.index == index }?.parentIndex
-}
-
-/**
- * The knob keys this builder offers for a component — the ones its codegen spec knows how to write.
- *
- * Deliberately the spec table rather than a live declaration: the browser tier has no daemon, so
- * nothing enumerates a component's knobs at runtime here. Offering only what can also be
- * *generated* keeps the two halves of the loop honest — every value you can edit survives into the
- * code.
- */
-internal fun editableKnobKeys(componentId: String): List<String> {
-  val spec = catalogComponentSpecs[componentId] ?: return emptyList()
-  return (spec.knobs.keys + listOfNotNull(spec.contentKnob)).sorted()
-}
-
 /** How deep a node sits, walked up the parent chain — for the tree list's indent. */
 internal fun depthOf(parents: List<Int?>, index: Int): Int {
   var depth = 0
@@ -260,27 +314,28 @@ internal fun depthOf(parents: List<Int?>, index: Int): Int {
 }
 
 /**
- * The generated source as an [AnnotatedString], coloured from the spans codegen recorded.
+ * The generated source as an [AnnotatedString], coloured by [SourceHighlighter].
  *
- * No lexing happens here, and none should: [GeneratedScreen.tokens] tile the source exactly, so
- * this is a walk over the list appending each range with its style. A gap or an overlap would show
- * as mangled text, which is why the model asserts the tiling invariant as a property rather than
- * leaving it to be noticed here.
+ * The tokens **tile the source exactly**, which is what lets this be a walk over the list with no
+ * gap handling: every offset is covered once, so appending each range in order reproduces the text.
+ * A gap or an overlap would show as mangled source, and the invariant is asserted in the model's
+ * own tests rather than left to be noticed here.
  */
 @Composable
-private fun highlight(generated: GeneratedScreen): AnnotatedString {
+private fun highlight(source: String): AnnotatedString {
   val palette = sourcePalette()
-  return remember(generated.source, generated.tokens, palette) {
-    if (generated.tokens.isEmpty()) {
-      AnnotatedString(generated.source)
+  return remember(source, palette) {
+    val tokens = SourceHighlighter.tokenize(source)
+    if (tokens.isEmpty()) {
+      AnnotatedString(source)
     } else {
       buildAnnotatedString {
-        generated.tokens.forEach { token ->
+        tokens.forEach { token ->
           val style = palette[token.kind]
           if (style == null) {
-            append(generated.source, token.start, token.end)
+            append(source, token.start, token.end)
           } else {
-            withStyle(style) { append(generated.source, token.start, token.end) }
+            withStyle(style) { append(source, token.start, token.end) }
           }
         }
       }
@@ -298,7 +353,7 @@ private fun highlight(generated: GeneratedScreen): AnnotatedString {
  * Two details are deliberate. Weight carries part of the distinction, because M3 offers three
  * accent roles and there are more kinds than that — `primary` bold reads differently from `primary`
  * regular without inventing a colour. And `colorScheme.error` is **not** used for any token: it is
- * what the "Cannot generate" list below the pane is drawn in, and a string literal wearing the
+ * what the "Cannot generate" list beside the pane is drawn in, and a string literal wearing the
  * error colour would say something false.
  */
 @Composable
@@ -328,9 +383,9 @@ private const val COMMENT_ALPHA = 0.7f
  * would throw away the more interesting half.
  *
  * The response's first-frame PNG is deliberately **not** drawn here: the live render is already the
- * pane immediately to the left of this one, showing the same screen from the same document. Adding
- * a second, staler copy of it would cost a base64 → `ImageBitmap` decode on every result to say
- * something the user can already see.
+ * pane immediately to the left of this one, showing the same document. Adding a second, staler copy
+ * of it would cost a base64 → `ImageBitmap` decode on every result to say something the user can
+ * already see.
  */
 @Composable
 private fun CompilePane(host: String, source: String) {

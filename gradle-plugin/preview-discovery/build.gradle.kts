@@ -29,6 +29,22 @@ ktfmt { googleStyle() }
 // through Maven Local on every dev iteration. The publish coordinate is set explicitly
 // below so the artifact lands in Maven Central under a clean module name.
 
+// The screen document, the component record and the generator that turns one into Compose source
+// are **shared source**, not a copy: they live in `screen/model/src/commonMain`, and this module
+// compiles them from there.
+//
+// They have to be in two places at once and cannot be. The browser UI builder needs to generate code
+// with no server, which means a `wasmJs` target; this module is `kotlin("jvm")` inside a
+// `kotlin-dsl` plugin build pinned to Gradle's embedded Kotlin, where adding Kotlin Multiplatform is
+// a fight over the toolchain rather than a configuration. And the dependency cannot run the other
+// way — an included build cannot depend on a project of the build that includes it.
+//
+// A shared source directory is the one arrangement with **no second copy to drift**. The published
+// `preview-discovery` jar is unchanged: it still carries these classes, compiled from the same
+// files the `:screen-model` KMP module compiles for `wasmJs`. The alternative was a mirror, and the
+// `serve-wasm` fork is this repository's own evidence for what mirrors cost.
+sourceSets.named("main") { kotlin.srcDir(rootDir.resolve("../screen/generator/src/commonMain/kotlin")) }
+
 dependencies {
   api(libs.kotlinx.serialization.json)
   // ClassGraph drives `PreviewDiscovery.discover(...)`: scans class dirs + dependency jars for
