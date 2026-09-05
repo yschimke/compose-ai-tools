@@ -31,9 +31,7 @@ import org.robolectric.annotation.Implements
  * `@Implements(className = …)` string form (not the class-literal form) avoids the
  * deferred-annotation resolution that throws on classpaths lacking the gesture AAR (issue #1244).
  */
-@Implements(
-  className = "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl"
-)
+@Implements(className = SDK_GESTURE_INPUT_MANAGER_IMPL)
 class ShadowSdkGestureInputManager {
 
   @Implementation
