@@ -1,11 +1,163 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T06:01:40.315Z",
+  "generatedAt": "2026-09-05T07:58:11.342Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "b736d8f988e478e3f577cc7442bfef7cf6ab56ca",
+        "subject": "fix(deps): update dependency playwright to ^1.63.0 (#5141)",
+        "at": "2026-09-05T08:43:41+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c6903ee175f7b0a1ac1dab7fd9cf13436ebbb7c2",
+        "subject": "feat(render-host): bring the render host home from the preview server (#5137)",
+        "at": "2026-09-05T08:43:23+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1db5da43cb14f180c50c46b4f20004a8f7f9d1f5",
+        "subject": "chore(main): release 1.76.0 (#5121)",
+        "at": "2026-09-05T08:29:32+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "919a47a4cd924855419878d5d6eb30287d5db1a9",
+        "subject": "fix(render): name the merged unit-test R.jar when a preview cannot load an R class (#5136)",
+        "at": "2026-09-05T08:27:14+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ebc8a9999d9f5948e077f92e6726375e9cea00c7",
+        "subject": "feat(screen-model): publish it, so a wasm builder can generate (#5134)",
+        "at": "2026-09-05T08:26:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f9f3ef2d2a827331cc432d1c267a4a813db9fccb",
+        "subject": "ci(layers): fail the build when a server artifact reaches this repo (#5135)",
+        "at": "2026-09-05T08:21:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "445cd9e5d52032a0b9861470a771db45cce2b176",
+        "subject": "fix(renderer-android): resolve defaulted-parameter Glance previews (#5131)",
+        "at": "2026-09-05T08:16:31+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4dea3f6936f4cdd9ab8e9b5e356f5639ff544352",
+        "subject": "revert: adopt a merge queue for main (#5133)",
+        "at": "2026-09-05T08:14:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "59b2ad38f98c43b7560ab3db7f463cb373b6062b",
+        "subject": "feat(builder): size the palette against four real catalog screens (#5132)",
+        "at": "2026-09-05T08:14:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8fdc2bb93de34bd3c385e4a07b2a136a31495a93",
+        "subject": "ci: adopt a merge queue for main (#5130)",
+        "at": "2026-09-05T08:04:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "77e8268286709737cf012c6444e9902f6a71beab",
+        "subject": "docs(layers): state which repository a module belongs in (#5129)",
+        "at": "2026-09-05T07:57:06+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4861d48e38ba21df00923fcc28d7814473d817a2",
+        "subject": "feat(discovery): resolve the remember factory a state type ships beside it (#5128)",
+        "at": "2026-09-05T07:54:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cc8eed3b7b0c1b0933a471f947d1e9eb2d92c4b2",
+        "subject": "test(studio-parity): cover a defaulted-parameter preview against Layoutlib (#5127)",
+        "at": "2026-09-05T07:29:56+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3d01237a36838c9273d1ea77f3f8c529dc0f1689",
+        "subject": "fix(builder): import a generated screen's components instead of qualifying them (#5123)",
+        "at": "2026-09-05T07:23:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f22ea96c27ea8f645eb078ecd26a8bff79503c9c",
+        "subject": "feat(gestures): publish whether a one-handed gesture can reach a composable (#5126)",
+        "at": "2026-09-05T07:23:06+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f928870bcdd8bc8eef4b1cd138d7ace954b854d7",
+        "subject": "fix(renderer): pin the packed-colour field lookup, the last unordered read in the catalog path (#5125)",
+        "at": "2026-09-05T07:21:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6257fd7c7a683f4f3a59fb6553c9c00e63e06f5c",
+        "subject": "feat(discovery): let a call site construct a no-arg-constructible required parameter (#5124)",
+        "at": "2026-09-05T07:18:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ee7ee88f58a59fe7843ca71ca96862d44f09d9c8",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.75.0 (#5122)",
+        "at": "2026-09-05T06:01:50Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9aec8e467c9ecb836cd0c10f429ffbc960d164b3",
+        "subject": "feat(render): say what each --exclude-preview-id pattern matched, and warn at zero (#5119)",
+        "at": "2026-09-05T06:50:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "0d64ae4f1419ec6f16debdab2812ee480097c316",
         "subject": "feat(design-artifacts): give the catalog a locale axis so a bilingual fan-out folds (#5120)",
@@ -330,158 +482,6 @@
         "sha": "a9fc68b34c54852d1922b74c49a4c23d5b3615b2",
         "subject": "feat(discovery): widen a screen value past the four literals (#5077)",
         "at": "2026-09-03T19:40:29+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ab5e96a2c707e92f1c28b306085eb458dce11f96",
-        "subject": "feat(discovery): generate a compiling screen from a builder's document (#5076)",
-        "at": "2026-09-03T15:57:30+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "32780aabd21ed9699eac433dce62123ef91e1e0b",
-        "subject": "fix(discovery): close six ways an emitted call site could fail to compile (#5073)",
-        "at": "2026-09-03T10:01:42+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "64da195f69470ccee5c9f2db3e4e467d9c447b7c",
-        "subject": "ci(renovate): hand dependency-PR merges to GitHub native auto-merge (#5074)",
-        "at": "2026-09-03T10:01:14+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bb2bff69474e7e1baee3e2a9e138177a517e7b7a",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.70.0 (#5070)",
-        "at": "2026-09-03T09:45:05+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f9a2ecd5c471b659fb422f56d90ecfdeb7cafc4a",
-        "subject": "style(harness): ktfmt S3.5's new KDoc (#5072)",
-        "at": "2026-09-03T09:44:24+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fea523d667269e39f9e7afb45ad4e7475efa97bc",
-        "subject": "feat(discovery): persist each component's call site in components.json (#5068)",
-        "at": "2026-09-03T09:40:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4342f07d687123003942c08e02a13514f0667469",
-        "subject": "fix(harness): clone S3.5's MutableSquare from the target's own fixture (#5069)",
-        "at": "2026-09-03T09:39:47+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "08eab81448e14c5759dc4b61c5cae604efc6b3f9",
-        "subject": "chore(main): release 1.70.0 (#5055)",
-        "at": "2026-09-03T09:08:31+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7b5620556ebc385b13c99f3493c58d33c06a812c",
-        "subject": "ci: move drift detectors and external integration cells to the nightly lane (#5062)",
-        "at": "2026-09-03T08:36:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "aee0ec49bbad82d3563bffc94cced5ec3c656d3a",
-        "subject": "docs(parity): record that D4's crude form landed with the viewer's locator (#5061)",
-        "at": "2026-09-03T08:28:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "865eec84a09d5bc06055c0021341fdbf65f894fa",
-        "subject": "fix(cli): resolve the build root by settings file, and name the plugin publication race (#5052)",
-        "at": "2026-09-03T08:19:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1be2f59f1d3ec5c9a4a0f9036ea511f864b66466",
-        "subject": "docs(parity): record that the viewer now emits a parity locator (#5057)",
-        "at": "2026-09-03T08:18:52+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "67e120133ba4bcbe064c55064b09c91d61de975a",
-        "subject": "fix(actions): make install's `latest` mean latest usable, and name the publication window (#5058)",
-        "at": "2026-09-03T08:18:03+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "312befe1d35ec2a1c645c4c6ff231fd1bcbb31b2",
-        "subject": "fix: turn Isolated Projects off for auto-injected runs, and keep the S3.5 clone out of the fixture's static initializer (#5060)",
-        "at": "2026-09-03T08:15:13+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "61b544d7b042a5236c9b0b695e65fd76ce4a0543",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.69.0 (#5053)",
-        "at": "2026-09-03T07:35:58+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "988f6f8fd29a753e6a7c93f9624505f2fe22185c",
-        "subject": "feat(discovery): give a target its source name, JVM name and descriptor (#5054)",
-        "at": "2026-09-03T07:35:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "761a7e2bd24242891763f35d64f21b1ba3e48f63",
-        "subject": "chore(main): release 1.69.0 (#5048)",
-        "at": "2026-09-03T07:20:47+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e3e96ad8a944069c25d3c796b7fefed740cc5aa8",
-        "subject": "fix(import): write Gradle properties with python, and print the diagnosed sidecar (#5050)",
-        "at": "2026-09-03T07:15:44+01:00",
-        "author": "claude[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b82d9f4ff25b9b785cdb99dcf250f7974fce8b8e",
-        "subject": "fix(ci): say which direction the rc-players pin has drifted (#5049)",
-        "at": "2026-09-03T07:12:14+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
