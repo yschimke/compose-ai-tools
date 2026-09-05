@@ -716,6 +716,13 @@ private class PackSubcommand(private val args: List<String>) {
     // — see #2965) and simply carry no semantics/layout/figma-svg sidecar, exactly as they carry no
     // PNG.
     val captureIds = PackPreviewIdExclusions.retain(rawIds, excludePreviewIds)
+    // One line per pattern, before the totals (issue #5064). The totals below say how much was
+    // skipped; they cannot say which of three patterns did nothing, and a pattern at zero is
+    // almost always a typo whose cost is a whole capture pass spent on previews the caller meant
+    // to drop.
+    for (match in PackPreviewIdExclusions.matches(rawIds, excludePreviewIds)) {
+      System.err.println("bundle pack: ${match.line}")
+    }
     val excludedFromCapture = rawIds.size - captureIds.size
     if (excludedFromCapture > 0) {
       System.err.println(

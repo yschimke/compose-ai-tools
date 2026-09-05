@@ -360,4 +360,45 @@ class PackPreviewIdExclusionsTest {
     val f = fileWith(listOf("", "   ", commaBearingIds[0], ""))
     assertEquals(listOf(commaBearingIds[0]), PackPreviewIdExclusions.linesOf(f))
   }
+
+  // --- per-pattern match reporting (issue #5064) ------------------------------------------------
+
+  @Test
+  fun `matches reports one entry per pattern, in order, with per-pattern counts`() {
+    val ids = listOf("Foo_Light", "Foo_Dark", "Bar_Light")
+
+    val matches = PackPreviewIdExclusions.matches(ids, listOf("*_Dark", "Foo*"))
+
+    assertEquals(listOf("*_Dark", "Foo*"), matches.map { it.pattern })
+    assertEquals(listOf(1, 2), matches.map { it.matched })
+    assertEquals(listOf(3, 3), matches.map { it.total })
+  }
+
+  @Test
+  fun `a pattern matching nothing reports zero and says why that usually happens`() {
+    val line =
+      PackPreviewIdExclusions.matches(listOf("Foo Content with dialog"), listOf("*Foo_Content*"))
+        .single()
+        .line
+
+    assertEquals(true, line.contains("matched 0 of 1 preview(s)"))
+    assertEquals(true, line.contains("preview ids keep spaces"))
+  }
+
+  @Test
+  fun `blank patterns are neither applied nor reported`() {
+    assertEquals(emptyList(), PackPreviewIdExclusions.matches(listOf("Foo"), listOf(" ", "")))
+  }
+
+  @Test
+  fun `the reported count agrees with what retain actually drops for a single pattern`() {
+    // One pattern, so overlap cannot explain a difference: if these two disagree, the log is lying.
+    val ids = listOf("Foo_Light", "Foo_Dark", "Bar_Dark")
+    val pattern = "*_Dark"
+
+    val reported = PackPreviewIdExclusions.matches(ids, listOf(pattern)).single().matched
+    val dropped = ids.size - PackPreviewIdExclusions.retain(ids, listOf(pattern)).size
+
+    assertEquals(dropped, reported)
+  }
 }

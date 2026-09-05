@@ -353,16 +353,29 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // filter kept, which is the granularity a catalog's per-theme `modePriority` needs to skip the
     // renders it isn't going to publish. Runs immediately after the name filter so both are applied
     // before tier/kind/catalog filtering, and so `--preview Foo --preview-id *_Light` composes.
-    val idFiltered =
-      excludePreviewIds(
-        selectPreviewIds(
-          nameFiltered,
-          previewIdFilters.getOrElse(emptyList()),
-          previewsJson.get().asFile.absolutePath,
-          rawManifest.previews,
-        ),
-        previewIdExcludes.getOrElse(emptyList()),
+    val idSelected =
+      selectPreviewIds(
+        nameFiltered,
+        previewIdFilters.getOrElse(emptyList()),
+        previewsJson.get().asFile.absolutePath,
+        rawManifest.previews,
       )
+    // Say what each exclusion pattern actually matched, BEFORE the render starts (issue #5064).
+    // Exclusion fails safe — a pattern matching nothing renders more than intended, never less —
+    // and that is the right default; saying nothing about it is not. A pattern at zero is almost
+    // always a typo or a wrong guess about id shape, and staying quiet turns that into a wasted
+    // ~30-minute render instead of a one-line diagnosis. The counts are also what makes the
+    // arithmetic of a partial exclusion visible: `*_ja → 28` next to a 62-preview total is how you
+    // see that the bare and `_en` arms of a locale fan-out still collide.
+    val exclusionMatches =
+      previewIdExclusionMatches(idSelected, previewIdExcludes.getOrElse(emptyList()))
+    for (match in exclusionMatches) {
+      // `warn`, not `lifecycle`, for a pattern that matched nothing: it is the one line here that
+      // reports a probable mistake rather than progress.
+      if (match.matched == 0) logger.warn("composePreviewRender: ${match.line}")
+      else logger.lifecycle("composePreviewRender: ${match.line}")
+    }
+    val idFiltered = excludePreviewIds(idSelected, previewIdExcludes.getOrElse(emptyList()))
 
     val permutationValues = permutations.getOrElse(emptyList())
     val permuted = PreviewPermutations.expand(idFiltered, permutationValues)
@@ -1248,6 +1261,54 @@ private fun StringBuilder.appendManifestContext(
 }
 
 /**
+ * What one `--exclude-preview-id` pattern matched, so a run can say so before it renders.
+ *
+ * [matched] counts the previews THIS pattern would drop, independent of the others — patterns may
+ * overlap, so the counts do not sum to the number actually excluded. Per-pattern is the whole
+ * point: the total was already reported ("skipping 28 excluded preview(s)"), and a total cannot
+ * tell you which of three patterns did nothing.
+ */
+internal data class PreviewIdExclusionMatch(
+  val pattern: String,
+  val matched: Int,
+  val total: Int,
+) {
+  /**
+   * The line a run prints. A zero-match pattern carries the likeliest cause with it: preview ids
+   * keep the spaces that render filenames sanitise to underscores, so a pattern copied off a PNG
+   * name matches nothing — the exact way this cost a 26-minute render (issue #5064).
+   */
+  val line: String
+    get() =
+      "--exclude-preview-id '$pattern' matched $matched of $total preview(s)" +
+        if (matched == 0)
+          " — nothing excluded. Check the pattern: preview ids keep spaces where render filenames " +
+            "use underscores, and a plain pattern matches on substring."
+        else ""
+}
+
+/**
+ * Per-pattern match counts for [excludes] over [previews], in the order the patterns were given.
+ *
+ * Pure, and separate from [excludePreviewIds] rather than folded into it, because the two answer
+ * different questions: that one produces the previews to render (where an overlapping pattern is
+ * irrelevant), this one attributes the exclusion to the pattern that caused it (where overlap is
+ * exactly what a reader needs to see). Blank patterns are dropped the same way [excludePreviewIds]
+ * drops them, so nothing is reported that could not have excluded anything.
+ */
+internal fun previewIdExclusionMatches(
+  previews: List<PreviewInfo>,
+  excludes: List<String>,
+): List<PreviewIdExclusionMatch> =
+  excludes.map(String::trim).filter(String::isNotEmpty).map { pattern ->
+    PreviewIdExclusionMatch(
+      pattern = pattern,
+      matched = previews.count { PreviewNameFilter.matchesId(listOf(pattern), it.id) },
+      total = previews.size,
+    )
+  }
+
+/**
  * Drops previews whose **id** matches [excludes], keeping the rest (issue #2966).
  *
  * The deferral polarity — see [RenderPreviewsTask.previewIdExcludes] for why a positive filter
@@ -1255,9 +1316,11 @@ private fun StringBuilder.appendManifestContext(
  * matchable set, because the untagged primary stickers carry no theme suffix to match on.
  *
  * A pattern matching nothing is a no-op on purpose (it renders more than intended, which the
- * publish catches, rather than less). Excluding *everything* still throws: the render would write
- * no PNGs at all and the pack that follows would produce a catalog of missing stickers, which is
- * precisely the silent failure the select-or-fail policy exists to prevent.
+ * publish catches, rather than less) — but never a SILENT one: [previewIdExclusionMatches] reports
+ * what each pattern matched and the task warns on a zero (issue #5064). Excluding *everything*
+ * still throws: the render would write no PNGs at all and the pack that follows would produce a
+ * catalog of missing stickers, which is precisely the silent failure the select-or-fail policy
+ * exists to prevent.
  */
 internal fun excludePreviewIds(
   previews: List<PreviewInfo>,
