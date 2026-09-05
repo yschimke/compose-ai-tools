@@ -29,6 +29,9 @@ import okio.Path.Companion.toPath
  *   passes only on the response its URL gives with healthy egress — a 2xx, or the documented 404 on
  *   `fonts.gstatic.com/`; an intercepting proxy's 403/407 is a warning, not a tick. Warnings only;
  *   set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1` to skip.
+ * - `env.preview-server` — which `compose-preview-server` `serve` / `browse` would exec (the
+ *   `--server-binary` flag, `COMPOSE_PREVIEW_SERVER`, `PATH`, then the CLI's own fetched copy), and
+ *   the server release this CLI is pinned to. Never fetches one; see [ServerDistributionProvision].
  * - `env.desktop-natives` — only when the project has a CMP Desktop module: resolves skiko's four
  *   native dependencies the way the *render JVM's* loader would, catching the
  *   `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` class of failure before a
@@ -146,6 +149,7 @@ class DoctorCommand(
     checkPathJava()
     checkArgEncoding()
     checkClaudeCloud()
+    checkServerBinary()
 
     val projectDir = resolveProjectDir()
 
@@ -213,6 +217,65 @@ class DoctorCommand(
         category = "env",
         status = "ok",
         message = listOf(name, version, arch).filter { it.isNotBlank() }.joinToString(" "),
+      )
+    )
+  }
+
+  /**
+   * Which `compose-preview-server` `serve` and `browse` would exec, and where it came from.
+   *
+   * The only environment fact in this report that is about a *second program*, and it earns its
+   * line because #5177 made `serve` a launcher and nothing installed the thing it launches: for a
+   * while the answer to "why does serve not work" was invisible from inside the CLI. It is now
+   * fetched on first use ([ServerDistributionProvision]), so "none yet" is a normal state on a
+   * fresh install rather than a fault — reported as such, with the release that would be fetched
+   * named so a skew between the two is readable here rather than from a stack trace.
+   *
+   * Never fetches. Doctor is expected to be cheap and to work offline; a 120 MB download behind an
+   * environment check is neither.
+   */
+  private fun checkServerBinary() {
+    val pinned = ServerDistributionProvision.version()
+    val choice = ServerBinaryDiscovery.choose(emptyList())
+    if (choice != null) {
+      val pin =
+        if (choice.source == ServerBinaryDiscovery.CACHE) "This CLI is pinned to server $pinned"
+        else "This CLI is pinned to server $pinned, which it fetches when it finds none"
+      addCheck(
+        DoctorCheck(
+          id = "env.preview-server",
+          category = "env",
+          status = "ok",
+          message = "preview server ${choice.binary} (from ${choice.source})",
+          detail = "`serve` and `browse` exec this; every other command needs no server. $pin",
+        )
+      )
+      return
+    }
+    val offline =
+      System.getProperty("composeai.bundle.offline").toBoolean() ||
+        System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1"
+    addCheck(
+      DoctorCheck(
+        id = "env.preview-server",
+        category = "env",
+        status = if (offline) "warning" else "ok",
+        message =
+          if (offline) "no preview server, and offline mode is set"
+          else "no preview server yet; `serve` fetches $pinned on first use",
+        detail =
+          "checked ${ServerBinaryDiscovery.FLAG}, ${ServerBinaryDiscovery.ENV}, PATH and " +
+            "${ServerDistributionProvision.cacheDir(pinned).absolutePath}",
+        remediation =
+          if (!offline) null
+          else
+            DoctorRemediation(
+              summary =
+                "run `compose-preview serve` once with network access to cache the server, or " +
+                  "unpack the distribution yourself and set ${ServerBinaryDiscovery.ENV}",
+              commands =
+                listOf("curl -L -o server.tar.gz ${ServerDistributionProvision.assetUrl(pinned)}"),
+            ),
       )
     )
   }

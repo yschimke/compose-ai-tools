@@ -934,13 +934,21 @@ val generateCliVersionResource =
     // shared cache and the plugin-side reader resolve the same directory; the plugin bakes the
     // same value through `generatePluginVersionResource`. See `XrCompositeProvision`.
     val xrCompositeVersion = libs.versions.xr.composite.get()
+    // The preview-server release `serve`/`browse` launch, and which `ServerDistributionProvision`
+    // fetches on first use. The catalog pin, NOT this CLI's version: the server releases on its own
+    // cadence from its own repository, and an installed CLI cannot read the catalog. See
+    // `SERVE_VERSION`.
+    val serveVersion = libs.versions.composeai.preview.serve.get()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
+    inputs.property("serveVersion", serveVersion)
     outputs.dir(outputDir)
     doLast {
       val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
       file.parentFile.mkdirs()
-      file.writeText("version=$cliVersion\nxrCompositeVersion=$xrCompositeVersion\n")
+      file.writeText(
+        "version=$cliVersion\nxrCompositeVersion=$xrCompositeVersion\nserveVersion=$serveVersion\n"
+      )
     }
   }
 

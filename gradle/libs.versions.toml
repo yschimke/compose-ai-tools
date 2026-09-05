@@ -375,6 +375,13 @@ composeai-contracts = "2.5.0"
 # GONE from this catalog: the module moved here in 1.77.0 (#5137), the server now consumes it from
 # this repository (compose-preview-server#289), and 3.0.0 retired the old coordinate at its final
 # 2.x. `:cli` depends on `project(":render-host")`; there is no version ref to share any more.
+#
+# This pin is also RUNTIME-load-bearing, not just a compile-time coordinate. `compose-preview serve`
+# is a launcher, and since #5183 the CLI fetches the server itself on first use: the pin is baked
+# into the jar as `SERVE_VERSION` and names the release whose `compose-preview-server-<pin>.tar.gz`
+# `ServerDistributionProvision` downloads. So a pin naming a release that does not exist, or one
+# with no distribution attached, is a `serve` that cannot start — `check_preview_server_pin.py`
+# fails the PR rather than letting that reach an install. docs/VERSIONING.md § 8.1.
 composeai-preview-serve = "3.0.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored

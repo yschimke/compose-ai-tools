@@ -170,6 +170,38 @@ Single release train governed by release-please. The plugin, CLI, MCP, extension
 
 Daemon protocol versions and per-data-product schema versions are decoupled — a release may bump `protocolVersion` from 1 to 2 without bumping the artifact major (the artifact major bumps for *consumer-visible* breakage; the protocol bump is invisible to plugin/CLI consumers as long as the daemon supports the previous version).
 
+### 8.1 The preview server is on its own train
+
+`compose-preview serve` and `browse` do not contain a server; they launch one. Since
+[#5177](https://github.com/yschimke/compose-ai-tools/issues/5177) the server body lives in
+[yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server) and releases
+on its own cadence — it went to `2.0.0` when it left, while this repository was still on `1.x`, so
+**the two version lines mean nothing to each other**. A CLI version does not name a server version
+and never will.
+
+What names one is the `composeai-preview-serve` pin in
+[`gradle/libs.versions.toml`](../gradle/libs.versions.toml). It is the single statement of which
+server a given CLI expects:
+
+- it is baked into the CLI jar at build time as `SERVE_VERSION`, so the installed CLI carries it;
+- `ServerDistributionProvision` fetches exactly that release's distribution
+  (`compose-preview-server-<pin>.tar.gz`) on the first `serve` that finds no server, and caches it
+  under `<cache>/composeai/preview-server/<pin>/` — keyed on the server's version, so a CLI upgrade
+  does not orphan an unchanged server;
+- `compose-preview doctor` reports it, beside whichever binary it actually found (`env.preview-server`).
+
+A **point pin, never a range or `latest`**, for the reason every other cross-repository pin here is
+one: resolving at run time would let a server this CLI has never been built against arrive under it
+without a pull request. Moving it is the reviewed act, and the `XR Composite Pin` CI job fails a PR
+whose pin names a release that does not exist or carries no distribution — a pin that 404s is a
+`serve` that cannot start, which is what
+[#5183](https://github.com/yschimke/compose-ai-tools/issues/5183) reported.
+
+Skew is still possible and is bounded rather than prevented: an operator may point at any server
+they like with `COMPOSE_PREVIEW_SERVER` or `--server-binary` (that choice always wins over the
+fetched copy), and `COMPOSE_PREVIEW_SERVER_VERSION` overrides which release is fetched. Both are
+deliberate escape hatches; `doctor` is where you see which one is in effect.
+
 ## 9. Compatibility testing
 
 Three layers were designed; this is what each one actually does today.
