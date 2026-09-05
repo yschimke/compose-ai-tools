@@ -1108,7 +1108,8 @@ jobs:
             "server/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt" \
             "server/build.gradle.kts" \
             "server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js" \
-            "serve-web/src/scorer/tuning.ts"; do
+            "serve-web/src/scorer/tuning.ts" \
+            "scripts/design-artifacts/parity-issues.mjs"; do
             mkdir -p ".compose-preview-server/$(dirname "$rel")"
             curl -fsSL --retry 3 -o ".compose-preview-server/$rel" "$base/$rel"
           done

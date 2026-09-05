@@ -182,10 +182,21 @@ sealed interface ScreenValue {
    * A read through a fully-qualified path — `androidx.compose.material3.MaterialTheme.colorScheme
    * .primary`, `androidx.compose.ui.text.style.TextAlign.Center`.
    *
-   * Emitted fully qualified and therefore imported nowhere. That is not tidiness: an import can be
-   * shadowed by a same-named declaration in the package the caller chose for the generated file,
-   * and a qualified path cannot. It is also what keeps this case honest — there is no receiver to
-   * infer and no overload to resolve, so the only thing the generator is trusting is [typeFqn].
+   * The [rootFqn] is **imported** and the path written from its simple name, so this reads
+   * `Alignment.Start` and `MaterialTheme.colorScheme.primary` — what a person writes.
+   *
+   * It was emitted fully qualified for a while, and imported nowhere, on the reasoning that an
+   * import can be shadowed by a same-named declaration in the package the caller chose for the
+   * generated file while a qualified path cannot. The hazard is real and the trade was wrong: a
+   * screen names `Modifier` and `MaterialTheme` on nearly every node, so the whole file paid for it
+   * — `modifier = androidx.compose.ui.Modifier.size(24.dp)` is not a line anybody writes, and it is
+   * half qualified anyway, since the `size` beside it is a [Chain] link and imports. What survives
+   * of the reasoning is the conflict check, which refuses two roots claiming one simple name; the
+   * caller's own package remains unknowable here, and a collision with it fails at the import line
+   * rather than resolving to something else.
+   *
+   * Nothing about the type claim changes: there is no receiver to infer and no overload to resolve,
+   * so the only thing the generator is trusting is still [typeFqn].
    *
    * @property rootFqn the qualified name the path starts from. A class (`…MaterialTheme`), an
    *   object, or a top-level property.
@@ -204,10 +215,13 @@ sealed interface ScreenValue {
    * A call to a fully-qualified callable — `androidx.compose.ui.graphics.Color(0xFF6750A4)`,
    * `androidx.compose.foundation.layout.PaddingValues(16.dp)`.
    *
-   * Qualified for the same reason [Reference] is. A constructor and a top-level factory function
-   * are the same shape here on purpose: `Color(…)` is a function and `PaddingValues(…)` a
-   * constructor, the distinction is invisible at the call site, and a record that made a projection
-   * declare which one would only give it a second thing to get wrong.
+   * Imported for the same reason [Reference] is, and by the same rule: a top-level declaration
+   * imports itself and is written by simple name, while a member of an object imports the object,
+   * so `CardDefaults.cardColors(…)` keeps the qualifier a person would write rather than collapsing
+   * to a bare `cardColors(…)`. A constructor and a top-level factory function are the same shape
+   * here on purpose: `Color(…)` is a function and `PaddingValues(…)` a constructor, the distinction
+   * is invisible at the call site, and a record that made a projection declare which one would only
+   * give it a second thing to get wrong.
    *
    * @property positional arguments in declaration order.
    * @property named arguments by parameter name, appended after [positional].

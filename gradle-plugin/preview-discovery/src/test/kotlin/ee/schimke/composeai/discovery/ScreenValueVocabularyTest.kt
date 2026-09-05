@@ -107,7 +107,7 @@ class ScreenValueVocabularyTest {
   private val modifier = "androidx.compose.ui.Modifier"
 
   @Test
-  fun `a reference is emitted fully qualified and imported nowhere`() {
+  fun `a reference imports its root and is written from the root's simple name`() {
     val result =
       emitted(
         textNode(
@@ -120,13 +120,16 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
+    // `MaterialTheme.colorScheme.primary`, not the 52-character path it used to be. A screen names
+    // the theme once per coloured node, so this is most of what a generated file says.
+    assertThat(result.source).contains("color = MaterialTheme.colorScheme.primary")
+    assertThat(result.source).contains("import androidx.compose.material3.MaterialTheme")
     assertThat(result.source)
-      .contains("color = androidx.compose.material3.MaterialTheme.colorScheme.primary")
-    assertThat(result.source).doesNotContain("import androidx.compose.material3.MaterialTheme")
+      .doesNotContain("androidx.compose.material3.MaterialTheme.colorScheme")
   }
 
   @Test
-  fun `a reference with no members is a bare qualified read`() {
+  fun `a reference with no members is the imported simple name`() {
     val result =
       emitted(
         textNode(
@@ -134,7 +137,8 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    assertThat(result.source).contains("color = androidx.compose.ui.graphics.Color")
+    assertThat(result.source).contains("color = Color")
+    assertThat(result.source).contains("import androidx.compose.ui.graphics.Color")
   }
 
   @Test
@@ -159,7 +163,7 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
-  fun `a construct is a qualified call with positional then named arguments`() {
+  fun `a construct is an imported call with positional then named arguments`() {
     val result =
       emitted(
         textNode(
@@ -173,8 +177,68 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    assertThat(result.source)
-      .contains("color = androidx.compose.ui.graphics.Color(0.5, alpha = 1.0)")
+    assertThat(result.source).contains("color = Color(0.5, alpha = 1.0)")
+    assertThat(result.source).contains("import androidx.compose.ui.graphics.Color")
+  }
+
+  @Test
+  fun `a construct that is a member of an object imports the object, not the member`() {
+    // `CardDefaults.cardColors(…)` is what a person writes. Importing the member instead would
+    // emit a bare `cardColors(…)`, which compiles and reads like a local function.
+    val result =
+      emitted(
+        textNode(
+          "color" to
+            ScreenValue.Construct(
+              callableFqn = "androidx.compose.material3.ColorDefaults.brand",
+              typeFqn = color,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source).contains("color = ColorDefaults.brand()")
+    assertThat(result.source).contains("import androidx.compose.material3.ColorDefaults")
+    assertThat(result.source).doesNotContain("import androidx.compose.material3.ColorDefaults.brand")
+  }
+
+  @Test
+  fun `two references claiming one simple name are refused rather than resolved`() {
+    // The check that makes importing references safe enough to be worth the readability. Before
+    // they imported, two `Color`s from two packages could not collide because neither was written
+    // short; now the file-wide conflict check is what stands between them.
+    assertThat(
+        refusal(
+          textNode(
+            "color" to ScreenValue.Reference("androidx.compose.ui.graphics.Color", typeFqn = color),
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference("com.example.paint.Color", typeFqn = modifier),
+                links = listOf(ChainLink("androidx.compose.foundation.layout.fillMaxWidth")),
+                typeFqn = modifier,
+              ),
+          ),
+          catalog(text),
+        )
+      )
+      .contains(
+        "`Color` would be imported from androidx.compose.ui.graphics.Color and " +
+          "com.example.paint.Color, which Kotlin rejects as a conflicting import"
+      )
+  }
+
+  @Test
+  fun `a reference root named after the screen is refused, as a link is`() {
+    // The generated function would shadow the import, so the expression would name the screen.
+    // The chain-link path already refused this; a reference reaches the same rule now that it
+    // imports.
+    assertThat(
+        refusal(
+          textNode("color" to ScreenValue.Reference("com.example.paint.Screen", typeFqn = color)),
+          catalog(text),
+          name = "Screen",
+        )
+      )
+      .containsExactly("`Text`.`color` imports `Screen`, which is the screen's own name")
   }
 
   @Test
@@ -205,8 +269,11 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    assertThat(result.source)
-      .contains("modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(16.dp)")
+    // The line the qualification cost most: `Modifier` is the chain's receiver — a reference — and
+    // was spelled out while the `fillMaxWidth` beside it was already imported, so one expression
+    // carried two conventions.
+    assertThat(result.source).contains("modifier = Modifier.fillMaxWidth().padding(16.dp)")
+    assertThat(result.source).contains("import androidx.compose.ui.Modifier")
     assertThat(result.source).contains("import androidx.compose.foundation.layout.fillMaxWidth")
     assertThat(result.source).contains("import androidx.compose.foundation.layout.padding")
     assertThat(result.source).contains("import androidx.compose.ui.unit.dp")
@@ -351,7 +418,7 @@ class ScreenValueVocabularyTest {
         catalog(text),
       )
     assertThat(result.source)
-      .contains("color = androidx.compose.ui.graphics.Color(4284960932L, 2.0)")
+      .contains("color = Color(4284960932L, 2.0)")
   }
 
   @Test
@@ -379,7 +446,10 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    assertThat(result.source).contains("color = com.example.`in`.Palette.brand")
+    // The keyword is in the *import* now rather than in the expression, which is where a person
+    // would have put it: `import com.example.`in`.Palette`, then a plain `Palette.brand`.
+    assertThat(result.source).contains("color = Palette.brand")
+    assertThat(result.source).contains("import com.example.`in`.Palette")
   }
 
   @Test
@@ -1211,7 +1281,7 @@ class ScreenValueVocabularyTest {
         as ScreenGenerator.Result.Emitted
 
     assertThat(result.source)
-      .contains("val tintInitial = androidx.compose.material3.MaterialTheme.colorScheme.primary")
+      .contains("val tintInitial = MaterialTheme.colorScheme.primary")
     assertThat(result.source)
       .contains("mutableStateOf<androidx.compose.ui.graphics.Color>(tintInitial)")
   }
@@ -1289,7 +1359,7 @@ class ScreenValueVocabularyTest {
         as ScreenGenerator.Result.Emitted
 
     assertThat(result.source)
-      .contains("val tintInitial_ = androidx.compose.material3.MaterialTheme.colorScheme.primary")
+      .contains("val tintInitial_ = MaterialTheme.colorScheme.primary")
   }
 
   @Test

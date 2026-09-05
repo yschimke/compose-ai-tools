@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.81.0](https://github.com/yschimke/compose-ai-tools/compare/v1.80.0...v1.81.0) (2026-09-05)
+
+
+### Features
+
+* **mcp:** launch the MCP server instead of bundling it ([#5200](https://github.com/yschimke/compose-ai-tools/issues/5200)) ([36f3960](https://github.com/yschimke/compose-ai-tools/commit/36f3960635ff3fb88384719cf498ba40239a7f9c))
+* **screen:** let a generated screen carry an opt-in @Preview ([#5203](https://github.com/yschimke/compose-ai-tools/issues/5203)) ([1a0e973](https://github.com/yschimke/compose-ai-tools/commit/1a0e973740f53011e7b0e2a64e2560e6174804b0))
+
+
+### Bug Fixes
+
+* **daemon:** record the ABI :daemon:core actually has ([#5201](https://github.com/yschimke/compose-ai-tools/issues/5201)) ([4e9bfa6](https://github.com/yschimke/compose-ai-tools/commit/4e9bfa6289ef430e652f7f28990779f10e804ba9))
+* **scroll:** set aside chrome revealed at the foot of a slice when scoring a seam ([#5197](https://github.com/yschimke/compose-ai-tools/issues/5197)) ([6a9593f](https://github.com/yschimke/compose-ai-tools/commit/6a9593f822f6852ae5b79620845da56eaaf6add6))
+
 ## [1.80.0](https://github.com/yschimke/compose-ai-tools/compare/v1.79.0...v1.80.0) (2026-09-05)
 
 
