@@ -1053,6 +1053,9 @@ abstract class RobolectricRenderTestBase(
     // Same again for the still-capture quiescence probe: an unsettled capture recorded during THIS
     // render rides out in this preview's warnings sidecar (issue #4239).
     VisualSettleDiagnostics.beginPreview()
+    // And the LONG scroll driver: a stride that never landed on its planned offset is this
+    // preview's warning, not the next one's.
+    ScrollDriveDiagnostics.beginPreview()
     try {
       if (params.kind == PreviewKind.ACTIVITY || params.kind == PreviewKind.APP_TOUR) {
         // App-level previews: no composition to host — the real activity owns its content.
@@ -1144,6 +1147,11 @@ abstract class RobolectricRenderTestBase(
         // trustworthy?" — and because without it a spinner pinned to a deliberate phase and an
         // ordinary static preview are indistinguishable to a consumer (issue #4829).
         VisualSettleDiagnostics.drainPinned(),
+        // A LONG stride the driver could not land on its planned offset (see
+        // [ScrollDriveDiagnostics]) — the seam stitched there is the one part of the tall PNG a
+        // consumer should not trust.
+        ScrollDriveDiagnostics.drainPreview(),
+        ScrollDriveDiagnostics.drainSeams(),
       )
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
@@ -3150,6 +3158,11 @@ private fun handleLongCaptureInternal(
   val slicesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_slices")
   slicesDir.deleteRecursively()
   slicesDir.mkdirs()
+  // Developer switch: leave the per-slice PNGs, the settled final frame, the reported offsets and
+  // the driver's stride log behind in `slicesDir` so the stitcher can be iterated on offline
+  // (`ScrollSliceStitcherHarnessTest` in `:data-scroll-core`).
+  val keepSlices = System.getenv("COMPOSEAI_KEEP_SCROLL_SLICES") == "1"
+  val stepLog = mutableListOf<String>()
 
   // For stitched capture on round devices, suppress per-slice round crop —
   // otherwise every slice has a circle cut out of it and the stitched output
@@ -3199,13 +3212,25 @@ private fun handleLongCaptureInternal(
     // consecutive slice pair has a ~20% physical overlap for the
     // content-aware stitcher to lock onto). The stitcher uses
     // scrolledPx only as a hint — actual vertical placement is decided
-    // by pixel matching.
+    // by pixel matching — but a hint the driver *measured* off the
+    // content's own semantics bounds (rather than the scroller's
+    // `ScrollAxisRange`, which is not a pixel position on a lazy
+    // list) narrows that search to a few pixels either side. The
+    // first slice is at rest at offset 0, so it is measured by
+    // definition; `onStep` fires before `onSlice` for every later one.
+    var lastStepMeasured = true
     val result =
       driveScrollByViewport(
         rule = rule,
         axis = scroll.axis.toProductAxis(),
         stepPx = plan.stepPx,
         maxScrollPx = scroll.maxScrollPx,
+        onStep = { step ->
+          lastStepMeasured = step.measuredPx != null
+          stepLog += step.describe()
+          ScrollDriveDiagnostics.record("@ScrollingPreview(LONG) on '$previewId'", step)
+        },
+        trace = if (keepSlices) ({ line -> stepLog += line }) else null,
       ) { scrolledPx ->
         val sliceFile = File(slicesDir, "slice_${slices.size}.png")
         if (settleFrames) {
@@ -3232,7 +3257,7 @@ private fun handleLongCaptureInternal(
             roborazziOptions = sliceRoborazziOptions,
           )
         }
-        slices += SliceCapture(scrolledPx, sliceFile)
+        slices += SliceCapture(scrolledPx, sliceFile, measured = lastStepMeasured)
       }
     if (result is ScrollDriveResult.NoScrollable) {
       System.err.println(
@@ -3294,6 +3319,9 @@ private fun handleLongCaptureInternal(
       viewportLayoutPx = viewportLayoutPx,
       outputFile = outputFile,
       isRound = isRound,
+      onSeam = { seam ->
+        ScrollDriveDiagnostics.recordSeam("@ScrollingPreview(LONG) on '$previewId'", seam)
+      },
     ) ?: return false
     if (isRound) applyWearPillClip(outputFile)
     System.err.println(
@@ -3301,7 +3329,13 @@ private fun handleLongCaptureInternal(
     )
     return true
   } finally {
-    slicesDir.deleteRecursively()
+    if (!keepSlices) {
+      slicesDir.deleteRecursively()
+    } else {
+      File(slicesDir, "scrolled.txt")
+        .writeText(slices.joinToString("\n") { it.scrolledLayoutPx.toString() })
+      File(slicesDir, "steps.txt").writeText(stepLog.joinToString("\n"))
+    }
   }
 }
 

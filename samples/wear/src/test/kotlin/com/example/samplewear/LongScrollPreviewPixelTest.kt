@@ -137,6 +137,33 @@ class LongScrollPreviewPixelTest {
   }
 
   /**
+   * The renderer now verifies every LONG stride against the content's semantics bounds and every
+   * seam against the pixels, and writes anything it could not verify to `<png>.warnings.json` as
+   * `unlandedScrollSteps` / `unverifiedScrollSeams`. A stitched still that ships with either is
+   * untrustworthy somewhere along its height; this is the assertion a consumer makes to refuse one,
+   * applied to both TLC fixtures.
+   */
+  @Test
+  fun `LONG captures land every stride and verify every seam`() {
+    for (png in
+      listOf(
+        longPng,
+        renderFile(
+          scrollLongDir,
+          "ActivityListMotionLongPreview_Devices_Large_Round",
+          "_SCROLL_long",
+        ),
+        renderFile(scrollLongDir, "SettingsMainScreenLongPreview_Devices_Large_Round"),
+      )) {
+      val sidecar = File(png.parentFile, png.name + ".warnings.json")
+      if (!sidecar.exists()) continue
+      val json = sidecar.readText()
+      assertThat(json).contains("\"unlandedScrollSteps\":[]")
+      assertThat(json).contains("\"unverifiedScrollSeams\":[]")
+    }
+  }
+
+  /**
    * Reads every frame of an animated GIF into a list of [BufferedImage] — same standard
    * `javax.imageio` reader plugin the encoder writes against (mirrors the android sample's
    * `ScrollPreviewPixelTest`).

@@ -1283,6 +1283,7 @@ class RenderEngine(
     // And for the still-capture quiescence probe, so an unsettled daemon still is attributed to
     // this render rather than leaking into the next one (issue #4239).
     ee.schimke.composeai.renderer.VisualSettleDiagnostics.beginPreview()
+    ee.schimke.composeai.renderer.ScrollDriveDiagnostics.beginPreview()
     // B2.0 — install the child classloader as the context classloader for the duration of the
     // render dispatch. Compose's reflection paths (notably PreviewParameter providers — see
     // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would
@@ -1331,6 +1332,8 @@ class RenderEngine(
       CoilLoadDiagnostics.drainPreview(),
       ee.schimke.composeai.renderer.VisualSettleDiagnostics.drainPreview(),
       ee.schimke.composeai.renderer.VisualSettleDiagnostics.drainPinned(),
+      ee.schimke.composeai.renderer.ScrollDriveDiagnostics.drainPreview(),
+      ee.schimke.composeai.renderer.ScrollDriveDiagnostics.drainSeams(),
     )
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
