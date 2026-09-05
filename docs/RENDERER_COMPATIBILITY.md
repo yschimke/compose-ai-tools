@@ -282,6 +282,15 @@ resolves:
 | 1.0.0 – 1.1.1 | `compose(…, size, …)` — the only one there is | `provideGlance` |
 | neither matches | `GlanceComposerUnavailableException` | — |
 
+Parameters the renderer has no value for — the `GlanceId`, the options
+`Bundle`, the widget state — are **not** passed as `null`: the call goes through
+Kotlin's `$default` bridge with a mask, so Glance substitutes its own defaults.
+That distinction is load-bearing rather than tidy. 1.1.x defaults
+`compose(id = …)` to `createFakeAppWidgetId()` and then casts it to
+`AppWidgetId`, so a hand-written `null` dies with an NPE inside
+`runComposition` — verified by forcing the sample down to `glance-appwidget`
+1.1.1 and rendering, which is the only way to exercise the fallback at all.
+
 The synthetic widget provides the same content from both entry points, so the
 capture does not depend on which one the consumer's version offers. When nothing
 matches, the failure is bounded and named: the exception's message reaches the

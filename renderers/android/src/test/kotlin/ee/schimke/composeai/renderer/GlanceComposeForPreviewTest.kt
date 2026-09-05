@@ -172,7 +172,11 @@ class GlanceComposeForPreviewTest {
   }
 
   @Test
-  fun `hands the pre-1_2_0 compose fallback the size and nulls the rest`() {
+  fun `hands the pre-1_2_0 compose fallback the size and defaults the rest`() {
+    // Not nulls: Glance 1.1.x defaults `compose(id = …)` to `createFakeAppWidgetId()` and then
+    // casts it to `AppWidgetId`, so our own null died with an NPE inside `runComposition` — the
+    // real 1.1.1 failure this path was written for. Going through the `${'$'}default` bridge is
+    // what lets the library fill its own parameters.
     val plan = GlanceComposeForPreview.resolveIn(Glance11xComposerFixture::class.java)
 
     runBlocking {
@@ -186,9 +190,34 @@ class GlanceComposeForPreviewTest {
     }
 
     assertEquals(
-      listOf("compose(id=null, options=null, size=${DpSize(300.dp, 200.dp)}, state=null)"),
+      listOf(
+        "compose(id=fake-widget-id, options=null, " +
+          "size=${DpSize(300.dp, 200.dp)}, state=library-default-state)"
+      ),
       GlanceComposerCalls.recorded,
     )
+  }
+
+  @Test
+  fun `masks exactly the parameters it has no value for`() {
+    val plan = GlanceComposeForPreview.resolveIn(Glance11xComposerFixture::class.java)
+
+    assertNotNull("the compose overload has defaults, so a bridge must exist", plan.defaults)
+    // Value parameters, receiver excluded: context=0, id=1, options=2, size=3, state=4. We supply
+    // context and size; the other three are the library's to fill.
+    assertEquals(0b10110, plan.defaultsMask)
+    assertTrue(plan.usesDefaults)
+  }
+
+  @Test
+  fun `calls the real method directly when it fills every parameter`() {
+    // The 1.2.0 path supplies all of context, widgetCategory and info, so there is nothing to
+    // default and the bridge stays out of it — the call is exactly what the old compiled call site
+    // made, which is why the pinned-Glance renders are byte-identical.
+    val plan = GlanceComposeForPreview.resolveIn(Glance120ComposerFixture::class.java)
+
+    assertEquals(0, plan.defaultsMask)
+    assertFalse(plan.usesDefaults)
   }
 
   @Test
