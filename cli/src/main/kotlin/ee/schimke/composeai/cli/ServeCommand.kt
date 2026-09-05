@@ -1,78 +1,79 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.cli.serve.ServeBuildHost
-import ee.schimke.composeai.cli.serve.ServeCommandOptions
-import ee.schimke.composeai.cli.serve.ServeDiscovery
-import ee.schimke.composeai.cli.serve.ServeRunner
-import ee.schimke.composeai.previewdata.PreviewModule
-import ee.schimke.composeai.previewdriver.GradleConnection
-import java.io.File
+import kotlin.system.exitProcess
 
-/** Thin `compose-preview serve` adapter: server argv plus the CLI-owned Gradle build operations. */
-class ServeCommand(args: List<String>, browseProject: Boolean = false) :
-  Command(args), ServeBuildHost {
+/**
+ * `compose-preview serve` — a launcher for the published preview server.
+ *
+ * This command used to *be* the server: it implemented the server's `ServeBuildHost` interface and
+ * ran `ServeRunner` in this process, which is why `:cli` linked `compose-preview-serve` and why the
+ * dependency cycle in yschimke/compose-preview-server#180 had a forward edge at all. An offline CLI
+ * carried `ktor-server-*`, `jmdns` and `kotlin-reflect` so that four commands which never open a
+ * socket could reach types filed in the same package as a web server.
+ *
+ * Now it execs the server binary, and the Gradle work the server needs travels the other way: the
+ * server spawns `compose-preview build-host --stdio` (see [BuildHostCommand]) when it wants a local
+ * build. Neither side links the other.
+ *
+ * **Arguments pass through untouched.** This deliberately parses nothing beyond finding the binary:
+ * the server owns its own flags, and a launcher that validated them would be a second copy of that
+ * surface, drifting from the first. `--help` reaches the server too, which is where the answer
+ * actually lives.
+ */
+class ServeCommand(private val args: List<String>, private val browseProject: Boolean = false) {
 
-  internal val options =
-    ServeCommandOptions(
-      args = args,
-      browseProject = browseProject,
-      defaultTimeoutSeconds = GradleConnection.DEFAULT_TIMEOUT_SECONDS,
-      previewMatcher = { id, exactId, filter, previewRef, className, functionName ->
-        previewIdMatchesRequest(
-          id,
-          exactId = exactId,
-          filter = filter,
-          previewRef = previewRef,
-          className = className,
-          functionName = functionName,
+  fun run() {
+    val choice = ServerBinaryDiscovery.choose(args)
+    if (choice == null) {
+      System.err.println(ServerBinaryDiscovery.installationHint())
+      exitProcess(1)
+    }
+    val command = launchCommand(choice.binary)
+    val exit =
+      try {
+        ProcessBuilder(command).inheritIO().start().waitFor()
+      } catch (t: Throwable) {
+        System.err.println(
+          "could not start ${choice.binary} (from ${choice.source}): " +
+            "${t.message ?: t.javaClass.name}"
         )
-      },
-    )
+        System.err.println()
+        System.err.println(ServerBinaryDiscovery.installationHint())
+        exitProcess(1)
+      }
+    exitProcess(exit)
+  }
 
-  override fun run() {
-    if (options.helpRequested) {
-      options.printUsage()
-      return
+  /**
+   * The argv handed to the server.
+   *
+   * `--server-binary` is this launcher's own flag and is dropped rather than forwarded — the server
+   * has no such option, and passing it through would make every invocation fail on an unknown
+   * argument. Everything else, including the `serve` subcommand the server accepts as an alias, is
+   * the caller's.
+   *
+   * Nothing is added for the build host. The server discovers `compose-preview` itself, by the same
+   * flag/environment/PATH ordering this class uses, and a launcher that guessed a path here would
+   * override an operator who had already chosen one.
+   */
+  internal fun launchCommand(binary: String): List<String> = buildList {
+    add(binary)
+    add("serve")
+    addAll(forwardedArgs())
+  }
+
+  private fun forwardedArgs(): List<String> {
+    val forwarded = mutableListOf<String>()
+    var index = 0
+    while (index < args.size) {
+      if (args[index] == ServerBinaryDiscovery.FLAG) {
+        // Skip the flag and its value.
+        index += 2
+        continue
+      }
+      forwarded += args[index]
+      index++
     }
-    // The extracted server asks for desktop sidecars only when it assembles a desktop daemon lane.
-    // Registering the bridge is network-free; provisioning remains lazy so view-only and Android
-    // bundle servers continue to start from a cold cache in offline mode.
-    System.setProperty(
-      "composeai.cli.skikoProvisionerClass",
-      "ee.schimke.composeai.cli.SkikoNativeProvisionKt",
-    )
-    ServeRunner(options, this).run()
-  }
-
-  override fun autoInjectInitScriptArgs(projectRoot: File): List<String> =
-    autoInjectInitScriptArgs(args, projectRoot = projectRoot)
-
-  override fun gradleProjectRoot(): File? = findProjectRoot()
-
-  override fun gradleVariantArgs(): List<String> = variantGradleArgs()
-
-  override fun gradleBuildArgs(extra: List<String>): List<String> = gradleArgsWithForce(extra)
-
-  override fun gradleProjects(): List<PreviewModule> {
-    var found = emptyList<PreviewModule>()
-    withGradle { gradle -> found = gradle.findGradleProjects(timeoutSeconds) }
-    return found
-  }
-
-  override fun runGradleTasks(
-    vararg tasks: String,
-    arguments: List<String>,
-    silenceStdout: Boolean,
-  ): Boolean {
-    var ok = false
-    withGradle(silenceStdout = silenceStdout) { gradle ->
-      ok = runGradle(gradle, *tasks, arguments = arguments)
-    }
-    return ok
-  }
-
-  override fun discoverAndBuild(silenceStdout: Boolean): ServeDiscovery {
-    val outcome = renderAllModules(silenceStdout = silenceStdout)
-    return ServeDiscovery(buildOk = outcome.buildOk, manifests = outcome.manifests)
+    return if (browseProject) BrowseCommand.serveArgs(forwarded) else forwarded
   }
 }
