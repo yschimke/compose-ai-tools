@@ -93,6 +93,50 @@ object ScreenGenerator {
     data class Refused(val reasons: List<String>) : Result
   }
 
+  /**
+   * The design environment a generated `@Preview` should reproduce, or null for no preview.
+   *
+   * Opt-in, and deliberately so. `@Preview` lives in `androidx.compose.ui.tooling.preview`, which
+   * is an Android tooling dependency a consumer of this generator need not have on its compile
+   * classpath — the Gradle plugin generates screens into builds that do not. Emitting it always
+   * would trade "the file compiles" for "the file previews", which is the wrong way round for the
+   * caller that only wanted source.
+   *
+   * The values are the design's own environment rather than `@Preview` defaults, because a design
+   * authored at 411x914 in dark at a 1.3 font scale and previewed at Android Studio's defaults is a
+   * different picture from the one its author approved — and the whole point of pasting the export
+   * into an IDE is to see that picture.
+   *
+   * [locale] is wire data. It reaches the emitted file inside a string literal, so it is validated
+   * against a language-tag shape rather than escaped: a value that is not one is a projection bug
+   * worth a refusal, not something to quietly pass through into source this generator signs.
+   */
+  data class Preview(
+    /** Design width in dp. Omitted from the annotation when null, so `@Preview` decides. */
+    val widthDp: Int? = null,
+    /** Design height in dp. Omitted when null. */
+    val heightDp: Int? = null,
+    /** Font scale, emitted as a `Float` literal. Omitted when null. */
+    val fontScale: Double? = null,
+    /** BCP-47-ish language tag, e.g. `en-US`. Omitted when null. */
+    val locale: String? = null,
+    /**
+     * Whether the design is dark, emitted as `uiMode = …UI_MODE_NIGHT_YES`.
+     *
+     * Fully qualified through `android.content.res.Configuration` rather than imported: the
+     * constant is Android-only and this keeps it out of the import list, where it would collide
+     * with nothing today but would still be a name the file spends for one integer.
+     */
+    val darkMode: Boolean = false,
+    /**
+     * Paints the preview's background rather than compositing on transparency.
+     *
+     * True by default because a transparent preview of a screen designed against a surface reads as
+     * a rendering fault to the person who pasted it.
+     */
+    val showBackground: Boolean = true,
+  )
+
   private const val INDENT = "    "
 
   fun generate(
@@ -100,6 +144,7 @@ object ScreenGenerator {
     components: ComponentRecordFile,
     packageName: String = "generated.screen",
     expressionPackages: Set<String> = emptySet(),
+    preview: Preview? = null,
   ): Result {
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
@@ -121,6 +166,10 @@ object ScreenGenerator {
       return Result.Refused(
         listOf("screen name `${document.name}` is not a usable Kotlin function name")
       )
+    }
+    if (preview != null) {
+      val bad = previewRefusals(preview)
+      if (bad.isNotEmpty()) return Result.Refused(bad)
     }
     // **Schema 1 is refused outright**, rather than read with a growing list of exceptions.
     //
@@ -172,7 +221,17 @@ object ScreenGenerator {
         .filter {
           claimants.getValue(it.symbol.name).size == 1 &&
             it.symbol.name != document.name &&
-            it.symbol.name !in RESERVED_BY_THE_WRAPPER
+            it.symbol.name !in RESERVED_BY_THE_WRAPPER &&
+            // Both only when a preview is emitted, because only then does the file spend these
+            // names; reserving them always would needlessly qualify a component in every other
+            // screen. `Preview` is the annotation's own simple name, and the wrapper is a
+            // top-level declaration that would *win* over an import of the same name — so a
+            // component called `HomeScreenPreview` in a `HomeScreen` would silently become a call
+            // to the wrapper, which calls the screen, which renders it: a stack overflow standing
+            // in for the component somebody placed.
+            (preview == null ||
+              (it.symbol.name != PREVIEW_SIMPLE_NAME &&
+                it.symbol.name != previewFunctionName(document.name)))
         }
         .map { it.canonicalId }
         .toSet()
@@ -322,7 +381,10 @@ object ScreenGenerator {
     val androidxOptIns = context.androidxOptIns.distinct().sorted()
     val optIns = (context.optIns - context.androidxOptIns).distinct().sorted()
     val imports =
-      (context.imports + context.extensionImports + "androidx.compose.runtime.Composable")
+      (context.imports +
+          context.extensionImports +
+          "androidx.compose.runtime.Composable" +
+          listOfNotNull(PREVIEW_ANNOTATION.takeIf { preview != null }))
         .distinct()
         .sorted()
     // Kotlin calls two imports of one simple name a conflicting import and compiles neither. The
@@ -377,6 +439,10 @@ object ScreenGenerator {
       declarations.forEach { appendLine("    $it") }
       appendLine(body)
       appendLine("}")
+      if (preview != null) {
+        appendLine()
+        append(previewFunction(document.name, preview))
+      }
     }
     return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
   }
@@ -1166,4 +1232,76 @@ object ScreenGenerator {
    * the screen's own name and a two-package collision already get.
    */
   private val RESERVED_BY_THE_WRAPPER = setOf("Composable")
+
+  /** The tooling annotation a [Preview] emits, imported only when one is asked for. */
+  private const val PREVIEW_ANNOTATION = "androidx.compose.ui.tooling.preview.Preview"
+
+  private const val PREVIEW_SIMPLE_NAME = "Preview"
+
+  /** The wrapper's name, needed before it is emitted so a component cannot be shadowed by it. */
+  private fun previewFunctionName(screenName: String) = "$screenName$PREVIEW_SIMPLE_NAME"
+
+  /**
+   * A language tag this generator is willing to put inside a string literal.
+   *
+   * Letters, digits and separators only. `@Preview(locale = …)` takes a tag such as `en-US`, and
+   * anything outside this shape is either not a tag or is trying to be something other than a tag —
+   * a quote or a newline would close the literal and continue in code. Escaping it would also work
+   * and is what [ScreenValue.Text] does for values a designer typed; a locale is not typed prose,
+   * so a wrong one is worth naming rather than smuggling through as an escaped string that no
+   * Android runtime will resolve anyway.
+   */
+  private val LANGUAGE_TAG = Regex("[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*")
+
+  /** Every problem with [preview], so a caller fixes them in one pass rather than one per run. */
+  private fun previewRefusals(preview: Preview): List<String> = buildList {
+    preview.widthDp?.let { if (it <= 0) add("preview widthDp must be positive, not $it") }
+    preview.heightDp?.let { if (it <= 0) add("preview heightDp must be positive, not $it") }
+    preview.fontScale?.let {
+      // `!(it > 0)` rather than `it <= 0` so a NaN — which loses every comparison — is caught here
+      // instead of reaching the file as `fontScale = NaNf`, which does not compile.
+      if (!(it > 0.0) || it.isInfinite())
+        add("preview fontScale must be finite and positive, not $it")
+    }
+    preview.locale?.let {
+      if (!LANGUAGE_TAG.matches(it)) add("preview locale `$it` is not a language tag")
+    }
+  }
+
+  /**
+   * The `@Preview` wrapper: a private, zero-argument composable that calls the screen.
+   *
+   * A wrapper rather than the annotation on the screen itself. The screen is the artifact a caller
+   * pastes and then *calls* from their own code; annotating it would make every call site carry a
+   * preview, and a `@Preview` function is expected to take no arguments — a constraint that belongs
+   * to the preview, not to the screen it previews.
+   */
+  private fun previewFunction(screenName: String, preview: Preview): String {
+    val arguments = buildList {
+      preview.widthDp?.let { add("widthDp = $it") }
+      preview.heightDp?.let { add("heightDp = $it") }
+      // `Float` literal: `@Preview.fontScale` is a Float and an unsuffixed decimal is a Double.
+      preview.fontScale?.let { add("fontScale = ${it}f") }
+      preview.locale?.let { add("locale = \"$it\"") }
+      if (preview.showBackground) add("showBackground = true")
+      if (preview.darkMode) {
+        add("uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES")
+      }
+    }
+    return buildString {
+      if (arguments.isEmpty()) {
+        appendLine("@$PREVIEW_SIMPLE_NAME")
+      } else {
+        // One argument per line, always. A design carrying a locale and a uiMode runs well past
+        // 100 columns on one line, and ktfmt is not run over what this emits.
+        appendLine("@$PREVIEW_SIMPLE_NAME(")
+        arguments.forEach { appendLine("$INDENT$it,") }
+        appendLine(")")
+      }
+      appendLine("@Composable")
+      appendLine("private fun ${previewFunctionName(screenName)}() {")
+      appendLine("$INDENT$screenName()")
+      appendLine("}")
+    }
+  }
 }
