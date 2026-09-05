@@ -887,14 +887,24 @@ jobs:
       # install the way those are: a fallback is right for a diff that can
       # degrade to strict bytes, and wrong for the tests that prove the diff.
       # `PerceptualLibrariesTest` fails the suite if this step is ever dropped.
-      # Pinned to the RELEASE this build compiles against, not the contracts repo's default
+      # PINNED to the RELEASE this build compiles against, not the contracts repo's default
       # branch. The gate compares a source file there against bytecode resolved from
-      # `composeai-contracts` in the catalog; an unpinned checkout compares the two whenever
+      # `composeai-contracts` in the catalog; an unpinned fetch compares the two whenever
       # those diverge, which passes a writer change matching newer source but incompatible with
       # the reader actually on the classpath, and fails unrelated pull requests when external
       # `main` moves.
-      - id: contracts-ref
-        name: Resolve the pinned contracts release
+      #
+      # FETCHED, not checked out, and only the one file the gate reads — the same arrangement, for
+      # the same reason, as the preview-server mirror sources in Design Artifacts Driver Tests
+      # below. `actions/checkout` of another repository at a ref read from
+      # `gradle/libs.versions.toml`, in a job that runs ~35 script tests after it, makes every one
+      # of those a step CodeQL rates high as "cache poisoning via execution of untrusted code"
+      # (`actions/cache-poisoning/poisonable-step`) — so adding a test here used to add an alert.
+      # Downloading one file that is only ever parsed as text removes the premise rather than
+      # suppressing the finding: nothing from that repository is executed, and the worst a
+      # rewritten catalog line can do is point the gate at a different published tag, which fails
+      # loudly below.
+      - name: Fetch the pinned contracts JVM reader
         run: |
           set -euo pipefail
           version=$(sed -n 's/^composeai-contracts = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
@@ -902,14 +912,12 @@ jobs:
             echo "::error::could not read composeai-contracts from gradle/libs.versions.toml"
             exit 1
           fi
-          echo "ref=v$version" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: yschimke/compose-preview-contracts
-          ref: ${{ steps.contracts-ref.outputs.ref }}
-          persist-credentials: false
-          path: .compose-preview-contracts
-          fetch-depth: 1
+          # The half of the daemon-launch mirror that lives in the contracts repository; the gate
+          # exits non-zero if COMPOSE_PREVIEW_CONTRACTS_ROOT does not contain exactly this path.
+          rel="daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
+          mkdir -p ".compose-preview-contracts/$(dirname "$rel")"
+          curl -fsSL --retry 3 -o ".compose-preview-contracts/$rel" \
+            "https://raw.githubusercontent.com/yschimke/compose-preview-contracts/v$version/$rel"
       - name: Install perceptual-diff libraries
         run: python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10'
       - name: Run compare-previews tests
