@@ -100,8 +100,21 @@ runtime onto `:cli`'s runtime classpath. The forward edge is three coordinates, 
 analysis on
 [compose-preview-server#180](https://github.com/yschimke/compose-preview-server/issues/180) counted.
 
-The allowlist is the ratchet: it shrinks to empty as `:render-host` moves here and `serve` becomes a
-launcher, and it can only shrink without someone editing `CheckLayerBoundary.kt` and saying why.
+**The allowlist is now empty, which is what closing the cycle looks like.** It held three
+coordinates; `compose-preview-render-host` and the `compose-preview-ui-builder-runtime` it dragged
+went when the render host moved here, and `compose-preview-serve` went when `serve` and `browse`
+became launchers over the published server binary. An empty positive allowlist means any
+`ee.schimke.composeai:compose-preview-*` coordinate reaching a runtime classpath fails, with no
+exceptions to argue about.
+
+One edge survives, deliberately, and this task cannot see it. `compose-preview-serve` is still a
+`testImplementation` of `:cli`: two tests drive the CLI's own HTTP clients against a real
+`ServeHttpServer` to catch the two repositories' independently-declared wire types drifting apart,
+and five of those cases approve or deny a grant by reaching into the server's store, which is only
+possible in-process. A stub would make them pass while testing nothing they exist for — the point is
+checking the halves against *each other*, not each against its own idea of the other. The gate reads
+`runtimeClasspath`, so it does not fail on that, and should not: the claim it enforces is about what
+ships.
 
 Two limits worth stating rather than discovering later. The task covers projects with a
 `runtimeClasspath`, so Android modules — which resolve per-variant classpaths — are not checked;
