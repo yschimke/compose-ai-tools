@@ -374,7 +374,7 @@ composeai-contracts = "2.5.0"
 # link a web server (yschimke/compose-preview-server#38, this repository's #4832). ONE version ref
 # for both, deliberately: they are cut from one build and one tag over there, and a skew between the
 # server and the render host it sits on top of is not a state that repository can produce.
-composeai-preview-serve = "2.21.0"
+composeai-preview-serve = "3.0.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
