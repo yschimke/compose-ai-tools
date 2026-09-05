@@ -1895,6 +1895,14 @@
     "sha256": "4ea495ed4864ab56f8dc3552f1867aefb75998a74f92752091b90597907fd4fb",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ParameterKnobPreviewsKt.ParameterKnobEmphasisPreview_Parameter Knob Emphasis": {
+    "captureLabel": "",
+    "functionName": "ParameterKnobEmphasisPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ParameterKnobEmphasisPreview_Parameter_Knob_Emphasis-d7ca14fe.png",
+    "sha256": "f1d10b54a8be4e9fb9afe7c6e7a1baee02b94fac2f81086d2828a134dc3b5c7c",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ParameterKnobPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.ParameterKnobPreviewsKt.ParameterKnobListPreview_Parameter Knob List": {
     "captureLabel": "",
     "functionName": "ParameterKnobListPreview",
