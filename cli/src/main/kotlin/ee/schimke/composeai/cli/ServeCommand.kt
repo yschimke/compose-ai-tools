@@ -43,6 +43,13 @@ class ServeCommand(
       System.err.println(ServerBinaryDiscovery.installationHint())
       exitProcess(1)
     }
+    // Before the exec, not after: the start script resolves its own `java`, so a JVM below the
+    // distribution's floor fails inside it with `UnsupportedClassVersionError` and no mention of
+    // Java versions. `null` means launch — every step of that check fails open.
+    ServerJavaPreflight.failure(choice, ReleasedDistribution.SERVER)?.let {
+      System.err.println(it)
+      exitProcess(1)
+    }
     val command = launchCommand(choice.binary)
     val exit =
       try {

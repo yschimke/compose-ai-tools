@@ -157,6 +157,13 @@ internal class McpCommand(
           System.err.println(ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP))
           exitProcess(1)
         }
+    // The same preflight `serve` runs, and it matters more here: an MCP host shows the user no
+    // stderr at all, so an `UnsupportedClassVersionError` inside the start script surfaces only as
+    // a server that will not connect. See `ServerJavaPreflight`.
+    ServerJavaPreflight.failure(choice, ReleasedDistribution.MCP)?.let {
+      System.err.println(it)
+      exitProcess(1)
+    }
     val command = mcpLaunchCommand(choice.binary, args)
     val exit =
       try {
