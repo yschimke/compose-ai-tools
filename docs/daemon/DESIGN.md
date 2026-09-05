@@ -87,6 +87,8 @@ renderers/desktop/                   UNCHANGED — existing Skiko renderer
 daemon/core/                NEW — pure JVM, renderer-agnostic
   src/main/kotlin/.../daemon/
     JsonRpcServer.kt                 stdio JSON-RPC + Content-Length framing
+    rpc/RpcMethodRegistry.kt         method → handler dispatch map + RpcPeer port
+    history/HistoryRpcHandlers.kt    the `history/*` methods, beside HistoryManager
     RenderHost.kt                    Abstract host interface
     IncrementalDiscovery.kt          Tier-2 scoped ClassGraph
     DependencyIndex.kt               Tier-3 ASM walk + reverse index (v2)

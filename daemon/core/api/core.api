@@ -2567,3 +2567,30 @@ public final class ee/schimke/composeai/daemon/history/WriteResult : java/lang/E
 	public static fun values ()[Lee/schimke/composeai/daemon/history/WriteResult;
 }
 
+public abstract interface class ee/schimke/composeai/daemon/rpc/RpcMethodHandler {
+	public abstract fun handle (Lee/schimke/composeai/daemon/protocol/JsonRpcRequest;)V
+}
+
+public final class ee/schimke/composeai/daemon/rpc/RpcMethodRegistry {
+	public static final field Companion Lee/schimke/composeai/daemon/rpc/RpcMethodRegistry$Companion;
+	public synthetic fun <init> (Ljava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getMethods ()Ljava/util/Set;
+	public final fun handler (Ljava/lang/String;)Lee/schimke/composeai/daemon/rpc/RpcMethodHandler;
+}
+
+public final class ee/schimke/composeai/daemon/rpc/RpcMethodRegistry$Builder {
+	public fun <init> ()V
+	public final fun register (Ljava/lang/String;Lee/schimke/composeai/daemon/rpc/RpcMethodHandler;)Lee/schimke/composeai/daemon/rpc/RpcMethodRegistry$Builder;
+}
+
+public final class ee/schimke/composeai/daemon/rpc/RpcMethodRegistry$Companion {
+	public final fun build (Lkotlin/jvm/functions/Function1;)Lee/schimke/composeai/daemon/rpc/RpcMethodRegistry;
+}
+
+public abstract interface class ee/schimke/composeai/daemon/rpc/RpcPeer {
+	public abstract fun decodeParams (Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/KSerializer;)Ljava/lang/Object;
+	public abstract fun encode (Lkotlinx/serialization/KSerializer;Ljava/lang/Object;)Lkotlinx/serialization/json/JsonElement;
+	public abstract fun getJson ()Lkotlinx/serialization/json/Json;
+	public abstract fun sendErrorResponse (Ljava/lang/Long;ILjava/lang/String;)V
+	public abstract fun sendResponse (JLkotlinx/serialization/json/JsonElement;)V
+}
