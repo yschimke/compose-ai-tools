@@ -70,6 +70,7 @@ them — `:daemon:core`'s `bta/` package and the VS Code extension's daemon clie
 The `design/` tree used to hold many speculative proposals; what remains are the
 specs the code actually depends on:
 
+- [design/BUILD_HOST_PROTOCOL_PREVIEWMODULE.md](design/BUILD_HOST_PROTOCOL_PREVIEWMODULE.md) — **decision requested**: where `PreviewModule` lives once `ServeBuildHost` becomes a wire protocol between the preview server and a `compose-preview build-host` process. Four options costed (contracts depending upward, redeclaring the shape there, moving the type down, or publishing the protocol from here), why the type's `java.io.File` and `Serializable` shape is owned by the Gradle Tooling API rather than by a wire, and a recommendation that turns on the change loop rather than on purity.
 - [design/REPOSITORY_LAYERS.md](design/REPOSITORY_LAYERS.md) — **normative**: which repository a module belongs in. Four layers (contracts = shape; compose-ai-tools = offline behaviour; compose-preview-server = HTTP and the surfaces over it; vscode/xr = leaves), a dependency may only point down, and the consequences that follow — why the Gradle Tooling API is permanently compose-ai-tools', and why a fourth repository is not the answer to a misplaced module.
 - [design/SPATIAL_SCENE_CONTRACT.md](design/SPATIAL_SCENE_CONTRACT.md) — the XR scene wire format (schema-generated Kotlin/TS/C++ mirrors).
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
