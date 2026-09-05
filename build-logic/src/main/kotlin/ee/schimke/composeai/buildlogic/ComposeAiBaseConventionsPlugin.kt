@@ -3,8 +3,10 @@ package ee.schimke.composeai.buildlogic
 import com.ncorti.ktfmt.gradle.KtfmtExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.register
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 
@@ -59,6 +61,50 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
     val cacheSalt = project.providers.gradleProperty("composeai.cacheSalt").orElse("0")
     project.tasks.withType<KotlinCompilationTask<*>>().configureEach {
       inputs.property("composeai.cacheSalt", cacheSalt)
+    }
+
+    registerLayerBoundaryCheck(project)
+  }
+
+  /**
+   * Wires [CheckLayerBoundary] onto every project that has a `runtimeClasspath`, and onto `check`
+   * so it runs where CI already looks rather than needing its own job.
+   *
+   * Registered from base-conventions for the same reason the cache salt is: this is the plugin
+   * every module applies. `plugins.withId("org.gradle.java")` is the guard because the java plugin
+   * is what creates `runtimeClasspath` — a project without one (the Android modules, the artwork
+   * and fixture projects) silently gets no task rather than a configuration failure.
+   */
+  private fun registerLayerBoundaryCheck(project: Project) {
+    project.plugins.withId("org.gradle.java") {
+      val task =
+        project.tasks.register<CheckLayerBoundary>("checkLayerBoundary") {
+          description =
+            "Fails if a compose-preview-server artifact reaches this project's runtime classpath."
+          group = "verification"
+
+          // Resolved identity rather than declared dependencies: a layer-2 artifact arriving
+          // through another POM is the case that matters and the case a build-file scan misses.
+          resolvedModules.set(
+            project.configurations.named("runtimeClasspath").flatMap { configuration ->
+              configuration.incoming.artifacts.resolvedArtifacts.map { artifacts ->
+                artifacts
+                  .mapNotNull { artifact ->
+                    (artifact.id.componentIdentifier as? ModuleComponentIdentifier)?.let {
+                      "${it.group}:${it.module}"
+                    }
+                  }
+                  .toSet()
+              }
+            }
+          )
+
+          allowedPreviewModules.set(
+            CheckLayerBoundary.ownPreviewModules + CheckLayerBoundary.knownLayerTwoEdges
+          )
+        }
+
+      project.tasks.named("check") { dependsOn(task) }
     }
   }
 }

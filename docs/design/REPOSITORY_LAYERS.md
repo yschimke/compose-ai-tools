@@ -82,11 +82,29 @@ convenience rather than a layer.
 
 ## What enforces it
 
-Today, partially and from one side only: `checkServeModuleBoundary`,
-`checkRenderHostIsServerFree` and `checkUiBuilderRuntimeBoundary` in compose-preview-server.
-compose-ai-tools rejects no `ee.schimke.composeai:compose-preview-*` coordinate at all, so the edge
-this rule forbids could be re-added by one `api(...)` line with CI green.
+Both sides now, as resolved-classpath positive allowlists.
 
-The gate that finishes the job is a resolved-classpath check in each repository that fails on a
-coordinate from a strictly higher layer — the same shape as `checkServeModuleBoundary`, pointed at
-the table above. Until it exists, this document is a convention and reviewers are the enforcement.
+compose-preview-server has held its floor since the split: `checkServeModuleBoundary`,
+`checkRenderHostIsServerFree` and `checkUiBuilderRuntimeBoundary`.
+
+compose-ai-tools enforced nothing until `checkLayerBoundary` (`build-logic`, registered on every
+project with a `runtimeClasspath` and wired onto `check`). It fails on any
+`ee.schimke.composeai:compose-preview-*` coordinate that is not either published by this repository
+or one of the three known layer-2 edges being removed. A fourth cannot be added by accident.
+
+**Resolved identity, not build files** — and the gate proved why on its first run. It failed on
+`compose-preview-ui-builder-runtime`, which is declared nowhere in this repository: no build-script
+line, no catalog alias. The server publishes its three modules in lockstep and
+`compose-preview-serve`'s POM names all of them, so depending on the server drags the UI-builder
+runtime onto `:cli`'s runtime classpath. The forward edge is three coordinates, not the two the
+analysis on
+[compose-preview-server#180](https://github.com/yschimke/compose-preview-server/issues/180) counted.
+
+The allowlist is the ratchet: it shrinks to empty as `:render-host` moves here and `serve` becomes a
+launcher, and it can only shrink without someone editing `CheckLayerBoundary.kt` and saying why.
+
+Two limits worth stating rather than discovering later. The task covers projects with a
+`runtimeClasspath`, so Android modules — which resolve per-variant classpaths — are not checked;
+none of them consumes a server artifact, and covering them means resolving every variant on every
+`check`. And it has no unit test, because `build-logic` has no test lane that CI runs; what
+exercises it is every module's `check`.
