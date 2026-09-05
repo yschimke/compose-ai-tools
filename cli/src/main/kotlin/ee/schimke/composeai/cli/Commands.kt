@@ -407,6 +407,7 @@ abstract class Command(
           gradle.lastDiscoveryFailures,
           pluginVersion = injectedPluginVersion,
           pluginVersionSource = injectedPluginVersionSource,
+          timeoutSeconds = timeoutSeconds,
         )
         exitProcess(1)
       }
@@ -427,6 +428,7 @@ abstract class Command(
         gradle.lastDiscoveryFailures,
         pluginVersion = injectedPluginVersion,
         pluginVersionSource = injectedPluginVersionSource,
+        timeoutSeconds = timeoutSeconds,
       )
       exitProcess(1)
     }
@@ -1148,8 +1150,18 @@ internal fun printDiscoveryFailures(
   err: (String) -> Unit = System.err::println,
   pluginVersion: String? = null,
   pluginVersionSource: String? = null,
+  timeoutSeconds: Long? = null,
 ) {
   if (failures.isEmpty()) return
+  // A cancelled discovery leads, ahead of every other classification: the projects it skipped were
+  // never configured, so nothing about them — plugin applied or not, marker resolvable or not — was
+  // actually observed (issue #5171). Emitting the setup-shaped guidance first would send the user
+  // to edit build files that are already correct.
+  discoveryTimeoutGuidance(failures, timeoutSeconds)?.let {
+    err(it)
+    val matching = failures.count { f -> isDiscoveryCancellationFailure(f.message) }
+    if (matching * 2 >= failures.size) return
+  }
   // The plugin marker not resolving is never the consumer's build being wrong, so it leads —
   // ahead of the AGP guidance and the per-project list (issue #5034). It only *replaces* them
   // when it accounts for at least half the failures, the same bar [agpClassloaderGuidance] uses:
@@ -1177,6 +1189,58 @@ internal fun printDiscoveryFailures(
   )
   failures.take(limit).forEach { err("  ${it.path}: ${it.message}") }
   if (failures.size > limit) err("  … and ${failures.size - limit} more")
+}
+
+/**
+ * Recognises a project that was **cancelled** mid-configuration rather than one that failed to
+ * configure. Gradle reports these as `Build cancelled.` (and, on the CLI side of the Tooling API,
+ * `BuildCancelledException`) once [GradleConnection.runBuildAction]'s timer fires its cancellation
+ * token — so the message is distinguishable from a real configuration error (issue #5171).
+ *
+ * This matters because a cancellation carries *no* information about the project: its build script
+ * was never evaluated, so "the plugin isn't applied" is not something discovery observed. Cold
+ * configuration of a large multi-module build takes minutes, which is exactly when the first
+ * discovery pass is cancelled and every project comes back "failed".
+ */
+internal fun isDiscoveryCancellationFailure(message: String): Boolean =
+  message.contains("Build cancelled", ignoreCase = true) ||
+    message.contains("BuildCancelledException")
+
+/**
+ * When **any** project was cancelled rather than failed ([isDiscoveryCancellationFailure]), returns
+ * the timeout explanation and the one remedy that works — re-run, because the second pass reuses
+ * the configuration cache — instead of the misleading "your project is misconfigured" reading of a
+ * skipped project (issue #5171). Returns `null` when nothing was cancelled, so the AGP / marker /
+ * per-project reporting below is unchanged for genuine configuration failures.
+ *
+ * The bar is one cancellation, not the "dominates the list" bar the other guidances use: a single
+ * cancelled project already means discovery did not finish, and results from an unfinished
+ * discovery cannot be read as a complete picture of the build.
+ */
+internal fun discoveryTimeoutGuidance(
+  failures: List<ProjectDiscoveryFailure>,
+  timeoutSeconds: Long? = null,
+): String? {
+  val matching = failures.count { isDiscoveryCancellationFailure(it.message) }
+  if (matching == 0) return null
+  val budget = timeoutSeconds?.let { " after ${it}s" } ?: ""
+  return buildString {
+    appendLine(
+      "Discovery timed out$budget while Gradle was still configuring the build: " +
+        "$matching of ${failures.size} project(s) were cancelled mid-configuration " +
+        "(\"Build cancelled.\"), not misconfigured. Their previews are not listed, and whether " +
+        "they apply the plugin is unknown — discovery never got far enough to see."
+    )
+    appendLine()
+    append(
+      "A build with no configuration cache entry pays full cold configuration on the first pass, " +
+        "which on a large multi-module build can take minutes. Re-run the same command — the " +
+        "second pass reuses the cached configuration — or raise the budget with " +
+        "--timeout <seconds>" +
+        (timeoutSeconds?.let { " (e.g. --timeout ${it * 2})" } ?: "") +
+        "."
+    )
+  }
 }
 
 /**
