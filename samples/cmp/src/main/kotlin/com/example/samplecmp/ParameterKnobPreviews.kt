@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -74,6 +77,46 @@ fun ParameterKnobListPreview(
         Card(modifier = Modifier.fillMaxWidth()) {
           Text("$rowLabelPrefix ${i + 1}", modifier = Modifier.padding(rowPaddingDp.dp))
         }
+      }
+    }
+  }
+}
+
+/**
+ * The knob kinds are open sets — any string, any int. Some parameters are not: a component's
+ * emphasis is one of three things and nothing else. [Emphasis] is that closed set, and declaring
+ * the knob as an `enum class` is what lets a viewer draw a **picker** rather than a text box.
+ *
+ * The distinction is the whole reason the kind exists. A text box shows the current value and hides
+ * every alternative, so `Outlined` is reachable only by someone who has read the source — which is
+ * why `previewOverrideChoice` has always been able to say "these and no others", and why, until the
+ * enum kind, migrating one of those to a parameter knob silently downgraded its control.
+ */
+enum class Emphasis {
+  Filled,
+  Tonal,
+  Outlined,
+}
+
+/**
+ * A closed-set knob beside an open one, so the two controls can be compared in the same panel:
+ * [emphasis] renders as a picker of exactly three values, [label] as a free text field.
+ *
+ * The seed crosses as the constant's **name** — `Enum.valueOf`'s own currency — and becomes the
+ * constant at the renderer's invoke seam, which is the first point that holds the enum's `Class`. A
+ * name that is not one of the constants is dropped and the author default renders, which is the
+ * honest answer to a stale client asking for a constant the enum no longer has.
+ */
+@Preview(name = "Parameter Knob Emphasis", showBackground = true)
+@Composable
+fun ParameterKnobEmphasisPreview(emphasis: Emphasis = Emphasis.Tonal, label: String = "Continue") {
+  Surface {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text(emphasis.name, style = MaterialTheme.typography.labelMedium)
+      when (emphasis) {
+        Emphasis.Filled -> Button(onClick = {}) { Text(label) }
+        Emphasis.Tonal -> FilledTonalButton(onClick = {}) { Text(label) }
+        Emphasis.Outlined -> OutlinedButton(onClick = {}) { Text(label) }
       }
     }
   }

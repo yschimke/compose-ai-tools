@@ -146,12 +146,48 @@ not, so there is no equivalent. Three samples rely on it:
 list's `sender` / `preview`), and `design-catalog-wear-m3/.../CatalogPreviews.kt` (the pager's
 `page`).
 
-### 4. There is no closed value set
+### <a id="gap-4"></a>4. There is no closed value set — **closed**
 
 `previewOverrideChoice` declares the values a knob may take, so a viewer draws a picker over the
 declared labels instead of a text field a reader has to already know spells `compact` / `cosy` /
-`comfortable`. A `String` parameter carries no such set. The wear catalog's font knob is the same
-shape with autocomplete over the declared typefaces.
+`comfortable`. A `String` parameter carries no such set, and that was the gap: migrating a
+`previewOverrideChoice` to a `String` knob silently downgraded its picker to a text box, which
+shows the current value and hides every alternative. On a catalog whose conventions make the panel
+the reader's only index of the API — `yschimke/wear-m3-catalog` has 90 of them, 38% of its
+overrides — that is not a cosmetic loss.
+
+**Declare the parameter as an `enum class` instead.** Its constants *are* the closed set:
+
+```kotlin
+enum class Emphasis { Filled, Tonal, Outlined }
+
+@Preview @Composable
+fun EmphasisPreview(emphasis: Emphasis = Emphasis.Tonal) { … }
+```
+
+Discovery records the kind as `ENUM` with the constants as `options`, both renderers declare it
+with `optionsExhaustive = true`, and a viewer draws exactly the picker `previewOverrideChoice`
+produces. It is also better than the string it replaces: the `when` over it is exhaustive, so a
+constant added later is a compile error rather than a branch that silently falls through.
+
+Three things are worth knowing about the shape:
+
+- **The seed crosses as the constant's name.** Nothing before the renderer's invoke seam holds the
+  enum's `Class` — not the daemon, not the wire — so the value travels as text and becomes the
+  constant at the one point that can build it. A name that is not one of the constants is dropped
+  and the author default renders, which is the honest answer to a stale client naming a constant a
+  rename removed.
+- **The default is read from `GETSTATIC`.** An enum default is a field read rather than a
+  constant-pool load, so the defaults reader had to learn a second instruction shape. A static of
+  some *other* type is still an expression default and still reports none — that is what keeps
+  `modifier: Modifier = Modifier` correctly undeclared.
+- **The constants are read from the enum's class file, not ClassGraph's field info.** Enabling
+  field info would make every build of every project pay a larger scan, on every class, to serve
+  the rare preview that declares one.
+
+Still open in this area: a knob whose values are a closed set of something *other* than an enum's
+constants — the wear catalog's font knob wants autocomplete over declared typefaces, which is a
+suggestion list rather than an exhaustive one.
 
 ### 5. A knob declared outside the `@Preview` function has no equivalent at all
 

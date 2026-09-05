@@ -72,7 +72,7 @@ public object PreviewKnobSeeds {
     val byName = knobs.associateBy { it.name }
     val bound = seeds.mapNotNull { (name, raw) ->
       val knob = byName[name] ?: return@mapNotNull null
-      parse(knob.type, raw)?.let { knob.index to it }
+      parse(knob, raw)?.let { knob.index to it }
     }
     if (bound.isEmpty()) return emptyList()
     val size = knobs.maxOf { it.index } + 1
@@ -89,14 +89,19 @@ public object PreviewKnobSeeds {
    * string to `false`, so a malformed seed would silently render the opposite of a `true` default
    * instead of the default itself.
    */
-  private fun parse(type: String, raw: String): Any? =
-    when (type) {
+  private fun parse(knob: PreviewKnobDto, raw: String): Any? =
+    when (knob.type) {
       "STRING" -> raw
       "BOOLEAN" -> raw.toBooleanStrictOrNull()
       "INT" -> raw.toIntOrNull()
       "LONG" -> raw.toLongOrNull()
       "FLOAT" -> raw.toFloatOrNull()
       "DOUBLE" -> raw.toDoubleOrNull()
+      // An enum knob binds by constant NAME, and stays a name here: this module has no classloader
+      // to turn one into the constant, and a renderer that does coerces it against the parameter's
+      // own type at the invoke seam. A name that is not one of the declared constants is dropped
+      // like any other unparseable seed, so a stale client cannot ask for a constant the enum lost.
+      "ENUM" -> raw.takeIf { it in knob.options }
       else -> null
     }
 

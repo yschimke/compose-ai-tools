@@ -37,8 +37,19 @@ package ee.schimke.composeai.renderer
  */
 object PreviewKnobArguments {
 
-  /** One editable value parameter of a preview, as discovery recorded it. */
-  data class Knob(val name: String, val index: Int, val type: Type)
+  /**
+   * One editable value parameter of a preview, as discovery recorded it.
+   *
+   * [options] is non-empty only for [Type.ENUM], where it is the parameter's constants — both the
+   * closed set a viewer offers and the guard that keeps a stale seed from naming a constant the
+   * enum no longer has.
+   */
+  data class Knob(
+    val name: String,
+    val index: Int,
+    val type: Type,
+    val options: List<String> = emptyList(),
+  )
 
   /** The value kinds a [Knob] can carry — mirrors discovery's `PreviewKnobType`. */
   enum class Type {
@@ -48,6 +59,15 @@ object PreviewKnobArguments {
     LONG,
     FLOAT,
     DOUBLE,
+
+    /**
+     * A Kotlin `enum class` parameter, seeded by constant **name**.
+     *
+     * It binds as that name — a `String` — and is turned into the constant itself by
+     * [coerceToParameterTypes] at the invoke seam, which is the first place the parameter's own
+     * `Class` is in hand. Nothing before that point can build one.
+     */
+    ENUM,
   }
 
   /**
@@ -68,7 +88,7 @@ object PreviewKnobArguments {
     val byName = knobs.associateBy { it.name }
     val bound = seeds.mapNotNull { (name, raw) ->
       val knob = byName[name] ?: return@mapNotNull null
-      parse(knob.type, raw)?.let { knob.index to it }
+      parse(knob, raw)?.let { knob.index to it }
     }
     if (bound.isEmpty()) return emptyList()
     val size = knobs.maxOf { it.index } + 1
@@ -85,15 +105,42 @@ object PreviewKnobArguments {
    * string to `false`, so a malformed seed would silently render the opposite of a `true` default
    * instead of the default itself.
    */
-  private fun parse(type: Type, raw: String): Any? =
-    when (type) {
+  private fun parse(knob: Knob, raw: String): Any? =
+    when (knob.type) {
       Type.STRING -> raw
       Type.BOOLEAN -> raw.toBooleanStrictOrNull()
       Type.INT -> raw.toIntOrNull()
       Type.LONG -> raw.toLongOrNull()
       Type.FLOAT -> raw.toFloatOrNull()
       Type.DOUBLE -> raw.toDoubleOrNull()
+      Type.ENUM -> raw.takeIf { it in knob.options }
     }
+
+  /**
+   * [args] with every enum knob's constant **name** replaced by the constant itself, read off
+   * [parameterTypes] — the preview's own value-parameter types, in order.
+   *
+   * This is the seam an enum knob cannot be bound without: a name is all a seed carries and all
+   * [bind] can produce, because neither this object nor the daemon that sends the seed holds the
+   * enum `Class`. The invoke path does, so the conversion happens here, once, for every lane.
+   *
+   * A position that is not an enum, is not a `String`, or names no constant of its type is left
+   * exactly as it was — a seed that cannot become a constant must fall back to the author default,
+   * which is what a `null` at that position already means, rather than fail the render.
+   */
+  fun coerceToParameterTypes(args: List<Any?>, parameterTypes: Array<Class<*>>): List<Any?> {
+    if (args.isEmpty()) return args
+    if (args.none { it is String }) return args
+    val coerced = args.mapIndexed { index, value ->
+      val type = parameterTypes.getOrNull(index) ?: return@mapIndexed value
+      if (value !is String || !type.isEnum) return@mapIndexed value
+      type.enumConstants?.firstOrNull { (it as? Enum<*>)?.name == value } ?: value
+    }
+    // The SAME list back when nothing moved, so a caller can tell "no enum here" from "an enum was
+    // converted" by identity — which is what lets the invoke seam keep its fast path for every
+    // preview this does not touch.
+    return if (coerced == args) args else coerced
+  }
 
   /**
    * Parses the `knobs=<name>:<index>:<TYPE>,…` render-payload token discovery threads through
@@ -105,12 +152,17 @@ object PreviewKnobArguments {
   fun parseToken(token: String?): List<Knob> {
     if (token.isNullOrBlank()) return emptyList()
     return token.split(',').mapNotNull { entry ->
+      // Three fields, or four when a fourth carries an enum's constants (`|`-separated, since the
+      // token's own separators are already spoken for). A three-field ENUM entry is dropped: an
+      // enum knob with no options would offer an empty picker and drop every seed.
       val parts = entry.split(':')
-      if (parts.size != 3) return@mapNotNull null
+      if (parts.size !in 3..4) return@mapNotNull null
       val index = parts[1].toIntOrNull() ?: return@mapNotNull null
       if (index < 0) return@mapNotNull null
       val type = Type.entries.firstOrNull { it.name == parts[2] } ?: return@mapNotNull null
-      parts[0].takeIf { it.isNotBlank() }?.let { Knob(it, index, type) }
+      val options = parts.getOrNull(3)?.split('|')?.filter { it.isNotBlank() }.orEmpty()
+      if (type == Type.ENUM && options.isEmpty()) return@mapNotNull null
+      parts[0].takeIf { it.isNotBlank() }?.let { Knob(it, index, type, options) }
     }
   }
 }

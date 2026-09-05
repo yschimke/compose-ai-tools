@@ -131,7 +131,46 @@ class ComposableSignatureTest {
           scan.getClassInfo("ee.schimke.composeai.discovery.SignatureFixturesKt")
             ?: error("fixture facade class not found")
         val m: MethodInfo = classInfo.methodInfo.first { it.name == simpleName }
-        return ComposableSignature.knobsOf(classInfo, m)
+        return ComposableSignature.knobsOf(classInfo, m, scan)
+      }
+  }
+
+  @Test
+  fun `an enum parameter is a knob whose options are its constants, in declaration order`() {
+    val knobs = knobsOf("enumKnobComponent").associateBy { it.name }
+
+    val emphasis = knobs.getValue("emphasis")
+    assertThat(emphasis.type).isEqualTo(PreviewKnobType.ENUM)
+    // The whole point of the kind: a viewer can enumerate these and draw a picker. Declaration
+    // order, because that is the order the author wrote and the order a reader expects to browse.
+    assertThat(emphasis.options).containsExactly("Filled", "Tonal", "Outlined").inOrder()
+    // The default is deliberately NOT asserted here: this module has no Compose compiler plugin, so
+    // the fixture compiles to the ordinary `name$default` bridge rather than the Compose-emitted
+    // mask block `PreviewKnobDefaults` reads. That an enum constant's own name is recovered from
+    // its `GETSTATIC` — which is not a constant-pool load, and so was invisible to a reader that
+    // only understood `LDC` — is proved in `PreviewKnobDefaultsTest` against hand-built bytecode.
+    // The sibling is untouched: adding a kind must not disturb the open ones.
+    assertThat(knobs.getValue("label").type).isEqualTo(PreviewKnobType.STRING)
+    assertThat(knobs.getValue("label").options).isEmpty()
+  }
+
+  @Test
+  fun `an enum parameter is not a knob at all when the enum cannot be resolved`() {
+    // Without a scan result there is no way to read the constants, and a picker with no options
+    // would be worse than the text box it replaced — so it degrades to "not seedable", not to "a
+    // knob whose values are unknown".
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        val classInfo =
+          scan.getClassInfo("ee.schimke.composeai.discovery.SignatureFixturesKt")
+            ?: error("fixture facade class not found")
+        val m = classInfo.methodInfo.first { it.name == "enumKnobComponent" }
+        val knobs = ComposableSignature.knobsOf(classInfo, m, scanResult = null)
+        assertThat(knobs.map { it.name }).containsExactly("label")
       }
   }
 

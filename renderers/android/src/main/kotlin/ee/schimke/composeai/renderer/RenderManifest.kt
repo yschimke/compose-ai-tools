@@ -451,6 +451,12 @@ data class RenderPreviewKnob(
   val index: Int,
   val type: String,
   val default: String? = null,
+  /**
+   * The values this knob accepts when they are a **closed set** — an enum parameter's constants, in
+   * declaration order — so a viewer draws a picker rather than a text box. Empty for every other
+   * kind.
+   */
+  val options: List<String> = emptyList(),
 )
 
 @Serializable

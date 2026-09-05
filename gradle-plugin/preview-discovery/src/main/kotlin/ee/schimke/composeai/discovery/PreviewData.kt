@@ -1180,6 +1180,20 @@ data class PreviewKnob(
    * rather than an invented one.
    */
   val default: String? = null,
+  /**
+   * The values this knob accepts, when they are a **closed set** — the constants of an enum
+   * parameter, in declaration order. Empty for every other kind, whose values are open.
+   *
+   * This is what lets a viewer draw a **picker** rather than a text box. A text box shows the
+   * current value and hides every alternative, so a value like `extra-small` is reachable only by
+   * someone who has read the source; the `previewOverride*` format has always been able to say
+   * "these and no others" (`previewOverrideChoice`), and without this a knob-format migration would
+   * silently downgrade every such control.
+   *
+   * Carried as the constant **names**, which is exactly the text a seed uses and what
+   * `PreviewOverrideOption.value` holds.
+   */
+  val options: List<String> = emptyList(),
 )
 
 /** The value kinds a [PreviewKnob] can carry — the types the harness can build from a seed. */
@@ -1191,6 +1205,12 @@ enum class PreviewKnobType {
   LONG,
   FLOAT,
   DOUBLE,
+
+  /**
+   * A Kotlin `enum class` parameter. Seeded by constant name, and the one kind whose accepted
+   * values are a closed set — see [PreviewKnob.options].
+   */
+  ENUM,
 }
 
 /** Kind of a seeded `previewOverride*` value — mirrors `PreviewOverrideValue`'s subtypes. */

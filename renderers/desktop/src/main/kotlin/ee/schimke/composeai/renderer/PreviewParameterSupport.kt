@@ -381,13 +381,24 @@ object PreviewParameterSupport {
     composer: androidx.compose.runtime.Composer,
   ): Boolean {
     if (instance != null) return false
-    // Any null at all, not just an interior one: `ComposableMethod.invoke` pads only positions past
-    // `args.size`, so a null *inside* the list — trailing or not — is forwarded verbatim.
-    if (previewArgs.none { it == null }) return false
     val method = composableMethod.asMethod()
     val realParams = method.parameterCount - 3
     if (realParams !in 1..31 || previewArgs.size > realParams) return false
     val types = method.parameterTypes
+    // An enum knob arrives as its constant's NAME — the only form a seed can carry across a process
+    // boundary. This is the first point the parameter's own `Class` is in hand, so it is where the
+    // name becomes the constant. A no-op for every other kind and every unseeded render.
+    val args = PreviewKnobArguments.coerceToParameterTypes(previewArgs, types)
+    // Any null at all, not just an interior one: `ComposableMethod.invoke` pads only positions past
+    // `args.size`, so a null *inside* the list — trailing or not — is forwarded verbatim.
+    //
+    // A FULLY seeded argument list needs this path too when an enum was converted above: the plain
+    // invoke this would otherwise fall through to would carry the constant's name where the callee
+    // declares the enum, and reflection rejects that outright. The mask is simply 0 in that case,
+    // so the call is the same one it would have made — this only keeps it on a path that passes
+    // the converted arguments. Identity, not equality: `coerceToParameterTypes` hands back the very
+    // list it was given when it changed nothing.
+    if (args === previewArgs && previewArgs.none { it == null }) return false
     if (types[realParams] != androidx.compose.runtime.Composer::class.java) return false
     if (types[realParams + 1] != Int::class.javaPrimitiveType) return false
     if (types[realParams + 2] != Int::class.javaPrimitiveType) return false
@@ -395,7 +406,7 @@ object PreviewParameterSupport {
     var mask = 0
     val arguments = arrayOfNulls<Any?>(method.parameterCount)
     for (i in 0 until realParams) {
-      val seeded = previewArgs.getOrNull(i)
+      val seeded = args.getOrNull(i)
       if (seeded == null) {
         mask = mask or (1 shl i)
         arguments[i] = zeroValueFor(types[i])
@@ -448,6 +459,15 @@ object PreviewParameterSupport {
       val actual = arg.javaClass
       if (expected.isAssignableFrom(actual)) continue
       if (expected.kotlin.javaObjectType.isAssignableFrom(actual)) continue
+      // An enum knob's seed is still the constant's NAME here: nothing before method resolution
+      // holds
+      // the enum `Class`, so the conversion cannot have happened yet. Matching the name against the
+      // parameter's own constants is what lets resolution reach the overload whose types the invoke
+      // seam then coerces to. A String that names no constant is not a match, so it cannot pull the
+      // resolution onto an enum parameter it has no business binding to.
+      if (expected.isEnum && arg is String) {
+        if (expected.enumConstants?.any { (it as? Enum<*>)?.name == arg } == true) continue
+      }
       return false
     }
     return true

@@ -118,6 +118,52 @@ class PreviewKnobDefaultsTest {
   }
 
   @Test
+  fun `an enum constant default is recovered by its own name`() {
+    // An enum default is `GETSTATIC Emphasis.Tonal : LEmphasis;` — a field read, not a
+    // constant-pool load, so it never reaches `visitLdcInsn` and was invisible to a reader that
+    // understood only `LDC`. The constant's NAME is the seed text: it is what `Enum.valueOf`
+    // accepts and what a picker's options hold.
+    val emphasis = Type.getObjectType("com/example/Emphasis")
+    val defaults =
+      readDefaults(parameterTypes = listOf(emphasis)) { mv, layout ->
+        layout.guard(mv, parameter = 0) {
+          it.visitFieldInsn(
+            Opcodes.GETSTATIC,
+            "com/example/Emphasis",
+            "Tonal",
+            "Lcom/example/Emphasis;",
+          )
+          it.visitVarInsn(Opcodes.ASTORE, layout.slotOf(0))
+        }
+      }
+
+    assertThat(defaults).containsExactly(0, "Tonal")
+  }
+
+  @Test
+  fun `a static read of some other type is still an expression, not an enum default`() {
+    // The discrimination that keeps `modifier: Modifier = Modifier` and every other field-read
+    // default reported as "none": a constant is a static whose type is its OWN owner. A static of a
+    // different type is a value this cannot name, and naming it anyway would put a default on the
+    // control that the preview never said.
+    val defaults =
+      readDefaults(parameterTypes = listOf(Type.getObjectType("com/example/Emphasis"))) { mv, layout
+        ->
+        layout.guard(mv, parameter = 0) {
+          it.visitFieldInsn(
+            Opcodes.GETSTATIC,
+            "com/example/Defaults",
+            "EMPHASIS",
+            "Lcom/example/Emphasis;",
+          )
+          it.visitVarInsn(Opcodes.ASTORE, layout.slotOf(0))
+        }
+      }
+
+    assertThat(defaults).isEmpty()
+  }
+
+  @Test
   fun `a literal alongside an expression still yields the literal`() {
     // The realistic mixed case: one knob a viewer can show a default for, one it cannot. Recovering
     // only what is recoverable beats reporting nothing because a sibling was unreadable.

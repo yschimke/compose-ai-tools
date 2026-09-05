@@ -4,6 +4,7 @@ import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.FieldVisitor
 import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
@@ -62,6 +63,47 @@ internal object PreviewKnobDefaults {
    * is an expression this cannot read. [valueParameterCount] is the count Kotlin metadata reported,
    * used to pick the right overload and to reconstruct the synthetic tail.
    */
+  /**
+   * The constant names of the enum [classInfo] describes, in declaration order, or empty when its
+   * class file cannot be read.
+   *
+   * Read out of the class file rather than from ClassGraph's `fieldInfo`, which would require
+   * `enableFieldInfo()` on the scan — a cost every build of every project would pay, on every
+   * class, to serve the rare preview that declares an enum knob. The class file is already how this
+   * object reads defaults, and `ACC_ENUM` names exactly the constants: the synthetic `$VALUES`
+   * array does not carry it.
+   *
+   * Field order in a class file is declaration order, which is the order an author wrote and the
+   * order a picker should offer.
+   */
+  fun enumConstantsOf(classInfo: ClassInfo): List<String> {
+    val resource = classInfo.resource ?: return emptyList()
+    return try {
+      resource.open().use { stream ->
+        val names = mutableListOf<String>()
+        ClassReader(stream)
+          .accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+              override fun visitField(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                value: Any?,
+              ): FieldVisitor? {
+                if (access and Opcodes.ACC_ENUM != 0) names += name
+                return null
+              }
+            },
+            ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES or ClassReader.SKIP_DEBUG,
+          )
+        names
+      }
+    } catch (_: Throwable) {
+      emptyList()
+    }
+  }
+
   fun readFrom(
     classInfo: ClassInfo,
     method: MethodInfo,
@@ -258,7 +300,13 @@ internal object PreviewKnobDefaults {
     }
 
     override fun visitFieldInsn(opcode: Int, owner: String, name: String, descriptor: String) {
-      insns += Insn.Other
+      // An enum-constant default compiles to `GETSTATIC Owner.CONST : LOwner;` rather than a
+      // constant-pool load, so it never reaches `visitLdcInsn`. Recorded only when the field's own
+      // type is its owner, which is what distinguishes a constant from any other static this
+      // method reads — including the synthetic `$VALUES` array.
+      insns +=
+        if (opcode == Opcodes.GETSTATIC && descriptor == "L$owner;") Insn.EnumConst(owner, name)
+        else Insn.Other
     }
 
     override fun visitTypeInsn(opcode: Int, type: String) {
@@ -287,13 +335,25 @@ internal object PreviewKnobDefaults {
         val bit = (insns[i + 1] as? Insn.Const)?.value as? Int ?: continue
         if (insns[i + 2] !is Insn.And) continue
         if (insns[i + 3] !is Insn.IfZero) continue
-        val constant = (insns[i + 4] as? Insn.Const)?.value ?: continue
+        val value = insns[i + 4]
+        if (value !is Insn.Const && value !is Insn.EnumConst) continue
         val store = insns[i + 5] as? Insn.Store ?: continue
         val parameter = layout.parameterSlots.indexOfFirst { it == store.slot }
         if (parameter < 0) continue
         if (bit != (1 shl parameter)) continue
-        if (store.opcode != storeOpcodeFor(layout.parameterTypes[parameter])) continue
-        renderConstant(constant, layout.parameterTypes[parameter])?.let { defaults[parameter] = it }
+        val type = layout.parameterTypes[parameter]
+        if (store.opcode != storeOpcodeFor(type)) continue
+        val rendered =
+          when (value) {
+            // The constant's own name is the seed text: it is what `Enum.valueOf` accepts and what
+            // the picker's option values hold. Checked against the parameter's declared type for
+            // the same reason every other kind is — a static read of some OTHER enum here would
+            // mean the pattern matched something this does not understand.
+            is Insn.EnumConst -> value.name.takeIf { type.internalName == value.owner }
+            is Insn.Const -> renderConstant(value.value, type)
+            else -> null
+          }
+        rendered?.let { defaults[parameter] = it }
       }
       return defaults
     }
@@ -335,6 +395,9 @@ internal object PreviewKnobDefaults {
     data class Load(val slot: Int) : Insn
 
     data class Const(val value: Any) : Insn
+
+    /** `GETSTATIC Owner.name : LOwner;` — one enum constant, by its own name. */
+    data class EnumConst(val owner: String, val name: String) : Insn
 
     data class Store(val slot: Int, val opcode: Int) : Insn
 

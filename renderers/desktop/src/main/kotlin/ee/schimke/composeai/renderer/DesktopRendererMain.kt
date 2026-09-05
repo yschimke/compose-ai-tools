@@ -1802,6 +1802,14 @@ private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>)
     val actual = arg.javaClass
     if (expected.isAssignableFrom(actual)) continue
     if (expected.kotlin.javaObjectType.isAssignableFrom(actual)) continue
+    // An enum knob's seed is still the constant's NAME here: nothing before method resolution holds
+    // the enum `Class`, so the conversion cannot have happened yet. Matching the name against the
+    // parameter's own constants is what lets resolution reach the overload whose types the invoke
+    // seam then coerces to. A String that names no constant is not a match, so it cannot pull the
+    // resolution onto an enum parameter it has no business binding to.
+    if (expected.isEnum && arg is String) {
+      if (expected.enumConstants?.any { (it as? Enum<*>)?.name == arg } == true) continue
+    }
     return false
   }
   return true

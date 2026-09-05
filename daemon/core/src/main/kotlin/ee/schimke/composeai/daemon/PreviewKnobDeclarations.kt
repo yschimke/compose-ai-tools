@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 
 /**
@@ -75,6 +76,11 @@ public object PreviewKnobDeclarations {
         // Parameter knobs have no indexed form — a parameter list is fixed-arity, so there is no
         // per-row value to address. Always the un-indexed seed key.
         index = null,
+        // A closed set, and closed *exhaustively*: an enum parameter cannot hold a value that is
+        // not one of its constants, so a viewer is right to refuse anything else. Empty for every
+        // open kind, which leaves the control a plain field exactly as before.
+        options = knob.options.map { PreviewOverrideOption(it) },
+        optionsExhaustive = knob.options.isNotEmpty(),
       )
     }
   }
@@ -90,7 +96,11 @@ public object PreviewKnobDeclarations {
     when (knobType) {
       "STRING",
       "LONG",
-      "DOUBLE" -> PreviewOverrideType.STRING
+      "DOUBLE",
+      // An enum is declared as text whose accepted values are enumerated alongside it. The picker
+      // comes from `options` + `optionsExhaustive`, not from a distinct declaration type — which is
+      // exactly how `previewOverrideChoice` has always described a closed set.
+      "ENUM" -> PreviewOverrideType.STRING
       "BOOLEAN" -> PreviewOverrideType.BOOL
       "INT" -> PreviewOverrideType.INT
       "FLOAT" -> PreviewOverrideType.FLOAT

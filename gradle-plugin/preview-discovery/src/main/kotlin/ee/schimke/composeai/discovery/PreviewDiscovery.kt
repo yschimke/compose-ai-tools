@@ -2298,6 +2298,7 @@ object PreviewDiscovery {
             classInfo,
             method,
             ann,
+            scanResult,
             wrapperFqn,
             scrollSpecs,
             animationSpec,
@@ -2330,6 +2331,7 @@ object PreviewDiscovery {
           classInfo,
           method,
           resolvedAnn,
+          scanResult,
           wrapperFqn,
           scrollSpecs,
           animationSpec,
@@ -2363,6 +2365,7 @@ object PreviewDiscovery {
           classInfo,
           method,
           spec.toParams(wrapperFqn, previewParameter),
+          scanResult,
           scrollSpecs,
           animationSpec,
           interactionSpec,
@@ -4551,6 +4554,9 @@ object PreviewDiscovery {
     classInfo: ClassInfo,
     method: MethodInfo,
     ann: AnnotationInfo,
+    // Carried only to resolve an enum-typed knob parameter to its constants — the one thing a
+    // preview's own class file cannot answer. See `ComposableSignature.knobsOf`.
+    scanResult: ScanResult,
     wrapperClassName: String?,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
@@ -4575,6 +4581,7 @@ object PreviewDiscovery {
       classInfo,
       method,
       params,
+      scanResult,
       scrolls,
       animation,
       interaction,
@@ -4606,6 +4613,7 @@ object PreviewDiscovery {
     classInfo: ClassInfo,
     method: MethodInfo,
     params: PreviewParams,
+    scanResult: ScanResult,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
     interaction: InteractionCapture?,
@@ -4675,7 +4683,7 @@ object PreviewDiscovery {
       // parameters. Read off the METHOD, like `fixedTheme` above, so every expansion of a
       // multi-preview carries the same signature-derived set. Empty for every preview that declares
       // none, which is every `previewOverride*` preview and every parameterless one.
-      knobs = ComposableSignature.knobsOf(classInfo, method),
+      knobs = ComposableSignature.knobsOf(classInfo, method, scanResult),
       // Skipped for the same non-@Composable kinds as `targets` above — those never invoke a
       // library component, so the bytecode walk would only cost time.
       // Skipped for the same non-`@Composable` kinds as `targets` above (`skipTargetInference`),
