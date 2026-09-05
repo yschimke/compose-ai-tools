@@ -972,9 +972,18 @@ internal object RemoteCatalogValues {
     // without invoking the provider (which would require constructing a RemoteDocument writer).
     return runCatching {
       val provider = property(remote, "idProvider")
+      // `Class.getDeclaredFields()` returns its elements in no specified order — the same
+      // unspecified order that made every prefix-colliding role read a sibling's colour (see
+      // `isGetterFor`). One `long` capture is what `remote-creation-compose:1.0.0-alpha18`'s
+      // lambda holds, so today the set has one element and any pick is the same pick; a future
+      // capture of two would otherwise reintroduce a colour that changes between runs of identical
+      // bytecode. Sorting makes the answer a property of the class rather than of the run, which is
+      // what the method lookup above already does for the same reason.
       val bitsField =
         requireNotNull(
-          provider.javaClass.declaredFields.firstOrNull { it.type == Long::class.javaPrimitiveType }
+          provider.javaClass.declaredFields
+            .filter { it.type == Long::class.javaPrimitiveType }
+            .minByOrNull { it.name }
         )
       bitsField.isAccessible = true
       Color(bitsField.getLong(provider).toULong())

@@ -99,4 +99,24 @@ class RemoteCatalogRoleLookupTest {
 
   private fun catalogColorRoles(scheme: Any): List<Pair<String, Color>> =
     RemoteCatalogValues.colorSchemeRoles(scheme)
+
+  @Test
+  fun `the packed fallback is read from a field the class names, not the one the JVM listed first`() {
+    // The other half of the hazard the getter fix answered (issue #5104): `getDeclaredFields` is as
+    // unordered as `getMethods`. `remote-creation-compose:1.0.0-alpha18`'s lambda captures exactly
+    // one `long`, so this cannot bite today — which is precisely why it is pinned now, while the
+    // fix is one line, rather than after another sixteen baselines have churned.
+    //
+    // Every role here answers through a provider carrying two `long`s. What is asserted is that
+    // repeated reads agree and that the answer is the one the field NAMES pick (`alsoLong`, which
+    // sorts first), not whichever the JVM listed: a colour that changes between runs of identical
+    // bytecode is the whole symptom this issue is about.
+    val roles = catalogColorRoles(RemoteColorScheme(twoLong = true)).toMap()
+
+    assertEquals(29, roles.size)
+    val decoy = Color(RemoteColorScheme.DECOY_BITS.toULong())
+    assertEquals(decoy, roles["primary"])
+    assertEquals(decoy, roles["onSurface"])
+    repeat(5) { assertEquals(roles, catalogColorRoles(RemoteColorScheme(twoLong = true)).toMap()) }
+  }
 }

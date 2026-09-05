@@ -17,7 +17,14 @@ import androidx.compose.ui.graphics.Color
  * [named] picks which of the two shapes a role answers with. `false` is the plain public constant;
  * `true` is what a real catalog actually holds — see [NamedRemoteColor].
  */
-class RemoteColorScheme(private val named: Boolean = false) {
+class RemoteColorScheme(
+  private val named: Boolean = false,
+  /**
+   * Answer every role with a provider carrying TWO captured `long`s (see [TwoLongFallback]) — the
+   * shape that makes the field lookup's ordering observable.
+   */
+  private val twoLong: Boolean = false,
+) {
   // Declared with each longer sibling BEFORE the role it collides with, so a lookup that went back
   // to matching on `startsWith` finds the sibling first and fails these tests rather than passing
   // them by luck. The assertions themselves do not depend on that ordering.
@@ -80,11 +87,21 @@ class RemoteColorScheme(private val named: Boolean = false) {
   fun getOnError(): Any = role(29)
 
   private fun role(index: Int): Any =
-    if (named) NamedRemoteColor(expected(index)) else RemoteColor(expected(index))
+    when {
+      twoLong -> TwoLongNamedRemoteColor(expected(index), DECOY_BITS)
+      named -> NamedRemoteColor(expected(index))
+      else -> RemoteColor(expected(index))
+    }
 
   companion object {
     /** A colour no other role in this double answers with, so a mix-up names its own culprit. */
     fun expected(index: Int): Color = Color(0xFF000000.toInt() or index)
+
+    /**
+     * The value the SECOND captured `long` holds — never a role's colour, so reading the wrong
+     * field is visible as this exact colour rather than as a plausible near-miss.
+     */
+    val DECOY_BITS: Long = Color(0xFFFF00FF.toInt()).value.toLong()
   }
 }
 
@@ -125,3 +142,33 @@ class NamedRemoteColor(value: Color) {
 
 /** Stands in for the capturing lambda: one captured `long`, read back without invoking it. */
 class PackedFallback(@Suppress("unused") private val bits: Long)
+
+/**
+ * The same lambda if `remote-creation-compose` ever captured a second `long`.
+ *
+ * Not speculative for its own sake: `Class.getDeclaredFields()` returns its elements in no
+ * specified order, which is the same unspecified order that made eleven colour roles read a
+ * sibling's colour. Today's lambda holds exactly one `long`, so the ambiguity is latent rather than
+ * live — and a latent one is worth pinning cheaply, because the symptom is a catalog raster whose
+ * colours change between runs of identical bytecode, which reads as everything except a bug.
+ *
+ * [other] is declared FIRST and is not the packed colour, so a lookup taking whatever the JVM
+ * happened to list first can produce the wrong answer here, while a lookup that sorts cannot.
+ */
+class TwoLongFallback(
+  @Suppress("unused") private val alsoLong: Long,
+  @Suppress("unused") private val bits: Long,
+)
+
+/** A named colour whose provider carries the two-`long` shape above. */
+class TwoLongNamedRemoteColor(value: Color, decoy: Long) {
+  // The decoy is the FIRST constructor parameter, so `bits` is the second declared field: a lookup
+  // taking whatever `getDeclaredFields()` listed first can land on either, and a sorted one lands
+  // on `alsoLong` every time. The test asserts the sorted pick, which is the point — stability, not
+  // which of the two it happens to be.
+  private val provider = TwoLongFallback(decoy, value.value.toLong())
+
+  fun getConstantValueOrNull(): Any? = null
+
+  internal fun getIdProvider(): Any = provider
+}
