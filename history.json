@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "b000d228dac468da3a1c31202e1b3acb9b56aa50",
+    "generatedFrom": "511ab879b89695454755252076591ca40eec1297",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -2615,6 +2615,13 @@
             "path": "renders/samples:android/RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
             "versions": [
                 {
+                    "blob": "8ab84243db7644bb0b2b3b08a4ea0fec1f8c621e",
+                    "commit": "511ab879b89695454755252076591ca40eec1297",
+                    "date": "2026-09-05T11:04:50Z",
+                    "sourceSha": "28fb93b5",
+                    "commits": 1
+                },
+                {
                     "blob": "96f74b09de45d8683b18238303c89142354b8c5c",
                     "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
                     "date": "2026-08-19T13:30:14Z",
@@ -2622,7 +2629,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8064,6 +8071,13 @@
             "path": "renders/samples:wear/ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_long.png",
             "versions": [
                 {
+                    "blob": "2eb6ffca0613b20314af8349535b969274a5c54c",
+                    "commit": "511ab879b89695454755252076591ca40eec1297",
+                    "date": "2026-09-05T11:04:50Z",
+                    "sourceSha": "28fb93b5",
+                    "commits": 1
+                },
+                {
                     "blob": "174707ab2066f1e72ee5ebd3166345d767e845d3",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
                     "date": "2026-08-31T22:33:22Z",
@@ -8071,7 +8085,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8199,6 +8213,13 @@
             "path": "renders/samples:wear/SettingsMainScreenLongPreview_Devices_Large_Round-36703d30.png",
             "versions": [
                 {
+                    "blob": "bbdb080c48c5e79cbe480f6a5226f5ee82fee68d",
+                    "commit": "511ab879b89695454755252076591ca40eec1297",
+                    "date": "2026-09-05T11:04:50Z",
+                    "sourceSha": "28fb93b5",
+                    "commits": 1
+                },
+                {
                     "blob": "3e9a616b7a15fac3c40d50ae9e2cffa94505bf15",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
                     "date": "2026-08-31T22:33:22Z",
@@ -8206,7 +8227,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
