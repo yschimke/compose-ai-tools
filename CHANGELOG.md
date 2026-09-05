@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.79.0](https://github.com/yschimke/compose-ai-tools/compare/v1.78.1...v1.79.0) (2026-09-05)
+
+
+### Features
+
+* **knobs:** let an enum constant declare the seed text it answers to ([#5155](https://github.com/yschimke/compose-ai-tools/issues/5155)) ([48a93ff](https://github.com/yschimke/compose-ai-tools/commit/48a93ff67b544fae36ccb723cba0f15f3e3f20f5))
+
+
+### Bug Fixes
+
+* **render:** supply the poolingcontainer R class when AGP's merged R.jar does not ([#5154](https://github.com/yschimke/compose-ai-tools/issues/5154)) ([5d71ce8](https://github.com/yschimke/compose-ai-tools/commit/5d71ce8cad8cb683ffbea5fa26eec9801d9b481c))
+
 ## [1.78.1](https://github.com/yschimke/compose-ai-tools/compare/v1.78.0...v1.78.1) (2026-09-05)
 
 
