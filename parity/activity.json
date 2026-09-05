@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T08:11:28.207Z",
+  "generatedAt": "2026-09-05T08:25:51.882Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "186e838121a66475af3aeac765e24a71258a45ff",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.77.0 (#5146)",
+        "at": "2026-09-05T09:04:29+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ccb996f49930bd8554edf92fe7a2d46833985a8a",
+        "subject": "docs(build-host): decide where PreviewModule lives in the build-host protocol (#5145)",
+        "at": "2026-09-05T09:02:16+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ea5d1aeec70d2f97edd216a3c1380e8658907b6d",
+        "subject": "chore(main): release 1.77.0 (#5144)",
+        "at": "2026-09-05T08:55:22+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f5f1854e98d3f00b2cf651b2c28d54c9a4a3c466",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.76.0 (#5143)",
+        "at": "2026-09-05T08:55:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "e66261968364ddbe29397129c5e502572168db84",
         "subject": "feat(knobs): add an enum knob kind so a closed value set keeps its picker (#5142)",
@@ -451,38 +483,6 @@
         "subject": "chore(main): release 1.71.0 (#5071)",
         "at": "2026-09-04T09:26:26+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "457965d28b0cecfaade58cc40df7e69f9fe9f07e",
-        "subject": "fix(semantics): match Font's style getter on its decoration, not a prefix (#5083)",
-        "at": "2026-09-04T09:24:55+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5253e95e9a62aad9f800809a7e6d9cf28ffe7cb6",
-        "subject": "fix(compare): read a fractional root translate instead of dropping it (#5082)",
-        "at": "2026-09-04T09:24:00+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "184657fe215a5520abbea7465bce463ca4196a1e",
-        "subject": "feat(discovery): generate a screen that holds state and handlers that write it (#5081)",
-        "at": "2026-09-04T08:02:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b872827802cb933ae6380ef36e6bd70c67114a92",
-        "subject": "fix(renderer): read a catalog role's own getter, not a longer sibling's (#5080)",
-        "at": "2026-09-04T06:46:02+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
