@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.76.0](https://github.com/yschimke/compose-ai-tools/compare/v1.75.0...v1.76.0) (2026-09-05)
+
+
+### Features
+
+* **builder:** size the palette against four real catalog screens ([#5132](https://github.com/yschimke/compose-ai-tools/issues/5132)) ([59b2ad3](https://github.com/yschimke/compose-ai-tools/commit/59b2ad38f98c43b7560ab3db7f463cb373b6062b))
+* **design-artifacts:** give the catalog a locale axis so a bilingual fan-out folds ([#5120](https://github.com/yschimke/compose-ai-tools/issues/5120)) ([0d64ae4](https://github.com/yschimke/compose-ai-tools/commit/0d64ae4f1419ec6f16debdab2812ee480097c316))
+* **discovery:** let a call site construct a no-arg-constructible required parameter ([#5124](https://github.com/yschimke/compose-ai-tools/issues/5124)) ([6257fd7](https://github.com/yschimke/compose-ai-tools/commit/6257fd7c7a683f4f3a59fb6553c9c00e63e06f5c))
+* **discovery:** resolve the remember factory a state type ships beside it ([#5128](https://github.com/yschimke/compose-ai-tools/issues/5128)) ([4861d48](https://github.com/yschimke/compose-ai-tools/commit/4861d48e38ba21df00923fcc28d7814473d817a2))
+* **gestures:** publish whether a one-handed gesture can reach a composable ([#5126](https://github.com/yschimke/compose-ai-tools/issues/5126)) ([f22ea96](https://github.com/yschimke/compose-ai-tools/commit/f22ea96c27ea8f645eb078ecd26a8bff79503c9c))
+* **render:** say what each --exclude-preview-id pattern matched, and warn at zero ([#5119](https://github.com/yschimke/compose-ai-tools/issues/5119)) ([9aec8e4](https://github.com/yschimke/compose-ai-tools/commit/9aec8e467c9ecb836cd0c10f429ffbc960d164b3))
+* **screen-model:** publish it, so a wasm builder can generate ([#5134](https://github.com/yschimke/compose-ai-tools/issues/5134)) ([ebc8a99](https://github.com/yschimke/compose-ai-tools/commit/ebc8a9999d9f5948e077f92e6726375e9cea00c7))
+
+
+### Bug Fixes
+
+* **builder:** import a generated screen's components instead of qualifying them ([#5123](https://github.com/yschimke/compose-ai-tools/issues/5123)) ([3d01237](https://github.com/yschimke/compose-ai-tools/commit/3d01237a36838c9273d1ea77f3f8c529dc0f1689))
+* **design-artifacts:** report every duplicate-output-axes collision in one pass ([#5118](https://github.com/yschimke/compose-ai-tools/issues/5118)) ([f45b8b3](https://github.com/yschimke/compose-ai-tools/commit/f45b8b3fe2a9130e80c042f56a1718bf7dc0747b))
+* **renderer-android:** resolve defaulted-parameter Glance previews ([#5131](https://github.com/yschimke/compose-ai-tools/issues/5131)) ([445cd9e](https://github.com/yschimke/compose-ai-tools/commit/445cd9e5d52032a0b9861470a771db45cce2b176))
+* **renderer:** pin the packed-colour field lookup, the last unordered read in the catalog path ([#5125](https://github.com/yschimke/compose-ai-tools/issues/5125)) ([f928870](https://github.com/yschimke/compose-ai-tools/commit/f928870bcdd8bc8eef4b1cd138d7ace954b854d7))
+* **render:** name the merged unit-test R.jar when a preview cannot load an R class ([#5136](https://github.com/yschimke/compose-ai-tools/issues/5136)) ([919a47a](https://github.com/yschimke/compose-ai-tools/commit/919a47a4cd924855419878d5d6eb30287d5db1a9))
+
+
+### Reverts
+
+* adopt a merge queue for main ([#5133](https://github.com/yschimke/compose-ai-tools/issues/5133)) ([4dea3f6](https://github.com/yschimke/compose-ai-tools/commit/4dea3f6936f4cdd9ab8e9b5e356f5639ff544352))
+
 ## [1.75.0](https://github.com/yschimke/compose-ai-tools/compare/v1.74.0...v1.75.0) (2026-09-05)
 
 
