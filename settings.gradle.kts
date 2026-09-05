@@ -7,46 +7,26 @@ pluginManagement {
   }
 }
 
-// The per-project conventions that used to live in the root build's `allprojects {}` block (ktfmt
-// + googleStyle + the history-gate test system property) now live in `ComposeAiBaseConventionsPlugin`
-// (build-logic), applied by each module via `plugins { id("composeai.base-conventions") }`. Isolated
-// Projects forbids the root build configuring its siblings, and `gradle.lifecycle.beforeProject`
-// can't apply an included-build plugin (its imperative `pluginManager.apply(id)` doesn't resolve
-// against `pluginManagement`), so explicit per-module application is the IP-safe route — and it
-// keeps `googleStyle()` typed (the convention plugin's classpath carries the ktfmt type).
+// Why this file is shaped the way it is — the lanes it can switch, the build cache policy, the
+// module layout — is docs/build-scripts/SETTINGS.md. Comments here state the live constraint only.
+// Per-project conventions (ktfmt, googleStyle, the history-gate system property) are applied by
+// each module via `plugins { id("composeai.base-conventions") }`, never from the root build.
+// docs/build-scripts/SETTINGS.md#base-conventions
 
-// Snapshot probe for the SDK compatibility matrix's snapshot cells. Pulls Robolectric
-// snapshots (which carry API 37 fixes ahead of the next stable release) from the new Sonatype
-// Central Maven snapshots endpoint so `:samples:sdk-matrix` can render at SDK 37. The legacy
-// `oss.sonatype.org` host is still reachable but stopped accepting new snapshots during
-// Sonatype's 2024–2025 migration to `central.sonatype.com`. Both endpoints are added so a
-// future-published snapshot that lands on the old host still resolves; in practice the new one
-// wins. Scoped to `org.robolectric` so a stray snapshot artifact in some other group can't leak
-// in. Repos are added only when the property is set; default builds aren't slowed by extra
-// snapshot lookups.
+// Snapshot probe for the SDK compatibility matrix's snapshot cells: lets `:samples:sdk-matrix`
+// render at SDK 37 against a Robolectric snapshot.
+// docs/build-scripts/SETTINGS.md#robolectric-snapshots
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
 // Which line the three Remote Compose groups (`androidx.compose.remote`,
-// `androidx.wear.compose.remote`, `androidx.glance.wear`) resolve from:
+// `androidx.wear.compose.remote`, `androidx.glance.wear`) resolve from: `release` (default, the
+// alpha coordinates pinned in `gradle/libs.versions.toml`) or `snapshot`
+// (`-Pcomposeai.remoteCompose=snapshot`, androidx-main post-submit).
 //
-//   * `release`  (default) — the alpha coordinates pinned in `gradle/libs.versions.toml`,
-//     resolved from google(). This is the normal build: reproducible, never ages out, and
-//     the only mode CI and published consumers see.
-//   * `snapshot` — `1.0.0-SNAPSHOT` from the androidx-main post-submit build pinned by
-//     `androidxSnapshotBuildId` below. Use it to try an API that has landed on androidx-main
-//     but has not been released yet: `-Pcomposeai.remoteCompose=snapshot`.
-//
-// The whole trio moves together in either mode. They only work when built against the same
-// `remote-creation*` — the catalog comment above `compose-remote` records what a skewed pair
-// costs — so the mode flips all three keys at once rather than letting one group straddle the
-// two lines.
-//
-// Historical note on why the snapshot lane exists at all: `androidx.compose.remote.foundation`
-// (which `wear.compose.remote:remote-material3` needs) was, for a long time, published only on
-// androidx-main, so the release line could not resolve the Wear widget layer. It now ships on
-// Google Maven, which is what let the default flip back to `release`. Keep the lane anyway —
-// the next API this repo wants to exercise will land on androidx-main first.
+// CONSTRAINT: the whole trio moves together. They only work when built against the same
+// `remote-creation*`, so the mode flips all three keys at once and one group must never straddle
+// the two lines. docs/build-scripts/SETTINGS.md#remote-compose-lane
 val remoteComposeLine =
   providers.gradleProperty("composeai.remoteCompose").orElse("release").get().trim().lowercase()
 
@@ -57,36 +37,23 @@ require(remoteComposeLine == "release" || remoteComposeLine == "snapshot") {
 val useRemoteComposeSnapshot = remoteComposeLine == "snapshot"
 
 // androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from when
-// `composeai.remoteCompose=snapshot`. See the repository declaration below; bump this one line to
-// move all three groups to a newer snapshot. Build ids age out of androidx.dev after a few weeks —
-// if the artifacts 404, pick a fresh one from https://androidx.dev/snapshots/builds.
+// `composeai.remoteCompose=snapshot`. Bump this one line to move all three groups to a newer
+// snapshot; build ids age out of androidx.dev after a few weeks, so if the artifacts 404 pick a
+// fresh one from https://androidx.dev/snapshots/builds.
 val androidxSnapshotBuildId = "16155060"
 
 dependencyResolutionManagement {
-  // Kotlin's wasmJs toolchain resolves Node.js from an Ivy repository that the Kotlin Gradle
-  // plugin adds to the root project while kotlinWasmNodeJsSetup is realized. Rejecting or ignoring
-  // that project repository makes the aggregate `check` task fail before any tests run because
-  // org.nodejs:node is not published to our Maven repositories. The build scripts themselves keep
-  // dependency repositories centralized here; project preference exists solely so the plugin-owned
-  // Node.js distribution repository remains usable.
+  // PREFER_PROJECT exists solely so the Kotlin wasmJs toolchain's plugin-owned Node.js
+  // distribution repository stays usable; dependency repositories still belong here.
+  // docs/build-scripts/SETTINGS.md#repositories-mode
   repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
   repositories {
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
-    // Remote Compose (`androidx.compose.remote`), the Wear widget layer built on it
-    // (`androidx.wear.compose.remote`) and Glance Wear (`androidx.glance.wear`) normally resolve
-    // from google() at the alpha coordinates the version catalog pins. Only in snapshot mode
-    // (`-Pcomposeai.remoteCompose=snapshot`, see `remoteComposeLine` above) is the androidx-main
-    // post-submit repository added, and then all three groups come from ONE build id: the trio has
-    // to agree on a single `remote-creation*` version — the catalog comment above `compose-remote`
-    // records what a skewed pair costs (`NoClassDefFoundError` inside `RemoteButtonImpl` at render
-    // time, and a wear pin that briefly didn't exist at all) — and taking all three from one build
-    // makes that structural instead of a manual cross-check against each POM. Pinned to a build id
-    // rather than `snapshots/latest` so even the snapshot lane stays reproducible: a new snapshot
-    // lands only when `androidxSnapshotBuildId` changes. Scoped by group regex (which also picks up
-    // `androidx.compose.remote.foundation`) and `snapshotsOnly()`, so nothing else can drift onto an
-    // unreviewed snapshot and every release coordinate keeps resolving from google() even here.
+    // All three Remote Compose groups come from ONE build id, group-scoped and snapshots-only, so
+    // the trio can't skew and nothing else can drift onto an unreviewed snapshot.
+    // docs/build-scripts/SETTINGS.md#remote-compose-lane
     if (useRemoteComposeSnapshot) {
       maven("https://androidx.dev/snapshots/builds/$androidxSnapshotBuildId/artifacts/repository") {
         name = "androidxSnapshots"
@@ -110,19 +77,12 @@ dependencyResolutionManagement {
     }
   }
 
-  // Snapshot mode rewrites the three Remote Compose version refs in place, so the catalog file
-  // keeps exactly one set of coordinates — the released ones — and `-Pcomposeai.remoteCompose=
-  // snapshot` is the only thing that can move them. Overriding here (rather than keeping a second
-  // commented-out block in the TOML) means every `libs.compose.remote.*`, `libs.wear.compose.
-  // remote.*` and `libs.glance.wear.*` accessor follows the mode with no per-module wiring, and a
-  // release build can't accidentally resolve one group off the snapshot line.
+  // Snapshot mode rewrites the three version refs in place, so the TOML keeps exactly one set of
+  // coordinates — the released ones. docs/build-scripts/SETTINGS.md#catalog-override
   if (useRemoteComposeSnapshot) {
     versionCatalogs {
-      // `create`, not `named`: `named` fails here with "VersionCatalogBuilder with name 'libs' not
-      // found" — the default catalog is registered after settings are evaluated. `create("libs")`
-      // returns that same builder with `gradle/libs.versions.toml` ALREADY imported (calling
-      // `from(...)` on it fails with "Multiple 'from' invocations"), so these three lines override
-      // three versions and leave every other entry as the TOML has it.
+      // `create`, not `named` — `named` fails here, and `create("libs")` returns the builder with
+      // the TOML already imported, so these three lines override three versions and nothing else.
       create("libs") {
         version("compose-remote", "1.0.0-SNAPSHOT")
         version("wear-compose-remote", "1.0.0-SNAPSHOT")
@@ -132,28 +92,15 @@ dependencyResolutionManagement {
   }
 }
 
-// BuildFetch remote Gradle build cache. Complements the local build cache (org.gradle.caching=true
-// in gradle.properties) by sharing task outputs across CI runs and developer machines.
-//
-// Token: resolved from the first non-blank of, in order —
-//          1. env  BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN  (project-specific)
-//          2. prop BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN
-//          3. env  BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN            (shared / general fallback)
-//          4. prop BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN
-//        The project-specific name lets a developer keep a separate token per BuildFetch project
-//        (this repo and meshcore-mobile point at different caches) in one shared
-//        ~/.gradle/gradle.properties; the general name lets a single token serve everything and is
-//        what CI exports. Env wins over a gradle property of the same name so CI overrides a stray
-//        local property. Each source is trimmed and empty-checked independently so a present-but-
-//        empty value (e.g. an unset secret that CI still exports) never shadows a later source and
-//        never enables the cache with an empty credential. When nothing resolves the cache disables
-//        itself (isEnabled below) and the build falls back to the local cache with no error.
-// Push:  writes are restricted to trusted CI builds (ON_CI=true on main); PRs and developer machines
-//        are read-only. The gate is value-based so an explicit ON_CI=false is honoured as read-only.
+// BuildFetch remote Gradle build cache, complementing the local one. Writes are restricted to
+// trusted CI builds (ON_CI=true on main); PRs and developer machines are read-only, and the gate is
+// value-based so an explicit ON_CI=false stays read-only. Token resolution order and the rest of
+// the policy: docs/build-scripts/SETTINGS.md#build-cache
 val onCi = providers.environmentVariable("ON_CI").orElse("false").get().toBoolean()
 
-// Non-blank view of a single env var / gradle property: trims and drops empties so a present-but-empty
-// source doesn't shadow a later fallback (see the header comment).
+// Non-blank view of a single env var / gradle property: trims and drops empties so a present-but-
+// empty source (an unset secret CI still exports) never shadows a later fallback and never enables
+// the cache with an empty credential.
 val nonBlank = { source: Provider<String> -> source.map { it.trim() }.filter { it.isNotEmpty() } }
 val cacheToken =
   nonBlank(providers.environmentVariable("BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN"))
@@ -162,58 +109,18 @@ val cacheToken =
     .orElse(nonBlank(providers.gradleProperty("BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN")))
     .orNull
 
-// TEMPORARY (issue #2824): kill switch for the BuildFetch remote cache. Two entries are stored
-// TRUNCATED at rest — `12fcc978…a05d` (ClasspathEntrySnapshotTransform of gradle-api-9.6.1.jar) and
-// `877aca9a…c1ec` (:samples:android-screenshot-test:mergeDebugResources). Both are served as HTTP
-// 200 with a `content-length` matching the truncated body, so nothing detects the short read until
-// the gzip stream runs off the end: "Could not load from remote cache: Unexpected end of ZLIB input
-// stream". Gradle treats that as FATAL (corruption is not a recoverable cache failure), so any build
-// resolving either key dies — and it can't self-heal, because the load aborts before the task runs,
-// so nothing ever pushes a replacement.
-//
-// `composeai.cacheSalt` is the escape hatch for exactly this, but it can't reach these two: it is an
-// input property on `KotlinCompilationTask` only, and these are an AGP task and an artifact
-// transform (a transform's key comes from the input artifact + transform implementation — a task
-// input property never enters it). Bumping the salt would leave both keys resolving to the same
-// poisoned objects.
-//
-// So until BuildFetch evicts them, skip the remote entirely. The local cache stays on regardless
-// (see `local` below), so flipping this off degrades to local-only rather than to no cache at all.
-//
-// TO REVERT once the entries are evicted: delete this flag + the `composeai.remoteCache` line in
-// gradle.properties. Nothing else changed.
+// TEMPORARY (issue #2824): kill switch for the BuildFetch remote cache — two entries are stored
+// truncated at rest and Gradle treats the short read as FATAL, so any build resolving either key
+// dies. Skip the remote until BuildFetch evicts them; the local cache stays on regardless.
+// TO REVERT: delete this flag + the `composeai.remoteCache` line in gradle.properties.
+// docs/build-scripts/SETTINGS.md#remote-cache-kill-switch
 val remoteCacheDisabled =
   providers.gradleProperty("composeai.remoteCache").orElse("on").get().trim().lowercase() == "off"
 
 buildCache {
-  // The local cache stays ON everywhere, including on the trusted main runs that push. Many
-  // writers, none of them paying a no-cache build.
-  //
-  // This used to be `isEnabled = !remotePushEnabled`, on the reasoning that Gradle only pushes a
-  // task it actually *executes* — so a warm local cache resolves everything FROM-CACHE, nothing is
-  // pushed, and the remote stays empty. That reasoning holds on a developer machine with a
-  // genuinely warm cache. It does not hold on a CI runner, and assuming it did is what starved the
-  // remote:
-  //
-  //   * setup-gradle restores `caches/build-cache-1` from the GitHub Actions cache, but reports
-  //     `Save was skipped` on an exact key match — so the entry never accumulates. It is a frozen
-  //     point-in-time snapshot, not a warm cache.
-  //   * The moment a change rotates cache keys build-wide (a build-logic edit, a dependency bump)
-  //     that snapshot stops matching, and every task executes — and therefore pushes.
-  //
-  // So on CI, "local cache on" does not suppress pushes; it suppresses the *redundant* ones.
-  // Whatever a run genuinely had to execute still lands in the remote. That lets every trusted main
-  // run contribute, instead of concentrating the whole job on one designated seeder that has to
-  // build from scratch to be useful.
-  //
-  // Why that matters here: this repo merges fast. Measured 2026-08-09, five commits landed in the
-  // 26 minutes between a seed (69c0517) and the next e2e run (7677a3f2) — one of them touching
-  // preview discovery, which rotates every render key. A single seeder cannot stay ahead of that,
-  // and the jobs that could have refreshed those keys were forbidden from pushing. Several
-  // opportunistic writers cover it; one exhaustive writer cannot.
-  //
-  // `gradle-cache-seed.yml` still exists as the guaranteed-to-complete baseline writer (it is the
-  // only one that never gets cancelled), but it is no longer the only one.
+  // The local cache stays ON everywhere, including on the trusted main runs that push — it
+  // suppresses the redundant pushes, not the useful ones, so every trusted run can contribute.
+  // Don't gate this on push again. docs/build-scripts/SETTINGS.md#local-cache-always-on
   local { isEnabled = true }
   remote<HttpBuildCache> {
     url = uri("https://cache.eu-central-a.buildfetch.com/8ESz2z/gradle/")
@@ -235,27 +142,12 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
-// The preview server is no longer built here. It lives in yschimke/compose-preview-server and
-// `:cli` consumes it as `ee.schimke.composeai:compose-preview-serve` (see `composeai-preview-serve`
-// in the version catalog) — the extraction #4732 planned, finished. `cli/serve-web`, the Lit/Vue
-// frontend whose bundle was committed into the server's resources, went with it.
+// Modules that used to live here and where they went: docs/build-scripts/SETTINGS.md#extractions
 
-// Experimental Compose/Wasm client for the preview server, exercising its public JSON/render/
-// WebSocket contracts as an independent client, and staged into the CLI distribution as
-// `preview-ui/`. The sibling it was designed against (`cli/serve-web`) is now `serve-web/` in the
-// server's repository.
-//
-// It is a FORK, not an independent client. An earlier version of this note said it "shares no code
-// with" the server — true of the runtime relationship and false of the source: these are the same
-// app as compose-preview-server's `wasm-ui`, compiled twice. That sentence is how the two drifted
-// for a day with nothing noticing, shipping #4821's wrong picture inside `preview-ui/` while
-// `serve` ran the fixed server.
-//
-// Why two copies rather than one artifact: each repository compiles the app against ITS OWN M3
-// catalog — `:samples:design-catalog-m3-shared` here, `:native-catalog-m3` there — so neither
-// build's output can stand in for the other's. The duplication is accepted and gated:
-// `.github/ci/check_serve_wasm_fork.py` holds the shared sources byte-identical against a pinned
-// upstream SHA. Port a change to both, then bump the pin.
+// Compose/Wasm client for the preview server, staged into the CLI distribution as `preview-ui/`.
+// It is a FORK of compose-preview-server's `wasm-ui`, gated byte-identical against a pinned
+// upstream SHA by `.github/ci/check_serve_wasm_fork.py`: port a change to both, then bump the pin.
+// docs/build-scripts/SETTINGS.md#serve-wasm-fork
 include(":cli:serve-wasm")
 
 // The preview-bundle *format* — split out of `:cli` for issue #3824. Everything a reader of a
@@ -276,26 +168,17 @@ include(":bundle-coordinates")
 
 project(":bundle-coordinates").projectDir = file("bundle/coordinates")
 
-// The mobile + Wear "session viewer" client apps (`:clients:*`) were split out to their own repo,
-// yschimke/compose-preview-client (issue #2533). They consumed `compose-preview serve` purely
-// through the wire contract (docs/serve/SESSION-VIEWER-PROTOCOL.md), never a code dependency, so the
-// lift was clean. Nothing in this build depends on them.
-
-// Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
-// Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
-// third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling
-// API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENT_GUIDE.md
-// "Built-in scripts" / clean-API discussion.
 // The wire contract between a preview server and a Gradle build host process — the seven build
-// operations `ServeBuildHost` names, as messages rather than as a Kotlin interface. Lets the
-// preview server ask compose-ai-tools for Gradle work across a process boundary instead of the CLI
-// having to BE the server's build host, which is the forward edge of the dependency cycle in
-// yschimke/compose-preview-server#180. Published from here rather than from contracts because two
-// of the operations carry `PreviewModule` — docs/design/BUILD_HOST_PROTOCOL_PREVIEWMODULE.md.
+// operations `ServeBuildHost` names, as messages rather than as a Kotlin interface. Published from
+// here rather than from contracts because two of the operations carry `PreviewModule` —
+// docs/design/BUILD_HOST_PROTOCOL_PREVIEWMODULE.md.
 include(":build-host-protocol")
 
 project(":build-host-protocol").projectDir = file("api/build-host-protocol")
 
+// Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
+// Lives outside `:cli` so external consumers can pull just the data shapes without dragging in
+// `:cli`'s Gradle Tooling API + scripting closure.
 include(":preview-data-api")
 
 project(":preview-data-api").projectDir = file("api/preview-data-api")
@@ -322,15 +205,6 @@ project(":common-web-escaping").projectDir = file("common/web-escaping")
 include(":gradle-preview-driver")
 
 project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
-
-// `:cli-scripting` (the Kotlin-scripting host for `compose-preview script <path>`) was removed
-// in the step C carve-out — see issue #1084 / the clean-API discussion. Scripting now lives in
-// `yschimke/compose-ai-contrib` as a standalone consumer of `:preview-data-api` +
-// `:gradle-preview-driver`. Its absence from this repo is the proof the published API is
-// expressive enough to build features against, not just inside. The intermediate
-// `:examples-scripting` reference (a build-tested template that contrib's copy job pulled into
-// its own published module) has also been removed now that contrib hosts the canonical
-// implementation.
 
 include(":bundle-viewer")
 
@@ -450,15 +324,6 @@ include(":samples:cmp-shared")
 // renderable `@Preview`, so it sits outside the desktop/Android render path.
 include(":samples:cmp-wasm-catalog")
 
-// The Remote Compose players — both the Kotlin Multiplatform one written here and the vendored
-// AndroidX embedded player it is compared against — are published by yschimke/rc-players now, along
-// with the Wasm browser bundle, the iOS XCFramework and the lane-comparison recipes. This build
-// consumes them as coordinates: `libs.rcplayer.*` in `gradle/libs.versions.toml`.
-//
-// The dependency runs both ways and neither direction is a build-time cycle. That repository takes
-// `data-fonts-google` and `data-layoutinspector-connector` back from this one, at released
-// coordinates.
-
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.
@@ -467,12 +332,6 @@ include(":samples:cmp-android-only")
 include(":samples:desktop-daemon-bench")
 
 include(":samples:remotecompose")
-
-// The Remote Compose **design catalog** used to live here as
-// `:samples:design-catalog-remote-m3`. It is published by yschimke/wear-m3-catalog now
-// (#4588), co-located with the Wear catalog it is compared against and the kit both
-// reproduce. `:samples:remotecompose` (the "how to preview Remote Compose" demo) stays here;
-// the players followed it out, into yschimke/rc-players.
 
 include(":renderer-desktop")
 
@@ -492,16 +351,11 @@ include(":daemon:core")
 
 
 
-// Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
-// Compose / AndroidX-test code, published) and a `connector` (daemon glue, unpublished) module.
-// See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)".
-//
-// Project paths use flat names rather than `:data:a11y:core` because Gradle resolves project
-// dependencies by `<group>:<projectName>` and `:data:a11y:core`'s leaf name "core" collides
-// with `:daemon:core`'s — same group, same name, "by conflict resolution" substitutes one for
-// the other. Flat names avoid the collision; the directory layout on disk stays nested under
-// `data/<product>/`. Published Maven coordinates are set explicitly in each module's
-// `mavenPublishing { coordinates(...) }` block.
+// Per-product data-product modules — each `data/<product>/` carries a `core` (published) and a
+// `connector` (daemon glue, unpublished) module. See docs/daemon/DATA-PRODUCTS.md § "Module split
+// (D2.2)". Project paths must stay FLAT (`:data-a11y-core`, not `:data:a11y:core`): a nested leaf
+// named `core` collides with `:daemon:core` under Gradle's `<group>:<projectName>` resolution.
+// docs/build-scripts/SETTINGS.md#flat-data-paths
 include(":data-a11y-core")
 
 project(":data-a11y-core").projectDir = file("data/a11y/core")
@@ -750,12 +604,9 @@ include(":daemon:desktop")
 
 include(":daemon:harness")
 
-// Standalone Kotlin Build Tools API parity/soak harness (#1332). The stage-2 spike it began as
-// has SHIPPED: in-process compile is wired into `:daemon:core` (`bta/BtaCompileSession`,
-// `bta/DefaultBtaCompileService`, the `compileSources` JSON-RPC method) behind the experimental
-// workspace flag `composePreview.daemon.compileInProcess`.
-// Nothing in production depends on this module; it's retained only for its BTA-impl parity, IC,
-// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`).
+// Standalone Kotlin Build Tools API parity/soak harness (#1332). Nothing in production depends on
+// it — in-process compile shipped in `:daemon:core`'s `bta/` package — and it is retained only for
+// its BTA-impl parity, IC and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`).
 include(":daemon:bta-host")
 
 // Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
@@ -772,21 +623,14 @@ project(":daemon-client").projectDir = file("daemon/client")
 
 include(":mcp")
 
-// Public render-session library. `:render-session-api` is the pure-interface surface every
-// consumer (CLI, MCP server, third-party tooling) compiles against; `:render-session-subprocess`
-// is the daemon-subprocess-backed implementation. Future `:render-session-embedded` will host the
-// in-process Robolectric driver once that's viable.
 // The render host, the bundle daemon and the git-backed preview history — daemon-backed rendering,
-// packed-bundle materialisation and manifest reads, with no web server underneath.
-//
-// Moved here from yschimke/compose-preview-server, where it published as
-// `compose-preview-render-host`. It is offline behaviour, which `docs/design/REPOSITORY_LAYERS.md`
-// places in layer 1, and it had zero project dependencies inside the server — it lived there only
-// because it was written inside the `serve` package and went along when the server was extracted.
-// Depending on it from `:cli` is half of the dependency cycle in
-// yschimke/compose-preview-server#180, and the half with no reason to exist.
+// packed-bundle materialisation and manifest reads, with no web server underneath. Moved here from
+// yschimke/compose-preview-server. docs/build-scripts/SETTINGS.md#render-host
 include(":render-host")
 
+// Public render-session library. `:render-session-api` is the pure-interface surface every
+// consumer (CLI, MCP server, third-party tooling) compiles against; `:render-session-subprocess`
+// is the daemon-subprocess-backed implementation.
 include(":render-session-api")
 
 project(":render-session-api").projectDir = file("render-session/api")
@@ -810,42 +654,25 @@ include(":render-cli")
 
 project(":render-cli").projectDir = file("render-session/cli")
 
-// JDK 21+ samples. Each module here pulls in tooling whose own gradle plugin
-// is compiled to Java 21 bytecode and therefore can't load on this repo's
-// default JDK 17 build daemon (see `gradle/gradle-daemon-jvm.properties`,
-// pinned to `toolchainVersion=17`). Rather than bump the daemon repo-wide
-// and force every contributor onto JDK 21, we keep the pin at 17 and gate
-// inclusion on `JavaVersion.current()`. The dedicated CI workflow
-// `.github/workflows/samples-sdk21.yml` rewrites the daemon-jvm-properties
-// file on the runner (never committed) so the daemon launches on 21 and
-// the subtree gets exercised on every PR that touches it.
-//
-// Currently:
-//  * `samples/sdk21/android-metro-viewmodel` — Metro 1.x DI; its Gradle
-//    plugin jar targets Java 21.
+// JDK 21+ samples, gated on the running JVM because this repo's build daemon is pinned to
+// JDK 17 (`gradle/gradle-daemon-jvm.properties`). `.github/workflows/samples-sdk21.yml` runs the
+// subtree on 21. docs/build-scripts/SETTINGS.md#jdk21-samples
 if (JavaVersion.current() >= JavaVersion.VERSION_21) {
   include(":samples:sdk21:android-metro-viewmodel")
 }
 
-// Snapshot the project paths that carry ktfmt (every project except the root, which applies no
-// convention plugin) for the root build's `ktfmtCheckAll` / `ktfmtFormatAll` aggregate tasks. Under
-// Isolated Projects the root build can't iterate `allprojects` to discover its siblings, but it can
-// depend on their tasks by path. We gather the paths here in settings — where every project is
-// already known — and hand them to the root build through a system property, read back via a
-// configuration-cache-tracked `providers.systemProperty(...)`. The channel must be closure-free: a
-// `gradle.lifecycle.beforeProject` closure can't carry the list (IP isolates the action and can't
-// serialize the captured settings-script reference).
+// Project paths carrying ktfmt, handed to the root build's `ktfmtCheckAll` / `ktfmtFormatAll`
+// aggregate tasks through a system property. The channel must stay closure-free under Isolated
+// Projects. docs/build-scripts/SETTINGS.md#ktfmt-project-paths
 val ktfmtProjectPaths = buildList {
   fun visit(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
-    // Only projects with a build script apply `composeai.base-conventions` (and therefore own a
-    // `ktfmtCheck`/`ktfmtFormat` task). Container projects like `:daemon` / `:samples`, which exist
-    // only because of nested includes and have no build file, are skipped.
+    // Only projects with a build script apply `composeai.base-conventions`, so container projects
+    // like `:daemon` / `:samples` own no ktfmt task and are skipped.
     if (descriptor.buildFile.exists()) add(descriptor.path)
     descriptor.children.forEach(::visit)
   }
-  // Start from the root's children: the root project can't apply `composeai.base-conventions`
-  // (a build-logic plugin on the root classpath leaks to every subproject and collides with their
-  // versioned plugin aliases), so the root carries no ktfmt and is left out.
+  // The root can't apply `composeai.base-conventions` (it would leak to every subproject), so it
+  // carries no ktfmt and is left out.
   rootProject.children.forEach(::visit)
 }
 System.setProperty("composeai.ktfmtProjectPaths", ktfmtProjectPaths.joinToString(","))
