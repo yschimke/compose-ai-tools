@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 281 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 282 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1016,6 +1016,12 @@ _No findings._
 ### `OverridableListPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/OverridableListPreview_Overridable_List-c264a81f.a11y.png" width="400" />
+
+_No findings._
+
+### `ParameterKnobEmphasisPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ParameterKnobEmphasisPreview_Parameter_Knob_Emphasis-d7ca14fe.a11y.png" width="400" />
 
 _No findings._
 

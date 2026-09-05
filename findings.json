@@ -2025,6 +2025,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ParameterKnobEmphasisPreview_Parameter_Knob_Emphasis-d7ca14fe.a11y.png",
+      "cleanBasename": "ParameterKnobEmphasisPreview_Parameter_Knob_Emphasis-d7ca14fe.png",
+      "findings": [],
+      "functionName": "ParameterKnobEmphasisPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ParameterKnobPreviewsKt.ParameterKnobEmphasisPreview_Parameter Knob Emphasis",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ParameterKnobPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ParameterKnobListPreview_Parameter_Knob_List-de590fad.a11y.png",
       "cleanBasename": "ParameterKnobListPreview_Parameter_Knob_List-de590fad.png",
       "findings": [],
