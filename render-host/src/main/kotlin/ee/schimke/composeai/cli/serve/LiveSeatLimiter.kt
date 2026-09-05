@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Thread-safe: the backing [Semaphore] is fair-agnostic like the old flat gate, and each [Ticket]
  * releases its permits at most once.
  */
-class LiveSeatLimiter(
-  val totalPermits: Int,
+public class LiveSeatLimiter(
+  public val totalPermits: Int,
   /**
    * Permits carved out of [totalPermits] that **only** [acquireBackground] can draw on — the
    * per-preview lane's guaranteed slice.
@@ -47,7 +47,7 @@ class LiveSeatLimiter(
    * daemon simply does not carry the id) has no fallback that renders, unlike a burst replica which
    * can narrow onto the primary.
    */
-  val perPreviewReserve: Int = DEFAULT_PER_PREVIEW_RESERVE,
+  public val perPreviewReserve: Int = DEFAULT_PER_PREVIEW_RESERVE,
 ) {
   // The reserve is held in its own semaphore rather than subtracted from a single one, so no
   // amount of general-lane demand can consume it. `acquire` never sees it at all.
@@ -68,7 +68,7 @@ class LiveSeatLimiter(
   // and reporting that would state a slice the limiter may not actually hold — on a small box it is
   // clamped to nothing, and an oversized custom value would otherwise be reported as larger than
   // the whole budget. A diagnostic added to make starvation visible must not itself be able to lie.
-  val perPreviewPermits: Int =
+  public val perPreviewPermits: Int =
     if (totalPermits > 0)
       perPreviewReserve.coerceIn(0, (totalPermits - STREAM_RESERVE).coerceAtLeast(0))
     else 0
@@ -81,7 +81,7 @@ class LiveSeatLimiter(
     if (perPreviewPermits > 0) Semaphore(perPreviewPermits) else null
 
   /** True when this limiter imposes no bound (`totalPermits <= 0`). */
-  val unbounded: Boolean
+  public val unbounded: Boolean
     get() = semaphore == null
 
   /**
@@ -94,7 +94,7 @@ class LiveSeatLimiter(
    * coerced down to [totalPermits], so a backend heavier than the whole budget can still run alone
    * rather than being permanently refused.
    */
-  fun acquire(weight: Int, verified: Boolean = true, countRefusal: Boolean = true): Ticket? {
+  public fun acquire(weight: Int, verified: Boolean = true, countRefusal: Boolean = true): Ticket? {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     // Coerced to the GENERAL lane's capacity, not [totalPermits]: the reserve is not available
@@ -133,7 +133,7 @@ class LiveSeatLimiter(
    * can never over-admit under a race — the worst case is a background holder briefly seeing less
    * headroom than really exists and declining, which is the safe direction.
    */
-  fun acquireBackground(
+  public fun acquireBackground(
     weight: Int,
     reserve: Int = STREAM_RESERVE,
     /**
@@ -173,12 +173,12 @@ class LiveSeatLimiter(
    * [totalPermits]: a box with its slice free but its general lane full is not at capacity, and
    * reporting `0 free / 8` there would restate the very confusion this reserve fixes.
    */
-  fun availablePermits(): Int =
+  public fun availablePermits(): Int =
     semaphore?.let { it.availablePermits() + (perPreviewSemaphore?.availablePermits() ?: 0) }
       ?: Int.MAX_VALUE
 
   /** Permits free in the per-preview slice alone — lets `/status` show the lane isn't starved. */
-  fun perPreviewPermitsAvailable(): Int =
+  public fun perPreviewPermitsAvailable(): Int =
     perPreviewSemaphore?.availablePermits() ?: if (unbounded) Int.MAX_VALUE else 0
 
   /**
@@ -192,7 +192,7 @@ class LiveSeatLimiter(
    * the evidence any change to the budget (or to evicting an idle daemon in favour of an active
    * one) should be argued from.
    */
-  fun refusalCount(): Long = refusals.get()
+  public fun refusalCount(): Long = refusals.get()
 
   /**
    * Refusals for a session id the registry did not have at admission time, monotonic.
@@ -203,15 +203,15 @@ class LiveSeatLimiter(
    * `--revisions` produces on its first request. Read it alongside [refusalCount] rather than
    * instead of it.
    */
-  fun unverifiedRefusalCount(): Long = unverifiedRefusals.get()
+  public fun unverifiedRefusalCount(): Long = unverifiedRefusals.get()
 
-  companion object {
+  public companion object {
     /**
      * Permits [acquireBackground] must leave free for interactive streams. Sized at
      * [ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT] — the most expensive single stream — so one can
      * always start no matter how much render residency has built up.
      */
-    const val STREAM_RESERVE: Int = ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT
+    public const val STREAM_RESERVE: Int = ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT
 
     /**
      * Default [perPreviewReserve]: one desktop daemon's worth (weight 1).
@@ -222,7 +222,7 @@ class LiveSeatLimiter(
      * batch — gives up as little as possible; a second concurrent per-preview daemon still competes
      * for the general pool exactly as before.
      */
-    const val DEFAULT_PER_PREVIEW_RESERVE: Int = 1
+    public const val DEFAULT_PER_PREVIEW_RESERVE: Int = 1
   }
 
   private val refusals = AtomicLong()
@@ -236,7 +236,8 @@ class LiveSeatLimiter(
    * to the general one, and the starvation this class now prevents would reappear after the first
    * eviction.
    */
-  inner class Ticket internal constructor(val permits: Int, private val reserved: Boolean = false) :
+  public inner class Ticket
+  internal constructor(public val permits: Int, private val reserved: Boolean = false) :
     AutoCloseable {
     private val released = AtomicBoolean(false)
 

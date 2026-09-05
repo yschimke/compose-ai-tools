@@ -38,15 +38,15 @@ import kotlinx.serialization.json.jsonPrimitive
  * is the file to fold in.
  */
 @OptIn(ExperimentalSerializationApi::class)
-object PreviewHistoryManifest {
+public object PreviewHistoryManifest {
 
   /**
    * Bumped when the shape changes incompatibly, so a viewer can refuse a manifest it can't read.
    */
-  const val FORMAT_VERSION: String = "compose-preview-history/v1"
+  public const val FORMAT_VERSION: String = "compose-preview-history/v1"
 
   /** The file's name on the delivery branch, beside `baselines.json`. */
-  const val FILE_NAME: String = "history.json"
+  public const val FILE_NAME: String = "history.json"
 
   /**
    * Its neighbour, and the only source of the render-path → preview-id join
@@ -54,10 +54,10 @@ object PreviewHistoryManifest {
    * `HistoryManifestCommand`, `serve`'s project-mode [ServeProjectHistory] — doesn't restate the
    * filename per call site.
    */
-  const val BASELINES_FILE_NAME: String = "baselines.json"
+  public const val BASELINES_FILE_NAME: String = "baselines.json"
 
   @Serializable
-  data class Manifest(
+  public data class Manifest(
     /**
      * [EncodeDefault] is load-bearing, not decoration: [JSON] sets `encodeDefaults = false` so the
      * redundant fields below stay off the wire, and without this the version discriminator would be
@@ -84,7 +84,7 @@ object PreviewHistoryManifest {
   )
 
   @Serializable
-  data class PreviewTimeline(
+  public data class PreviewTimeline(
     /** Render path on the branch, so a viewer can fetch any version's bytes. */
     @SerialName("path") val path: String,
     /** Newest first. Trimmed when [unstable] — see [PreviewHistory.Timeline.displayVersions]. */
@@ -102,7 +102,7 @@ object PreviewHistoryManifest {
   )
 
   @Serializable
-  data class ManifestVersion(
+  public data class ManifestVersion(
     /** Content sha of the render — stable across commits, so a viewer can cache by it. */
     @SerialName("blob") val blob: String,
     /** Newest delivery-branch commit carrying these bytes. */
@@ -145,15 +145,15 @@ object PreviewHistoryManifest {
    * other than the id the routes use is a manifest the viewer silently finds nothing in, and a
    * second spelling of the derivation is how the two would drift apart without anyone noticing.
    */
-  enum class Layout(val dir: String) {
+  public enum class Layout(public val dir: String) {
     /** `renders/<module>/<basename>`, joined through `baselines.json`. */
     RENDERS("renders"),
     /** `images/<slug>/<variant>.png`, joined by flattening the path. */
     IMAGES(CatalogImagePaths.IMAGES_DIR);
 
-    companion object {
+    public companion object {
       /** Parse a `--layout` value, or null when it names neither layout. */
-      fun of(value: String?): Layout? = entries.firstOrNull { it.name.equals(value, true) }
+      public fun of(value: String?): Layout? = entries.firstOrNull { it.name.equals(value, true) }
     }
   }
 
@@ -167,7 +167,7 @@ object PreviewHistoryManifest {
    * pathspec, so one appearing here means something is wrong and inventing an id for it would put a
    * bogus key in the manifest.
    */
-  fun imagePathsToPreviewIds(paths: Iterable<String>): Map<String, String> {
+  public fun imagePathsToPreviewIds(paths: Iterable<String>): Map<String, String> {
     val byPath = LinkedHashMap<String, String>()
     for (path in paths) {
       if (!path.startsWith("${CatalogImagePaths.IMAGES_DIR}/") || !path.endsWith(".png")) continue
@@ -185,7 +185,7 @@ object PreviewHistoryManifest {
    * Entries missing either field are skipped rather than guessed at — a preview whose path can't be
    * reconstructed is better absent from the manifest than present under a wrong key.
    */
-  fun renderPathsToPreviewIds(baselinesJson: String): Map<String, String> {
+  public fun renderPathsToPreviewIds(baselinesJson: String): Map<String, String> {
     val root =
       runCatching { Json.parseToJsonElement(baselinesJson).jsonObject }.getOrNull()
         ?: return emptyMap()
@@ -210,7 +210,7 @@ object PreviewHistoryManifest {
    * Previews are emitted in sorted key order so regenerating an unchanged branch produces a
    * byte-identical file — otherwise every publish would show a spurious `history.json` diff.
    */
-  fun build(
+  public fun build(
     timelines: Map<String, PreviewHistory.Timeline>,
     pathToPreviewId: Map<String, String>,
     generatedFrom: String,
@@ -247,10 +247,10 @@ object PreviewHistoryManifest {
    * the diff bot read: a one-line JSON blob would make every regeneration an unreviewable diff,
    * whereas one field per line keeps a changed timeline legible in a PR.
    */
-  fun encode(manifest: Manifest): String = JSON.encodeToString(manifest) + "\n"
+  public fun encode(manifest: Manifest): String = JSON.encodeToString(manifest) + "\n"
 
   /** Lenient on read so a manifest written by a newer CLI (extra fields) still loads. */
-  fun decode(text: String): Manifest? = runCatching {
+  public fun decode(text: String): Manifest? = runCatching {
     JSON.decodeFromString<Manifest>(text)
   }
     .getOrNull()

@@ -11,28 +11,28 @@ package ee.schimke.composeai.cli.serve
  * [code] is a stable machine slug a programmatic client can switch on; [detail] is a one-sentence
  * explanation shown in the UI. Keep [code] values in lockstep with any downstream consumer.
  */
-data class ServeDegradation(val code: String, val detail: String) {
-  companion object {
+public data class ServeDegradation(val code: String, val detail: String) {
+  public companion object {
     /**
      * The catalog publishes baked PNGs only — its delivery branch carries no `liveBundle` (and no
      * source this server can build), so no device/theme/knob control can re-render. The common case
      * for an app catalog that hasn't opted into the live tier yet.
      */
-    const val CATALOG_BAKED_ONLY = "catalog-baked-only"
+    public const val CATALOG_BAKED_ONLY: String = "catalog-baked-only"
 
     /**
      * The catalog declared a `liveBundle` but the server couldn't stand a daemon up from it (the
      * bundle or one of its externalized resources failed to fetch/verify, or the daemon didn't
      * start), so it fell back to baked PNGs. [detail] carries the specific cause.
      */
-    const val LIVEBUNDLE_UNAVAILABLE = "livebundle-unavailable"
+    public const val LIVEBUNDLE_UNAVAILABLE: String = "livebundle-unavailable"
 
     /**
      * The catalog offers a live lane (a `liveBundle` or a buildable source) but verified as
      * `Unverified`, so the server refuses to re-render it (fail-closed) and serves baked PNGs. The
      * trust badge already shows the amber verdict; this states the consequence.
      */
-    const val UNVERIFIED_NO_RERENDER = "unverified-no-rerender"
+    public const val UNVERIFIED_NO_RERENDER: String = "unverified-no-rerender"
 
     /**
      * The catalog declares live-only (`deferred[]`) coverage this session can't produce: those
@@ -40,7 +40,7 @@ data class ServeDegradation(val code: String, val detail: String) {
      * them from — so they are omitted from the grid rather than shown as broken cards. The count
      * rides in [detail] so a visitor knows the sheet is thinner than the catalog claims.
      */
-    const val DEFERRED_NOT_SERVED = "deferred-not-served"
+    public const val DEFERRED_NOT_SERVED: String = "deferred-not-served"
 
     /**
      * The session HAD a working live lane and the server has since **switched it off**: its render
@@ -48,14 +48,14 @@ data class ServeDegradation(val code: String, val detail: String) {
      * sustained failure rate), so live renders are refused with the underlying reason rather than
      * retried. Distinct from [LIVEBUNDLE_UNAVAILABLE], which is a daemon that never came up.
      */
-    const val RENDER_LANE_BROKEN = "render-lane-broken"
+    public const val RENDER_LANE_BROKEN: String = "render-lane-broken"
 
     /**
      * The live render lane was disabled by its circuit breaker; [reason] is the breaker's text and
      * [fatal] marks a linkage fault (needs a fixed bundle, not a retry). See
      * [RenderCircuitBreaker].
      */
-    fun renderLaneBroken(reason: String, fatal: Boolean): ServeDegradation =
+    public fun renderLaneBroken(reason: String, fatal: Boolean): ServeDegradation =
       ServeDegradation(
         RENDER_LANE_BROKEN,
         if (fatal) {
@@ -73,7 +73,7 @@ data class ServeDegradation(val code: String, val detail: String) {
      * whichever reason explains the missing live lane (no live bundle / unverified / bundle
      * unavailable).
      */
-    fun deferredNotServed(count: Int): ServeDegradation =
+    public fun deferredNotServed(count: Int): ServeDegradation =
       ServeDegradation(
         DEFERRED_NOT_SERVED,
         "$count preview(s) in this catalog are published live-only (rendered on demand rather " +
@@ -82,7 +82,7 @@ data class ServeDegradation(val code: String, val detail: String) {
       )
 
     /** A baked-only catalog with no live bundle on its delivery branch. */
-    fun catalogBakedOnly(): ServeDegradation =
+    public fun catalogBakedOnly(): ServeDegradation =
       ServeDegradation(
         CATALOG_BAKED_ONLY,
         "This catalog serves baked PNG snapshots only — its delivery branch publishes no live " +
@@ -90,7 +90,7 @@ data class ServeDegradation(val code: String, val detail: String) {
       )
 
     /** A declared live bundle that couldn't be brought up; [cause] is the specific reason. */
-    fun liveBundleUnavailable(cause: String): ServeDegradation =
+    public fun liveBundleUnavailable(cause: String): ServeDegradation =
       ServeDegradation(
         LIVEBUNDLE_UNAVAILABLE,
         "This catalog publishes a live bundle, but the server couldn't render from it ($cause) — " +
@@ -98,7 +98,7 @@ data class ServeDegradation(val code: String, val detail: String) {
       )
 
     /** A live-capable catalog that verified as unverified, so re-render is refused. */
-    fun unverifiedNoRerender(): ServeDegradation =
+    public fun unverifiedNoRerender(): ServeDegradation =
       ServeDegradation(
         UNVERIFIED_NO_RERENDER,
         "This catalog is unverified, so the server won't re-render it (fail-closed) — showing " +

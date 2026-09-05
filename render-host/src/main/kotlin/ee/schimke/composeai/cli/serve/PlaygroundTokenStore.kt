@@ -29,9 +29,9 @@ import okio.Path
  * explicit [remove], [clear]) routes through [disposeSnippet] to delete the work dir. The delete is
  * best-effort — a failure is swallowed so one undeletable directory can't wedge purging.
  */
-class PlaygroundTokenStore(
+public class PlaygroundTokenStore(
   /** How long a preview token stays redeemable. Short by design — minutes, not hours. */
-  val ttlSeconds: Long = DEFAULT_TTL_SECONDS,
+  public val ttlSeconds: Long = DEFAULT_TTL_SECONDS,
   private val maxTokens: Int = DEFAULT_MAX_TOKENS,
   /** Injected per the repo's Okio-everywhere rule; tests pass a `FakeFileSystem`. */
   private val fileSystem: FileSystem = FileSystem.SYSTEM,
@@ -51,7 +51,7 @@ class PlaygroundTokenStore(
    * A compiled snippet a token points at — everything Stage 2 needs to stand up (or, for Remote
    * Compose, replay) the preview without recompiling.
    */
-  data class PlaygroundSnippet(
+  public data class PlaygroundSnippet(
     val mode: PlaygroundMode,
     /** Temp root for this snippet; **deleted** when its token is dropped. */
     val workDir: Path,
@@ -79,7 +79,7 @@ class PlaygroundTokenStore(
   )
 
   /** One minted token and its lifetime. */
-  data class Token(
+  public data class Token(
     val id: String,
     val snippet: PlaygroundSnippet,
     val createdAtMillis: Long,
@@ -89,7 +89,7 @@ class PlaygroundTokenStore(
     val path: String
       get() = "/pg/$id"
 
-    fun secondsUntilExpiry(nowMillis: Long): Long =
+    public fun secondsUntilExpiry(nowMillis: Long): Long =
       ((expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
 
     // Keyed by id, like ServeDocStore.Doc — array/path-reference equality would be surprising.
@@ -106,7 +106,7 @@ class PlaygroundTokenStore(
    * [ServeDocStore.add] uses (no runtime enforcement): the caller passes `true` only once the
    * request has cleared the playground route's gate.
    */
-  fun add(snippet: PlaygroundSnippet, isSecurityChecked: Boolean): Token {
+  public fun add(snippet: PlaygroundSnippet, isSecurityChecked: Boolean): Token {
     val now = clock()
     purgeExpired(now)
     val token =
@@ -122,7 +122,7 @@ class PlaygroundTokenStore(
   }
 
   /** The live token for [id], or null when it's unknown **or expired** (expired ⇒ dropped). */
-  fun get(id: String): Token? {
+  public fun get(id: String): Token? {
     val now = clock()
     purgeExpired(now)
     return tokens[id]?.takeIf { it.expiresAtMillis > now }
@@ -132,17 +132,17 @@ class PlaygroundTokenStore(
    * Seconds left on [token], measured on the **store's** clock — the one that decides expiry.
    * Callers must not read the wall clock themselves.
    */
-  fun remainingSeconds(token: Token): Long = token.secondsUntilExpiry(clock())
+  public fun remainingSeconds(token: Token): Long = token.secondsUntilExpiry(clock())
 
   /** Explicitly drop [id] (and delete its work dir); returns true if it was present. */
-  fun remove(id: String): Boolean {
+  public fun remove(id: String): Boolean {
     val removed = tokens.remove(id) ?: return false
     drop(removed)
     return true
   }
 
   /** Drop every token whose TTL has run out (deleting each work dir); returns how many went. */
-  fun purgeExpired(nowMillis: Long = clock()): Int {
+  public fun purgeExpired(nowMillis: Long = clock()): Int {
     var dropped = 0
     val it = tokens.entries.iterator()
     while (it.hasNext()) {
@@ -157,14 +157,14 @@ class PlaygroundTokenStore(
   }
 
   /** Live tokens, soonest expiry first — for the status page. */
-  fun snapshot(): List<Token> {
+  public fun snapshot(): List<Token> {
     val now = clock()
     purgeExpired(now)
     return tokens.values.sortedBy { it.expiresAtMillis }
   }
 
   /** Drop everything (deleting every work dir) — for host shutdown. */
-  fun clear() {
+  public fun clear() {
     val all = tokens.values.toList()
     tokens.clear()
     all.forEach { drop(it) }
@@ -198,22 +198,22 @@ class PlaygroundTokenStore(
     }
   }
 
-  companion object {
+  public companion object {
     /** Ten minutes: long enough to click through and refresh a tab, short enough to not linger. */
-    const val DEFAULT_TTL_SECONDS = 600L
+    public const val DEFAULT_TTL_SECONDS: Long = 600L
 
-    const val DEFAULT_MAX_TOKENS = 64
+    public const val DEFAULT_MAX_TOKENS: Int = 64
 
     /** 128 bits of [SecureRandom], base64url, `pg_`-prefixed — the id IS the capability. */
     private val random = SecureRandom()
 
-    fun randomId(): String {
+    public fun randomId(): String {
       val bytes = ByteArray(16)
       random.nextBytes(bytes)
       return "pg_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     /** True when [id] could be one of ours — cheap shape check before a map lookup. */
-    fun isWellFormedId(id: String): Boolean = id.matches(Regex("pg_[A-Za-z0-9_-]{16,64}"))
+    public fun isWellFormedId(id: String): Boolean = id.matches(Regex("pg_[A-Za-z0-9_-]{16,64}"))
   }
 }

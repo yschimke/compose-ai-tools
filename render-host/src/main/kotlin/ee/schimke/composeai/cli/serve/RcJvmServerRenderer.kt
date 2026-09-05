@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-object RcJvmServerRenderer {
+public object RcJvmServerRenderer {
 
   private const val MAIN_CLASS = "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderMainKt"
   private const val RENDER_TIMEOUT_SECONDS = 120L
@@ -65,10 +65,10 @@ object RcJvmServerRenderer {
   }
 
   /** True when both sidecar classpaths are present, so a cmp-jvm render can actually be spawned. */
-  fun isAvailable(): Boolean = classpath().isNotEmpty()
+  public fun isAvailable(): Boolean = classpath().isNotEmpty()
 
   /** Human-readable description of where the sidecars were looked for, for error messages. */
-  fun unavailableReason(): String =
+  public fun unavailableReason(): String =
     "cmp-jvm render needs lib-rcjvm and lib-daemon-desktop on the CLI install " +
       "(${bundleSidecarSearchDescription("lib-rcjvm")}; " +
       "${bundleSidecarSearchDescription("lib-daemon-desktop")})"
@@ -78,7 +78,7 @@ object RcJvmServerRenderer {
    * serve `rc.<name>=…` knob edits) on top of the document's authored defaults. Reports whether the
    * subprocess is unavailable, timed out, or could not draw the document.
    */
-  fun render(
+  public fun render(
     docBytes: ByteArray,
     spec: RcJvmRenderSpec,
     seeds: Map<String, RemoteNamedValue> = emptyMap(),
@@ -286,7 +286,7 @@ object RcJvmServerRenderer {
   }
 
   /** Releases every pooled worker. Exposed for tests and for an explicit serve shutdown. */
-  fun shutdownPool() {
+  public fun shutdownPool() {
     synchronized(this) {
       poolInstance?.close()
       poolInstance = null
@@ -337,7 +337,7 @@ object RcJvmServerRenderer {
    */
   // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
   // and the `:server` call sites are in a different module now. Not a widened API by intent.
-  fun rcColorToArgb(raw: String): Int? {
+  public fun rcColorToArgb(raw: String): Int? {
     val hex = raw.removePrefix("%23").removePrefix("#")
     val opaque = if (hex.length == 6) "FF$hex" else hex
     return opaque.takeIf { it.length == 8 }?.toLongOrNull(16)?.toInt()
@@ -349,15 +349,15 @@ object RcJvmServerRenderer {
     return if (candidate.canExecute()) candidate.absolutePath else "java"
   }
 
-  sealed interface RenderResult {
-    data class Ok(val bytes: ByteArray) : RenderResult
+  public sealed interface RenderResult {
+    public data class Ok(val bytes: ByteArray) : RenderResult
 
-    data class Failed(val reason: String) : RenderResult
+    public data class Failed(val reason: String) : RenderResult
 
-    data class Unavailable(val reason: String) : RenderResult
+    public data class Unavailable(val reason: String) : RenderResult
   }
 
-  enum class Format(val wire: String) {
+  public enum class Format(public val wire: String) {
     PNG("png"),
     SVG("svg"),
   }
@@ -371,7 +371,7 @@ object RcJvmServerRenderer {
    * — a `--theme` argument on the one-shot path, and an int in the pooled worker's request frame,
    * whose values `RcJvmRenderWorkerMain` mirrors.
    */
-  enum class RenderTheme(val wire: String, val frame: Int) {
+  public enum class RenderTheme(public val wire: String, public val frame: Int) {
     LIGHT("light", 0),
     DARK("dark", 1),
   }
@@ -380,4 +380,4 @@ object RcJvmServerRenderer {
 /**
  * The pixel size and density a cmp-jvm render should use — matched to the baked/View-player lane.
  */
-data class RcJvmRenderSpec(val widthPx: Int, val heightPx: Int, val density: Float)
+public data class RcJvmRenderSpec(val widthPx: Int, val heightPx: Int, val density: Float)

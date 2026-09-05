@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.Serializable
 
 /** One observation of the host resources background optimization must yield to. */
-data class HostResourceSample(
+public data class HostResourceSample(
   val loadPerCpu: Double?,
   val cpuUtilization: Double?,
   /** The governing headroom: the smaller of [memoryHost] and [memoryCgroup]. */
@@ -35,7 +35,7 @@ data class HostResourceSample(
  * override is a system property set outside the image, so the source cannot answer it either.
  */
 @Serializable
-data class OptimizerPressureThresholds(
+public data class OptimizerPressureThresholds(
   val stopLoadPerCpu: Double = 0.85,
   val resumeLoadPerCpu: Double = 0.60,
   val stopCpuUtilization: Double = 0.85,
@@ -95,7 +95,7 @@ data class OptimizerPressureThresholds(
    */
   val dutyCycleFloorMemoryAvailableFraction: Double = 0.05,
 ) {
-  companion object {
+  public companion object {
     /**
      * Thresholds overridden by `composeai.serve.optimizer*` system properties.
      *
@@ -104,7 +104,7 @@ data class OptimizerPressureThresholds(
      * baseline, so the gate is guaranteed to latch on the first transient dip. That is a property
      * of the host, not of the code, and it needs to be settable without a rebuild.
      */
-    fun fromSystemProperties(): OptimizerPressureThresholds {
+    public fun fromSystemProperties(): OptimizerPressureThresholds {
       val defaults = OptimizerPressureThresholds()
       return OptimizerPressureThresholds(
         // `ratio`, NOT `fraction`. Load average per CPU is not bounded by 1.0 — it is a queue
@@ -186,7 +186,7 @@ private enum class PressureSignal {
 
 /** Host-pressure state published on `/status.json` with the optimizer admission counters. */
 @Serializable
-data class OptimizerPressureSnapshot(
+public data class OptimizerPressureSnapshot(
   val constrained: Boolean,
   val reason: String? = null,
   val loadPerCpu: Double? = null,
@@ -237,7 +237,7 @@ data class OptimizerPressureSnapshot(
  * again. Only a host under [OptimizerPressureThresholds.dutyCycleFloorMemoryAvailableFraction]
  * keeps the latch.
  */
-class OptimizerPressureGate(
+public class OptimizerPressureGate(
   private val sample: () -> HostResourceSample?,
   private val thresholds: OptimizerPressureThresholds = OptimizerPressureThresholds(),
   private val clock: () -> Long = System::currentTimeMillis,
@@ -273,7 +273,7 @@ class OptimizerPressureGate(
   /** What was over a stop threshold on the previous sample — the [newlyTripped] baseline. */
   private var lastTripped = emptySet<PressureSignal>()
 
-  fun snapshot(): OptimizerPressureSnapshot =
+  public fun snapshot(): OptimizerPressureSnapshot =
     synchronized(lock) {
       val now = clock()
       if (now < nextSampleAt) return@synchronized cachedClosingExpiredDutyCycle(now)
@@ -515,13 +515,13 @@ class OptimizerPressureGate(
  * optimizer work in at precisely the moment it needed to stop. The reported fraction is the SMALLER
  * of the two headrooms, so whichever ceiling is nearer is the one that governs.
  */
-class LinuxHostResourceSampler(
+public class LinuxHostResourceSampler(
   private val procRoot: File = File("/proc"),
   private val cgroupRoot: File = File("/sys/fs/cgroup"),
 ) {
   private val previousCpu = AtomicReference<CpuTimes?>()
 
-  fun sample(): HostResourceSample? {
+  public fun sample(): HostResourceSample? {
     if (!procRoot.isDirectory) return null
     val statLines = runCatching { File(procRoot, "stat").readLines() }.getOrNull().orEmpty()
     val cpuCount =
@@ -647,14 +647,14 @@ class LinuxHostResourceSampler(
 }
 
 /** A host-wide optimizer lease. Closing it releases both the catalog and lane locks. */
-fun interface OptimizerHostLease : AutoCloseable
+public fun interface OptimizerHostLease : AutoCloseable
 
 /** Cross-process admission used by every preview replica sharing one coordination directory. */
-fun interface OptimizerHostCoordinator {
-  fun tryAcquire(system: String): OptimizerHostLease?
+public fun interface OptimizerHostCoordinator {
+  public fun tryAcquire(system: String): OptimizerHostLease?
 
-  companion object {
-    val NONE = OptimizerHostCoordinator { OptimizerHostLease {} }
+  public companion object {
+    public val NONE: OptimizerHostCoordinator = OptimizerHostCoordinator { OptimizerHostLease {} }
   }
 }
 
@@ -665,7 +665,7 @@ fun interface OptimizerHostCoordinator {
  * caps all optimizer passes on the physical host, rather than multiplying the configured lane count
  * by the number of replicas. Locks are released by the kernel if a replica exits or is OOM-killed.
  */
-class FileOptimizerHostCoordinator(
+public class FileOptimizerHostCoordinator(
   private val directory: File,
   private val lanes: Int,
 ) : OptimizerHostCoordinator, AutoCloseable {

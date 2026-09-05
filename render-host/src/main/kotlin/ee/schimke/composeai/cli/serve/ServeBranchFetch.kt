@@ -23,10 +23,10 @@ package ee.schimke.composeai.cli.serve
  * Deliberately transport-agnostic and dependency-free so the classification and the backoff policy
  * unit-test without a socket.
  */
-sealed interface BranchFetch {
+public sealed interface BranchFetch {
 
   /** The bytes, read and size-capped. */
-  class Ok(val bytes: ByteArray) : BranchFetch
+  public class Ok(public val bytes: ByteArray) : BranchFetch
 
   /**
    * The branch answered, definitively, that there is no such file — `404`/`410`.
@@ -34,7 +34,7 @@ sealed interface BranchFetch {
    * The only outcome a caller may treat as permanent. Everything else below is a statement about
    * *now*.
    */
-  data object NotFound : BranchFetch
+  public data object NotFound : BranchFetch
 
   /**
    * Rate limited — `429`, or a `403` that carries no body we asked for. [retryAfterSeconds] is the
@@ -45,7 +45,7 @@ sealed interface BranchFetch {
    * rate-limit conditions, and the cost of guessing wrong in this direction is one wasted retry,
    * where guessing wrong in the other direction caches a throttle as a missing asset.
    */
-  data class Throttled(val retryAfterSeconds: Long?) : BranchFetch
+  public data class Throttled(val retryAfterSeconds: Long?) : BranchFetch
 
   /**
    * The branch host is unwell — any `5xx`, or a `4xx` that is neither missing nor throttled.
@@ -56,10 +56,10 @@ sealed interface BranchFetch {
    * asking for ten seconds got 250 ms and 500 ms instead, spending both retries inside the outage
    * and then reporting the asset as missing — the exact confusion this type exists to end.
    */
-  data class Unavailable(val status: Int, val retryAfterSeconds: Long? = null) : BranchFetch
+  public data class Unavailable(val status: Int, val retryAfterSeconds: Long? = null) : BranchFetch
 
   /** Never got an answer: connect/read timeout, DNS, TLS, reset. */
-  data class Transport(val detail: String) : BranchFetch
+  public data class Transport(val detail: String) : BranchFetch
 
   /**
    * The branch has the file and it is **past the envelope this read was given** — the body outgrew
@@ -77,21 +77,21 @@ sealed interface BranchFetch {
    * publish a smaller file tomorrow — but every caller that memoises does so on a pinned `(commit,
    * path)`, where the size is as immutable as the bytes.
    */
-  data class TooLarge(val limitBytes: Long) : BranchFetch
+  public data class TooLarge(val limitBytes: Long) : BranchFetch
 
   /** The bytes, or null for every failure — the shape the pre-existing call sites still want. */
-  val bytesOrNull: ByteArray?
+  public val bytesOrNull: ByteArray?
     get() = (this as? Ok)?.bytes
 
   /**
    * Whether asking again could plausibly answer differently. False for [Ok] (nothing to ask) and
    * for [NotFound] (the answer will not change), true for the three "right now" outcomes.
    */
-  val isTransient: Boolean
+  public val isTransient: Boolean
     get() = this is Throttled || this is Unavailable || this is Transport
 
   /** A short, log-safe reason. Never includes the URL — callers pair it with their own. */
-  val summary: String
+  public val summary: String
     get() =
       when (this) {
         is Ok -> "ok"
@@ -103,15 +103,15 @@ sealed interface BranchFetch {
         is TooLarge -> "too large (over $limitBytes bytes)"
       }
 
-  companion object {
+  public companion object {
     /** Longest we will ever honour a `Retry-After` for — beyond this, failing fast is kinder. */
-    const val MAX_RETRY_AFTER_SECONDS = 30L
+    public const val MAX_RETRY_AFTER_SECONDS: Long = 30L
 
     /** Attempts after the first. Small: a request is waiting behind this. */
-    const val MAX_RETRIES = 2
+    public const val MAX_RETRIES: Int = 2
 
     /** First backoff step; doubled per attempt. */
-    const val BASE_BACKOFF_MILLIS = 250L
+    public const val BASE_BACKOFF_MILLIS: Long = 250L
 
     /**
      * Classify one HTTP status.
@@ -119,7 +119,7 @@ sealed interface BranchFetch {
      * [retryAfterSeconds] is the parsed `Retry-After` header, or null. Only consulted for the
      * statuses that can carry one.
      */
-    fun ofStatus(status: Int, retryAfterSeconds: Long? = null): BranchFetch =
+    public fun ofStatus(status: Int, retryAfterSeconds: Long? = null): BranchFetch =
       when {
         status == 404 || status == 410 -> NotFound
         status == 429 || status == 403 -> Throttled(retryAfterSeconds?.coerceAtLeast(0))
@@ -135,7 +135,7 @@ sealed interface BranchFetch {
      * [MAX_RETRY_AFTER_SECONDS] so a hostile or confused header cannot park a request thread for
      * minutes.
      */
-    fun retryDelayMillis(outcome: BranchFetch, attempt: Int): Long? {
+    public fun retryDelayMillis(outcome: BranchFetch, attempt: Int): Long? {
       if (!outcome.isTransient) return null
       if (attempt < 1 || attempt > MAX_RETRIES) return null
       val backoff = BASE_BACKOFF_MILLIS shl (attempt - 1)
@@ -154,6 +154,7 @@ sealed interface BranchFetch {
      * needs a clock and a parse to answer the same question, and no branch host we read sends it.
      * An unparseable value is simply absent, which falls back to the exponential schedule.
      */
-    fun parseRetryAfter(header: String?): Long? = header?.trim()?.toLongOrNull()?.takeIf { it >= 0 }
+    public fun parseRetryAfter(header: String?): Long? =
+      header?.trim()?.toLongOrNull()?.takeIf { it >= 0 }
   }
 }

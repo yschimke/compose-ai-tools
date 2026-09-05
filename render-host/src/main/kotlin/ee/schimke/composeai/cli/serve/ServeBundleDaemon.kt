@@ -57,7 +57,7 @@ public object ServeBundleDaemon {
    * takes one. Tuned for the reference 4 GB box's default budget; a bigger box's budget scales up
    * (see `deploy/image/entrypoint.sh`), letting more of these run at once.
    */
-  const val ANDROID_LIVE_SEAT_WEIGHT: Int = 2
+  public const val ANDROID_LIVE_SEAT_WEIGHT: Int = 2
 
   /**
    * Live-seat weight ([LiveSeatLimiter] permits) of an already-built daemon [descriptor] file — for
@@ -69,7 +69,7 @@ public object ServeBundleDaemon {
    * protection intact in from-source deployments. Defaults to `1` (desktop) when the descriptor is
    * missing or unreadable.
    */
-  fun liveSeatWeightForDescriptor(descriptor: File): Int {
+  public fun liveSeatWeightForDescriptor(descriptor: File): Int {
     val text = descriptor.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
     val launch =
       text?.let {
@@ -90,7 +90,7 @@ public object ServeBundleDaemon {
    * `-Dcomposeai.bundle.offline`); default `false` still honours that sysprop /
    * `COMPOSE_PREVIEW_OFFLINE` via [CoordinateResolver]'s own default.
    */
-  fun materialize(
+  public fun materialize(
     bundleFile: File,
     destDir: File,
     system: String,
@@ -449,7 +449,7 @@ public object ServeBundleDaemon {
    * the snippet's daemon inside the jail and shoots it at the deadline. [PlaygroundSandbox.NONE]
    * leaves the descriptor identical to the pre-sandbox one.
    */
-  fun materializePlaygroundSnippet(
+  public fun materializePlaygroundSnippet(
     snippet: PlaygroundTokenStore.PlaygroundSnippet,
     sandbox: PlaygroundSandbox = PlaygroundSandbox.NONE,
     fileSystem: FileSystem = SystemFileSystem,
@@ -728,7 +728,7 @@ public object ServeBundleDaemon {
    * Null on anything unreadable, which the caller treats as "this generation has no durable
    * identity" and therefore as "do not persist".
    */
-  fun readLaunchDescriptor(descriptorFile: File): DaemonLaunchDescriptor? = runCatching {
+  public fun readLaunchDescriptor(descriptorFile: File): DaemonLaunchDescriptor? = runCatching {
     launchDescriptorJson.decodeFromString(
       DaemonLaunchDescriptor.serializer(),
       descriptorFile.readText(),

@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
  * `--public` a passing probe is mandatory ([PlaygroundPublicGate]), because a profile's advertised
  * properties are a claim and the probe is the evidence.
  */
-data class PlaygroundSandbox(
+public data class PlaygroundSandbox(
   val profile: Profile,
   /** Heap + cgroup memory ceiling for one snippet JVM. */
   val memoryMb: Int = DEFAULT_MEMORY_MB,
@@ -58,11 +58,11 @@ data class PlaygroundSandbox(
    * containment at all" refusal. They are never a substitute for [PlaygroundSandboxProbe]; a
    * `--public` host must still prove the claim empirically.
    */
-  enum class Profile(
-    val id: String,
-    val declaresEgressBlocked: Boolean,
-    val declaresFilesystemContained: Boolean,
-    val declaresResourceCaps: Boolean,
+  public enum class Profile(
+    public val id: String,
+    public val declaresEgressBlocked: Boolean,
+    public val declaresFilesystemContained: Boolean,
+    public val declaresResourceCaps: Boolean,
   ) {
     /**
      * No jail — the pre-Phase-4 behaviour. Fine for a token-gated dev host; never for `--public`.
@@ -111,7 +111,7 @@ data class PlaygroundSandbox(
   }
 
   /** The host paths one snippet JVM needs: its writable work dir, its read-only inputs, the JDK. */
-  data class Paths(val workDir: File, val readOnly: List<File>, val javaHome: File)
+  public data class Paths(val workDir: File, val readOnly: List<File>, val javaHome: File)
 
   /** True when this sandbox does anything at all — [Profile.NONE] is the only no-op. */
   val isActive: Boolean
@@ -147,14 +147,14 @@ data class PlaygroundSandbox(
    * `--public` host whose probe never ran is refused outright by [PlaygroundPublicGate], so the
    * caller never gets far enough to call this.
    */
-  fun droppingJail(): PlaygroundSandbox = copy(jailDropped = true)
+  public fun droppingJail(): PlaygroundSandbox = copy(jailDropped = true)
 
   /**
    * The argv prefix the snippet JVM launches behind — empty for [Profile.NONE], and empty when
    * [jailDropped]. Paths are bound with the `-try` variants where a host may legitimately lack
    * them, so one missing `/lib64` can't turn a containment profile into a failed spawn.
    */
-  fun command(paths: Paths): List<String> =
+  public fun command(paths: Paths): List<String> =
     if (jailDropped) emptyList()
     else
       when (profile) {
@@ -173,7 +173,7 @@ data class PlaygroundSandbox(
    * thrashing JVM, and a temp dir inside the one writable path. Empty for [Profile.NONE], which
    * keeps the pre-Phase-4 launch byte-identical.
    */
-  fun jvmArgs(workDir: File): List<String> {
+  public fun jvmArgs(workDir: File): List<String> {
     if (!isActive) return emptyList()
     return listOf(
       "-Xmx${heapMb()}m",
@@ -195,7 +195,7 @@ data class PlaygroundSandbox(
    * Inactive sandboxes return [base] unchanged, preserving the pre-sandbox launch byte-for-byte.
    * Relative `maven.repo.local` overrides are made absolute before the jail changes directory.
    */
-  fun robolectricSystemProperties(
+  public fun robolectricSystemProperties(
     base: Map<String, String>,
     mavenRepoLocal: String? = System.getProperty("maven.repo.local"),
     userHome: String? = System.getProperty("user.home"),
@@ -218,7 +218,7 @@ data class PlaygroundSandbox(
   internal fun activeProcessorCount(): Int = ceil(cpus).toInt().coerceAtLeast(1)
 
   /** One-line summary for the startup log — what this host will do to a stranger's snippet. */
-  fun describe(): String =
+  public fun describe(): String =
     if (!isActive) "sandbox=none (playground refused under --public)"
     else
       "sandbox=${profile.id}${if (jailDropped) " (jail dropped — caps only)" else ""} " +
@@ -310,20 +310,20 @@ data class PlaygroundSandbox(
       // systemd 244+).
     )
 
-  companion object {
-    const val DEFAULT_MEMORY_MB = 1536
-    const val DEFAULT_CPUS = 1.0
-    const val DEFAULT_PIDS = 256
+  public companion object {
+    public const val DEFAULT_MEMORY_MB: Int = 1536
+    public const val DEFAULT_CPUS: Double = 1.0
+    public const val DEFAULT_PIDS: Int = 256
 
     /**
      * 15 minutes: comfortably longer than [PlaygroundTokenStore.DEFAULT_TTL_SECONDS] (so an
      * ordinary session ends by its token expiring, not by being shot), short enough that a wedged
      * JVM is reclaimed the same hour.
      */
-    const val DEFAULT_TTL_SECONDS = 900L
+    public const val DEFAULT_TTL_SECONDS: Long = 900L
 
     /** Below this a JVM can't even boot Skiko/Robolectric; refuse to configure a useless heap. */
-    const val MIN_HEAP_MB = 256
+    public const val MIN_HEAP_MB: Int = 256
 
     private const val MIN_MEMORY_MB = 384
 
@@ -348,14 +348,14 @@ data class PlaygroundSandbox(
         "/opt",
       )
 
-    val NONE = PlaygroundSandbox(profile = Profile.NONE)
+    public val NONE: PlaygroundSandbox = PlaygroundSandbox(profile = Profile.NONE)
 
     /**
      * Parse a `--playground-sandbox` value: a profile id (`none`, `unshare`, `bwrap`, `systemd`,
      * `strict`) or `custom:<argv>` where `<argv>` is a whitespace-separated command prefix. Null or
      * blank ⇒ [NONE], the pre-Phase-4 default.
      */
-    fun parseProfile(spec: String?): Result<PlaygroundSandbox> {
+    public fun parseProfile(spec: String?): Result<PlaygroundSandbox> {
       val raw = spec?.trim().orEmpty()
       if (raw.isEmpty()) return Result.success(NONE)
       if (raw.startsWith("custom:")) {
@@ -384,7 +384,7 @@ data class PlaygroundSandbox(
      * Validate the resource knobs, so a typo (`--playground-sandbox-memory-mb 15`) fails at startup
      * rather than as an unexplained daemon that never comes up.
      */
-    fun validate(sandbox: PlaygroundSandbox): Result<PlaygroundSandbox> {
+    public fun validate(sandbox: PlaygroundSandbox): Result<PlaygroundSandbox> {
       if (!sandbox.isActive) return Result.success(sandbox)
       if (sandbox.memoryMb < MIN_MEMORY_MB) {
         return Result.failure(
@@ -460,14 +460,14 @@ data class PlaygroundSandbox(
  * which posture admitted the lane, so an operator cannot mistake "admitted because collaborators
  * only" for "admitted because contained".
  */
-object PlaygroundPublicGate {
+public object PlaygroundPublicGate {
 
-  sealed interface Decision {
+  public sealed interface Decision {
     /** The lane may serve; [detail] is the startup log line. */
-    data class Allow(val detail: String) : Decision
+    public data class Allow(val detail: String) : Decision
 
     /** The lane stays disabled; [reason] is printed and is actionable. */
-    data class Refuse(val reason: String) : Decision
+    public data class Refuse(val reason: String) : Decision
   }
 
   /**
@@ -478,7 +478,7 @@ object PlaygroundPublicGate {
    * routes' `rejectMissingGithubRepoAccess` is a real check rather than a no-op. It admits the lane
    * on a public box without requiring containment — see the class KDoc.
    */
-  fun decide(
+  public fun decide(
     isPublic: Boolean,
     repoAccessGated: Boolean,
     sandbox: PlaygroundSandbox,

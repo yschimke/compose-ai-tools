@@ -8,11 +8,11 @@ import kotlin.concurrent.withLock
 /**
  * Runs a `git` subcommand in [workdir]. Injected so [GitWorktrees] is testable without a real repo.
  */
-fun interface GitRunner {
-  fun run(workdir: File, args: List<String>): GitResult
+public fun interface GitRunner {
+  public fun run(workdir: File, args: List<String>): GitResult
 }
 
-data class GitResult(val exitCode: Int, val stdout: String) {
+public data class GitResult(val exitCode: Int, val stdout: String) {
   val ok: Boolean
     get() = exitCode == 0
 }
@@ -27,7 +27,7 @@ data class GitResult(val exitCode: Int, val stdout: String) {
  * built from them (the registry evicts hosts, not checkouts) and are cleaned up on [close] / `git
  * worktree prune`.
  */
-class GitWorktrees(
+public class GitWorktrees(
   private val repoRoot: File,
   private val cacheRoot: File,
   /**
@@ -61,7 +61,7 @@ class GitWorktrees(
    * or `null` when the revision can't be resolved, isn't allowed by policy, or can't be created.
    * Registers a reference on the worktree — balance it with a [remove] (or a terminal [close]).
    */
-  fun prepare(rev: String): File? = lock.withLock {
+  public fun prepare(rev: String): File? = lock.withLock {
     val sha = resolve(rev) ?: return null
     if (!isAllowed(sha)) {
       onLog("serve: revision '$rev' ($sha) is not reachable from an allowed ref; refusing")
@@ -124,7 +124,7 @@ class GitWorktrees(
    * up any residue. A subsequent [prepare] of the same revision re-adds the worktree from the
    * shared object store.
    */
-  fun remove(dir: File) = lock.withLock {
+  public fun remove(dir: File): Unit = lock.withLock {
     val refs = prepared[dir] ?: return@withLock
     if (refs > 1) {
       prepared[dir] = refs - 1
@@ -145,7 +145,7 @@ class GitWorktrees(
   }
 
   /** Default [GitRunner] backed by the `git` CLI. */
-  object RealGitRunner : GitRunner {
+  public object RealGitRunner : GitRunner {
     override fun run(workdir: File, args: List<String>): GitResult {
       return try {
         val process =

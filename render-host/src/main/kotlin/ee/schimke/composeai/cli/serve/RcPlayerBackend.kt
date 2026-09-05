@@ -41,11 +41,11 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  * [ServeHost.enabledRcPlayersFor]; the rest are shown disabled. [wire] is the stable id used both
  * in the `rcPlayer=` render query param and the `/api/previews` capability list.
  */
-enum class RcPlayerBackend(
+public enum class RcPlayerBackend(
   /** Stable wire id — the `rcPlayer=` query value and the `/api/previews` capability spelling. */
-  val wire: String,
+  public val wire: String,
   /** Short human label for the selector chip. */
-  val label: String,
+  public val label: String,
   /**
    * The daemon player kind a **server-side** backend renders through, or null for the lanes that
    * don't ride the daemon `remoteCompose.player` override: the client-side [JS] lane and the
@@ -53,11 +53,11 @@ enum class RcPlayerBackend(
    * Drives [ServeOverrides]'s mapping of the `rcPlayer=` param onto
    * [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
    */
-  val playerKind: RemoteComposePlayerKind?,
+  public val playerKind: RemoteComposePlayerKind?,
   /**
    * True when the browser plays the `.rc` document itself (the [JS] lane); false for a PNG lane.
    */
-  val clientSide: Boolean,
+  public val clientSide: Boolean,
   /**
    * This backend's column id in the catalog's published `rc-compare` staging
    * ([RcCompareManifest.lanes]), or null when the offline pipeline has no column for it.
@@ -73,7 +73,7 @@ enum class RcPlayerBackend(
    * player's pixels under a confident `200`. The java lane therefore routes to the daemon, which
    * can still draw it on request.
    */
-  val rcCompareLane: String?,
+  public val rcCompareLane: String?,
 ) {
   JS("js", "JS", playerKind = null, clientSide = true, rcCompareLane = "js"),
   CMP_WASM(
@@ -99,12 +99,12 @@ enum class RcPlayerBackend(
   ),
   CMP_JVM("cmp-jvm", "CMP JVM", playerKind = null, clientSide = false, rcCompareLane = "cmp-jvm");
 
-  companion object {
+  public companion object {
     /** The fixed universe the viewer renders as chips, in display order. */
-    val UNIVERSE: List<RcPlayerBackend> = entries.toList()
+    public val UNIVERSE: List<RcPlayerBackend> = entries.toList()
 
     /** The backend for [wire], or null when it names none. Case-insensitive. */
-    fun fromWire(wire: String?): RcPlayerBackend? =
+    public fun fromWire(wire: String?): RcPlayerBackend? =
       wire?.lowercase()?.let { v -> entries.firstOrNull { it.wire == v } }
 
     /**
@@ -115,7 +115,7 @@ enum class RcPlayerBackend(
      * in its own subprocess lane ([ServeHttpServer] handles `rcPlayer=cmp-jvm` directly), so
      * neither rides the daemon override this maps.
      */
-    fun serverSideFromParam(raw: String): RcPlayerBackend? =
+    public fun serverSideFromParam(raw: String): RcPlayerBackend? =
       when (raw.lowercase()) {
         "java",
         "view" -> JAVA

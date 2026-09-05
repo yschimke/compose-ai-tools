@@ -66,7 +66,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
-class RcJvmWorkerPool(
+public class RcJvmWorkerPool(
   private val classpath: List<File>,
   private val javaBin: String,
   private val extraJvmArgs: List<String>,
@@ -83,14 +83,14 @@ class RcJvmWorkerPool(
   private val workerMainClass: String = WORKER_MAIN_CLASS,
 ) : AutoCloseable {
 
-  sealed interface PoolResult {
-    data class Ok(val bytes: ByteArray) : PoolResult
+  public sealed interface PoolResult {
+    public data class Ok(val bytes: ByteArray) : PoolResult
 
     /** The player answered, and the answer is "I cannot draw this". Do not fall back. */
-    data class Failed(val reason: String) : PoolResult
+    public data class Failed(val reason: String) : PoolResult
 
     /** The pool could not serve this at all. The caller should use the one-shot path. */
-    data class Unusable(val reason: String) : PoolResult
+    public data class Unusable(val reason: String) : PoolResult
   }
 
   private val permits = Semaphore(maxWorkers, /* fair= */ true)
@@ -116,7 +116,7 @@ class RcJvmWorkerPool(
     Thread(r, "rcjvm-pool-watchdog").apply { isDaemon = true }
   }
 
-  fun render(
+  public fun render(
     docBytes: ByteArray,
     spec: RcJvmRenderSpec,
     seedsText: String,
@@ -466,52 +466,54 @@ class RcJvmWorkerPool(
 
   // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
   // and the `:server` call sites are in a different module now. Not a widened API by intent.
-  companion object {
-    const val WORKER_MAIN_CLASS = "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderWorkerMainKt"
+  public companion object {
+    public const val WORKER_MAIN_CLASS: String =
+      "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderWorkerMainKt"
 
     // Mirrors `RcJvmRenderWorkerMain.kt`. The cli cannot depend on the player module (its Skiko
     // natives are deliberately kept off the cli classpath — that is why the render is a subprocess
     // at all), so the wire constants are duplicated here on purpose. The version check in
     // [Worker.handshake] is what keeps the duplication honest: a sidecar that disagrees is refused
     // and the caller falls back, rather than the two sides silently misreading each other.
-    const val MAGIC_HELLO = 0x52435731
-    const val MAGIC_REQUEST = 0x52435131
-    const val MAGIC_RESPONSE = 0x52435231
+    public const val MAGIC_HELLO: Int = 0x52435731
+    public const val MAGIC_REQUEST: Int = 0x52435131
+    public const val MAGIC_RESPONSE: Int = 0x52435231
     // 2 adds the per-request `theme` field; see `RcJvmRenderWorkerMain`'s frame layout.
-    const val PROTOCOL_VERSION = 2
-    const val STATUS_OK = 0
-    const val STATUS_FAILED = 1
-    const val WIRE_THEME_LIGHT = 0
-    const val WIRE_THEME_DARK = 1
-    const val WIRE_FORMAT_PNG = 0
-    const val WIRE_FORMAT_SVG = 1
+    public const val PROTOCOL_VERSION: Int = 2
+    public const val STATUS_OK: Int = 0
+    public const val STATUS_FAILED: Int = 1
+    public const val WIRE_THEME_LIGHT: Int = 0
+    public const val WIRE_THEME_DARK: Int = 1
+    public const val WIRE_FORMAT_PNG: Int = 0
+    public const val WIRE_FORMAT_SVG: Int = 1
 
-    const val HANDSHAKE_TIMEOUT_SECONDS = 60L
-    const val MAX_START_FAILURES = 3
-    const val STDERR_TAIL_LINES = 40
+    public const val HANDSHAKE_TIMEOUT_SECONDS: Long = 60L
+    public const val MAX_START_FAILURES: Int = 3
+    public const val STDERR_TAIL_LINES: Int = 40
 
-    const val SYS_PROP_ENABLED = "composeai.rcjvm.pool"
-    const val SYS_PROP_WORKERS = "composeai.rcjvm.pool.workers"
-    const val SYS_PROP_MAX_RENDERS = "composeai.rcjvm.pool.maxRenders"
-    const val SYS_PROP_MAX_AGE_MINUTES = "composeai.rcjvm.pool.maxAgeMinutes"
+    public const val SYS_PROP_ENABLED: String = "composeai.rcjvm.pool"
+    public const val SYS_PROP_WORKERS: String = "composeai.rcjvm.pool.workers"
+    public const val SYS_PROP_MAX_RENDERS: String = "composeai.rcjvm.pool.maxRenders"
+    public const val SYS_PROP_MAX_AGE_MINUTES: String = "composeai.rcjvm.pool.maxAgeMinutes"
 
     /**
      * Default worker count. Each worker is a full Compose Desktop JVM, so this is deliberately
      * small and independent of core count past a point — serve's own render semaphore already
      * bounds concurrency, and more workers buy resident memory rather than throughput.
      */
-    fun defaultWorkers(): Int = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 3)
+    public fun defaultWorkers(): Int =
+      (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 3)
 
-    fun isEnabled(): Boolean =
+    public fun isEnabled(): Boolean =
       !System.getProperty(SYS_PROP_ENABLED).equals("off", ignoreCase = true)
 
-    fun configuredWorkers(): Int =
+    public fun configuredWorkers(): Int =
       System.getProperty(SYS_PROP_WORKERS)?.toIntOrNull()?.coerceIn(1, 16) ?: defaultWorkers()
 
-    fun configuredMaxRenders(): Int =
+    public fun configuredMaxRenders(): Int =
       System.getProperty(SYS_PROP_MAX_RENDERS)?.toIntOrNull()?.coerceAtLeast(1) ?: 200
 
-    fun configuredMaxAgeMillis(): Long =
+    public fun configuredMaxAgeMillis(): Long =
       (System.getProperty(SYS_PROP_MAX_AGE_MINUTES)?.toLongOrNull()?.coerceAtLeast(1) ?: 30L) *
         60_000L
   }

@@ -16,7 +16,7 @@ import kotlinx.serialization.Serializable
  * the most recent [WINDOW_SIZE] successful render durations, so a long-lived daemon reports recent
  * behaviour rather than an all-time blur (the all-time min/max/avg/first are kept separately).
  */
-class RenderPerfStats {
+public class RenderPerfStats {
   private val lock = Any()
 
   private var renders = 0L
@@ -42,10 +42,10 @@ class RenderPerfStats {
   private var windowIdx = 0
 
   /** A `/render` served straight from the PNG cache — no daemon round-trip. */
-  fun recordCacheHit(): Unit = synchronized(lock) { cacheHits++ }
+  public fun recordCacheHit(): Unit = synchronized(lock) { cacheHits++ }
 
   /** The bounded render-lock acquire backed off ([RenderOutcome.Busy] → caller serves baked). */
-  fun recordBusy(): Unit = synchronized(lock) { busy++ }
+  public fun recordBusy(): Unit = synchronized(lock) { busy++ }
 
   /**
    * A render refused without asking the daemon because this host's [RenderCircuitBreaker] is open.
@@ -53,7 +53,7 @@ class RenderPerfStats {
    * `failed` would inflate the very failure rate that tripped the breaker and hide how much work
    * the breaker is saving.
    */
-  fun recordShortCircuit(): Unit = synchronized(lock) { shortCircuited++ }
+  public fun recordShortCircuit(): Unit = synchronized(lock) { shortCircuited++ }
 
   /**
    * A render that ended in [RenderOutcome.Failed]; [timeout] when it blew its render budget.
@@ -62,7 +62,7 @@ class RenderPerfStats {
    * render fails otherwise shows only a climbing `failed` counter while the composite silently
    * serves baked fallback.
    */
-  fun recordFailed(durationMs: Long, timeout: Boolean, reason: String? = null): Unit =
+  public fun recordFailed(durationMs: Long, timeout: Boolean, reason: String? = null): Unit =
     synchronized(lock) {
       renders++
       failed++
@@ -89,7 +89,7 @@ class RenderPerfStats {
    * had not yet completed any successful render — the cold-start population the background-boot /
    * warm-render work targets — so `/status` can separate first-render latency from steady state.
    */
-  fun recordOk(durationMs: Long, cold: Boolean): Unit =
+  public fun recordOk(durationMs: Long, cold: Boolean): Unit =
     synchronized(lock) {
       renders++
       ok++
@@ -108,7 +108,7 @@ class RenderPerfStats {
       if (windowCount < window.size) windowCount++
     }
 
-  fun snapshot(): RenderPerfSnapshot =
+  public fun snapshot(): RenderPerfSnapshot =
     synchronized(lock) {
       val sorted = window.copyOf(windowCount).also { it.sort() }
       fun pct(p: Double): Long? =
@@ -138,21 +138,21 @@ class RenderPerfStats {
       )
     }
 
-  companion object {
+  public companion object {
     /** Ring size for the recent-durations percentile window. */
-    const val WINDOW_SIZE: Int = 128
+    public const val WINDOW_SIZE: Int = 128
 
     /** Cap on the carried failure-reason text — enough for a message, not a stack trace. */
-    const val MAX_FAILURE_REASON_LENGTH: Int = 300
+    public const val MAX_FAILURE_REASON_LENGTH: Int = 300
 
     /** Number of render errors retained for the human status page. */
-    const val FAILURE_WINDOW_SIZE: Int = 10
+    public const val FAILURE_WINDOW_SIZE: Int = 10
   }
 }
 
 /** One recent failed render, newest-first in [RenderPerfSnapshot.recentFailures]. */
 @Serializable
-data class RenderFailureSample(
+public data class RenderFailureSample(
   val atEpochMillis: Long,
   val durationMs: Long,
   val timedOut: Boolean,
@@ -166,7 +166,7 @@ data class RenderFailureSample(
  * Additive on `compose-preview-serve/status/v1`.
  */
 @Serializable
-data class RenderPerfSnapshot(
+public data class RenderPerfSnapshot(
   /** Renders attempted against the daemon (ok + failed; excludes cache hits and busy backoffs). */
   val renders: Long,
   val ok: Long,
@@ -214,13 +214,13 @@ data class RenderPerfSnapshot(
    */
   val breaker: RenderBreakerSnapshot? = null,
 ) {
-  companion object {
+  public companion object {
     /**
      * Server-wide roll-up across daemons for the `/status` summary. Counts sum; min/max span;
      * `avgMs` is ok-weighted; `firstRenderMs` reports the WORST first render (the number the
      * cold-start work drives down). Percentiles don't merge across windows, so they stay null.
      */
-    fun aggregate(snapshots: List<RenderPerfSnapshot>): RenderPerfSnapshot? {
+    public fun aggregate(snapshots: List<RenderPerfSnapshot>): RenderPerfSnapshot? {
       if (snapshots.isEmpty()) return null
       val ok = snapshots.sumOf { it.ok }
       return RenderPerfSnapshot(

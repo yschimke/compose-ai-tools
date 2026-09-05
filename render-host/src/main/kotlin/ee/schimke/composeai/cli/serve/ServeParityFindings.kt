@@ -59,22 +59,22 @@ import okio.Path.Companion.toPath
  * cost the reader the panel it describes, never the comparison.
  */
 @Serializable
-data class ParityFindings(
+public data class ParityFindings(
   val schema: String = SCHEMA,
   val generatedAt: String? = null,
   /** Finding sets over a preview's rendered frame, keyed by exact serve/catalog preview id. */
   val previews: Map<String, List<ParityFindingSet>> = emptyMap(),
 ) {
-  companion object {
-    const val SCHEMA = "compose-preview-parity-findings/v1"
-    const val DIRECTORY = "parity"
-    const val FILE = "findings.json"
+  public companion object {
+    public const val SCHEMA: String = "compose-preview-parity-findings/v1"
+    public const val DIRECTORY: String = "parity"
+    public const val FILE: String = "findings.json"
   }
 }
 
 /** One run's conclusion about one (preview, reference) pair. */
 @Serializable
-data class ParityFindingSet(
+public data class ParityFindingSet(
   /** The [DesignReference.id] this verdict compared against; null ⇒ it applies to any of them. */
   val referenceId: String? = null,
   /** `pass` / `warn` / `fail`, as the run concluded. Unknown values are dropped, not defaulted. */
@@ -86,7 +86,7 @@ data class ParityFindingSet(
 
 /** One observation, in the diff engine's own vocabulary. */
 @Serializable
-data class ParityFinding(
+public data class ParityFinding(
   /**
    * One of [ParityFindingKind.KNOWN]. An unknown kind is dropped rather than shown uncategorised.
    */
@@ -107,7 +107,7 @@ data class ParityFinding(
 
 /** A region of one panel a finding points at, in that panel image's own pixel space. */
 @Serializable
-data class ParityAnchor(
+public data class ParityAnchor(
   /** `reference` or `actual`; anything else is dropped. */
   val side: String,
   val bounds: AnnotationBounds,
@@ -123,28 +123,29 @@ data class ParityAnchor(
  * whole record, and the point of the fail-soft posture is that a newer producer costs this reader
  * only the rows it cannot place.
  */
-object ParityFindingKind {
-  const val A11Y = "a11y"
-  const val I18N = "i18n"
-  const val CONTRAST = "contrast"
-  const val TOKEN = "token"
-  const val LAYOUT = "layout"
-  const val SEMANTIC = "semantic"
-  const val VISUAL = "visual"
-  const val PAIRING = "pairing"
+public object ParityFindingKind {
+  public const val A11Y: String = "a11y"
+  public const val I18N: String = "i18n"
+  public const val CONTRAST: String = "contrast"
+  public const val TOKEN: String = "token"
+  public const val LAYOUT: String = "layout"
+  public const val SEMANTIC: String = "semantic"
+  public const val VISUAL: String = "visual"
+  public const val PAIRING: String = "pairing"
 
-  val KNOWN = setOf(A11Y, I18N, CONTRAST, TOKEN, LAYOUT, SEMANTIC, VISUAL, PAIRING)
+  public val KNOWN: Set<String> =
+    setOf(A11Y, I18N, CONTRAST, TOKEN, LAYOUT, SEMANTIC, VISUAL, PAIRING)
 }
 
-object ParityFindingSeverity {
-  const val INFO = "info"
-  const val WARN = "warn"
-  const val ERROR = "error"
+public object ParityFindingSeverity {
+  public const val INFO: String = "info"
+  public const val WARN: String = "warn"
+  public const val ERROR: String = "error"
 
-  val KNOWN = setOf(INFO, WARN, ERROR)
+  public val KNOWN: Set<String> = setOf(INFO, WARN, ERROR)
 
   /** Worst-first, so a group leads with the row that decides its status. */
-  fun rank(value: String): Int =
+  public fun rank(value: String): Int =
     when (value) {
       ERROR -> 0
       WARN -> 1
@@ -160,7 +161,11 @@ object ParityFindingSeverity {
  * will truncate in German is a bug in the component, while an `error` on 35% of pixels differing is
  * usually the two frames being different sizes.
  */
-enum class ParityFindingGroup(val id: String, val title: String, val kinds: Set<String>) {
+public enum class ParityFindingGroup(
+  public val id: String,
+  public val title: String,
+  public val kinds: Set<String>,
+) {
   ACCESSIBILITY(
     "a11y",
     "Accessibility & i18n",
@@ -171,8 +176,8 @@ enum class ParityFindingGroup(val id: String, val title: String, val kinds: Set<
   PAIRING("pairing", "Pairing", setOf(ParityFindingKind.PAIRING)),
   VISUAL("visual", "Visual", setOf(ParityFindingKind.VISUAL));
 
-  companion object {
-    fun of(kind: String): ParityFindingGroup? = entries.firstOrNull { kind in it.kinds }
+  public companion object {
+    public fun of(kind: String): ParityFindingGroup? = entries.firstOrNull { kind in it.kinds }
   }
 }
 
@@ -187,7 +192,7 @@ enum class ParityFindingGroup(val id: String, val title: String, val kinds: Set<
  * that travels as data.
  */
 @Serializable
-data class ParityAnchorPayload(val findings: Map<String, List<ParityAnchor>> = emptyMap())
+public data class ParityAnchorPayload(val findings: Map<String, List<ParityAnchor>> = emptyMap())
 
 private val PARITY_FINDINGS_JSON = Json { encodeDefaults = false }
 
@@ -197,7 +202,7 @@ private val PARITY_FINDINGS_JSON = Json { encodeDefaults = false }
  * element, so HTML-escaping would reach `JSON.parse` verbatim and throw, while an unescaped
  * `</script>` inside a label would end the block early.
  */
-fun encodeParityAnchorPayload(payload: ParityAnchorPayload): String =
+public fun encodeParityAnchorPayload(payload: ParityAnchorPayload): String =
   PARITY_FINDINGS_JSON.encodeToString(payload).replace("<", "\\u003c")
 
 /**
@@ -216,13 +221,13 @@ fun encodeParityAnchorPayload(payload: ParityAnchorPayload): String =
  * multiply, so twenty sets of two hundred findings is four thousand rows and a browser that stops
  * responding while the anchors are placed.
  */
-class ServeParityFindingStore
+public class ServeParityFindingStore
 private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) {
 
-  val isEmpty: Boolean = byPreview.isEmpty()
+  public val isEmpty: Boolean = byPreview.isEmpty()
 
   /** Every set published for [previewId], scoped and unscoped alike. */
-  fun forPreview(previewId: String): List<ParityFindingSet> = byPreview[previewId].orEmpty()
+  public fun forPreview(previewId: String): List<ParityFindingSet> = byPreview[previewId].orEmpty()
 
   /**
    * The sets that describe the comparison on screen: those naming [referenceId], plus the unscoped
@@ -234,12 +239,12 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
    * two exhaust it and left the third comparison with no verdict at all, for a page that was never
    * going to render the other two.
    */
-  fun forComparison(previewId: String, referenceId: String): List<ParityFindingSet> =
+  public fun forComparison(previewId: String, referenceId: String): List<ParityFindingSet> =
     spendPageBudget(
       forPreview(previewId).filter { it.referenceId == null || it.referenceId == referenceId }
     )
 
-  companion object {
+  public companion object {
     private const val MAX_PREVIEWS = 5000
     private const val MAX_SETS_PER_PREVIEW = 20
     private const val MAX_FINDINGS_PER_SET = 200
@@ -293,7 +298,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
     private val JSON = Json { ignoreUnknownKeys = true }
 
     /** Empty store — a catalog that publishes no parity verdict at all. */
-    val EMPTY = ServeParityFindingStore(emptyMap())
+    public val EMPTY: ServeParityFindingStore = ServeParityFindingStore(emptyMap())
 
     /**
      * The document as read from disk, with its records left as raw JSON.
@@ -335,7 +340,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
       val anchors: List<JsonElement> = emptyList(),
     )
 
-    fun load(
+    public fun load(
       bundleDir: File,
       fileSystem: FileSystem = SystemFileSystem,
     ): ServeParityFindingStore {
@@ -358,7 +363,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
      * very code that will later read it: staging writes what this returns, not what the branch
      * said, and a manifest that could not survive the reader never reaches the staged tree at all.
      */
-    fun sanitizeDocument(text: String): ParityFindings? {
+    public fun sanitizeDocument(text: String): ParityFindings? {
       val raw = runCatching { JSON.decodeFromString<RawManifest>(text) }.getOrNull() ?: return null
       if (raw.schema != ParityFindings.SCHEMA) return null
       val previews =
@@ -544,8 +549,8 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
         anchor.bounds.x >= 0 &&
         anchor.bounds.y >= 0
 
-    const val SIDE_REFERENCE = "reference"
-    const val SIDE_ACTUAL = "actual"
+    public const val SIDE_REFERENCE: String = "reference"
+    public const val SIDE_ACTUAL: String = "actual"
 
     private fun clamp(value: String, max: Int): String =
       if (value.length <= max) value else value.take(max - 1) + "…"

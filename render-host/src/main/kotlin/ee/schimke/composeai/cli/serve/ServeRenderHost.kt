@@ -48,8 +48,8 @@ import okio.Path.Companion.toPath
  * A live daemon-backed frame stream. Forward input into the held composition via [input]; [close]
  * tears the stream down. Obtained from [ServeRenderHost.startStream].
  */
-interface StreamHandle : AutoCloseable {
-  fun input(
+public interface StreamHandle : AutoCloseable {
+  public fun input(
     kind: InteractiveInputKind,
     pixelX: Int? = null,
     pixelY: Int? = null,
@@ -71,7 +71,7 @@ interface StreamHandle : AutoCloseable {
    * Default no-op so a handle from a backend without the notification (an older daemon, a test
    * double) degrades to "always visible" rather than failing the socket.
    */
-  fun visibility(visible: Boolean, fps: Int? = null) = Unit
+  public fun visibility(visible: Boolean, fps: Int? = null): Unit = Unit
 }
 
 /** One servable preview: its id, a human label, and which delivery modes it supports. */
@@ -83,7 +83,7 @@ interface StreamHandle : AutoCloseable {
  * readers came for — so the viewer surfaces this as a control beside the still rather than playing
  * it by default, and a preview carrying none is presented exactly as it was before.
  */
-data class ServeMotion(
+public data class ServeMotion(
   /** The route the bytes are served under (`/motion/<id><extension>`). */
   val id: String,
   /** `"interaction"` (a scripted gesture) or `"animation"` (a self-running animation). */
@@ -104,14 +104,14 @@ data class ServeMotion(
  * values; [hasDefault] tells the reader which API surface is optional.
  */
 @Serializable
-data class ServeComponentParameter(
+public data class ServeComponentParameter(
   val name: String,
   val type: String,
   val hasDefault: Boolean = false,
   val composableSlot: Boolean = false,
 )
 
-data class ServePreview(
+public data class ServePreview(
   val id: String,
   val label: String,
   /** Delivery transports available for this preview. Tier 1 is always [PreviewMode.SNAPSHOT]. */
@@ -325,12 +325,12 @@ data class ServePreview(
  * `parent=` case wrong.
  */
 @Serializable
-data class ServeDeviceFrame(
+public data class ServeDeviceFrame(
   val widthDp: Double? = null,
   val heightDp: Double? = null,
   val isRound: Boolean = false,
 ) {
-  companion object {
+  public companion object {
 
     /**
      * The frame for a preview's `@Preview` params, or null when it names no device.
@@ -347,7 +347,7 @@ data class ServeDeviceFrame(
      * handed explicit dimensions, so asking it for both at once reports every sized Wear preview as
      * square, which is exactly the whole set this feature is for.
      */
-    fun from(device: String?, widthDp: Int?, heightDp: Int?): ServeDeviceFrame? {
+    public fun from(device: String?, widthDp: Int?, heightDp: Int?): ServeDeviceFrame? {
       val named = device?.takeIf { it.isNotBlank() } ?: return null
       val resolved = DeviceDimensions.resolve(named)
       val (w, h) = resolved.frameDpOverriddenBy(widthDp, heightDp)
@@ -362,7 +362,7 @@ data class ServeDeviceFrame(
 
 /** Structured, catalog-published render failure. Additive to `design-parity-catalog/v1`. */
 @Serializable
-data class CatalogRenderFailure(
+public data class CatalogRenderFailure(
   val id: String = "",
   val componentId: String? = null,
   val preview: String? = null,
@@ -380,7 +380,11 @@ data class CatalogRenderFailure(
 )
 
 @Serializable
-data class RenderFailureFrame(val file: String = "", val line: Int = 0, val function: String = "")
+public data class RenderFailureFrame(
+  val file: String = "",
+  val line: Int = 0,
+  val function: String = "",
+)
 
 /**
  * Detected per-preview feature support, folded across a discovery
@@ -389,7 +393,7 @@ data class RenderFailureFrame(val file: String = "", val line: Int = 0, val func
  * capture). Returns the two booleans the viewer gates its feature controls on. A preview with
  * neither annotation yields `(false, false)`.
  */
-fun detectedFeaturesOf(
+public fun detectedFeaturesOf(
   preview: ee.schimke.composeai.previewdata.PreviewInfo
 ): Pair<Boolean, Boolean> {
   val focus = preview.captures.any { it.focus != null || it.focusGif != null }
@@ -404,7 +408,7 @@ fun detectedFeaturesOf(
  * [ServePreview]. [providerFqn] is the `PreviewWrapperProvider` FQN sent verbatim as the
  * `themeProvider` override; [name] is the human label; [group] buckets related themes (a brand).
  */
-data class ServeTheme(
+public data class ServeTheme(
   val name: String,
   val providerFqn: String,
   val group: String? = null,
@@ -438,7 +442,7 @@ internal fun inferredThemeMode(name: String, providerFqn: String): String? {
  * theme to some other preview is just `Wrap`, which is platform-agnostic. Entries missing a
  * provider FQN are skipped (nothing to apply). Deduped by FQN.
  */
-fun declaredThemesFromPreviews(
+public fun declaredThemesFromPreviews(
   previews: List<ee.schimke.composeai.previewdata.PreviewInfo>
 ): List<ServeTheme> =
   previews
@@ -459,14 +463,14 @@ fun declaredThemesFromPreviews(
     .distinctBy { it.providerFqn }
 
 /** Result of a snapshot render request. */
-sealed interface RenderOutcome {
-  data class Ok(
+public sealed interface RenderOutcome {
+  public data class Ok(
     val png: ByteArray,
     /** How these bytes were produced, exposed on HTTP responses for remote diagnosis. */
     val generation: Generation = Generation.DAEMON,
   ) : RenderOutcome
 
-  enum class Generation(val wire: String) {
+  public enum class Generation(public val wire: String) {
     /** Read directly from a published bundle; no renderer was involved in this request. */
     BAKED("baked"),
     /** Reused from the catalog host's theme cache, which survives per-preview daemon eviction. */
@@ -490,10 +494,10 @@ sealed interface RenderOutcome {
   }
 
   /** No such preview id in this session's module. */
-  data object NotFound : RenderOutcome
+  public data object NotFound : RenderOutcome
 
   /** The render was attempted but rejected / failed / timed out. [reason] is human-readable. */
-  data class Failed(val reason: String) : RenderOutcome
+  public data class Failed(val reason: String) : RenderOutcome
 
   /**
    * The per-daemon render lock was held by another in-flight render (a cold Android render can hold
@@ -501,12 +505,12 @@ sealed interface RenderOutcome {
    * rather than block a shared HTTP render slot on that wait. NOT an error: the caller should serve
    * the baked fallback immediately (or retry). See [ServeRenderHost.DAEMON_BUSY_WAIT_MS].
    */
-  data object Busy : RenderOutcome
+  public data object Busy : RenderOutcome
 }
 
 /** Result of a figma-svg render request — the SVG counterpart of [RenderOutcome]. */
-sealed interface SvgOutcome {
-  data class Ok(
+public sealed interface SvgOutcome {
+  public data class Ok(
     val svg: ByteArray,
     /**
      * How these bytes were produced, exposed on HTTP responses for remote diagnosis — the same
@@ -518,52 +522,52 @@ sealed interface SvgOutcome {
   ) : SvgOutcome
 
   /** No such preview id, or this host can't produce SVG (a static bundle has no daemon). */
-  data object NotFound : SvgOutcome
+  public data object NotFound : SvgOutcome
 
   /** The render or SVG export was attempted but failed. [reason] is human-readable. */
-  data class Failed(val reason: String) : SvgOutcome
+  public data class Failed(val reason: String) : SvgOutcome
 }
 
 /**
  * Result of a preview-slots request — the [PreviewSlotsPayload] JSON counterpart of
  * [RenderOutcome].
  */
-sealed interface SlotsOutcome {
-  data class Ok(val json: ByteArray) : SlotsOutcome
+public sealed interface SlotsOutcome {
+  public data class Ok(val json: ByteArray) : SlotsOutcome
 
   /** No such preview id, or this host can't extract slots (a static bundle has no daemon). */
-  data object NotFound : SlotsOutcome
+  public data object NotFound : SlotsOutcome
 
   /** The render or semantics fetch was attempted but failed. [reason] is human-readable. */
-  data class Failed(val reason: String) : SlotsOutcome
+  public data class Failed(val reason: String) : SlotsOutcome
 }
 
 /**
  * Result of a design-annotation request — the typography + theme inspection layers derived from a
  * render's own `compose/semantics` tree ([ServeDesignAnnotations]).
  */
-sealed interface AnnotationsOutcome {
-  data class Ok(val json: ByteArray) : AnnotationsOutcome
+public sealed interface AnnotationsOutcome {
+  public data class Ok(val json: ByteArray) : AnnotationsOutcome
 
   /** No such preview id, or this host has no daemon to capture a semantics tree. */
-  data object NotFound : AnnotationsOutcome
+  public data object NotFound : AnnotationsOutcome
 
   /** The render or semantics fetch was attempted but failed. [reason] is human-readable. */
-  data class Failed(val reason: String) : AnnotationsOutcome
+  public data class Failed(val reason: String) : AnnotationsOutcome
 }
 
 /**
  * Result of an accessibility-overlay request — the merged `a11y/hierarchy` + `a11y/atf` +
  * `a11y/touchTargets` JSON the viewer draws its overlay boxes and legend from.
  */
-sealed interface A11yOutcome {
-  data class Ok(val json: ByteArray) : A11yOutcome
+public sealed interface A11yOutcome {
+  public data class Ok(val json: ByteArray) : A11yOutcome
 
   /** No such preview id, or this host has no daemon to produce a11y data products. */
-  data object NotFound : A11yOutcome
+  public data object NotFound : A11yOutcome
 
   /** The a11y re-render / fetch was attempted but failed. [reason] is human-readable. */
-  data class Failed(val reason: String) : A11yOutcome
+  public data class Failed(val reason: String) : A11yOutcome
 }
 
 /**
@@ -585,7 +589,7 @@ sealed interface A11yOutcome {
  * Bound to a module, not a single preview: [previews] is the whole servable set and [render] takes
  * any id in it, so switching previews is just a different request — no session churn.
  */
-class ServeRenderHost
+public class ServeRenderHost
 internal constructor(
   /**
    * Opens the daemon session — called **once, on first use**, not at construction.
@@ -1723,7 +1727,7 @@ internal constructor(
    * Independent of the snapshot render lock — a held stream runs concurrently with snapshot
    * renders.
    */
-  fun startStream(
+  public fun startStream(
     previewId: String,
     overrides: PreviewOverrides,
     codec: StreamCodec? = null,
@@ -1907,10 +1911,10 @@ internal constructor(
     }
   }
 
-  companion object {
+  public companion object {
     // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
     // and the `:server` call sites are in a different module now. Not a widened API by intent.
-    const val SCROLL_LONG_KIND = "render/scroll/long"
+    public const val SCROLL_LONG_KIND: String = "render/scroll/long"
     internal const val SCROLL_EXTENSION_ID = "scroll"
 
     // The accessibility extension + its three product kinds, spelled here rather than imported
@@ -1976,7 +1980,7 @@ internal constructor(
      * Does NOT spawn the daemon — the session opens on first use, so [RenderSessionException] now
      * surfaces at the first request that needs it rather than here.
      */
-    fun open(
+    public fun open(
       descriptorPath: File,
       workspaceRoot: File,
       workspaceName: String,

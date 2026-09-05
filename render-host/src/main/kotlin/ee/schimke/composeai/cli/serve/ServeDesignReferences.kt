@@ -21,18 +21,18 @@ import okio.Path.Companion.toPath
  * design URLs.
  */
 @Serializable
-data class DesignReferenceManifest(
+public data class DesignReferenceManifest(
   val schema: String = SCHEMA,
   val references: List<DesignReference> = emptyList(),
 ) {
-  companion object {
-    const val SCHEMA = "compose-preview-references/v1"
+  public companion object {
+    public const val SCHEMA: String = "compose-preview-references/v1"
   }
 }
 
 /** One independently-authored design reference mapped to an exact [previewId]. */
 @Serializable
-data class DesignReference(
+public data class DesignReference(
   /** Route-safe identity, unique within one served session. */
   val id: String,
   /** Exact serve/catalog preview id; theme/state/props selection is never inferred. */
@@ -72,7 +72,7 @@ data class DesignReference(
  * and the lane's live ones come from one implementation and cannot disagree.
  */
 @Serializable
-data class DesignReferenceMatch(
+public data class DesignReferenceMatch(
   val percent: Double,
   val changedPercent: Double? = null,
   val geometry: Double? = null,
@@ -96,7 +96,7 @@ data class DesignReferenceMatch(
 )
 
 @Serializable
-data class DesignReferenceRaster(
+public data class DesignReferenceRaster(
   val path: String,
   val width: Int? = null,
   val height: Int? = null,
@@ -105,7 +105,7 @@ data class DesignReferenceRaster(
 )
 
 @Serializable
-data class DesignReferenceSource(
+public data class DesignReferenceSource(
   /** `figma`, `png`, `svg`, `html`, or another provider-defined token. */
   val provider: String = "file",
   /** Informational only. The serve host never fetches this URI. */
@@ -115,7 +115,7 @@ data class DesignReferenceSource(
   val attributes: Map<String, String> = emptyMap(),
 )
 
-@Serializable data class DesignReferenceArtifact(val kind: String, val path: String? = null)
+@Serializable public data class DesignReferenceArtifact(val kind: String, val path: String? = null)
 
 /**
  * Validated, read-only view of a bundle/catalog's `references/index.json`.
@@ -123,7 +123,7 @@ data class DesignReferenceSource(
  * All failures are fail-soft: malformed, missing, traversing, duplicate, or hash-mismatched records
  * are omitted while the rest of the preview bundle continues to serve normally.
  */
-class ServeDesignReferenceStore
+public class ServeDesignReferenceStore
 private constructor(
   private val root: Path,
   references: List<DesignReference>,
@@ -132,11 +132,11 @@ private constructor(
   private val byId: Map<String, DesignReference> = references.associateBy { it.id }
   private val byPreview: Map<String, List<DesignReference>> = references.groupBy { it.previewId }
 
-  val all: List<DesignReference> = references
+  public val all: List<DesignReference> = references
 
-  fun forPreview(previewId: String): List<DesignReference> = byPreview[previewId].orEmpty()
+  public fun forPreview(previewId: String): List<DesignReference> = byPreview[previewId].orEmpty()
 
-  fun raster(referenceId: String): ByteArray? {
+  public fun raster(referenceId: String): ByteArray? {
     val reference = byId[referenceId] ?: return null
     val path = containedPath(reference.raster.path) ?: return null
     return runCatching { fileSystem.read(path) { readByteArray() } }.getOrNull()
@@ -162,9 +162,9 @@ private constructor(
     val references: List<JsonElement> = emptyList(),
   )
 
-  companion object {
-    const val DIRECTORY = "references"
-    const val INDEX_FILE = "index.json"
+  public companion object {
+    public const val DIRECTORY: String = "references"
+    public const val INDEX_FILE: String = "index.json"
 
     /**
      * The pixel path this build's scorer implements — mirrored from `SCORE_VERSION` in
@@ -176,13 +176,13 @@ private constructor(
      * it, so a host reading the wrong version would either discard every current match or trust
      * every stale one.
      */
-    const val SCORE_VERSION = 3
+    public const val SCORE_VERSION: Int = 3
     private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,160}")
     private val SHA256 = Regex("[a-f0-9]{64}")
     private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
     private val JSON = Json { ignoreUnknownKeys = true }
 
-    fun load(
+    public fun load(
       bundleDir: File,
       fileSystem: FileSystem = SystemFileSystem,
     ): ServeDesignReferenceStore {
@@ -241,7 +241,7 @@ private constructor(
 
     // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
     // and the `:server` call sites are in a different module now. Not a widened API by intent.
-    fun isSafeRelativePath(value: String): Boolean {
+    public fun isSafeRelativePath(value: String): Boolean {
       if (value.isBlank() || value.startsWith('/') || value.startsWith('\\')) return false
       if (Regex("^[A-Za-z]:").containsMatchIn(value)) return false
       return value.replace('\\', '/').split('/').none { it.isBlank() || it == "." || it == ".." }
@@ -249,7 +249,7 @@ private constructor(
 
     // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
     // and the `:server` call sites are in a different module now. Not a widened API by intent.
-    fun isValid(reference: DesignReference, bytes: ByteArray): Boolean =
+    public fun isValid(reference: DesignReference, bytes: ByteArray): Boolean =
       hasValidMetadata(reference) && hasValidRaster(reference, bytes)
 
     private fun hasValidMetadata(reference: DesignReference): Boolean =

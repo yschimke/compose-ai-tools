@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
  * classpath/runtime level: the same call will fail identically for every preview, every override,
  * forever. Retrying is not merely useless, it is actively harmful — see [RenderCircuitBreaker].
  */
-object RenderFailureClassifier {
+public object RenderFailureClassifier {
   /**
    * Substrings of a failure reason that mean "linkage/classpath fault". Matched against the reason
    * text because that is all the serve host has: the daemon reports its render failure as a message
@@ -39,9 +39,9 @@ object RenderFailureClassifier {
     )
 
   /** The linkage fault named in [reason], or null when it is an ordinary (retryable) failure. */
-  fun fatalMarker(reason: String): String? = FATAL_MARKERS.firstOrNull { it in reason }
+  public fun fatalMarker(reason: String): String? = FATAL_MARKERS.firstOrNull { it in reason }
 
-  fun isFatal(reason: String): Boolean = fatalMarker(reason) != null
+  public fun isFatal(reason: String): Boolean = fatalMarker(reason) != null
 }
 
 /**
@@ -76,7 +76,7 @@ object RenderFailureClassifier {
  *
  * Thread-safe; every method takes one short critical section.
  */
-class RenderCircuitBreaker(
+public class RenderCircuitBreaker(
   /** Outcomes that must be in the window before the rate trip can fire at all. */
   private val minSamples: Int = MIN_SAMPLES,
   /** Failure fraction of the window at or above which the rate trip fires. */
@@ -120,7 +120,7 @@ class RenderCircuitBreaker(
    * cooldown, admitting exactly one probe render. Use [peekReason] for a read-only look (status
    * reporting, the HTTP failure latch) so a status poll can't spend the probe.
    */
-  fun blockedReason(): String? =
+  public fun blockedReason(): String? =
     synchronized(lock) {
       val reason = openReason ?: return null
       if (fatal) {
@@ -139,10 +139,10 @@ class RenderCircuitBreaker(
     }
 
   /** Read-only [blockedReason]: never admits a probe, never counts a short-circuit. */
-  fun peekReason(): String? = synchronized(lock) { openReason }
+  public fun peekReason(): String? = synchronized(lock) { openReason }
 
   /** A render succeeded. Closes a rate-tripped breaker; a fatal one stays open. */
-  fun recordOk(): Unit =
+  public fun recordOk(): Unit =
     synchronized(lock) {
       push(false)
       if (fatal) return
@@ -153,7 +153,7 @@ class RenderCircuitBreaker(
     }
 
   /** A render failed with [reason]; trips the breaker when fatal or when the rate says so. */
-  fun recordFailure(reason: String): Unit =
+  public fun recordFailure(reason: String): Unit =
     synchronized(lock) {
       push(true)
       if (fatal) return
@@ -183,7 +183,7 @@ class RenderCircuitBreaker(
     }
 
   /** Point-in-time state for `/status.json`, or null while the breaker has never tripped. */
-  fun snapshot(): RenderBreakerSnapshot? =
+  public fun snapshot(): RenderBreakerSnapshot? =
     synchronized(lock) {
       val reason = openReason ?: return null
       RenderBreakerSnapshot(
@@ -205,17 +205,17 @@ class RenderCircuitBreaker(
   private fun failureRate(): Double =
     if (window.isEmpty()) 0.0 else window.count { it }.toDouble() / window.size
 
-  companion object {
-    const val MIN_SAMPLES: Int = 20
-    const val FAILURE_RATE_THRESHOLD: Double = 0.9
-    const val WINDOW_SIZE: Int = 50
+  public companion object {
+    public const val MIN_SAMPLES: Int = 20
+    public const val FAILURE_RATE_THRESHOLD: Double = 0.9
+    public const val WINDOW_SIZE: Int = 50
 
     /**
      * Cooldown between probe renders on a rate-tripped breaker. Long enough that a wedged daemon
      * costs one render a minute instead of thousands (the #3448 behaviour), short enough that a
      * transient wave — a daemon restart, a burst of cold-start timeouts — heals within a browse.
      */
-    const val PROBE_COOLDOWN_MILLIS: Long = 60_000L
+    public const val PROBE_COOLDOWN_MILLIS: Long = 60_000L
   }
 }
 
@@ -225,7 +225,7 @@ class RenderCircuitBreaker(
  * Additive on `compose-preview-serve/status/v1`.
  */
 @Serializable
-data class RenderBreakerSnapshot(
+public data class RenderBreakerSnapshot(
   val open: Boolean,
   /** A linkage/classpath fault: terminal, never probed, needs a redeploy rather than a retry. */
   val fatal: Boolean,

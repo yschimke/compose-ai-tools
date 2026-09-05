@@ -92,6 +92,18 @@ dependencies {
   testFixturesApi(project(":render-session-api"))
 }
 
+kotlin {
+  // Published across a repository boundary: compose-preview-server compiles against these
+  // coordinates on its own release cadence (yschimke/compose-preview-server#289), so every
+  // declaration states its visibility and every public one its return type.
+  explicitApi()
+
+  @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
+}
+
+// `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin.
+tasks.named("check") { dependsOn("checkKotlinAbi") }
+
 composeAiMavenPublishing {
   coordinates(
     artifactId = "render-host",
