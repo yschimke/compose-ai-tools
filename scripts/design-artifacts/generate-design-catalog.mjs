@@ -44,7 +44,11 @@ import {
 } from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
-import { foldVariants, variantLabel } from "./catalog-variants.mjs";
+import {
+  duplicateAxesFailure,
+  foldVariants,
+  variantLabel,
+} from "./catalog-variants.mjs";
 import {
   foldMotion,
   motionArtifactsFor,
@@ -576,6 +580,13 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   const missing = [];
   const noSticker = [];
   const withoutSemantics = [];
+  // Components whose images collide on effective output axes, accumulated across the whole spec and
+  // refused once below (issue #5065). The fold used to throw on the first one, so a spec with two
+  // colliding components — the common shape, since one cause (a bare `@Preview` beside a locale
+  // multipreview) hits every component that carries it — cost one render cycle per collision to
+  // discover. Unlike `missing` / `noSticker` this is never gated by `--allow-incomplete`: see the
+  // refusal below.
+  const duplicateAxes = [];
   // The motion axis, kept BESIDE the sources as well as on them, so the written manifest can be
   // checked against what the join actually resolved. `buildCatalog` builds its components from an
   // allow-list and drops any field it hasn't been taught — which is precisely how this axis went
@@ -688,9 +699,11 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         ideal,
         missing: missingVariants,
         noSticker: noStickerVariants,
+        duplicateAxes: collidingAxes,
       } = foldVariants(selected, component, byFunction);
       missing.push(...missingVariants);
       noSticker.push(...noStickerVariants);
+      duplicateAxes.push(...collidingAxes);
       // Thin the palette fan-out per `modePriority`: a themed sticker whose mode is deferred is
       // dropped from the baked set (so no PNG is written and the Figma/static kit stays lean) and
       // recorded live-only. Only stickers that NAME a theme are eligible, so every component keeps
@@ -827,6 +840,15 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       sources.push(source);
     }
   }
+
+  // Refuse the whole build once, naming every collision. Deliberately a `throw` rather than another
+  // entry in the returned report: two images sharing an output path mean last-write-wins pixels
+  // paired with stale manifest metadata, which is a correctness failure and not the coverage gap
+  // `--allow-incomplete` exists to wave through. It fires before `buildCatalog`, so nothing is
+  // written either way — the only thing that changed is that one run now names every colliding
+  // component instead of the first.
+  const duplicateAxesError = duplicateAxesFailure(duplicateAxes);
+  if (duplicateAxesError) throw duplicateAxesError;
 
   const meta = {
     system: spec.system,

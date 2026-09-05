@@ -35,21 +35,35 @@ import { selectImages, selectLabel, selectOf } from "./catalog-select.mjs";
  *   the spec component (its `variants` drive the fold).
  * @param {Map<string, {images: Array<object>}>} byFunction rendered candidates
  *   keyed by `@Preview` function name.
- * @returns {{ideal: Array<object>, missing: string[], noSticker: string[]}} the
- *   merged image list, any variant previews that produced no render (as
+ * @returns {{ideal: Array<object>, missing: string[], noSticker: string[],
+ *   duplicateAxes: Array<{componentId: string, axes: string}>}}
+ *   the merged image list, any variant previews that produced no render (as
  *   `"<componentId> [<label>]"` where the label is the variant's state and/or
  *   `k=v` props), so the caller's completeness gate can still refuse a
- *   half-rendered sticker, and — reported separately, NOT as missing — the
+ *   half-rendered sticker, then — reported separately, NOT as missing — the
  *   render-less variants that declared `"capture": "none"` (see
- *   capture-mode.mjs).
+ *   capture-mode.mjs), and any images that collide on effective output axes (as
+ *   `{componentId, axes}`, which [duplicateAxesFailure] turns into the caller's one refusal).
+ *
+ *   `duplicateAxes` is a REPORT, not a throw, and that is the point (issue #5065). This fold used
+ *   to abort on the first colliding component, so a spec with two of them cost one full render
+ *   cycle — roughly half an hour on a real import — to learn about the second. Every other problem
+ *   here is already accumulated and reported together; a collision is now no different. The fold
+ *   deliberately keeps going and appends the colliding image, so the report covers the whole spec:
+ *   the caller (`catalogFromCandidates`) refuses the build once, naming every collision, before
+ *   `buildCatalog` writes a single PNG. Refusing stays non-negotiable — a collision means
+ *   last-write-wins pixels paired with stale manifest metadata, a correctness problem rather than
+ *   a coverage one, so it is never folded under `--allow-incomplete`. What changed is only when
+ *   the refusal happens and how much it says.
  */
 export function foldVariants(defaultImages, component, byFunction) {
   const ideal = [...defaultImages];
   const missing = [];
   const noSticker = [];
+  const duplicateAxes = [];
   const outputKeys = new Set();
   for (const image of defaultImages) {
-    recordOutputKey(outputKeys, image, component.componentId);
+    recordOutputKey(outputKeys, image, component.componentId, duplicateAxes);
   }
   for (const variant of component.variants ?? []) {
     const candidate = byFunction.get(variant.preview);
@@ -88,11 +102,11 @@ export function foldVariants(defaultImages, component, byFunction) {
       if (variant.state !== undefined) tagged.state = variant.state;
       if (variant.props) tagged.props = { ...image.props, ...variant.props };
       if (variant.theme !== undefined) tagged.theme = variant.theme;
-      recordOutputKey(outputKeys, tagged, component.componentId);
+      recordOutputKey(outputKeys, tagged, component.componentId, duplicateAxes);
       ideal.push(tagged);
     }
   }
-  return { ideal, missing, noSticker };
+  return { ideal, missing, noSticker, duplicateAxes };
 }
 
 /**
@@ -164,19 +178,44 @@ export function outputAxisKey(image) {
 }
 
 /**
- * Refuse two images that the exporter would name from the same effective variant axes. Catching
- * this before `buildCatalog` writes either PNG prevents last-write-wins pixels paired with stale
- * manifest metadata.
+ * Record two images that the exporter would name from the same effective variant axes. Reporting
+ * this before `buildCatalog` writes either PNG is what prevents last-write-wins pixels paired with
+ * stale manifest metadata; see [foldVariants] on why the refusal is the caller's and not a throw
+ * from here.
  */
-function recordOutputKey(seen, image, componentId) {
+function recordOutputKey(seen, image, componentId, duplicateAxes) {
   const key = outputAxisKey(image);
   if (seen.has(key)) {
-    throw new Error(
-      `catalog component "${componentId}" produces duplicate output axes ${key}; ` +
-        "each variant must have a unique state, theme, size, or props value",
-    );
+    duplicateAxes.push({ componentId, axes: key });
+    return;
   }
   seen.add(key);
+}
+
+/**
+ * The failure for a whole spec's worth of collisions, or `null` when there are none.
+ *
+ * The message lives here rather than at the throw site so it is unit-testable: `catalogFromCandidates`
+ * is a CLI script that parses argv at import time, so nothing can import it to assert on what it
+ * says. Entries stay STRUCTURED (`{componentId, axes}`) all the way to this function for the same
+ * reason the count is not parsed back out of a formatted line — the shape of the message is a
+ * presentation decision, and re-deriving data from it is how a message starts lying.
+ *
+ * @param {Array<{componentId: string, axes: string}>} entries every collision the fold recorded.
+ * @returns {Error|null}
+ */
+export function duplicateAxesFailure(entries) {
+  if (entries.length === 0) return null;
+  const components = new Set(entries.map((entry) => entry.componentId));
+  const subject =
+    components.size === 1 ? "component produces" : "components produce";
+  return new Error(
+    `${components.size} catalog ${subject} duplicate output axes; each variant must have ` +
+      "a unique state, theme, size, or props value:\n" +
+      entries
+        .map((entry) => `  - ${entry.componentId} ${entry.axes}`)
+        .join("\n"),
+  );
 }
 
 /** A short label for a variant, for the missing-render report: its state, props and/or theme. */
