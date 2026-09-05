@@ -41,3 +41,25 @@ The token sidecar confirms the roles the collision used to swap:
 
 `onPrimaryContainer` and `onSurface` are both `#FFF6EDFF` after the fix. That one is real:
 their getter names do not collide, and Wear M3 genuinely gives them the same colour.
+
+## The follow-up (#5104): the same hazard one level down
+
+The triage issue that asked for this to be root-caused was filed from an earlier state
+of knowledge — the mechanism above *is* the answer to it, and the prime suspect it
+names (`remoteColorOrNull` reading the packed colour off the id-provider lambda) was
+correctly ruled out by disassembly: `remote-creation-compose:1.0.0-alpha18`'s lambda
+captures exactly one `long`, so nothing is ambiguous there today.
+
+"Today" is the whole caveat, and it is the same one that made this bug hard to see for
+sixteen baselines. That read was
+`declaredFields.firstOrNull { it.type == Long }`, and `Class.getDeclaredFields()` is
+exactly as unordered as `getMethods()`. A future alpha capturing a second `long` would
+have reproduced this issue in a place nobody would look twice, because the site had
+already been investigated and cleared.
+
+It now takes the lowest-named matching field, which is the same treatment the method
+lookup got, and `RemoteCatalogRoleLookupTest` pins it against a double whose provider
+carries two `long`s: repeated reads must agree, and the answer must be the one the
+field names pick rather than the one the JVM happened to list. Behaviour against the
+real one-`long` lambda is unchanged — the set has one element either way.
+
