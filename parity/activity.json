@@ -1,11 +1,67 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T11:44:20.316Z",
+  "generatedAt": "2026-09-05T16:26:13.874Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "22e026a0677bdc701fc955f3dcd075aab975c5ed",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.81.0 (#5204)",
+        "at": "2026-09-05T16:10:04Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e9c4fcfd51455eca139530bfb143c96d89a71867",
+        "subject": "chore(main): release 1.81.0 (#5198)",
+        "at": "2026-09-05T16:59:14+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1a0e973740f53011e7b0e2a64e2560e6174804b0",
+        "subject": "feat(screen): let a generated screen carry an opt-in @Preview (#5203)",
+        "at": "2026-09-05T14:54:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9b686908774462061ea752947a2783212789aa21",
+        "subject": "chore(deps): pin the preview server to 3.2.0 (#5202)",
+        "at": "2026-09-05T14:53:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "36f3960635ff3fb88384719cf498ba40239a7f9c",
+        "subject": "feat(mcp): launch the MCP server instead of bundling it (#5200)",
+        "at": "2026-09-05T13:42:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4e9bfa6289ef430e652f7f28990779f10e804ba9",
+        "subject": "fix(daemon): record the ABI :daemon:core actually has (#5201)",
+        "at": "2026-09-05T13:41:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "734e906bcaba663169e450870158f6278f74dd91",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.80.0 (#5199)",
+        "at": "2026-09-05T12:49:47+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "6a9593f822f6852ae5b79620845da56eaaf6add6",
         "subject": "fix(scroll): set aside chrome revealed at the foot of a slice when scoring a seam (#5197)",
@@ -426,62 +482,6 @@
         "sha": "4dea3f6936f4cdd9ab8e9b5e356f5639ff544352",
         "subject": "revert: adopt a merge queue for main (#5133)",
         "at": "2026-09-05T08:14:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "59b2ad38f98c43b7560ab3db7f463cb373b6062b",
-        "subject": "feat(builder): size the palette against four real catalog screens (#5132)",
-        "at": "2026-09-05T08:14:09+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8fdc2bb93de34bd3c385e4a07b2a136a31495a93",
-        "subject": "ci: adopt a merge queue for main (#5130)",
-        "at": "2026-09-05T08:04:02+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "77e8268286709737cf012c6444e9902f6a71beab",
-        "subject": "docs(layers): state which repository a module belongs in (#5129)",
-        "at": "2026-09-05T07:57:06+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4861d48e38ba21df00923fcc28d7814473d817a2",
-        "subject": "feat(discovery): resolve the remember factory a state type ships beside it (#5128)",
-        "at": "2026-09-05T07:54:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "cc8eed3b7b0c1b0933a471f947d1e9eb2d92c4b2",
-        "subject": "test(studio-parity): cover a defaulted-parameter preview against Layoutlib (#5127)",
-        "at": "2026-09-05T07:29:56+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3d01237a36838c9273d1ea77f3f8c529dc0f1689",
-        "subject": "fix(builder): import a generated screen's components instead of qualifying them (#5123)",
-        "at": "2026-09-05T07:23:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f22ea96c27ea8f645eb078ecd26a8bff79503c9c",
-        "subject": "feat(gestures): publish whether a one-handed gesture can reach a composable (#5126)",
-        "at": "2026-09-05T07:23:06+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
