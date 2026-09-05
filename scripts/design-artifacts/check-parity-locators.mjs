@@ -184,6 +184,7 @@ export function checkLocators({ issues = [], manifests = new Map(), published = 
           unverified++;
           warnings.push({
             ...row,
+            kind: "unverified",
             message:
               `no component "${locator.component}" in the ${locator.system} manifest — not built ` +
               "on the discovered lane, or removed",
@@ -199,7 +200,7 @@ export function checkLocators({ issues = [], manifests = new Map(), published = 
           : `"${id}" carries no cell segment`;
         // Served once and not drawn now: whatever is in this working tree removed it.
         if (!servedBefore || servedBefore.has(id)) failures.push({ ...row, message: `${why}${hint}` });
-        else warnings.push({ ...row, message: `${why}${hint}` });
+        else warnings.push({ ...row, kind: "unserved", message: `${why}${hint}` });
       }
     }
   }
@@ -250,10 +251,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const { failures, warnings, checked, skipped, unverified } = checkLocators({ issues, manifests, published });
   for (const row of warnings) {
-    console.error(
-      `::warning::parity-locators: #${row.number}: ${row.field} ${row.id} does not resolve, and was ` +
-        `not served at the baseline either — ${row.message}`,
-    );
+    // Two different warnings, and saying so matters: one is a locator nobody can check here, the
+    // other is a locator that is wrong but was already wrong before this tree.
+    const why =
+      row.kind === "unverified"
+        ? "cannot be checked on this lane"
+        : "does not resolve, and was not served at the baseline either";
+    console.error(`::warning::parity-locators: #${row.number}: ${row.field} ${row.id} ${why} — ${row.message}`);
   }
   for (const row of failures) {
     console.error(`::error::parity-locators: #${row.number}: ${row.field} ${row.id} — ${row.message}`);
