@@ -7,7 +7,7 @@
     "ref": "main",
     "module": "samples:design-catalog-wear-m3"
   },
-  "generatedAt": "2026-09-05T17:12:59.367Z",
+  "generatedAt": "2026-09-05T17:24:37.913Z",
   "mappings": [
     {
       "componentId": "Button/Filled",

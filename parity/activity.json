@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T17:13:06.264Z",
+  "generatedAt": "2026-09-05T17:24:43.860Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "1af7bbf699a8f47a103de4add9bb27f6584e2658",
+        "subject": "fix(design-artifacts): carry locator `scope` in the issue index, and mirror the producer (#5210)",
+        "at": "2026-09-05T18:14:51+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4977d0aeccc76524a9ebba73e404a7150c7652d9",
+        "subject": "fix(screen): import a generated screen's references instead of qualifying them (#5207)",
+        "at": "2026-09-05T18:04:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "e03d455f0d8ca159c318917212141ec382a6b91b",
         "subject": "test(wear-m3): render the UI builder's generated Wear screen for real (#5208)",
@@ -466,22 +482,6 @@
         "sha": "ebc8a9999d9f5948e077f92e6726375e9cea00c7",
         "subject": "feat(screen-model): publish it, so a wasm builder can generate (#5134)",
         "at": "2026-09-05T08:26:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f9f3ef2d2a827331cc432d1c267a4a813db9fccb",
-        "subject": "ci(layers): fail the build when a server artifact reaches this repo (#5135)",
-        "at": "2026-09-05T08:21:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "445cd9e5d52032a0b9861470a771db45cce2b176",
-        "subject": "fix(renderer-android): resolve defaulted-parameter Glance previews (#5131)",
-        "at": "2026-09-05T08:16:31+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
