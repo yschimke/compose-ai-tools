@@ -215,7 +215,10 @@ object PreviewTargetInference {
         // read is dropped: without it there is no way to tell a mangled JVM name from a legally
         // escaped one, and reporting the JVM name is how a nonexistent import gets published.
         .mapNotNull { candidate ->
-          ComposableSignature.signatureOf(candidate.classInfo, candidate.method)?.let {
+          // The scan goes with it so a required parameter whose type constructs itself can be
+          // recognised (issue #5067) — `TextField(state = TextFieldState())`. Only this path needs
+          // it: these are the library components whose call sites get printed.
+          ComposableSignature.signatureOf(candidate.classInfo, candidate.method, scanResult)?.let {
             candidate to it
           }
         }

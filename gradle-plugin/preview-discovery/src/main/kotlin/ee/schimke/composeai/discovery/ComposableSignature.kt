@@ -3,6 +3,9 @@ package ee.schimke.composeai.discovery
 import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
+import io.github.classgraph.ScanResult
+import kotlin.metadata.ClassKind
+import kotlin.metadata.KmClass
 import kotlin.metadata.KmClassifier
 import kotlin.metadata.KmFunction
 import kotlin.metadata.KmType
@@ -10,10 +13,13 @@ import kotlin.metadata.KmTypeProjection
 import kotlin.metadata.KmValueParameter
 import kotlin.metadata.Visibility
 import kotlin.metadata.declaresDefaultValue
+import kotlin.metadata.isInner
 import kotlin.metadata.isNullable
+import kotlin.metadata.isValue
 import kotlin.metadata.jvm.KotlinClassMetadata
 import kotlin.metadata.jvm.annotations
 import kotlin.metadata.jvm.signature
+import kotlin.metadata.kind
 import kotlin.metadata.visibility
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
@@ -130,7 +136,11 @@ internal object ComposableSignature {
    * scaffolding a call site a human completes, wrong for a generator that claims its output
    * compiles. A consumer that must not guess reads this instead and refuses on null.
    */
-  fun signatureOf(classInfo: ClassInfo, method: MethodInfo): ComposableSignatureInfo? {
+  fun signatureOf(
+    classInfo: ClassInfo,
+    method: MethodInfo,
+    scanResult: ScanResult? = null,
+  ): ComposableSignatureInfo? {
     return try {
       val metadata = readClassMetadata(classInfo) ?: return null
       val functions =
@@ -147,7 +157,12 @@ internal object ComposableSignature {
         // escaped declaration whose own name contains a hyphen (``fun `filled-button`()``), and no
         // amount of string surgery on the JVM name distinguishes those two.
         name = fn.name,
-        parameters = fn.valueParameters.map { it.toTargetParameter() },
+        // The constructibility pass wants the classpath, and only this overload's callers have one
+        // — `parametersOf` answers for a preview's own parameters, where nothing constructs a
+        // value. Absent (a caller that has no scan, and every existing test) the flag stays false,
+        // which is exactly the behaviour before it existed.
+        parameters =
+          fn.valueParameters.map { it.toTargetParameter().withConstructibility(scanResult) },
         callableFromAnotherFile =
           fn.visibility == Visibility.PUBLIC || fn.visibility == Visibility.INTERNAL,
         hasTypeParameters = fn.typeParameters.isNotEmpty(),
@@ -254,9 +269,21 @@ internal object ComposableSignature {
    * author's `@ExperimentalMaterial3Api` or `@InternalComposeApi` survives.
    */
   private fun requiredOptInsOf(method: MethodInfo, mechanisms: Set<String>): List<String> =
-    method.annotationInfo
-      ?.directOnly()
-      .orEmpty()
+    requiredOptInsOf(method.annotationInfo?.directOnly().orEmpty(), mechanisms)
+
+  /**
+   * The same question asked of a **class**: which opt-in markers does declaring a value of this
+   * type require? Used by [isNoArgConstructible], which refuses a gated type rather than emitting a
+   * `Type()` whose marker nothing carries.
+   */
+  private fun requiredOptInsOf(classInfo: ClassInfo, mechanisms: Set<String>): List<String> =
+    requiredOptInsOf(classInfo.annotationInfo?.directOnly().orEmpty(), mechanisms)
+
+  private fun requiredOptInsOf(
+    annotations: List<AnnotationInfo>,
+    mechanisms: Set<String>,
+  ): List<String> =
+    annotations
       .filter { annotation ->
         annotation.classInfo?.annotationInfo?.directOnly()?.any { it.name in mechanisms } == true
       }
@@ -326,6 +353,78 @@ internal object ComposableSignature {
       composableSlotReceiver = if (slot) receiverFqnOf(type) else null,
       nullable = type.isNullable,
     )
+  }
+
+  /**
+   * [TargetParameter.noArgConstructible] resolved against the classpath (issue #5067).
+   *
+   * Only asked for a parameter that could actually use it: one that is REQUIRED (a defaulted
+   * parameter is omitted, so nothing is constructed for it) and names a class type. Answering for
+   * the rest would scan the classpath for types no call site will ever print.
+   */
+  private fun TargetParameter.withConstructibility(scanResult: ScanResult?): TargetParameter {
+    if (scanResult == null || hasDefault || nullable || composableSlot) return this
+    val fqn = typeFqn ?: return this
+    return if (isNoArgConstructible(scanResult, fqn)) copy(noArgConstructible = true) else this
+  }
+
+  /**
+   * Whether `Type()` — no arguments at all — is a legal, compiling expression for [fqn].
+   *
+   * Deliberately narrow, because the whole value of a printed call site is that it compiles. Every
+   * clause below is a way `Type()` fails to:
+   * - **not on the classpath** — nothing can be claimed about a type this scan cannot see;
+   * - **not a plain class** — an `object` is `Type` not `Type()`, an interface, annotation or enum
+   *   class has no constructor to call, and an abstract class cannot be instantiated;
+   * - **not public** — a generated file in another package cannot reach it, the same reason
+   *   `callableFromAnotherFile` refuses a private composable;
+   * - **an inner class** — `Outer.Inner()` needs an outer instance, which nothing here has;
+   * - **generic** — `Box()` with every argument defaulted leaves `T` uninferable, the same reason
+   *   `hasTypeParameters` refuses a generic composable;
+   * - **a value class** — its constructor is name-mangled, so what compiles from source is not what
+   *   the JVM signature suggests, and this reader would be guessing;
+   * - **opt-in gated** — a `@RequiresOptIn`-marked type needs a marker on the generated wrapper,
+   *   and while the CALLABLE's markers already travel on the record, a constructed type's do not.
+   *   Refusing keeps the emitted-implies-compiles claim true; carrying them is a follow-up, not a
+   *   silent widening.
+   *
+   * What remains is the case the issue is about: a public, non-generic, plain class with a public
+   * constructor whose parameters ALL declare defaults (or has none at all). That is read from
+   * metadata's `declaresDefaultValue` rather than by counting JVM parameters, because Kotlin emits
+   * such a constructor as the `(…, int, DefaultConstructorMarker)` bridge and the zero-arg form
+   * exists only in source.
+   *
+   * There is no recursion: a constructor whose own parameters are not all defaulted is refused
+   * outright, so the depth is capped at one by construction rather than by a counter.
+   */
+  internal fun isNoArgConstructible(scanResult: ScanResult, fqn: String): Boolean {
+    return try {
+      val info = scanResult.getClassInfo(fqn) ?: return false
+      if (!info.isPublic || info.isAbstract || info.isInterface || info.isEnum) return false
+      if (info.isAnnotation) return false
+      if (requiredOptInsOf(info, OPT_IN_MARKER_ANNOTATIONS).isNotEmpty()) return false
+      val metadata = readClassMetadata(info) ?: return false
+      val kmClass =
+        (KotlinClassMetadata.readLenient(metadata) as? KotlinClassMetadata.Class)?.kmClass
+          ?: return false
+      isNoArgConstructible(kmClass)
+    } catch (_: Throwable) {
+      // Same posture as every other read here: an unreadable or newer-format class answers "no",
+      // which costs a refusal rather than emitting a call site nothing verified.
+      false
+    }
+  }
+
+  /** The metadata half of [isNoArgConstructible], split out so it can be tested without a scan. */
+  internal fun isNoArgConstructible(kmClass: KmClass): Boolean {
+    if (kmClass.kind != ClassKind.CLASS) return false
+    if (kmClass.isValue || kmClass.isInner) return false
+    if (kmClass.typeParameters.isNotEmpty()) return false
+    if (kmClass.visibility != Visibility.PUBLIC) return false
+    return kmClass.constructors.any { constructor ->
+      constructor.visibility == Visibility.PUBLIC &&
+        constructor.valueParameters.all { it.declaresDefaultValue }
+    }
   }
 
   /**

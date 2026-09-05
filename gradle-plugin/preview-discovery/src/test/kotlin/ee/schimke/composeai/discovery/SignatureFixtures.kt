@@ -134,3 +134,66 @@ annotation class `Api$Experimental`
 typealias AliasedLabel = String
 
 @Suppress("unused", "UNUSED_PARAMETER") fun aliasedComponent(label: AliasedLabel = "") {}
+
+// --- Constructibility fixtures (issue #5067) -------------------------------------------------
+//
+// Each names one clause of `ComposableSignature.isNoArgConstructible`. The point of a fixture per
+// clause is that the rule is checked against a real compiler's output rather than against a belief
+// about what Kotlin emits: an all-defaulted constructor exists as a zero-arg call only in SOURCE
+// (the JVM sees a `(…, int, DefaultConstructorMarker)` bridge), which is exactly the distinction a
+// hand-written record could not have proved.
+
+/**
+ * The `TextFieldState` shape: every constructor parameter defaulted, so `DefaultedState()`
+ * compiles.
+ */
+class DefaultedState(val text: String = "", val cursor: Int = 0)
+
+/** No constructor parameters at all — the other way to be callable with none. */
+@Suppress("unused") class EmptyState
+
+/** A required constructor parameter. `RequiredArgState()` does not compile, so it is refused. */
+@Suppress("unused") class RequiredArgState(val text: String)
+
+/** Abstract: has a constructor, cannot be instantiated. */
+@Suppress("unused") abstract class AbstractState(val text: String = "")
+
+/** An `object` is referenced as `SingletonState`, never called as `SingletonState()`. */
+@Suppress("unused") object SingletonState
+
+/**
+ * Generic: `GenericState()` leaves `T` uninferable, the same reason a generic composable refuses.
+ */
+@Suppress("unused") class GenericState<T>(val items: List<T> = emptyList())
+
+/** Value class: its constructor is name-mangled, so the JVM signature is not what source calls. */
+@Suppress("unused") @JvmInline value class ValueState(val text: String = "")
+
+/** `Inner()` needs an outer instance, which a generated file has no way to produce. */
+@Suppress("unused")
+class OuterHost {
+  inner class InnerState(val text: String = "")
+}
+
+/** Not public: a generated file in another package cannot name it. */
+@Suppress("unused") internal class InternalState(val text: String = "")
+
+/** A marker that guards a TYPE, which the function-targeted fixture markers above cannot. */
+@RequiresOptIn("Fixture-only marker.")
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CLASS)
+annotation class ExperimentalStateApi
+
+/**
+ * Constructible in every other way, but declaring one requires a marker the call site cannot carry.
+ */
+@Suppress("unused") @ExperimentalStateApi class GatedState(val text: String = "")
+
+/**
+ * The wiring case: a required parameter whose type is constructible, read through `signatureOf`.
+ */
+@Suppress("unused", "UNUSED_PARAMETER") fun defaultedStateComponent(state: DefaultedState) {}
+
+/** A defaulted parameter is omitted from the call, so nothing is constructed for it. */
+@Suppress("unused", "UNUSED_PARAMETER")
+fun defaultedParameterComponent(state: DefaultedState = DefaultedState()) {}

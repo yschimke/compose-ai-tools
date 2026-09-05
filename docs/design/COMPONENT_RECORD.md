@@ -888,12 +888,47 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > published.
 >
 > **Measured reach.** Over a 28-component Material 3 surface (buttons, cards, chips,
-> toggles, progress, scaffolding, list and navigation items, dialogs), **26 emit a
-> call site and 2 refuse** — the two being `TextField` / `OutlinedTextField`, whose
-> required `state: TextFieldState` genuinely has no literal to write. So the
-> placeholder table is not the bottleneck it looked like from the outside, and
-> widening it further would buy very little: what is left needs *values*, which is
-> Phase 2's argument binding, not more literals.
+> toggles, progress, scaffolding, list and navigation items, dialogs), **26 emitted a
+> call site and 2 refused** — the two being `TextField` / `OutlinedTextField`, whose
+> required `state: TextFieldState` has no literal to write. So the placeholder table
+> was not the bottleneck it looked like from the outside, and widening it further
+> would buy very little: what is left needs *values*, which is Phase 2's argument
+> binding, not more literals.
+>
+> Those last two are now emitted, which took the opposite of widening the table
+> (issue #5067). `TextFieldState` is *constructible with no arguments* — its primary
+> constructor's parameters all carry defaults, which Kotlin emits as the
+> `(String, long, int, DefaultConstructorMarker)` bridge — so the answer was never a
+> literal for that type but the observation that the type answers for itself. The
+> refusal was "the record does not carry enough to know it can be", so discovery
+> resolves it on the classpath and records `TargetParameter.noArgConstructible`
+> beside `typeFqn`, and the generator writes `TextField(state = TextFieldState())`.
+> Same lesson as `nullable`: read it from metadata and put it on the record, never
+> re-derive it from the rendered spelling — a simple name carries no package and
+> nothing about constructibility.
+>
+> The check is deliberately narrow, because every clause is a way `Type()` fails to
+> compile: not on the classpath, not a plain class (object / interface / annotation /
+> enum / abstract), not public, inner, generic, a value class (constructor mangling),
+> or opt-in gated — the callable's markers travel on the record but a constructed
+> type's do not, so a gated type refuses rather than emitting a file whose `@OptIn`
+> nothing carries. There is no recursion: a constructor whose own parameters are not
+> all defaulted is refused, which caps the depth at one by construction rather than by
+> a counter.
+>
+> **The import invariant moved rather than loosened.** "No import beyond the callable"
+> was a property of a table containing only literals and empty lambdas; a constructed
+> placeholder needs `TextFieldState` imported. It is now "every emitted import is one
+> discovery resolved on the classpath", which is still checkable — and the compile
+> gate is what checks it, since `expectedEmitted` names both text fields and the
+> generated wrapper is compiled with exactly the imports the record published.
+>
+> Not taken: `rememberTextFieldState()`. The factory is what a human would write (raw
+> state construction in a composable body does not survive recomposition), but it is a
+> *convention*, not something derivable from the parameter's type — taking it would
+> reintroduce the authored name→expression table this design keeps deleting. The
+> snippet's claim is that it type-checks; a snippet meant to render well is a
+> different artifact, and it should say so rather than smuggling a mapping back in.
 >
 > The first run of that measurement read 25/30 with five refusals, three of which —
 > `Checkbox`, `RadioButton`, `Switch` — turned out to share one cause: material3

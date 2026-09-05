@@ -577,6 +577,13 @@ object ScreenGenerator {
                 "`${record.symbol.name}` needs `${parameter.name}: ${parameter.type}` and the " +
                   "document does not set it"
             } else {
+              // A constructed placeholder (`TextFieldState()`, issue #5067) is the one the table
+              // writes that does not resolve on its own, so its import travels with it — through
+              // the same conflict check every other import here goes through, which is what keeps
+              // two same-named types from silently producing a file Kotlin refuses.
+              ComponentSnippets.constructedTypeOf(parameter)?.let {
+                imports += ComponentSnippets.escapeCallableIfKeyword(it)
+              }
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $placeholder"
             }
           }

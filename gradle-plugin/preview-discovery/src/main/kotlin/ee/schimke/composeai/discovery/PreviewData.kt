@@ -1500,7 +1500,6 @@ data class PreviewTarget(
   val androidxOptIns: List<String> = emptyList(),
 )
 
-
 @Serializable
 enum class TargetConfidence {
   HIGH,

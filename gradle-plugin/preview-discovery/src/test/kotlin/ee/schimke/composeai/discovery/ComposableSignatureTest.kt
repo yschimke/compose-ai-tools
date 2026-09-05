@@ -212,4 +212,131 @@ class ComposableSignatureTest {
     assertThat(content.type).isEqualTo("TestRowScope.(Int) -> Unit")
     assertThat(content.composableSlot).isTrue()
   }
+
+  // --- constructibility of a required parameter's type (issue #5067) ----------------------------
+
+  /**
+   * `isNoArgConstructible` over a real scan of the fixtures. Asked of the TYPE rather than through
+   * a component function, because that is the question the clauses are about — and because a
+   * fixture function taking an `internal` type could not itself be public, which would change what
+   * is being tested.
+   */
+  private fun constructible(simpleName: String): Boolean {
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      .enableAnnotationInfo()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        return ComposableSignature.isNoArgConstructible(
+          scan,
+          "ee.schimke.composeai.discovery.$simpleName",
+        )
+      }
+  }
+
+  @Test
+  fun `an all-defaulted constructor is constructible, which only source shows`() {
+    // The JVM sees `(String, int, int, DefaultConstructorMarker)` and no zero-arg constructor at
+    // all; `DefaultedState()` compiles anyway. Reading `declaresDefaultValue` off metadata is what
+    // makes that visible — counting JVM parameters would answer no.
+    assertThat(constructible("DefaultedState")).isTrue()
+  }
+
+  @Test
+  fun `a constructor with no parameters is constructible`() {
+    assertThat(constructible("EmptyState")).isTrue()
+  }
+
+  @Test
+  fun `a required constructor parameter refuses, which is what caps the depth at one`() {
+    // No recursion: a type whose own constructor needs a value is simply not constructible, so
+    // nothing ever descends into building one.
+    assertThat(constructible("RequiredArgState")).isFalse()
+  }
+
+  @Test
+  fun `an abstract class and an object are not constructible`() {
+    assertThat(constructible("AbstractState")).isFalse()
+    assertThat(constructible("SingletonState")).isFalse()
+  }
+
+  @Test
+  fun `a generic, value or inner class is not constructible`() {
+    assertThat(constructible("GenericState")).isFalse()
+    assertThat(constructible("ValueState")).isFalse()
+    assertThat(constructible("OuterHost\$InnerState")).isFalse()
+  }
+
+  @Test
+  fun `a non-public class is not constructible from a generated file`() {
+    assertThat(constructible("InternalState")).isFalse()
+  }
+
+  @Test
+  fun `an opt-in-gated type is not constructible, because its marker cannot travel`() {
+    // The callable's own markers already ride on the record; a constructed type's do not, so
+    // emitting `GatedState()` would produce a file the compiler rejects for a missing @OptIn.
+    assertThat(constructible("GatedState")).isFalse()
+  }
+
+  @Test
+  fun `a type that is not on the scanned classpath claims nothing`() {
+    assertThat(constructible("NoSuchStateAnywhere")).isFalse()
+  }
+
+  /** Resolve a fixture function's single parameter through the full `signatureOf` path. */
+  private fun parameterWithScan(simpleName: String): TargetParameter {
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      .enableAnnotationInfo()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        val classInfo =
+          scan.getClassInfo("ee.schimke.composeai.discovery.SignatureFixturesKt")
+            ?: error("fixture facade class not found")
+        val m: MethodInfo = classInfo.methodInfo.first { it.name == simpleName }
+        val signature =
+          ComposableSignature.signatureOf(classInfo, m, scan) ?: error("signature unreadable")
+        return signature.parameters.single()
+      }
+  }
+
+  @Test
+  fun `a required parameter carries the flag, with the qualified name a call site imports`() {
+    val parameter = parameterWithScan("defaultedStateComponent")
+
+    assertThat(parameter.noArgConstructible).isTrue()
+    assertThat(parameter.typeFqn).isEqualTo("ee.schimke.composeai.discovery.DefaultedState")
+  }
+
+  @Test
+  fun `a defaulted parameter is not asked about, since the call omits it`() {
+    assertThat(parameterWithScan("defaultedParameterComponent").noArgConstructible).isFalse()
+  }
+
+  @Test
+  fun `without a scan nothing is claimed, so an older caller behaves exactly as before`() {
+    // Annotation info is enabled because `signatureOf` reads the method's opt-in markers whatever
+    // else it is asked for; what this test withholds is the SCAN ARGUMENT, which is the only input
+    // constructibility is resolved from.
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      .enableAnnotationInfo()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        val classInfo =
+          scan.getClassInfo("ee.schimke.composeai.discovery.SignatureFixturesKt")
+            ?: error("fixture facade class not found")
+        val m = classInfo.methodInfo.first { it.name == "defaultedStateComponent" }
+        val signature = ComposableSignature.signatureOf(classInfo, m) ?: error("unreadable")
+
+        assertThat(signature.parameters.single().noArgConstructible).isFalse()
+      }
+  }
 }
