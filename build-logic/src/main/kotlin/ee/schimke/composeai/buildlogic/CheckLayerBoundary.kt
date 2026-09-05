@@ -74,27 +74,25 @@ abstract class CheckLayerBoundary : DefaultTask() {
       listOf("$COMPOSE_AI_GROUP:compose-preview-config", "$COMPOSE_AI_GROUP:compose-preview-plugin")
 
     /**
-     * The layer-2 coordinates `:cli` resolves today, allowed under protest.
+     * Layer-2 coordinates allowed on a runtime classpath here: **none**.
      *
-     * These **are** the cycle. `compose-preview-render-host` is offline behaviour filed in the
-     * wrong repository (step 2 of #180's order moves it here); `compose-preview-serve` is reached
-     * from `ServeCommand.kt` alone and goes when `serve` becomes a launcher over the published
-     * binary (steps 3-4). This list shrinks to empty as those land, and the gate's value in the
-     * meantime is that it is exactly three entries long: a fourth cannot be added by accident.
+     * This list held three until the forward edge closed. `compose-preview-render-host` and the
+     * `compose-preview-ui-builder-runtime` it dragged went when the render host moved into this
+     * repository; `compose-preview-serve` went when `serve` and `browse` became launchers over the
+     * published server binary rather than linking `ServeRunner`
+     * (yschimke/compose-preview-server#180).
      *
-     * `compose-preview-ui-builder-runtime` is the one nobody had counted, and it is why this task
-     * reads resolved identity rather than build files. It is declared **nowhere** in this
-     * repository — no `cli/build.gradle.kts` line, no version-catalog alias. It arrives because
-     * the server publishes its three modules in lockstep and `compose-preview-serve`'s POM names
-     * all of them, so depending on the server drags the UI-builder runtime onto the CLI's runtime
-     * classpath. The published analysis on #180 counts two coordinates crossing this edge; there
-     * are three, and it goes when `compose-preview-serve` does.
+     * Empty is the point, and it is the proof: an empty allowlist means any
+     * `ee.schimke.composeai:compose-preview-*` coordinate reaching a runtime classpath in this build
+     * fails, with no exceptions to argue about.
+     *
+     * **One edge survives and this task cannot see it, deliberately.** `compose-preview-serve` is
+     * still a `testImplementation` of `:cli`, because two tests drive the CLI's HTTP clients against
+     * a real `ServeHttpServer` to catch the two repositories' wire types drifting apart — a stub
+     * would make them pass while testing nothing they exist for. This task reads `runtimeClasspath`,
+     * so it does not and should not fail on that; the claim it makes is about what ships, which is
+     * the claim worth enforcing.
      */
-    val knownLayerTwoEdges: List<String> =
-      listOf(
-        "$COMPOSE_AI_GROUP:compose-preview-render-host",
-        "$COMPOSE_AI_GROUP:compose-preview-serve",
-        "$COMPOSE_AI_GROUP:compose-preview-ui-builder-runtime",
-      )
+    val knownLayerTwoEdges: List<String> = emptyList()
   }
 }

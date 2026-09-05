@@ -14,7 +14,9 @@ class BrowseCommand(private val args: List<String>) {
       printUsage()
       return
     }
-    ServeCommand(serveArgs(args), browseProject = true).run()
+    // Raw args: `ServeCommand` applies `serveArgs` itself when launching in browse mode, so the
+    // browse defaults are added exactly once and in one place.
+    ServeCommand(args, browseProject = true).run()
   }
 
   internal companion object {
