@@ -678,7 +678,6 @@ public final class ee/schimke/composeai/daemon/JsonRpcServer {
 	public static final field ERR_METHOD_NOT_FOUND I
 	public static final field ERR_NOT_INITIALIZED I
 	public static final field ERR_PARSE I
-	public static final field HISTORY_DIFF_EXPERIMENTAL_PROP Ljava/lang/String;
 	public static final field IDLE_TIMEOUT_PROP Ljava/lang/String;
 	public static final field INTERACTIVE_BURST_INTERVAL_MS J
 	public static final field INTERACTIVE_BURST_MS J
@@ -690,8 +689,8 @@ public final class ee/schimke/composeai/daemon/JsonRpcServer {
 	public static final field MIN_RECORDING_FPS I
 	public static final field PROTOCOL_VERSION I
 	public static final field RENDER_TIMEOUT_PROP Ljava/lang/String;
-	public fun <init> (Ljava/io/InputStream;Ljava/io/OutputStream;Lee/schimke/composeai/daemon/RenderHost;Ljava/lang/String;Ljava/lang/String;JLee/schimke/composeai/daemon/ClasspathFingerprint;JLee/schimke/composeai/daemon/PreviewIndex;Lee/schimke/composeai/daemon/IncrementalDiscovery;JLee/schimke/composeai/daemon/history/HistoryManager;ZJLee/schimke/composeai/daemon/ExtensionRegistry;JJJJJILee/schimke/composeai/daemon/bta/BtaCompileService;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/daemon/XrSessions;)V
-	public synthetic fun <init> (Ljava/io/InputStream;Ljava/io/OutputStream;Lee/schimke/composeai/daemon/RenderHost;Ljava/lang/String;Ljava/lang/String;JLee/schimke/composeai/daemon/ClasspathFingerprint;JLee/schimke/composeai/daemon/PreviewIndex;Lee/schimke/composeai/daemon/IncrementalDiscovery;JLee/schimke/composeai/daemon/history/HistoryManager;ZJLee/schimke/composeai/daemon/ExtensionRegistry;JJJJJILee/schimke/composeai/daemon/bta/BtaCompileService;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/daemon/XrSessions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/io/InputStream;Ljava/io/OutputStream;Lee/schimke/composeai/daemon/RenderHost;Ljava/lang/String;Ljava/lang/String;JLee/schimke/composeai/daemon/ClasspathFingerprint;JLee/schimke/composeai/daemon/PreviewIndex;Lee/schimke/composeai/daemon/IncrementalDiscovery;JLee/schimke/composeai/daemon/history/HistoryManager;JLee/schimke/composeai/daemon/ExtensionRegistry;JJJJJILee/schimke/composeai/daemon/bta/BtaCompileService;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/daemon/XrSessions;)V
+	public synthetic fun <init> (Ljava/io/InputStream;Ljava/io/OutputStream;Lee/schimke/composeai/daemon/RenderHost;Ljava/lang/String;Ljava/lang/String;JLee/schimke/composeai/daemon/ClasspathFingerprint;JLee/schimke/composeai/daemon/PreviewIndex;Lee/schimke/composeai/daemon/IncrementalDiscovery;JLee/schimke/composeai/daemon/history/HistoryManager;JLee/schimke/composeai/daemon/ExtensionRegistry;JJJJJILee/schimke/composeai/daemon/bta/BtaCompileService;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/daemon/XrSessions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun run ()V
 }
 
@@ -984,18 +983,20 @@ public final class ee/schimke/composeai/daemon/PreviewKnobDeclarations {
 
 public final class ee/schimke/composeai/daemon/PreviewKnobDto {
 	public static final field Companion Lee/schimke/composeai/daemon/PreviewKnobDto$Companion;
-	public fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()I
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/daemon/PreviewKnobDto;
-	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/PreviewKnobDto;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/daemon/PreviewKnobDto;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;)Lee/schimke/composeai/daemon/PreviewKnobDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/daemon/PreviewKnobDto;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/daemon/PreviewKnobDto;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDefault ()Ljava/lang/String;
 	public final fun getIndex ()I
 	public final fun getName ()Ljava/lang/String;
+	public final fun getOptions ()Ljava/util/List;
 	public final fun getType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;

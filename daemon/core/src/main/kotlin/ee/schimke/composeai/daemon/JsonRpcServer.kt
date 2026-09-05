@@ -203,19 +203,6 @@ public class JsonRpcServer(
    */
   private val historyManager: HistoryManager? = null,
   /**
-   * Experimental gate for `history/diff`. The metadata-mode handler exists (H3) but the broader
-   * history surface — pixel mode (H5), git-ref write modes, LFS/squash-GC handling — is incomplete
-   * . For 1.0 the dispatcher returns method-not-found unless this flag is on, so consumers don't
-   * accidentally code against an interface that's still moving. Defaults to the
-   * [HISTORY_DIFF_EXPERIMENTAL_PROP] sysprop (off in production); tests that assert on the diff
-   * handler pass `historyDiffExperimental = true` explicitly.
-   *
-   * TODO(1.1): land H5 + the remaining roadmap items, flip the default to on, and remove this
-   *   parameter.
-   */
-  private val historyDiffExperimental: Boolean =
-    System.getProperty(HISTORY_DIFF_EXPERIMENTAL_PROP)?.toBoolean() ?: false,
-  /**
    * H4 — initial delay for the auto-prune scheduler. Defaults to
    * [HistoryManager.DEFAULT_INITIAL_DELAY_MS] (5s — runs after sandbox bootstrap). Tests pass a
    * very small value (e.g. 50ms) to drive the schedule deterministically.
@@ -740,17 +727,8 @@ public class JsonRpcServer(
         if (HistoryFeature.ENABLED) handleHistoryRead(req)
         else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
       "history/diff" ->
-        if (HistoryFeature.ENABLED && historyDiffExperimental) handleHistoryDiff(req)
-        else
-          sendErrorResponse(
-            id = req.id,
-            code = ERR_METHOD_NOT_FOUND,
-            message =
-              if (!HistoryFeature.ENABLED) HISTORY_DISABLED_MESSAGE
-              else
-                "history/diff is experimental in 1.0 and disabled by default; " +
-                  "set -D$HISTORY_DIFF_EXPERIMENTAL_PROP=true to enable",
-          )
+        if (HistoryFeature.ENABLED) handleHistoryDiff(req)
+        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
       "history/prune" ->
         if (HistoryFeature.ENABLED) handleHistoryPrune(req)
         else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
@@ -1677,9 +1655,9 @@ public class JsonRpcServer(
   }
 
   /**
-   * H3 — `history/diff` metadata mode. Gated experimental in 1.0 (see [historyDiffExperimental]);
-   * the dispatcher returns method-not-found unless the gate is on, so this body only runs in tests
-   * or with `-D$HISTORY_DIFF_EXPERIMENTAL_PROP=true`. TODO(1.1): drop the gate.
+   * H3 — `history/diff` metadata mode. Served whenever [HistoryFeature.ENABLED] is on; the
+   * experimental sysprop that gated this for 1.0 was retired once H5 and the rest of the History
+   * roadmap landed.
    *
    * Resolves [from] and [to] entry ids via the [historyManager] (which iterates configured sources
    * in priority order, so a cross-source diff "LocalFs vs GitRef preview/main" works the same as an
@@ -4439,13 +4417,6 @@ public class JsonRpcServer(
      */
     public const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
     public const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
-
-    /**
-     * Experimental gate for `history/diff`. See the constructor parameter on [JsonRpcServer] for
-     * rationale. TODO(1.1): remove once H5 + the rest of the History roadmap lands and the diff
-     * surface is no longer half-finished.
-     */
-    public const val HISTORY_DIFF_EXPERIMENTAL_PROP: String = "composeai.experimental.historyDiff"
 
     /**
      * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —
