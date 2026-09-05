@@ -381,3 +381,34 @@ test("a spec with no groups and an empty manifest report nothing", () => {
   assert.deepEqual(kinds(preflightSpec({ system: "test" }, [])), []);
   assert.deepEqual(preflightSpec(undefined, undefined).counts.previews, 0);
 });
+
+test("a locale fan-out collides without a locales declaration and is clean with one", () => {
+  // The DroidKaigi shape (issue #5059): one spec component, two arms of a locale multipreview.
+  // Both arms name the same function, so the spec cannot tell them apart and the fold sees two
+  // images on one output key — until `locales` gives them an axis to differ on.
+  const component = {
+    componentId: "language-toggle",
+    preview: "LanguageToggleButtonPreview",
+  };
+  // The arms carry the annotation's own `locale` param, which is what keeps them two renders
+  // rather than one: identical params AND identical axes would be collapsed as the same picture.
+  const previews = [
+    preview("com.a.ToggleKt.LanguageToggleButtonPreview_en", {
+      functionName: "LanguageToggleButtonPreview",
+      params: { locale: "en" },
+    }),
+    preview("com.a.ToggleKt.LanguageToggleButtonPreview_ja", {
+      functionName: "LanguageToggleButtonPreview",
+      params: { locale: "ja" },
+    }),
+  ];
+
+  assert.deepEqual(kinds(preflightSpec(spec([component]), previews)), [
+    "duplicate-output-axes",
+  ]);
+  assert.deepEqual(
+    kinds(preflightSpec(spec([component], { locales: ["en", "ja"] }), previews)),
+    [],
+  );
+});
+

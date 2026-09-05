@@ -263,7 +263,7 @@ async function listFilesRecursive(dir) {
  * ships to npm and the pin is bumped, this can revert to a plain
  * `loadPreviewBundle(path, resolver)`.
  */
-async function loadCandidates(path, breakpoints) {
+async function loadCandidates(path, breakpoints, locales) {
   const bundle = await readPreviewBundle(path);
   for (const preview of bundle.previews) {
     sanitizeNullSizes(preview.params);
@@ -326,7 +326,22 @@ async function loadCandidates(path, breakpoints) {
   // hands back the raw discovery id, so every preview whose `@Preview(name = …)` contains a space
   // needs the manifest's raw→sanitised mapping to be found at all (see preview-id-alias.mjs).
   const previewAliases = previewIdAliases(bundle.manifest);
-  applyCatalogPreviewAxes(candidates, candidateBundle.previews, previewAliases);
+  // The spec's `locales` are what turn a locale fan-out's id suffix into a `props.locale` axis, so the
+  // arms of a bilingual catalog are distinct renders instead of two images fighting over one
+  // output key (issue #5059). Undeclared ⇒ nothing is tagged, so every existing catalog is
+  // unaffected.
+  const localeAxes = applyCatalogPreviewAxes(
+    candidates,
+    candidateBundle.previews,
+    previewAliases,
+    locales,
+  );
+  if (localeAxes.locales > 0) {
+    console.log(
+      `[${basename(path)}] tagged ${localeAxes.locales} image(s) with a locale axis ` +
+        `(${(locales ?? []).join(", ")})`,
+    );
+  }
   // The published candidate reader classifies every numeric width with Material
   // window classes. Give this catalog's declared names precedence so domain
   // breakpoints such as Wear's 192 dp `smallRound` and 227 dp `largeRound` remain
@@ -835,6 +850,12 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     ...(opts.renderer ? { renderer: opts.renderer } : {}),
     ...(opts.designParity ? { designParity: opts.designParity } : {}),
     generatedAt: opts.generatedAt ?? new Date().toISOString(),
+    // The locales the sheet covers, when it declares any (issue #5059). Carried onto the manifest
+    // beside `themes` so a consumer can group the arms of a locale fan-out rather than infer the
+    // axis from a `props.locale` it happens to see on some stickers.
+    ...(Array.isArray(spec.locales) && spec.locales.length > 0
+      ? { locales: spec.locales }
+      : {}),
     // Presentation hints the system declares (stage surface + hero preview),
     // carried through onto catalog.json so the preview server reads them instead
     // of inferring — see catalog.spec.schema.json `display`.
@@ -1003,14 +1024,14 @@ if (effectiveBreakpoints !== undefined) spec.breakpoints = effectiveBreakpoints;
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
 // also works around the published null-widthDp crash) and the vendored join.
 const primaryRecord = {
-  ...(await loadCandidates(rendersPath, spec.breakpoints)),
+  ...(await loadCandidates(rendersPath, spec.breakpoints, spec.locales)),
   renderPath: rendersPath,
 };
 const additionalRecords = [];
 for (const path of values["additional-renders"] ?? []) {
   const renderPath = resolve(path);
   additionalRecords.push({
-    ...(await loadCandidates(renderPath, spec.breakpoints)),
+    ...(await loadCandidates(renderPath, spec.breakpoints, spec.locales)),
     renderPath,
   });
 }
@@ -1032,6 +1053,7 @@ if (values["extra-renders"]) {
   const { candidates: extra, bundle: extraRenderBundle } = await loadCandidates(
     resolve(values["extra-renders"]),
     spec.breakpoints,
+    spec.locales,
   );
   extraBundle = extraRenderBundle;
   const overridden = new Set(extra.map(functionOf));

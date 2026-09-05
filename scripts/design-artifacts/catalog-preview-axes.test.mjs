@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 
 import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
 import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
-import { foldVariants } from "./catalog-variants.mjs";
+import { catalogImagePath } from "./catalog-image-path.mjs";
+import { foldVariants, outputAxisKey } from "./catalog-variants.mjs";
 
 const candidate = (id, images = [{}]) => ({
   componentId: "HomePreview",
@@ -25,7 +26,7 @@ test("Wear font-scale previews become distinct catalog props axes", () => {
 
   const result = applyCatalogPreviewAxes(candidates, previews);
 
-  assert.deepEqual(result, { fontScales: 1, duplicates: 0 });
+  assert.deepEqual(result, { fontScales: 1, duplicates: 0, locales: 0 });
   assert.deepEqual(candidates[0].images[0].props, { fontScale: "1.24" });
 });
 
@@ -87,7 +88,7 @@ test("overlapping Wear multi-previews keep scaled/device renders and dedupe only
 
   const result = applyCatalogPreviewAxes(candidates, previews);
 
-  assert.deepEqual(result, { fontScales: 2, duplicates: 1 });
+  assert.deepEqual(result, { fontScales: 2, duplicates: 1, locales: 0 });
   assert.deepEqual(
     candidates.map(({ previewId, images }) => [previewId, images[0]?.props?.fontScale]),
     [
@@ -166,3 +167,79 @@ test("an explicit same-function font-scale variant is not folded twice", () => {
     [undefined, "2.0"],
   );
 });
+
+// --- the locale axis (issue #5059) -------------------------------------------
+
+/** The DroidKaigi shape: one function, one arm per declared locale, identical otherwise. */
+const localeFanOut = () => ({
+  candidates: [
+    { componentId: "LanguageToggleButtonPreview", previewId: "LanguageToggleButtonPreview_en", images: [{}] },
+    { componentId: "LanguageToggleButtonPreview", previewId: "LanguageToggleButtonPreview_ja", images: [{}] },
+  ],
+  previews: [
+    { id: "LanguageToggleButtonPreview_en", params: { locale: "en" } },
+    { id: "LanguageToggleButtonPreview_ja", params: { locale: "ja" } },
+  ],
+});
+
+test("a declared locale suffix becomes a props axis, so the arms stop colliding", () => {
+  const { candidates, previews } = localeFanOut();
+
+  const result = applyCatalogPreviewAxes(candidates, previews, undefined, ["en", "ja"]);
+
+  assert.equal(result.locales, 2);
+  assert.deepEqual(candidates[0].images[0].props, { locale: "en" });
+  assert.deepEqual(candidates[1].images[0].props, { locale: "ja" });
+  // The collision the catalog used to refuse on is exactly key equality, so this is the assertion
+  // that matters: two arms, two output keys.
+  assert.notEqual(
+    outputAxisKey(candidates[0].images[0]),
+    outputAxisKey(candidates[1].images[0]),
+  );
+});
+
+test("without a locales declaration nothing is tagged, and the collision is the old one", () => {
+  const { candidates, previews } = localeFanOut();
+
+  const result = applyCatalogPreviewAxes(candidates, previews);
+
+  assert.equal(result.locales, 0);
+  assert.deepEqual(candidates[0].images[0].props ?? {}, {});
+  assert.equal(
+    outputAxisKey(candidates[0].images[0]),
+    outputAxisKey(candidates[1].images[0]),
+  );
+});
+
+test("an id naming no declared locale stays untagged, so the primary sticker is unchanged", () => {
+  const candidates = [candidate("LanguageToggleButtonPreview")];
+  const previews = [{ id: "LanguageToggleButtonPreview", params: {} }];
+
+  const result = applyCatalogPreviewAxes(candidates, previews, undefined, ["en", "ja"]);
+
+  assert.equal(result.locales, 0);
+  assert.equal(candidates[0].images[0].props, undefined);
+});
+
+test("a locale is not matched mid-word, only at a segment boundary", () => {
+  // `ja` inside `Ninja` is the boundary case `modeOfPreviewId` documents for modes; sharing the
+  // matcher is what keeps the two axes from disagreeing about it.
+  const candidates = [candidate("NinjaPreview_en"), candidate("SomethingNinja")];
+  const previews = [{ id: "NinjaPreview_en", params: {} }, { id: "SomethingNinja", params: {} }];
+
+  applyCatalogPreviewAxes(candidates, previews, undefined, ["en", "ja"]);
+
+  assert.deepEqual(candidates[0].images[0].props, { locale: "en" });
+  assert.equal(candidates[1].images[0].props, undefined);
+});
+
+test("the locale axis rides through to the sticker path, so the arms get separate PNGs", () => {
+  const { candidates, previews } = localeFanOut();
+  applyCatalogPreviewAxes(candidates, previews, undefined, ["en", "ja"]);
+
+  assert.equal(
+    catalogImagePath("language-toggle", candidates[1].images[0]),
+    "images/language-toggle/ideal__default__locale-ja.png",
+  );
+});
+

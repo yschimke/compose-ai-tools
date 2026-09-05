@@ -58,7 +58,7 @@ import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 import { breakpointMatcher, catalogBreakpoints } from "./catalog-breakpoints.mjs";
-import { modeOfPreviewId } from "./catalog-priority.mjs";
+import { localeOfPreviewId, modeOfPreviewId } from "./catalog-priority.mjs";
 import { selectImages, selectLabel, selectOf } from "./catalog-select.mjs";
 import { imageHasVariantAxes, outputAxisKey } from "./catalog-variants.mjs";
 import { previewsFromJson } from "./deferred-preview-ids.mjs";
@@ -210,7 +210,7 @@ function stableJson(value) {
  * `previewId` rides along for the report — a collision is only actionable if it names the ids that
  * collided — and is ignored by `outputAxisKey`, which reads the axes alone.
  */
-export function previewImages(preview, { modes, sizeOf }) {
+export function previewImages(preview, { modes, locales, sizeOf }) {
   const id = preview?.id;
   const state = variantStateFromId(id);
   return capturesOf(preview).map((capture) => {
@@ -220,6 +220,12 @@ export function previewImages(preview, { modes, sizeOf }) {
       typeof fontScale === "number" && Number.isFinite(fontScale) && fontScale !== 1
         ? { fontScale: Number.isInteger(fontScale) ? fontScale.toFixed(1) : String(fontScale) }
         : {};
+    // The locale axis the join promotes from a declared-locale id suffix (issue #5059). Mirrored
+    // here for the same reason every other axis is: this preflight has to report the collisions the
+    // fold WOULD have, and no others. Without it a bilingual catalog reads as two arms colliding —
+    // which is exactly the false failure the locale axis exists to remove.
+    const locale = localeOfPreviewId(preview?.id, locales);
+    if (locale) props.locale = locale;
     const size = sizeOf ? sizeOf(params) : undefined;
     return {
       previewId: id,
@@ -373,6 +379,7 @@ export function preflightSpec(spec, previews, options = {}) {
 
   const byFunction = imagesByFunction(survivors, {
     modes: spec?.modes ?? [],
+    locales: spec?.locales ?? [],
     sizeOf: breakpointMatcher(catalogBreakpoints(spec)),
   });
   const functionsBefore = new Set(all.map(functionOf));

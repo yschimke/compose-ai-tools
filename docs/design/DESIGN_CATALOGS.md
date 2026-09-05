@@ -1382,6 +1382,47 @@ The cost is the shard bundles moving through the artifact store — a bundle car
 `libs/` is hundreds of MB, uploaded once and downloaded once per shard. They upload with
 `compression-level: 0` (a bundle is already a zip) and `retention-days: 1`.
 
+### A bilingual catalog: the `locales` axis
+
+A project whose previews fan out by **locale** could not be turned into a catalog
+at all. `@LocalePreviews` on one function mints `LanguageToggleButtonPreview_en`
+and `…_ja`; the spec names the base function, both renders match it, and the
+catalog's axes — `variant` / `state` / `theme` / `size` / `props` — had no place
+for "this is the Japanese one". The two arms folded onto the same output key and
+the build was refused with `duplicate output axes`. Nothing was misconfigured: the
+import, the multipreview, the render and the error were all correct, and the model
+simply had no room for locale (issue #5059).
+
+Declare the locales the sheet covers and the arms become distinct renders:
+
+```jsonc
+"locales": ["en", "ja"]
+```
+
+An id whose trailing segment names a declared locale is tagged with a `locale`
+**props** axis, so it gets its own sticker (`…__locale-ja.png`), its own manifest
+entry, and sits beside its sibling the way a `fontScale` variant does. Matching is
+the same as `modes`: case-insensitive, longest-first, and only at a segment
+boundary, so `ja` inside `Ninja` is not a locale. An id naming no declared locale
+stays untagged and remains the component's primary sticker — the same rule that
+keeps an untagged render out of the theme fan-out.
+
+**Why `props.locale` rather than a top-level `locale` field beside `theme` and
+`size`.** Locale is already spelled that way here: a spec hand-writes
+`{ "state": "rtl", "props": { "locale": "ar-XB" } }`, `bridge-live-preview-ids`
+scores `props.locale` when matching a sticker to a live preview, and
+`catalogImagePath` gives props their own path segment. Adding a second spelling
+would leave two representations of one thing. It would also not survive the trip:
+`buildCatalog` lives in the pinned `@design-parity/catalog-export` package and
+builds each component from an allow-list of fields it has been taught — which is
+exactly how the motion axis went missing once — so a field invented here would be
+dropped on the way out.
+
+Locale is **not** wired into `modePriority`: deferring a whole language to the
+live server is a separate decision from deferring a palette, and nobody has asked
+for it. Declaring `locales` costs nothing for a single-locale catalog, which is
+every catalog that does not write the field.
+
 ### Render priority: deferring the long tail to the live server
 
 A catalog that publishes with a live path — `publish-live-bundle: true` (the bundle
