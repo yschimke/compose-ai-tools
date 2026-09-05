@@ -293,13 +293,14 @@ test("the preflight key agrees with the fold's own duplicate guard", () => {
     ],
   };
   const image = (state) => ({ variant: "ideal", state, props: {} });
-  assert.throws(
-    () =>
-      foldVariants([image("default")], component, {
-        get: (fn) => ({ images: [image("default")] }),
-      }),
-    /produces duplicate output axes/,
-  );
+  // The fold REPORTS rather than throws since #5065 (so one pass names every collision), but what
+  // it reports still has to be exactly what this preflight reports — that pairing is the point.
+  const { duplicateAxes } = foldVariants([image("default")], component, {
+    get: (fn) => ({ images: [image("default")] }),
+  });
+  assert.equal(duplicateAxes.length, 1);
+  assert.equal(duplicateAxes[0].componentId, "Home");
+  assert.equal(duplicateAxes[0].axes, outputAxisKey(image("off")));
   assert.equal(outputAxisKey(image("off")), outputAxisKey({ state: "off" }));
 });
 

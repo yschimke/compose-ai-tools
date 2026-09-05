@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { foldVariants, variantLabel } from "./catalog-variants.mjs";
+import {
+  duplicateAxesFailure,
+  foldVariants,
+  outputAxisKey,
+  variantLabel,
+} from "./catalog-variants.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 
 const img = (state, theme) => ({ state, theme, uri: "x", width: 100, height: 40 });
@@ -151,22 +156,82 @@ test("foldVariants reports a theme variant that did not render, labelled by its 
   assert.deepEqual(missing, ["Screen/Foo [dark]"]);
 });
 
-test("foldVariants refuses duplicate effective output axes before export", () => {
+test("foldVariants reports duplicate effective output axes instead of throwing", () => {
   const byFunction = new Map([
     ["SecondDark", { images: [img("default", "light")] }],
   ]);
-  assert.throws(
-    () =>
-      foldVariants(
-        [img("default", "dark")],
-        {
-          componentId: "Screen/Foo",
-          variants: [{ theme: "dark", preview: "SecondDark" }],
-        },
-        byFunction,
-      ),
-    /produces duplicate output axes/,
+  const { duplicateAxes } = foldVariants(
+    [img("default", "dark")],
+    {
+      componentId: "Screen/Foo",
+      variants: [{ theme: "dark", preview: "SecondDark" }],
+    },
+    byFunction,
   );
+  assert.deepEqual(duplicateAxes, [
+    {
+      componentId: "Screen/Foo",
+      axes: outputAxisKey({ state: "default", theme: "dark" }),
+    },
+  ]);
+});
+
+test("foldVariants keeps folding after a collision, so one pass reports them all", () => {
+  // The point of issue #5065: aborting on the first collision cost a full render cycle to learn
+  // about the second. Two variants collide here and both are named.
+  const byFunction = new Map([
+    ["SecondDark", { images: [img("default", "light")] }],
+    ["ThirdDark", { images: [img("default", "light")] }],
+  ]);
+  const { duplicateAxes } = foldVariants(
+    [img("default", "dark")],
+    {
+      componentId: "Screen/Foo",
+      variants: [
+        { theme: "dark", preview: "SecondDark" },
+        { theme: "dark", preview: "ThirdDark" },
+      ],
+    },
+    byFunction,
+  );
+  assert.equal(duplicateAxes.length, 2);
+});
+
+test("duplicateAxesFailure names every colliding component in one refusal", () => {
+  const failure = duplicateAxesFailure([
+    { componentId: "language-toggle", axes: outputAxisKey({}) },
+    { componentId: "back-button", axes: outputAxisKey({}) },
+  ]);
+  assert.match(failure.message, /^2 catalog components produce duplicate output axes/);
+  assert.match(failure.message, /- language-toggle \{/);
+  assert.match(failure.message, /- back-button \{/);
+});
+
+test("duplicateAxesFailure counts components, not collisions, and stays singular for one", () => {
+  // Two collisions from one component is one component's problem, and saying "2 components" would
+  // send someone looking for a second spec entry that does not exist.
+  const failure = duplicateAxesFailure([
+    { componentId: "language-toggle", axes: outputAxisKey({ state: "a" }) },
+    { componentId: "language-toggle", axes: outputAxisKey({ state: "b" }) },
+  ]);
+  assert.match(failure.message, /^1 catalog component produces duplicate/);
+});
+
+test("duplicateAxesFailure is null when nothing collided, so the build proceeds", () => {
+  assert.equal(duplicateAxesFailure([]), null);
+});
+
+test("foldVariants reports no duplicates for a component whose variants are distinct", () => {
+  const byFunction = new Map([["FooDark", { images: [img("default")] }]]);
+  const { duplicateAxes } = foldVariants(
+    [img("default", "light")],
+    {
+      componentId: "Screen/Foo",
+      variants: [{ theme: "dark", preview: "FooDark" }],
+    },
+    byFunction,
+  );
+  assert.deepEqual(duplicateAxes, []);
 });
 
 // --- index.html: default in the grid, states in the zoom view -----------------
