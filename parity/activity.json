@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T07:58:11.342Z",
+  "generatedAt": "2026-09-05T08:11:28.207Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e66261968364ddbe29397129c5e502572168db84",
+        "subject": "feat(knobs): add an enum knob kind so a closed value set keeps its picker (#5142)",
+        "at": "2026-09-05T08:49:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "02d10cd480fefb9f11a2736b39990a24a78462a1",
+        "subject": "fix(deps): update okio to v3.18.2 (#5138)",
+        "at": "2026-09-05T08:44:07+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d1627d7b05eff497e050be3c75af922e18a98038",
+        "subject": "chore(deps): update docker/dockerfile docker tag to v1.27 (#5139)",
+        "at": "2026-09-05T08:43:56+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "532ff52f4309e08e38fbff155eaf95d5d655cd6a",
+        "subject": "fix(deps): update compose-preview-server to v2.21.0 (#5140)",
+        "at": "2026-09-05T08:43:48+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "b736d8f988e478e3f577cc7442bfef7cf6ab56ca",
         "subject": "fix(deps): update dependency playwright to ^1.63.0 (#5141)",
@@ -450,38 +482,6 @@
         "sha": "b872827802cb933ae6380ef36e6bd70c67114a92",
         "subject": "fix(renderer): read a catalog role's own getter, not a longer sibling's (#5080)",
         "at": "2026-09-04T06:46:02+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8810d4d2fb29412cd94067d81a8fb21e0c4fccf7",
-        "subject": "feat(compare): read the colour under the cursor in both images at once (#5079)",
-        "at": "2026-09-04T00:50:53+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b29ec96620351e2673a44dbb6430cd0b6b66a53f",
-        "subject": "feat(remotecompose): record the player that actually drew each capture (#5075)",
-        "at": "2026-09-03T19:43:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b752d11079c0a37d7bdb7bb31c7cafa09c60e81e",
-        "subject": "fix(harness): clone S3.5's fixture without recomputing frames (#5078)",
-        "at": "2026-09-03T19:42:59+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a9fc68b34c54852d1922b74c49a4c23d5b3615b2",
-        "subject": "feat(discovery): widen a screen value past the four literals (#5077)",
-        "at": "2026-09-03T19:40:29+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
