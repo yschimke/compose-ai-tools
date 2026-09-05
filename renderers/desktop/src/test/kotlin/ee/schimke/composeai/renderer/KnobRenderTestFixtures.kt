@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.preview.KnobValue
 
 /**
  * Fixtures for [DesktopKnobRendererTest] — previews written in the **secondary override format**,
@@ -55,6 +56,31 @@ enum class Size {
   Small,
   Medium,
   Large,
+}
+
+/**
+ * The migration shape: constants whose seed text is the vocabulary a catalog already has written
+ * down in its `@OverrideVariant` seeds and in the design kit it is compared against.
+ *
+ * `extra-large` is the case that forces the annotation rather than a rename — it is not a legal
+ * Kotlin identifier, so "just name the constant after the value" is unavailable even in principle.
+ */
+enum class KitSize {
+  @KnobValue("default") Default,
+  @KnobValue("large") Large,
+  @KnobValue("extra-large") ExtraLarge,
+}
+
+/** Paints [size] as an area a render test can measure, keyed by the kit's own spelling. */
+@Composable
+fun AliasedKnobSticker(size: KitSize = KitSize.Default) {
+  val px =
+    when (size) {
+      KitSize.Default -> 40
+      KitSize.Large -> 70
+      KitSize.ExtraLarge -> 120
+    }
+  Box(modifier = Modifier.size(px.dp).background(Color(0xFF4A148C)))
 }
 
 /** Paints [size] as an area a render test can measure. */

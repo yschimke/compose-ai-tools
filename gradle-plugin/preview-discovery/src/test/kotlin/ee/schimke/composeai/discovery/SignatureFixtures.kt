@@ -1,6 +1,7 @@
 package ee.schimke.composeai.discovery
 
 import androidx.compose.runtime.Composable
+import ee.schimke.composeai.preview.KnobValue
 
 // Fixtures for ComposableSignatureTest. Deliberately NOT @Composable — that would drag the Compose
 // runtime onto the discovery test classpath, and ComposableSignature reads only Kotlin @Metadata,
@@ -59,6 +60,31 @@ enum class Emphasis {
   Tonal,
   Outlined,
 }
+
+/**
+ * Constants whose seed text is not their name — including one, `extra-large`, that is not a legal
+ * Kotlin identifier at all, which is why the alias has to exist rather than the constant being
+ * renamed to the value.
+ */
+enum class KitIconSize {
+  @KnobValue("default") Default,
+  @KnobValue("large") Large,
+  @KnobValue("extra-large") ExtraLarge,
+}
+
+/** Two constants claiming one seed text — an ambiguous seed, which must disable the knob. */
+enum class AmbiguousChoice {
+  @KnobValue("same") First,
+  @KnobValue("same") Second,
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun aliasedKnobComponent(iconSize: KitIconSize = KitIconSize.ExtraLarge) {}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun ambiguousKnobComponent(choice: AmbiguousChoice = AmbiguousChoice.First, tag: String = "t") {}
 
 @Composable
 @Suppress("UNUSED_PARAMETER")

@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.preview.KnobValue
 
 /**
  * The **secondary override format**: the same editable list as [OverridableListPreview], with its
@@ -88,14 +89,23 @@ fun ParameterKnobListPreview(
  * the knob as an `enum class` is what lets a viewer draw a **picker** rather than a text box.
  *
  * The distinction is the whole reason the kind exists. A text box shows the current value and hides
- * every alternative, so `Outlined` is reachable only by someone who has read the source — which is
+ * every alternative, so `outlined` is reachable only by someone who has read the source — which is
  * why `previewOverrideChoice` has always been able to say "these and no others", and why, until the
  * enum kind, migrating one of those to a parameter knob silently downgraded its control.
+ *
+ * `@KnobValue` is what makes it a *migration* rather than a rewrite. A knob written from scratch
+ * needs none of it — the constants answer to their own names. But a catalog moving off
+ * `previewOverrideChoice("style", "tonal", listOf("filled", "tonal", "outlined"))` already has that
+ * lowercase vocabulary written into every `@OverrideVariant(strings = ["style=tonal"])` it has
+ * accumulated, and into the design kit its renders are compared against; renaming the value would
+ * silently unbind every one of them. So the constant declares the text instead of being renamed to
+ * it — which is also the only option available when the value cannot be a Kotlin identifier at all
+ * (`extra-large`, `12-sided cookie`, `0.0`).
  */
 enum class Emphasis {
-  Filled,
-  Tonal,
-  Outlined,
+  @KnobValue("filled") Filled,
+  @KnobValue("tonal") Tonal,
+  @KnobValue("outlined") Outlined,
 }
 
 /**

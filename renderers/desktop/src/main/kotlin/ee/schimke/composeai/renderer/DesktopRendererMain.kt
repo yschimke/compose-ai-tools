@@ -1808,7 +1808,7 @@ private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>)
     // seam then coerces to. A String that names no constant is not a match, so it cannot pull the
     // resolution onto an enum parameter it has no business binding to.
     if (expected.isEnum && arg is String) {
-      if (expected.enumConstants?.any { (it as? Enum<*>)?.name == arg } == true) continue
+      if (PreviewKnobArguments.matchesEnumConstant(expected, arg)) continue
     }
     return false
   }

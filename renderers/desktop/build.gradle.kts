@@ -153,6 +153,10 @@ dependencies {
   // declared and no sidecar is written). `core` (re-exported) carries the payload serializer.
   implementation(project(":data-preview-overrides-runtime"))
 
+  // Test-only: the `@KnobValue` alias fixture. The renderer resolves that annotation by NAME at
+  // runtime rather than by type, precisely so no published renderer artefact depends on it — this
+  // is the test proving that resolution works, so the dependency belongs here and nowhere else.
+  testImplementation(project(":preview-annotations"))
   testImplementation(libs.junit)
   testImplementation(libs.okio.fakefilesystem)
 
