@@ -223,6 +223,32 @@ internal object CliFlagValidation {
             "--trust-store",
             "--wasm-dir",
           ),
+      // A launcher for the server's `ui` command, so the flags are that command's: the selectors
+      // a build needs, the network knobs any local server takes, and the builder's own options.
+      // `--no-open` belongs to the lane rather than the server (it suppresses `--open-browser`),
+      // which is why it is listed here and not among serve's.
+      "ui-builder" to
+        commandBase +
+          setOf(
+            "--build-host",
+            "--discover",
+            "--help",
+            "-h",
+            "--host",
+            "--lan",
+            "--no-open",
+            "--open-path",
+            "--port",
+            "--public",
+            "--server-binary",
+            "--token",
+            "--ui-builder-catalogs",
+            "--ui-builder-components",
+            "--ui-builder-dir",
+            "--ui-builder-migrate-state",
+            "--ui-builder-runtime-dir",
+            "--ui-builder-state-dir",
+          ),
       // The flags a preview server passes when it spawns the Gradle half of `serve`. Deliberately
       // narrow: this command is machine-facing, and every flag here is one the server has to know
       // to send. `--stdio` selects the transport; `--module` and `--variant` are the two selectors

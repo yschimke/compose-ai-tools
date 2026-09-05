@@ -25,7 +25,17 @@ import kotlin.system.exitProcess
  * surface, drifting from the first. `--help` reaches the server too, which is where the answer
  * actually lives.
  */
-class ServeCommand(private val args: List<String>, private val browseProject: Boolean = false) {
+class ServeCommand(
+  private val args: List<String>,
+  private val browseProject: Boolean = false,
+  /**
+   * Which of the server's commands to launch. `serve` for `serve` and `browse`; `ui` for
+   * `ui-builder`, whose whole difference lives on the server side — the builder flags, the
+   * component record and the page to open are the server's business, and a launcher that assembled
+   * them here would be a second copy of a surface that already exists.
+   */
+  private val serverCommand: String = "serve",
+) {
 
   fun run() {
     val choice = ServerBinaryDiscovery.choose(args) ?: provision()
@@ -68,8 +78,7 @@ class ServeCommand(private val args: List<String>, private val browseProject: Bo
    *
    * `--server-binary` is this launcher's own flag and is dropped rather than forwarded — the server
    * has no such option, and passing it through would make every invocation fail on an unknown
-   * argument. Everything else, including the `serve` subcommand the server accepts as an alias, is
-   * the caller's.
+   * argument. Everything else, including a command word the server accepts itself, is the caller's.
    *
    * Nothing is added for the build host. The server discovers `compose-preview` itself, by the same
    * flag/environment/PATH ordering this class uses, and a launcher that guessed a path here would
@@ -77,7 +86,7 @@ class ServeCommand(private val args: List<String>, private val browseProject: Bo
    */
   internal fun launchCommand(binary: String): List<String> = buildList {
     add(binary)
-    add("serve")
+    add(serverCommand)
     addAll(forwardedArgs())
   }
 
