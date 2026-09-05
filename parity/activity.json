@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T08:49:53.673Z",
+  "generatedAt": "2026-09-05T09:06:52.117Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "48a93ff67b544fae36ccb723cba0f15f3e3f20f5",
+        "subject": "feat(knobs): let an enum constant declare the seed text it answers to (#5155)",
+        "at": "2026-09-05T09:47:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e75cb7cea4310ccd25f4e47316541d0617a2c5e8",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.78.0 (#5153)",
+        "at": "2026-09-05T09:41:45+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "5d71ce8cad8cb683ffbea5fa26eec9801d9b481c",
         "subject": "fix(render): supply the poolingcontainer R class when AGP's merged R.jar does not (#5154)",
@@ -467,22 +483,6 @@
         "subject": "fix(daemon): refresh the daemon-core ABI dump (#5094)",
         "at": "2026-09-04T16:54:02+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f708be0ec6c05818552600a854d7e6bd538c220c",
-        "subject": "feat(daemon): seed parameter knobs on the Robolectric backend too (#5091)",
-        "at": "2026-09-04T14:40:18+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8e590a76a4594f00c2ee501abb0628711846d9e8",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.72.0 (#5090)",
-        "at": "2026-09-04T12:42:32Z",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
