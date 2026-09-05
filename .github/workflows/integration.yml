@@ -23,18 +23,27 @@ name: Integration
 # Each external-repo job runs independently (`fail-fast: false`) so one broken
 # consumer does not mask regressions in the others.
 #
-# PRs run ONE cell, everything else runs on `main` + the nightly cron. The
-# matrix cell flagged `pr_blocking: true` — currently just `wear-os-samples
+# PRs run ONE cell; the full matrix runs on the nightly cron. There is
+# deliberately NO push-to-`main` lane — see the cadence note on the `integration`
+# job for why post-merge integration runs bought nothing the cron does not.
+#
+# The matrix cell flagged `pr_blocking: true` — currently just `wear-os-samples
 # (ComposeStarter)` — is the only one that does build/discover/render work on
 # `pull_request`; `agp8-min` is skipped there too. ComposeStarter is both the
 # cheapest real cell and the widest one: measured on recent PR runs it takes
 # ~2.6 min (discover 53s + render 23s + daemon round-trip 34s) against
 # androidify ~3.4-4.1 min, nowinandroid ~3.4-3.6 min and agp8-min ~3.3-4.2 min,
 # while covering the full render pipeline, the daemon, and the configuration
-# cache end-to-end. Every other cell still spins up on a PR (so
-# its check reports) but skips the expensive steps. The daily cron and pushes
-# to `main` run the full matrix, so consumer/AGP-floor drift still surfaces
-# within a day — it just doesn't sit on the PR critical path.
+# cache end-to-end. Every other cell still spins up on a PR (so its check
+# reports) but skips the expensive steps. The daily cron runs the full matrix,
+# so consumer/AGP-floor drift still surfaces within a day — it just doesn't sit
+# on the PR critical path.
+#
+# A nightly failure files a bug rather than only reddening a badge nobody
+# watches: `report-nightly-failures` opens one issue per failing job, comments
+# on the existing issue when the same job fails again, and closes it once the
+# job goes green. Cron only — a PR failure is already a red check the author
+# sees on their own PR.
 #
 # Change-scoped on PRs (.github/ci/integration-safe-paths.json): the `changes` job
 # classifies the diff first. A PR that touches only paths which provably cannot
@@ -44,12 +53,10 @@ name: Integration
 # — skips the whole `build-plugin` + external matrix, and `integration-scope-
 # gate` re-emits the required `wear-os-samples` legs green so branch protection
 # still clears. Anything touching the plugin / CLI / renderers / daemon / data
-# modules / build wiring runs the full matrix. Fail-open: pushes to main, the
-# nightly cron, manual dispatch, and any diff error all run everything.
+# modules / build wiring runs the full matrix. Fail-open: the nightly cron,
+# manual dispatch, and any diff error all run everything.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
     paths-ignore:
@@ -79,7 +86,7 @@ env:
 jobs:
   # Fast PR-diff classifier that decides whether the slow external-repo matrix
   # below needs to run at all. Outputs `run` = true|false; every other job keys
-  # off it. On non-PR events (push / cron / dispatch) and on any classification
+  # off it. On non-PR events (cron / dispatch) and on any classification
   # error it resolves to `true`, so scoping can only ever trim the PR critical
   # path — never skip work that could hide a regression.
   changes:
@@ -141,13 +148,15 @@ jobs:
       # This is the one job in this workflow that builds *this* repo's Gradle
       # tasks (the matrix jobs build external consumers, which never see our
       # settings.gradle.kts), so it's the only place the BuildFetch remote cache
-      # applies. Writes on main pushes: the publish/installDist fan-out here is
-      # expensive and shared, and with the local cache now on for pushers (see
-      # settings.gradle.kts) a cancelled run just pushes whatever it finished
-      # rather than paying for a no-cache build.
+      # applies. Writes on the nightly cron: the publish/installDist fan-out here
+      # is expensive and shared. This used to key on `push`, which this workflow
+      # no longer receives at all — leaving that gate in place would have quietly
+      # retired a remote-cache writer. The invariant it encodes is unchanged and
+      # is the reason this is not simply `!= 'pull_request'`: PR-head code must
+      # never see a write token, and `workflow_dispatch` can be aimed at a PR ref.
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          rw-token: ${{ github.event_name == 'schedule' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       - name: Publish plugin + renderer-android + data-* + daemon-* to mavenLocal
@@ -308,16 +317,19 @@ jobs:
     # checks in the `Protect Main` ruleset, and the others' names are cheap to keep reporting —
     # but a cell that is not active skips every expensive step below and costs ~0.1 min.
     #
-    # PRs already worked this way: only `pr_blocking` cells built anything. What changed is the
-    # push-to-main lane, which used to run the full external matrix on every merge — 8 cells,
-    # ~25 job-min. Measured, 72% of those push runs were cancelled by the next merge before they
-    # finished (`main` merges land a median 4 min apart), so the lane was paying for the full
-    # matrix on every merge and completing it on roughly one in four. These cells guard against
-    # *upstream* drift — an external repo bumping AGP / Kotlin / the Compose BOM — which is
-    # correlated with time, not with our commits, so the nightly cron is the cadence that
-    # actually fits them and the one the workflow header already describes.
+    # PRs already worked this way: only `pr_blocking` cells build anything. The push-to-main
+    # lane is now gone entirely. It used to run the full external matrix on every merge — 8
+    # cells, ~25 job-min — and measured, 72% of those push runs were cancelled by the next merge
+    # before they finished (`main` merges land a median 4 min apart), so it paid for the full
+    # matrix on every merge and completed it on roughly one in four. Trimming it to the two
+    # `pr_blocking` cells left `build-plugin` + 2 cells + `agp8-min` still running per merge,
+    # under the same cancellation, for signal the PR run had already produced minutes earlier on
+    # the same tree. These cells guard against *upstream* drift — an external repo bumping AGP /
+    # Kotlin / the Compose BOM — which is correlated with time, not with our commits, so the
+    # nightly cron is the cadence that actually fits them.
     #
-    # The two `pr_blocking` cells stay on push for immediate post-merge signal.
+    # `push` therefore no longer appears in `on:` at all, and this expression's remaining job is
+    # to keep a PR to the one cheap cell.
     env:
       CELL_ACTIVE: ${{ (matrix.pr_blocking || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
     strategy:
@@ -1511,12 +1523,13 @@ jobs:
           key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ steps.android-all.outputs.coordinate }}
 
   agp8-min:
-    # Main-only, like every non-`pr_blocking` matrix cell: PRs run just the
-    # ComposeStarter cell, and this job's three-phase BOM-floor dance costs
+    # Cron/dispatch-only, like every non-`pr_blocking` matrix cell: PRs run just
+    # the ComposeStarter cell, and this job's three-phase BOM-floor dance costs
     # ~3.3-4.2 min. Skipping it on `pull_request` is safe for branch protection
     # because it is not a required check (nothing needs to re-emit it, unlike
-    # the two `wear-os-samples` legs the gate jobs above cover). AGP-floor
-    # drift surfaces on the next push to main / nightly cron.
+    # the two `wear-os-samples` legs the gate jobs above cover). AGP-floor drift
+    # is upstream drift, so it surfaces on the nightly cron — within 24h, and no
+    # longer on every merge, now that the push lane is gone.
     #
     # Also consumes build-plugin's bundle, so it rides the same change-scope
     # gate: skipped on out-of-scope PRs too.
@@ -1865,10 +1878,9 @@ jobs:
     # the matrix job and `git push` them. The untrusted external builds all
     # ran in the `integration` job under a read-only token.
     #
-    # Cadence note: since the non-`pr_blocking` cells moved to the nightly cron, a push to
-    # main refreshes only the `pr_blocking` cells' gallery branches. The rest refresh on the
-    # nightly run instead of per-merge — in practice fresher than before, because 72% of the
-    # per-merge runs were cancelled before ever reaching this job.
+    # Cadence note: with the push-to-main lane gone, every gallery branch refreshes on the
+    # nightly run. In practice that is fresher than the per-merge refresh it replaced, because
+    # 72% of the per-merge runs were cancelled by the next merge before ever reaching this job.
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -1929,3 +1941,107 @@ jobs:
             echo "::endgroup::"
           done
           exit "$rc"
+
+  # Turn a nightly failure into a bug rather than a red badge nobody watches.
+  #
+  # Cron only, deliberately. A `pull_request` failure is already a red required
+  # check on the author's own PR — filing an issue for it would duplicate signal
+  # that someone is looking at, and `workflow_dispatch` is someone watching the
+  # run they just started. The nightly run is the only lane with no reader.
+  #
+  # One issue per failing JOB, not per run: these cells fail for weeks at a time
+  # when an external consumer bumps AGP, and a per-run issue would file thirty of
+  # them for one cause. A repeat failure comments on the open issue instead, and
+  # the issue closes itself when the job goes green again — so the open
+  # `integration-failure` set is exactly the set of currently-broken cells.
+  #
+  # `always()` so this reports on the failures it exists to report; it needs no
+  # artifacts, only the run's own job list.
+  report-nightly-failures:
+    name: File bugs for nightly failures
+    needs: [build-plugin, integration, agp8-min, publish-previews]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      # Read this run's own job list (conclusions per matrix cell).
+      actions: read
+    steps:
+      - name: Ensure the integration-failure label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # Created deterministically rather than implicitly by issue creation,
+          # which would leave it colourless and undescribed. Idempotent.
+          gh label create integration-failure \
+            --color B60205 \
+            --description "A nightly integration matrix job is failing" \
+            2>/dev/null || true
+
+      - name: Reconcile issues against this run's job results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SELF_JOB: File bugs for nightly failures
+        run: |
+          set -euo pipefail
+
+          jobs_json="$RUNNER_TEMP/jobs.json"
+          gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/jobs" \
+            --jq '.jobs[] | {name, conclusion, html_url}' \
+            | jq -s '.' > "$jobs_json"
+
+          # Open issues this workflow owns, keyed by title.
+          open_json="$RUNNER_TEMP/open.json"
+          gh issue list --label integration-failure --state open --limit 200 \
+            --json number,title > "$open_json"
+
+          issue_number_for() {
+            jq -r --arg t "$1" '.[] | select(.title == $t) | .number' "$open_json" | head -n1
+          }
+
+          # `cancelled` and `skipped` are not failures: a skipped cell is one the
+          # scope gate or CELL_ACTIVE turned off, and a cancelled run is
+          # infrastructure, not a broken consumer.
+          while IFS=$'\t' read -r name conclusion url; do
+            if [ "$name" = "$SELF_JOB" ]; then continue; fi
+            title="Integration failure: ${name}"
+            existing="$(issue_number_for "$title")"
+
+            case "$conclusion" in
+              failure|timed_out)
+                if [ -n "$existing" ]; then
+                  gh issue comment "$existing" \
+                    --body "Still failing on the nightly run of $(date -u +%Y-%m-%d) — [job log](${url}) · [run](${RUN_URL})."
+                  echo "commented on #${existing} for ${name}."
+                else
+                  body="$RUNNER_TEMP/body.md"
+                  {
+                    printf 'The nightly `Integration` run failed in **%s**.\n\n' "$name"
+                    printf -- '- **Job log** — %s\n' "$url"
+                    printf -- '- **Run** — %s\n' "$RUN_URL"
+                    printf -- '- **First seen** — %s (UTC)\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                    printf 'These cells build EXTERNAL consumer repositories, so the usual cause is\n'
+                    printf 'upstream drift — the consumer bumping AGP, Kotlin or the Compose BOM —\n'
+                    printf 'rather than a regression in this repo. Check the job log before assuming\n'
+                    printf 'either.\n\n'
+                    printf 'This issue closes itself once the job passes on a later nightly run.\n'
+                  } > "$body"
+                  gh issue create --title "$title" \
+                    --label integration-failure --body-file "$body"
+                  echo "filed an issue for ${name}."
+                fi
+                ;;
+              success)
+                if [ -n "$existing" ]; then
+                  gh issue close "$existing" --reason completed \
+                    --comment "Green again on the nightly run of $(date -u +%Y-%m-%d) — [job log](${url}) · [run](${RUN_URL})."
+                  echo "closed #${existing} — ${name} is green."
+                fi
+                ;;
+            esac
+          done < <(jq -r '.[] | [.name, (.conclusion // ""), .html_url] | @tsv' "$jobs_json")
