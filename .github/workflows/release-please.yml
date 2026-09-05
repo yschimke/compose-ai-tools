@@ -32,6 +32,19 @@ concurrency:
   group: "release-please-${{ github.ref }}-${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(main): release ') && github.sha || 'updates' }}"
   cancel-in-progress: false
 
+# Is THIS run the one that may cut a release? Only the push that merged the release PR is, plus a
+# manual dispatch (a human doing it deliberately, one at a time). Every other push to main runs
+# release-please too, and until 2026-09-05 its invocation could cut a release as well — which is
+# how two runs came to race for the same pending PR #5148 at 08:23:2x: both went for the release,
+# the winner stripped `autorelease: pending`, and the loser died on `Label does not exist` holding
+# v1.78.0's freshly cut draft. The action sets its outputs last, so that throw left
+# `release_created` empty and the whole chain — tag, release.yml, finalize-release — skipped.
+# Cutting is one run's job now; `release-draft-sweeper.yml` is what recovers a cut that dies
+# anyway, instead of the next push to main happening to re-cut it.
+# Quoted for the same reason as the concurrency group above: the literal contains `: `.
+env:
+  RELEASE_MERGE: "${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
@@ -54,6 +67,11 @@ jobs:
           # a phantom, stale-version PR. `reconcile-release-pr` runs the PR-only
           # half after the tag exists and the release has been published.
           skip-github-pull-request: true
+          # …and only the release-PR merge run cuts the release. An ordinary push's invocation is
+          # then a no-op that reports what is pending, which is all this job needs from it: the
+          # PR half belongs to `update-release-pr`, guarded by release-pr-race-guard.sh. See the
+          # RELEASE_MERGE comment above for the race this closes.
+          skip-github-release: ${{ env.RELEASE_MERGE != 'true' }}
           # When the release PR is merged, release-please creates a DRAFT GitHub
           # Release (config `"draft": true`), populated with the CHANGELOG entry
           # as the body. The `release` job below uploads CLI + VSIX assets onto
@@ -216,19 +234,18 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.release-please.outputs.tag_name }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Verify required GitHub Release assets are present
         run: |
           set -euo pipefail
           V="${TAG#v}"
-          required=(
-            "compose-preview-${V}.tar.gz"
-            "compose-preview-${V}.zip"
-            "compose-preview-mcp-${V}.tar.gz"
-            # No `compose-preview-${V}.vsix`: the extension is released from
-            # yschimke/compose-preview-vscode now, so nothing in this repository's release
-            # produces one. Requiring it here would leave every release a permanent draft.
-            "compose-preview-android-daemon-${V}.zip"
-          )
+          # The list lives in one file because `release-draft-sweeper.yml` publishes a stranded
+          # draft against the same gate out of band. Two copies that drift mean the sweeper
+          # either publishes what this job would have held back, or leaves every release for a
+          # human. See .github/scripts/required-release-assets.sh.
+          mapfile -t required < <(./.github/scripts/required-release-assets.sh "$V")
           mapfile -t have < <(gh release view "$TAG" --json assets --jq '.assets[].name')
           printf 'assets on %s:\n' "$TAG"; printf '  %s\n' "${have[@]}"
           missing=0
