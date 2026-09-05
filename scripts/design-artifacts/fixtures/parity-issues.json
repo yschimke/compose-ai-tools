@@ -12,6 +12,7 @@
       "parity": "known-difference",
       "system": "m3",
       "component": "IconButton/Tonal",
+      "scope": "component",
       "previewIds": ["iconbutton-tonal__ideal__default__light"],
       "referenceIds": ["iconbutton-tonal-figma"]
     },
@@ -25,6 +26,7 @@
       "parity": "verification-needed",
       "system": "m3",
       "component": "IconButton/Tonal",
+      "scope": "variant",
       "previewIds": ["iconbutton-tonal__ideal__default__light"],
       "referenceIds": ["iconbutton-tonal-figma"]
     }

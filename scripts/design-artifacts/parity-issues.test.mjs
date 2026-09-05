@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NO_LOCATOR, buildIssueIndex, canonicalIssueUrl, parseLocator, parseLocators } from "./parity-issues.mjs";
 
@@ -17,6 +18,17 @@ revision: yschimke/m3-catalog@main
 
 test("a locator round-trips the exact identity and canonical overrides", () => {
   assert.deepEqual(parseLocator(body), { ok: true, locator: { repository: "yschimke/m3-catalog", system: "m3", component: "IconButton/Tonal", previewId: "iconbutton-tonal__ideal__default__light", referenceId: "iconbutton-tonal-figma", variant: "ideal/default/light", overrides: { fontScale: "1.5", "knob.label": "Send;now=x" }, element: null, bounds: null, revision: "yschimke/m3-catalog@main" } });
+});
+
+test("report scope defaults to the component and carries an explicit variant choice", () => {
+  const component = buildIssueIndex([{ html_url: "https://github.com/yschimke/m3-catalog/issues/40", title: "Glyph colour", body, state: "open" }]);
+  assert.equal(component.issues[0].scope, "component");
+
+  const scoped = body.replace("component: IconButton/Tonal\n", "component: IconButton/Tonal\nscope: variant\n");
+  assert.equal(parseLocator(scoped).locator.scope, "variant");
+  const variant = buildIssueIndex([{ html_url: "https://github.com/yschimke/m3-catalog/issues/41", title: "Large only", body: scoped, state: "open" }]);
+  assert.equal(variant.issues[0].scope, "variant");
+  assert.equal(parseLocator(scoped.replace("scope: variant", "scope: all")).error, "scope must be component or variant");
 });
 
 test("mangled blocks are reported instead of silently skipped", () => {
@@ -224,4 +236,47 @@ test("two blocks may not claim the same reference", () => {
   );
   assert.deepEqual(index.issues, []);
   assert.deepEqual(errors, [shape.parse.error]);
+});
+
+// -----------------------------------------------------------------------------------------------
+// The mirror. Not expressible as a fixture, because it is about two files agreeing rather than about
+// any one parse.
+// -----------------------------------------------------------------------------------------------
+
+// `parity-issues.mjs` exists twice: here, and in yschimke/compose-preview-server, whose
+// ServeIssueReport and serve-web writers are tested against the same `fixtures/parity-locators.json`.
+// The copy in THIS repository is the one that runs in production — `parity-issues-reusable.yml`
+// checks out `yschimke/compose-ai-tools` and runs `emit-parity-issues.mjs`, which imports the local
+// module — so a feature that lands only on the server's copy is dead code everywhere it matters.
+//
+// That is not hypothetical. `scope` was added to the server's copy and not to this one, and because
+// nothing compared them, every `scope: variant` locator was silently flattened to component scope
+// for months: the server and the browser both implement variant-scoped bug pills, and no index ever
+// carried a `scope` field for them to act on (compose-ai-tools#5205).
+//
+// Byte-for-byte, deliberately. The two copies have no repository-specific content — no paths, no
+// imports beyond node builtins — so there is no legitimate reason for them to differ, and a
+// tolerant comparison is how the last divergence survived. Same optional-sibling arrangement the
+// tuning mirror in known-difference-score.test.mjs uses: CI supplies the checkout, and a local run
+// without one SKIPS with a reason rather than passing vacuously.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SERVER_COPY = join(
+  (process.env.COMPOSE_PREVIEW_SERVER_ROOT ?? "").trim() ||
+    join(HERE, "..", "..", "..", "compose-preview-server"),
+  "scripts/design-artifacts/parity-issues.mjs",
+);
+const NO_SERVER = {
+  skip: existsSync(SERVER_COPY)
+    ? false
+    : "no compose-preview-server checkout (set COMPOSE_PREVIEW_SERVER_ROOT) — the second copy of " +
+      "parity-issues.mjs lives there since #4732",
+};
+
+test("the producer is byte-identical to the preview server's copy", NO_SERVER, () => {
+  assert.equal(
+    readFileSync(SERVER_COPY, "utf8"),
+    readFileSync(join(HERE, "parity-issues.mjs"), "utf8"),
+    "scripts/design-artifacts/parity-issues.mjs has drifted from the copy in compose-preview-server. " +
+      "Both are read by engines that must agree on the wire format; sync them rather than patching one.",
+  );
 });
