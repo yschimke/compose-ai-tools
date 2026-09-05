@@ -203,6 +203,13 @@ class ScreenGeneratorCompileFunctionalTest {
     // The designed values reached the source, rather than the placeholders a call site prints.
     assertThat(emitted.source).contains("""Text(text = "Good morning")""")
     assertThat(emitted.source).contains("""Text(text = "Continue")""")
+    // And by their *simple* names, imported once. Both `Text`s sit inside a receiver slot —
+    // `Card`'s `ColumnScope` and `Button`'s `RowScope` — which the generator used to qualify on
+    // the premise that an import could not reach inside one. The `contains` assertions above pass
+    // either way, since a qualified call ends in the same characters; these are what tell the two
+    // apart, and the compile below is what proves the imported spelling actually resolves.
+    assertThat(emitted.source).contains("import androidx.compose.material3.Text")
+    assertThat(emitted.source).doesNotContain("androidx.compose.material3.Text(text = ")
     // Stock Material 3 needs no opt-in at a call site. The markers the Compose compiler stamps
     // onto the JVM method are not themselves opt-in requirements, and reading the meta-annotation
     // closure rather than the direct annotations reported them anyway — which told consumers to

@@ -250,7 +250,6 @@ private fun newScreen(): ScreenDocument =
 private fun slotFor(componentId: String?): String? =
   when (componentId) {
     "scaffold",
-    "lazy-column",
     "column",
     "card",
     "button" -> "content"

@@ -150,6 +150,22 @@ object ScreenGenerator {
     // shadow the import and recurse into itself. Neither is exotic once a catalog spans libraries.
     // A simple name is only used when exactly one component wants it and the screen does not; the
     // rest are called fully qualified, which is always unambiguous and needs no import.
+    //
+    // Nesting is deliberately *not* a third reason. This once also qualified any component sitting
+    // in a slot with a receiver — `Column(content = ColumnScope.() -> Unit)` and everything under
+    // it — on the premise that an import would not reach inside one. That premise is false, and
+    // the whole Compose ecosystem is the counterexample: `import …material3.Text` then `Column {
+    // Text("hi") }` is what every hand-written file does, and an implicit receiver adds names to
+    // the scope rather than removing the imported one from it. Because the flag was sticky, one
+    // scoped slot near the root qualified every descendant, so a realistic screen was fully
+    // qualified throughout — the shape a builder's code pane shows its user.
+    //
+    // What the premise was groping for is real but much narrower: a *member* of the receiver with
+    // the same simple name does win over an import. That is the same hazard a hand-written file
+    // carries, this generator has no view of a receiver's members to reason about it, and being
+    // more paranoid than the language bought unreadable output rather than safety.
+    // `ScreenGeneratorCompileFunctionalTest` compiles a screen nested through `Card` and `Button`
+    // against real Material 3, which is what says the imports resolve.
     val claimants = components.components.groupBy { it.symbol.name }
     val simplyImportable =
       components.components
@@ -193,9 +209,8 @@ object ScreenGenerator {
     // next one, which is the worst place for this to surface.
     val qualifiedRoots = buildSet {
       add("androidx")
-      // Every component, not only the ones that cannot claim a simple name. `node` also writes a
-      // simply-importable component qualified when it sits in a receiver scope, where an import
-      // would not reach it, so its package root is emitted too.
+      // Every component, not only the ones that cannot claim a simple name: which of the two a
+      // node gets is decided per record, and a state name may not shadow the root of either.
       components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
       expressionPackages.mapTo(this) { it.substringBefore('.') }
       document.state.mapTo(this) { it.typeFqn.substringBefore('.') }
@@ -450,7 +465,7 @@ object ScreenGenerator {
      */
     var initializerScope: Set<String>? = null
 
-    fun node(node: ScreenNode, depth: Int, inReceiverScope: Boolean = false): String {
+    fun node(node: ScreenNode, depth: Int): String {
       val pad = INDENT.repeat(depth)
       val record =
         when (val outcome = index.resolve(node.componentId)) {
@@ -468,7 +483,7 @@ object ScreenGenerator {
         // Keep walking its children: a catalog that dropped a whole subtree should name every node
         // it can no longer place, not just the outermost one. `reasons` is what a caller acts on,
         // and the text returned here is discarded the moment anything has failed.
-        node.slots.values.flatten().forEach { node(it, depth + 1, inReceiverScope) }
+        node.slots.values.flatten().forEach { node(it, depth + 1) }
         return "$pad// unresolved: ${node.componentId}"
       }
       // The licence to call at all. Everything a refusal protects against — private, generic,
@@ -477,11 +492,11 @@ object ScreenGenerator {
       if (code?.call == null) {
         reasons +=
           "`${node.componentId}` has no call site: ${code?.refusedReason ?: "no code was recorded"}"
-        node.slots.values.flatten().forEach { node(it, depth + 1, inReceiverScope) }
+        node.slots.values.flatten().forEach { node(it, depth + 1) }
         return "$pad// unusable: ${node.componentId}"
       }
       val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
-      if (record.canonicalId in simplyImportable && !inReceiverScope) imports += qualified
+      if (record.canonicalId in simplyImportable) imports += qualified
       markers(code.requiredOptIns, optIns, "`${record.symbol.name}`")
       markers(code.androidxOptIns, androidxOptIns, "`${record.symbol.name}`")
 
@@ -504,7 +519,7 @@ object ScreenGenerator {
           // never reached and its subtree would go unreported — the same gap as an unresolved
           // node's children, one level in. A renamed slot is exactly when a document is most
           // likely to be stale further down, so those children are the ones worth naming.
-          children.forEach { node(it, depth + 1, inReceiverScope) }
+          children.forEach { node(it, depth + 1) }
         }
       }
 
@@ -544,7 +559,7 @@ object ScreenGenerator {
               reasons +=
                 "`${record.symbol.name}`.`${parameter.name}` is set as both a value and a slot"
               if (parameter.composableSlot) {
-                children.forEach { node(it, depth + 1, inReceiverScope || hasReceiver(parameter)) }
+                children.forEach { node(it, depth + 1) }
               }
             }
           }
@@ -558,13 +573,10 @@ object ScreenGenerator {
                 "in a bare lambda cannot satisfy"
             // The third branch that rejects a node and would otherwise drop its subtree, after an
             // unresolved id and a slot the component never declared. All three now walk on.
-            children.forEach { node(it, depth + 1, inReceiverScope) }
+            children.forEach { node(it, depth + 1) }
           }
           children != null && parameter.composableSlot -> {
-            val nested =
-              children.joinToString("\n") {
-                node(it, depth + 1, inReceiverScope || hasReceiver(parameter))
-              }
+            val nested = children.joinToString("\n") { node(it, depth + 1) }
             arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
           }
           // Untouched by the document. A default may be omitted; anything else still has to be
@@ -583,7 +595,7 @@ object ScreenGenerator {
         }
       }
       val name =
-        if (record.canonicalId in simplyImportable && !inReceiverScope)
+        if (record.canonicalId in simplyImportable)
           ComponentSnippets.escapeIfKeyword(record.symbol.name)
         else qualified
       return "$pad$name(${arguments.joinToString(", ")})"
@@ -1127,20 +1139,6 @@ object ScreenGenerator {
       else -> 3
     }
   }
-
-  /**
-   * Whether children placed in [parameter] execute inside an implicit receiver.
-   *
-   * The **recorded** receiver is the answer, because the rendered type is a lossy spelling: a
-   * nullable extension slot renders as `(ColumnScope.() -> Unit)?`, which has nothing at all before
-   * its first `(`, so reading the receiver off the text answered "none" for exactly the slots most
-   * likely to have one. The text is kept only as a fallback for a record written before
-   * `composableSlotReceiver` existed, where null means "not recorded" rather than "no receiver" —
-   * and there it is unwrapped first, so the same nullable case does not slip through twice.
-   */
-  private fun hasReceiver(parameter: TargetParameter): Boolean =
-    parameter.composableSlotReceiver != null ||
-      parameter.type.removePrefix("(").removeSuffix(")?").substringBefore('(').contains('.')
 
   private const val MAX_CONSTANT_POOL_STRING = 65535
 

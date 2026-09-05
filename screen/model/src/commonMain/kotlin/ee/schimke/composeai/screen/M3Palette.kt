@@ -34,8 +34,22 @@ import ee.schimke.composeai.discovery.TargetParameter
  */
 object M3Palette {
 
-  /** The container ids, which take children. */
-  val containerIds: List<String> = listOf("scaffold", "lazy-column", "column", "card")
+  /**
+   * The container ids, which take children.
+   *
+   * **No `LazyColumn`**, and it is a gap rather than an oversight. Its `content` is
+   * `LazyListScope.() -> Unit`: a DSL scope that is not `@Composable`, so children go in through
+   * `item { … }` rather than directly. Offered as a plain composable slot it generated
+   * `LazyColumn(content = { ElevatedCard(…) })`, which the Kotlin compiler rejects with
+   * "@Composable invocations can only happen from the context of a @Composable function" — output
+   * that looked right in the code pane and did not compile.
+   *
+   * Expressing it needs a component the generator can call as a **member of the enclosing
+   * receiver** — `item` is on `LazyListScope`, so it is spelled by its simple name with no import
+   * and only inside that scope. The record has no field for that today. Until it does, `column` is
+   * the list container, and a scrolling one is `column` plus a scroll modifier.
+   */
+  val containerIds: List<String> = listOf("scaffold", "column", "card")
 
   /** The leaf ids, which do not. */
   val componentIds: List<String> = listOf("button", "text")
@@ -85,28 +99,22 @@ object M3Palette {
       variant = "authored",
       components =
         listOf(
+          // `Scaffold.content` is `@Composable (PaddingValues) -> Unit` — the padding arrives as a
+          // *parameter*, not a receiver. Recording it as a receiver scope was wrong, and it used to
+          // cost the whole screen its imports: the generator qualified anything under a scoped slot
+          // and propagated that downward, so one mislabelled slot at the root qualified every node
+          // beneath it. The generator no longer qualifies on nesting at all, but the record should
+          // still say what the signature says.
           record(
             "scaffold",
             M3,
             "Scaffold",
-            parameters =
-              listOf(
-                modifierParam(),
-                slotParam("topBar"),
-                slotParam("content", "$LAYOUT.PaddingValues"),
-              ),
+            parameters = listOf(modifierParam(), slotParam("topBar"), slotParam("content")),
             slots =
               listOf(
                 ComponentSlot("topBar", required = false),
-                ComponentSlot("content", required = true, receiverScope = "$LAYOUT.PaddingValues"),
+                ComponentSlot("content", required = true),
               ),
-          ),
-          record(
-            "lazy-column",
-            "androidx.compose.foundation.lazy",
-            "LazyColumn",
-            parameters = listOf(modifierParam(), slotParam("content")),
-            slots = listOf(ComponentSlot("content", required = true)),
           ),
           record(
             "column",
@@ -190,7 +198,7 @@ object M3Palette {
     listOf(
       "fillMaxWidth" to ChainLink("$LAYOUT.fillMaxWidth"),
       "fillMaxSize" to ChainLink("$LAYOUT.fillMaxSize"),
-      "padding(8)" to ChainLink("$LAYOUT.padding", positional = listOf(ScreenValue.Whole(8))),
+      "padding(8.dp)" to ChainLink("$LAYOUT.padding", positional = listOf(dp(8))),
     )
 
   /**
@@ -204,6 +212,21 @@ object M3Palette {
    */
   val expressionPackages: Set<String> =
     setOf("androidx.compose.ui", LAYOUT, "androidx.compose.ui.unit")
+
+  /**
+   * `[value].dp`, as the generator's own vocabulary for a dimension.
+   *
+   * `dp` is an extension **property** on `Int`, which is why this is a chain with a property link
+   * rather than a call. Passing the bare `Int` instead — `padding(8)` — is a call to a `padding`
+   * overload that does not exist, and the compiler says only "none of the following candidates is
+   * applicable".
+   */
+  private fun dp(value: Int): ScreenValue =
+    ScreenValue.Chain(
+      receiver = ScreenValue.Whole(value.toLong()),
+      links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+      typeFqn = "androidx.compose.ui.unit.Dp",
+    )
 
   /** `Modifier` as the receiver every chain in [modifierLinks] hangs off. */
   val modifierReceiver: ScreenValue.Reference =

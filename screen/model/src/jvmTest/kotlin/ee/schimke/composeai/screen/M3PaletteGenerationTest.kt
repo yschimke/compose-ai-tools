@@ -30,8 +30,8 @@ class M3PaletteGenerationTest {
     )
 
   @Test
-  fun `a scaffold holding a lazy column, a card and a button generates that screen`() {
-    // The screen the builder was tested with, now with the scaffold the goal asks for.
+  fun `a scaffold holding a column, a card and a button generates that screen`() {
+    // The screen the builder is driven through by hand, as a document.
     val document =
       ScreenDocument(
         name = "MyScreen",
@@ -43,8 +43,8 @@ class M3PaletteGenerationTest {
                 "content" to
                   listOf(
                     ScreenNode(
-                      componentId = "lazy-column",
-                      arguments = mapOf("modifier" to fillMaxWidth()),
+                      componentId = "column",
+                      arguments = mapOf("modifier" to fillMaxWidthAndPadding()),
                       slots =
                         mapOf(
                           "content" to
@@ -90,17 +90,40 @@ class M3PaletteGenerationTest {
     val source = (result as ScreenGenerator.Result.Emitted).source
     println(source)
     assertTrue(source, source.contains("Scaffold("))
-    assertTrue(source, source.contains("LazyColumn("))
     assertTrue(source, source.contains("ElevatedCard("))
     assertTrue(source, source.contains("Button("))
     assertTrue(source, source.contains("\"Open\""))
+
+    // Every component by its **simple** name, imported once. All but the root sit inside a slot,
+    // and the generator used to qualify those, so a whole screen came out written in full. A
+    // `contains("Text(")` would pass either way — `androidx.compose.material3.Text(` ends in the
+    // same characters — so the absence of the qualified spelling is what actually pins this.
+    listOf("Scaffold", "Column", "ElevatedCard", "Button", "Text").forEach { name ->
+      assertTrue("no import for $name in:\n$source", source.contains(".$name\n"))
+    }
+    assertTrue(source, !source.contains("androidx.compose.material3.Text(text ="))
+    assertTrue(source, !source.contains("androidx.compose.material3.ElevatedCard("))
+
+    // `Modifier.padding` takes `Dp`. The palette used to pass a bare `Int`, and since a chain
+    // link's arguments are not checked against a real signature, `padding(8)` was emitted happily
+    // and only the Kotlin compiler objected.
+    assertTrue(source, source.contains("padding(8.dp)"))
   }
 
-  /** `Modifier.fillMaxWidth()` as the generator's own vocabulary — a chain, not spliced text. */
-  private fun fillMaxWidth(): ScreenValue =
+  /**
+   * The modifier chain a user builds by tapping two chips, as the generator's own vocabulary.
+   *
+   * Taken from [M3Palette.modifierLinks] rather than rebuilt here, so the links this asserts on are
+   * the ones the builder actually offers — `padding` shipped passing a bare `Int` to a `Dp`
+   * parameter, and a copy of the link in the test would have agreed with it.
+   */
+  private fun fillMaxWidthAndPadding(): ScreenValue =
     ScreenValue.Chain(
       receiver = M3Palette.modifierReceiver,
-      links = listOf(M3Palette.modifierLinks.first { it.first == "fillMaxWidth" }.second),
+      links =
+        listOf("fillMaxWidth", "padding(8.dp)").map { label ->
+          M3Palette.modifierLinks.first { it.first == label }.second
+        },
       typeFqn = "androidx.compose.ui.Modifier",
     )
 }

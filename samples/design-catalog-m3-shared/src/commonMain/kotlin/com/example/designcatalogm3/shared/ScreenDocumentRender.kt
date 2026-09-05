@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
@@ -81,10 +80,6 @@ private fun RenderNode(node: ScreenNode, modifier: Modifier = Modifier) {
         Column(Modifier.padding(padding).fillMaxSize()) {
           children(node).forEach { RenderNode(it) }
         }
-      }
-    "lazy-column" ->
-      LazyColumn(own.fillMaxWidth()) {
-        children(node).forEach { child -> item { RenderNode(child) } }
       }
     "column" ->
       Column(own.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
