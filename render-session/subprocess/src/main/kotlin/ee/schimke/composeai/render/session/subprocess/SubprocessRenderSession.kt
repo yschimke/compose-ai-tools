@@ -71,6 +71,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
           cause = e,
         )
       }
+    checkSchemaVersion(descriptor, descriptorFile.path)
     var effectiveDescriptor =
       if (config.forceEnabled && !descriptor.enabled) descriptor.copy(enabled = true)
       else descriptor
@@ -189,6 +190,55 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     )
   }
 
+  /**
+   * Refuse a descriptor whose [DaemonLaunchDescriptor.schemaVersion] is not the one this module
+   * speaks, before anything acts on its fields.
+   *
+   * The descriptor's own contract says consumers gate on the version and force a fresh descriptor
+   * on mismatch (`DaemonClasspathDescriptor` KDoc, "Schema versioning"), and `compose-preview
+   * doctor` has always reported a mismatch as an error — but the spawn path read the version and
+   * never looked at it. That is a silent-wrong-answer shape rather than a cosmetic gap: the JVM
+   * reader keeps `ignoreUnknownKeys = true` and gives its reader-only fields Kotlin defaults, so a
+   * descriptor from a NEWER writer parses cleanly and the session launches against defaults for
+   * everything the new version added. Post-split this module is a published contract an extracted
+   * preview server links against (#3824), so "the reader is older than the writer" is an ordinary
+   * cross-repo version pairing rather than a same-commit mistake. Filed as #5105, deferred
+   * from #4571.
+   *
+   * Both directions refuse — exact match, the same gate the other two consumers of this descriptor
+   * already apply. VS Code's `daemonProcess.ts` requires the version to equal its own and otherwise
+   * discards the descriptor and forces a re-run, `compose-preview doctor` reports any mismatch as
+   * an error, and `docs/NON_GRADLE_INTEGRATION.md` already told hand-written producers that "the
+   * subprocess factory rejects anything else with a clear error". It is the right shape here too:
+   * the version is a single integer bumped only when the shape changes in a way that could break
+   * older readers, so there is no major/minor split to be lenient about, and unlike a packed bundle
+   * (`docs/VERSIONING.md` § 3's "keep readers tolerant of the older value", which is about
+   * artifacts that outlive their writer) a `daemon-launch.json` is a build output the producer
+   * regenerates on demand. The two messages differ in the remedy, which is the part a caller can
+   * act on: an OLDER descriptor is stale and regenerating it fixes it, while a NEWER one needs the
+   * consumer upgraded (regenerating would rewrite the same unreadable version).
+   *
+   * [openBundleDaemon] needs no such gate: it stamps [DAEMON_DESCRIPTOR_SCHEMA_VERSION] into a
+   * descriptor it constructs in-process, so writer and reader are the same build by construction.
+   */
+  private fun checkSchemaVersion(descriptor: DaemonLaunchDescriptor, path: String) {
+    val found = descriptor.schemaVersion
+    if (found == DAEMON_DESCRIPTOR_SCHEMA_VERSION) return
+    val remedy =
+      if (found < DAEMON_DESCRIPTOR_SCHEMA_VERSION)
+        "The descriptor was written by an older compose-preview plugin. Re-run " +
+          "`:<modulePath>:composePreviewDaemonStart` with the current plugin to regenerate it."
+      else
+        "The descriptor was written by a newer compose-preview plugin than this library " +
+          "understands. Upgrade the consumer (or pin the plugin to the version that matches " +
+          "it) — reading it as v$DAEMON_DESCRIPTOR_SCHEMA_VERSION would launch the daemon " +
+          "against defaults for whatever the newer schema added."
+    throw RenderSessionException(
+      "Daemon launch descriptor at $path declares schemaVersion=$found, but this build of " +
+        "render-session-subprocess speaks version $DAEMON_DESCRIPTOR_SCHEMA_VERSION. $remedy"
+    )
+  }
+
   /** Shared spawn + JSON-RPC initialize + session-wrap path for [open] and [openBundleDaemon]. */
   private fun spawnAndInitialize(
     descriptor: DaemonLaunchDescriptor,
@@ -262,6 +312,8 @@ public object SubprocessRenderSessions : RenderSessionFactory {
    * fails if the two ever disagree, which matters more than usual: this is one of the published
    * contract modules an extracted preview server links against (#3824), so after the split a stale
    * copy here is cross-repo version skew that no compiler sees.
+   *
+   * Also the version [open] gates an on-disk descriptor against — see [checkSchemaVersion].
    */
   private const val DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2
 

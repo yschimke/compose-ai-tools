@@ -65,8 +65,8 @@
     {
       "file": "render-session/subprocess/src/main/kotlin/ee/schimke/composeai/render/session/subprocess/SubprocessRenderSession.kt",
       "symbol": "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
-      "role": "second writer",
-      "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
+      "role": "second writer + read gate",
+      "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy, and since #5105 `SubprocessRenderSessions.open` also refuses an on-disk descriptor whose version is not this one. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
     },
     {
       "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",

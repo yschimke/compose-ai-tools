@@ -255,7 +255,10 @@ class NonGradleContractTest {
     renderOutputDir: File,
     historyDir: File,
   ): JsonObject = buildJsonObject {
-    put("schemaVersion", JsonPrimitive(1))
+    // 2, not the stale 1 this carried: the writer moved to v2 and nothing made the test follow,
+    // because `open` read the version without checking it. It does now (#5105), so a hand-written
+    // producer pinning the wrong version is refused — which is exactly what this descriptor was.
+    put("schemaVersion", JsonPrimitive(2))
     put("modulePath", JsonPrimitive(modulePath))
     put("variant", JsonPrimitive(variant))
     put("enabled", JsonPrimitive(true))
