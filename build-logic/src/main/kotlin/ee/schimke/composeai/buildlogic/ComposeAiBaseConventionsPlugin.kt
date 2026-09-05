@@ -64,7 +64,28 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
     }
 
     registerLayerBoundaryCheck(project)
+    registerHttpServerFloorCheck(project)
   }
+
+  /**
+   * Every component on this project's resolved runtime classpath as `<group>:<name>`.
+   *
+   * Resolved identity rather than declared dependencies: an artifact arriving through another POM
+   * is the case that matters and the case a build-file scan misses. Shared by both boundary checks
+   * so they cannot disagree about what is on the classpath.
+   */
+  private fun resolvedRuntimeModules(project: Project) =
+    project.configurations.named("runtimeClasspath").flatMap { configuration ->
+      configuration.incoming.artifacts.resolvedArtifacts.map { artifacts ->
+        artifacts
+          .mapNotNull { artifact ->
+            (artifact.id.componentIdentifier as? ModuleComponentIdentifier)?.let {
+              "${it.group}:${it.module}"
+            }
+          }
+          .toSet()
+      }
+    }
 
   /**
    * Wires [CheckLayerBoundary] onto every project that has a `runtimeClasspath`, and onto `check`
@@ -83,25 +104,39 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
             "Fails if a compose-preview-server artifact reaches this project's runtime classpath."
           group = "verification"
 
-          // Resolved identity rather than declared dependencies: a layer-2 artifact arriving
-          // through another POM is the case that matters and the case a build-file scan misses.
-          resolvedModules.set(
-            project.configurations.named("runtimeClasspath").flatMap { configuration ->
-              configuration.incoming.artifacts.resolvedArtifacts.map { artifacts ->
-                artifacts
-                  .mapNotNull { artifact ->
-                    (artifact.id.componentIdentifier as? ModuleComponentIdentifier)?.let {
-                      "${it.group}:${it.module}"
-                    }
-                  }
-                  .toSet()
-              }
-            }
-          )
+          resolvedModules.set(resolvedRuntimeModules(project))
 
           allowedPreviewModules.set(
             CheckLayerBoundary.ownPreviewModules + CheckLayerBoundary.knownLayerTwoEdges
           )
+        }
+
+      project.tasks.named("check") { dependsOn(task) }
+    }
+  }
+
+  /**
+   * Wires [CheckHttpServerFloor] onto every project that has a `runtimeClasspath`, skipping the two
+   * projects that are allowed to carry a server engine.
+   *
+   * The skip is a not-registered task rather than an empty check so that `:mcp` and `:cli` cannot
+   * quietly pass a floor they are exempt from; the exemption lives in one list
+   * ([CheckHttpServerFloor.httpServerProjects]) and `docs/design/REPOSITORY_LAYERS.md` explains why
+   * those two are on it.
+   */
+  private fun registerHttpServerFloorCheck(project: Project) {
+    if (project.path in CheckHttpServerFloor.httpServerProjects) return
+
+    project.plugins.withId("org.gradle.java") {
+      val task =
+        project.tasks.register<CheckHttpServerFloor>("checkHttpServerFloor") {
+          description =
+            "Fails if an HTTP server engine reaches this project's runtime classpath. " +
+              "Preview-serving behaviour is compose-preview-server's."
+          group = "verification"
+
+          resolvedModules.set(resolvedRuntimeModules(project))
+          serverPrefixes.set(CheckHttpServerFloor.serverPrefixes)
         }
 
       project.tasks.named("check") { dependsOn(task) }

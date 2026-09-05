@@ -68,6 +68,11 @@ dependencies {
   api(project(":daemon-client"))
   // Semantics diff engine + payload model for the `diff_semantics` tool (issue #1785).
   implementation(libs.composeai.data.layoutinspector.core)
+  // `MatrixAxes`/`MatrixCell`/`ContactSheet` behind the `render_matrix` tool. They used to live in
+  // this module and `:cli` compiled against them for its offline `render-matrix` command; the lift
+  // is #5176 preparation, so that command stops depending on an MCP server. `implementation`
+  // rather than `api`: the tool consumes them, none of them appears on this module's own surface.
+  implementation(project(":render-matrix"))
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

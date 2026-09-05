@@ -1,0 +1,41 @@
+public final class ee/schimke/composeai/render/matrix/ContactSheet {
+	public static final field INSTANCE Lee/schimke/composeai/render/matrix/ContactSheet;
+	public final fun stitch (Ljava/util/List;Ljava/lang/Integer;)[B
+	public static synthetic fun stitch$default (Lee/schimke/composeai/render/matrix/ContactSheet;Ljava/util/List;Ljava/lang/Integer;ILjava/lang/Object;)[B
+}
+
+public final class ee/schimke/composeai/render/matrix/ContactSheet$Cell {
+	public fun <init> (Ljava/lang/String;[B)V
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getPng ()[B
+}
+
+public final class ee/schimke/composeai/render/matrix/MatrixAxes {
+	public static final field CELL_CAP I
+	public static final field INSTANCE Lee/schimke/composeai/render/matrix/MatrixAxes;
+	public final fun cellCount (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)I
+	public final fun expand (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/render/matrix/MatrixCell {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Float;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Float;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/Float;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Float;)Lee/schimke/composeai/render/matrix/MatrixCell;
+	public static synthetic fun copy$default (Lee/schimke/composeai/render/matrix/MatrixCell;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Float;ILjava/lang/Object;)Lee/schimke/composeai/render/matrix/MatrixCell;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDevice ()Ljava/lang/String;
+	public final fun getFontScale ()Ljava/lang/Float;
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getLocale ()Ljava/lang/String;
+	public final fun getUiMode ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun overridesJson ()Lkotlinx/serialization/json/JsonObject;
+	public final fun toOverrides ()Lee/schimke/composeai/daemon/protocol/PreviewOverrides;
+	public fun toString ()Ljava/lang/String;
+}
+

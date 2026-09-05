@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.mcp.MatrixCell
+import ee.schimke.composeai.render.matrix.MatrixCell
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import okio.Path.Companion.toPath

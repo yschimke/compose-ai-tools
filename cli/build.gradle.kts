@@ -361,6 +361,13 @@ dependencies {
   // WebSockets plugin: the `serve` streamed-frame lane (`/ws/{id}`) — tier-2 streaming spike.
   // HEAD answers GET across the whole site — the probe link unfurlers send before downloading.
 
+  // Axis expansion + contact-sheet stitching for the OFFLINE `render-matrix` command, shared with
+  // the MCP server's `render_matrix` tool so the two agree by construction (#1788). This used to be
+  // reached through `:mcp`, which meant an offline command compiled against an MCP server; the lift
+  // out is what lets `:mcp` move to compose-preview-server without taking `render-matrix` with it
+  // (#5176).
+  implementation(project(":render-matrix"))
+
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
   implementation(project(":mcp"))

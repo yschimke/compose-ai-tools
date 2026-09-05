@@ -1,10 +1,10 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.mcp.ContactSheet
-import ee.schimke.composeai.mcp.MatrixAxes
-import ee.schimke.composeai.mcp.MatrixCell
 import ee.schimke.composeai.previewdata.PreviewInfo
 import ee.schimke.composeai.previewdata.PreviewModule
+import ee.schimke.composeai.render.matrix.ContactSheet
+import ee.schimke.composeai.render.matrix.MatrixAxes
+import ee.schimke.composeai.render.matrix.MatrixCell
 import java.io.File
 import java.security.MessageDigest
 import kotlin.system.exitProcess

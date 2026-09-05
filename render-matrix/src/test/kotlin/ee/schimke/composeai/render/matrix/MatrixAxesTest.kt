@@ -1,4 +1,4 @@
-package ee.schimke.composeai.mcp
+package ee.schimke.composeai.render.matrix
 
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.daemon.protocol.UiMode
