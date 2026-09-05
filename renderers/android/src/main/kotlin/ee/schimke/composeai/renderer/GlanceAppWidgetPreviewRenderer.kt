@@ -8,7 +8,6 @@ import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.currentComposer
-import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -28,7 +27,7 @@ import kotlinx.coroutines.runBlocking
  *
  * Inflation path:
  * 1. Build a [SyntheticGlanceAppWidget] whose `providePreview(...)` invokes the user's
- *    `@Composable` via [getDeclaredComposableMethod] inside `provideContent { ... }` — the Glance
+ *    `@Composable` via [resolveNoArgComposableMethod] inside `provideContent { ... }` — the Glance
  *    composition block where `@GlanceComposable` calls resolve.
  * 2. `composeForPreview(context, widgetCategory, info)` runs the composition and materialises a
  *    `RemoteViews` tree (Glance 1.2.0+).
@@ -90,11 +89,16 @@ fun GlanceAppWidgetPreviewComposable(
 /**
  * A `GlanceAppWidget` whose `providePreview(...)` body reflects the user's `@Composable
  *
- * @GlanceComposable` function and invokes it. The function signature the Compose compiler emits for
- *   any `@Composable () -> Unit` is `(Composer, Int) -> Unit` at the JVM level, so the standard
- *   `getDeclaredComposableMethod` + `ComposableMethod.invoke(currentComposer, receiver)` path used
- *   by [ComposePreviewStrategy] applies unchanged — Glance's composition uses the same
- *   `androidx.compose.runtime.Composer` infrastructure.
+ * @GlanceComposable` function and invokes it. Glance's composition runs on the same
+ *   `androidx.compose.runtime.Composer` infrastructure as any other, so the standard resolve +
+ *   `ComposableMethod.invoke(currentComposer, receiver)` path used by [ComposePreviewStrategy]
+ *   applies unchanged.
+ *
+ *   Resolution goes through [resolveNoArgComposableMethod] for the same reason it does there. A
+ *   parameterless `@Composable` compiles to `(Composer, Int)`, which the exact-signature lookup
+ *   matches; one whose parameters all declare defaults compiles to `(realParams…, Composer,
+ *   changed…, default…)`, which it cannot. Assuming the first shape is what made a defaulted Glance
+ *   preview fail with `NoSuchMethodException` naming a function that is plainly there.
  *
  * Receiver resolution mirrors [resolvePreviewReceiver] so top-level Glance previews (compiled into
  * static methods on the file's synthetic `FooKt` class) and class-hosted previews (e.g. inside a
@@ -112,7 +116,14 @@ private class SyntheticGlanceAppWidget(
     provideContent {
       val cls =
         Class.forName(className, true, classLoader ?: Thread.currentThread().contextClassLoader)
-      val method = cls.getDeclaredComposableMethod(functionName)
+      // [resolveNoArgComposableMethod], not the bare lookup. A Glance preview whose value
+      // parameters all declare defaults compiles to `(realParams…, Composer, changed…, default…)`,
+      // which `getDeclaredComposableMethod(name)` cannot match — it builds the exact signature
+      // `(Composer, int)` out of the (absent) argument types. The miss lands *inside*
+      // `provideContent { … }`, so the preview died with a bare `NoSuchMethodException` naming a
+      // function plainly there, before composing anything. Every other lane resolves it this way;
+      // this one was the last raw call site.
+      val method = resolveNoArgComposableMethod(cls, functionName)
       // Private `@Preview` Glance composables resolve fine but would throw
       // IllegalAccessException on invoke — open them up, same as the
       // COMPOSE strategy and the tile/notification paths. Guarded so a

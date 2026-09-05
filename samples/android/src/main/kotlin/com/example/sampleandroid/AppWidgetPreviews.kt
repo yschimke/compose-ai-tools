@@ -341,3 +341,29 @@ fun LauncherModeResizePreview() {
 fun NativeGlanceWidgetPreview() {
   WeatherGlanceContent(title = "Native @glance.preview.Preview", condition = "Discovered by FQN")
 }
+
+/**
+ * The same Glance surface, declared with **defaulted value parameters** — the shape the parameter
+ * knob format is built on, and the one a widget composable annotated `@Preview` in place almost
+ * always already has.
+ *
+ * It exists because that shape is invisible in the picture but not to the renderer: it compiles to
+ * `(realParams…, Composer, int changed, int default)` rather than `(Composer, int)`, so the
+ * exact-signature `getDeclaredComposableMethod(name)` lookup cannot match it. Every other lane in
+ * this repository resolves it through `resolveNoArgComposableMethod`; the Glance lane reflected the
+ * body with the bare lookup and threw `NoSuchMethodException` inside `provideContent { … }` before
+ * composing anything, so a defaulted Glance preview produced an `.error.json` and no PNG.
+ *
+ * Sibling of [NativeGlanceWidgetPreview] rather than a replacement for it: that one is the
+ * parameterless shape, this one the defaulted shape, and only having both renders proves the lane
+ * handles each.
+ */
+@OptIn(ExperimentalGlancePreviewApi::class)
+@GlancePreview(widthDp = 312, heightDp = 152)
+@Composable
+fun DefaultedGlanceWidgetPreview(
+  title: String = "Defaulted @Composable params",
+  condition: String = "Resolved via the defaults mask",
+) {
+  WeatherGlanceContent(title = title, condition = condition)
+}
