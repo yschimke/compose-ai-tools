@@ -18,7 +18,9 @@ to MCP-aware agents.
   JSON-RPC; ten scenarios (S1–S10) covering lifecycle, drain,
   render-after-edit, visibility, failures, latency-record,
   classpath-dirty, history.
-- **`:mcp`** — MCP server multiplexing per-(workspace, module) daemons
+- **`compose-preview-mcp`** — MCP server multiplexing per-(workspace, module) daemons. It ships
+  from yschimke/compose-preview-server since #5176 (it needs an HTTP server, which is that
+  repository's layer); `compose-preview mcp serve` launches it.
   behind one MCP surface; tools for project registration, watches,
   render, history; resource subscriptions for push.
 
@@ -68,7 +70,7 @@ the CI-canonical render path.
 - **[MCP.md](MCP.md)** — server overview: how the daemon's JSON-RPC
   surface maps onto MCP resources, subscriptions, and tools.
 - **[MCP-KOTLIN.md](MCP-KOTLIN.md)** — implementation reference for
-  the `:mcp` module.
+  the MCP server (compose-preview-server's module now).
 
 ### Reference data
 

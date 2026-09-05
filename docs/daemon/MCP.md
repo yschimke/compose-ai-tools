@@ -8,7 +8,7 @@ High-level mapping of daemon ↔ MCP semantics. Implementation notes live in
 
 Push, not poll, daemon-backed agent loop. Without the MCP shim, an agent
 must run Gradle (10s+ cold) or read PNGs off disk with no way to request a
-re-render or be notified of one. The `:mcp` module exposes the daemon's
+re-render or be notified of one. The MCP server exposes the daemon's
 JSON-RPC over stdio so MCP clients can render previews on demand and
 receive notifications when bytes change.
 
@@ -266,7 +266,7 @@ including `$HOME/.robolectric-download-lock`.
 
 ```
 MCP client ── stdio ──▶ MCP server ── stdio JSON-RPC ──▶ daemon JVM (per module)
-                       (`:mcp`)                        (`:daemon:android` / `:daemon:desktop`)
+                  (compose-preview-mcp)                (`:daemon:android` / `:daemon:desktop`)
 ```
 
 The MCP server depends only on `:daemon:core` for protocol message types and
@@ -308,7 +308,8 @@ History resource URIs (`compose-preview-history://…`) short-circuit to
 
 ## Cross-references
 
-- [MCP-KOTLIN.md](MCP-KOTLIN.md) — implementation reference for `:mcp`.
+- [MCP-KOTLIN.md](MCP-KOTLIN.md) — implementation reference for the MCP server,
+  which ships from yschimke/compose-preview-server (#5176).
 - [PROTOCOL.md](PROTOCOL.md) — daemon wire format the MCP shim translates from.
 - [LAYERING.md](LAYERING.md) — architectural rules.
 - [DATA-PRODUCTS.md](DATA-PRODUCTS.md#catalogue-open-set) — data product catalogue.

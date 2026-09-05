@@ -3,6 +3,16 @@
 Active architectural rule. Mandatory reading before adding a new
 cross-layer hook.
 
+**Layer 3 lives in another repository now.** `:mcp` moved to
+yschimke/compose-preview-server in #5176: the layer rule in
+[../design/REPOSITORY_LAYERS.md](../design/REPOSITORY_LAYERS.md) places a module
+that needs an HTTP server there, and the MCP server runs one. Nothing about the
+layering below changed — same three layers, same JSON-RPC link, same
+separate-process default — but `:mcp` names a module in that repository, and the
+CLI *launches* it rather than bundling it. The Layer-3 rules here are the rules
+that module still follows; the ones about what this repository's CLI may depend
+on are now enforced by `checkHttpServerFloor` as well.
+
 ## The three layers
 
 ```
@@ -100,7 +110,11 @@ Allowed CLI compile-time dependencies:
 
 - `:daemon:core` for protocol/catalog/history DTOs and other
   renderer-agnostic helpers.
-- `:mcp` for the bundled `compose-preview mcp serve` entry point.
+- `:mcp` — **no longer**, and this is the one line the move changed. There is no
+  bundled MCP entry point: `compose-preview mcp serve` execs the
+  `compose-preview-mcp` binary published from compose-preview-server, fetched on
+  first use. `mcp install` / `mcp doctor` stay in the CLI, and neither touches a
+  socket.
 - Data-product `core` modules when renderer-agnostic.
 
 Forbidden CLI compile-time/runtime dependencies (Layer-2-only DTO):
@@ -116,8 +130,11 @@ this on the CLI runtime classpath.
 
 ## Layer 3 — what the MCP server owns
 
-- **MCP code lives only in `:mcp`.** Neither `:daemon:core` nor any
-  per-target daemon module imports the Kotlin MCP SDK or Ktor.
+- **MCP code lives only in `:mcp`** — compose-preview-server's module. Neither
+  `:daemon:core` nor any per-target daemon module imports the Kotlin MCP SDK or
+  Ktor, and since the move neither does anything else in this repository:
+  `checkHttpServerFloor` fails on a `ktor-server-*` artifact reaching any runtime
+  classpath here, with an empty allowlist.
 - **MCP server is a JSON-RPC client of the daemon.** It uses the same
   `Messages.kt` types and framing the daemon serves.
 - **MCP server is a separate process by default.** Same-process mode
@@ -166,7 +183,7 @@ Cited from `PreviewIndex.kt`, `IncrementalDiscovery.kt` as
 ## Removal procedures
 
 **Removing Layer 3 (MCP):**
-- Delete `:mcp` and its task wiring.
+- Delete the MCP module (compose-preview-server's) and its task wiring.
 - No other module imports it.
 - Daemon and Layer 1 unaffected.
 

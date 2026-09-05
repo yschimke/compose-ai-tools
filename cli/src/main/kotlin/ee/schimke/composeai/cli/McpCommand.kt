@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.mcp.DaemonMcpMain
 import ee.schimke.composeai.previewdriver.DriverOptions
 import ee.schimke.composeai.previewdriver.GradlePreviewDriver
 import ee.schimke.composeai.previewdriver.RenderRequest
@@ -23,7 +22,7 @@ import okio.Path.Companion.toPath
  *
  * Three subcommands cover the full agent-attach lifecycle:
  *
- * - `serve` — start the MCP server on stdio, or the shared UI Builder's authenticated Streamable
+ * - `serve` — launch the MCP server on stdio, or the shared UI Builder's authenticated Streamable
  *   HTTP endpoint with `--streamable-http`. Status / errors go to stderr.
  * - `install` — bootstrap descriptors for every module that applies the plugin, flip each
  *   descriptor's `enabled` flag to `true` (`composePreview.daemon { enabled = true }` isn't
@@ -32,7 +31,18 @@ import okio.Path.Companion.toPath
  * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) without
  *   making any changes.
  *
- * The CLI bundles `:mcp` so all three run in-process. No second tarball, no manual classpath.
+ * **`serve` is a launcher now**; `install` and `doctor` are not, and the split is the layer rule's.
+ * The MCP server needs an HTTP server to do its job — the UI-builder Streamable HTTP endpoint, and
+ * everything the MCP SDK brings — so #5176 placed that module in compose-preview-server, and this
+ * command execs the `compose-preview-mcp` binary published from there, exactly as [ServeCommand]
+ * execs `compose-preview-server`. `install` and `doctor` stay here in full: they read Gradle
+ * descriptors, run `composePreviewDiscover` and write agent-host config, which is offline behaviour
+ * that opens no socket, and the config they write still names *this* CLI (`compose-preview mcp
+ * serve`) as the agent's command — so the install story an agent follows does not change at all.
+ *
+ * Stdio survives the extra process. The JSON-RPC framing runs over inherited stdin/stdout, so the
+ * agent host talks to the MCP server through this process rather than to a different stream, and
+ * the exit code is passed back.
  */
 internal class McpCommand(
   args: List<String>,
@@ -67,9 +77,11 @@ internal class McpCommand(
       compose-preview mcp <subcommand>
 
       Subcommands:
-        serve    Start the MCP server on stdio. Forwards remaining flags to DaemonMcpMain
+        serve    Launch the MCP server on stdio. Forwards remaining flags to it
                  (--project <path>[:<rootName>] is optional; projects can also be registered
-                 later with the register_project MCP tool).
+                 later with the register_project MCP tool). The server ships from
+                 compose-preview-server and is fetched on first use; --mcp-binary <path>
+                 or COMPOSE_PREVIEW_MCP names one you already have.
         install  Bootstrap daemon descriptors for every module with the plugin applied,
                  flip each descriptor's enabled flag, print a `claude mcp add` line,
                  and optionally write Antigravity's MCP config.
@@ -131,11 +143,48 @@ internal class McpCommand(
   // -- serve -------------------------------------------------------------------------------------
 
   private fun serve(args: List<String>) {
-    // Pure delegation — the MCP server owns System.in / System.out for JSON-RPC framing. Anything
-    // we print to stdout would corrupt the wire protocol; status goes to stderr. Do not infer a
-    // default project from cwd: MCP hosts may launch from "/" and projects can be registered later.
-    DaemonMcpMain.main(args.toTypedArray())
+    // Pure delegation — the MCP server owns stdin / stdout for JSON-RPC framing. Anything printed
+    // to stdout here would corrupt the wire protocol; status goes to stderr. Do not infer a default
+    // project from cwd: MCP hosts may launch from "/" and projects can be registered later.
+    //
+    // `inheritIO`, not piped streams: the agent host's stdin and stdout are handed to the MCP
+    // server directly, so this process copies nothing, cannot reframe a message, and adds no
+    // buffering to a protocol that is sensitive to both.
+    val choice =
+      ServerBinaryDiscovery.choose(args, ReleasedDistribution.MCP)
+        ?: provisionMcp()
+        ?: run {
+          System.err.println(ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP))
+          exitProcess(1)
+        }
+    val command = mcpLaunchCommand(choice.binary, args)
+    val exit =
+      try {
+        ProcessBuilder(command).inheritIO().start().waitFor()
+      } catch (t: Throwable) {
+        System.err.println(
+          "could not start ${choice.binary} (from ${choice.source}): " +
+            "${t.message ?: t.javaClass.name}"
+        )
+        System.err.println()
+        System.err.println(ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP))
+        exitProcess(1)
+      }
+    exitProcess(exit)
   }
+
+  /**
+   * Fetch the pinned MCP server when the machine has none, and name the copy that results.
+   *
+   * The same trade `serve` makes (#5183): nothing installs this binary, so a miss means "not
+   * fetched yet" rather than "not wanted", and putting the download in the installer would charge
+   * every user of `render`, `show`, `bundle` and `history` for a command they may never run. The
+   * tarball rides the same release as the preview server, so one pin covers both.
+   */
+  private fun provisionMcp(): ServerBinaryDiscovery.Choice? =
+    ServerDistributionProvision.ensure(ReleasedDistribution.MCP)?.let {
+      ServerBinaryDiscovery.Choice(it.path, ServerBinaryDiscovery.CACHE)
+    }
 
   // -- install -----------------------------------------------------------------------------------
 
@@ -597,8 +646,34 @@ internal class McpCommand(
     val enabled: Boolean,
   )
 
-  private companion object {
+  internal companion object {
     val JSON: Json = Json { prettyPrint = true }
+
+    /**
+     * The argv handed to the MCP server.
+     *
+     * `--mcp-binary` is this launcher's own flag and is dropped rather than forwarded — the MCP
+     * server has no such option, and passing it through would make every invocation fail on an
+     * unknown argument. Everything else is the caller's, unparsed: `--project`,
+     * `--streamable-http`, the UI-builder flags and their defaults are the server's surface, and a
+     * launcher that re-validated them here would be a second copy of it, drifting from the first.
+     *
+     * No subcommand word is added, unlike [ServeCommand]: `compose-preview-mcp` IS the server, so
+     * its argv starts at the first forwarded flag.
+     */
+    internal fun mcpLaunchCommand(binary: String, args: List<String>): List<String> = buildList {
+      add(binary)
+      var index = 0
+      while (index < args.size) {
+        if (args[index] == ReleasedDistribution.MCP.flag) {
+          // Skip the flag and its value.
+          index += 2
+          continue
+        }
+        add(args[index])
+        index++
+      }
+    }
 
     private val VALUE_FLAGS =
       setOf(

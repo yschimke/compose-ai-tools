@@ -51,7 +51,6 @@
       "daemon/**",
       "data/**",
       "gradle-plugin/**",
-      "mcp/**",
       "render-session/**",
       "renderers/**",
       "runtimes/**"

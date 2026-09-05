@@ -295,11 +295,11 @@ dependencies {
   // plugins nothing else asks for — `ktor-server-compression` and `-auto-head-response`.
   // Seventy-two jars to sixty-nine.
   //
-  // `ktor-server-core`, `-cio`, `-content-negotiation`, `-sse` and `-websockets` do NOT leave, and
-  // never were serve's to take: they arrive through `:mcp` and the MCP Kotlin SDK, because
-  // `compose-preview mcp` runs a server of its own. An earlier draft of this comment claimed the
+  // `ktor-server-core`, `-cio`, `-content-negotiation`, `-sse` and `-websockets` did NOT leave with
+  // it, and never were serve's to take: they arrived through `:mcp` and the MCP Kotlin SDK, because
+  // `compose-preview mcp` ran a server of its own. An earlier draft of this comment claimed the
   // Ktor floor left with `serve`. It did not — checked against the built distribution, which is the
-  // only way that claim was ever checkable.
+  // only way that claim was ever checkable. They leave with `:mcp` instead, below (#5176).
   //
   // It survives as a TEST dependency, deliberately and narrowly. Two tests drive the CLI's own
   // HTTP clients against a real `ServeHttpServer`, and their whole purpose is to catch the two
@@ -368,11 +368,31 @@ dependencies {
   // (#5176).
   implementation(project(":render-matrix"))
 
-  // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
-  // the consumer install story stays a single tarball + a single launcher.
-  implementation(project(":mcp"))
-  // Used directly by `DaemonSmokeCheck` (the spawn port + subprocess factory). Available
-  // transitively through `:mcp`, but declared because this module compiles against it.
+  // The MCP server is NOT on this module's compile or runtime classpath.
+  //
+  // `mcp serve` is a launcher now, like `serve` and `ui-builder`: it execs the
+  // `compose-preview-mcp`
+  // binary published from compose-preview-server, fetched on first use from the same release as the
+  // server distribution. `:mcp` moved there because the layer rule places a module that needs an
+  // HTTP server in that repository (#5176) — the module ran a Ktor server for the UI-builder
+  // Streamable HTTP endpoint, and the MCP Kotlin SDK put four more `ktor-server-*` artifacts on
+  // this distribution behind it.
+  //
+  // What that removes from the CLI distribution, measured by diffing the built `lib/` against
+  // main's rather than claimed: SIXTEEN jars, seventy to fifty-four, and nothing arrives. The
+  // `compose-preview-mcp` jar; `kotlin-sdk-core`/`-server`; the five `ktor-server-*` the issue
+  // named (`-core`, `-cio`, `-content-negotiation`, `-sse`, `-websockets`) plus the two
+  // `ktor-serialization-*` they pull; `ui-builder-protocol`; and — the one nobody predicted —
+  // `kotlin-reflect`, `config`, `kotlin-logging`, `kotlinx-collections-immutable` and
+  // `kotlinx-serialization-json-io`, which were on an offline CLI's classpath because an MCP SDK
+  // wanted them. `CheckHttpServerFloor`'s allowlist is empty as a result, which is what finishing
+  // that move looks like.
+  //
+  // `mcp install` and `mcp doctor` stay here in full: descriptors, discovery and agent-host config
+  // are offline behaviour, and the config they write still names this CLI as the agent's command.
+  // Used directly by `DaemonSmokeCheck` (the spawn port + subprocess factory). It used to arrive
+  // transitively through `:mcp` as well; since that module left, this line is the only way it is
+  // here — which is the point of having declared it.
   implementation(project(":daemon-client"))
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
   // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.

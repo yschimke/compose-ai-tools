@@ -16,7 +16,8 @@
 - Per-project (cross-module) sandbox sharing — each consumer module
   gets its own daemon JVM.
 - The `compose-preview` CLI binary keeps using the Gradle task. (MCP
-  daemon mode is shipped separately as `:mcp` — see [MCP.md](MCP.md).)
+  daemon mode ships separately as `compose-preview-mcp`, from
+  yschimke/compose-preview-server since #5176 — see [MCP.md](MCP.md).)
 - Replacing `composePreviewRender` — daemon fronts it for the editor loop only.
 - Hot kotlinc / compile-daemon integration. (Stage-1 spike behind
   `composePreview.daemon.continuousCompile` — long-running `gradle

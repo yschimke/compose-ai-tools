@@ -1,11 +1,15 @@
 # MCP server — implementation reference
 
-Implementation specifics for `:mcp`. See [MCP.md](MCP.md) for the
+Implementation specifics for the MCP server. **The module lives in
+yschimke/compose-preview-server** since #5176 — the layer rule places a module
+that needs an HTTP server there — so the file paths below are relative to that
+repository. See [MCP.md](MCP.md) for the
 high-level mapping.
 
 ## Module location
 
-`:mcp` is a top-level module (NOT `:daemon:mcp`), parallel to
+It is a top-level `:mcp` module in compose-preview-server (it was never
+`:daemon:mcp` here either), parallel to
 `:daemon:core` etc. It depends only on `:daemon:core` for protocol
 message types and spawns daemon JVMs over stdio via launch descriptors
 emitted by `composePreviewDaemonStart`.

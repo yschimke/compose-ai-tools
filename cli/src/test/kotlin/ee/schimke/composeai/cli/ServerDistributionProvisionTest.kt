@@ -47,9 +47,15 @@ class ServerDistributionProvisionTest {
   /** Gradle's application plugin writes both launchers; only one of them runs on Windows. */
   @Test
   fun `the launcher name follows the host`() {
-    assertEquals("compose-preview-server", ServerDistributionProvision.binaryName("Linux"))
-    assertEquals("compose-preview-server", ServerDistributionProvision.binaryName("Mac OS X"))
-    assertEquals("compose-preview-server.bat", ServerDistributionProvision.binaryName("Windows 11"))
+    assertEquals("compose-preview-server", ServerDistributionProvision.binaryName(osName = "Linux"))
+    assertEquals(
+      "compose-preview-server",
+      ServerDistributionProvision.binaryName(osName = "Mac OS X"),
+    )
+    assertEquals(
+      "compose-preview-server.bat",
+      ServerDistributionProvision.binaryName(osName = "Windows 11"),
+    )
   }
 
   @Test
@@ -136,7 +142,9 @@ class ServerDistributionProvisionTest {
     val dir = File(cacheRoot, "3.0.0")
     File(dir, "bin").mkdirs()
     File(dir, "bin/compose-preview-server").writeText("#!/bin/sh\n")
-    assertNull(ServerDistributionProvision.cached({ "3.0.0" }, cacheRoot, "Linux"))
+    assertNull(
+      ServerDistributionProvision.cached(env = { "3.0.0" }, cacheRoot = cacheRoot, osName = "Linux")
+    )
 
     val binary =
       ServerDistributionProvision.ensure(
@@ -208,7 +216,7 @@ class ServerDistributionProvisionTest {
       )
 
     assertNull(binary)
-    assertContains(log.joinToString("\n"), "not a server distribution")
+    assertContains(log.joinToString("\n"), "is not a compose-preview-server distribution")
   }
 
   /**

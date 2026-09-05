@@ -3,7 +3,13 @@ package ee.schimke.composeai.cli
 import java.io.File
 
 /**
- * Finds the `compose-preview-server` binary that `serve` and `browse` exec.
+ * Finds the binary a launcher command execs — the preview server for `serve`, `browse` and
+ * `ui-builder`, the MCP server for `mcp serve`.
+ *
+ * One implementation for both, parameterised by [ReleasedDistribution]: the two differ only in
+ * their names, and a second copy of this ordering would be a second thing to keep in step. The
+ * server's names stay available as [FLAG] / [ENV] / [BINARY] because `doctor` and the tests read
+ * them.
  *
  * The mirror image of the server's own build-host discovery, and deliberately the same shape, so an
  * operator who has learned one has learned both: an explicit flag, then the environment, then
@@ -34,26 +40,27 @@ internal object ServerBinaryDiscovery {
 
   fun choose(
     args: List<String>,
+    distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
     env: (String) -> String? = System::getenv,
     pathLookup: (String) -> File? = ::onPath,
-    cacheLookup: () -> File? = { ServerDistributionProvision.cached(env) },
+    cacheLookup: () -> File? = { ServerDistributionProvision.cached(distribution, env) },
   ): Choice? {
-    flagValue(args)?.let {
-      return Choice(it, FLAG)
+    flagValue(args, distribution.flag)?.let {
+      return Choice(it, distribution.flag)
     }
-    env(ENV)
+    env(distribution.env)
       ?.takeIf { it.isNotBlank() }
       ?.let {
-        return Choice(it.trim(), ENV)
+        return Choice(it.trim(), distribution.env)
       }
-    pathLookup(BINARY)?.let {
+    pathLookup(distribution.binary)?.let {
       return Choice(it.path, "PATH")
     }
     return cacheLookup()?.let { Choice(it.path, CACHE) }
   }
 
-  private fun flagValue(args: List<String>): String? {
-    val index = args.indexOf(FLAG)
+  private fun flagValue(args: List<String>, flag: String): String? {
+    val index = args.indexOf(flag)
     if (index < 0 || index + 1 >= args.size) return null
     return args[index + 1].takeIf { it.isNotBlank() }?.trim()
   }
@@ -80,23 +87,23 @@ internal object ServerBinaryDiscovery {
    * or firewalled machine needs the manual route, and a machine that can reach GitHub needs to know
    * the automatic one exists and will be retried.
    */
-  fun installationHint(): String =
+  fun installationHint(distribution: ReleasedDistribution = ReleasedDistribution.SERVER): String =
     """
-    compose-preview serve needs the preview server, which ships separately from this CLI.
+    ${distribution.usedBy} needs ${distribution.label}, which ships separately from this CLI.
 
     The CLI normally fetches it for you on first use, from the pinned release of
-    yschimke/compose-preview-server, into its own cache. That did not work this time — the
-    line above says why (no network, a proxy, or no room on disk are the usual ones). Running
-    the command again retries it.
+    $PREVIEW_SERVER_REPO, into its own cache. That did not work this time — the line above
+    says why (no network, a proxy, or no room on disk are the usual ones). Running the
+    command again retries it.
 
-    To supply one yourself instead: the server is published as
-    `ee.schimke.composeai:compose-preview-serve`, and its distribution
-    (`$BINARY-<version>.tar.gz`, on that repository's releases) provides `$BINARY`.
-    Unpack it, then either put it on PATH, set $ENV=/path/to/$BINARY, or pass
-    $FLAG /path/to/$BINARY. `compose-preview doctor` reports which one it finds.
+    To supply one yourself instead: unpack `${distribution.binary}-<version>.tar.gz` from
+    that repository's releases, then either put `${distribution.binary}` on PATH, set
+    ${distribution.env}=/path/to/${distribution.binary}, or pass
+    ${distribution.flag} /path/to/${distribution.binary}. `compose-preview doctor` reports
+    which one it finds.
 
-    Everything else this CLI does — render, show, bundle, history, a11y, mcp — is unaffected
-    and needs no server.
+    The offline commands — render, show, bundle, history, a11y, and `mcp install` /
+    `mcp doctor` — are unaffected and need neither binary.
     """
       .trimIndent()
 }

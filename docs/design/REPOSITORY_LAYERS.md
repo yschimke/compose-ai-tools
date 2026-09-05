@@ -46,46 +46,49 @@ server, a browser, or the UI builder to do its job?* If not, it is layer 1, even
 consumer today is the server.
 
 Applied literally, with no exception for a module that serves something other than previews — see
-*where MCP lands* below for the decision that settled that, and what it cost to keep the test
+*where MCP landed* below for the decision that settled that, and what it cost to keep the test
 mechanical.
 
 Under this rule `:render-host` is compose-ai-tools' module. It renders, it reads history, and
 `checkRenderHostIsServerFree` already asserts that it is free of a web server — which is the layer-1
 test, enforced from inside layer 2.
 
-### 1 — `compose-ai-tools` — where MCP lands
+### 1 — `compose-ai-tools` — where MCP landed
 
-**`:mcp` is layer 2 and is moving** (compose-ai-tools#5176). It runs a server, the layer-1 test says
-a module that needs an HTTP server to do its job is layer 2, and the test is applied literally. The
-alternative on the table was a written carve-out — *MCP is a transport for this CLI, not a
-preview-serving surface, so it stays with the thing it drives* — and it was rejected for the reason
-that carve-out could not answer: the next module gets to argue from the exception, and this
-repository has just spent several changes learning that a placement rule earns its keep by being
+**`:mcp` was layer 2, and it moved** (compose-ai-tools#5176, landed). It runs a server, the layer-1
+test says a module that needs an HTTP server to do its job is layer 2, and the test was applied
+literally. The alternative on the table was a written carve-out — *MCP is a transport for this CLI,
+not a preview-serving surface, so it stays with the thing it drives* — and it was rejected for the
+reason that carve-out could not answer: the next module gets to argue from the exception, and this
+repository had just spent several changes learning that a placement rule earns its keep by being
 mechanical. "Layer 1 opens no socket" is worth more as a sentence with no *unless* in it.
 
-What that costs, stated rather than discovered later: the agent entry point ends up in the
-repository that owns the web UI, and what `:mcp` uses from layer 1 — `:daemon:core`,
-`:render-session-api`, `:daemon-client` as `api`, plus `data-layoutinspector-core` — becomes
-published surface across the boundary instead of a project dependency. That is the same trade
-`serve` made, and `serve` is the precedent for the shape of the move: `compose-preview mcp` becomes
-a launcher over the published MCP binary, exactly as `serve` and `browse` became launchers over the
-published server binary.
+What it cost, stated rather than discovered later: the agent entry point lives in the repository
+that owns the web UI, and what `:mcp` uses from layer 1 — `daemon-core`, `render-session-api`,
+`daemon-client`, `render-matrix` — is published surface across the boundary instead of a project
+dependency. That is the same trade `serve` made, and `serve` was the precedent for the shape:
+`compose-preview mcp serve` is a launcher over the published MCP binary, fetched on first use from
+the same release as the server distribution, exactly as `serve`, `browse` and `ui-builder` launch
+`compose-preview-server`.
 
-The move is staged, because `:mcp` is not only an MCP server:
+The move ran in three steps, because `:mcp` was not only an MCP server:
 
 1. **Lift the layer-1 pieces out first.** `MatrixAxes`, `MatrixCell` and `ContactSheet` back the
    CLI's offline `render-matrix` command as well as the `render_matrix` tool, so `:cli` compiled
    against an MCP server for an offline command. They are `:render-matrix` now — the same lift, for
    the same reason, as `:daemon-client` before them (#3824). Nothing that leaves for layer 2 may be
    something layer 1 still calls.
-2. **Stand the module up in compose-preview-server** against the published layer-1 coordinates.
-3. **Turn `compose-preview mcp` into a launcher and delete `:mcp` here.** The five `ktor-server-*`
-   artifacts leave the CLI distribution with it — the ones the `serve` change was expected to take
-   and did not.
+2. **Stand the module up in compose-preview-server** against the published layer-1 coordinates
+   (compose-preview-server#308), publishing as `compose-preview-mcp` rather than keeping
+   `ee.schimke.composeai:mcp` — no artifact is published from two repositories on two version lines.
+3. **Turn `compose-preview mcp serve` into a launcher and delete `:mcp` here.** The five
+   `ktor-server-*` artifacts left the CLI distribution with it — the ones the `serve` change was
+   expected to take and did not.
 
-Until step 3 lands, `:mcp` and the `:cli` that bundles it are the two named exemptions in
-`checkHttpServerFloor` (below). The list emptying is what "the move is done" means, and it is
-checkable rather than asserted.
+`checkHttpServerFloor`'s allowlist is empty as a result, which is what finishing the move looks
+like: no module in this repository may resolve an HTTP server engine, with no exception to argue
+from. What stayed behind is `mcp install` and `mcp doctor` — descriptors, discovery and agent-host
+config, which open no socket, and which still register *this* CLI as the agent's command.
 
 ### 2 — `compose-preview-server`
 
@@ -177,17 +180,17 @@ exercises it is every module's `check`.
 **`checkHttpServerFloor` is the layer-1 test itself, mechanised** (`build-logic`, registered by the
 same convention plugin as `checkLayerBoundary` and wired onto `check`). It fails when an HTTP server
 engine — `io.ktor:ktor-server*`, Jetty, Undertow — reaches a project's runtime classpath, and its
-allowlist is two project paths: `:mcp`, and the `:cli` that bundles it. Every other module in this
-repository is checked, including the ones that resolve a Ktor *client*: a client is not a server,
-and `:render-host`'s own `checkRenderHostIsServerFree` has drawn that line since the split.
+allowlist is **empty**. Every module in this repository is checked, including the ones that resolve a
+Ktor *client*: a client is not a server, and `:render-host`'s own `checkRenderHostIsServerFree` has
+drawn that line since the split.
 
-It reads resolved artifacts rather than build files because `:cli` is the case that proves it has
-to: `:cli` declares no `ktor-server-*` line at all — the five artifacts arrive through `:mcp` and
+It reads resolved artifacts rather than build files because `:cli` was the case that proved it had
+to: `:cli` declared no `ktor-server-*` line at all — the five artifacts arrived through `:mcp` and
 the MCP Kotlin SDK, which is exactly what made the "the Ktor floor left with `serve`" claim wrong
 until someone measured the built distribution. Prefixes rather than coordinates, for the same reason
 `checkRenderHostIsServerFree` uses them: the invariant is "no web server", and an exact list of
 today's Ktor artifacts would pass the first time someone swaps CIO for Netty.
 
-The allowlist is temporary by construction. It exists only for the window between the decision on
-#5176 and step 3 of the move, and when `:mcp` leaves it goes to empty — the same shape, and the same
-proof, as `checkLayerBoundary`'s allowlist emptying when the `serve` edge closed.
+The allowlist held `:mcp` and `:cli` for exactly as long as the move took, and emptying it is the
+proof the move finished — the same shape as `checkLayerBoundary`'s allowlist emptying when the
+`serve` edge closed.

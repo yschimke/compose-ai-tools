@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail a PR whose preview-server pin does not name a release carrying a server distribution.
+"""Fail a PR whose preview-server pin does not name a release carrying BOTH distributions.
 
 `compose-preview serve` and `browse` are launchers (#5177). The thing they launch ships from
 yschimke/compose-preview-server, and since #5183 the CLI fetches it itself on first use rather than
@@ -17,8 +17,11 @@ Two halves, in order:
 1. **Offline.** The pin parses as a release version, and the repository this gate resolves against
    is the one the CLI actually downloads from (`PREVIEW_SERVER_REPO` in `Version.kt`). Verifying a
    different repository than consumers fetch from proves nothing.
-2. **Online.** The `v<pin>` Release exists on that repository and carries the asset
-   `ServerDistributionProvision.assetName` derives.
+2. **Online.** The `v<pin>` Release exists on that repository and carries both assets
+   `ServerDistributionProvision.assetName` derives — the server distribution, and since #5176 the
+   MCP one as well. `compose-preview mcp serve` fetches `compose-preview-mcp-<pin>.tar.gz` from the
+   same release, so a pin that carries one and not the other breaks a command silently: `serve`
+   works, `mcp serve` exits with an installation hint for an archive that was never attached.
 
 The online half distinguishes an *answer* from *no answer*, and only the former fails the build. A
 404, or a Release without the distribution, is GitHub telling us the pin is broken — fail closed. A
@@ -83,9 +86,14 @@ def declared_repo() -> str | None:
     return repo_from((REPO / VERSION_KT).read_text())
 
 
-def asset_name(version: str) -> str:
-    """Mirror of `ServerDistributionProvision.assetName` — the two must derive one filename."""
-    return f"compose-preview-server-{version}.tar.gz"
+# Mirror of `ReleasedDistribution.SERVER.binary` / `.MCP.binary`. Both archives ride the same
+# release, so one pin governs the pair and this gate checks the pair.
+DISTRIBUTIONS = ("compose-preview-server", "compose-preview-mcp")
+
+
+def asset_names(version: str) -> list[str]:
+    """Mirror of `ServerDistributionProvision.assetName` — these must derive the same filenames."""
+    return [f"{binary}-{version}.tar.gz" for binary in DISTRIBUTIONS]
 
 
 class Unanswered(Exception):
@@ -199,20 +207,23 @@ def main() -> int:
         )
         return 1
 
-    wanted = asset_name(pin)
-    if wanted not in published:
+    wanted = asset_names(pin)
+    missing = [name for name in wanted if name not in published]
+    if missing:
         have = "\n".join(f"    {a}" for a in sorted(published)) or "    (none)"
+        absent = ", ".join(missing)
         print(
-            f"::error::{declared} v{pin} does not carry {wanted}.\n"
+            f"::error::{declared} v{pin} does not carry {absent}.\n"
             f"  Attached to that Release:\n{have}\n"
-            f"  Without it `compose-preview serve` has nothing to fetch and exits with an "
-            f"installation hint. Re-run compose-preview-server's release workflow for v{pin} to "
-            f"attach the distribution, or move the pin to a release that has one.",
+            f"  Without it the launcher that fetches it — `compose-preview serve` for the server, "
+            f"`compose-preview mcp serve` for the MCP one — has nothing to download and exits "
+            f"with an installation hint. Re-run compose-preview-server's release workflow for "
+            f"v{pin} to attach the distributions, or move the pin to a release that has both.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"ok: {declared} v{pin} exists and carries {wanted}")
+    print(f"ok: {declared} v{pin} exists and carries {', '.join(wanted)}")
     return 0
 
 
