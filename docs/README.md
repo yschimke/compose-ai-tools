@@ -41,6 +41,7 @@ this index as the map of everything else.
 - [public-preview-server.md](public-preview-server.md) — the `serve` public preview server.
 - [HOSTED_SERVICE_PLAN.md](HOSTED_SERVICE_PLAN.md) — sketch: running `serve` as a hosted service (costs, scaling, precedents).
 - [isolated-projects-autoinject.md](isolated-projects-autoinject.md) — why Isolated Projects stays off.
+- [build-scripts/SETTINGS.md](build-scripts/SETTINGS.md) — the decisions behind `settings.gradle.kts`: the Remote Compose release/snapshot lane, the Robolectric snapshot probe, the build cache policy (token resolution, push gating, the #2824 kill switch), why the `data-*` project paths are flat, and where the modules that used to live in this build went.
 
 ## Process & policy
 
