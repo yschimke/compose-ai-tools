@@ -1,10 +1,15 @@
 name: Format Check
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  # Verification of the merge result, replacing `push: [main]` (#5063). A
+  # merge-queue run tests the tree GitHub is about to fast-forward `main` to,
+  # so the push it produces needs no second run of the same suite — and unlike
+  # that push run, it is not cancelled by the next merge landing four minutes
+  # later.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read

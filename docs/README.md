@@ -49,6 +49,7 @@ this index as the map of everything else.
 - [API_STABILITY.md](API_STABILITY.md) — what counts as a public contract.
 - [AGENT_INVOCATION.md](AGENT_INVOCATION.md) — summoning an agent onto an issue/PR.
 - [AGENT_ENTRYPOINTS.md](AGENT_ENTRYPOINTS.md) — **measurement**: which instruction file each agent (Claude Code, Codex, Gemini, Copilot) actually resolves, why none of them follows a markdown link, what the old layout cost the three non-Claude agents, and the CI gate that keeps every CI-enforced invariant reachable from all four.
+- [MERGE_QUEUE.md](MERGE_QUEUE.md) — `main` merges through a GitHub merge queue: which workflows moved to `merge_group`, which kept `push: [main]` and why, and the ruleset settings that are not in any file.
 - [PR_REVIEW_WORKFLOW.md](PR_REVIEW_WORKFLOW.md) — preview-gated AI PR review.
 - [TOKEN_USAGE.md](TOKEN_USAGE.md) — token-budget reference for agent recipes.
 - Testing the extension in a cloud sandbox — moved with the extension to
