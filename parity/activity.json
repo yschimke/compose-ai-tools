@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T20:08:21.321Z",
+  "generatedAt": "2026-09-05T22:40:42.398Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "42e9f2f760c8a8723f933919ffdd7643fe1e6b83",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.83.0 (#5217)",
+        "at": "2026-09-05T23:13:46+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "295788aa9c3ab3bbda4bb4e5d81789be68391710",
+        "subject": "chore(main): release 1.83.0 (#5215)",
+        "at": "2026-09-05T23:10:08+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d333109e97ff2d622590a0e9dc3f7a7a91dc1d56",
+        "subject": "feat(screen): let a slot's children be declared through its receiver's DSL (#5216)",
+        "at": "2026-09-05T23:00:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "26608e78bc12c930ff03d09075f74ec2f7185656",
         "subject": "feat(design-artifacts): check that parity locators still name a cell the catalog draws (#5214)",
@@ -459,30 +483,6 @@
         "subject": "feat(knobs): add an enum knob kind so a closed value set keeps its picker (#5142)",
         "at": "2026-09-05T08:49:00+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "02d10cd480fefb9f11a2736b39990a24a78462a1",
-        "subject": "fix(deps): update okio to v3.18.2 (#5138)",
-        "at": "2026-09-05T08:44:07+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d1627d7b05eff497e050be3c75af922e18a98038",
-        "subject": "chore(deps): update docker/dockerfile docker tag to v1.27 (#5139)",
-        "at": "2026-09-05T08:43:56+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "532ff52f4309e08e38fbff155eaf95d5d655cd6a",
-        "subject": "fix(deps): update compose-preview-server to v2.21.0 (#5140)",
-        "at": "2026-09-05T08:43:48+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
