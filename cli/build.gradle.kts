@@ -258,18 +258,20 @@ dependencies {
   api(project(":bundle-coordinates"))
 
   // The render host, the bundle daemon and the git-backed preview history — what the OFFLINE
-  // commands actually use. Split out of the server in compose-preview-server#38 (this repository's
-  // #4832) and first published in 2.2.0.
+  // commands actually use.
   //
   // Eight of the twelve serve-package symbols this module's main sources reference live here:
   // `ServeRenderHost`, `ServeBundleDaemon`, `RenderOutcome`, `SvgOutcome`, `RenderFailureFrame`,
   // `PreviewHistory`, `PreviewHistoryManifest` and `ServeParameterRows` — `bundle render`,
   // `history manifest`, `render matrix` and the missing-render report. None of them opens a socket.
   //
-  // Named here even though `compose-preview-serve` below would drag it in transitively anyway. The
-  // point is that the dependency is REAL and direct: when `serve` eventually stops being a CLI
-  // command (see below), these commands keep compiling and nobody has to work out what they were
-  // depending on through the server.
+  // A PROJECT dependency, not a published coordinate. The module was split out of the server in
+  // compose-preview-server#38 and published as `compose-preview-render-host`, but it moved into
+  // this repository in 1.77.0 (#5137) and the server now consumes it from here
+  // (compose-preview-server#289) — it had zero project dependencies inside that build and lived
+  // there only because it was written inside the `serve` package. `:cli` kept resolving the old
+  // external coordinate until compose-preview-server 3.0.0 retired it at its final 2.x, which is
+  // the second half of that move and what this line finishes.
   //
   // `api`, like the server dependency below and for the same reason: the call sites reference these
   // types in-package (`ee.schimke.composeai.cli.serve`), which the published artifact keeps.
@@ -443,14 +445,12 @@ dependencies {
   // session rather than spawning a daemon; the fixture lives with `ServeRenderHost`, which is what
   // it fakes, and the fixture variant keeps it off both modules' runtime classpaths.
   //
-  // Plain `testFixtures(...)` again, and against `render-host` rather than the server. Both halves
-  // of that changed in 2.2.0: the fixture MOVED with `ServeRenderHost` into
-  // `compose-preview-render-host`
-  // (compose-preview-server#38), and that module declares the conventional
-  // `<artifactId>-test-fixtures` capability from its first release.
+  // `testFixtures(project(":render-host"))` — the fixture moved with `ServeRenderHost` into
+  // `:render-host` (compose-preview-server#38, then into this repository in #5137), and a project
+  // dependency sidesteps capability matching entirely.
   //
-  // What this replaces is a workaround, now retired. `java-test-fixtures` derives the capability
-  // from the *Gradle project* name, and the server is `:server` upstream while it publishes as
+  // Worth recording what that retires. `java-test-fixtures` derives the capability from the
+  // *Gradle project* name, and the server is `:server` upstream while it publishes as
   // `compose-preview-serve`, so 2.0.0 advertised `ee.schimke.composeai:server-test-fixtures` and
   // `testFixtures(...)` matched nothing:
   //
@@ -805,9 +805,9 @@ tasks.named("check") { dependsOn("checkCliDaemonLibraryBoundary") }
 // module of this build; a published artifact enforces the same thing structurally and in the
 // stronger direction, because nothing in `cli/serve` can reach back into `:cli` from Maven Central.
 // The surviving question that note used to end on — that most of the crossing symbols were
-// render-host and history plumbing rather than server code — has since been answered upstream:
-// compose-preview-server 2.2.0 split them into `compose-preview-render-host`, which `:cli` now
-// depends on directly (#4832). Four symbols still cross into the server proper, all of them from
+// render-host and history plumbing rather than server code — has since been answered: the server
+// split them out in 2.2.0 and they now live in this build as `:render-host` (#5137), which `:cli`
+// depends on as a project. Four symbols still cross into the server proper, all of them from
 // `ServeCommand.kt`; see the dependency block above for what that still costs and what deciding
 // it would take.
 

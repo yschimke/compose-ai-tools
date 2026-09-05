@@ -371,10 +371,11 @@ composeai-contracts = "2.5.0"
 #
 # 2.2.0 also brought `compose-preview-render-host` — the render host, the bundle daemon and the
 # git-backed preview history, split out of the server so a caller that only renders offline does not
-# link a web server (yschimke/compose-preview-server#38, this repository's #4832). ONE version ref
-# for both, deliberately: they are cut from one build and one tag over there, and a skew between the
-# server and the render host it sits on top of is not a state that repository can produce.
-composeai-preview-serve = "2.21.0"
+# link a web server (yschimke/compose-preview-server#38, this repository's #4832). That artifact is
+# GONE from this catalog: the module moved here in 1.77.0 (#5137), the server now consumes it from
+# this repository (compose-preview-server#289), and 3.0.0 retired the old coordinate at its final
+# 2.x. `:cli` depends on `project(":render-host")`; there is no version ref to share any more.
+composeai-preview-serve = "3.0.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
@@ -418,12 +419,6 @@ composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issue
 # as a Gradle feature variant, so `testFixtures(libs.composeai.preview.serve)` picks it up without
 # a second catalog entry.
 composeai-preview-serve = { module = "ee.schimke.composeai:compose-preview-serve", version.ref = "composeai-preview-serve" }
-# The render host and history plumbing, without the web server (see `composeai-preview-serve` for
-# why they share a version ref). `compose-preview-serve` depends on this, so the coordinate would
-# resolve transitively either way; `:cli` names it because `bundle render` and `history manifest`
-# depend on it DIRECTLY and should say so — the day `serve` stops being a CLI command, those
-# commands keep compiling without anyone rediscovering what they were really using.
-composeai-preview-render-host = { module = "ee.schimke.composeai:compose-preview-render-host", version.ref = "composeai-preview-serve" }
 
 # The Remote Compose players (see `rcplayers`).
 rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace", version.ref = "rcplayers" }
