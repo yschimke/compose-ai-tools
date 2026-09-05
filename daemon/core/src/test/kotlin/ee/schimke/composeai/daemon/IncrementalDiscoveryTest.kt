@@ -41,6 +41,30 @@ class IncrementalDiscoveryTest {
     )
 
   // -----------------------------------------------------------------------
+  // DEFAULT_PREVIEW_ANNOTATION_FQNS
+  // -----------------------------------------------------------------------
+
+  /**
+   * The mirrored set has to carry every `@Preview` the authoritative `:gradle-plugin` pass reads,
+   * or the same file yields previews under Gradle and none in the editor. Asserted as literals
+   * because `:daemon:core` cannot depend on `:gradle-plugin` — see the kdoc on the set itself.
+   */
+  @Test
+  fun `default set carries the androidx, desktop and CMP Preview FQNs`() {
+    for (fqn in
+      listOf(
+        "androidx.compose.ui.tooling.preview.Preview",
+        "androidx.compose.desktop.ui.tooling.preview.Preview",
+        "org.jetbrains.compose.ui.tooling.preview.Preview",
+      )) {
+      assertTrue(
+        "the mirrored default set must recognise $fqn",
+        fqn in IncrementalDiscovery.DEFAULT_PREVIEW_ANNOTATION_FQNS,
+      )
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // cheapPrefilter
   // -----------------------------------------------------------------------
 

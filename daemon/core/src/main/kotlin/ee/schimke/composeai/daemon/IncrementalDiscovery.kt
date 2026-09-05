@@ -398,6 +398,11 @@ public class IncrementalDiscovery(
       setOf(
         "androidx.compose.ui.tooling.preview.Preview",
         "androidx.compose.desktop.ui.tooling.preview.Preview",
+        // Compose Multiplatform's own @Preview (`compose.components.uiToolingPreview`), which the
+        // authoritative pass has recognised since `PreviewDiscovery.CMP_PREVIEW_FQN`. Without it a
+        // commonMain preview written against the CMP-bundled artifact is discovered by the gradle
+        // plugin and skipped by the daemon — the same snippet behaving differently in the editor.
+        "org.jetbrains.compose.ui.tooling.preview.Preview",
         "androidx.wear.tiles.tooling.preview.Preview",
       )
 
