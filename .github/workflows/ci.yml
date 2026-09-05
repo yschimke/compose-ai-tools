@@ -1181,6 +1181,12 @@ jobs:
   # one: a 404 on download is a graceful skip, so the render still succeeds, just without a
   # composite. Deliberately NOT behind a `changes` path filter: a gate that can be scheduled away
   # is not a gate, and this one costs a second.
+  #
+  # The preview-server pin rides the same job, for the same reason and against the same hazard
+  # one degree louder: since #5183 `compose-preview serve` fetches its server from the release
+  # `composeai-preview-serve` names, so a pin naming a release with no distribution attached is
+  # not a degraded render but a command that cannot start at all. The job keeps its name — it is
+  # a required check, and renaming a required check blocks every PR until the ruleset catches up.
   xr-composite-pin:
     name: XR Composite Pin
     if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
@@ -1202,6 +1208,14 @@ jobs:
         run: python3 .github/ci/check_xr_composite_pin.py
       - name: Check the renderer pin resolves on Maven Central
         run: python3 .github/ci/check_xr_renderer_pin.py
+      - name: Run preview-server pin gate tests
+        run: python3 .github/ci/test_check_preview_server_pin.py -v
+      - name: Check the preview-server pin resolves to a release carrying the distribution
+        env:
+          # Same reason as above: authenticated so the releases API answers from a shared runner IP
+          # rather than rate-limiting into a warn-and-pass. Read-only.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/ci/check_preview_server_pin.py
 
   # `cli/serve-wasm` and compose-preview-server's `wasm-ui` are the same Compose/Wasm frontend
   # compiled twice — each repository against its own M3 catalog, which is why neither can consume

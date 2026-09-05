@@ -93,6 +93,7 @@ class ServeLauncherTest {
 class ServerBinaryDiscoveryTest {
 
   private val nothingOnPath: (String) -> File? = { null }
+  private val nothingCached: () -> File? = { null }
 
   @Test
   fun `the flag wins over the environment`() {
@@ -101,6 +102,7 @@ class ServerBinaryDiscoveryTest {
         listOf(ServerBinaryDiscovery.FLAG, "/opt/from-flag"),
         env = { "/opt/from-env" },
         pathLookup = nothingOnPath,
+        cacheLookup = nothingCached,
       )
 
     assertEquals("/opt/from-flag", assertNotNull(choice).binary)
@@ -114,6 +116,7 @@ class ServerBinaryDiscoveryTest {
         emptyList(),
         env = { "/opt/from-env" },
         pathLookup = { File("/usr/bin/compose-preview-server") },
+        cacheLookup = nothingCached,
       )
 
     assertEquals("/opt/from-env", assertNotNull(choice).binary)
@@ -127,6 +130,9 @@ class ServerBinaryDiscoveryTest {
         emptyList(),
         env = { null },
         pathLookup = { File("/usr/bin/compose-preview-server") },
+        cacheLookup = {
+          File("/home/u/.cache/composeai/preview-server/3.0.0/bin/compose-preview-server")
+        },
       )
 
     assertEquals("/usr/bin/compose-preview-server", assertNotNull(choice).binary)
@@ -137,10 +143,34 @@ class ServerBinaryDiscoveryTest {
    * Unlike the server's build-host discovery, a miss here is a failure — `serve` has nothing to
    * fall back to. The caller reports [ServerBinaryDiscovery.installationHint] and exits.
    */
+  /**
+   * The CLI's own fetched copy is the LAST resort, behind `PATH`: an operator who installed a
+   * server chose that one, and a download must never quietly win over a deliberate choice.
+   */
+  @Test
+  fun `the provisioned cache is the last resort`() {
+    val cached = File("/home/u/.cache/composeai/preview-server/3.0.0/bin/compose-preview-server")
+    val choice =
+      ServerBinaryDiscovery.choose(
+        emptyList(),
+        env = { null },
+        pathLookup = nothingOnPath,
+        cacheLookup = { cached },
+      )
+
+    assertEquals(cached.path, assertNotNull(choice).binary)
+    assertEquals(ServerBinaryDiscovery.CACHE, choice.source)
+  }
+
   @Test
   fun `nothing found is null`() {
     assertNull(
-      ServerBinaryDiscovery.choose(emptyList(), env = { null }, pathLookup = nothingOnPath)
+      ServerBinaryDiscovery.choose(
+        emptyList(),
+        env = { null },
+        pathLookup = nothingOnPath,
+        cacheLookup = nothingCached,
+      )
     )
   }
 
@@ -151,12 +181,16 @@ class ServerBinaryDiscoveryTest {
         listOf(ServerBinaryDiscovery.FLAG),
         env = { null },
         pathLookup = nothingOnPath,
+        cacheLookup = nothingCached,
       )
     )
   }
 
   /**
    * Someone who has not got the binary needs to be told how to get it, not just that it is absent.
+   * The hint is now reached only after an automatic fetch has failed, so it must also say that one
+   * was attempted — otherwise it reads as "you were always supposed to install this yourself",
+   * which is the state #5183 fixed.
    */
   @Test
   fun `the installation hint names the binary, the variable and the flag`() {
@@ -166,5 +200,6 @@ class ServerBinaryDiscoveryTest {
     assertContains(hint, ServerBinaryDiscovery.ENV)
     assertContains(hint, ServerBinaryDiscovery.FLAG)
     assertTrue(hint.contains("compose-preview-server"), "the hint does not say where it comes from")
+    assertTrue(hint.contains("fetches it for you"), "the hint does not say a fetch was attempted")
   }
 }

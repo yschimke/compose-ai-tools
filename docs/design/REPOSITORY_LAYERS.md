@@ -145,6 +145,20 @@ became launchers over the published server binary. An empty positive allowlist m
 `ee.schimke.composeai:compose-preview-*` coordinate reaching a runtime classpath fails, with no
 exceptions to argue about.
 
+**A launcher needs something to launch, and nothing installed it.** Closing the cycle moved a
+problem rather than removing one: the documented one-line installer in
+[`yschimke/skills`](https://github.com/yschimke/skills) fetches the CLI and the skill bundle and
+knows nothing about the server, so for everyone who installed the documented way `serve` printed an
+installation hint and exited
+([#5183](https://github.com/yschimke/compose-ai-tools/issues/5183)). The fix is on this side, not
+the installer's: `ServerDistributionProvision` fetches the pinned release's distribution on the
+first `serve` that finds no server and caches it under `<cache>/composeai/preview-server/<version>/`,
+the same first-use provisioning the CLI already does for the Skiko native and the XR compositor.
+Fetching it in the installer instead would have put a 120 MB download in front of everyone who only
+ever runs `render`, and would have made the install story span two repositories. Which server is
+fetched, and how the two version lines relate:
+[`docs/VERSIONING.md` § 8.1](../VERSIONING.md#81-the-preview-server-is-on-its-own-train).
+
 One edge survives, deliberately, and this task cannot see it. `compose-preview-serve` is still a
 `testImplementation` of `:cli`: two tests drive the CLI's own HTTP clients against a real
 `ServeHttpServer` to catch the two repositories' independently-declared wire types drifting apart,

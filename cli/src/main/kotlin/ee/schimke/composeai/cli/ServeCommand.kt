@@ -15,6 +15,11 @@ import kotlin.system.exitProcess
  * server spawns `compose-preview build-host --stdio` (see [BuildHostCommand]) when it wants a local
  * build. Neither side links the other.
  *
+ * **The binary is found, and failing that fetched.** [ServerBinaryDiscovery] answers which one to
+ * run — an explicit flag, the environment, `PATH`, then a copy this CLI has already downloaded —
+ * and [ServerDistributionProvision] fetches the pinned release when the machine has none, because
+ * nothing else installs it (#5183). Only a failed fetch is fatal.
+ *
  * **Arguments pass through untouched.** This deliberately parses nothing beyond finding the binary:
  * the server owns its own flags, and a launcher that validated them would be a second copy of that
  * surface, drifting from the first. `--help` reaches the server too, which is where the answer
@@ -23,7 +28,7 @@ import kotlin.system.exitProcess
 class ServeCommand(private val args: List<String>, private val browseProject: Boolean = false) {
 
   fun run() {
-    val choice = ServerBinaryDiscovery.choose(args)
+    val choice = ServerBinaryDiscovery.choose(args) ?: provision()
     if (choice == null) {
       System.err.println(ServerBinaryDiscovery.installationHint())
       exitProcess(1)
@@ -43,6 +48,20 @@ class ServeCommand(private val args: List<String>, private val browseProject: Bo
       }
     exitProcess(exit)
   }
+
+  /**
+   * Fetch the pinned server when the machine has none, and name the copy that results.
+   *
+   * Nothing installs this binary — that is #5183, and it made `serve` fail for everyone who
+   * installed the documented way — so a miss means "not fetched yet", not "not wanted". The fetch
+   * happens once, prints what it is doing (a 120 MB transfer that appeared as silence would read as
+   * a hang), and returns null having explained any failure, which the caller turns into
+   * [ServerBinaryDiscovery.installationHint].
+   */
+  private fun provision(): ServerBinaryDiscovery.Choice? =
+    ServerDistributionProvision.ensure()?.let {
+      ServerBinaryDiscovery.Choice(it.path, ServerBinaryDiscovery.CACHE)
+    }
 
   /**
    * The argv handed to the server.

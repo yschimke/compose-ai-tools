@@ -30,6 +30,22 @@ internal val BUNDLE_VERSION: String by lazy { cliVersionProperty("version") }
  */
 internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompositeVersion") }
 
+/**
+ * Release of the preview server `serve` and `browse` launch — see [ServerDistributionProvision].
+ *
+ * The `composeai-preview-serve` pin from `gradle/libs.versions.toml`, baked in at build time for
+ * the same reason [XR_COMPOSITE_VERSION] is: the installed CLI cannot read the version catalog, and
+ * the writer of the cache and any later reader of it must derive one directory.
+ *
+ * Deliberately NOT [BUNDLE_VERSION]. compose-preview-server releases on its own cadence and its
+ * version line is independent — it went to 2.0.0 when it left this repository while this one was
+ * still on 1.x — so the CLI's own version names no server at all. Deliberately not "latest" either:
+ * resolving that at run time would let a server this CLI has never been built against arrive under
+ * it without a pull request. Moving the pin is the reviewed act, and `check_preview_server_pin.py`
+ * fails a PR whose pin names a release with no distribution attached.
+ */
+internal val SERVE_VERSION: String by lazy { cliVersionProperty("serveVersion") }
+
 /** Read one key from the build-time-generated `cli-version.properties`. */
 private fun cliVersionProperty(key: String): String {
   val props = Properties()
@@ -64,6 +80,18 @@ internal const val SKILLS_REPO = "yschimke/skills"
  * one here, and that is the point.
  */
 internal const val XR_COMPOSITE_REPO = "yschimke/compose-preview-xr"
+
+/**
+ * GitHub repo slug the preview server is released from, and whose release assets carry the
+ * distribution [ServerDistributionProvision] fetches.
+ *
+ * Separate from [REPO] since the server was extracted (#4732): `compose-preview serve` is a
+ * launcher for a binary built, versioned and released there. The Maven coordinate
+ * `ee.schimke.composeai:compose-preview-serve` names the same software; the *distribution* — the
+ * launcher script and its `lib/` — is a release asset, not a Maven artifact, which is why this is a
+ * GitHub slug rather than a coordinate.
+ */
+internal const val PREVIEW_SERVER_REPO = "yschimke/compose-preview-server"
 
 /**
  * Compare two version strings componentwise (`major.minor.patch[-suffix]`), returning -1/0/1.
