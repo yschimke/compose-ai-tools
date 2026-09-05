@@ -163,6 +163,43 @@ internal object PackPreviewIdExclusions {
     return raw.flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
   }
 
+  /**
+   * What one pattern matched, so the pack can attribute its exclusions to the pattern that caused
+   * them (issue #5064). Mirrors the plugin's `PreviewIdExclusionMatch`, deliberately — the two
+   * lanes report the same shape because a reader comparing a pack log against a render log is
+   * reading about the same patterns. [matched] is per-pattern and patterns may overlap, so the
+   * counts need not sum to the number actually dropped.
+   */
+  data class Match(val pattern: String, val matched: Int, val total: Int) {
+    val line: String
+      get() =
+        "--exclude-preview-id '$pattern' matched $matched of $total preview(s)" +
+          if (matched == 0)
+            " — nothing excluded. Check the pattern: preview ids keep spaces where render " +
+              "filenames use underscores, and a plain pattern matches on substring."
+          else ""
+  }
+
+  /**
+   * Per-pattern match counts over [ids], in the order [patterns] were given.
+   *
+   * Separate from [retain] because they answer different questions: that one yields the ids to
+   * capture (overlap irrelevant), this one says which pattern did the work — and, crucially, which
+   * did none. A pattern at zero is almost always a typo, and the pack used to say only how many
+   * previews it skipped in total, which cannot tell three patterns apart.
+   */
+  fun matches(ids: List<String>, patterns: List<String>): List<Match> =
+    patterns
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+      .map { pattern ->
+        Match(
+          pattern = pattern,
+          matched = ids.count { matches(pattern, it) },
+          total = ids.size,
+        )
+      }
+
   /** [ids] with every entry matching [patterns] removed. An empty pattern list keeps everything. */
   fun retain(ids: List<String>, patterns: List<String>): List<String> {
     val cleaned = patterns.map { it.trim() }.filter { it.isNotEmpty() }

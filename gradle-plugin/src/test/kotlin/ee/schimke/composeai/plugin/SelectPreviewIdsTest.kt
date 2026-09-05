@@ -193,4 +193,50 @@ class SelectPreviewIdsTest {
     assertThat(selectPreviewIds(previews, listOf("=FilledButton_Light")).map { it.id })
       .containsExactly("FilledButton_Light")
   }
+
+  // --- per-pattern exclusion reporting (issue #5064) ---------------------------------------------
+
+  @Test
+  fun `exclusion match counts are reported per pattern, in the order given`() {
+    val matches = previewIdExclusionMatches(all, listOf("*_Dark", "*_HighContrast"))
+
+    assertThat(matches.map { it.pattern }).containsExactly("*_Dark", "*_HighContrast").inOrder()
+    assertThat(matches.map { it.matched }).containsExactly(2, 1).inOrder()
+    assertThat(matches.map { it.total }).containsExactly(5, 5).inOrder()
+  }
+
+  @Test
+  fun `a pattern that matches nothing is reported at zero, with the reason it usually happens`() {
+    // The concrete failure from #5064: a pattern copied off a PNG filename, whose underscores the
+    // id does not have. Silence turned that into a 26-minute render that then failed on exactly
+    // the previews the exclusion was meant to remove.
+    val matches = previewIdExclusionMatches(all, listOf("*_Sepia"))
+
+    assertThat(matches).hasSize(1)
+    assertThat(matches.single().matched).isEqualTo(0)
+    assertThat(matches.single().line).contains("matched 0 of 5 preview(s)")
+    assertThat(matches.single().line).contains("preview ids keep spaces")
+  }
+
+  @Test
+  fun `a matching pattern's line states the count and adds no advice`() {
+    val line = previewIdExclusionMatches(all, listOf("*_Dark")).single().line
+
+    assertThat(line).isEqualTo("--exclude-preview-id '*_Dark' matched 2 of 5 preview(s)")
+  }
+
+  @Test
+  fun `overlapping patterns are each counted in full, so the counts need not sum`() {
+    // Deliberate: the reader is diagnosing which pattern did the work, not reconciling a total.
+    val matches = previewIdExclusionMatches(all, listOf("*_Dark", "FilledButton*"))
+
+    assertThat(matches.map { it.matched }).containsExactly(2, 3).inOrder()
+    assertThat(excludePreviewIds(all, listOf("*_Dark", "FilledButton*"))).hasSize(1)
+  }
+
+  @Test
+  fun `blank patterns are reported no more than they are applied`() {
+    assertThat(previewIdExclusionMatches(all, listOf(" ", ""))).isEmpty()
+    assertThat(previewIdExclusionMatches(all, emptyList())).isEmpty()
+  }
 }
