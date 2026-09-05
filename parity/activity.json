@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T16:26:13.874Z",
+  "generatedAt": "2026-09-05T17:13:06.264Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e03d455f0d8ca159c318917212141ec382a6b91b",
+        "subject": "test(wear-m3): render the UI builder's generated Wear screen for real (#5208)",
+        "at": "2026-09-05T18:04:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "22e026a0677bdc701fc955f3dcd075aab975c5ed",
         "subject": "chore(ci): update the design-artifacts export driver to v1.81.0 (#5204)",
@@ -474,14 +482,6 @@
         "sha": "445cd9e5d52032a0b9861470a771db45cce2b176",
         "subject": "fix(renderer-android): resolve defaulted-parameter Glance previews (#5131)",
         "at": "2026-09-05T08:16:31+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4dea3f6936f4cdd9ab8e9b5e356f5639ff544352",
-        "subject": "revert: adopt a merge queue for main (#5133)",
-        "at": "2026-09-05T08:14:21+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
