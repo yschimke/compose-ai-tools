@@ -6981,8 +6981,8 @@
     "org.jetbrains.compose.material3:material3",
     "androidx.compose.material3.adaptive:adaptive (planned)"
   ],
-  "renderer": "compose-preview 1.75.1-SNAPSHOT",
-  "generatedAt": "2026-09-05T06:36:26.553Z",
+  "renderer": "compose-preview 1.76.1-SNAPSHOT",
+  "generatedAt": "2026-09-05T08:00:26.431Z",
   "display": {
     "hero": "Template/AppScaffold"
   },
