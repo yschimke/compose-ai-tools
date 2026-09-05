@@ -153,6 +153,7 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
 
 | You need | Read |
 | --- | --- |
+| Which repository a module belongs in | [`docs/design/REPOSITORY_LAYERS.md`](docs/design/REPOSITORY_LAYERS.md) |
 | Architecture, commands, state seams, constraints | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
 | The contributor doc index | [`docs/README.md`](docs/README.md) |
 | Releasing, versioning | [`docs/RELEASING.md`](docs/RELEASING.md), [`docs/VERSIONING.md`](docs/VERSIONING.md) |
