@@ -63,4 +63,23 @@ data class TargetParameter(
    * True implies [typeFqn] is set, because a call site emitting `Type()` also has to import it.
    */
   val noArgConstructible: Boolean = false,
+  /**
+   * The **fully-qualified callable** of a no-argument factory for this parameter's type —
+   * `androidx.compose.foundation.text.input.rememberTextFieldState` for a `TextFieldState` — or
+   * null when the classpath offers none.
+   *
+   * Compose has a naming convention for exactly this: a state type `T` that wants remembering ships
+   * a `@Composable fun rememberT(…)` beside it, every parameter defaulted (`rememberScrollState`,
+   * `rememberLazyListState`, `rememberCoroutineScope`, `rememberTextFieldState`). A generated call
+   * site should prefer it over the raw constructor, because raw state construction in a composable
+   * body does not survive recomposition and the factory is what a human would write.
+   *
+   * Resolved on the classpath at discovery time, never assumed from the name: the record carries
+   * the callable it actually found. A convention that is looked up is a fact; a convention that is
+   * written down in the generator is the authored table `docs/design/COMPONENT_RECORD.md` keeps
+   * deleting. Null when no such function exists, when it is not `@Composable`, when any parameter
+   * lacks a default, or when it is gated behind an opt-in marker the call site cannot carry — every
+   * one of those being a way `rememberT()` fails to compile.
+   */
+  val noArgFactory: String? = null,
 )
