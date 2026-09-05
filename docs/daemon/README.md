@@ -37,6 +37,9 @@ the CI-canonical render path.
 - **[PROTOCOL.md](PROTOCOL.md)** — locked v1 wire format between
   client (VS Code, harness, MCP shim) and daemon.
 - **[CONFIG.md](CONFIG.md)** — `composePreview.daemon { … }` DSL.
+- **[TUNABLES.md](TUNABLES.md)** — generated table of every
+  `composeai.daemon.*` system property, with its type and default.
+  Source of truth is `DaemonProperties` in `:daemon:core`.
 
 ### Subsystems
 

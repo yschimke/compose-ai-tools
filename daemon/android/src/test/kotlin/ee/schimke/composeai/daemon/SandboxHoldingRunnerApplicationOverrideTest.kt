@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -24,12 +25,12 @@ class SandboxHoldingRunnerApplicationOverrideTest {
 
   @After
   fun clearSysprop() {
-    System.clearProperty("composeai.daemon.useConsumerApplication")
+    System.clearProperty(DaemonProperties.Names.USE_CONSUMER_APPLICATION)
   }
 
   @Test
   fun defaultPinsAndroidAppApplication() {
-    System.clearProperty("composeai.daemon.useConsumerApplication")
+    System.clearProperty(DaemonProperties.Names.USE_CONSUMER_APPLICATION)
     val runner = ExposedRunner(DummyTest::class.java)
     // FQN comparison (not class-identity) because the runner is constructed under Robolectric's
     // shadow-aware classloader chain; `android.app.Application::class.java` resolved here and the
@@ -45,14 +46,14 @@ class SandboxHoldingRunnerApplicationOverrideTest {
 
   @Test
   fun useConsumerApplicationFalseStillPinsStub() {
-    System.setProperty("composeai.daemon.useConsumerApplication", "false")
+    System.setProperty(DaemonProperties.Names.USE_CONSUMER_APPLICATION, "false")
     val runner = ExposedRunner(DummyTest::class.java)
     assertEquals("android.app.Application", runner.exposedGlobalConfig().application.java.name)
   }
 
   @Test
   fun useConsumerApplicationTrueRestoresParentDefault() {
-    System.setProperty("composeai.daemon.useConsumerApplication", "true")
+    System.setProperty(DaemonProperties.Names.USE_CONSUMER_APPLICATION, "true")
     val runner = ExposedRunner(DummyTest::class.java)
     // Opt-in must NOT pin android.app.Application — the consumer's manifest Application wins.
     // Robolectric's sentinel default ("look at manifest") is its own class

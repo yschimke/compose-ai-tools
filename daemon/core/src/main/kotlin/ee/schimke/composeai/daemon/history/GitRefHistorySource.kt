@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.history
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.io.LEGACY_HISTORY_DIRNAME
@@ -958,10 +959,10 @@ public class GitRefHistorySource(
      * Comma/semicolon-separated list of refs (e.g.
      * `refs/heads/preview/main,refs/heads/preview/agent/foo`).
      */
-    public const val GIT_REF_HISTORY_PROP: String = "composeai.daemon.gitRefHistory"
+    public const val GIT_REF_HISTORY_PROP: String = DaemonProperties.Names.GIT_REF_HISTORY
 
     /** Sync mode for the reporting refs: `READ_ONLY` (default) or `WRITE_LOCAL`. */
-    public const val SYNC_MODE_PROP: String = "composeai.daemon.gitRefHistorySyncMode"
+    public const val SYNC_MODE_PROP: String = DaemonProperties.Names.GIT_REF_HISTORY_SYNC_MODE
 
     // Synthetic identity for daemon-authored reporting-branch commits. These are machine-generated
     // history commits in the *consumer's* repo (not this project's git history), so they carry a
@@ -1003,7 +1004,7 @@ public class GitRefHistorySource(
     public const val MAX_PUSH_ATTEMPTS: Int = 5
 
     /** Sysprop for the reporting-branch commit debounce window in ms (#1882). */
-    public const val DEBOUNCE_PROP: String = "composeai.daemon.gitRefHistoryDebounceMs"
+    public const val DEBOUNCE_PROP: String = DaemonProperties.Names.GIT_REF_HISTORY_DEBOUNCE_MS
 
     /** Default debounce window (ms): coalesce a render burst into one commit. `0` disables it. */
     public const val DEFAULT_DEBOUNCE_MS: Long = 1_000
@@ -1015,7 +1016,8 @@ public class GitRefHistorySource(
     }
 
     /** Sysprop for the reporting-branch publish policy (#1872 curation). */
-    public const val PUBLISH_POLICY_PROP: String = "composeai.daemon.gitRefHistoryPublishPolicy"
+    public const val PUBLISH_POLICY_PROP: String =
+      DaemonProperties.Names.GIT_REF_HISTORY_PUBLISH_POLICY
 
     /**
      * Parses [PUBLISH_POLICY_PROP]; `all` → [PublishPolicy.ALL], else →

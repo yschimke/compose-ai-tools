@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
 import ee.schimke.composeai.daemon.bridge.SandboxSlot
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.RemoteComposeChange
@@ -94,8 +95,7 @@ internal constructor(
    * verify the lease itself or for scenarios where an external lifecycle (e.g. a smoke test driver)
    * owns the session's close path explicitly.
    */
-  private val idleLeaseMs: Long =
-    System.getProperty(IDLE_LEASE_PROP)?.toLongOrNull() ?: DEFAULT_IDLE_LEASE_MS,
+  private val idleLeaseMs: Long = DaemonProperties.interactiveIdleLeaseMs.read(),
   /**
    * Invoked from [close] (after the bridge round-trip and `activeStreamRef` clear) so the host can
    * drop its own reference to this session — see [RobolectricHost.activeInteractiveSession]. PR C
@@ -872,7 +872,7 @@ internal constructor(
      * [DEFAULT_IDLE_LEASE_MS] of inactivity. Operators can tune this for slow networks; tests pass
      * a non-default via the constructor parameter directly.
      */
-    const val IDLE_LEASE_PROP: String = "composeai.daemon.interactive.idleLeaseMs"
+    const val IDLE_LEASE_PROP: String = DaemonProperties.Names.INTERACTIVE_IDLE_LEASE_MS
 
     /**
      * Default idle-lease timeout — 1 minute. Long enough that a user thinking about their preview

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -1198,7 +1199,10 @@ class RenderEngineTest {
   fun resourceReadsWriteResourcesUsedDataProduct() {
     val outputDir = tempFolder.newFolder("renders-resources")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
-    System.setProperty("composeai.daemon.moduleProjectDir", File("daemon/android").absolutePath)
+    System.setProperty(
+      DaemonProperties.Names.MODULE_PROJECT_DIR,
+      File("daemon/android").absolutePath,
+    )
     System.setProperty("roborazzi.test.record", "true")
     val host = RobolectricHost()
     host.start()

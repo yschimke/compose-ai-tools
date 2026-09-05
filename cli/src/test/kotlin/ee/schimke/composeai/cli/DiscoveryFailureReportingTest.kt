@@ -118,4 +118,85 @@ class DiscoveryFailureReportingTest {
     assertTrue(lines.any { it.contains(":lib:") }, "got $lines")
     assertEquals(null, agpClassloaderGuidance(failures))
   }
+
+  // A cold configuration cancelled by the CLI's timeout (issue #5171). Gradle words the
+  // per-project failure as "Build cancelled." behind the model-build wrapper.
+  private val cancelled =
+    "Could not build 'ee.schimke.composeai.plugin.tooling.ComposePreviewModel' model. " +
+      "Build cancelled."
+
+  @Test
+  fun `recognises a cancelled project and does not confuse it with a configuration failure`() {
+    assertTrue(isDiscoveryCancellationFailure(cancelled))
+    assertTrue(isDiscoveryCancellationFailure("BuildCancelledException: Build cancelled"))
+    assertTrue(!isDiscoveryCancellationFailure("Cannot resolve external dependency"))
+    assertTrue(
+      !isDiscoveryCancellationFailure(noClassDefFound),
+      "the AGP classloader signature is a real configuration failure, not a timeout",
+    )
+  }
+
+  @Test
+  fun `a cancelled discovery is reported as a timeout, with re-run advice and no setup guidance`() {
+    val failures =
+      listOf(
+        ProjectDiscoveryFailure(
+          ":",
+          "A problem occurred configuring root project. Build cancelled.",
+        ),
+        ProjectDiscoveryFailure(":app", cancelled),
+        ProjectDiscoveryFailure(":cli", cancelled),
+      )
+    val lines = mutableListOf<String>()
+    printDiscoveryFailures(failures, err = { lines += it }, timeoutSeconds = 120)
+    val msg = lines.joinToString("\n")
+    assertTrue(msg.contains("Discovery timed out after 120s"), msg)
+    assertTrue(msg.contains("3 of 3 project(s) were cancelled"), msg)
+    assertTrue(msg.contains("Re-run the same command"), msg)
+    assertTrue(msg.contains("--timeout 240"), msg)
+    // The whole point of #5171: no "your project is misconfigured" reading of a skipped project.
+    assertTrue(!msg.contains("plugins { }"), msg)
+    assertTrue(!msg.contains("failed to configure during discovery"), msg)
+  }
+
+  @Test
+  fun `omits the budget when the caller has no timeout to report`() {
+    val lines = mutableListOf<String>()
+    printDiscoveryFailures(
+      listOf(ProjectDiscoveryFailure(":app", cancelled)),
+      err = { lines += it },
+    )
+    val msg = lines.joinToString("\n")
+    assertTrue(msg.contains("Discovery timed out while Gradle"), msg)
+    assertTrue(!msg.contains("--timeout <seconds> (e.g."), msg)
+  }
+
+  @Test
+  fun `keeps the per-project list when cancellations are a minority of the failures`() {
+    val failures =
+      listOf(
+        ProjectDiscoveryFailure(":app", cancelled),
+        ProjectDiscoveryFailure(":lib", "Cannot resolve external dependency"),
+        ProjectDiscoveryFailure(":data", "Cannot resolve external dependency"),
+      )
+    val lines = mutableListOf<String>()
+    printDiscoveryFailures(failures, err = { lines += it }, timeoutSeconds = 600)
+    val msg = lines.joinToString("\n")
+    // The timeout still leads — discovery did not finish — but the real failures are not hidden.
+    assertTrue(msg.contains("Discovery timed out"), msg)
+    assertTrue(msg.contains("3 project(s) failed to configure"), msg)
+    assertTrue(lines.any { it.contains(":lib:") }, "got $lines")
+  }
+
+  @Test
+  fun `no timeout guidance when nothing was cancelled`() {
+    assertEquals(
+      null,
+      discoveryTimeoutGuidance(
+        listOf(ProjectDiscoveryFailure(":app", "boom")),
+        timeoutSeconds = 60,
+      ),
+    )
+    assertEquals(null, discoveryTimeoutGuidance(emptyList()))
+  }
 }

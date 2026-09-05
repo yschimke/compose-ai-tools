@@ -74,6 +74,16 @@ class DoctorCommand(
   private val projectDirArg = args.flagValue("--project")
 
   /**
+   * `--timeout <seconds>` — the budget the discovery model query runs under, mirroring
+   * [Command.timeoutSeconds] so `doctor` reads the same flag as every other command. Doctor used
+   * `runBuildAction`'s 60s default and had no way to raise it, which is how a cold configuration
+   * that legitimately takes minutes came back as "no modules have the plugin applied"
+   * (issue #5171).
+   */
+  private val timeoutSeconds: Long =
+    args.flagValue("--timeout")?.toLongOrNull() ?: GradleConnection.DEFAULT_TIMEOUT_SECONDS
+
+  /**
    * Opt-in: when set, [runProjectChecks] also spawns each module's daemon JVM, completes the
    * `initialize` round-trip, and tears it down. Slow (~600ms desktop, 3-10s Robolectric per module)
    * so it's a separate flag rather than part of the default battery. `--with-daemon` is the same
@@ -368,9 +378,13 @@ class DoctorCommand(
             // project-scope checks can compare against the daemon's JDK
             // (e.g. flagging test worker mismatch in #142).
             checkGradleDaemon(gc)
-            gc.runBuildAction(GatherComposePreviewModelAction()).also {
-              gradleAccessFailure = gc.lastModelAccessFailure
-            }
+            // The caller's `--timeout` budget, not `runBuildAction`'s 60s default: discovery
+            // configures every project, and a cold multi-module configuration measured in minutes
+            // was being cancelled at 60s and then reported as a project-setup problem (issue
+            // #5171).
+            gc
+              .runBuildAction(GatherComposePreviewModelAction(), timeoutSeconds = timeoutSeconds)
+              .also { gradleAccessFailure = gc.lastModelAccessFailure }
           }
       } catch (e: Exception) {
         addCheck(
@@ -454,27 +468,79 @@ class DoctorCommand(
               if (fs.size > 10) " (… and ${fs.size - 10} more)" else ""
           }
       val raceGuidance = model.failures.firstNotNullOfOrNull { diagnosePublicationRace(it.message) }
+      // A project cancelled mid-configuration was never evaluated, so discovery did not observe
+      // anything about it — least of all that the plugin isn't applied. Reporting the cold-start
+      // timeout as a setup problem, complete with a `plugins { }` snippet, sent people off to edit
+      // build files that were already correct (issue #5171).
+      val cancelled = model.failures.count { isDiscoveryCancellationFailure(it.message) }
+      if (cancelled > 0 && raceGuidance == null) {
+        addCheck(
+          DoctorCheck(
+            id = "project.discovery-timeout",
+            category = "project",
+            status = "error",
+            message =
+              "discovery timed out after ${timeoutSeconds}s while Gradle configured the build",
+            detail =
+              "$cancelled of ${model.failures.size} project(s) were cancelled mid-configuration " +
+                "(\"Build cancelled.\") rather than failing to configure. A build with no " +
+                "configuration cache entry pays full cold configuration on the first pass, which " +
+                "on a large multi-module build can take minutes." +
+                (failureDetail?.let { " $it" } ?: ""),
+            remediation =
+              DoctorRemediation(
+                summary =
+                  "Re-run the same command — the second pass reuses the cached configuration — or " +
+                    "raise the budget with --timeout <seconds>.",
+                commands =
+                  listOf(
+                    "compose-preview doctor",
+                    "compose-preview doctor --timeout ${timeoutSeconds * 2}",
+                  ),
+              ),
+          )
+        )
+        addCheck(
+          DoctorCheck(
+            id = "project.plugin-applied",
+            category = "project",
+            status = "skipped",
+            message = "plugin application check skipped because discovery did not complete",
+          )
+        )
+        return
+      }
+      // Discovery that skipped projects can't tell "the plugin isn't applied" from "we never
+      // looked", so the honest verdict when anything failed is that discovery is incomplete — and
+      // the `plugins { }` snippet, which asserts the former, is withheld (issue #5171).
+      val incomplete = raceGuidance == null && model.failures.isNotEmpty()
       addCheck(
         DoctorCheck(
           id = "project.plugin-applied",
           category = "project",
           status = "error",
-          message = "no modules have the compose-preview plugin applied",
+          message =
+            if (incomplete)
+              "discovery did not complete — ${model.failures.size} project(s) failed to configure, " +
+                "so no modules could be inspected"
+            else "no modules have the compose-preview plugin applied",
           detail = failureDetail,
           remediation =
             DoctorRemediation(
               summary =
                 if (raceGuidance != null) raceGuidance
-                else if (failureDetail != null)
-                  "Projects failed to configure during discovery — rerun with --verbose for full " +
-                    "Gradle output. If the plugin is applied via a convention plugin, the CLI now " +
-                    "skips auto-inject automatically; otherwise apply it in your module's " +
-                    "`plugins { }` block."
+                else if (incomplete)
+                  "Fix the configuration failures above — rerun with --verbose for full Gradle " +
+                    "output. Until discovery completes the CLI cannot tell whether the plugin is " +
+                    "applied. If it is applied via a convention plugin, the CLI skips auto-inject " +
+                    "automatically."
                 else "Apply the plugin in your module's `plugins { }` block.",
               commands =
-                listOf(
-                  "id(\"ee.schimke.composeai.preview\") version \"$recommendedPluginVersion\""
-                ),
+                if (incomplete) listOf("compose-preview doctor --verbose")
+                else
+                  listOf(
+                    "id(\"ee.schimke.composeai.preview\") version \"$recommendedPluginVersion\""
+                  ),
               docs = "https://github.com/$REPO#usage",
             ),
         )

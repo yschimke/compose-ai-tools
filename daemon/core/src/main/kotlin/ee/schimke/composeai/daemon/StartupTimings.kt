@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import java.lang.management.ManagementFactory
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -45,10 +46,10 @@ public object StartupTimings {
   public val jvmStartMs: Long = ManagementFactory.getRuntimeMXBean().startTime
 
   /** Sysprop knob to suppress stderr emission. Marks are still buffered for [summary]. */
-  public const val QUIET_PROP: String = "composeai.daemon.startupQuiet"
+  public const val QUIET_PROP: String = DaemonProperties.Names.STARTUP_QUIET
 
   private val quiet: Boolean
-    get() = System.getProperty(QUIET_PROP) == "true"
+    get() = DaemonProperties.startupQuiet.read()
 
   private val buffer = ConcurrentLinkedQueue<Mark>()
   private val summarised = AtomicBoolean(false)

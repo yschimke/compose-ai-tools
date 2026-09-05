@@ -23,6 +23,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
 import ee.schimke.composeai.daemon.bridge.SandboxSlot
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.daemon.pool.SandboxProcessPool
 import ee.schimke.composeai.daemon.protocol.DataExtensionDescriptor
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
@@ -166,9 +167,7 @@ open class RobolectricHost(
    * 1 for the rest of the daemon's lifetime — interactive capacity is one held session at a time
    * per host (INTERACTIVE-ANDROID.md § 2.1), so a single zombie burns the whole pool.
    */
-  private val interactiveIdleLeaseMs: Long =
-    System.getProperty(AndroidInteractiveSession.IDLE_LEASE_PROP)?.toLongOrNull()
-      ?: AndroidInteractiveSession.DEFAULT_IDLE_LEASE_MS,
+  private val interactiveIdleLeaseMs: Long = DaemonProperties.interactiveIdleLeaseMs.read(),
   /**
    * Issue #1204 — interactive-session lifecycle listener for the `compose/recomposition` producer
    * ([AndroidRecompositionDataProductRegistry]). Called from [acquireInteractiveSession] after the
@@ -442,9 +441,7 @@ open class RobolectricHost(
     if (sandboxCount > 1)
       SandboxProcessPool(
         workerCount = sandboxCount - 1,
-        bootTimeoutMs =
-          System.getProperty(SANDBOX_BOOT_TIMEOUT_PROP)?.toLongOrNull()
-            ?: DEFAULT_SANDBOX_BOOT_TIMEOUT_MS,
+        bootTimeoutMs = DaemonProperties.sandboxBootTimeoutMs.read(),
       )
     else null
 
@@ -530,13 +527,9 @@ open class RobolectricHost(
     // One in-process slot, always. Slots 1..N-1 live in worker JVMs and hold no bridge state here.
     DaemonHostBridge.configureSlotCount(LOCAL_SANDBOX_COUNT)
     readySlotCount.set(0)
-    val timeoutMs =
-      System.getProperty(SANDBOX_BOOT_TIMEOUT_PROP)?.toLongOrNull()
-        ?: DEFAULT_SANDBOX_BOOT_TIMEOUT_MS
+    val timeoutMs = DaemonProperties.sandboxBootTimeoutMs.read()
     // Read per-start (not at construction) so tests can flip the sysprop around start().
-    val backgroundBoot =
-      sandboxCount > 1 &&
-        (System.getProperty(BACKGROUND_BOOT_PROP)?.toBooleanStrictOrNull() ?: false)
+    val backgroundBoot = sandboxCount > 1 && DaemonProperties.backgroundSandboxBoot.read()
 
     // SANDBOX-POOL.md — slot 0 is the in-process sandbox and always boots eagerly: [start]'s
     // contract is that the host can serve a render when it returns. Slots 1..N-1 are worker JVMs,
@@ -632,8 +625,7 @@ open class RobolectricHost(
    * correctness one. Disable with `-Dcomposeai.daemon.warmRenderOnBoot=false`.
    */
   private fun warmSlotRender(slotIdx: Int) {
-    val enabled = System.getProperty(WARM_RENDER_PROP)?.toBooleanStrictOrNull() ?: true
-    if (!enabled) return
+    if (!DaemonProperties.warmRenderOnBoot.read()) return
     val id = RenderHost.nextRequestId()
     val startedAt = System.nanoTime()
     try {
@@ -2033,7 +2025,7 @@ open class RobolectricHost(
     const val ANDROID_SDK: Int = 35
 
     /** Same sysprop the desktop side uses; honoured on Android too. */
-    const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
+    const val RECORDINGS_DIR_PROP: String = DaemonProperties.Names.RECORDINGS_DIR
 
     /**
      * Sysprop knob for [start]'s sandbox-bootstrap deadline. Cold first run on an empty Maven local
@@ -2042,7 +2034,7 @@ open class RobolectricHost(
      * that. Warm boots (cache hit) are 5–15s and never approach this limit. Override with
      * `-Dcomposeai.daemon.sandboxBootTimeoutMs=<ms>` for slower CI runners or constrained networks.
      */
-    const val SANDBOX_BOOT_TIMEOUT_PROP: String = "composeai.daemon.sandboxBootTimeoutMs"
+    const val SANDBOX_BOOT_TIMEOUT_PROP: String = DaemonProperties.Names.SANDBOX_BOOT_TIMEOUT_MS
 
     /** 10 minutes — covers a cold-cache instrumented-android-all download + first-time scan. */
     const val DEFAULT_SANDBOX_BOOT_TIMEOUT_MS: Long = 10L * 60L * 1000L
@@ -2056,14 +2048,14 @@ open class RobolectricHost(
      * `ServeBundleDaemon` sets it for serve-spawned Android daemons and the deploy image sets it
      * via `JAVA_TOOL_OPTIONS`.
      */
-    const val BACKGROUND_BOOT_PROP: String = "composeai.daemon.backgroundSandboxBoot"
+    const val BACKGROUND_BOOT_PROP: String = DaemonProperties.Names.BACKGROUND_SANDBOX_BOOT
 
     /**
      * Sysprop gating the boot-time warm render each background-booted slot gets (see
      * [warmSlotRender]). Default **true** — only consulted when background boot is active, since
      * the warm render rides the background boot thread.
      */
-    const val WARM_RENDER_PROP: String = "composeai.daemon.warmRenderOnBoot"
+    const val WARM_RENDER_PROP: String = DaemonProperties.Names.WARM_RENDER_ON_BOOT
 
     /**
      * Budget for one boot-time warm render. Generous versus a warm frame (~seconds) because the

@@ -150,6 +150,19 @@ kotlin {
   @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class) abiValidation()
 }
 
+// `docs/daemon/TUNABLES.md` is generated from `DaemonProperties` and gated by
+// `DaemonPropertiesDocTest`. Forward the regeneration opt-in into the test JVM so the doc can be
+// rewritten in place:
+//
+//     ./gradlew :daemon:core:test --tests '*DocTest*' -Pcomposeai.docs.regenerate=true
+//
+// Read through `providers` so the configuration cache keys on the property rather than on a
+// config-time read.
+tasks.withType<Test>().configureEach {
+  val regenerate = providers.gradleProperty("composeai.docs.regenerate").orElse("false")
+  systemProperty("composeai.docs.regenerate", regenerate.get())
+}
+
 // `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin, so an unrecorded surface
 // change would pass CI silently. Wire it explicitly — the gate is only worth having if it runs.
 tasks.named("check") { dependsOn("checkKotlinAbi") }

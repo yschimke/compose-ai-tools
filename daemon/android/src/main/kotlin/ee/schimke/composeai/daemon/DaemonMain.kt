@@ -4,6 +4,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
+import ee.schimke.composeai.daemon.config.DaemonProperties
 import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
@@ -83,7 +84,7 @@ fun main(args: Array<String>) {
   // left to serve normal renders, and a typical preview grid wants extra slots for parallel
   // renders, so default the pool to five sandboxes when warmSpare is on — one here plus four
   // worker JVMs (SANDBOX-POOL.md). Explicit `composeai.daemon.sandboxCount` still wins.
-  val warmSpareEnabled = System.getProperty(WARM_SPARE_PROP)?.toBooleanStrictOrNull() ?: true
+  val warmSpareEnabled = DaemonProperties.warmSpare.read()
   val defaultSandboxCount = if (warmSpareEnabled) 5 else 1
 
   // SANDBOX-POOL.md (Layer 3) — read the supervisor-supplied sandbox-count knob. When unset, use
@@ -756,13 +757,13 @@ private inline fun MutableList<Extension>.tryAdd(label: String, build: () -> Ext
 }
 
 /** HISTORY.md § "What this PR lands § H1" — null disables history. */
-private const val HISTORY_DIR_PROP = "composeai.daemon.historyDir"
+private const val HISTORY_DIR_PROP = DaemonProperties.Names.HISTORY_DIR
 
 /** Optional override for git-provenance resolution; defaults to JVM CWD. */
-private const val WORKSPACE_ROOT_PROP = "composeai.daemon.workspaceRoot"
+private const val WORKSPACE_ROOT_PROP = DaemonProperties.Names.WORKSPACE_ROOT
 
 /** Module project path stamped into every history entry's `module` field. */
-private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
+private const val MODULE_ID_PROP = DaemonProperties.Names.MODULE_ID
 
 /**
  * Adapts [PreviewIndex] into the resolver [RobolectricHost] needs for held interactive sessions.
@@ -914,6 +915,4 @@ private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().
  * replicasPerDaemon`. Default 1 preserves the pre-pool single-sandbox behaviour. Values < 1 are
  * coerced to 1.
  */
-private const val SANDBOX_COUNT_PROP = "composeai.daemon.sandboxCount"
-
-private const val WARM_SPARE_PROP = "composeai.daemon.warmSpare"
+private const val SANDBOX_COUNT_PROP = DaemonProperties.Names.SANDBOX_COUNT
