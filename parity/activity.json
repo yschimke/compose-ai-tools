@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T09:06:52.117Z",
+  "generatedAt": "2026-09-05T09:19:15.143Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "3e13ee0eb9fb2a192c44c3216ff9b7c4c029f59f",
+        "subject": "feat(design-artifacts): expose an imported project's themes (#5158)",
+        "at": "2026-09-05T10:11:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "778d4475db663ad2b976688f29de3fa2f5f7248a",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.79.0 (#5157)",
+        "at": "2026-09-05T10:10:52+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8deeab29ebc622fdb9290fec71065cbd0e72c891",
+        "subject": "chore(main): release 1.79.0 (#5156)",
+        "at": "2026-09-05T10:00:09+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "48a93ff67b544fae36ccb723cba0f15f3e3f20f5",
         "subject": "feat(knobs): let an enum constant declare the seed text it answers to (#5155)",
@@ -458,30 +482,6 @@
         "sha": "25f938816a1f2e28d8dc8d37a680ee7bce2b84a1",
         "subject": "docs: correct which gap blocks the live-lane sample from migrating (#5097)",
         "at": "2026-09-04T17:47:23+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bbf60f95050fdbc8d9ff7a9e72b52cbb14c3b89a",
-        "subject": "feat(daemon): declare a preview's parameter knobs to the viewer (#5095)",
-        "at": "2026-09-04T17:10:26+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c34f9f8beb364a374e7937ec8736705a61e73cc1",
-        "subject": "feat(discovery): recover a parameter knob's literal default from the class file (#5093)",
-        "at": "2026-09-04T16:55:47+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "53b8b115c2fad30d4e0baf8a0e2cb274c88d2dc8",
-        "subject": "fix(daemon): refresh the daemon-core ABI dump (#5094)",
-        "at": "2026-09-04T16:54:02+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
