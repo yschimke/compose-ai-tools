@@ -16,7 +16,7 @@ on:
     types: [opened, edited, synchronize, reopened]
   # Required checks are matched in the merge-group context, so this workflow
   # has to report there too or nothing can leave the queue. What it checks
-  # there is a different question — see the `queue` job.
+  # there is a different question — see the merge_group lane in `lint`.
   merge_group:
     types: [checks_requested]
 
@@ -50,17 +50,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ONE job, two lanes, and that is load-bearing rather than tidy. The required
+  # status check is matched by NAME, and a job whose `if:` is false still posts
+  # a check run — as `skipped`, which branch protection and the merge queue both
+  # count as passing. So two jobs called "Conventional Commit title" would post
+  # two check runs of the same context on every event, one of them always green
+  # by virtue of not having run, and the gate resolves on whichever reported
+  # last. A failing lint could then be masked by its own skipped twin. Splitting
+  # the lanes into steps keeps it one check run that means one thing.
+  #
+  # (This is the mirror image of the asymmetry integration.yml documents: there,
+  # a skipped MATRIX job posts nothing and the required leg hangs; here, a
+  # skipped plain job posts something and the required context doubles.)
   lint:
     name: Conventional Commit title
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      # ── pull_request lane ────────────────────────────────────────────────
       - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # Subset release-please recognises. Keep in sync with any custom
-          # release-please commit-types config (none currently — defaults).
+          # release-please commit-types config (none currently — defaults), and
+          # with the `types` list in the merge-queue step below.
           types: |
             feat
             fix
@@ -75,39 +90,34 @@ jobs:
             revert
           requireScope: false
 
-  # The merge-queue half of the same required context. Only one of `lint` and
-  # `queue` runs on any given event, so the check reports exactly once.
-  #
-  # It does NOT re-run the action above. That action reads the PR title out of
-  # its own event payload, and a merge group has no PR — a batch can hold
-  # several, and the payload names none of them. Nor can the answer be a
-  # pass-through "already checked on the PR": a required check that always
-  # reports green is not a check.
-  #
-  # So it validates what the merge group actually has, which is the thing the
-  # PR title exists to produce: the commit subjects GitHub is about to
-  # fast-forward `main` to. Under squash merge those subjects ARE the PR
-  # titles, and they are what release-please reads to bump the version and
-  # populate the changelog — so this is a more direct statement of the rule
-  # than checking the title ever was.
-  #
-  # GitHub's own plumbing commits are exempt. The queue builds its temp branch
-  # with merge commits of its own ("Merge <sha> into <sha>", "Merge pull
-  # request #n from …", "Merge branch …"), and those are not ours to name.
-  # Failing on them would deadlock every batch, which is the one outcome a
-  # required check must never have.
-  queue:
-    name: Conventional Commit title
-    if: github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
+      # ── merge_group lane ─────────────────────────────────────────────────
+      #
+      # The action above cannot serve this lane: it reads the PR title out of
+      # its own event payload, and a merge group has no PR — a batch can hold
+      # several, and the payload names none of them. Nor can the answer be a
+      # pass-through "already checked on the PR": a required check that always
+      # reports green is not a check.
+      #
+      # So this validates what the merge group actually has, which is the thing
+      # the PR title exists to produce: the commit subjects GitHub is about to
+      # fast-forward `main` to. Under squash merge those subjects ARE the PR
+      # titles, and they are what release-please reads to bump the version and
+      # populate the changelog — a more direct statement of the rule than
+      # checking the title ever was.
+      #
+      # GitHub's own plumbing commits are exempt. The queue builds its temp
+      # branch with merge commits of its own ("Merge <sha> into <sha>", "Merge
+      # pull request #n from …", "Merge branch …"), and those are not ours to
+      # name. Failing on them would deadlock every batch, which is the one
+      # outcome a required check must never have.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Check the merge group's commit subjects
+        if: github.event_name == 'merge_group'
         env:
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.merge_group.head_sha }}

@@ -122,9 +122,17 @@ simply needed the trigger. Two are PR-shaped and did not:
   something `drift` reports after the fact. `drift` stays regardless: a queue can
   be switched off and a bypass actor can be added.
 
-Both are one job reporting one context, gated by `github.event_name`, rather than
-two jobs sharing a name — the ruleset cannot tell two contexts of the same name
-apart.
+Both are **one job with two step-level lanes**, gated by `github.event_name` —
+not two jobs sharing a name. That distinction is load-bearing, and it was got
+wrong once before it was got right: a job whose `if:` is false still posts a
+check run, as `skipped`, which the gate counts as passing. Two jobs of the same
+name therefore post two check runs of that context on every event, one of them
+always green by virtue of not having run, and the required check resolves on
+whichever reported last — so a failing lane can be masked by its own skipped
+twin. (This is the mirror image of the asymmetry `integration.yml` documents:
+there, a skipped *matrix* job posts nothing and the required leg hangs on
+"Expected — waiting for status"; here, a skipped plain job posts something and
+the required context doubles.)
 
 ## Enabling it: the part that is not in this repository
 
