@@ -3,14 +3,14 @@
 
 `compose-ai-tools` used to contain every consumer of its own contracts, so a
 protocol change and the code reading it moved in one commit and CI checked both.
-After the split (#4732) two consumers live elsewhere:
+After the split (#4732) three consumers live elsewhere:
 
   * yschimke/compose-preview-vscode    — the VS Code extension
   * yschimke/compose-preview-contracts — the published wire contracts
   * yschimke/compose-preview-server    — the preview server behind `serve`
 
-Both pin a *released* version of this repository and vendor copies of what they
-need. Their own gates catch drift — but only against the release they pin, which
+Each pins a *released* version of this repository and vendors copies of what it
+needs. Their own gates catch drift — but only against the release they pin, which
 means a contract change here is invisible to them until somebody bumps that pin.
 That is the gap #4732 records as "a `daemon-protocol` bump has to fail the
 consumer's CI, not just the producer's".

@@ -92,8 +92,8 @@ class SurfaceMapIsCurrent(unittest.TestCase):
         for surface in mod.SURFACES:
             self.assertTrue(surface["consumers"], f"{surface['name']} names no consumer")
 
-    def test_consumer_repos_are_the_known_two(self):
-        known = {mod.EXT, mod.CONTRACTS}
+    def test_consumer_repos_are_the_known_three(self):
+        known = {mod.EXT, mod.CONTRACTS, mod.SERVER}
         for surface in mod.SURFACES:
             self.assertLessEqual(set(surface["consumers"]), known, surface["name"])
 
