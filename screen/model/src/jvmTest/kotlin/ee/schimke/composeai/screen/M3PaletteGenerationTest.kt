@@ -121,8 +121,10 @@ class M3PaletteGenerationTest {
     ScreenValue.Chain(
       receiver = M3Palette.modifierReceiver,
       links =
-        listOf("fillMaxWidth", "padding(8.dp)").map { label ->
-          M3Palette.modifierLinks.first { it.first == label }.second
+        // The links at 8, named explicitly: `padding` is now a function of the amount, and the
+        // point of this test is that whatever amount it carries reaches the source as a `Dp`.
+        listOf("fillMaxWidth", "padding(8)").map { label ->
+          M3Palette.modifierLinks(8).first { it.first == label }.second
         },
       typeFqn = "androidx.compose.ui.Modifier",
     )

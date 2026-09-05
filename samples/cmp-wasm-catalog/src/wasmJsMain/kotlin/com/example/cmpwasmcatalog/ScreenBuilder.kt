@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +74,14 @@ internal fun ScreenBuilderApp(
 ) {
   var document by remember { mutableStateOf(newScreen()) }
   var selected by remember { mutableStateOf(0) }
+  // Which of the selected node's slots an add drops into. A `Scaffold` has three, and a builder
+  // that guesses one cannot express an app screen: the top bar, the FAB and the body are different
+  // regions. Reset when the selection moves, so a slot name never leaks onto a node that has no
+  // such slot.
+  var slot by remember { mutableStateOf<String?>(null) }
+  // The amount `padding` carries. The four screens this palette is sized against use 8, 12 and 16
+  // between them, so a fixed chip could not build any of them faithfully.
+  var paddingDp by remember { mutableStateOf(16) }
 
   Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
     Row(
@@ -79,18 +89,27 @@ internal fun ScreenBuilderApp(
       horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Column(
-        Modifier.width(250.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+        Modifier.width(280.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-          SectionLabel("Screen")
-          TextButton(
-            onClick = {
-              document = newScreen()
-              selected = 0
+        SectionLabel("Screen")
+        // The root is a choice, not a constant. A `Scaffold` is what an app screen usually is, but
+        // three of the four real screens this palette is sized against are rooted in a `Surface` —
+        // a builder that can only start from a scaffold cannot rebuild them at all.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+          M3Palette.containerIds.forEach { id ->
+            TextButton(
+              onClick = {
+                document = newScreen(id)
+                selected = 0
+                slot = null
+              }
+            ) {
+              Text(
+                if (document.root.componentId == id) "[$id]" else id,
+                style = MaterialTheme.typography.bodySmall,
+              )
             }
-          ) {
-            Text("reset")
           }
         }
         val nodes = document.flattenNodes()
@@ -102,7 +121,10 @@ internal fun ScreenBuilderApp(
                 if (selected == indexed.index) MaterialTheme.colorScheme.secondaryContainer
                 else MaterialTheme.colorScheme.surface
               )
-              .clickable { selected = indexed.index }
+              .clickable {
+                selected = indexed.index
+                slot = null
+              }
               .padding(start = (depth * 12).dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -116,6 +138,7 @@ internal fun ScreenBuilderApp(
                 onClick = {
                   document = document.removeNode(indexed.index)
                   selected = 0
+                  slot = null
                 }
               ) {
                 Text("x")
@@ -126,18 +149,32 @@ internal fun ScreenBuilderApp(
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         val target = document.nodeAt(selected)
-        val slot = slotFor(target?.componentId)
-        SectionLabel(
-          if (slot == null) "Selected node takes no children" else "Add into [$selected].$slot"
-        )
-        if (slot != null) {
+        val slots = M3Palette.slotsOf(target?.componentId)
+        val into = slot?.takeIf { it in slots } ?: slots.firstOrNull()
+        if (slots.isEmpty()) {
+          SectionLabel("[$selected] ${target?.componentId} takes no children")
+        } else {
+          SectionLabel("Add into [$selected].$into")
+          // Shown even for a single-slot container, so the name of the region being filled is
+          // always on screen rather than implied.
+          // `FlowRow`, because `Scaffold`'s three slot names do not fit the panel on one line and
+          // a `Row` clips the last one into an unreadable vertical sliver rather than wrapping.
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            slots.forEach { name ->
+              FilterChip(
+                selected = name == into,
+                onClick = { slot = name },
+                label = { Text(name, style = MaterialTheme.typography.bodySmall) },
+              )
+            }
+          }
           SectionLabel("Containers")
           M3Palette.containerIds.forEach { id ->
-            AddRow(id) { document = document.addNode(selected, slot, ScreenNode(id)) }
+            AddRow(id) { document = document.addNode(selected, into!!, ScreenNode(id)) }
           }
           SectionLabel("Components")
           M3Palette.componentIds.forEach { id ->
-            AddRow(id) { document = document.addNode(selected, slot, ScreenNode(id)) }
+            AddRow(id) { document = document.addNode(selected, into!!, ScreenNode(id)) }
           }
         }
       }
@@ -159,36 +196,106 @@ internal fun ScreenBuilderApp(
         val node = document.nodeAt(selected)
         SectionLabel("Arguments" + if (node == null) "" else " — ${node.componentId}")
         if (node != null) {
-          // `text` is the one argument this palette's components take by value; everything else a
-          // screen sets is a slot, a handler or the modifier below.
-          if (node.componentId == "text") {
-            OutlinedTextField(
-              value = (node.arguments["text"] as? ScreenValue.Text)?.value.orEmpty(),
-              onValueChange = { typed ->
-                document =
-                  document.setArgument(
-                    selected,
-                    "text",
-                    if (typed.isEmpty()) null else ScreenValue.Text(typed),
+          // One editor per declared parameter, chosen by the parameter's own `typeFqn` rather than
+          // by the component's id. That is what lets the palette grow without the builder growing
+          // a branch per component: `Text.style`, `Surface.color` and `Column.verticalArrangement`
+          // are all "a reference this palette offers a closed list of", and they get one control.
+          M3Palette.editableParametersOf(node.componentId).forEach { parameter ->
+            val current = node.arguments[parameter.name]
+            when {
+              parameter.typeFqn == "kotlin.String" ->
+                OutlinedTextField(
+                  value = (current as? ScreenValue.Text)?.value.orEmpty(),
+                  onValueChange = { typed ->
+                    document =
+                      document.setArgument(
+                        selected,
+                        parameter.name,
+                        if (typed.isEmpty()) null else ScreenValue.Text(typed),
+                      )
+                  },
+                  label = { Text(parameter.name) },
+                  singleLine = true,
+                  modifier = Modifier.fillMaxWidth(),
+                )
+
+              parameter.typeFqn == "kotlin.Boolean" ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Switch(
+                    checked = (current as? ScreenValue.Bool)?.value ?: true,
+                    onCheckedChange = { on ->
+                      document =
+                        document.setArgument(selected, parameter.name, ScreenValue.Bool(on))
+                    },
                   )
-              },
-              label = { Text("text") },
-              singleLine = true,
-              modifier = Modifier.fillMaxWidth(),
-            )
+                  Text(parameter.name, style = MaterialTheme.typography.bodySmall)
+                }
+
+              else -> {
+                val choices = M3Palette.choicesFor(parameter.typeFqn)
+                if (choices.isNotEmpty()) {
+                  SectionLabel(parameter.name)
+                  FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    choices.forEach { (label, value) ->
+                      FilterChip(
+                        selected = current == value,
+                        onClick = {
+                          document =
+                            document.setArgument(
+                              selected,
+                              parameter.name,
+                              if (current == value) null else value,
+                            )
+                        },
+                        label = { Text(label, style = MaterialTheme.typography.bodySmall) },
+                      )
+                    }
+                  }
+                }
+              }
+            }
           }
+
           SectionLabel("Modifiers")
-          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            M3Palette.modifierLinks.forEach { (label, link) ->
-              // A `FilterChip` rather than a button with a tick in its label: the selected state is
-              // the chip's own container colour, so it needs no glyph. A `✓` prefix was the first
-              // attempt and rendered as tofu — the catalog's self-hosted fonts have no U+2713, and
-              // the browser cannot fall back inside a Skia composition the way it would in the DOM.
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            // A `FilterChip` rather than a button with a tick in its label: the selected state is
+            // the chip's own container colour, so it needs no glyph. A `✓` prefix was the first
+            // attempt and rendered as tofu — the catalog's self-hosted fonts have no U+2713, and
+            // the browser cannot fall back inside a Skia composition the way it would in the DOM.
+            M3Palette.modifierLinks(paddingDp).forEach { (label, link) ->
               FilterChip(
                 selected = node.hasLink(link),
                 onClick = { document = document.toggleModifier(selected, link) },
                 label = { Text(label, style = MaterialTheme.typography.bodySmall) },
               )
+            }
+            // The amount the `padding` chip carries. Stepping it re-toggles a padding already on
+            // the node, so the chain follows the control rather than stranding the old amount —
+            // otherwise the chip reads `padding(12)` while the source still says `padding(16.dp)`.
+            listOf(8, 12, 16).forEach { amount ->
+              TextButton(
+                onClick = {
+                  val previous =
+                    M3Palette.modifierLinks(paddingDp)
+                      .first { it.first.startsWith("padding") }
+                      .second
+                  val next =
+                    M3Palette.modifierLinks(amount).first { it.first.startsWith("padding") }.second
+                  paddingDp = amount
+                  if (node.hasLink(previous)) {
+                    document =
+                      document.toggleModifier(selected, previous).toggleModifier(selected, next)
+                  }
+                }
+              ) {
+                Text(
+                  if (amount == paddingDp) "[$amount]" else "$amount",
+                  style = MaterialTheme.typography.bodySmall,
+                )
+              }
             }
           }
         }
@@ -237,24 +344,9 @@ internal fun ScreenBuilderApp(
   }
 }
 
-/** A new screen: the `Scaffold` an app screen starts as. */
-private fun newScreen(): ScreenDocument =
-  ScreenDocument(name = "MyScreen", root = ScreenNode("scaffold"))
-
-/**
- * The slot a child is added into for [componentId], or null when it takes none.
- *
- * One slot per container keeps the palette honest: `Scaffold` has a `topBar` too, and offering it
- * needs a slot picker rather than a guess about which one an add meant.
- */
-private fun slotFor(componentId: String?): String? =
-  when (componentId) {
-    "scaffold",
-    "column",
-    "card",
-    "button" -> "content"
-    else -> null
-  }
+/** A new screen rooted in [rootId] — a `Scaffold` unless someone picks otherwise. */
+private fun newScreen(rootId: String = "scaffold"): ScreenDocument =
+  ScreenDocument(name = "MyScreen", root = ScreenNode(rootId))
 
 private fun ScreenNode.hasLink(link: ChainLink): Boolean =
   (arguments["modifier"] as? ScreenValue.Chain)?.links?.any {
