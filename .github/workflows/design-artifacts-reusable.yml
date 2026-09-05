@@ -1779,6 +1779,26 @@ jobs:
             echo "spec declares no themes — nothing to generate"
             exit 0
           fi
+          # This step's YAML comes from the workflow's own revision, but the generator comes from
+          # the PINNED driver checkout (.github/design-artifacts-driver-pin.txt, a published
+          # release). The two are structurally allowed to disagree: a `@main` caller picks up this
+          # step the moment it merges, while the pin only advances when Renovate bumps it to the
+          # next release. So between those two events the script is simply not there.
+          #
+          # WARN AND CONTINUE, rather than fail. `themes` is an additive spec field, and every
+          # other additive field already behaves this way — a driver that predates one ignores it.
+          # Failing here instead took three previously-working imports offline entirely (no
+          # catalog at all, nightly) for a field whose absence costs only the theme chips. A
+          # catalog that publishes exactly as it did before, and gains its chips when the pin
+          # moves, is the correct degradation; a hard failure is a regression dressed as strictness.
+          generator="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs"
+          if [ ! -f "$generator" ]; then
+            echo "::warning title=Declared themes not generated::$SPEC declares 'themes', but the" \
+                 "pinned export driver has no generate-theme-catalogs.mjs. The catalog publishes" \
+                 "without its theme chips until .github/design-artifacts-driver-pin.txt advances" \
+                 "to a release carrying it."
+            exit 0
+          fi
           if [ -z "${MODULE:-}" ]; then
             echo "::error::a spec declaring 'themes' must also name the 'module' the providers" \
                  "compile into — they have to see the theme composables, which repository-wide" \
@@ -1803,8 +1823,7 @@ jobs:
           # the two ship from one release, and a hardcoded version would rot at the next one.
           version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
           [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
-          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs" \
-            --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
+          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
         working-directory: compose-ai-tools
@@ -2755,6 +2774,26 @@ jobs:
             echo "spec declares no themes — nothing to generate"
             exit 0
           fi
+          # This step's YAML comes from the workflow's own revision, but the generator comes from
+          # the PINNED driver checkout (.github/design-artifacts-driver-pin.txt, a published
+          # release). The two are structurally allowed to disagree: a `@main` caller picks up this
+          # step the moment it merges, while the pin only advances when Renovate bumps it to the
+          # next release. So between those two events the script is simply not there.
+          #
+          # WARN AND CONTINUE, rather than fail. `themes` is an additive spec field, and every
+          # other additive field already behaves this way — a driver that predates one ignores it.
+          # Failing here instead took three previously-working imports offline entirely (no
+          # catalog at all, nightly) for a field whose absence costs only the theme chips. A
+          # catalog that publishes exactly as it did before, and gains its chips when the pin
+          # moves, is the correct degradation; a hard failure is a regression dressed as strictness.
+          generator="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs"
+          if [ ! -f "$generator" ]; then
+            echo "::warning title=Declared themes not generated::$SPEC declares 'themes', but the" \
+                 "pinned export driver has no generate-theme-catalogs.mjs. The catalog publishes" \
+                 "without its theme chips until .github/design-artifacts-driver-pin.txt advances" \
+                 "to a release carrying it."
+            exit 0
+          fi
           if [ -z "${MODULE:-}" ]; then
             echo "::error::a spec declaring 'themes' must also name the 'module' the providers" \
                  "compile into — they have to see the theme composables, which repository-wide" \
@@ -2779,8 +2818,7 @@ jobs:
           # the two ship from one release, and a hardcoded version would rot at the next one.
           version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
           [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
-          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/generate-theme-catalogs.mjs" \
-            --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
+          node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       # ---- The two embedded player lanes' harness, when a caller asked for them ----------------
       #
       # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and
