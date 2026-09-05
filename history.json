@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "511ab879b89695454755252076591ca40eec1297",
+    "generatedFrom": "57657448b9c27e363a36e74863019f6a85dece3a",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -6721,6 +6721,51 @@
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
                     "sourceSha": "02b540ff",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round": {
+            "path": "renders/samples:design-catalog-wear-m3/ActivityScreenLongPreview_wearos_small_round-e3820901.png",
+            "versions": [
+                {
+                    "blob": "e98910ee925ce391320eada6f3789634517912c1",
+                    "commit": "57657448b9c27e363a36e74863019f6a85dece3a",
+                    "date": "2026-09-05T17:18:24Z",
+                    "sourceSha": "e03d455f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices - Large Round": {
+            "path": "renders/samples:design-catalog-wear-m3/ActivityScreenPreview_Devices_Large_Round-07b3e1dc.png",
+            "versions": [
+                {
+                    "blob": "917b538f9bc5d9a77c70505a88c6aeff2553a0ed",
+                    "commit": "57657448b9c27e363a36e74863019f6a85dece3a",
+                    "date": "2026-09-05T17:18:24Z",
+                    "sourceSha": "e03d455f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices - Small Round": {
+            "path": "renders/samples:design-catalog-wear-m3/ActivityScreenPreview_Devices_Small_Round-acd68959.png",
+            "versions": [
+                {
+                    "blob": "683dca13937b698d90b4a853c2706291fc7bdb22",
+                    "commit": "57657448b9c27e363a36e74863019f6a85dece3a",
+                    "date": "2026-09-05T17:18:24Z",
+                    "sourceSha": "e03d455f",
                     "commits": 1
                 }
             ],
