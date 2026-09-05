@@ -21,6 +21,17 @@ generated rather than hand-captured — no IDE, no GUI, no screenshot that silen
 Every `@Preview` needs `@PreviewTest` on it as well: from alpha15 the screenshot plugin discovers
 nothing without that marker and the task fails with "did not discover any tests".
 
+Most fixtures vary a `@Preview` *parameter*. One varies the **signature shape** instead:
+`ParityDefaultedParamsPreview` declares defaulted value parameters, which is what the
+[parameter-knob](design/PARAMETER_KNOB_MIGRATION.md) format is built on and what a production composable annotated
+`@Preview` in place almost always already has. That shape compiles to
+`(realParams…, Composer, int changed, int default)` rather than `(Composer, int)`, so a renderer
+that resolves the preview by the parameterless signature cannot see it — a difference invisible in
+the rendered picture, and the cause of four separate defects across the desktop focus, motion and
+scroll lanes that no fixture in this repository had the shape to catch. Its Layoutlib reference is
+therefore evidence of something the pixels do not show: that the shape is renderable by the engine
+Studio's preview pane and Google's screenshot plugin both draw with, not only by ours.
+
 ## Commands
 
 ```bash
