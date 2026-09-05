@@ -53,6 +53,17 @@ fun knobComponent(
 @Suppress("unused", "UNUSED_PARAMETER")
 fun mixedKnobComponent(modifier: List<String> = emptyList(), count: Int = 1) {}
 
+/** The closed-value-set knob: an `enum class` parameter, defaulted to one of its constants. */
+enum class Emphasis {
+  Filled,
+  Tonal,
+  Outlined,
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun enumKnobComponent(emphasis: Emphasis = Emphasis.Tonal, label: String = "hi") {}
+
 /** A nullable knob type is excluded: `null` is how the renderer says "take the author default". */
 @Suppress("unused", "UNUSED_PARAMETER")
 fun nullableKnobComponent(label: String? = null, enabled: Boolean = true) {}

@@ -34,6 +34,10 @@ class DesktopKnobBakeSidecarTest {
       PreviewKnobSpec("dark", 1, "BOOLEAN", "false"),
     )
 
+  /** [EnumKnobSticker]'s one knob, as `previews.json` records a closed set. */
+  private val enumKnobs =
+    listOf(PreviewKnobSpec("size", 0, "ENUM", "Small", listOf("Small", "Medium", "Large")))
+
   @After
   fun clearController() {
     ee.schimke.composeai.overrides.PreviewOverrideController.resetForNewSession()
@@ -88,15 +92,60 @@ class DesktopKnobBakeSidecarTest {
     )
   }
 
+  @Test
+  fun `an enum knob is declared as a closed, exhaustive set of options`() {
+    val (_, sidecar) = bake("enum-unseeded", knobs = enumKnobs, function = "EnumKnobSticker")
+
+    val json = sidecar.readText()
+    assertTrue(json, json.contains(""""key":"size""""))
+    // The whole reason the kind exists. Without these a viewer draws a text box, which shows the
+    // current value and hides every alternative — so `Large` would be reachable only by someone who
+    // had read the source, which is exactly the regression a `previewOverrideChoice` migration
+    // would otherwise be.
+    assertTrue("no options on the declaration: $json", json.contains(""""options""""))
+    assertTrue("the picker is not exhaustive: $json", json.contains(""""optionsExhaustive":true"""))
+    for (constant in listOf("Small", "Medium", "Large")) {
+      assertTrue("option $constant missing: $json", json.contains(constant))
+    }
+  }
+
+  @Test
+  fun `an enum seed binds by constant name and reaches the pixels`() {
+    ee.schimke.composeai.overrides.PreviewOverrideController.set(
+      mapOf("size" to PreviewOverrideValue.StringValue("Large"))
+    )
+    val (png, sidecar) = bake("enum-seeded", knobs = enumKnobs, function = "EnumKnobSticker")
+
+    // The seed crosses the process boundary as the constant's NAME and becomes the constant itself
+    // at the invoke seam — the one conversion the format could not previously make.
+    val image = ByteArrayInputStream(png.readBytes()).use { ImageIO.read(it) }
+    assertEquals("the enum seed did not reach the parameter", 120, image.width)
+    assertTrue("the declaration did not follow the seed", sidecar.readText().contains("Large"))
+  }
+
+  @Test
+  fun `a seed naming no constant of the enum falls back to the author default`() {
+    ee.schimke.composeai.overrides.PreviewOverrideController.set(
+      mapOf("size" to PreviewOverrideValue.StringValue("Enormous"))
+    )
+    val (png, _) = bake("enum-bogus", knobs = enumKnobs, function = "EnumKnobSticker")
+
+    // Dropped, not coerced and not fatal: a constant the enum does not have is what a stale client
+    // sends after a rename, and rendering the author default is the honest answer to it.
+    val image = ByteArrayInputStream(png.readBytes()).use { ImageIO.read(it) }
+    assertEquals("a bogus enum seed must render the default", 40, image.width)
+  }
+
   /** One capture through the real render entry, returning its PNG and the sidecar beside it. */
   private fun bake(
     base: String,
     knobs: List<PreviewKnobSpec> = stickerKnobs,
+    function: String = "KnobSticker",
   ): Pair<File, File> {
     val out = File(tempFolder.newFolder(base), "$base.png")
     renderPreview(
       className = fixtureClass,
-      functionName = "KnobSticker",
+      functionName = function,
       widthPx = 400,
       heightPx = 400,
       density = 1.0f,

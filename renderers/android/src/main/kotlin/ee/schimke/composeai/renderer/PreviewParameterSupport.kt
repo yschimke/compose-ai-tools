@@ -340,15 +340,26 @@ object PreviewParameterSupport {
     composer: androidx.compose.runtime.Composer,
   ): Boolean {
     if (instance != null) return false
-    // Any null at all, not just an interior one: `ComposableMethod.invoke` pads only positions past
-    // `previewArgs.size`, so a null *inside* the list — trailing or not — is forwarded verbatim.
-    if (previewArgs.none { it == null }) return false
     val method = composableMethod.asMethod()
     if (!java.lang.reflect.Modifier.isStatic(method.modifiers)) return false
     if (!method.hasComposableDefaults()) return false
     val types = method.parameterTypes
     val realParams = types.indexOfLast { it == androidx.compose.runtime.Composer::class.java }
     if (realParams <= 0 || previewArgs.size > realParams) return false
+    // An enum knob arrives as its constant's NAME — the only form a seed can carry across a process
+    // boundary. This is the first point the parameter's own `Class` is in hand, so it is where the
+    // name becomes the constant. A no-op for every other kind and every unseeded render.
+    val args = PreviewKnobBake.coerceToParameterTypes(previewArgs, types)
+    // Any null at all, not just an interior one: `ComposableMethod.invoke` pads only positions past
+    // `previewArgs.size`, so a null *inside* the list — trailing or not — is forwarded verbatim.
+    //
+    // A FULLY seeded argument list needs this path too when an enum was converted above: the plain
+    // invoke it would otherwise fall through to would carry the constant's NAME where the callee
+    // declares the enum, and reflection rejects that outright. The masks are simply all-zero in
+    // that case, so the call made is the one that would have been made anyway — this only keeps it
+    // on a path that passes the converted arguments. Identity, not equality: the coercion hands
+    // back the very list it was given when it changed nothing.
+    if (args === previewArgs && previewArgs.none { it == null }) return false
     val changedInts =
       ceil(realParams.toDouble() / SLOTS_PER_COMPOSABLE_INT).toInt().coerceAtLeast(1)
     val defaultInts = ceil(realParams.toDouble() / BITS_PER_DEFAULT_INT).toInt().coerceAtLeast(1)
@@ -357,7 +368,7 @@ object PreviewParameterSupport {
     val masks = IntArray(defaultInts)
     val arguments = arrayOfNulls<Any?>(types.size)
     for (i in 0 until realParams) {
-      val seeded = previewArgs.getOrNull(i)
+      val seeded = args.getOrNull(i)
       if (seeded == null) {
         masks[i / BITS_PER_DEFAULT_INT] =
           masks[i / BITS_PER_DEFAULT_INT] or (1 shl (i % BITS_PER_DEFAULT_INT))

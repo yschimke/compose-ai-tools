@@ -2,8 +2,10 @@ package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -27,6 +29,12 @@ public data class PreviewKnobSpec(
   val index: Int,
   val type: String,
   val default: String? = null,
+  /**
+   * The values this knob accepts when they are a **closed set** — an enum parameter's constants, in
+   * declaration order — so a viewer draws a picker rather than a text box. Empty for every other
+   * kind.
+   */
+  val options: List<String> = emptyList(),
 )
 
 /**
@@ -107,6 +115,10 @@ internal object PreviewKnobBake {
           index = index,
           type = type,
           default = (fields["default"] as? JsonPrimitive)?.takeIf { it.isString }?.content,
+          options =
+            (fields["options"] as? JsonArray)
+              ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+              .orEmpty(),
         )
     }
   }
@@ -168,7 +180,7 @@ internal object PreviewKnobBake {
     PreviewKnobArguments.Type.valueOf(type)
   }
     .getOrNull()
-    ?.let { PreviewKnobArguments.Knob(name, index, it) }
+    ?.let { PreviewKnobArguments.Knob(name, index, it, options) }
 
   /**
    * The declarations for [knobs] under this render's [seeds], skipping the knobs that cannot be
@@ -205,6 +217,10 @@ internal object PreviewKnobBake {
         // A parameter list is fixed-arity, so there is no per-row value to address — always the
         // un-indexed seed key.
         index = null,
+        // A closed set, and closed *exhaustively*: an enum parameter cannot hold anything but one
+        // of its constants. Empty for every open kind, leaving the control a plain field.
+        options = knob.options.map { PreviewOverrideOption(it) },
+        optionsExhaustive = knob.options.isNotEmpty(),
       )
     }
   }
@@ -237,7 +253,11 @@ internal object PreviewKnobBake {
     when (knobType) {
       "STRING",
       "LONG",
-      "DOUBLE" -> PreviewOverrideType.STRING
+      "DOUBLE",
+      // An enum is declared as text whose accepted values are enumerated alongside it. The picker
+      // comes from `options` + `optionsExhaustive`, not from a distinct declaration type — which is
+      // exactly how `previewOverrideChoice` has always described a closed set.
+      "ENUM" -> PreviewOverrideType.STRING
       "BOOLEAN" -> PreviewOverrideType.BOOL
       "INT" -> PreviewOverrideType.INT
       "FLOAT" -> PreviewOverrideType.FLOAT

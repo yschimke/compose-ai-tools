@@ -41,3 +41,30 @@ fun KnobSticker(sizeDp: Int = 40, dark: Boolean = false) {
 fun OffsetKnobSticker(tag: List<String> = emptyList(), sizeDp: Int = 40) {
   Box(modifier = Modifier.size(sizeDp.dp).background(Color(0xFFB71C1C)))
 }
+
+/**
+ * The closed-value-set knob: a parameter whose type is an `enum class`, which is the only shape
+ * whose accepted values a viewer can enumerate and therefore the only one it can offer as a
+ * **picker** rather than a text box.
+ *
+ * Each constant paints a different size *and* colour, so a render can tell which one bound without
+ * reading anything but the pixels — and can tell a bound constant from a dropped seed falling back
+ * to [Size.Small].
+ */
+enum class Size {
+  Small,
+  Medium,
+  Large,
+}
+
+/** Paints [size] as an area a render test can measure. */
+@Composable
+fun EnumKnobSticker(size: Size = Size.Small) {
+  val px =
+    when (size) {
+      Size.Small -> 40
+      Size.Medium -> 70
+      Size.Large -> 120
+    }
+  Box(modifier = Modifier.size(px.dp).background(Color(0xFF1B5E20)))
+}

@@ -2,6 +2,7 @@ package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 
 /**
@@ -53,7 +54,7 @@ internal object PreviewKnobBake {
     val bound = seeds.mapNotNull { (name, value) ->
       val knob = byName[name] ?: return@mapNotNull null
       val text = seedText(value) ?: return@mapNotNull null
-      parse(knob.type, text)?.let { knob.index to it }
+      parse(knob, text)?.let { knob.index to it }
     }
     if (bound.isEmpty()) return emptyList()
     val size = knobs.maxOf { it.index } + 1
@@ -97,8 +98,35 @@ internal object PreviewKnobBake {
         // A parameter list is fixed-arity, so there is no per-row value to address — always the
         // un-indexed seed key.
         index = null,
+        // A closed set, and closed *exhaustively*: an enum parameter cannot hold anything but one
+        // of its constants. Empty for every open kind, leaving the control a plain field.
+        options = knob.options.map { PreviewOverrideOption(it) },
+        optionsExhaustive = knob.options.isNotEmpty(),
       )
     }
+  }
+
+  /**
+   * [args] with every enum knob's constant **name** replaced by the constant itself, read off
+   * [parameterTypes] — the preview's own value-parameter types, in order.
+   *
+   * This is the seam an enum knob cannot be bound without: a name is all a seed carries and all
+   * [seedArgs] can produce, because neither this renderer nor the daemon that sends the seed holds
+   * the enum `Class` at that point. The invoke path does, so the conversion happens there, once.
+   *
+   * A position that is not an enum, is not a `String`, or names no constant of its type is left
+   * exactly as it was — a seed that cannot become a constant falls back to the author default
+   * rather than failing the render. The same list comes back when nothing moved, so a caller can
+   * tell "no enum here" from "an enum was converted" by identity.
+   */
+  fun coerceToParameterTypes(args: List<Any?>, parameterTypes: Array<Class<*>>): List<Any?> {
+    if (args.isEmpty() || args.none { it is String }) return args
+    val coerced = args.mapIndexed { index, value ->
+      val type = parameterTypes.getOrNull(index) ?: return@mapIndexed value
+      if (value !is String || !type.isEnum) return@mapIndexed value
+      type.enumConstants?.firstOrNull { (it as? Enum<*>)?.name == value } ?: value
+    }
+    return if (coerced == args) args else coerced
   }
 
   /**
@@ -126,14 +154,18 @@ internal object PreviewKnobBake {
    * the default itself. A seed dropped here falls back to the author default, which is always a
    * value the preview actually names — unlike a coerced one.
    */
-  private fun parse(type: String, raw: String): Any? =
-    when (type) {
+  private fun parse(knob: RenderPreviewKnob, raw: String): Any? =
+    when (knob.type) {
       "STRING" -> raw
       "BOOLEAN" -> raw.toBooleanStrictOrNull()
       "INT" -> raw.toIntOrNull()
       "LONG" -> raw.toLongOrNull()
       "FLOAT" -> raw.toFloatOrNull()
       "DOUBLE" -> raw.toDoubleOrNull()
+      // An enum knob binds by constant NAME and stays a name here — the manifest carries no
+      // `Class`, and the invoke seam coerces it against the parameter's own type. A name that is
+      // not one of the declared constants is dropped like any other unparseable seed.
+      "ENUM" -> raw.takeIf { it in knob.options }
       else -> null
     }
 
@@ -149,7 +181,10 @@ internal object PreviewKnobBake {
     when (knobType) {
       "STRING",
       "LONG",
-      "DOUBLE" -> PreviewOverrideType.STRING
+      "DOUBLE",
+      // An enum is declared as text whose accepted values are enumerated alongside it: the picker
+      // comes from `options` + `optionsExhaustive`, not from a distinct declaration type.
+      "ENUM" -> PreviewOverrideType.STRING
       "BOOLEAN" -> PreviewOverrideType.BOOL
       "INT" -> PreviewOverrideType.INT
       "FLOAT" -> PreviewOverrideType.FLOAT

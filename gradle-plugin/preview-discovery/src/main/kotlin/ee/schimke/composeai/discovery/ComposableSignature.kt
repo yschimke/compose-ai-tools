@@ -196,7 +196,11 @@ internal object ComposableSignature {
    * [PreviewKnob.index] is the parameter's position in the **full** value-parameter list, not among
    * the knobs, because that is the index the renderer needs to place the argument.
    */
-  fun knobsOf(classInfo: ClassInfo, method: MethodInfo): List<PreviewKnob> {
+  fun knobsOf(
+    classInfo: ClassInfo,
+    method: MethodInfo,
+    scanResult: ScanResult? = null,
+  ): List<PreviewKnob> {
     val parameters =
       try {
         val metadata = readClassMetadata(classInfo) ?: return emptyList()
@@ -215,12 +219,37 @@ internal object ComposableSignature {
     if (!parameters.all { it.declaresDefaultValue }) return emptyList()
     // Read the compiled body only when there is a knob to attach a default to. Most previews have
     // none, and this is the one place discovery reads a method body rather than its signature.
-    val hasKnob = parameters.any { knobType(it.type) != null }
+    val hasKnob = parameters.any { knobType(it.type, scanResult) != null }
     val defaults =
       if (hasKnob) PreviewKnobDefaults.readFrom(classInfo, method, parameters.size) else emptyMap()
     return parameters.mapIndexedNotNull { index, parameter ->
-      knobType(parameter.type)?.let { PreviewKnob(parameter.name, index, it, defaults[index]) }
+      knobType(parameter.type, scanResult)?.let { type ->
+        PreviewKnob(
+          name = parameter.name,
+          index = index,
+          type = type,
+          default = defaults[index],
+          options =
+            if (type == PreviewKnobType.ENUM) enumConstantsOf(parameter.type, scanResult)
+            else emptyList(),
+        )
+      }
     }
+  }
+
+  /**
+   * The constant names of the enum [type] names, in declaration order, or empty when they cannot be
+   * read.
+   *
+   * Read out of the enum's class file by [PreviewKnobDefaults.enumConstantsOf] rather than through
+   * ClassGraph's field info, which the discovery scan deliberately does not enable — see there for
+   * why that cost is not worth paying on every class of every build.
+   */
+  private fun enumConstantsOf(type: KmType, scanResult: ScanResult?): List<String> {
+    val fqn =
+      (type.classifier as? KmClassifier.Class)?.name?.replace('/', '.') ?: return emptyList()
+    val info = scanResult?.getClassInfo(fqn) ?: return emptyList()
+    return PreviewKnobDefaults.enumConstantsOf(info)
   }
 
   /**
@@ -232,7 +261,7 @@ internal object ComposableSignature {
    * a knob that can legitimately *be* null has no way to say "seed me null" and would silently
    * resolve to its default instead.
    */
-  private fun knobType(type: KmType): PreviewKnobType? {
+  private fun knobType(type: KmType, scanResult: ScanResult? = null): PreviewKnobType? {
     if (type.isNullable) return null
     val name = (type.classifier as? KmClassifier.Class)?.name ?: return null
     return when (name) {
@@ -242,7 +271,15 @@ internal object ComposableSignature {
       "kotlin/Long" -> PreviewKnobType.LONG
       "kotlin/Float" -> PreviewKnobType.FLOAT
       "kotlin/Double" -> PreviewKnobType.DOUBLE
-      else -> null
+      // An `enum class` parameter is the format's closed-value-set knob, and the only kind whose
+      // accepted values a viewer can enumerate. Resolving it needs the enum's OWN class, which the
+      // preview's metadata does not carry — so without a scan result this degrades to "not a knob"
+      // rather than to a knob whose options are unknown. A picker with no options would be worse
+      // than the text box it replaced.
+      else ->
+        PreviewKnobType.ENUM.takeIf {
+          scanResult?.getClassInfo(name.replace('/', '.'))?.isEnum == true
+        }
     }
   }
 

@@ -168,6 +168,15 @@ public data class PreviewKnobDto(
    * undeclared rather than declared with an invented value — see [PreviewKnobDeclarations].
    */
   val default: String? = null,
+  /**
+   * The values this knob accepts when they are a **closed set** — an enum parameter's constants, in
+   * declaration order. Empty for every other kind.
+   *
+   * Carried so a viewer can draw a **picker** rather than a text box, which is the whole reason the
+   * kind exists: a text box shows the current value and hides every alternative. See
+   * [PreviewKnobDeclarations], which turns these into `PreviewOverrideOption`s.
+   */
+  val options: List<String> = emptyList(),
 )
 
 /**
