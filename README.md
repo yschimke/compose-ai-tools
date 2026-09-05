@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 282 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 284 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1302,6 +1302,18 @@ _No findings._
 _No findings._
 
 ## design-catalog-wear-m3
+
+### `ActivityScreenLongPreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round.a11y.png" width="400" />
+
+_No findings._
+
+### `ActivityScreenPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ActivityScreenPreview_Devices_Large_Round-07b3e1dc.a11y.png" width="400" />
+
+_No findings._
 
 ### `AppCardSticker`
 

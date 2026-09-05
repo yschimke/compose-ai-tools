@@ -2509,6 +2509,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "ActivityScreenLongPreview",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+      "rendersDir": "design-catalog-wear-m3",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/UiBuilderGeneratedScreen.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "ActivityScreenPreview_Devices_Large_Round-07b3e1dc.a11y.png",
+      "cleanBasename": "ActivityScreenPreview_Devices_Large_Round-07b3e1dc.png",
+      "findings": [],
+      "functionName": "ActivityScreenPreview",
+      "module": "design-catalog-wear-m3",
+      "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices - Large Round",
+      "rendersDir": "design-catalog-wear-m3",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/UiBuilderGeneratedScreen.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "AppCardSticker-0511a664.a11y.png",
       "cleanBasename": "AppCardSticker-0511a664.png",
       "findings": [],
