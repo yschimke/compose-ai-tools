@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import androidx.compose.runtime.reflect.ComposableMethod
+import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 
 /**
  * Opens a resolved preview entrypoint for reflective invocation.
@@ -28,3 +29,30 @@ import androidx.compose.runtime.reflect.ComposableMethod
 internal fun ComposableMethod.openForInvoke(): ComposableMethod = also {
   runCatching { it.asMethod().isAccessible = true }
 }
+
+/**
+ * Resolves a preview that takes no seeded arguments, whether or not its parameters declare
+ * defaults.
+ *
+ * `getDeclaredComposableMethod(name)` searches for the exact signature `(Composer, int)` — a
+ * preview with **no value parameters**. A preview whose parameters all declare defaults is an
+ * equally supported shape: it is what a production composable annotated `@Preview` in place almost
+ * always looks like (`modifier: Modifier = Modifier`), and it is the whole of the **parameter
+ * knob** format. It compiles to `(realParams…, Composer, int changed, int default)`, which that
+ * lookup cannot see, so resolution threw `NoSuchMethodException` before composition started — an
+ * `.error.json` where the capture should be.
+ *
+ * The ordinary render path and both daemons already fell back to
+ * [PreviewParameterSupport.findDefaultedComposableMethod]; the **focus**, **motion** and **scroll**
+ * lanes did not, so a parameter-knob preview baked its resting capture and then failed every
+ * interaction-state, motion and scroll cell built on top of it. In a catalog those cells are the
+ * kit-comparison addresses, so the loss was 222 renders in `m3-catalog` with the manifest still
+ * reporting success. This is the one place all four lanes now agree.
+ */
+internal fun resolveDefaultedOrPlain(clazz: Class<*>, functionName: String): ComposableMethod =
+  runCatching {
+    clazz.getDeclaredComposableMethod(functionName)
+  }
+  .getOrElse { failure ->
+    PreviewParameterSupport.findDefaultedComposableMethod(clazz, functionName) ?: throw failure
+  }

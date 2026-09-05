@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
-import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -205,13 +204,15 @@ fun renderFocusPreview(
   // plus a state — that has to hold for what gets composed, not just for how it is framed.
   // `openForInvoke` keeps `private fun` previews renderable on the focus path too — issue #3873.
   val composableMethod =
-    (if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
+    (if (previewArgs.isEmpty()) resolveDefaultedOrPlain(clazz, functionName)
       else findComposableMethodWithArgs(clazz, functionName, previewArgs))
       .openForInvoke()
 
   // Arm the named-override capture exactly as [renderPreview] does, so a focused capture ships the
   // same `renders/<stem>.overrides.json` sidecar an ordinary one would.
   ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+  // …and announce the parameter knobs, which composition never will. See the KDoc there.
+  PreviewKnobBake.recordAmbientDeclarations()
 
   // The controller is process-static and the renderer worker is pooled — a capture must never
   // inherit the focus target of whatever this JVM drew before it.
@@ -637,6 +638,20 @@ private fun InvokeFocusComposable(
   instance: Any?,
   previewArgs: List<Any?>,
 ) {
+  // A partial knob seed leaves `null` at every unseeded position, which the plain reflective
+  // invoke cannot pass to a primitive parameter (`Cannot invoke "java.lang.Number.intValue()"`).
+  // `invokeWithDefaultMask` is the same masked invoke the ordinary render path uses — see
+  // [InvokeComposable] — so a seed that names one of two knobs leaves the other on its default
+  // instead of failing the capture.
+  if (
+    PreviewParameterSupport.invokeWithDefaultMask(
+      composableMethod,
+      instance,
+      previewArgs,
+      currentComposer,
+    )
+  )
+    return
   composableMethod.invoke(currentComposer, instance, *previewArgs.toTypedArray())
 }
 
