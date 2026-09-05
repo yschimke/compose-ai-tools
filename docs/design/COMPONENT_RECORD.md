@@ -923,12 +923,58 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > gate is what checks it, since `expectedEmitted` names both text fields and the
 > generated wrapper is compiled with exactly the imports the record published.
 >
-> Not taken: `rememberTextFieldState()`. The factory is what a human would write (raw
-> state construction in a composable body does not survive recomposition), but it is a
-> *convention*, not something derivable from the parameter's type — taking it would
-> reintroduce the authored name→expression table this design keeps deleting. The
-> snippet's claim is that it type-checks; a snippet meant to render well is a
-> different artifact, and it should say so rather than smuggling a mapping back in.
+> **Then taken, once the objection dissolved.** This paragraph used to read "not
+> taken: `rememberTextFieldState()`", on the grounds that the factory is a
+> *convention* rather than something derivable from the parameter's type, and that
+> taking it would reintroduce the authored name→expression table this design keeps
+> deleting. The first half was right and is still the reason to want it: raw state
+> construction in a composable body does not survive recomposition, so
+> `TextField(state = TextFieldState())` type-checks and still silently drops what the
+> user typed. The second half confused two different things a convention can be.
+>
+> Spelling `remember` + a type's simple name in the generator and emitting it *is* the
+> authored table — a name mapped to an expression nothing verified. But the same
+> convention can be **looked up** instead: `ComposableSignature.noArgFactoryFor` walks
+> the type's own package for a file facade declaring `remember<SimpleName>`, and
+> accepts it only when the scan can see that it returns that type, is `@Composable`,
+> is public and non-generic, takes no receiver or context, has every parameter
+> defaulted, and carries no opt-in marker. What lands on
+> `TargetParameter.noArgFactory` is the fully-qualified callable the classpath
+> actually had. A convention that is looked up is a fact; a convention that is written
+> down in the generator is the table. That distinction, not the convention's
+> existence, was the real objection — and it is the same move `noArgConstructible`
+> already made one paragraph up.
+>
+> Searching only the type's own package is what keeps it a lookup: the name alone
+> would match any `rememberFoo` anywhere on the classpath, and matching a name is
+> precisely the failure mode being avoided. The facade cannot be derived from the type
+> (it follows the *source file*), so the package's classes are walked and the ones
+> carrying package metadata are read.
+>
+> One trap, worth recording because the unit fixtures could not have found it and the
+> compiler could not have either. `@Composable` is a bytecode annotation, so the
+> check crosses from metadata back to the scan — and it has to cross by the JVM name
+> **metadata carries**, not by the source name. `rememberTextFieldState` takes a
+> defaulted `TextRange`, an inline value class, so Kotlin emits it as
+> `rememberTextFieldState-Le-punE`; looking the method up under its source name found
+> nothing and refused a factory that was right there. Nothing failed loudly — the
+> generator simply fell back to `TextFieldState()`, which compiles. What caught it was
+> the functional test asserting on the *emitted text* against the real androidx
+> classpath, because "it compiles" is exactly the property the wrong answer also has.
+> `MangledFactoryState` now pins it in the fixtures.
+>
+> The generator prefers the factory over the constructor wherever both are resolved,
+> and the two are mutually exclusive in the emitted imports — `rememberTextFieldState()`
+> never names `TextFieldState`, so importing it would be an import for something not
+> printed. Both flags still travel on the record, because the record says what is
+> *true* of the type and choosing between them is the generator's job; a record
+> carrying only the current winner would have to be re-resolved the moment that
+> preference changed. A record predating the field carries null and keeps
+> constructing, so nothing that already compiled is retracted.
+>
+> The snippet's claim is still only that it type-checks. The factory does not widen
+> that claim — it is the *same* claim about a better expression, and every clause
+> above is a way `rememberT()` fails to compile rather than a way it renders nicely.
 >
 > The first run of that measurement read 25/30 with five refusals, three of which —
 > `Checkbox`, `RadioButton`, `Switch` — turned out to share one cause: material3

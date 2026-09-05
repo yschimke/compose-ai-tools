@@ -330,6 +330,8 @@ internal object ComposableSignature {
   private val OPT_IN_MARKER_ANNOTATIONS =
     setOf("kotlin.RequiresOptIn", "androidx.annotation.RequiresOptIn")
 
+  private const val COMPOSABLE_ANNOTATION = "androidx.compose.runtime.Composable"
+
   /** Match the metadata function to [method] by JVM signature (name + descriptor). */
   private fun matchFunction(functions: List<KmFunction>, method: MethodInfo): KmFunction? {
     val name = method.name
@@ -365,7 +367,95 @@ internal object ComposableSignature {
   private fun TargetParameter.withConstructibility(scanResult: ScanResult?): TargetParameter {
     if (scanResult == null || hasDefault || nullable || composableSlot) return this
     val fqn = typeFqn ?: return this
-    return if (isNoArgConstructible(scanResult, fqn)) copy(noArgConstructible = true) else this
+    val constructible = isNoArgConstructible(scanResult, fqn)
+    val factory = noArgFactoryFor(scanResult, fqn)
+    if (!constructible && factory == null) return this
+    return copy(noArgConstructible = constructible, noArgFactory = factory)
+  }
+
+  /**
+   * [TargetParameter.noArgFactory] resolved against the classpath: the `remember<SimpleName>` a
+   * call site should prefer over the raw constructor.
+   *
+   * Compose states the convention rather than documenting it — a state type that wants remembering
+   * ships `@Composable fun rememberT(…)` **in its own package**, every parameter defaulted
+   * (`ScrollState`/`rememberScrollState`, `LazyListState`/`rememberLazyListState`,
+   * `TextFieldState`/`rememberTextFieldState`). Searching that one package is what makes this a
+   * lookup instead of a guess: the name alone would match any `rememberFoo` anywhere on the
+   * classpath, so the returned callable is one this scan actually saw, declared beside the type,
+   * and returning the type.
+   *
+   * Top-level functions live in a file facade whose name follows the *source file*, not the type,
+   * so the facade cannot be derived from [fqn] — the package's classes are walked and the ones
+   * carrying package metadata are read. Every refusal below is a way `rememberT()` fails to
+   * compile, mirroring [isNoArgConstructible]:
+   * - **wrong shape** — non-public, generic, an extension, or context-requiring, none of which is
+   *   callable as a bare `rememberT()`;
+   * - **a required parameter** — the point is a call with no arguments;
+   * - **a different return type** — a `rememberFoo` that returns something else is a name
+   *   collision, not the convention;
+   * - **not `@Composable`** — the convention is about remembering across recomposition, and a plain
+   *   function named `rememberT` is not it;
+   * - **opt-in gated** — the same refusal [isNoArgConstructible] makes, for the same reason: the
+   *   generated wrapper carries no marker for it.
+   *
+   * Unlike the constructor, the factory does not put the type's own name in the emitted source, so
+   * a gated *type* does not disqualify its ungated factory — only a marker on the factory itself
+   * does.
+   */
+  internal fun noArgFactoryFor(scanResult: ScanResult, fqn: String): String? {
+    return try {
+      val pkg = fqn.substringBeforeLast('.', missingDelimiterValue = "")
+      val simpleName = fqn.substringAfterLast('.')
+      if (pkg.isEmpty() || simpleName.isEmpty()) return null
+      val factoryName = "remember$simpleName"
+      val declaring =
+        scanResult.getPackageInfo(pkg)?.classInfo?.firstOrNull { info ->
+          declaresNoArgComposableFactory(info, factoryName, fqn)
+        }
+      if (declaring == null) null else "$pkg.$factoryName"
+    } catch (_: Throwable) {
+      // Same posture as every other read here: unreadable answers "no factory", which costs the
+      // caller a constructor (or a placeholder) rather than a call site nothing verified.
+      null
+    }
+  }
+
+  /** Whether [info] is a file facade declaring [factoryName] in the shape described above. */
+  private fun declaresNoArgComposableFactory(
+    info: ClassInfo,
+    factoryName: String,
+    returnFqn: String,
+  ): Boolean {
+    val metadata = readClassMetadata(info) ?: return false
+    val functions =
+      when (val parsed = KotlinClassMetadata.readLenient(metadata)) {
+        is KotlinClassMetadata.FileFacade -> parsed.kmPackage.functions
+        is KotlinClassMetadata.MultiFileClassPart -> parsed.kmPackage.functions
+        else -> return false
+      }
+    val declared =
+      functions.firstOrNull { fn ->
+        fn.name == factoryName &&
+          fn.visibility == Visibility.PUBLIC &&
+          fn.typeParameters.isEmpty() &&
+          fn.receiverParameterType == null &&
+          !hasContextRequirement(fn) &&
+          fn.valueParameters.all { it.declaresDefaultValue } &&
+          (fn.returnType.classifier as? KmClassifier.Class)?.name?.replace('/', '.') == returnFqn
+      } ?: return false
+    // `@Composable` is a bytecode annotation on the JVM method, not something metadata records for
+    // a declaration, so the check crosses back to the scan — and it has to cross by the JVM name
+    // METADATA carries, not by the source name. The real `rememberTextFieldState` takes a defaulted
+    // `TextRange`, an inline value class, so Kotlin emits it as `rememberTextFieldState-Le-punE`;
+    // looking it up under its source name finds no method and refuses a factory that is right
+    // there. Matched on the name alone rather than the descriptor, because the Compose compiler
+    // appends a `Composer, Int` and a default mask that no metadata signature accounts for.
+    val jvmName = declared.signature?.name ?: factoryName
+    return info.getMethodInfo(jvmName).any { method ->
+      method.hasAnnotation(COMPOSABLE_ANNOTATION) &&
+        requiredOptInsOf(method, OPT_IN_MARKER_ANNOTATIONS).isEmpty()
+    }
   }
 
   /**

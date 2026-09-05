@@ -197,3 +197,64 @@ annotation class ExperimentalStateApi
 /** A defaulted parameter is omitted from the call, so nothing is constructed for it. */
 @Suppress("unused", "UNUSED_PARAMETER")
 fun defaultedParameterComponent(state: DefaultedState = DefaultedState()) {}
+
+// --- the `remember…` factory convention ---------------------------------------------------------
+// Each names one clause of `ComposableSignature.noArgFactoryFor`. The convention is Compose's, but
+// what is under test is that it is LOOKED UP rather than spelled from a type name: every fixture
+// below is a real `remember…` the scan can either accept or reject on its declared shape, and a
+// resolver that matched on the name alone would accept all of them.
+
+/** The `rememberTextFieldState` shape: `@Composable`, fully defaulted, returning its type. */
+@Suppress("unused")
+@Composable
+fun rememberDefaultedState(text: String = "", cursor: Int = 0): DefaultedState =
+  DefaultedState(text, cursor)
+
+/** A type whose package ships no factory at all. Its constructor is the only answer. */
+@Suppress("unused") class FactorylessState(val text: String = "")
+
+/** Named right and shaped right, but not `@Composable` — so it is not the convention. */
+@Suppress("unused") class PlainFactoryState(val text: String = "")
+
+@Suppress("unused")
+fun rememberPlainFactoryState(text: String = ""): PlainFactoryState = PlainFactoryState(text)
+
+/** Named right, but takes a value nothing here can supply, so `remember…()` does not compile. */
+@Suppress("unused") class RequiredFactoryState(val text: String = "")
+
+@Suppress("unused")
+@Composable
+fun rememberRequiredFactoryState(text: String): RequiredFactoryState = RequiredFactoryState(text)
+
+/** Named right, returns something else: a name collision, not a factory for this type. */
+@Suppress("unused") class MismatchedFactoryState(val text: String = "")
+
+@Suppress("unused")
+@Composable
+fun rememberMismatchedFactoryState(): DefaultedState = DefaultedState()
+
+/** Named right, but gated: emitting the call would need a marker the wrapper cannot carry. */
+@Suppress("unused") class GatedFactoryState(val text: String = "")
+
+@Suppress("unused")
+@Composable
+@ExperimentalFixtureApi
+fun rememberGatedFactoryState(): GatedFactoryState = GatedFactoryState()
+
+/** The wiring case: a required parameter whose type has a factory, read through `signatureOf`. */
+@Suppress("unused", "UNUSED_PARAMETER") fun factoryStateComponent(state: DefaultedState) {}
+
+/**
+ * A factory whose JVM name is **mangled**, because it takes an inline value class parameter.
+ *
+ * The case the real classpath had and the fixtures above did not: `rememberTextFieldState` takes a
+ * defaulted `TextRange`, so Kotlin emits it as `rememberTextFieldState-Le-punE`. A resolver that
+ * looks the method up under its source name finds nothing and refuses a factory that exists — which
+ * is what the functional test caught, and what this pins.
+ */
+@Suppress("unused") class MangledFactoryState(val text: String = "")
+
+@Suppress("unused")
+@Composable
+fun rememberMangledFactoryState(range: ValueState = ValueState()): MangledFactoryState =
+  MangledFactoryState(range.text)

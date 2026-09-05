@@ -54,6 +54,12 @@ class ComponentCallSiteCompileFunctionalTest {
    * DefaultConstructorMarker)` bridge — which is exactly why the claim has to be settled by the
    * compiler here rather than by a hand-written record. They also cover the invariant that moved:
    * these are the first snippets that emit an import beyond the callable.
+   *
+   * Those two now carry a second claim as well: that discovery found `rememberTextFieldState` on
+   * the real androidx classpath and the generator preferred it over the constructor. Compiling is
+   * necessary but not sufficient for that one — `TextFieldState()` compiles too — so
+   * [assertPrefersTheRememberFactory] checks the emitted text, and this build checks that the text
+   * the compiler accepted is the text that was checked.
    */
   private val expectedEmitted =
     setOf("Text", "Button", "Card", "Checkbox", "Switch", "TextField", "OutlinedTextField")
@@ -211,6 +217,8 @@ class ComponentCallSiteCompileFunctionalTest {
       .that(emitted.keys)
       .containsAtLeastElementsIn(expectedEmitted)
 
+    assertPrefersTheRememberFactory(emitted)
+
     writeGeneratedCallSites(projectDir, emitted)
 
     // `GradleRunner.build()` throws on a failed build, so reaching this line *is* the gate: the
@@ -220,6 +228,26 @@ class ComponentCallSiteCompileFunctionalTest {
     val compile = runGradle(projectDir, "compileKotlin")
     assertThat(compile.task(":compileKotlin")?.outcome)
       .isIn(listOf(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE))
+  }
+
+  /**
+   * The two text fields must be written with `rememberTextFieldState()`, not `TextFieldState()`.
+   *
+   * Asserted on the emitted text because the compiler cannot tell them apart: both type-check, and
+   * only one of them survives recomposition. This is the only place the *preference* is checked
+   * against a real classpath — the unit tests build a `TargetParameter` by hand and so can only
+   * prove the generator honours a factory it was handed, never that discovery resolved one.
+   */
+  private fun assertPrefersTheRememberFactory(emitted: Map<String, ComponentCode>) {
+    for (name in listOf("TextField", "OutlinedTextField")) {
+      val code = emitted.getValue(name)
+      assertWithMessage("%s call site", name)
+        .that(code.call)
+        .contains("state = rememberTextFieldState()")
+      assertWithMessage("%s imports", name)
+        .that(code.imports)
+        .contains("androidx.compose.foundation.text.input.rememberTextFieldState")
+    }
   }
 
   /**

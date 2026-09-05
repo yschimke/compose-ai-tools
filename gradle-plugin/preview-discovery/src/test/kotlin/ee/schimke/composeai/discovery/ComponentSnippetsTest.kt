@@ -45,6 +45,7 @@ class ComponentSnippetsTest {
     nullable: Boolean = false,
     typeFqn: String? = null,
     noArgConstructible: Boolean = false,
+    noArgFactory: String? = null,
   ) =
     TargetParameter(
       name = name,
@@ -54,6 +55,7 @@ class ComponentSnippetsTest {
       composableSlot = composableSlot,
       nullable = nullable,
       noArgConstructible = noArgConstructible,
+      noArgFactory = noArgFactory,
     )
 
   private fun emitted(record: ComponentRecord): ComponentSnippet.Emitted =
@@ -489,5 +491,90 @@ class ComponentSnippetsTest {
 
     assertThat(snippet.code).isEqualTo("TextField(state = Inner())")
     assertThat(snippet.imports).contains("com.example.Outer.Inner")
+  }
+
+  // --- preferring the `remember…` factory discovery resolved (follow-up to #5067) ----------------
+
+  private fun rememberedState(
+    noArgConstructible: Boolean = true,
+    nullable: Boolean = false,
+    type: String = "TextFieldState",
+  ) =
+    parameter(
+      "state",
+      type,
+      typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
+      nullable = nullable,
+      noArgConstructible = noArgConstructible,
+      noArgFactory = "androidx.compose.foundation.text.input.rememberTextFieldState",
+    )
+
+  @Test
+  fun `a parameter whose type has a factory is written as the factory call`() {
+    val snippet = emitted(textFieldRecord(rememberedState()))
+
+    assertThat(snippet.code).isEqualTo("TextField(state = rememberTextFieldState())")
+  }
+
+  @Test
+  fun `the factory wins over the constructor, because raw state loses what the user typed`() {
+    // Both are true of `TextFieldState` and the record carries both. `TextFieldState()` compiles
+    // and is still wrong: it is rebuilt on every recomposition. This is the whole reason the
+    // factory field exists rather than the constructor flag being enough.
+    val snippet = emitted(textFieldRecord(rememberedState(noArgConstructible = true)))
+
+    assertThat(snippet.code).isEqualTo("TextField(state = rememberTextFieldState())")
+    // And the constructor's import goes with it: a bare `TextFieldState` is neither printed nor
+    // pulled in. Asserted on the imports rather than on the code, because
+    // `rememberTextFieldState()`
+    // contains `TextFieldState()` as a substring and a "does not contain" check would pass here for
+    // the wrong reason.
+    assertThat(snippet.imports)
+      .doesNotContain("androidx.compose.foundation.text.input.TextFieldState")
+  }
+
+  @Test
+  fun `the factory is imported and the type it replaces is not`() {
+    // The emitted source never names `TextFieldState`, so importing it would be an import for
+    // something not printed — the exact disagreement the shared gate exists to prevent.
+    val snippet = emitted(textFieldRecord(rememberedState()))
+
+    assertThat(snippet.imports)
+      .containsExactly(
+        "androidx.compose.material3.TextField",
+        "androidx.compose.foundation.text.input.rememberTextFieldState",
+      )
+      .inOrder()
+  }
+
+  @Test
+  fun `a factory with no constructor behind it is still enough to emit a call`() {
+    // The two are resolved independently: a type that refuses `Type()` (abstract, internal,
+    // generic) can still have a public factory, and that is a call site the constructor path
+    // could never have written.
+    val snippet = emitted(textFieldRecord(rememberedState(noArgConstructible = false)))
+
+    assertThat(snippet.code).isEqualTo("TextField(state = rememberTextFieldState())")
+    assertThat(snippet.imports)
+      .contains("androidx.compose.foundation.text.input.rememberTextFieldState")
+  }
+
+  @Test
+  fun `a nullable parameter still takes null, whatever its package offers`() {
+    val snippet =
+      emitted(textFieldRecord(rememberedState(nullable = true, type = "TextFieldState?")))
+
+    assertThat(snippet.code).isEqualTo("TextField(state = null)")
+    assertThat(snippet.imports).containsExactly("androidx.compose.material3.TextField")
+  }
+
+  @Test
+  fun `a record predating the factory field behaves exactly as it did`() {
+    // Defaulted to null, so an older `components.json` keeps constructing — no silent retraction
+    // of a call site that already compiled.
+    val snippet = emitted(textFieldRecord())
+
+    assertThat(snippet.code).isEqualTo("TextField(state = TextFieldState())")
+    assertThat(snippet.imports).contains("androidx.compose.foundation.text.input.TextFieldState")
   }
 }

@@ -29,8 +29,14 @@ package ee.schimke.composeai.discovery
  *   no-arg-constructible type (issue #5067) breaks that on purpose — `TextField(state =
  *   TextFieldState())` needs `TextFieldState` imported — so the invariant moved rather than
  *   loosened: an import is emitted only for a type DISCOVERY resolved on the classpath and marked
- *   [TargetParameter.noArgConstructible], never for a name read off the rendered spelling. The
- *   compile gate is what checks it.
+ *   [TargetParameter.noArgConstructible], or for a factory callable it resolved into
+ *   [TargetParameter.noArgFactory] — never for a name read off the rendered spelling. The compile
+ *   gate is what checks it.
+ * - **No convention applied from its own name.** Compose's `rememberT` pairing is used, but only as
+ *   something discovery LOOKED UP: `rememberTextFieldState()` is printed because the scan found
+ *   that function beside `TextFieldState`, returning it, `@Composable` and fully defaulted. Nothing
+ *   here spells a factory name from a type name, which would be the authored table
+ *   `docs/design/COMPONENT_RECORD.md` keeps deleting.
  * - **No scope synthesis.** A composable declared on a receiver is refused rather than wrapped in a
  *   guessed `Column { … }`, because the wrapper is a rendering decision this object has no basis to
  *   make.
@@ -93,10 +99,11 @@ object ComponentSnippets {
     }
 
     val arguments = mutableListOf<String>()
-    // Types a constructed placeholder names, in the order they were needed. A `Type()` placeholder
-    // is the one thing this object writes that does not resolve on its own, so its import is
-    // collected here rather than left to the caller to notice (see the object KDoc).
-    val constructedTypes = mutableListOf<String>()
+    // What a constructed or remembered placeholder names, in the order they were needed — a
+    // `Type()` or `rememberType()` placeholder is the one thing this object writes that does not
+    // resolve on its own, so its import is collected here rather than left to the caller to notice
+    // (see the object KDoc).
+    val placeholderImports = mutableListOf<String>()
     // Defaulted parameters are omitted rather than filled: omitting one is legal by definition,
     // whereas restating a default means guessing at an expression the metadata does not carry.
     for (parameter in record.parameters.filterNot { it.hasDefault }) {
@@ -106,12 +113,13 @@ object ComponentSnippets {
             "no placeholder can be written for required parameter " +
               "`${parameter.name}: ${parameter.type}`"
           )
-      constructedTypeOf(parameter)?.let(constructedTypes::add)
+      constructedTypeOf(parameter)?.let(placeholderImports::add)
+      factoryCallableOf(parameter)?.let(placeholderImports::add)
       arguments += "${escapeIfKeyword(parameter.name)} = $placeholder"
     }
     return ComponentSnippet.Emitted(
       imports =
-        (listOf(record.symbol.callable) + constructedTypes).distinct().map {
+        (listOf(record.symbol.callable) + placeholderImports).distinct().map {
           escapeCallableIfKeyword(it)
         },
       code = "${escapeIfKeyword(record.symbol.name)}(${arguments.joinToString(", ")})",
@@ -246,6 +254,33 @@ object ComponentSnippets {
     if (constructsItsType(parameter)) parameter.typeFqn else null
 
   /**
+   * The qualified callable a `rememberT()` placeholder for [parameter] names, or null when its
+   * placeholder is not a factory call.
+   *
+   * The same contract [constructedTypeOf] has, for the other of the two placeholders that need an
+   * import — and the two are mutually exclusive by construction, so a parameter never imports both
+   * a type it does not print and a factory it does.
+   */
+  internal fun factoryCallableOf(parameter: TargetParameter): String? =
+    if (remembersItsValue(parameter)) parameter.noArgFactory else null
+
+  /**
+   * Whether [parameter] is answered by calling the `remember…` factory discovery found beside its
+   * type.
+   *
+   * Preferred over [constructsItsType] wherever both are available, because the two do not compile
+   * to the same thing: a raw `TextFieldState()` in a composable body is rebuilt on every
+   * recomposition and silently loses what the user typed, while `rememberTextFieldState()` is the
+   * expression a human would write. The gate is otherwise identical — a nullable parameter still
+   * takes `null` and a slot still takes `{}`, both shorter answers than any call.
+   */
+  private fun remembersItsValue(parameter: TargetParameter): Boolean =
+    parameter.noArgFactory != null &&
+      !parameter.nullable &&
+      !parameter.composableSlot &&
+      !parameter.type.contains("->")
+
+  /**
    * Whether [parameter] is answered by constructing its type rather than by a literal.
    *
    * The nullable and slot tests come first for the same reason they do in [placeholderFor]: a
@@ -255,7 +290,8 @@ object ComponentSnippets {
    * one carrying the flag without a qualified name could not be imported.
    */
   private fun constructsItsType(parameter: TargetParameter): Boolean =
-    parameter.noArgConstructible &&
+    !remembersItsValue(parameter) &&
+      parameter.noArgConstructible &&
       parameter.typeFqn != null &&
       !parameter.nullable &&
       !parameter.composableSlot &&
@@ -288,8 +324,14 @@ object ComponentSnippets {
       // .isNoArgConstructible`): public, non-generic, non-value, non-inner, plain class, with a
       // public constructor whose parameters all default. The simple name is safe to print here
       // because the import above is the qualified one it resolves through.
+      // A type whose package ships a `remember…` factory is answered by calling it. Discovery
+      // resolved the callable on the classpath (`ComposableSignature.noArgFactoryFor`) rather than
+      // spelling it from the type's name, and it wins over the constructor below because raw state
+      // construction in a composable body does not survive recomposition.
       else ->
-        if (constructsItsType(parameter))
+        if (remembersItsValue(parameter))
+          "${escapeIfKeyword(parameter.noArgFactory!!.substringAfterLast('.'))}()"
+        else if (constructsItsType(parameter))
           "${escapeIfKeyword(parameter.typeFqn!!.substringAfterLast('.'))}()"
         // Everything else — `Modifier`, `ImageVector`, an enum, a domain type — has no literal
         // that is correct without knowing the type, and inventing one is how generated code stops

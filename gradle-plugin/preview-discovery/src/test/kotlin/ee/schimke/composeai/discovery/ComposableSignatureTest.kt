@@ -286,6 +286,73 @@ class ComposableSignatureTest {
     assertThat(constructible("NoSuchStateAnywhere")).isFalse()
   }
 
+  // --- the `remember…` factory convention -------------------------------------------------------
+
+  /** `noArgFactoryFor` over a real scan, asked of the TYPE for the same reason as above. */
+  private fun factoryFor(simpleName: String): String? {
+    ClassGraph()
+      .enableClassInfo()
+      .enableMethodInfo()
+      .enableAnnotationInfo()
+      .acceptPackages("ee.schimke.composeai.discovery")
+      .scan()
+      .use { scan ->
+        return ComposableSignature.noArgFactoryFor(
+          scan,
+          "ee.schimke.composeai.discovery.$simpleName",
+        )
+      }
+  }
+
+  @Test
+  fun `a composable, fully defaulted factory beside the type resolves to its callable`() {
+    // The whole claim: the callable came off the classpath. Nothing spelled `remember` + the type
+    // name and hoped — the scan found this function, in this package, returning this type.
+    assertThat(factoryFor("DefaultedState"))
+      .isEqualTo("ee.schimke.composeai.discovery.rememberDefaultedState")
+  }
+
+  @Test
+  fun `a type whose package ships no factory resolves to none`() {
+    assertThat(factoryFor("FactorylessState")).isNull()
+  }
+
+  @Test
+  fun `a factory that is not composable is not the convention`() {
+    // Named and shaped exactly right. A resolver matching on the name would take it.
+    assertThat(factoryFor("PlainFactoryState")).isNull()
+  }
+
+  @Test
+  fun `a factory with a required parameter refuses, since the point is a call with none`() {
+    assertThat(factoryFor("RequiredFactoryState")).isNull()
+  }
+
+  @Test
+  fun `a same-named factory returning another type is a collision, not a factory`() {
+    assertThat(factoryFor("MismatchedFactoryState")).isNull()
+  }
+
+  @Test
+  fun `an opt-in-gated factory refuses, because its marker cannot travel either`() {
+    assertThat(factoryFor("GatedFactoryState")).isNull()
+  }
+
+  @Test
+  fun `a factory whose JVM name is mangled still resolves, under the name metadata carries`() {
+    // `rememberMangledFactoryState` takes an inline value class, so the emitted method is
+    // `rememberMangledFactoryState-…`. The source name is what a call site prints and what
+    // metadata records; the mangled one is what the scan can find. Confusing the two is what made
+    // the real `rememberTextFieldState` invisible.
+    assertThat(factoryFor("MangledFactoryState"))
+      .isEqualTo("ee.schimke.composeai.discovery.rememberMangledFactoryState")
+  }
+
+  @Test
+  fun `a type that is not on the scanned classpath has no factory`() {
+    assertThat(factoryFor("NoSuchStateAnywhere")).isNull()
+  }
+
   /** Resolve a fixture function's single parameter through the full `signatureOf` path. */
   private fun parameterWithScan(simpleName: String): TargetParameter {
     ClassGraph()
@@ -311,6 +378,23 @@ class ComposableSignatureTest {
 
     assertThat(parameter.noArgConstructible).isTrue()
     assertThat(parameter.typeFqn).isEqualTo("ee.schimke.composeai.discovery.DefaultedState")
+  }
+
+  @Test
+  fun `a required parameter also carries the factory its package declares`() {
+    // Both travel: the record says what is TRUE of the type, and choosing between them is the
+    // generator's job (`ComponentSnippets` prefers the factory). A record that carried only the
+    // winner would have to be re-resolved the moment that preference changed.
+    val parameter = parameterWithScan("factoryStateComponent")
+
+    assertThat(parameter.noArgConstructible).isTrue()
+    assertThat(parameter.noArgFactory)
+      .isEqualTo("ee.schimke.composeai.discovery.rememberDefaultedState")
+  }
+
+  @Test
+  fun `a defaulted parameter is not asked about the factory either`() {
+    assertThat(parameterWithScan("defaultedParameterComponent").noArgFactory).isNull()
   }
 
   @Test
