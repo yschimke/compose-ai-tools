@@ -33,6 +33,71 @@
       "description": "Informational: the theme modes the sticker sheet covers (e.g. [\"light\", \"dark\"]).",
       "items": { "type": "string" }
     },
+    "themes": {
+      "type": "array",
+      "description": "Themes an IMPORTED project has but cannot declare for itself. A first-party catalog annotates its own `PreviewWrapperProvider` classes with @ThemeCatalog / @WearThemeCatalog beside the code and omits this entirely; a project imported without its maintainers' involvement has no dependency on those annotations, so its palettes are described HERE and the providers are generated into the throwaway checkout before discovery runs (scripts/design-artifacts/generate-theme-catalogs.mjs). Each entry expands to one or more providers, which is what puts chips in the served catalog's Theme control, makes `?theme=theme:<providerFqn>` re-render under them, and publishes a `themes/<fqn>.dtcg.json` token set each. Same bargain as `groups`: the inventory is our description of somebody else's code, and it stays in our repository.",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "description": "One theme shape. `kind` picks how the theme is called: the four structured kinds cover what upstreams actually do, and `wrapper` is the escape hatch for a call none of them spells.",
+        "properties": {
+          "kind": {
+            "enum": ["enum", "functions", "modes", "arguments", "wrapper"],
+            "description": "`enum`: one theme composable over an enum's constants, `AppThemeWithBackground(LIGHT) { }` — Pocket Casts' nine palettes, Twine's twelve. `functions`: a whole composable per theme, `ThunderbirdBoltTheme { }` — Bolt's two brands. `modes`: one composable with a boolean dark parameter, `ElementTheme(darkTheme = true) { }` — the single-brand light/dark pair, and the shape that gives a Theme control its two chips when the upstream bakes both into one stacked image. `arguments`: one composable and a named-argument list per theme; the general form the other three are shorthands for. `wrapper`: a raw Kotlin body."
+          },
+          "group": {
+            "type": "string",
+            "description": "Default @ThemeCatalog group for every theme this entry expands to; themes sharing a group are catalogued together. Overridable per theme."
+          },
+          "composable": {
+            "type": "string",
+            "description": "FQN of the theme composable to call. Required by `enum`, `modes` and `arguments`. It may be `internal` to the module — the generated file compiles inside that same module, which is what makes an unexported theme (Twine's `AppTheme`) reachable at all."
+          },
+          "enum": {
+            "type": "string",
+            "description": "`kind: enum` only. FQN of the enum whose constants name the themes, nested names included (e.g. \"…ui.theme.Theme.ThemeType\")."
+          },
+          "values": {
+            "type": "array",
+            "description": "`kind: enum` only. The constants to expand, each a name or a { value, name, group } object. Listed rather than reflected off the enum: generation runs before the upstream compiles, so there is nothing to reflect against — and a constant that does not exist fails the module's compile by name, which beats a silently thinner catalog.",
+            "items": { "type": ["string", "object"] }
+          },
+          "parameter": {
+            "type": "string",
+            "description": "`kind: enum` — pass the constant as this named argument rather than positionally. `kind: modes` — the boolean dark-theme parameter's name (default \"darkTheme\")."
+          },
+          "modes": {
+            "type": "array",
+            "description": "`kind: modes` only. Which of the pair to generate; both by default.",
+            "items": { "enum": ["light", "dark"] }
+          },
+          "composables": {
+            "type": "array",
+            "description": "`kind: functions` only. One FQN — or { composable, name, group } — per theme.",
+            "items": { "type": ["string", "object"] }
+          },
+          "variants": {
+            "type": "array",
+            "description": "`kind: arguments` only. One { name, args, imports, group } per theme; `args` maps a parameter name to the Kotlin expression to pass it.",
+            "items": { "type": "object" }
+          },
+          "name": {
+            "type": "string",
+            "description": "`kind: wrapper` only. The theme's label, and the stem of its generated provider class."
+          },
+          "wrapper": {
+            "type": "string",
+            "description": "`kind: wrapper` only. The Kotlin body of the provider's `Wrap`, which must call `content()` — e.g. `AppTheme(overriddenColorScheme = solarizedColorScheme(false)) { content() }`."
+          },
+          "imports": {
+            "type": "array",
+            "description": "Extra FQNs to import into the generated file, for names a `wrapper` body or an `arguments` expression uses.",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
     "locales": {
       "type": "array",
       "description": "The locales the sticker sheet covers (e.g. [\"en\", \"ja\"]). Unlike `modes` this is not informational: a preview id ending in a declared locale is tagged with a `locale` props axis, so the arms of a locale multipreview fan-out (`Foo_en` / `Foo_ja`) are distinct renders instead of two images folding onto one output key. Match is case-insensitive and only at a segment boundary, as for `modes`. An id naming no declared locale stays untagged and remains the component's primary sticker. Omit for a single-locale catalog.",
