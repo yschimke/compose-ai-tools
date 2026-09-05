@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.78.1](https://github.com/yschimke/compose-ai-tools/compare/v1.78.0...v1.78.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **daemon:** recognise Compose Multiplatform's own @Preview in incremental discovery ([#5150](https://github.com/yschimke/compose-ai-tools/issues/5150)) ([cd8757c](https://github.com/yschimke/compose-ai-tools/commit/cd8757c2da4b5f9f40750ef6769f45968a73a812))
+* **renderer-android:** let Glance default its own composer parameters ([#5151](https://github.com/yschimke/compose-ai-tools/issues/5151)) ([d71ff34](https://github.com/yschimke/compose-ai-tools/commit/d71ff34890edf21346d62b63b7f84ffb9d3340f7))
+
 ## [1.78.0](https://github.com/yschimke/compose-ai-tools/compare/v1.77.0...v1.78.0) (2026-09-05)
 
 
