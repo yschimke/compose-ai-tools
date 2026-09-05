@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.0](https://github.com/yschimke/compose-ai-tools/compare/v1.77.0...v1.78.0) (2026-09-05)
+
+
+### Features
+
+* **build-host:** serve the server's Gradle work over a process boundary ([#5147](https://github.com/yschimke/compose-ai-tools/issues/5147)) ([1f4f802](https://github.com/yschimke/compose-ai-tools/commit/1f4f80268f2d85586a0e1dbde68dae3aa24bc27c))
+
 ## [1.77.0](https://github.com/yschimke/compose-ai-tools/compare/v1.76.0...v1.77.0) (2026-09-05)
 
 
