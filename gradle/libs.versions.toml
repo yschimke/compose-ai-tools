@@ -269,7 +269,7 @@ kotlinx-coroutines = "1.11.0"
 kotlinx-datetime = "0.8.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.15.0"
-okio = "3.18.1"
+okio = "3.18.2"
 fontbox = "3.0.8"
 junit = "4.13.2"
 # A skiko resolved ONLY into `:renderer-desktop`'s `skikoEncodeProbe` configuration — never onto a
