@@ -132,6 +132,28 @@ Four-stage pipeline, spread across the modules:
 
 The CLI ([cli/](../cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code extension ([compose-preview-vscode/](https://github.com/yschimke/compose-preview-vscode/blob/main/src/)) are thin drivers over the Gradle tasks — they shell out via the Tooling API (`GradleConnector.kt`, `gradleService.ts`) and read the resulting `previews.json` / PNG files. The CLI also ships a `compose-preview` binary with `installDist` for use as an agent/MCP backend.
 
+### The launcher checks the JVM the server will run on
+
+`serve`, `browse`, `ui-builder` and `mcp serve` exec a start script, and a Gradle start script
+resolves `java` from `JAVA_HOME`/`PATH` — it does **not** inherit the CLI's JVM. So the JVM that
+loads the server's classes is one neither repository picked, and on a host below the server's floor
+the user got an `UnsupportedClassVersionError` from a process they did not know existed:
+`ServerBinaryDiscovery.installationHint()` does not fire, because the binary is present, just
+unrunnable ([compose-preview-server#344](https://github.com/yschimke/compose-preview-server/issues/344)).
+
+[`ServerJavaPreflight`](../cli/src/main/kotlin/ee/schimke/composeai/cli/ServerJavaPreflight.kt) runs
+immediately before each exec, and `doctor` asks the same question where someone is already looking.
+Two rules govern changes to it:
+
+- **Never name a version here.** The floor is the server's and moves on its schedule; the
+  distribution states it in `java-min.properties` at its root, which a launcher reads without
+  executing anything. That rules out a `--java-min` the start script answers — answering it would
+  need the very JVM in question.
+- **Every step fails open.** No file (any server released before the file existed), no resolvable
+  `java`, unparseable `-version` output — each proceeds to the launch. This turns a bad error
+  message into a good one; a CLI outliving several server releases must never turn a working launch
+  into a refusal.
+
 ### The preview server lives in another repository now
 
 `compose-preview serve` **moved**. It is [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server), and it publishes `ee.schimke.composeai:compose-preview-serve` from there — first release 2.0.0. Its deployment, its GHCR image and its Playwright harness went with it.

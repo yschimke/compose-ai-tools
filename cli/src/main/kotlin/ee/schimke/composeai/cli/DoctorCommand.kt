@@ -241,13 +241,29 @@ class DoctorCommand(
       val pin =
         if (choice.source == ServerBinaryDiscovery.CACHE) "This CLI is pinned to server $pinned"
         else "This CLI is pinned to server $pinned, which it fetches when it finds none"
+      // The same question `serve` asks immediately before the exec, asked here where someone is
+      // already looking for what is wrong. Finding a binary is not the same as being able to run
+      // it: the start script resolves its own `java`, and doctor's own JVM (reported by
+      // `checkJava` below) is not that one. Null when the JVM clears the distribution's floor, or
+      // when nothing could be established — this never invents a problem.
+      val unrunnable = ServerJavaPreflight.failure(choice, ReleasedDistribution.SERVER)
       addCheck(
         DoctorCheck(
           id = "env.preview-server",
           category = "env",
-          status = "ok",
-          message = "preview server ${choice.binary} (from ${choice.source})",
-          detail = "`serve` and `browse` exec this; every other command needs no server. $pin",
+          status = if (unrunnable == null) "ok" else "warning",
+          message =
+            if (unrunnable == null) "preview server ${choice.binary} (from ${choice.source})"
+            else "preview server ${choice.binary} is present but this machine cannot run it",
+          detail =
+            unrunnable
+              ?: "`serve` and `browse` exec this; every other command needs no server. $pin",
+          remediation =
+            unrunnable?.let {
+              DoctorRemediation(
+                summary = "point JAVA_HOME at a JDK the distribution supports, then re-run"
+              )
+            },
         )
       )
       return
