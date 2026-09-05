@@ -64,8 +64,32 @@ data class PreviewListResponse(
   val counts: PreviewCounts? = null,
 )
 
+/**
+ * The `counts` block of a `show` / `a11y` JSON envelope.
+ *
+ * The four buckets **partition** [total] — every preview lands in exactly one, and `changed +
+ * unchanged + missing + skipped == total` for any run (asserted in `PreviewCountsPartitionTest`).
+ * Consumers can therefore compute a residual from them, which they could not before [skipped]
+ * existed: a preview whose only captures were `optional` and produced no PNG fell into no bucket at
+ * all, so on a project with best-effort captures the counts silently stopped adding up
+ * (issue #5174).
+ *
+ * @property changed at least one capture's sha256 differs from the previous run.
+ * @property unchanged nothing changed, and at least one capture has a PNG.
+ * @property missing no PNG at all, and the miss is a render failure — the set `--missing-renders`
+ *   gates on (see [previewsMissingPng]).
+ * @property skipped no PNG at all, and the miss is **expected**: every absent capture is
+ *   `optional`, or the preview is one of [NON_PNG_PREVIEW_KINDS]. Text output tags these rows `[no
+ *   PNG, optional]` / `[no PNG, by design]` rather than a bare `[no PNG]`.
+ */
 @Serializable
-data class PreviewCounts(val total: Int, val changed: Int, val unchanged: Int, val missing: Int)
+data class PreviewCounts(
+  val total: Int,
+  val changed: Int,
+  val unchanged: Int,
+  val missing: Int,
+  val skipped: Int = 0,
+)
 
 /**
  * Compact response shape emitted under `--brief`. Drops everything an agent already had from a
@@ -898,8 +922,7 @@ abstract class Command(
   }
 
   /** True if the preview has at least one capture with `changed = true`. */
-  protected fun PreviewResult.anyChanged(): Boolean =
-    captures.any { it.changed == true } || changed == true
+  protected fun PreviewResult.anyChanged(): Boolean = hasChangedCapture()
 
   /** Filters by `--id` / `--filter` and (optionally) `--changed-only`. */
   protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> =
@@ -959,22 +982,7 @@ abstract class Command(
     )
   }
 
-  private fun countsOf(results: List<PreviewResult>) =
-    PreviewCounts(
-      total = results.size,
-      changed = results.count { it.anyChanged() },
-      unchanged = results.count { !it.anyChanged() && it.captures.any { c -> c.pngPath != null } },
-      // Exclude kinds that never emit a PNG (see [NON_PNG_PREVIEW_KINDS]) and `optional` captures
-      // so `counts.missing` matches what `--missing-renders` actually gates on — an
-      // `@XrSubspacePreview` with no composite or a desktop `@ColorCatalog` sheet still isn't a
-      // render failure.
-      missing =
-        results.count { r ->
-          r.params.kind !in NON_PNG_PREVIEW_KINDS &&
-            r.captures.all { c -> c.pngPath == null } &&
-            r.captures.any { c -> !c.optional }
-        },
-    )
+  private fun countsOf(results: List<PreviewResult>): PreviewCounts = previewCountsOf(results)
 
   protected fun matchesRequest(preview: PreviewInfo): Boolean =
     previewIdMatchesRequest(
@@ -1638,9 +1646,97 @@ internal fun readableRenderModules(
  * standing up a Gradle render.
  */
 internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResult> =
-  results.filter { r ->
-    r.params.kind !in NON_PNG_PREVIEW_KINDS && r.captures.any { it.pngPath == null && !it.optional }
+  results.filter {
+    previewMissesRequiredPng(it)
   }
+
+/**
+ * [previewsMissingPng] for a single row — the one predicate that decides whether a missing PNG is a
+ * render failure. Kept as the single source of truth for the gate, the `counts.missing` bucket and
+ * the `[no PNG]` text tag, so the three channels a consumer reads cannot disagree about the same
+ * preview (issue #5174: four rows tagged `[no PNG]` above a summary that said one).
+ */
+internal fun previewMissesRequiredPng(r: PreviewResult): Boolean =
+  r.params.kind !in NON_PNG_PREVIEW_KINDS && r.captures.any { it.pngPath == null && !it.optional }
+
+/** True if the preview has at least one capture with `changed = true`. */
+internal fun PreviewResult.hasChangedCapture(): Boolean =
+  captures.any { it.changed == true } || changed == true
+
+/** Which [PreviewCounts] bucket a preview belongs to. Exhaustive, and mutually exclusive. */
+internal enum class PreviewCountBucket {
+  CHANGED,
+  UNCHANGED,
+  MISSING,
+  SKIPPED,
+}
+
+/**
+ * Classify one preview into its [PreviewCounts] bucket.
+ *
+ * Written as a `when` cascade rather than four predicates precisely because the buckets have to
+ * partition the result set: a row that matches no branch is impossible here, where it used to be
+ * the normal fate of a preview whose only captures were `optional`.
+ */
+internal fun previewCountBucket(r: PreviewResult): PreviewCountBucket =
+  when {
+    r.hasChangedCapture() -> PreviewCountBucket.CHANGED
+    r.captures.any { it.pngPath != null } -> PreviewCountBucket.UNCHANGED
+    previewMissesRequiredPng(r) -> PreviewCountBucket.MISSING
+    else -> PreviewCountBucket.SKIPPED
+  }
+
+/**
+ * The `counts` block for a set of results.
+ *
+ * Bucketed through [previewCountBucket] rather than four independent `count {}` predicates, so the
+ * buckets partition `total` by construction — the expected-miss rows that used to fall between the
+ * predicates now land in `skipped` instead of in no bucket at all (issue #5174).
+ */
+internal fun previewCountsOf(results: List<PreviewResult>): PreviewCounts {
+  val byBucket = results.groupingBy { previewCountBucket(it) }.eachCount()
+  return PreviewCounts(
+    total = results.size,
+    changed = byBucket[PreviewCountBucket.CHANGED] ?: 0,
+    unchanged = byBucket[PreviewCountBucket.UNCHANGED] ?: 0,
+    missing = byBucket[PreviewCountBucket.MISSING] ?: 0,
+    skipped = byBucket[PreviewCountBucket.SKIPPED] ?: 0,
+  )
+}
+
+/**
+ * The trailing tag on a `show` row: `[changed]`, `[no PNG]`, or — new in issue #5174 — a tag that
+ * says the absent PNG was *expected*.
+ *
+ * A bare `[no PNG]` is reserved for the misses [previewMissesRequiredPng] flags, i.e. exactly the
+ * ones the "produced no PNG for N of M preview(s)" summary below the listing enumerates. A
+ * best-effort capture (`Capture.optional` — a non-launcher activity that needs intent extras, a
+ * desktop `@ColorCatalog` sheet) and a kind that never emits a PNG get their own tags, so a reader
+ * can tell which of the untagged rows is the real failure without reimplementing the policy off the
+ * JSON.
+ */
+internal fun previewStatusTag(r: PreviewResult): String =
+  when {
+    r.pngPath != null -> if (r.hasChangedCapture()) " [changed]" else ""
+    previewMissesRequiredPng(r) -> " [no PNG]"
+    r.params.kind in NON_PNG_PREVIEW_KINDS -> NO_PNG_BY_DESIGN_TAG
+    else -> NO_PNG_OPTIONAL_TAG
+  }
+
+/** [previewStatusTag] for one capture row of a multi-capture preview. */
+internal fun captureStatusTag(c: CaptureResult, kind: String): String =
+  when {
+    c.pngPath != null -> if (c.changed == true) " [changed]" else ""
+    c.optional -> NO_PNG_OPTIONAL_TAG
+    kind in NON_PNG_PREVIEW_KINDS -> NO_PNG_BY_DESIGN_TAG
+    else -> " [no PNG]"
+  }
+
+/** Best-effort capture (`Capture.optional`) that produced nothing — expected, not a failure. */
+internal const val NO_PNG_OPTIONAL_TAG = " [no PNG, optional]"
+
+/** A [NON_PNG_PREVIEW_KINDS] preview, whose empty `pngPath` is the normal outcome. */
+internal const val NO_PNG_BY_DESIGN_TAG = " [no PNG, by design]"
 
 /**
  * Whether `show` can still emit a useful report after gradle reported failure.
@@ -1771,24 +1867,14 @@ class ShowCommand(args: List<String>) : Command(args) {
           println("[${r.module}]")
           lastModule = r.module
         }
-        val statusTag =
-          when {
-            r.pngPath == null -> " [no PNG]"
-            r.anyChanged() -> " [changed]"
-            else -> ""
-          }
+        val statusTag = previewStatusTag(r)
         val shaTag = r.sha256?.let { "  sha=${it.take(12)}" } ?: ""
         println("${r.functionName} (${r.id})$statusTag$shaTag")
         if (r.captures.size <= 1) {
           if (r.pngPath != null) println("  ${r.pngPath}")
         } else {
           for (c in r.captures) {
-            val tag =
-              when {
-                c.pngPath == null -> " [no PNG]"
-                c.changed == true -> " [changed]"
-                else -> ""
-              }
+            val tag = captureStatusTag(c, r.params.kind)
             println("  [${captureCoordLabel(c)}]$tag ${c.pngPath ?: ""}")
           }
         }
