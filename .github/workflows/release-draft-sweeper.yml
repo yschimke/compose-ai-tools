@@ -1,0 +1,61 @@
+name: Release Draft Sweeper
+
+# Finishes a GitHub Release that was cut as a draft and then abandoned by the run that cut it.
+#
+# WHY THIS EXISTS
+# ---------------
+# Everything downstream of the cut in release-please.yml is gated on
+# `needs.release-please.outputs.release_created == 'true'`, and the release-please action sets
+# that output LAST — several API calls after it has already created the draft. Any throw in
+# between (`Error adding to tree` for 0.16.34; `Label does not exist` for v1.78.0 on 2026-09-05)
+# leaves the output empty, so the tag step, release.yml and `finalize-release` all skip and the
+# draft is left with nothing in the run that would ever publish it. The `!cancelled()` guards
+# there do not help: the job failing is not the problem, the missing output is.
+#
+# v1.78.0 got out only because the next push to main happened to re-cut it. That accident is gone
+# on purpose — cutting is now the release-PR merge run's job alone, which is what stops two
+# invocations racing for the same pending PR in the first place — so recovery is this workflow,
+# deliberately, on a schedule. The rules it applies (and, more importantly, the ones it refuses
+# to bend: no publishing without the assets, no publishing a version Maven Central never got, no
+# guessing where a missing tag belongs) live in `.github/scripts/sweep-stranded-releases.sh` and
+# are pinned by its self-test. See docs/RELEASING.md.
+#
+# It is a backstop, not the release path: it does nothing at all while any release run is in
+# flight, and nothing to a draft younger than the release window.
+
+on:
+  schedule:
+    # Hourly, offset off the hour to dodge cron congestion and the :00 release burst. A stranded
+    # release should be measured in one hour, not the six that release-pr-heal.yml can afford —
+    # its drafts are invisible to consumers, and every install of `latest` misses the version.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report what the sweep would do without touching anything.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-draft-sweeper
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create a missing tag ref; un-draft the release
+      actions: write    # dispatch release.yml to rebuild missing assets (implies actions: read)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Sweep stranded draft releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: ./.github/scripts/sweep-stranded-releases.sh

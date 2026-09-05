@@ -1021,6 +1021,12 @@ jobs:
       # appears mid-release, too strict and the release PR silently stops updating at all.
       - name: Run release PR race guard tests
         run: ./.github/scripts/test-release-pr-race-guard.sh
+      # The draft sweeper publishes releases out of band, so its rules are the ones nobody is
+      # watching when they run: too eager and `/releases/latest` points at a version whose
+      # tarballs or Maven artifacts are not there, too shy and the stuck draft it exists for
+      # stays stuck. Both directions are pinned against a stubbed GitHub.
+      - name: Run stranded release sweeper tests
+        run: ./.github/scripts/test-sweep-stranded-releases.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
       # The Figma reference column cuts a node out of a repo's committed page
