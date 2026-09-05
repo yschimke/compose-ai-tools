@@ -10,7 +10,7 @@ import org.junit.Test
 /** The builder's edits, as pure functions over an immutable [ScreenDocument]. */
 class ScreenDocumentEditsTest {
 
-  // scaffold(0) → content[ lazy-column(1) → content[ card(2) → content[ button(3) ], text(4) ] ]
+  // scaffold(0) → content[ column(1) → content[ card(2) → content[ button(3) ], text(4) ] ]
   private val document =
     ScreenDocument(
       name = "S",
@@ -22,7 +22,7 @@ class ScreenDocumentEditsTest {
               "content" to
                 listOf(
                   ScreenNode(
-                    "lazy-column",
+                    "column",
                     slots =
                       mapOf(
                         "content" to
@@ -43,7 +43,7 @@ class ScreenDocumentEditsTest {
   @Test
   fun `pre-order numbers the tree the way the UI selects it`() {
     assertEquals(
-      listOf("scaffold", "lazy-column", "card", "button", "text"),
+      listOf("scaffold", "column", "card", "button", "text"),
       document.flattenNodes().map { it.node.componentId },
     )
     assertEquals(listOf(null, 0, 1, 2, 1), document.flattenNodes().map { it.parentIndex })
@@ -57,7 +57,7 @@ class ScreenDocumentEditsTest {
   fun `adding appends into the named slot of the selected node`() {
     val edited = document.addNode(2, "content", ScreenNode("text"))
     assertEquals(
-      listOf("scaffold", "lazy-column", "card", "button", "text", "text"),
+      listOf("scaffold", "column", "card", "button", "text", "text"),
       edited.flattenNodes().map { it.node.componentId },
     )
     // …into the card, after the button that was already there. Pre-order puts it at 4, *inside*
@@ -73,7 +73,7 @@ class ScreenDocumentEditsTest {
     // wrong, because the subtree's indices are consumed before the node is tested.
     val edited = document.removeNode(2)
     assertEquals(
-      listOf("scaffold", "lazy-column", "text"),
+      listOf("scaffold", "column", "text"),
       edited.flattenNodes().map { it.node.componentId },
     )
   }
@@ -81,7 +81,7 @@ class ScreenDocumentEditsTest {
   @Test
   fun `removing a leaf leaves its siblings, and an empty slot is dropped`() {
     assertEquals(
-      listOf("scaffold", "lazy-column", "card", "text"),
+      listOf("scaffold", "column", "card", "text"),
       document.removeNode(3).flattenNodes().map { it.node.componentId },
     )
     // The card's `content` slot is now empty and is not carried as an empty list.

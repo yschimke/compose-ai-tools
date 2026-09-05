@@ -92,9 +92,11 @@ class ScreenGeneratorTest {
     assertThat(source).contains("Card(content = {")
     assertThat(source).contains("fun HomeScreen()")
     assertThat(source).contains("import androidx.compose.material3.Card")
-    // `Text` is nested inside `Card`'s `ColumnScope` slot, so it is qualified rather than imported
-    // — an implicit receiver's members outrank an import in Kotlin. See the dedicated test.
-    assertThat(source).contains("androidx.compose.material3.Text(text = ")
+    // `Text` is nested inside `Card`'s `ColumnScope` slot and is still imported by simple name:
+    // an implicit receiver adds names to the scope, it does not evict the import. See the
+    // dedicated test.
+    assertThat(source).contains("import androidx.compose.material3.Text")
+    assertThat(source).doesNotContain("androidx.compose.material3.Text(text = ")
     // `modifier` is defaulted and untouched, so it is omitted rather than guessed at.
     assertThat(source).doesNotContain("modifier =")
   }
@@ -550,11 +552,22 @@ class ScreenGeneratorTest {
   }
 
   @Test
-  fun `a child inside a receiver slot is qualified, because the receiver outranks an import`() {
-    // Kotlin resolves a simple name against implicit receivers before imports, so a `ColumnScope`
-    // with a member `Text` would win over `import androidx.compose.material3.Text` — source that
-    // compiles and draws something else. The receiver's members are not in the record, so this
-    // cannot be checked, only avoided.
+  fun `a child inside a receiver slot is imported, like any other child`() {
+    // This reverses a deliberate decision, so it records both halves. The hazard it avoided is
+    // real: Kotlin resolves a simple name against implicit receivers before imports, so a
+    // `ColumnScope` declaring a member `Text` would outrank `import androidx.compose.material3.Text`
+    // and draw something else. The receiver's members are not in the record, so it was avoided
+    // rather than checked.
+    //
+    // What that cost was not worth it. The flag was sticky, so one scoped slot near the root
+    // qualified every descendant, and since almost every container in Material 3 scopes its
+    // content — `Column`, `Card`, `Button` — a realistic screen came out fully qualified from top
+    // to bottom. That is the source a builder shows its user.
+    //
+    // It is also a hazard the language hands every hand-written file, and one that named arguments
+    // blunt: a shadowing member has to match the simple name *and* the parameter names to bind at
+    // all, and anything less is a compile error rather than a wrong screen. Checking it properly
+    // means recording a receiver's members in the catalog, which is the version worth building.
     val screen =
       ScreenDocument(
         "Screen",
@@ -575,11 +588,10 @@ class ScreenGeneratorTest {
 
     val source = emitted(screen, catalog(card, text)).source
 
-    assertThat(source).contains("androidx.compose.material3.Text(text = \"Hi\")")
-    // No import either: nothing uses the simple name, and an unused import is noise in generated
-    // source that a linter will flag.
-    assertThat(source).doesNotContain("import androidx.compose.material3.Text")
-    // The root is not inside any receiver, so it keeps the readable spelling.
+    assertThat(source).contains("Text(text = \"Hi\")")
+    assertThat(source).doesNotContain("androidx.compose.material3.Text(text = ")
+    assertThat(source).contains("import androidx.compose.material3.Text")
+    // The container it nests inside is spelled the same way, as it always was.
     assertThat(source).contains("    Card(")
     assertThat(source).contains("import androidx.compose.material3.Card")
   }
@@ -761,10 +773,14 @@ class ScreenGeneratorTest {
   }
 
   @Test
-  fun `a nullable receiver slot still qualifies its children`() {
-    // `(ColumnScope.() -> Unit)?` has nothing before its first `(`, so reading the receiver off the
-    // rendered type answered "no receiver" and the children went back to simple names. The record
-    // carries the receiver structurally; that is what is read.
+  fun `a receiver slot imports its children by simple name`() {
+    // This used to assert the opposite: a slot with a receiver qualified everything beneath it,
+    // because an import supposedly could not reach inside one. It can — `import …material3.Text`
+    // then `Column { Text("hi") }` is ordinary Compose, and an implicit receiver adds names to the
+    // scope rather than removing the imported one. Since the flag was sticky, one scoped slot near
+    // the root qualified an entire screen. A nullable slot is kept as the case because it is the
+    // one whose receiver is invisible in the rendered type, so it proves nesting is not consulted
+    // at all rather than merely mis-detected.
     val optional =
       component(
         "Optional",
@@ -796,8 +812,9 @@ class ScreenGeneratorTest {
 
     val source = emitted(screen, catalog(optional, text)).source
 
-    assertThat(source).contains("androidx.compose.material3.Text(text = \"Hi\")")
-    assertThat(source).doesNotContain("import androidx.compose.material3.Text")
+    assertThat(source).contains("import androidx.compose.material3.Text")
+    assertThat(source).contains("Text(text = \"Hi\")")
+    assertThat(source).doesNotContain("androidx.compose.material3.Text(text = \"Hi\")")
   }
 
   @Test
