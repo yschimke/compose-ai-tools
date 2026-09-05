@@ -534,6 +534,16 @@ object ScreenGenerator {
      */
     var initializerScope: Set<String>? = null
 
+    /**
+     * The receiver scope of the slot the node currently being emitted sits in, or null at the root.
+     *
+     * Depth-first and single-threaded, so one field with save/restore is the whole mechanism. It
+     * exists for [ChainLink.receiverScopeFqn]: whether `Modifier.weight` compiles is not a fact
+     * about the value, it is a fact about **where the node was placed**, and this is the only place
+     * that knows.
+     */
+    private var slotScope: String? = null
+
     fun node(node: ScreenNode, depth: Int): String {
       val pad = INDENT.repeat(depth)
       val record =
@@ -645,7 +655,14 @@ object ScreenGenerator {
             children.forEach { node(it, depth + 1) }
           }
           children != null && parameter.composableSlot -> {
-            val nested = children.joinToString("\n") { node(it, depth + 1) }
+            val outer = slotScope
+            slotScope = parameter.composableSlotReceiver
+            val nested =
+              try {
+                children.joinToString("\n") { node(it, depth + 1) }
+              } finally {
+                slotScope = outer
+              }
             arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
           }
           // Untouched by the document. A default may be omitted; anything else still has to be
@@ -847,6 +864,11 @@ object ScreenGenerator {
               "kotlin.Long" -> long(value.value)
               else -> null
             }
+          is ScreenValue.Fractional32 ->
+            // Its own spelling, so it fits `Float` and nothing else — a `Double` parameter handed
+            // one would compile as `1f` only by widening, which is the coercion this vocabulary
+            // exists to avoid.
+            if (type == "kotlin.Float" && value.value.isFinite()) "${value.value}f" else null
           is ScreenValue.Fractional ->
             when {
               // Neither `NaN` nor `Infinity` is a Kotlin literal, so both would emit source the
@@ -910,6 +932,14 @@ object ScreenGenerator {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
           }
+        // The one nested fraction that is not a `Double`, which is the whole reason this kind
+        // exists — see `ScreenValue.Fractional32`.
+        is ScreenValue.Fractional32 ->
+          if (value.value.isFinite()) "${value.value}f"
+          else {
+            reasons += "$where is ${value.value}, which is not a Kotlin literal"
+            null
+          }
         is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null
@@ -942,6 +972,32 @@ object ScreenGenerator {
               // file this generator had already called compilable.
               val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
+              // A member extension of the slot's receiver. Not imported — the receiver supplies it
+              // — and legal only where that receiver is actually in scope, which is what makes
+              // `Modifier.weight` expressible without guessing. See `ChainLink.receiverScopeFqn`.
+              val scope = link.receiverScopeFqn
+              if (scope != null) {
+                if (slotScope != scope) {
+                  reasons +=
+                    "$where links `$simple`, which is declared on `$scope` and is in scope only " +
+                      "inside a slot with that receiver; this node sits " +
+                      (slotScope?.let { "in a `$it` slot" } ?: "at the root, which has no receiver")
+                  return null
+                }
+                append(".")
+                append(ComponentSnippets.escapeIfKeyword(simple))
+                if (link.property) {
+                  if (link.positional.isNotEmpty() || link.named.isNotEmpty()) {
+                    reasons += "$where reads `$simple` as a property and also passes it arguments"
+                    return null
+                  }
+                } else {
+                  val arguments =
+                    arguments(link.positional, link.named, where, depth) ?: return null
+                  append("(").append(arguments).append(")")
+                }
+                continue
+              }
               // A chain link is *imported* and called by its simple name, so it has to be a
               // top-level declaration. `RowScope.weight` is not: it is a member extension of the
               // scope, supplied by an implicit receiver, and neither

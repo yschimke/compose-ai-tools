@@ -74,6 +74,22 @@ class ScreenValueVocabularyTest {
       componentIds = listOf("m3/button"),
     )
 
+  private val column =
+    component(
+      "Column",
+      "androidx.compose.foundation.layout.Column",
+      listOf(
+        TargetParameter(
+          "content",
+          "@Composable ColumnScope.() -> Unit",
+          composableSlot = true,
+          composableSlotReceiver = COLUMN_SCOPE,
+        )
+      ),
+      componentIds = listOf("layout/column"),
+      canonicalId = "app/androidx.compose.foundation.layout.ColumnKt.Column",
+    )
+
   private fun catalog(vararg records: ComponentRecord) =
     ComponentRecordFile(module = "app", variant = "debug", components = records.toList())
 
@@ -277,6 +293,131 @@ class ScreenValueVocabularyTest {
     assertThat(result.source).contains("import androidx.compose.foundation.layout.fillMaxWidth")
     assertThat(result.source).contains("import androidx.compose.foundation.layout.padding")
     assertThat(result.source).contains("import androidx.compose.ui.unit.dp")
+  }
+
+  @Test
+  fun `a scoped link resolves inside the slot whose receiver declares it`() {
+    // `Modifier.weight` is declared on `ColumnScope`, so whether it compiles is a fact about where
+    // the node sits rather than about the value. Inside a `content` slot whose receiver is that
+    // scope, the receiver supplies it and the simple name resolves — with no import, because a
+    // member extension cannot be imported.
+    val result =
+      emitted(
+        ScreenNode(
+          componentId = column.canonicalId,
+          slots =
+            mapOf(
+              "content" to
+                listOf(
+                  textNode(
+                    "modifier" to
+                      ScreenValue.Chain(
+                        receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                        links =
+                          listOf(
+                            ChainLink(
+                              "androidx.compose.foundation.layout.ColumnScope.weight",
+                              positional = listOf(ScreenValue.Fractional32(1f)),
+                              receiverScopeFqn = COLUMN_SCOPE,
+                            )
+                          ),
+                        typeFqn = modifier,
+                      )
+                  )
+                )
+            ),
+        ),
+        catalog(text, column),
+      )
+    assertThat(result.source).contains("modifier = Modifier.weight(1.0f)")
+    assertThat(result.source).doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
+  }
+
+  @Test
+  fun `a scoped link in the wrong slot is refused, naming both scopes`() {
+    // The check that makes the claim worth making. A `RowScope` modifier inside a `Column` is an
+    // unresolved reference, and emitting it would be exactly the guess this vocabulary refuses.
+    assertThat(
+        refusal(
+          ScreenNode(
+            componentId = column.canonicalId,
+            slots =
+              mapOf(
+                "content" to
+                  listOf(
+                    textNode(
+                      "modifier" to
+                        ScreenValue.Chain(
+                          receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                          links =
+                            listOf(
+                              ChainLink(
+                                "androidx.compose.foundation.layout.RowScope.weight",
+                                positional = listOf(ScreenValue.Fractional32(1f)),
+                                receiverScopeFqn = ROW_SCOPE,
+                              )
+                            ),
+                          typeFqn = modifier,
+                        )
+                    )
+                  )
+              ),
+          ),
+          catalog(text, column),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` links `weight`, which is declared on `$ROW_SCOPE` and is in scope only " +
+          "inside a slot with that receiver; this node sits in a `$COLUMN_SCOPE` slot"
+      )
+  }
+
+  @Test
+  fun `a scoped link at the root is refused, because there is no receiver at all`() {
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links =
+                  listOf(
+                    ChainLink(
+                      "androidx.compose.foundation.layout.ColumnScope.weight",
+                      positional = listOf(ScreenValue.Fractional32(1f)),
+                      receiverScopeFqn = COLUMN_SCOPE,
+                    )
+                  ),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` links `weight`, which is declared on `$COLUMN_SCOPE` and is in scope " +
+          "only inside a slot with that receiver; this node sits at the root, which has no receiver"
+      )
+  }
+
+  @Test
+  fun `a float literal is the one nested fraction that is not a Double`() {
+    // Nested, there is no declared type to render against, so each literal kind has one spelling
+    // and a `Fractional` is always a `Double`. `Modifier.weight(1.0)` does not compile, which is
+    // why the float kind exists at all.
+    val result =
+      emitted(
+        textNode(
+          "color" to
+            ScreenValue.Construct(
+              callableFqn = "androidx.compose.ui.graphics.Color",
+              positional = listOf(ScreenValue.Fractional32(0.5f), ScreenValue.Fractional(0.5)),
+              typeFqn = color,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source).contains("Color(0.5f, 0.5)")
   }
 
   @Test
@@ -1471,4 +1612,9 @@ class ScreenValueVocabularyTest {
 
     assertThat(reasons.single()).contains("has no `onLongPress`")
   }
+  private companion object {
+    const val COLUMN_SCOPE = "androidx.compose.foundation.layout.ColumnScope"
+    const val ROW_SCOPE = "androidx.compose.foundation.layout.RowScope"
+  }
+
 }
