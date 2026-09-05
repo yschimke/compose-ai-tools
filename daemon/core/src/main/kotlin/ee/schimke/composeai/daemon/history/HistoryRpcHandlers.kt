@@ -34,13 +34,10 @@ import kotlinx.serialization.json.JsonElement
  *
  * @param historyManager the daemon's manager, or null when history was never wired (in-process
  *   tests, fake-mode harness scenarios) — see `JsonRpcServer`'s `historyManager` parameter.
- * @param diffExperimental the `history/diff` gate — see `JsonRpcServer`'s `historyDiffExperimental`
- *   parameter. When false, `history/diff` is registered but replies method-not-found.
  */
 internal class HistoryRpcHandlers(
   private val peer: RpcPeer,
   private val historyManager: HistoryManager?,
-  private val diffExperimental: Boolean,
 ) {
 
   /**
@@ -56,39 +53,19 @@ internal class HistoryRpcHandlers(
   fun registerInto(builder: RpcMethodRegistry.Builder) {
     builder.register("history/list", gated { handleHistoryList(it) })
     builder.register("history/read", gated { handleHistoryRead(it) })
-    builder.register(
-      "history/diff",
-      gated(
-        extraGate = diffExperimental,
-        extraGateMessage =
-          "history/diff is experimental in 1.0 and disabled by default; " +
-            "set -D${JsonRpcServer.HISTORY_DIFF_EXPERIMENTAL_PROP}=true to enable",
-      ) {
-        handleHistoryDiff(it)
-      },
-    )
+    builder.register("history/diff", gated { handleHistoryDiff(it) })
     builder.register("history/prune", gated { handleHistoryPrune(it) })
   }
 
   /**
-   * Wraps [handler] in the feature gates: [HistoryFeature.ENABLED] first (its message wins, as it
-   * did in the dispatch `when`), then the optional per-method [extraGate].
+   * Wraps [handler] in the [HistoryFeature.ENABLED] gate, which is where the dispatch `when` used
+   * to apply it.
    */
-  private fun gated(
-    extraGate: Boolean = true,
-    extraGateMessage: String = HISTORY_DISABLED_MESSAGE,
-    handler: (JsonRpcRequest) -> Unit,
-  ): RpcMethodHandler = RpcMethodHandler { req ->
-    when {
-      !HistoryFeature.ENABLED ->
-        peer.sendErrorResponse(
-          req.id,
-          JsonRpcServer.ERR_METHOD_NOT_FOUND,
-          HISTORY_DISABLED_MESSAGE,
-        )
-      !extraGate ->
-        peer.sendErrorResponse(req.id, JsonRpcServer.ERR_METHOD_NOT_FOUND, extraGateMessage)
-      else -> handler(req)
+  private fun gated(handler: (JsonRpcRequest) -> Unit): RpcMethodHandler = RpcMethodHandler { req ->
+    if (HistoryFeature.ENABLED) {
+      handler(req)
+    } else {
+      peer.sendErrorResponse(req.id, JsonRpcServer.ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
     }
   }
 
@@ -207,9 +184,9 @@ internal class HistoryRpcHandlers(
   }
 
   /**
-   * H3 — `history/diff` metadata mode. Gated experimental in 1.0 (see [diffExperimental]); the
-   * dispatcher returns method-not-found unless the gate is on, so this body only runs in tests or
-   * with `-D$HISTORY_DIFF_EXPERIMENTAL_PROP=true`. TODO(1.1): drop the gate.
+   * H3 — `history/diff` metadata mode. Served whenever [HistoryFeature.ENABLED] is on; the
+   * experimental sysprop that gated this for 1.0 was retired once H5 and the rest of the History
+   * roadmap landed.
    *
    * Resolves [from] and [to] entry ids via the [historyManager] (which iterates configured sources
    * in priority order, so a cross-source diff "LocalFs vs GitRef preview/main" works the same as an

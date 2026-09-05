@@ -19,8 +19,7 @@ package ee.schimke.composeai.daemon
  *
  * [ENABLED] reads `composeai.history.enabled` on each access, defaulting to `true`. The sysprop
  * stays as an explicit off-switch (`-Dcomposeai.history.enabled=false`) for anyone who wants to opt
- * out of history recording. `history/diff` carries its own additional experimental gate (see
- * `JsonRpcServer`), so flipping this on does not by itself enable diffing.
+ * out of history recording.
  */
 public object HistoryFeature {
   /** Override sysprop name; default `true`. */

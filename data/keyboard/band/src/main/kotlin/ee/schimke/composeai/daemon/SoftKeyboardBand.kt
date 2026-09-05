@@ -25,13 +25,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Desktop counterpart of `:data-keyboard-connector`'s `SoftKeyboardBand`. Duplicated rather than
- * shared because the Android module is `android.library` and its outputs can't be consumed from
- * `:daemon:desktop`'s JVM classpath — same pattern `:data-focus-connector-desktop` follows. The
- * layout / palette / key tokens are kept in lockstep; bump both together.
+ * Gboard-styled QWERTY band, pinned to the bottom by the connector's `Box` overlay. Public only
+ * because both connectors — `:data-keyboard-connector` (Android) and
+ * `:data-keyboard-connector-desktop` (JVM) — live in other modules and have to call it; it is not a
+ * surface consumers reach for. They get the keyboard by going through the data extension (focusing
+ * a `BasicTextField`, calling `LocalSoftwareKeyboardController.show()`, or pushing
+ * `KeyboardOverride.visible = true` through `renderNow.overrides.keyboard`).
+ *
+ * @param pressedKey Currently held key label, lowercase letter or one of `"space"`, `"enter"`,
+ *   `"shift"`, `"backspace"`, `"sym"`. `null` for an idle band.
+ * @param night Use the dark palette. Wired from `(uiMode and UI_MODE_NIGHT_MASK) ==
+ *   UI_MODE_NIGHT_YES` at the caller; kept Boolean-typed here so this file doesn't pull
+ *   `android.content.res.Configuration`.
  */
 @Composable
-internal fun SoftKeyboardBand(pressedKey: String?, night: Boolean, modifier: Modifier = Modifier) {
+public fun SoftKeyboardBand(pressedKey: String?, night: Boolean, modifier: Modifier = Modifier) {
   val palette = if (night) DarkPalette else LightPalette
   val normalized = pressedKey?.lowercase()
 
@@ -83,7 +91,7 @@ private fun ColumnScope.BottomLetterRow(pressed: String?, palette: KeyboardPalet
     horizontalArrangement = Arrangement.spacedBy(KEY_GAP_DP.dp),
   ) {
     SpecialKey(
-      label = "⇧",
+      label = "⇧", // up-arrow glyph for shift
       isPressed = pressed == "shift",
       palette = palette,
       modifier = Modifier.weight(1.5f),
@@ -98,7 +106,7 @@ private fun ColumnScope.BottomLetterRow(pressed: String?, palette: KeyboardPalet
       )
     }
     SpecialKey(
-      label = "⌫",
+      label = "⌫", // erase-left glyph for backspace
       isPressed = pressed == "backspace",
       palette = palette,
       modifier = Modifier.weight(1.5f),
@@ -137,7 +145,7 @@ private fun ColumnScope.ActionRow(pressed: String?, palette: KeyboardPalette) {
       modifier = Modifier.weight(1f),
     )
     SpecialKey(
-      label = "⏎",
+      label = "⏎", // return-symbol glyph for enter
       isPressed = pressed == "enter",
       palette = palette,
       modifier = Modifier.weight(1.5f),
@@ -237,14 +245,20 @@ private const val ROW_TOP = "qwertyuiop"
 private const val ROW_MIDDLE = "asdfghjkl"
 private const val ROW_BOTTOM = "zxcvbnm"
 
-internal const val KEYBOARD_HEIGHT_DP = 240
+/** Height of the band itself, and the bottom IME inset the Android connector publishes for it. */
+public const val KEYBOARD_HEIGHT_DP: Int = 240
 
 /**
  * Shortest surface the band will draw on when nothing else identifies the render as a screen: two
- * band-heights, so the keyboard never takes more than half the frame. Mirrors the Android
- * connector's constant of the same name — see it for why two and not three.
+ * band-heights, so the keyboard never takes more than half the frame.
+ *
+ * Two, not three: a plain `@Preview(widthDp = 360, heightDp = 640)` is a phone — the shape the
+ * repo's own `SoftKeyboardIdlePreview` / `ImeAwareListShownPreview` samples use — and a third of
+ * the frame would have excluded it. Anything shorter that really is a screen (a landscape phone, a
+ * wearable) says so through `device` / `showSystemUi` and never reaches this rule.
  */
-internal const val MIN_SCREEN_HEIGHT_FOR_BAND_DP = KEYBOARD_HEIGHT_DP * 2
+public const val MIN_SCREEN_HEIGHT_FOR_BAND_DP: Int = KEYBOARD_HEIGHT_DP * 2
+
 private const val SIDE_INSET_DP = 4
 private const val ROW_INSET_DP = 6
 private const val ROW_GAP_DP = 6

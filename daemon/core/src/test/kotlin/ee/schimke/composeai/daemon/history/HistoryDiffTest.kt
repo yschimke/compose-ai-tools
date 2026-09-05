@@ -623,7 +623,6 @@ class HistoryDiffTest {
         host = StubHost(),
         daemonVersion = "test",
         historyManager = manager,
-        historyDiffExperimental = true,
         onExit = { _ -> exitLatch.countDown() },
       )
     val serverThread =

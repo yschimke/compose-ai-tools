@@ -190,19 +190,6 @@ public class JsonRpcServer(
    */
   private val historyManager: HistoryManager? = null,
   /**
-   * Experimental gate for `history/diff`. The metadata-mode handler exists (H3) but the broader
-   * history surface — pixel mode (H5), git-ref write modes, LFS/squash-GC handling — is incomplete
-   * . For 1.0 the dispatcher returns method-not-found unless this flag is on, so consumers don't
-   * accidentally code against an interface that's still moving. Defaults to the
-   * [HISTORY_DIFF_EXPERIMENTAL_PROP] sysprop (off in production); tests that assert on the diff
-   * handler pass `historyDiffExperimental = true` explicitly.
-   *
-   * TODO(1.1): land H5 + the remaining roadmap items, flip the default to on, and remove this
-   *   parameter.
-   */
-  private val historyDiffExperimental: Boolean =
-    System.getProperty(HISTORY_DIFF_EXPERIMENTAL_PROP)?.toBoolean() ?: false,
-  /**
    * H4 — initial delay for the auto-prune scheduler. Defaults to
    * [HistoryManager.DEFAULT_INITIAL_DELAY_MS] (5s — runs after sandbox bootstrap). Tests pass a
    * very small value (e.g. 50ms) to drive the schedule deterministically.
@@ -310,8 +297,7 @@ public class JsonRpcServer(
     }
 
   /** The `history/…` method handlers — see [HistoryRpcHandlers]. */
-  private val historyRpcHandlers =
-    HistoryRpcHandlers(rpcPeer, historyManager, historyDiffExperimental)
+  private val historyRpcHandlers = HistoryRpcHandlers(rpcPeer, historyManager)
 
   init {
     // H4 — wire the manager's prune listener so non-empty prune passes (auto or manual) emit a
@@ -3983,13 +3969,6 @@ public class JsonRpcServer(
      */
     public const val DISCOVERY_WATCHDOG_PROP: String = "composeai.daemon.discoveryWatchdogMs"
     public const val DEFAULT_DISCOVERY_WATCHDOG_MS: Long = 1_500L
-
-    /**
-     * Experimental gate for `history/diff`. See the constructor parameter on [JsonRpcServer] for
-     * rationale. TODO(1.1): remove once H5 + the rest of the History roadmap lands and the diff
-     * surface is no longer half-finished.
-     */
-    public const val HISTORY_DIFF_EXPERIMENTAL_PROP: String = "composeai.experimental.historyDiff"
 
     /**
      * Ceiling on shutdown drain. Renders that take longer than this are still allowed to finish —
