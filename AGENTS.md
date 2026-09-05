@@ -140,6 +140,14 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
   the repair does not cover are listed in `docs/AGENT_GUIDE.md`.
 - **Wire new visual surfaces into the preview workflow** so the next change to
   them is diffed without anyone remembering to do it.
+- **`main` merges through a merge queue.** Add the PR to the queue rather than
+  pressing merge; the required checks are re-run there against the real merge
+  result, and a red merge-group run *dequeues* the PR instead of marking it red —
+  so when a merge silently does not happen, look at the queue, not the PR's own
+  checks. Verification workflows therefore run on `merge_group`, not
+  `push: [main]`; only workflows with a side effect (baselines, publishing,
+  releases) keep a push lane. Details and the ruleset settings:
+  [`docs/MERGE_QUEUE.md`](docs/MERGE_QUEUE.md).
 - **Don't auto-merge your own PR.** Opening, tracking and fix-up commits are
   automatic; pressing merge on a PR *you* opened is the user's call, and no agent
   approves or merges one. This is about agent-opened PRs. It is not a blanket
@@ -157,6 +165,7 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
 | The contributor doc index | [`docs/README.md`](docs/README.md) |
 | Releasing, versioning | [`docs/RELEASING.md`](docs/RELEASING.md), [`docs/VERSIONING.md`](docs/VERSIONING.md) |
 | Invoking an agent from an issue or PR | [`docs/AGENT_INVOCATION.md`](docs/AGENT_INVOCATION.md) |
+| How `main` merges, and which workflows run where | [`docs/MERGE_QUEUE.md`](docs/MERGE_QUEUE.md) |
 | Which agent reads which file, and what it costs | [`docs/AGENT_ENTRYPOINTS.md`](docs/AGENT_ENTRYPOINTS.md) |
 | Consumer docs for the published plugin and CLI | [`yschimke/skills`](https://github.com/yschimke/skills) |
 | The VS Code extension (split out; consumes this repo's published plugin) | [`yschimke/compose-preview-vscode`](https://github.com/yschimke/compose-preview-vscode) |

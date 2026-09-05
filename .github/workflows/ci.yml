@@ -1,18 +1,36 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  # The verification lane, replacing `push: [main]`.
+  #
+  # A merge-queue run tests the REAL merge result — the tree GitHub is about to
+  # fast-forward `main` to — before it becomes `main`, which is the thing PR CI
+  # never tests (it tests the PR head against a base that has usually moved by
+  # the time it lands). Once that run is green the push it produces is by
+  # construction the commit this lane already verified, so re-running the same
+  # suite on `push: [main]` would verify an identical tree a second time.
+  #
+  # It also has to be here rather than on push for the reason `main` had no
+  # working post-merge lane at all: merges land a median 4 min apart against a
+  # 20-25 min pipeline, so 75% of push runs were cancelled by the next merge
+  # before finishing and only ~15% ever completed (#5063). The queue batches, so
+  # verification happens once per batch at the batch's cadence instead of once
+  # per merge at the merge cadence, and nothing supersedes it.
+  #
+  # No `branches:` / `paths:` filter: `merge_group` supports neither the way
+  # `pull_request` does, and every group on this repo targets `main` anyway.
+  merge_group:
+    types: [checks_requested]
   # Nightly full run. The heavy "anti-bit-rot" jobs below (full sample renders,
   # XR composite render, the two bundle E2Es, agent-audit-samples) are drift
   # detectors that rarely
   # fail on an ordinary code PR but cost 6–12 min each and dominate the PR
-  # critical path. They're gated off `pull_request` (see the per-job `if:`s) and
-  # instead run here nightly + on every push to main (i.e. immediately
-  # post-merge), so a regression is still caught within minutes of landing
-  # without making every PR wait on them.
+  # critical path. They're gated off `pull_request` AND off `merge_group` (see
+  # the per-job `if:`s, which allow only `schedule` / `workflow_dispatch`) and
+  # run here nightly instead, so a regression is still caught within a day
+  # without making every PR — or every merge batch — wait on them.
   schedule:
     - cron: "23 4 * * *"
   # Manual full run, including the nightly-only drift detectors above.
@@ -26,12 +44,19 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Superseded verification is worthless, so cancel it — on main as well as on
-  # PRs. This is only safe because CI no longer writes the BuildFetch remote
-  # cache: `buildfetch-cache` below takes `ro-token` only, so these runs keep
-  # their local build cache (`ON_CI` stays false) and are cheap to throw away.
-  # Cache writes live in gradle-cache-seed.yml, which runs uncancelled in its
-  # own concurrency group precisely so this one can stay disposable.
+  # Superseded verification is worthless, so cancel it. This is only safe
+  # because CI no longer writes the BuildFetch remote cache:
+  # `buildfetch-cache` below takes `ro-token` only, so these runs keep their
+  # local build cache (`ON_CI` stays false) and are cheap to throw away. Cache
+  # writes live in gradle-cache-seed.yml, which runs uncancelled in its own
+  # concurrency group precisely so this one can stay disposable.
+  #
+  # This only ever cancels PR runs now. Every merge group gets its own ref
+  # (`refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`), so two queue runs are
+  # never in the same group and one can never supersede the other — which is
+  # what the merge queue needs, since its whole job is to finish. When the
+  # queue re-batches (a PR fails and is dequeued) GitHub cancels the obsolete
+  # group's run itself; that is the merge queue's decision, not this one's.
   cancel-in-progress: true
 
 # Release-please PRs only bump the version manifest / CHANGELOG / version
@@ -51,9 +76,19 @@ concurrency:
 #
 # The guard intentionally lives at job level (not a `branches` filter on the
 # trigger): a workflow that never triggers would leave the required check stuck
-# pending forever. On push events `github.head_ref` is empty and
-# `github.event.pull_request` is null, so pushes to main always run the full
-# suite.
+# pending forever. On `merge_group` (and `schedule` / `workflow_dispatch`)
+# events `github.head_ref` is empty and `github.event.pull_request` is null, so
+# the guard is false and the full suite runs.
+#
+# That is deliberate for release PRs too, and it is a change: a release PR
+# skips every job on the PR lane, then runs the full suite once inside the
+# merge group. There is no way to recognise the release PR from a `merge_group`
+# payload — it carries no `head_ref`, no PR author, and (under squash merge) no
+# stable commit-message shape to key off — and a required check cannot be
+# allowed to guess. Paying one batch of CI per release is the cheap side of
+# that trade, and it is not wasted: `gradle.properties` is one of the files
+# release-please rewrites, and it is a `globalPaths` entry in ci-paths.json
+# precisely because a version bump there can break the build.
 jobs:
   # Deliberately the cheapest job in the workflow: checkout + a path classifier,
   # a few seconds. Every other job is `needs: changes`, and GitHub does not even
@@ -102,11 +137,11 @@ jobs:
   # as the cheap classifier lands.
   #
   # PRs only, and that restriction is the whole point. Only a PR narrows the
-  # suite; on push and schedule the answer is unconditionally `full`. Since
-  # `path-scope.py` enables every group on non-PR events, gating this job on
-  # `module_unit_tests` alone would schedule it on EVERY push to `main` purely
-  # to echo a constant — and because Module Unit Tests `needs:` it, that job
-  # could not enter the runner queue until this one had queued and finished
+  # suite; in the merge queue and on schedule the answer is unconditionally
+  # `full`. Since `path-scope.py` enables every group on non-PR events, gating
+  # this job on `module_unit_tests` alone would schedule it on EVERY merge-queue
+  # run purely to echo a constant — and because Module Unit Tests `needs:` it,
+  # that job could not enter the runner queue until this one had queued and finished
   # too. On a saturated queue that is another 40-70 min in front of post-merge
   # module coverage: the exact cost this split exists to remove. Non-PR events
   # skip the job and the consumer defaults to `full` directly.
@@ -122,7 +157,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :gradle-plugin:test
@@ -144,7 +178,8 @@ jobs:
     # `pull_request` only. `:renderer-android` is in the root build (settings.gradle.kts),
     # so `module-unit-tests`' `full` branch — the one every non-PR event takes — already runs
     # `:renderer-android:test`, which for an Android library depends on `testDebugUnitTest`.
-    # On push this job was a 3.7-min re-run of work happening in parallel two jobs over.
+    # Off the PR lane this job was a 3.7-min re-run of work happening in parallel two
+    # jobs over.
     # It stays on PRs, where `module-unit-tests` is scoped to affected modules and may not
     # reach `:renderer-android` at all.
     if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.renderer_android_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
@@ -156,7 +191,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :renderer-android:testDebugUnitTest
@@ -214,7 +248,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Resolved here rather than in a `needs:` job. As a separate job this cost a
       # second checkout, a second Gradle setup and — because a `needs:` edge is a full
@@ -306,7 +339,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # The PUBLISHED bundle, not one built from source: the player lives in yschimke/rc-players
       # now, and what this repo ships in the CLI's `rc-player-wasm/` sidecar is exactly these bytes.
@@ -359,7 +391,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run functional tests
         run: ./gradlew :gradle-plugin:functionalTest
@@ -387,7 +418,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build CMP sample and discover previews
         run: ./gradlew :samples:cmp:composePreviewDiscover
@@ -467,8 +497,8 @@ jobs:
     # These render-heavy checks are valuable anti-bit-rot coverage, but they
     # duplicate the representative Android/CMP build performed by the required
     # smoke job and routinely make Build Samples the slowest CI leg. Run them
-    # on main and nightly instead. Because this is a distinct, new check name it
-    # is not part of the existing branch-protection required-check set.
+    # nightly instead. Because this is a distinct, new check name it is not part
+    # of the existing branch-protection required-check set.
     # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
     # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
     # merge before they finish. Running it on push therefore paid a runner slot on 100% of
@@ -476,7 +506,8 @@ jobs:
     # commit that broke anything. The nightly cron already catches the drift these guard
     # against within 24h, which is the cadence they were designed for.
     #
-    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs and
+    # on merge-queue runs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
@@ -489,7 +520,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Daemon-bench smoke (issue #1586). The full latency benches
       # (benchPreviewLatency / benchCompileStages) are deliberately slow and run on the
@@ -577,7 +607,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Release builds no longer package the per-OS bundle-viewer binaries. Compile
       # and test its source here so removing that packaging matrix does not also
@@ -602,8 +631,8 @@ jobs:
     # client half of the native boundary, while compose-preview-xr owns the renderer/sample E2E.
     name: Render XR composite (sample)
     # Heavy (Xvfb software-GL render, several minutes). Drift detector, not a PR
-    # gate — runs on push-to-main + nightly, skipped on PRs (a skipped required
-    # check counts as passing for branch protection).
+    # gate — runs nightly, skipped on PRs and on merge-queue runs (a skipped
+    # required check counts as passing for branch protection).
     # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
     # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
     # merge before they finish. Running it on push therefore paid a runner slot on 100% of
@@ -611,7 +640,8 @@ jobs:
     # commit that broke anything. The nightly cron already catches the drift these guard
     # against within 24h, which is the cadence they were designed for.
     #
-    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs and
+    # on merge-queue runs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
@@ -624,7 +654,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Provision the compositor exactly the way `XrCompositeProvision` does: the `xr-composite`
       # pin names the version, Version.kt's XR_COMPOSITE_REPO names the repository, and the asset
@@ -695,8 +724,8 @@ jobs:
   bundle-render:
     name: Bundle Render E2E
     # Heavy E2E (~7 min, cold-starts Compose Desktop per preview). Drift
-    # detector — runs on push-to-main + nightly, skipped on PRs (skipped
-    # required check == passing).
+    # detector — runs nightly, skipped on PRs and on merge-queue runs (a skipped
+    # required check counts as passing).
     # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
     # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
     # merge before they finish. Running it on push therefore paid a runner slot on 100% of
@@ -704,7 +733,8 @@ jobs:
     # commit that broke anything. The nightly cron already catches the drift these guard
     # against within 24h, which is the cadence they were designed for.
     #
-    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs and
+    # on merge-queue runs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
@@ -717,7 +747,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # End-to-end: pack a bundle from a synthetic Compose Desktop project, then re-render it
       # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
@@ -745,8 +774,8 @@ jobs:
   android-bundle-daemon-e2e:
     name: Android Bundle Daemon E2E
     # Heavy E2E (~9 min, cold-starts a daemon JVM per bundle). Drift detector —
-    # runs on push-to-main + nightly, skipped on PRs (skipped required check ==
-    # passing).
+    # runs nightly, skipped on PRs and on merge-queue runs (a skipped required
+    # check counts as passing).
     # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
     # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
     # merge before they finish. Running it on push therefore paid a runner slot on 100% of
@@ -754,7 +783,8 @@ jobs:
     # commit that broke anything. The nightly cron already catches the drift these guard
     # against within 24h, which is the cadence they were designed for.
     #
-    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs and
+    # on merge-queue runs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.
@@ -767,7 +797,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
@@ -822,8 +851,8 @@ jobs:
   agent-audit-samples:
     name: Agent Audit Samples
     # Longest single job (~12 min; one external-fetched audit script). Drift
-    # detector — runs on push-to-main + nightly, skipped on PRs (skipped
-    # required check == passing).
+    # detector — runs nightly, skipped on PRs and on merge-queue runs (a skipped
+    # required check counts as passing).
     # Drift detector, not a PR gate. Measured: `main` merges land a median 4 min apart
     # while this workflow takes 20-25 min, so 75% of push runs are cancelled by the next
     # merge before they finish. Running it on push therefore paid a runner slot on 100% of
@@ -831,7 +860,8 @@ jobs:
     # commit that broke anything. The nightly cron already catches the drift these guard
     # against within 24h, which is the cadence they were designed for.
     #
-    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs:
+    # The job stays DEFINED rather than deleted so it keeps reporting `skipped` on PRs and
+    # on merge-queue runs:
     # `Agent Audit Samples` below is a required check in the `Protect Main` ruleset, and a
     # required check that never reports blocks every PR forever. `workflow_dispatch` is the
     # manual escape hatch for running one on demand.

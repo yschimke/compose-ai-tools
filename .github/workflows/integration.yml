@@ -23,18 +23,19 @@ name: Integration
 # Each external-repo job runs independently (`fail-fast: false`) so one broken
 # consumer does not mask regressions in the others.
 #
-# PRs run ONE cell, everything else runs on `main` + the nightly cron. The
-# matrix cell flagged `pr_blocking: true` — currently just `wear-os-samples
-# (ComposeStarter)` — is the only one that does build/discover/render work on
-# `pull_request`; `agp8-min` is skipped there too. ComposeStarter is both the
-# cheapest real cell and the widest one: measured on recent PR runs it takes
+# PRs and merge-queue batches run ONE cell; the full matrix runs on the nightly
+# cron. The matrix cell flagged `pr_blocking: true` — currently just
+# `wear-os-samples (ComposeStarter)` — is the only one that does
+# build/discover/render work on `pull_request` and in the merge queue;
+# `agp8-min` is skipped there too. ComposeStarter is both the cheapest real
+# cell and the widest one: measured on recent PR runs it takes
 # ~2.6 min (discover 53s + render 23s + daemon round-trip 34s) against
 # androidify ~3.4-4.1 min, nowinandroid ~3.4-3.6 min and agp8-min ~3.3-4.2 min,
 # while covering the full render pipeline, the daemon, and the configuration
 # cache end-to-end. Every other cell still spins up on a PR (so
-# its check reports) but skips the expensive steps. The daily cron and pushes
-# to `main` run the full matrix, so consumer/AGP-floor drift still surfaces
-# within a day — it just doesn't sit on the PR critical path.
+# its check reports) but skips the expensive steps. The daily cron runs the full
+# matrix, so consumer/AGP-floor drift still surfaces within a day — it just
+# doesn't sit on the PR critical path.
 #
 # Change-scoped on PRs (.github/ci/integration-safe-paths.json): the `changes` job
 # classifies the diff first. A PR that touches only paths which provably cannot
@@ -44,18 +45,34 @@ name: Integration
 # — skips the whole `build-plugin` + external matrix, and `integration-scope-
 # gate` re-emits the required `wear-os-samples` legs green so branch protection
 # still clears. Anything touching the plugin / CLI / renderers / daemon / data
-# modules / build wiring runs the full matrix. Fail-open: pushes to main, the
+# modules / build wiring runs the full matrix. Fail-open: merge-queue runs, the
 # nightly cron, manual dispatch, and any diff error all run everything.
+#
+# Scoping is deliberately NOT carried into the merge queue. `merge_group` takes
+# no `paths-ignore` and the classifier resolves `run=true` there, so a batch
+# always builds the plugin and runs the two required legs. A required check that
+# scope-skips itself in the queue is a required check that can be talked out of
+# running by the diff it is meant to judge.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
     paths-ignore:
       - ".github/workflows/ci.yml"
       - ".github/workflows/integration.yml"
       - ".github/workflows/compose-preview.yml"
+  # The verification lane, replacing `push: [main]` (#5063). A merge-queue run
+  # tests the tree GitHub is about to fast-forward `main` to, before it becomes
+  # `main`; the push it then produces is that same tree, so a push lane here
+  # would only repeat it. It also finishes: 72% of this workflow's push runs
+  # were cancelled by the next merge, because merges landed a median 4 min
+  # apart and this pipeline takes 20-25 min.
+  #
+  # `merge_group` takes no `paths-ignore`, so the two required `wear-os-samples`
+  # legs run on every batch regardless of the diff — which is what a required
+  # check has to do.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
   schedule:
     # Daily — catches drift when consumer repos bump AGP/Kotlin without us.
@@ -79,9 +96,9 @@ env:
 jobs:
   # Fast PR-diff classifier that decides whether the slow external-repo matrix
   # below needs to run at all. Outputs `run` = true|false; every other job keys
-  # off it. On non-PR events (push / cron / dispatch) and on any classification
-  # error it resolves to `true`, so scoping can only ever trim the PR critical
-  # path — never skip work that could hide a regression.
+  # off it. On non-PR events (merge_group / cron / dispatch) and on any
+  # classification error it resolves to `true`, so scoping can only ever trim the
+  # PR critical path — never skip work that could hide a regression.
   changes:
     name: Determine integration scope
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
@@ -132,8 +149,11 @@ jobs:
           persist-credentials: false
 
       # PR code may consume the trusted Gradle cache but must not update it.
-      # Push, schedule, and manual runs execute trusted revisions, so keep their
-      # cache writable; the external-repository matrix configures its own cache.
+      # Merge-queue, schedule, and manual runs execute trusted revisions, so keep
+      # their cache writable; the external-repository matrix configures its own
+      # cache. (A merge-group tree is trusted in exactly the sense that matters
+      # here: it is the merge of PRs that already passed review and the PR gate,
+      # and it is the tree about to become `main`.)
       - uses: ./.github/actions/setup
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
@@ -141,13 +161,15 @@ jobs:
       # This is the one job in this workflow that builds *this* repo's Gradle
       # tasks (the matrix jobs build external consumers, which never see our
       # settings.gradle.kts), so it's the only place the BuildFetch remote cache
-      # applies. Writes on main pushes: the publish/installDist fan-out here is
-      # expensive and shared, and with the local cache now on for pushers (see
-      # settings.gradle.kts) a cancelled run just pushes whatever it finished
-      # rather than paying for a no-cache build.
+      # applies. Writes on merge-queue runs — this workflow's only remaining
+      # trusted non-cron lane, and the one that used to be `push`: the
+      # publish/installDist fan-out here is expensive and shared, and with the
+      # local cache now on for trusted runs (see settings.gradle.kts) a run the
+      # queue cancels on a re-batch just pushes whatever it finished rather than
+      # paying for a no-cache build.
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          rw-token: ${{ github.event_name == 'merge_group' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       - name: Publish plugin + renderer-android + data-* + daemon-* to mavenLocal
@@ -236,8 +258,13 @@ jobs:
   # does), reporting them green — so the release PR clears branch protection with
   # no bypass. Its `if:` is the exact inverse of the matrix job's guard, so on
   # any given event exactly one of the two posts each context, never both: the
-  # real matrix on normal PRs / pushes / the nightly cron, this gate on release
-  # PRs. Keep the two names in lockstep with the `pr_blocking: true` matrix cells.
+  # real matrix on normal PRs / merge-queue batches / the nightly cron, this gate
+  # on release PRs. Keep the two names in lockstep with the `pr_blocking: true`
+  # matrix cells.
+  #
+  # In the merge queue there is no `head_ref` and no PR author, so this gate's
+  # guard is false and the real matrix reports — a release PR pays one batch of
+  # the two required legs. See the same note in ci.yml.
   release-please-gate:
     if: ${{ startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]' }}
     name: ${{ matrix.name }}
@@ -308,16 +335,20 @@ jobs:
     # checks in the `Protect Main` ruleset, and the others' names are cheap to keep reporting —
     # but a cell that is not active skips every expensive step below and costs ~0.1 min.
     #
-    # PRs already worked this way: only `pr_blocking` cells built anything. What changed is the
-    # push-to-main lane, which used to run the full external matrix on every merge — 8 cells,
-    # ~25 job-min. Measured, 72% of those push runs were cancelled by the next merge before they
-    # finished (`main` merges land a median 4 min apart), so the lane was paying for the full
-    # matrix on every merge and completing it on roughly one in four. These cells guard against
-    # *upstream* drift — an external repo bumping AGP / Kotlin / the Compose BOM — which is
-    # correlated with time, not with our commits, so the nightly cron is the cadence that
+    # PRs already worked this way: only `pr_blocking` cells built anything. What changed first
+    # was the push-to-main lane, which used to run the full external matrix on every merge —
+    # 8 cells, ~25 job-min. Measured, 72% of those push runs were cancelled by the next merge
+    # before they finished (`main` merges land a median 4 min apart), so the lane was paying for
+    # the full matrix on every merge and completing it on roughly one in four. These cells guard
+    # against *upstream* drift — an external repo bumping AGP / Kotlin / the Compose BOM — which
+    # is correlated with time, not with our commits, so the nightly cron is the cadence that
     # actually fits them and the one the workflow header already describes.
     #
-    # The two `pr_blocking` cells stay on push for immediate post-merge signal.
+    # That push lane is now the merge queue (#5063), and `merge_group` is deliberately absent
+    # from the list above: the two `pr_blocking` cells are active there because they are
+    # required checks, and the remaining six stay on the cron. So a batch pays the same ~2 cells
+    # a PR does, and the pre-merge signal it gives is strictly better than the post-merge one it
+    # replaces — it is the merge result, and it is not cancelled.
     env:
       CELL_ACTIVE: ${{ (matrix.pr_blocking || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
     strategy:
@@ -336,8 +367,8 @@ jobs:
             # `Render` steps below). Every other cell still spins up but skips
             # the expensive gradle steps, so its check still reports
             # (branch-protection-safe) while the rest of the external builds
-            # drop off the PR critical path and run on push-to-main + the
-            # nightly cron instead.
+            # drop off the PR critical path and run on the nightly cron
+            # instead.
             #
             # It earns the slot on both axes: cheapest real cell (~2.6 min
             # measured, vs ~3.4-4.2 for androidify / nowinandroid / agp8-min)
@@ -446,7 +477,7 @@ jobs:
             # ~3.4-4.1 min per run. Its coverage — a big AGP app configuring
             # and discovering against the locally-published plugin — overlaps
             # what the ComposeStarter PR cell already proves, so it rides the
-            # push-to-main + nightly-cron lane instead of the PR critical path.
+            # nightly-cron lane instead of the PR critical path.
             # No opt-outs after #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata
             # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
             # if the consumer's build surfaces a new CC / IP gap.
@@ -488,7 +519,7 @@ jobs:
             # (guards the #1546 variant-matching fix against a large real
             # project), ~3.4-3.6 min per run. The fix itself is pinned by unit
             # tests in the plugin; this cell is the real-project confirmation,
-            # which the push-to-main + nightly lane catches within a day.
+            # which the nightly lane catches within a day.
             # `:app` declares productFlavors `demo` / `prod` with build types
             # `debug` / `release`, so its variants are `demoDebug`, `prodDebug`,
             # `demoRelease`, `prodRelease` — no plain `debug`. `:app-nia-catalog`
@@ -931,7 +962,7 @@ jobs:
         # `git apply` exit 1, which would otherwise block unrelated PRs via a
         # non-representative drift cell. The discover/render steps that consume
         # the patch are already PR-gated the same way, so there's nothing to
-        # patch for on a skipped cell. (Drift still surfaces on cron/push.)
+        # patch for on a skipped cell. (Drift still surfaces on the nightly cron.)
         if: ${{ matrix.patch_file != '' && env.CELL_ACTIVE == '1' }}
         # Runs from the external checkout root so each patch's
         # repo-root-relative paths (e.g. AdaptiveJetStream/jetstream/...)
@@ -1018,10 +1049,10 @@ jobs:
         run: ${{ matrix.pre_gradle_script }}
 
       - name: Discover previews via Gradle
-        # On PRs only `pr_blocking` cells do the expensive gradle work; the rest
-        # are covered by the daily cron + push-to-main. `matrix` is available at
-        # step level (unlike at `jobs.<id>.if`), so the cell still reports its
-        # check — it just skips the build.
+        # On PRs and in the merge queue only `pr_blocking` cells do the expensive
+        # gradle work; the rest are covered by the daily cron. `matrix` is
+        # available at step level (unlike at `jobs.<id>.if`), so the cell still
+        # reports its check — it just skips the build.
         if: ${{ !matrix.use_cli && env.CELL_ACTIVE == '1' }}
         working-directory: external/${{ matrix.workdir }}
         env:
@@ -1163,16 +1194,27 @@ jobs:
         # baselines.json + README gallery) so the rendered previews are
         # browsable on GitHub rather than only living in a 7-day artifact.
         #
-        # Gated to trusted events: on fork PRs the token is read-only and
-        # can't push anyway, and we don't want PR runs racing the shared
-        # branches. Staging runs in THIS job (read-only token) so the
-        # untrusted consumer build never sees a write token; the actual push
-        # is a separate `publish-previews` job that runs no external code.
+        # Gated to the cron and manual dispatch, which is narrower than the
+        # old "any non-PR event". On fork PRs the token is read-only and can't
+        # push anyway, and we don't want PR runs racing the shared branches —
+        # but a MERGE-QUEUE run is excluded for a different reason: its tree is
+        # speculative. A batch can be dequeued and never land, and these
+        # branches are a published artifact, so pushing one from a commit that
+        # may never become `main` would advertise a gallery for a tree nobody
+        # can check out. The queue replaced the push lane that used to refresh
+        # the two `pr_blocking` galleries per merge, and 72% of those runs were
+        # cancelled before reaching the publish job anyway, so the cron is now
+        # the single cadence for every gallery. Staging runs in THIS job
+        # (read-only token) so the untrusted consumer build never sees a write
+        # token; the actual push is a separate `publish-previews` job that runs
+        # no external code.
         #
         # Staged before the daemon round-trip below: that step edits a
         # source file and re-renders, which would otherwise leak into the
         # published gallery.
-        if: matrix.render && github.event_name != 'pull_request' && env.CELL_ACTIVE == '1'
+        if: >-
+          ${{ matrix.render && env.CELL_ACTIVE == '1'
+          && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
         working-directory: external/${{ matrix.workdir }}
         # Matrix-derived strings go through env, not inline `${{ }}` in the
         # script body: `pre_gradle_script` / `notes` are multi-line and
@@ -1242,7 +1284,7 @@ jobs:
 
           # Turn the envelope into the same renders/ + baselines.json +
           # README.md layout the in-repo compose-preview/main branch uses.
-          intro="Auto-rendered by the integration matrix from [\`${MATRIX_REPO}@${MATRIX_REF}\`](https://github.com/${MATRIX_REPO}/tree/${MATRIX_REF}). Updated on every push to \`main\`."
+          intro="Auto-rendered by the integration matrix from [\`${MATRIX_REPO}@${MATRIX_REF}\`](https://github.com/${MATRIX_REPO}/tree/${MATRIX_REF}). Updated by the nightly integration run."
           if ! python3 "$GITHUB_WORKSPACE/bundle/ci/compare-previews.py" generate \
               "$GITHUB_WORKSPACE/_previews.json" \
               --output-dir "$GITHUB_WORKSPACE/_integration_baselines" \
@@ -1516,7 +1558,7 @@ jobs:
     # ~3.3-4.2 min. Skipping it on `pull_request` is safe for branch protection
     # because it is not a required check (nothing needs to re-emit it, unlike
     # the two `wear-os-samples` legs the gate jobs above cover). AGP-floor
-    # drift surfaces on the next push to main / nightly cron.
+    # drift surfaces on the next merge-queue batch / nightly cron.
     #
     # Also consumes build-plugin's bundle, so it rides the same change-scope
     # gate: skipped on out-of-scope PRs too.
@@ -1524,7 +1566,8 @@ jobs:
     # Floor-coverage job for AGP 8.x consumers. Uses the in-repo fixture under
     # `.github/ci/fixtures/agp8-min/` (Gradle 8.13 + AGP 8.13.0 + Kotlin 2.0.21
     # + compileSdk 36) so we exercise the bottom of our publicly-supported
-    # consumer envelope on every push, without cloning a 2 GB external repo.
+    # consumer envelope on every merge-queue batch, without cloning a 2 GB
+    # external repo.
     # Distinct from the `integration` matrix above because it skips the
     # external-checkout / pre-Gradle-patch dance entirely — the fixture is
     # already shaped exactly the way we want it. The plugin still rides in
@@ -1865,11 +1908,15 @@ jobs:
     # the matrix job and `git push` them. The untrusted external builds all
     # ran in the `integration` job under a read-only token.
     #
-    # Cadence note: since the non-`pr_blocking` cells moved to the nightly cron, a push to
-    # main refreshes only the `pr_blocking` cells' gallery branches. The rest refresh on the
-    # nightly run instead of per-merge — in practice fresher than before, because 72% of the
-    # per-merge runs were cancelled before ever reaching this job.
-    if: always() && github.event_name != 'pull_request'
+    # Cadence note: every gallery branch now refreshes on the nightly cron (or a manual
+    # dispatch), and nothing refreshes per-merge. The non-`pr_blocking` cells moved to the cron
+    # first; the two `pr_blocking` ones followed when the push lane became the merge queue,
+    # whose trees are speculative — see the staging step's comment. In practice this is fresher
+    # than the per-merge lane was, because 72% of those runs were cancelled before ever
+    # reaching this job.
+    if: >-
+      ${{ always()
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

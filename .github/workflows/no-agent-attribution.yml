@@ -45,15 +45,26 @@ name: No Agent Attribution
 # Untrusted text (title/body) is passed through env: and never interpolated
 # into the shell, per the repo zizmor policy.
 #
-# Two layers, because a check that only *warns* is not a gate:
+# Three layers, because a check that only *warns* is not a gate:
 #   • `scan` runs on the PR and is meant to BLOCK the merge. Make it a required
 #     status check on the "Protect Main" ruleset — without that, a red run is
 #     merely advisory and can be merged straight past (which is exactly what
 #     happened for #2749).
+#   • `scan` ALSO runs on `merge_group`, and that run closes the gap the
+#     paragraph above calls "the honest boundary between the two jobs". On the
+#     PR lane the squash message does not exist yet, so neither the hand-edited
+#     message nor GitHub's auto-added `Co-authored-by:` credits are visible to
+#     it. In the merge queue they are: the merge group holds the commits GitHub
+#     is about to fast-forward `main` to, so scanning
+#     `merge_group.base_sha..head_sha` reads the very text that lands. This is
+#     the layer that turns the trailer described below from a post-mortem into
+#     a blocked merge. It is also why the merge-queue run must be REQUIRED, not
+#     merely present.
 #   • `drift` runs on every push to `main` and fails loudly if attribution got
 #     in anyway — via an unblocked merge, an admin override, or a direct push.
 #     It cannot prevent the commit, but it makes the breach visible instead of
-#     silent, and dates it to a single push.
+#     silent, and dates it to a single push. It stays even with the queue in
+#     place: a queue can be turned off, and a bypass actor can be added.
 #
 # Detection lives in .github/scripts/agent-attribution-scan.sh so both jobs
 # share one implementation. Keep AGENT_NAME / AGENT_EMAIL there in sync with
@@ -62,6 +73,10 @@ name: No Agent Attribution
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  # The merge queue is where `scan` gets its last, and best, look. See the
+  # third bullet in the two-layers note above.
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
 
@@ -97,14 +112,22 @@ permissions:
 # put two push events in one group and evict the pending run for the first —
 # leaving that event's commit range scanned by nothing. This workflow exists to
 # handle force-pushed history, so it cannot assume tips are never revisited.
+# Merge-queue runs need neither special case: every merge group has its own
+# ref, so they never share a group and `cancel-in-progress` can never reach
+# one. (The queue cancels its own obsolete groups when it re-batches.)
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scan:
+    # ONE job for both pre-merge lanes, deliberately, because the required
+    # status check is matched by name: two jobs called "Reject agent
+    # attribution" would be two contexts the ruleset cannot tell apart. What
+    # differs between the lanes is only the range and whether there is PR prose
+    # to scan, and both are handled per-step below.
     name: Reject agent attribution
-    if: github.event_name == 'pull_request'
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,7 +144,14 @@ jobs:
       #
       # Writing the file here also keeps untrusted text out of the shell
       # entirely, rather than routing it through env: as before.
+      #
+      # Merge-queue runs skip this step: there is no single PR to read (a batch
+      # can hold several), and there is nothing left to read it FOR — by then
+      # the title and body have already been rendered into the commit messages
+      # the range scan below covers, which is strictly more of the truth than
+      # the PR text was.
       - name: Read the PR's current title and body
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -137,13 +167,30 @@ jobs:
           # The commit range stays on the payload: this check reports against
           # the head SHA of the event that started it, and a push produces its
           # own run. Only the metadata is re-read.
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          #
+          # `merge_group` carries its own base/head, and exactly one of the two
+          # pairs is non-empty on any given run, so the `||` picks the right
+          # one rather than guessing.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           set -uo pipefail
 
+          # The merge queue's base is not in a shallow clone by default; fetch
+          # it rather than let the scanner fail closed on an unresolvable rev.
+          if ! git rev-parse --quiet --verify "${BASE_SHA}^{commit}" >/dev/null; then
+            git fetch --no-tags --quiet origin "${BASE_SHA}" || true
+          fi
+
+          # `--text-file` only where there is PR prose to scan. In the merge
+          # queue that text is already inside the commit range.
+          text_args=()
+          if [ -f pr_text.txt ]; then
+            text_args=(--text-file pr_text.txt)
+          fi
+
           .github/scripts/agent-attribution-scan.sh \
-            --range "${BASE_SHA}..${HEAD_SHA}" --text-file pr_text.txt
+            --range "${BASE_SHA}..${HEAD_SHA}" "${text_args[@]}"
           status=$?
           # 2 means the scan could not run (unresolvable revision). That is not
           # "clean" and it is not "found" either — say so, rather than printing
@@ -155,7 +202,7 @@ jobs:
             exit 1
           fi
           if [ "$status" -ne 0 ]; then
-            printf '::error::Agent attribution found in this PR\n'
+            printf '::error::Agent attribution found in these commits\n'
             cat >&2 <<'MSG'
 
           ───────────────────────────────────────────────────────────────

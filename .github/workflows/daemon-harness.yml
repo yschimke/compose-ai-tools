@@ -8,7 +8,8 @@ name: Daemon Harness
 # Android/desktop implementation or baseline change runs only that real
 # renderer. Shared daemon/harness/build inputs run every leg. These are plain
 # jobs, so a scoped skip still reports the historical check as skipped, which
-# branch protection accepts. Pushes to main and classification errors run all.
+# branch protection accepts. Merge-queue batches and classification errors run
+# all — a batch is never scope-skipped, so the merge result is verified whole.
 #
 # Three independently-scoped jobs provide the complete main-branch suite:
 #   * `desktop-fake` — FakeDaemonMain + FakeHost; deterministic-failure
@@ -27,10 +28,15 @@ name: Daemon Harness
 #     `android-real` are required.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  # Verification of the merge result, replacing `push: [main]` (#5063). A
+  # merge-queue run tests the tree GitHub is about to fast-forward `main` to,
+  # so the push it produces needs no second run of the same suite — and unlike
+  # that push run, it is not cancelled by the next merge landing four minutes
+  # later.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
