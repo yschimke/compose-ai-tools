@@ -51,6 +51,7 @@ internal object RenderErrorSidecar {
         sb.append("\"function\":").append(jsonString(top.function))
         sb.append("},")
       }
+      diagnose(e)?.let { sb.append("\"diagnosis\":").append(jsonString(it)).append(',') }
       // Which JVM ran the render, and what it would have searched for native libraries. Same
       // block the desktop renderer writes (see `NativeLoadDiagnosis.runtimeSnapshot`), because the
       // question it answers is the same on both backends: with several JDKs installed, nothing
@@ -75,6 +76,29 @@ internal object RenderErrorSidecar {
         "Failed to write render-error sidecar for ${pngFile.name}: ${sidecarWriteFailure.message}"
       )
     }
+  }
+
+  /**
+   * One actionable sentence for a failure that is about the *render classpath* rather than about
+   * the preview's own code, or null for an ordinary preview throw — which is the overwhelming
+   * majority. Mirrors what the desktop renderer puts in this field for a native-load failure
+   * (`renderer-desktop/.../NativeLoadDiagnosis.kt`); the plugin surfaces it on the card
+   * ([`PreviewRenderError.diagnosis`]).
+   *
+   * The classpath-version case worth carrying here is Glance's: a project whose
+   * `androidx.glance:glance-appwidget` predates 1.2.0 has no `composeForPreview`, which took out
+   * every app-widget preview in the module at once with an error naming our renderer
+   * (compose-ai-tools#5056). [GlanceComposerUnavailableException] already carries the sentence — a
+   * failure class this broad deserves to reach the card as more than a stack trace, so lift it.
+   */
+  private fun diagnose(e: Throwable): String? {
+    var t: Throwable? = e
+    val seen = mutableSetOf<Throwable>()
+    while (t != null && seen.add(t)) {
+      if (t is GlanceComposerUnavailableException) return t.message
+      t = t.cause
+    }
+    return null
   }
 
   /**

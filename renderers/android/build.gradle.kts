@@ -133,6 +133,12 @@ dependencies {
   // already have `androidx.glance:glance-appwidget` on their compile classpath, which then flows
   // onto the test classpath via the discovery → render fanout.
   compileOnly(libs.glance.appwidget)
+  // `GlanceComposeForPreviewTest` reflects over the *compiled* composer signatures — the version
+  // shapes in `GlanceComposerFixtures.kt` extend `GlanceAppWidget` and take `GlanceId`, and one
+  // test resolves against the real 1.2.0 so a Glance bump that moves the signature is caught here
+  // rather than in someone's import (compose-ai-tools#5056). Same precedent as coil above: the
+  // artefact stays off consumers' classpaths, it is only our own tests that need it.
+  testImplementation(libs.glance.appwidget)
   // Coil — `CoilPreviewSupport` swaps the singleton `ImageLoader` for an inline-dispatcher one so
   // `AsyncImage` resolves before the capture instead of leaving a blank, layout-collapsing hole
   // (issue #2952). Both majors are `compileOnly`: they are separate package trees (`coil.*` vs

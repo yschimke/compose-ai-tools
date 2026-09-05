@@ -253,6 +253,43 @@ to ship the higher floor on-device. We deliberately do **not** override this
 silently — that would mask the conflict for the consumer's own unit tests and
 let a genuinely API-35 library link against a lower-minSdk module unnoticed.
 
+### Glance app-widget previews: the composer is resolved, not linked
+
+`androidx.glance:glance-appwidget` is `compileOnly` in the renderer and pinned
+at 1.2.0 in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml), but the
+render runs against the **consumer's** Glance. Those two facts collided:
+`composeForPreview(GlanceAppWidget, Context, Int, AppWidgetProviderInfo)` was
+added in Glance 1.2.0, and the renderer called it as an ordinary compiled call
+site — so on a project pinned to 1.0.0/1.1.x every app-widget preview died with
+
+```
+java.lang.NoSuchMethodError: 'java.lang.Object
+  androidx.glance.appwidget.AppWidgetComposerKt.composeForPreview(...)'
+  at ee.schimke.composeai.renderer.GlanceAppWidgetPreviewRendererKt…
+```
+
+`NoSuchMethodError` rather than `ClassNotFoundException` is the tell: the class
+resolved, the signature did not (compose-ai-tools#5056).
+
+[`GlanceComposeForPreview.kt`](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/GlanceComposeForPreview.kt)
+now resolves the composer reflectively off the render classpath and fills its
+parameters **by type**, so an added or dropped argument in a later release still
+resolves:
+
+| Consumer's Glance | Resolved entry point | Composes through |
+| --- | --- | --- |
+| 1.2.0, 1.3.0-alpha | `composeForPreview(…, widgetCategory, info)` | `providePreview` |
+| 1.0.0 – 1.1.1 | `compose(…, size, …)` — the only one there is | `provideGlance` |
+| neither matches | `GlanceComposerUnavailableException` | — |
+
+The synthetic widget provides the same content from both entry points, so the
+capture does not depend on which one the consumer's version offers. When nothing
+matches, the failure is bounded and named: the exception's message reaches the
+card as the sidecar's `diagnosis` field rather than as a stack trace pointing
+into our renderer. **Adding a new Glance version to the table is a code change
+in one place** — `argumentFor` in that file, plus a fixture shape in
+`GlanceComposerFixtures.kt`.
+
 ## Tile-rendering defaults
 
 Tile previews render on an opaque black background and pick up the round
