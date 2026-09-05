@@ -2493,6 +2493,7 @@ internal object AndroidPreviewSupport {
           PreviewFilterSystemPropsProvider(
             nameFilters = previewFilters,
             idFilters = previewIdFilters,
+            idFilterFile = ComposePreviewTasks.previewIdFilterFileProperty(project),
             idExcludes = previewIdExcludes,
             idExcludeFile = ComposePreviewTasks.previewIdExcludeFileProperty(project),
             rowExcludes = previewRowExcludes,
@@ -2979,6 +2980,7 @@ internal object AndroidPreviewSupport {
           PreviewFilterSystemPropsProvider(
             nameFilters = ComposePreviewTasks.previewFilterProperty(project),
             idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
+            idFilterFile = ComposePreviewTasks.previewIdFilterFileProperty(project),
             idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
             idExcludeFile = ComposePreviewTasks.previewIdExcludeFileProperty(project),
             // Forwarded for uniformity; the XR subspace render has no `@PreviewParameter` fan-out
@@ -3816,6 +3818,13 @@ internal object AndroidPreviewSupport {
   internal class PreviewFilterSystemPropsProvider(
     @get:org.gradle.api.tasks.Input val nameFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
+    /**
+     * Path to the newline-delimited UTF-8 id-filter file, when the build was given one
+     * (issue #5172). `@Internal` for the same reason as [idExcludeFile]: [idFilters] already
+     * carries this file's RESOLVED lines, so the contents drive the up-to-date check and the path
+     * must not.
+     */
+    @get:org.gradle.api.tasks.Internal val idFilterFile: org.gradle.api.provider.Provider<String>,
     @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
     /**
      * Path to the newline-delimited exclusion file, when the build was given one. `@Internal`
@@ -3830,7 +3839,29 @@ internal object AndroidPreviewSupport {
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = buildList {
       arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
-      arg("composeai.preview.idFilter", idFilters.getOrElse(emptyList()))
+      // The id filter travels as a PATH when it came from `composePreview.idFilterFile`, for both
+      // reasons the exclude file below travels that way — an id may contain a comma — plus the one
+      // the file property was added for (issue #5172): this argument is encoded with the Gradle
+      // daemon's `sun.jnu.encoding`, so on a C/POSIX-locale daemon every non-ASCII character in an
+      // id would be replaced by `?` on the way to the render JVM and match nothing there. Same
+      // "only while the file is still what the list came FROM" test as the excludes: an explicit
+      // `--preview-id` on the task overrides the property convention, and must not lose to a stale
+      // `-PcomposePreview.idFilterFile`.
+      val filterFile = idFilterFile.orNull?.trim().orEmpty()
+      val resolvedFilters =
+        idFilters.getOrElse(emptyList()).map(String::trim).filter(String::isNotEmpty)
+      val filtersFromFile =
+        java.io
+          .File(filterFile)
+          .takeIf { filterFile.isNotEmpty() && it.isFile }
+          ?.readLines(Charsets.UTF_8)
+          ?.map(String::trim)
+          ?.filter(String::isNotEmpty)
+      if (filtersFromFile != null && filtersFromFile == resolvedFilters) {
+        add("-Dcomposeai.preview.idFilterFile=${java.io.File(filterFile).absolutePath}")
+      } else {
+        arg("composeai.preview.idFilter", resolvedFilters)
+      }
       // The FILE wins when there is one, and the comma-joined form is then not emitted at all.
       // Re-joining here is what the file exists to avoid: a preview id may contain a comma, so the
       // round trip shatters each id into fragments that — matching by substring — exclude the whole

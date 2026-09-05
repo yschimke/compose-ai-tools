@@ -35,6 +35,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list("Foo", "Bar"),
           idFilters = list("*_Light"),
+          idFilterFile = noFile,
           idExcludes = list("*_Dark"),
           idExcludeFile = noFile,
           rowExcludes = list("Dark", "ExtraDark"),
@@ -59,6 +60,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list(),
           idFilters = list(),
+          idFilterFile = noFile,
           idExcludes = list(),
           idExcludeFile = noFile,
           rowExcludes = list(),
@@ -76,6 +78,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list(" Foo ", "", "  "),
           idFilters = list(),
+          idFilterFile = noFile,
           idExcludes = list(),
           idExcludeFile = noFile,
           rowExcludes = list(),
@@ -96,6 +99,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list(),
           idFilters = list(),
+          idFilterFile = noFile,
           idExcludes = list(),
           idExcludeFile = noFile,
           rowExcludes = list("Dark", " ExtraDark "),
@@ -113,6 +117,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list(),
           idFilters = list(),
+          idFilterFile = noFile,
           idExcludes = list(),
           idExcludeFile = noFile,
           rowExcludes = list(),
@@ -137,6 +142,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list(),
           idFilters = list(),
+          idFilterFile = noFile,
           idExcludes = list(*ids.toTypedArray()),
           idExcludeFile = path(f),
           rowExcludes = list(),
@@ -160,6 +166,7 @@ class PreviewFilterSystemPropsProviderTest {
       AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
           nameFilters = list(),
           idFilters = list(),
+          idFilterFile = noFile,
           idExcludes = list("TypedOnTheCommandLine"),
           idExcludeFile = path(f),
           rowExcludes = list(),
@@ -169,5 +176,51 @@ class PreviewFilterSystemPropsProviderTest {
         .toList()
 
     assertThat(args).containsExactly("-Dcomposeai.preview.idExclude=TypedOnTheCommandLine")
+  }
+
+  /**
+   * Issue #5172 — the same path treatment for the positive filter, for one more reason: this
+   * argument is encoded with the Gradle daemon's `sun.jnu.encoding`, so a C/POSIX-locale daemon
+   * would replace the em dash with `?` and the render worker could never match the id it was asked
+   * for.
+   */
+  @Test
+  fun `a file-sourced id filter travels as a path, not a joined string`() {
+    val ids = listOf("=SyncPreview_Cadence — Sync ready")
+    val f = fileWith(ids)
+    val args =
+      AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
+          nameFilters = list(),
+          idFilters = list(*ids.toTypedArray()),
+          idFilterFile = path(f),
+          idExcludes = list(),
+          idExcludeFile = noFile,
+          rowExcludes = list(),
+          permutations = list(),
+        )
+        .asArguments()
+        .toList()
+
+    assertThat(args).containsExactly("-Dcomposeai.preview.idFilterFile=${f.absolutePath}")
+  }
+
+  /** `--preview-id` on the task overrides the property convention; a stale file must not win. */
+  @Test
+  fun `an overridden id filter ignores the file and travels joined`() {
+    val f = fileWith(listOf("=FromFile"))
+    val args =
+      AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
+          nameFilters = list(),
+          idFilters = list("TypedOnTheCommandLine"),
+          idFilterFile = path(f),
+          idExcludes = list(),
+          idExcludeFile = noFile,
+          rowExcludes = list(),
+          permutations = list(),
+        )
+        .asArguments()
+        .toList()
+
+    assertThat(args).containsExactly("-Dcomposeai.preview.idFilter=TypedOnTheCommandLine")
   }
 }

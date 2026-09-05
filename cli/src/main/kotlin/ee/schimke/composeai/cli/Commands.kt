@@ -631,9 +631,10 @@ abstract class Command(
   }
 
   /**
-   * The `-PcomposePreview.idFilter` narrowing for this invocation's `--id` / `--filter`, plus the
-   * stderr diagnostics that go with it. Shared by the [renderModules] pipeline (`show`, `a11y`,
-   * reports) and by `render`, which drives Gradle itself.
+   * The `-PcomposePreview.idFilter` (or `-PcomposePreview.idFilterFile`, see [PreviewRenderScope])
+   * narrowing for this invocation's `--id` / `--filter`, plus the stderr diagnostics that go with
+   * it. Shared by the [renderModules] pipeline (`show`, `a11y`, reports) and by `render`, which
+   * drives Gradle itself.
    *
    * Returns [PreviewRenderScope.FULL] — render everything, the pre-#3730 behaviour — whenever the
    * request can't be resolved to an exact id list: no filter, no modules, or a discovery pass that
@@ -674,7 +675,7 @@ abstract class Command(
     if (verbose && scope.narrowed) {
       System.err.println(
         "compose-preview: $flag narrowed the render to ${scope.renderedIds?.size ?: 0} preview(s) " +
-          "via -P${PreviewRenderScope.GRADLE_PROPERTY}"
+          "via ${scope.gradleArgs.first().substringBefore('=')}"
       )
     }
     return scope

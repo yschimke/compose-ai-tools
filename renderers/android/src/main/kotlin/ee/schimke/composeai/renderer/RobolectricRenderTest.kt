@@ -319,6 +319,42 @@ object PreviewManifestLoader {
     }
   }
 
+  /**
+   * Wire contract with the plugin's `PreviewFilterSystemPropsProvider`: the path to a
+   * newline-delimited UTF-8 `--preview-id` pattern list (issue #5172). Named alongside the
+   * renderer-side `PreviewFilter.ID_FILTER_PROPERTY` constants it stands in for.
+   */
+  internal const val ID_FILTER_FILE_PROPERTY: String = "composeai.preview.idFilterFile"
+
+  /**
+   * The `--preview-id` patterns for this render: the newline-delimited UTF-8 file named by
+   * `composeai.preview.idFilterFile` when the build passed one, else the comma-joined
+   * `composeai.preview.idFilter` property.
+   *
+   * The file form exists for issue #5172. System properties reach this JVM as process arguments,
+   * which the Gradle daemon encodes with its own `sun.jnu.encoding`; under a C/POSIX locale
+   * (`ANSI_X3.4-1968` — containers, CI runners, cloud agent sandboxes) every non-ASCII character in
+   * a preview id is replaced by `?` in transit, so an id like `…_Cadence — Sync ready` could never
+   * equal the id discovered here and the narrowed render failed for exactly the previews it was
+   * meant to speed up. A path is ASCII, and the file is read as UTF-8, so the ids arrive intact.
+   */
+  internal fun idFilterPatterns(read: (String) -> String? = System::getProperty): List<String> {
+    val path = read(ID_FILTER_FILE_PROPERTY)?.trim().orEmpty()
+    if (path.isNotEmpty()) {
+      val file = File(path)
+      if (file.isFile) {
+        return file.readLines(Charsets.UTF_8).map(String::trim).filter(String::isNotEmpty)
+      }
+      // Falling through to an unfiltered render would look like success while rendering the whole
+      // module, which is the cost the filter exists to avoid; say why instead.
+      System.err.println(
+        "composePreviewRender: $ID_FILTER_FILE_PROPERTY names '$path', which is not a readable " +
+          "file; falling back to ${PreviewFilter.ID_FILTER_PROPERTY}."
+      )
+    }
+    return PreviewFilter.patternsFrom(PreviewFilter.ID_FILTER_PROPERTY)
+  }
+
   @JvmStatic
   @JvmOverloads
   fun loadShard(
@@ -346,7 +382,7 @@ object PreviewManifestLoader {
       PreviewFilter.select(
         items = manifest.previews,
         nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
-        idFilters = PreviewFilter.patternsFrom(PreviewFilter.ID_FILTER_PROPERTY),
+        idFilters = idFilterPatterns(),
         idExcludes = PreviewFilter.idExcludesFrom(),
         functionName = { it.functionName },
         className = { it.className },

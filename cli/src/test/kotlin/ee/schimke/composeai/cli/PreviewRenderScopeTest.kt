@@ -42,6 +42,31 @@ class PreviewRenderScopeTest {
           },
       )
 
+  private fun createTempDir(): File =
+    java.nio.file.Files.createTempDirectory("preview-render-scope").toFile().apply {
+      deleteOnExit()
+    }
+
+  /** The single `-PcomposePreview.idFilterFile=<path>` argument [scope] carries. */
+  private fun onlyFileArg(scope: PreviewRenderScope.Scope): String {
+    val arg = scope.gradleArgs.singleOrNull() ?: error("expected one argument: ${scope.gradleArgs}")
+    val prefix = "-P${PreviewRenderScope.FILE_GRADLE_PROPERTY}="
+    assertTrue(arg.startsWith(prefix), "expected a file argument, was '$arg'")
+    return arg.removePrefix(prefix)
+  }
+
+  /** Runs [body] as if the JVM encoded process arguments with [encoding]. */
+  private fun <T> withArgEncoding(encoding: String, body: () -> T): T {
+    val previous = System.getProperty("sun.jnu.encoding")
+    System.setProperty("sun.jnu.encoding", encoding)
+    try {
+      return body()
+    } finally {
+      if (previous == null) System.clearProperty("sun.jnu.encoding")
+      else System.setProperty("sun.jnu.encoding", previous)
+    }
+  }
+
   @Test
   fun `no request renders everything`() {
     val app = module("app")
@@ -152,19 +177,86 @@ class PreviewRenderScopeTest {
   }
 
   @Test
-  fun `an id carrying a comma declines the narrowing rather than breaking the render`() {
+  fun `an id carrying a comma travels as a file rather than a comma-joined property`() {
+    val app = module("app")
+    val dir = createTempDir()
+    val scope =
+      PreviewRenderScope.forRequest(
+        manifests = listOf(manifest(app, "Home,Preview", "SettingsPreview")),
+        exactId = null,
+        filter = "Home",
+        filesDir = dir,
+      )
+
+    // `composePreview.idFilter` splits on `,`, so this id can only travel newline-delimited.
+    val path = onlyFileArg(scope)
+    assertEquals(listOf("=Home,Preview"), File(path).readLines())
+    assertEquals(setOf("Home,Preview"), scope.renderedIds)
+  }
+
+  @Test
+  fun `an unwritable file dir declines the narrowing rather than breaking the render`() {
     val app = module("app")
     val scope =
       PreviewRenderScope.forRequest(
         manifests = listOf(manifest(app, "Home,Preview", "SettingsPreview")),
         exactId = null,
         filter = "Home",
+        filesDir = File(createTempDir(), "does-not-exist"),
       )
 
     assertEquals(emptyList(), scope.gradleArgs)
     assertTrue(
       scope.note!!.contains("comma"),
       "the declined narrowing explains itself: ${scope.note}",
+    )
+  }
+
+  /**
+   * Issue #5172 — process arguments are encoded with `sun.jnu.encoding`, so on a C/POSIX-locale JVM
+   * an em dash in a preview name reaches the render as `?` and can never match the id discovered
+   * there. The ids then travel through a UTF-8 file behind an ASCII path instead.
+   */
+  @Test
+  fun `a non-ASCII id travels as a file when the argument encoding cannot carry it`() {
+    val app = module("app")
+    val dir = createTempDir()
+    val scope =
+      withArgEncoding("ANSI_X3.4-1968") {
+        PreviewRenderScope.forRequest(
+          manifests = listOf(manifest(app, "SyncPreview_Cadence — Sync ready", "HomePreview")),
+          exactId = null,
+          filter = "Sync ready",
+          filesDir = dir,
+        )
+      }
+
+    val path = onlyFileArg(scope)
+    assertTrue(path.all { it.code < 128 }, "the path itself has to survive the boundary: $path")
+    assertEquals(
+      listOf("=SyncPreview_Cadence — Sync ready"),
+      File(path).readLines(Charsets.UTF_8),
+    )
+  }
+
+  @Test
+  fun `a non-ASCII id still travels as a plain property under a UTF-8 encoding`() {
+    val app = module("app")
+    val scope =
+      withArgEncoding("UTF-8") {
+        PreviewRenderScope.forRequest(
+          manifests = listOf(manifest(app, "SyncPreview_Cadence — Sync ready", "HomePreview")),
+          exactId = null,
+          filter = "Sync ready",
+          filesDir = createTempDir(),
+        )
+      }
+
+    // No file, no behaviour change: the fallback is scoped to the boundary that actually loses
+    // characters, so a UTF-8 host keeps the one-argument form (and its older-plugin compatibility).
+    assertEquals(
+      listOf("-PcomposePreview.idFilter==SyncPreview_Cadence — Sync ready"),
+      scope.gradleArgs,
     )
   }
 
