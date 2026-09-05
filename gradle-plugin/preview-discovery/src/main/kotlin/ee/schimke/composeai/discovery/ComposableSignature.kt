@@ -224,14 +224,30 @@ internal object ComposableSignature {
       if (hasKnob) PreviewKnobDefaults.readFrom(classInfo, method, parameters.size) else emptyMap()
     return parameters.mapIndexedNotNull { index, parameter ->
       knobType(parameter.type, scanResult)?.let { type ->
+        val constants =
+          if (type == PreviewKnobType.ENUM) enumConstantsOf(parameter.type, scanResult)
+          else emptyList()
+        // An enum whose options could not be resolved is not a knob at all. Both causes land here —
+        // an unreadable class file, and two constants claiming one seed text — and both leave a
+        // picker with nothing in it, which is worse than the text box it replaced. Degrading to
+        // "not seedable" renders the author default and says nothing false.
+        if (type == PreviewKnobType.ENUM && constants.isEmpty()) return@mapIndexedNotNull null
         PreviewKnob(
           name = parameter.name,
           index = index,
           type = type,
-          default = defaults[index],
-          options =
-            if (type == PreviewKnobType.ENUM) enumConstantsOf(parameter.type, scanResult)
-            else emptyList(),
+          // The default is read out of the compiled body as the constant's NAME. Translate it to
+          // the constant's declared seed text so a knob's default is in the same vocabulary as its
+          // options — otherwise a viewer would show `ExtraLarge` as the default of a picker whose
+          // only offered values are `default` / `large` / `extra-large`, and "reset" would send a
+          // value the knob rejects.
+          default =
+            defaults[index]?.let { read ->
+              if (type == PreviewKnobType.ENUM) {
+                constants.firstOrNull { it.first == read }?.second ?: read
+              } else read
+            },
+          options = constants.map { it.second },
         )
       }
     }
@@ -245,7 +261,10 @@ internal object ComposableSignature {
    * ClassGraph's field info, which the discovery scan deliberately does not enable — see there for
    * why that cost is not worth paying on every class of every build.
    */
-  private fun enumConstantsOf(type: KmType, scanResult: ScanResult?): List<String> {
+  private fun enumConstantsOf(
+    type: KmType,
+    scanResult: ScanResult?,
+  ): List<Pair<String, String>> {
     val fqn =
       (type.classifier as? KmClassifier.Class)?.name?.replace('/', '.') ?: return emptyList()
     val info = scanResult?.getClassInfo(fqn) ?: return emptyList()

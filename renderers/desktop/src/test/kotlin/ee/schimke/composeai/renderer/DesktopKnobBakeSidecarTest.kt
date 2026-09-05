@@ -38,6 +38,10 @@ class DesktopKnobBakeSidecarTest {
   private val enumKnobs =
     listOf(PreviewKnobSpec("size", 0, "ENUM", "Small", listOf("Small", "Medium", "Large")))
 
+  /** [AliasedKnobSticker]'s knob: options are the DECLARED texts, which is what discovery emits. */
+  private val aliasedKnobs =
+    listOf(PreviewKnobSpec("size", 0, "ENUM", "default", listOf("default", "large", "extra-large")))
+
   @After
   fun clearController() {
     ee.schimke.composeai.overrides.PreviewOverrideController.resetForNewSession()
@@ -134,6 +138,43 @@ class DesktopKnobBakeSidecarTest {
     // sends after a rename, and rendering the author default is the honest answer to it.
     val image = ByteArrayInputStream(png.readBytes()).use { ImageIO.read(it) }
     assertEquals("a bogus enum seed must render the default", 40, image.width)
+  }
+
+  @Test
+  fun `an aliased enum knob offers and binds the kit's own spelling`() {
+    // The migration case. A catalog that has been seeding `iconSize=extra-large` has that
+    // vocabulary written into every `@OverrideVariant` it has accumulated AND into the design kit
+    // its renders are compared against — and `extra-large` is not a legal Kotlin identifier, so the
+    // constant cannot simply be renamed to it. Both halves have to speak the declared text.
+    ee.schimke.composeai.overrides.PreviewOverrideController.set(
+      mapOf("size" to PreviewOverrideValue.StringValue("extra-large"))
+    )
+    val (png, sidecar) = bake("aliased", knobs = aliasedKnobs, function = "AliasedKnobSticker")
+
+    val image = ByteArrayInputStream(png.readBytes()).use { ImageIO.read(it) }
+    assertEquals("the kit-spelled seed did not bind", 120, image.width)
+
+    val json = sidecar.readText()
+    // The picker offers the declared text, not the constant names — so what a viewer sends is what
+    // an `@OverrideVariant` already carries, and the two cannot drift apart.
+    for (spelling in listOf("default", "large", "extra-large")) {
+      assertTrue("option $spelling missing: $json", json.contains(spelling))
+    }
+    assertTrue("constant name leaked into the options: $json", !json.contains("ExtraLarge"))
+  }
+
+  @Test
+  fun `an aliased enum default is reported in the declared vocabulary`() {
+    val (_, sidecar) =
+      bake("aliased-default", knobs = aliasedKnobs, function = "AliasedKnobSticker")
+
+    // `Default` is the constant; `default` is what it answers to. A viewer showing the former as
+    // the default of a picker offering the latter would offer a "reset" the knob then rejects.
+    val json = sidecar.readText()
+    assertTrue(
+      "the default is not in the declared vocabulary: $json",
+      json.contains(""""default""""),
+    )
   }
 
   /** One capture through the real render entry, returning its PNG and the sidecar beside it. */

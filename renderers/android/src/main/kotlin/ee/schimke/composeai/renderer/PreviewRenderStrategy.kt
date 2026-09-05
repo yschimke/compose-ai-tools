@@ -354,6 +354,13 @@ private fun argsMatch(method: java.lang.reflect.Method, previewArgs: List<Any?>)
     // Auto-boxing: `int` vs `Integer`, etc. `expected.kotlin.javaObjectType`
     // is the box class for primitives; for reference types it's itself.
     if (expected.kotlin.javaObjectType.isAssignableFrom(actual)) continue
+    // An enum knob's seed is still the constant's declared TEXT here: nothing before method
+    // resolution holds the enum `Class`, so the conversion cannot have happened yet. Matching it
+    // against the parameter's own constants is what lets resolution reach the overload whose
+    // types the invoke seam then coerces to. A string naming no constant is not a match.
+    if (expected.isEnum && arg is String) {
+      if (PreviewKnobBake.matchesEnumConstant(expected, arg)) continue
+    }
     return false
   }
   return true

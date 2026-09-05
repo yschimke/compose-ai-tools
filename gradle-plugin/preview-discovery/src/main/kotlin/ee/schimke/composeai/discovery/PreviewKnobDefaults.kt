@@ -2,6 +2,7 @@ package ee.schimke.composeai.discovery
 
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
+import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.FieldVisitor
@@ -64,8 +65,13 @@ internal object PreviewKnobDefaults {
    * used to pick the right overload and to reconstruct the synthetic tail.
    */
   /**
-   * The constant names of the enum [classInfo] describes, in declaration order, or empty when its
-   * class file cannot be read.
+   * The constants of the enum [classInfo] describes, in declaration order, as `name to seed text`
+   * pairs — or empty when its class file cannot be read.
+   *
+   * Both halves are needed and they are not always the same string: the seed text is what a viewer
+   * offers and an `@OverrideVariant` carries, while the name is what the *default* is read as out
+   * of the compiled body's `GETSTATIC`, so translating one to the other is what keeps a knob's
+   * declared default in the same vocabulary as its options.
    *
    * Read out of the class file rather than from ClassGraph's `fieldInfo`, which would require
    * `enableFieldInfo()` on the scan — a cost every build of every project would pay, on every
@@ -75,12 +81,18 @@ internal object PreviewKnobDefaults {
    *
    * Field order in a class file is declaration order, which is the order an author wrote and the
    * order a picker should offer.
+   *
+   * A constant carrying `@KnobValue` reports the text it declares instead of its own name — see
+   * that annotation for why a migration needs it. Empty when two constants claim the same text: an
+   * ambiguous seed must not bind to whichever was read first.
    */
-  fun enumConstantsOf(classInfo: ClassInfo): List<String> {
+  private const val KNOB_VALUE_DESCRIPTOR = "Lee/schimke/composeai/preview/KnobValue;"
+
+  fun enumConstantsOf(classInfo: ClassInfo): List<Pair<String, String>> {
     val resource = classInfo.resource ?: return emptyList()
     return try {
       resource.open().use { stream ->
-        val names = mutableListOf<String>()
+        val values = mutableListOf<Pair<String, String>>()
         ClassReader(stream)
           .accept(
             object : ClassVisitor(Opcodes.ASM9) {
@@ -91,13 +103,34 @@ internal object PreviewKnobDefaults {
                 signature: String?,
                 value: Any?,
               ): FieldVisitor? {
-                if (access and Opcodes.ACC_ENUM != 0) names += name
-                return null
+                if (access and Opcodes.ACC_ENUM == 0) return null
+                // Reserve this constant's slot now and let the annotation visitor overwrite it, so
+                // the list stays in declaration order whether or not an alias is declared.
+                val slot = values.size
+                values += name to name
+                return object : FieldVisitor(Opcodes.ASM9) {
+                  override fun visitAnnotation(
+                    annotationDescriptor: String,
+                    visible: Boolean,
+                  ): AnnotationVisitor? {
+                    if (annotationDescriptor != KNOB_VALUE_DESCRIPTOR) return null
+                    return object : AnnotationVisitor(Opcodes.ASM9) {
+                      override fun visit(annotationName: String?, annotationValue: Any?) {
+                        val declared = annotationValue as? String ?: return
+                        if (declared.isNotEmpty()) values[slot] = name to declared
+                      }
+                    }
+                  }
+                }
               }
             },
             ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES or ClassReader.SKIP_DEBUG,
           )
-        names
+        // Two constants claiming one seed text make the seed ambiguous, and binding to whichever
+        // was seen first would be a silent wrong answer. Dropping the options degrades the knob to
+        // "not seedable", which `ComposableSignature` then reports as not a knob at all.
+        val seeds = values.map { it.second }
+        if (seeds.size != seeds.toSet().size) emptyList() else values
       }
     } catch (_: Throwable) {
       emptyList()

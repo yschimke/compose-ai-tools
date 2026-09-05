@@ -124,10 +124,49 @@ internal object PreviewKnobBake {
     val coerced = args.mapIndexed { index, value ->
       val type = parameterTypes.getOrNull(index) ?: return@mapIndexed value
       if (value !is String || !type.isEnum) return@mapIndexed value
-      type.enumConstants?.firstOrNull { (it as? Enum<*>)?.name == value } ?: value
+      type.enumConstants?.firstOrNull { seedTextOf(type, it) == value } ?: value
     }
     return if (coerced == args) args else coerced
   }
+
+  /**
+   * Whether [seed] names a constant of the enum [type] — by the text that constant answers to,
+   * which is its `@KnobValue` when it declares one.
+   *
+   * Method *resolution* needs this as much as the invoke does. A seed is still text at that point,
+   * and an overload is chosen by matching each argument's runtime type against the parameter's, so
+   * without this a `String` never matches an enum parameter and the preview resolves to nothing.
+   * Matching on the same text the binder will bind is what keeps the two from disagreeing.
+   */
+  fun matchesEnumConstant(type: Class<*>, seed: String): Boolean =
+    type.enumConstants?.any { seedTextOf(type, it) == seed } == true
+
+  /**
+   * The seed text [constant] answers to: the value its `@KnobValue` declares, or its own name.
+   *
+   * The annotation is resolved **by name**, not by type, so no renderer artefact takes a dependency
+   * on `preview-annotations` to read it — a consumer that never uses the annotation simply has no
+   * class by that name on the classpath, and every constant answers to its own name.
+   *
+   * Any reflective failure degrades to the constant name for the same reason: a seed that cannot be
+   * matched leaves its position alone, and the author default renders.
+   */
+  private fun seedTextOf(enumType: Class<*>, constant: Any): String? {
+    val name = (constant as? Enum<*>)?.name ?: return null
+    return runCatching {
+      val field = enumType.getDeclaredField(name)
+      field.annotations
+        .firstOrNull { it.annotationClass.java.name == KNOB_VALUE_ANNOTATION }
+        ?.let { annotation ->
+          annotation.annotationClass.java.getDeclaredMethod("value").invoke(annotation) as? String
+        }
+        ?.takeIf { it.isNotEmpty() }
+    }
+      .getOrNull() ?: name
+  }
+
+  /** FQN of the alias annotation, resolved reflectively — see [seedTextOf]. */
+  private const val KNOB_VALUE_ANNOTATION = "ee.schimke.composeai.preview.KnobValue"
 
   /**
    * The seed text for [value], or null when its kind has no parameter-knob equivalent.

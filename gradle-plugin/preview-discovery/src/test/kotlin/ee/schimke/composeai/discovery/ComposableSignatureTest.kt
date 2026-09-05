@@ -155,6 +155,53 @@ class ComposableSignatureTest {
   }
 
   @Test
+  fun `an aliased constant reports the text it declares, not its own name`() {
+    val knob = knobsOf("aliasedKnobComponent").single()
+
+    // A catalog migrating off `previewOverrideChoice` has its vocabulary written into every
+    // `@OverrideVariant` seed it has accumulated and into the design kit its renders are compared
+    // against. `extra-large` is not a legal Kotlin identifier, so the constant cannot be renamed to
+    // it — the constant declares the text instead.
+    assertThat(knob.options).containsExactly("default", "large", "extra-large").inOrder()
+  }
+
+  @Test
+  fun `an aliased constant carries both its name and its text, which is what translates a default`() {
+    // A knob's DEFAULT is read out of the compiled body as the constant NAME (`ExtraLarge`), while
+    // its options are the declared texts — so reporting the name as the default would hand a viewer
+    // a value its own picker does not offer, and a "reset" the knob then rejects. Translating one
+    // to the other needs both halves, which is what this carries.
+    //
+    // Asserted on the pairs rather than on `PreviewKnob.default`, because this module has no
+    // Compose compiler plugin: the fixture compiles to the ordinary `name$default` bridge instead
+    // of the mask block `PreviewKnobDefaults` reads, so no default is recoverable here at all.
+    val constants =
+      ClassGraph().enableClassInfo().acceptPackages("ee.schimke.composeai.discovery").scan().use {
+        scan ->
+        PreviewKnobDefaults.enumConstantsOf(
+          scan.getClassInfo("ee.schimke.composeai.discovery.KitIconSize")
+            ?: error("enum fixture not found")
+        )
+      }
+
+    assertThat(constants)
+      .containsExactly(
+        "Default" to "default",
+        "Large" to "large",
+        "ExtraLarge" to "extra-large",
+      )
+      .inOrder()
+  }
+
+  @Test
+  fun `two constants claiming one seed text disable the knob rather than binding either`() {
+    // An ambiguous seed has no right answer, and binding to whichever constant was read first would
+    // be a silent wrong one. With no options the enum is not seedable, so it is not a knob — the
+    // untouched sibling still is.
+    assertThat(knobsOf("ambiguousKnobComponent").map { it.name }).containsExactly("tag")
+  }
+
+  @Test
   fun `an enum parameter is not a knob at all when the enum cannot be resolved`() {
     // Without a scan result there is no way to read the constants, and a picker with no options
     // would be worse than the text box it replaced — so it degrades to "not seedable", not to "a

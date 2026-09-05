@@ -170,6 +170,32 @@ with `optionsExhaustive = true`, and a viewer draws exactly the picker `previewO
 produces. It is also better than the string it replaces: the `when` over it is exhaustive, so a
 constant added later is a compile error rather than a branch that silently falls through.
 
+**A migration also needs `@KnobValue`.** The constants above answer to their own names, which is
+right for a knob written from scratch. It is wrong for one being migrated: a catalog that has been
+calling `previewOverrideChoice("iconSize", "default", listOf("default", "large", "extra-large"))`
+has that vocabulary written into every `@OverrideVariant(strings = ["iconSize=extra-large"])` it has
+accumulated **and** into the design kit its renders are compared against, where a mismatched value
+drops the node from the comparison with no diagnostic anywhere. `yschimke/wear-m3-catalog` has 513
+such seeds across its 20 choice keys. Renaming the value to `ExtraLarge` unbinds every one of them,
+and the render silently falls back to its author default.
+
+Several of those values cannot be Kotlin identifiers at all — `12-sided cookie`, `4-leaf clover`,
+`0.0`, `24s` — so "name the constant after the value" is not available even in principle. The
+constant declares the text instead:
+
+```kotlin
+enum class IconSize {
+  @KnobValue("default") Default,
+  @KnobValue("large") Large,
+  @KnobValue("extra-large") ExtraLarge,
+}
+```
+
+Everything downstream then speaks the declared vocabulary — the knob's `options`, the picker, an
+`@OverrideVariant` seed, and the declared *default*, which is read out of the compiled body as the
+constant name and translated back. Two constants claiming one text make the seed ambiguous, so the
+enum reports no options and stops being a knob rather than binding whichever was read first.
+
 Three things are worth knowing about the shape:
 
 - **The seed crosses as the constant's name.** Nothing before the renderer's invoke seam holds the
@@ -184,6 +210,11 @@ Three things are worth knowing about the shape:
 - **The constants are read from the enum's class file, not ClassGraph's field info.** Enabling
   field info would make every build of every project pay a larger scan, on every class, to serve
   the rare preview that declares one.
+- **An enum with no resolvable options is not a knob at all** — not a knob whose values are
+  unknown. A picker with nothing in it is worse than the text box it replaced.
+- **The renderers resolve `@KnobValue` by name, not by type**, so no published renderer artefact
+  gains a dependency on `:preview-annotations`; a consumer that never uses the annotation simply
+  has no class by that name and every constant answers to its own name.
 
 Still open in this area: a knob whose values are a closed set of something *other* than an enum's
 constants — the wear catalog's font knob wants autocomplete over declared typefaces, which is a
