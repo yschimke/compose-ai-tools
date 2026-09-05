@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.75.0](https://github.com/yschimke/compose-ai-tools/compare/v1.74.0...v1.75.0) (2026-09-05)
+
+
+### Features
+
+* **builder:** drive the UI builder from the real ScreenGenerator ([#5116](https://github.com/yschimke/compose-ai-tools/issues/5116)) ([ebcbea0](https://github.com/yschimke/compose-ai-tools/commit/ebcbea04d16ef429da585d91c8273f14cf1e6118))
+
+
+### Bug Fixes
+
+* **render-session:** refuse a daemon-launch descriptor whose schemaVersion is not this module's ([#5114](https://github.com/yschimke/compose-ai-tools/issues/5114)) ([e21084b](https://github.com/yschimke/compose-ai-tools/commit/e21084bcce1d92c09083ae5624790f76efb8ca4f))
+* **renderer-desktop:** make the focus, motion and scroll lanes honour parameter knobs ([#5115](https://github.com/yschimke/compose-ai-tools/issues/5115)) ([8942bac](https://github.com/yschimke/compose-ai-tools/commit/8942bacae105e4ef32a0ba985abe4a19b2348dba))
+
 ## [1.74.0](https://github.com/yschimke/compose-ai-tools/compare/v1.73.0...v1.74.0) (2026-09-04)
 
 
