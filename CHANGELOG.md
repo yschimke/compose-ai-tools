@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.83.0](https://github.com/yschimke/compose-ai-tools/compare/v1.82.0...v1.83.0) (2026-09-05)
+
+
+### Features
+
+* **design-artifacts:** check that parity locators still name a cell the catalog draws ([#5214](https://github.com/yschimke/compose-ai-tools/issues/5214)) ([26608e7](https://github.com/yschimke/compose-ai-tools/commit/26608e78bc12c930ff03d09075f74ec2f7185656))
+* **screen:** let a slot's children be declared through its receiver's DSL ([#5216](https://github.com/yschimke/compose-ai-tools/issues/5216)) ([d333109](https://github.com/yschimke/compose-ai-tools/commit/d333109e97ff2d622590a0e9dc3f7a7a91dc1d56))
+
 ## [1.82.0](https://github.com/yschimke/compose-ai-tools/compare/v1.81.0...v1.82.0) (2026-09-05)
 
 
