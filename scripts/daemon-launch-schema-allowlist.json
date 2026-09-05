@@ -69,6 +69,12 @@
       "why": "`:render-session-subprocess` writes its own descriptors for the bundle daemons it spawns, stamping this private copy, and since #5105 `SubprocessRenderSessions.open` also refuses an on-disk descriptor whose version is not this one. It is one of the twelve published contract modules an extracted preview server links against (#3824), so post-split a stale mirror here is cross-repo version skew no compiler sees."
     },
     {
+      "file": "render-host/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt",
+      "symbol": "DAEMON_LAUNCH_SCHEMA_VERSION",
+      "role": "third writer",
+      "why": "`ServeBundleDaemon` writes its own descriptors for the bundle daemons it spawns. This entry existed until the preview server left the repository in #4732, and the `writerEncoders` note below still records its removal as a gap nothing closed. It is registered again because the render host came home (yschimke/compose-preview-server#180) \u2014 the mirror is back in a tree this check can see, so it is gated again rather than trusted. Note the spelling differs from the other two: the constant is `DAEMON_LAUNCH_SCHEMA_VERSION`, not `*_DESCRIPTOR_SCHEMA_VERSION`, so the name-based mirror scan never finds it and only discovery-by-use does."
+    },
+    {
       "file": "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",
       "symbol": "EXPECTED_DESCRIPTOR_SCHEMA_VERSION",
       "role": "doctor",
@@ -139,8 +145,11 @@
         "prettyPrint": "true",
         "encodeDefaults": "true",
         "explicitNulls": "true"
+      },
+      "render-host/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt": {
+        "encodeDefaults": "true"
       }
     },
-    "why": "Every production writer's `Json`, recorded per file because they are not identical. The two Gradle-plugin writers pretty-print and force explicit nulls. The settings that DO change the wire (a `namingStrategy`, or `encodeDefaults = false` dropping defaulted fields) live in the same block, so they are recorded rather than assumed. Serve's writer (`ServeBundleDaemon`, compact, relying on kotlinx's `explicitNulls = true` default) was registered here until the server left the repository in #4732; it is now a cross-repo mirror this check cannot see, which is residual item 1 on that issue \u2014 a `daemon-launch.json` shape change here no longer fails the server's build, and nothing yet makes it."
+    "why": "Every production writer's `Json`, recorded per file because they are not identical. The two Gradle-plugin writers pretty-print and force explicit nulls. The settings that DO change the wire (a `namingStrategy`, or `encodeDefaults = false` dropping defaulted fields) live in the same block, so they are recorded rather than assumed. Serve's writer (`ServeBundleDaemon`, compact, relying on kotlinx's `explicitNulls = true` default) was registered here, then left with the server in #4732, and is registered again now that the render host came home (yschimke/compose-preview-server#180). It is deliberately NOT identical to the two Gradle-plugin writers: it does not pretty-print, and it leans on kotlinx's `explicitNulls = true` default rather than stating it. Both are recorded rather than normalised, because this block exists to make the differences visible, not to assert they should not exist. Residual item 1 on #4732 \u2014 that a shape change here no longer fails the server's build \u2014 is narrowed rather than closed: the writer is gated again, but the server's own image still passes descriptor keys this check cannot see."
   }
 }
