@@ -1,11 +1,187 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T09:49:33.788Z",
+  "generatedAt": "2026-09-05T11:44:20.316Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "6a9593f822f6852ae5b79620845da56eaaf6add6",
+        "subject": "fix(scroll): set aside chrome revealed at the foot of a slice when scoring a seam (#5197)",
+        "at": "2026-09-05T12:31:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8a994c8020ace06fe2bc008607728de361458754",
+        "subject": "chore(main): release 1.80.0 (#5159)",
+        "at": "2026-09-05T12:16:00+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7377d9c70639d954d581bf52de7f37989053b430",
+        "subject": "feat(cli): add `ui-builder`, the launcher for the server's `ui` command (#5195)",
+        "at": "2026-09-05T12:09:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fd2aa2647f1115c7387add5438a3a8db65471eef",
+        "subject": "test: let the consumer notice know its third consumer (#5196)",
+        "at": "2026-09-05T12:09:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "190b6c89eea8944237cea03ba184efa640b4b77e",
+        "subject": "fix(cli): make optional captures visible in show output (#5192)",
+        "at": "2026-09-05T11:56:17+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "82c960c63d64043a82099bb43e7e0613115fc610",
+        "subject": "test: pin the two preview-selector rules against a shared table (#5193)",
+        "at": "2026-09-05T11:56:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "861afdc199e724cc72c7f9b57e572a7a63b46577",
+        "subject": "feat(serve): fetch the preview server on first use instead of demanding one (#5194)",
+        "at": "2026-09-05T11:55:48+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7a1359cacfd9bfb371f0e34a7306115e0d5cd4d8",
+        "subject": "fix(ci): follow a sysprop mirror that reads the shared constant (#5191)",
+        "at": "2026-09-05T11:55:30+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "28fb93b586de8d5cffb07db10df40658ff1a87a2",
+        "subject": "feat(render-host): enable explicitApi() and check an ABI dump (#5190)",
+        "at": "2026-09-05T11:43:08+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cdc4bb1c0d741ab37ce883b01904f840b7de5eb7",
+        "subject": "refactor(mcp): lift the render-matrix helpers into :render-matrix (#5188)",
+        "at": "2026-09-05T11:40:01+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f018302ec908782bec533d5c5b4689ee6f7f313d",
+        "subject": "fix(scroll): verify every LONG stride and seam, and stop black overlaps winning the stitch (#5187)",
+        "at": "2026-09-05T11:34:39+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ac87b283e70f8cb00ad961aec06ab327e696afcd",
+        "subject": "fix(cli): carry non-ASCII preview ids through a file, not a process argument (#5186)",
+        "at": "2026-09-05T11:26:47+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7460d58488e00b5eb5004496d4efdfb77fb53975",
+        "subject": "refactor(daemon): dispatch RPC through a handler registry (#5179)",
+        "at": "2026-09-05T11:26:35+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9ebc52f31a2d85dba7b6a2f3d14217f40d7dba75",
+        "subject": "refactor(daemon): give the composeai.daemon.* sysprops a typed registry (#5182)",
+        "at": "2026-09-05T11:19:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4183c1ded6e29a807a00565596663af1c9e00244",
+        "subject": "fix(cli): report a cancelled discovery as a timeout, not a missing plugin (#5181)",
+        "at": "2026-09-05T11:15:47+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6c558318c27a070532ad4f5851a4b2a99326ecf9",
+        "subject": "refactor(daemon): share one soft-keyboard band between both connectors (#5180)",
+        "at": "2026-09-05T11:15:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e60a9e4a6d6c1ecadc1c80b599774b88979933e0",
+        "subject": "docs: move settings.gradle.kts narrative into docs/build-scripts/ (#5175)",
+        "at": "2026-09-05T11:14:50+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "464e9fdfc185df03d1f2fda358db593a521ac677",
+        "subject": "chore: remove dead scaffolding — placeholder tests and the history/diff gate (#5173)",
+        "at": "2026-09-05T11:14:45+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "51bcd549ceff584933ad167fb0a506787908dc32",
+        "subject": "ci: retire the integration push lane and file bugs for nightly failures (#5170)",
+        "at": "2026-09-05T11:14:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b839f9fd39c363f5269314328114899688069b47",
+        "subject": "feat(serve): launch the published server instead of linking it (#5177)",
+        "at": "2026-09-05T11:14:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a42dd16b53c73c8f4c1f78300d109e51053a7c95",
+        "subject": "fix(cli): depend on the local :render-host instead of the retired coordinate (#5178)",
+        "at": "2026-09-05T11:11:08+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2ee93ec58aebf2d94e24f95b8fa8831be699b6a3",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3 (#5164)",
+        "at": "2026-09-05T10:44:19+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3e43c016224befaabb46ccca85a00fe94c8441f6",
         "subject": "fix(design-artifacts): warn instead of failing when the pinned driver has no theme generator (#5162)",
@@ -306,182 +482,6 @@
         "sha": "f22ea96c27ea8f645eb078ecd26a8bff79503c9c",
         "subject": "feat(gestures): publish whether a one-handed gesture can reach a composable (#5126)",
         "at": "2026-09-05T07:23:06+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f928870bcdd8bc8eef4b1cd138d7ace954b854d7",
-        "subject": "fix(renderer): pin the packed-colour field lookup, the last unordered read in the catalog path (#5125)",
-        "at": "2026-09-05T07:21:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6257fd7c7a683f4f3a59fb6553c9c00e63e06f5c",
-        "subject": "feat(discovery): let a call site construct a no-arg-constructible required parameter (#5124)",
-        "at": "2026-09-05T07:18:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ee7ee88f58a59fe7843ca71ca96862d44f09d9c8",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.75.0 (#5122)",
-        "at": "2026-09-05T06:01:50Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9aec8e467c9ecb836cd0c10f429ffbc960d164b3",
-        "subject": "feat(render): say what each --exclude-preview-id pattern matched, and warn at zero (#5119)",
-        "at": "2026-09-05T06:50:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0d64ae4f1419ec6f16debdab2812ee480097c316",
-        "subject": "feat(design-artifacts): give the catalog a locale axis so a bilingual fan-out folds (#5120)",
-        "at": "2026-09-05T06:47:13+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f45b8b3fe2a9130e80c042f56a1718bf7dc0747b",
-        "subject": "fix(design-artifacts): report every duplicate-output-axes collision in one pass (#5118)",
-        "at": "2026-09-05T06:42:26+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "505b7be4c5799636216f60970163a0c2711d95c0",
-        "subject": "chore(main): release 1.75.0 (#5117)",
-        "at": "2026-09-05T06:24:50+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ebcbea04d16ef429da585d91c8273f14cf1e6118",
-        "subject": "feat(builder): drive the UI builder from the real ScreenGenerator (#5116)",
-        "at": "2026-09-05T06:19:51+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8942bacae105e4ef32a0ba985abe4a19b2348dba",
-        "subject": "fix(renderer-desktop): make the focus, motion and scroll lanes honour parameter knobs (#5115)",
-        "at": "2026-09-05T06:17:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e21084bcce1d92c09083ae5624790f76efb8ca4f",
-        "subject": "fix(render-session): refuse a daemon-launch descriptor whose schemaVersion is not this module's (#5114)",
-        "at": "2026-09-05T06:16:23+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ba0b56fc5e0144ae8e892634a14005c758759a8d",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.74.0 (#5113)",
-        "at": "2026-09-04T22:22:44Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2f1e6a2c6826baf8619a18683bde5591e4ab79a8",
-        "subject": "chore(main): release 1.74.0 (#5108)",
-        "at": "2026-09-04T22:30:22+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f5c0c460f7f782b685e9b8bcb2c4781a3fb1115f",
-        "subject": "fix(discovery): keep a preview's target when its content lambda captures (#5112)",
-        "at": "2026-09-04T22:14:20+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "38b481b5ee84348f3f27bcfae8cc7add5586f15c",
-        "subject": "feat(builder): make the preview pane a seam, and design the combined builder (#5111)",
-        "at": "2026-09-04T22:05:42+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1940a90e40091f36c8f0b59e1262df501369f4bb",
-        "subject": "feat(builder): highlight the generated source and compile-check it (#5110)",
-        "at": "2026-09-04T21:56:43+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ae9cfb7ed1fad4f9641e316bad8b9bfacc2ce547",
-        "subject": "feat(builder): assemble and edit a screen from the M3 catalog in the browser (#5109)",
-        "at": "2026-09-04T21:26:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "67efcc606cca430e156baaf2d07cd05ddbb97bf8",
-        "subject": "feat(renderer-desktop): record a preview's parameter knobs during a bake (#5103)",
-        "at": "2026-09-04T20:42:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "43b091434677e728331e1b8ffd17c79c65317f66",
-        "subject": "feat(catalog): make the scaffold templates slot-fillable (#5107)",
-        "at": "2026-09-04T20:42:00+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "246b08ebed2d08817df3af3a44386dd1865e3c0e",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.73.0 (#5101)",
-        "at": "2026-09-04T18:12:53Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "97c391d6667af2f3b819a4f89ff589f711571cb5",
-        "subject": "chore(main): release 1.73.0 (#5092)",
-        "at": "2026-09-04T19:01:59+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1ce54c7787efcb082d4b0664dfd81ff967b0a884",
-        "subject": "fix(deps): consume the Remote Compose players at 1.57.0 (#5100)",
-        "at": "2026-09-04T18:35:01+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3a58c5014f1101bab3cf5b6c301049090677db34",
-        "subject": "feat(renderer-android): record a preview's parameter knobs during a bake (#5099)",
-        "at": "2026-09-04T18:18:42+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
