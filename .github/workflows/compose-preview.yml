@@ -4,11 +4,6 @@ name: Compose Preview
 # push-to-main, sticky diff comments on PRs, manual reruns via dispatch
 # (or the `/rerun previews` PR command — see pr-commands.yml).
 #
-# This is one of the few workflows that KEEPS its `push: [main]` lane under the
-# merge queue, because that lane has a side effect rather than a verdict — see
-# the `concurrency` note below for why the baseline has to come from the real
-# `main` commit and not from the merge group.
-#
 # The four pipelines run as TWO PARALLEL JOBS (compose+resources /
 # a11y+notifications) rather than one serial `apply` invocation. The two
 # jobs are independent — disjoint baseline/PR branches
@@ -70,26 +65,6 @@ concurrency:
   # Queueing instead of cancelling is bounded, not unbounded: GitHub keeps at
   # most one *pending* run per group and cancels the older pending one, so a
   # burst of N merges runs the first and the last, not all N.
-  #
-  # That bound was the flaw, and #5063 is what fixes it — from the other end.
-  # `cancel-in-progress: false` cannot help while merges land a median 4 min
-  # apart and this render takes 20-32: the pending slot is always occupied, so
-  # 64% of main runs were cancelled anyway and the baseline was stale during
-  # exactly the merge bursts where it matters. The merge queue does not change
-  # a line of this workflow; it changes the input. A batch lands its N commits
-  # as ONE push, so the push cadence becomes the batch cadence — the same
-  # 20-25 min the pipeline needs — and the pending slot is free again by the
-  # time the next batch arrives.
-  #
-  # The baseline stays on `push`, and is deliberately NOT moved to
-  # `merge_group`. A merge group's SHA never becomes a commit on `main` (PRs
-  # are squash-merged, so `main` gets a different SHA for the same tree) and a
-  # batch can be dequeued and never land at all. A baseline records a `_base_sha`
-  # that later PR comments diff against and link to, so publishing one from a
-  # speculative, unreachable commit would strand every subsequent diff on a
-  # revision nobody can check out — the same class of bug as #2766/#2765, just
-  # reached from the other side. The resulting `main` commit is the only commit
-  # that is both real and final, so it is the one the baseline is computed for.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

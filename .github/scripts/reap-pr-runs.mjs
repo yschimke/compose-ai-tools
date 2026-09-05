@@ -50,9 +50,9 @@ export async function reapPrRuns({
   // reasoning that a PR cannot target its own base; that conflated head with
   // base, and silently stranded every such PR's leftovers.
   //
-  // What actually protects the default branch's own CI is the run-event
-  // allowlist below: that CI runs on `merge_group` (and `push`), never on
-  // `pull_request`, so it is excluded by kind rather than by name-matching. That is a stronger guarantee than this check ever
+  // What actually protects post-merge CI on the default branch is the run-event
+  // allowlist below: that CI runs on `push`, so it is excluded by kind rather
+  // than by name-matching. That is a stronger guarantee than this check ever
   // was, and unlike this check it does not depend on guessing which branch
   // names matter.
 
@@ -183,12 +183,9 @@ export async function reapPrRuns({
     //    they can be run by hand on any branch for regression work; killing
     //    someone's investigation run mid-flight would be a real cost for no
     //    queue benefit.
-    // 2. The default branch's CI is a `merge_group` run (or, for the lanes
-    //    with a side effect, a `push` run), so this excludes it
-    //    *categorically* rather than by heuristic — which is what lets a PR
-    //    whose head is `main` be reaped at all (see below). Merge-queue runs
-    //    matter here more than push runs ever did: cancelling one does not
-    //    waste a run, it blocks a merge.
+    // 2. Post-merge CI on the default branch is a `push` run, so this
+    //    excludes it *categorically* rather than by heuristic — which is what
+    //    lets a PR whose head is `main` be reaped at all (see below).
     if (!PR_EVENTS.has(run.event)) continue
 
     // The branch filter matches on name alone, not repo. Without this a fork

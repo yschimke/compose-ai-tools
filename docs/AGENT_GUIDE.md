@@ -258,17 +258,6 @@ on UI-affecting PRs, leave injected backticks alone, wire new visual surfaces in
 the preview pipeline, don't auto-merge — is stated once in
 [root `AGENTS.md`](../AGENTS.md#pr-workflow). Below is the detail behind it.
 
-- **Merging goes through the queue.** `main` is behind a GitHub merge queue, so
-  the last step is *add to queue*, not *merge*. Two things follow that trip
-  people up. A merge-group run that fails **dequeues** the PR rather than
-  reporting red on it, so a PR that looks green and did not merge is a queue
-  question, not a checks question — read the merge-group run. And a required
-  check is matched by name in the merge-group context, so a workflow that only
-  triggers on `pull_request` cannot satisfy one: if you add a required check,
-  give it a `merge_group` trigger in the same change. Which workflows run in
-  which lane, and why some kept `push: [main]`, is in
-  [`MERGE_QUEUE.md`](MERGE_QUEUE.md).
-
 - **Finding the existing PR.** Before opening one, check whether the branch already
   has an open PR (`list_pull_requests` or `search_pull_requests` filtered by head)
   and push to it instead of opening a duplicate. A *merged* or *closed* PR does not
