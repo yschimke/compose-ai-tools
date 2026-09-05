@@ -13,6 +13,7 @@ registered site still present — the allowlist has to keep describing the code.
 
 import importlib.util
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -153,6 +154,107 @@ class WireFingerprint(unittest.TestCase):
     def test_the_digest_is_stable_for_the_same_shape(self):
         a = {"x": ("Int", False), "y": ("String", True)}
         self.assertEqual(mod.wire_fingerprint(a), mod.wire_fingerprint(dict(a)))
+
+
+class ConstReferences(unittest.TestCase):
+    """A mirror that reads the shared constant instead of re-typing the string.
+
+    #5182 gave the `composeai.daemon.*` sysprops a typed registry, so the two android mirrors of
+    `SANDBOX_COUNT_PROP` became `DaemonProperties.Names.SANDBOX_COUNT`. That is the safer
+    declaration — it cannot drift — and it turned this gate red on main, because the scanner
+    compared the reference text against the descriptor's string literal. Resolving the reference is
+    what these pin.
+    """
+
+    REGISTRIES = {"DaemonProperties.Names": "daemon/core/config/DaemonProperties.kt"}
+
+    def setUp(self):
+        self._tree = tempfile.TemporaryDirectory()
+        self._repo_root = mod.REPO_ROOT
+        mod.REPO_ROOT = Path(self._tree.name)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        mod.REPO_ROOT = self._repo_root
+        self._tree.cleanup()
+
+    def _write(self, rel: str, text: str) -> None:
+        path = Path(self._tree.name) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def _registry(self, value: str = '"composeai.daemon.sandboxCount"') -> None:
+        self._write(
+            self.REGISTRIES["DaemonProperties.Names"],
+            "public object DaemonProperties {\n"
+            "  public object Names {\n"
+            f"    public const val SANDBOX_COUNT: String = {value}\n"
+            "  }\n"
+            "}\n",
+        )
+
+    def test_a_literal_resolves_to_itself(self):
+        self.assertEqual(mod.resolve_const('"a.b"', self.REGISTRIES), ('"a.b"', None))
+
+    def test_a_registered_reference_resolves_to_the_literal_behind_it(self):
+        self._registry()
+        value, why = mod.resolve_const("DaemonProperties.Names.SANDBOX_COUNT", self.REGISTRIES)
+        self.assertEqual(value, '"composeai.daemon.sandboxCount"')
+        self.assertIsNone(why)
+
+    def test_an_unregistered_qualifier_is_a_failure_not_a_pass(self):
+        value, why = mod.resolve_const("SomeOther.Registry.KEY", self.REGISTRIES)
+        self.assertIsNone(value)
+        self.assertIn("constantRegistries", why)
+
+    def test_a_registry_that_no_longer_declares_the_symbol_is_a_failure(self):
+        self._write(self.REGISTRIES["DaemonProperties.Names"], "public object Names {}\n")
+        value, why = mod.resolve_const("DaemonProperties.Names.SANDBOX_COUNT", self.REGISTRIES)
+        self.assertIsNone(value)
+        self.assertIn("declares no `SANDBOX_COUNT`", why)
+
+    def test_a_string_containing_dots_is_not_mistaken_for_a_reference(self):
+        # The value the descriptor itself declares. Quoted, so it is a literal, not a reference.
+        self.assertEqual(
+            mod.resolve_const('"composeai.daemon.sandboxCount"', self.REGISTRIES),
+            ('"composeai.daemon.sandboxCount"', None),
+        )
+
+    def _mirrored(self, mirror_value: str) -> list:
+        self._write(
+            "descriptor.kt",
+            'const val SANDBOX_COUNT_PROP = "composeai.daemon.sandboxCount"\n',
+        )
+        self._write("mirror.kt", f"private const val SANDBOX_COUNT_PROP = {mirror_value}\n")
+        failures: list = []
+        mod.check_mirrored_constants(
+            {
+                "constantRegistries": self.REGISTRIES,
+                "mirroredConstants": {
+                    "SANDBOX_COUNT_PROP": {
+                        "declaredBy": "descriptor.kt",
+                        "mirroredBy": ["mirror.kt"],
+                        "why": "both sides MUST agree.",
+                    }
+                },
+            },
+            failures,
+        )
+        return failures
+
+    def test_a_mirror_reading_the_registry_agrees(self):
+        self._registry()
+        self.assertEqual(self._mirrored("DaemonProperties.Names.SANDBOX_COUNT"), [])
+
+    def test_a_mirror_reading_a_registry_that_says_something_else_still_fails(self):
+        # The check must keep catching real drift through the indirection, not wave it through.
+        self._registry('"composeai.daemon.sandboxSlots"')
+        failures = self._mirrored("DaemonProperties.Names.SANDBOX_COUNT")
+        self.assertEqual(len(failures), 1)
+        self.assertIn("sandboxSlots", failures[0])
+
+    def test_a_mirror_with_a_drifted_literal_still_fails(self):
+        self.assertEqual(len(self._mirrored('"composeai.daemon.sandboxSlots"')), 1)
 
 
 class RealTree(unittest.TestCase):

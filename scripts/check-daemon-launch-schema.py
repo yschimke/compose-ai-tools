@@ -338,6 +338,56 @@ def kotlin_consts(rel: str) -> dict[str, str]:
     return {m.group(1): m.group(2) for m in KT_CONST.finditer(stripped(rel))}
 
 
+# A `const val` whose value is another constant rather than a literal: `DaemonProperties.Names.
+# SANDBOX_COUNT`. Anchored on the whole value so a string containing a dotted word is not mistaken
+# for one.
+KT_CONST_REF = re.compile(r"^([A-Z]\w*(?:\.\w+)*)\.(\w+)$")
+
+
+def resolve_const(value: str, registries: dict[str, str]) -> tuple[str | None, str | None]:
+    """Resolve a `const val`'s right-hand side to the literal it ultimately holds.
+
+    A mirror that *reads* the shared constant instead of re-typing the string cannot disagree with
+    it, which is strictly better than a mirror — but the value this scanner reads is then the
+    reference text, not the string, and comparing `DaemonProperties.Names.SANDBOX_COUNT` against
+    `"composeai.daemon.sandboxCount"` fails on two spellings of the same key. That is what
+    #5182 hit: the typed sysprop registry landed and this gate went red on main for a change that
+    made the mirrors *safer*.
+
+    So a dotted reference is followed to the file `constantRegistries` names for its qualifier, and
+    the literal there is what gets compared. An unregistered qualifier is still a failure — the gate
+    must never pass on a value it could not read — and it says which line to add.
+
+    Returns `(literal, None)` or `(None, why-it-could-not-be-resolved)`.
+    """
+    ref = KT_CONST_REF.match(value)
+    if ref is None:
+        return value, None
+
+    qualifier, symbol = ref.group(1), ref.group(2)
+    rel = registries.get(qualifier)
+    if rel is None:
+        return None, (
+            f"reads `{value}`, and `{qualifier}` is not a registered constant registry.\n"
+            f"    Add `\"{qualifier}\": \"<path to the file declaring it>\"` to "
+            f"`constantRegistries` in {ALLOWLIST.name} so the value behind the reference is still "
+            f"compared. Reading the shared constant is the right move; the gate just has to be able "
+            f"to follow it."
+        )
+    if not available(rel):
+        return None, None
+
+    declared = kotlin_consts(rel).get(symbol)
+    if declared is None:
+        return None, (
+            f"reads `{value}`, but {rel} declares no `{symbol}`.\n"
+            f"    Either the constant was renamed, or `constantRegistries` points at the wrong file."
+        )
+    # One hop only: a registry entry pointing at another reference is a chain nobody needs, and
+    # refusing it keeps this resolver from having to guard against a cycle.
+    return declared, None
+
+
 # --------------------------------------------------------------------------
 # Checks
 # --------------------------------------------------------------------------
@@ -853,6 +903,8 @@ def check_writer_encoders(allowlist: dict, failures: list[str]) -> None:
 
 def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
     """String constants the descriptor carries that other modules re-declare."""
+    registries = allowlist.get("constantRegistries", {})
+
     for name, spec in allowlist["mirroredConstants"].items():
         if not available(spec["declaredBy"]):
             continue
@@ -863,16 +915,28 @@ def check_mirrored_constants(allowlist: dict, failures: list[str]) -> None:
                 f"constant but is not declared there."
             )
             continue
+        source, why = resolve_const(source, registries)
+        if source is None:
+            if why is not None:
+                failures.append(f"  {spec['declaredBy']}: `{name}` {why}")
+            continue
         for rel in spec["mirroredBy"]:
             if not available(rel):
                 continue
-            value = kotlin_consts(rel).get(spec.get("mirrorSymbol", name))
+            symbol = spec.get("mirrorSymbol", name)
+            value = kotlin_consts(rel).get(symbol)
             if value is None:
                 failures.append(
                     f"  {rel}: registered as mirroring `{name}` but no longer declares it. "
                     f"Prune it from `mirroredConstants`."
                 )
-            elif value != source:
+                continue
+            value, why = resolve_const(value, registries)
+            if value is None:
+                if why is not None:
+                    failures.append(f"  {rel}: `{symbol}` {why}")
+                continue
+            if value != source:
                 failures.append(
                     f"  {rel}: `{name}` = {value}, but {spec['declaredBy']} says {source}. "
                     f"{spec['why']}"
