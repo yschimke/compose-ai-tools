@@ -25,6 +25,11 @@ import androidx.glance.appwidget.GlanceAppWidget
  * Each fixture records what it was handed so the invocation tests can assert the renderer filled
  * the parameters by *type*, not by position.
  */
+/** A stand-in for the `createFakeAppWidgetId()` Glance 1.1.x defaults its `compose(id = …)` to. */
+object FixtureGlanceId : GlanceId {
+  override fun toString(): String = "fake-widget-id"
+}
+
 object GlanceComposerCalls {
   /** `"composeForPreview(widgetCategory=1, info=…)"`-ish trace of the last call, per fixture. */
   val recorded: MutableList<String> = mutableListOf()
@@ -69,14 +74,19 @@ object Glance120ComposerFixture {
  */
 object Glance11xComposerFixture {
 
+  /**
+   * `id` and `state` carry **non-null** defaults, mirroring 1.1.x's own `createFakeAppWidgetId()`:
+   * that is the difference between calling the real method with our `null` — which died in
+   * `runComposition`'s `as AppWidgetId` cast — and calling the `$default` bridge with a mask.
+   */
   @JvmStatic
   @Suppress("unused")
   suspend fun GlanceAppWidget.compose(
     context: Context,
-    id: GlanceId? = null,
+    id: GlanceId = FixtureGlanceId,
     options: Bundle? = null,
     size: DpSize? = null,
-    state: Any? = null,
+    state: Any? = "library-default-state",
   ): RemoteViews {
     GlanceComposerCalls.recorded += "compose(id=$id, options=$options, size=$size, state=$state)"
     return RemoteViews(context.packageName, 0)

@@ -71,8 +71,11 @@ internal object GlanceComposeForPreview {
     ABSENT,
   }
 
-  /** A composer method plus how to fill its parameters. Produced by [resolve] / [resolveIn]. */
-  class Plan(val method: Method, val arguments: List<Argument>) {
+  /**
+   * A composer method plus how to fill its parameters, and — when some of them are
+   * [Argument.ABSENT] — the `$default` bridge that lets Glance fill those itself.
+   */
+  class Plan(val method: Method, val arguments: List<Argument>, val defaults: Method?) {
 
     /**
      * True when this plan calls `composeForPreview` — the 1.2.0+ path, which composes through
@@ -85,6 +88,26 @@ internal object GlanceComposeForPreview {
     /** Parameters the renderer supplies a real value for — the tie-break in [resolveIn]. */
     internal val suppliedArgumentCount: Int
       get() = arguments.count { it != Argument.ABSENT }
+
+    /**
+     * Kotlin's defaults bitmask for the [Argument.ABSENT] parameters: bit *i* set asks the bridge
+     * to substitute the default of the *i*-th **value** parameter. The receiver is not one, so the
+     * numbering starts at the parameter after [Argument.WIDGET].
+     */
+    internal val defaultsMask: Int =
+      arguments.drop(1).foldIndexed(0) { i, mask, argument ->
+        if (argument == Argument.ABSENT) mask or (1 shl i) else mask
+      }
+
+    /**
+     * Whether [compose] goes through [defaults] rather than [method]. `null` is the wrong value for
+     * a parameter whose default is not `null` — Glance 1.1.x defaults `compose(id = …)` to
+     * `createFakeAppWidgetId()` and then casts it to `AppWidgetId`, so passing our own `null`
+     * straight to the real method died with an NPE inside `runComposition` (compose-ai-tools#5056).
+     * The bridge is what makes "leave this parameter to the library" expressible at all.
+     */
+    internal val usesDefaults: Boolean
+      get() = defaults != null && defaultsMask != 0
 
     /** `composeForPreview(WIDGET, CONTEXT, WIDGET_CATEGORY, PROVIDER_INFO)` — for diagnostics. */
     fun describe(): String = "${method.name}(${arguments.joinToString(", ")})"
@@ -119,7 +142,7 @@ internal object GlanceComposeForPreview {
    * without six Glance versions on one test classpath.
    */
   fun resolveIn(composerClass: Class<*>): Plan {
-    val plans = composerClass.methods.mapNotNull { planFor(it) }
+    val plans = composerClass.methods.mapNotNull { planFor(it, composerClass) }
     val best =
       plans
         .sortedWith(
@@ -170,7 +193,13 @@ internal object GlanceComposeForPreview {
         Argument.ABSENT -> null
       }
     }
-    val result = invokeSuspending(method, args)
+    val result =
+      if (usesDefaults) {
+        // The bridge takes (…real args…, Continuation, mask, marker); the marker is always null.
+        invokeSuspending(defaults!!, args, listOf(defaultsMask, null))
+      } else {
+        invokeSuspending(method, args)
+      }
     return result as? RemoteViews
       ?: throw GlanceComposerUnavailableException(
         "${describe()} returned ${result?.javaClass?.name ?: "null"} rather than RemoteViews. " +
@@ -185,7 +214,7 @@ internal object GlanceComposeForPreview {
    * knows how to fill. Kotlin's `$default` bridges are skipped: they take a bitmask and a marker we
    * would have to synthesise, and the real method is always right beside them.
    */
-  private fun planFor(method: Method): Plan? {
+  private fun planFor(method: Method, composerClass: Class<*>): Plan? {
     if (!Modifier.isStatic(method.modifiers)) return null
     if (method.name.contains("\$default")) return null
     val base = baseName(method.name)
@@ -199,8 +228,24 @@ internal object GlanceComposeForPreview {
     for (i in 2 until params.size - 1) {
       middle += argumentFor(params[i]) ?: return null
     }
-    return Plan(method, listOf(Argument.WIDGET, Argument.CONTEXT) + middle)
+    return Plan(
+      method,
+      listOf(Argument.WIDGET, Argument.CONTEXT) + middle,
+      defaultsFor(method, composerClass),
+    )
   }
+
+  /**
+   * The `$default` bridge beside [method], or null when the overload has no defaulted parameters at
+   * all. Kotlin emits it right next to the real method with two extra trailing parameters — the
+   * bitmask and an always-null marker — which is the shape [Plan.compose] fills.
+   */
+  private fun defaultsFor(method: Method, composerClass: Class<*>): Method? =
+    composerClass.methods.firstOrNull {
+      Modifier.isStatic(it.modifiers) &&
+        it.name == method.name + "\$default" &&
+        it.parameterCount == method.parameterCount + 2
+    }
 
   /** What the renderer would pass in a parameter of [type], or null when it has nothing to pass. */
   private fun argumentFor(type: Class<*>): Argument? =
@@ -244,15 +289,19 @@ internal object GlanceComposeForPreview {
    * coroutine. Reflection's `InvocationTargetException` is unwrapped so a throw from inside the
    * user's `@Composable` reaches the sidecar as itself.
    */
-  private suspend fun invokeSuspending(method: Method, args: List<Any?>): Any? =
-    suspendCoroutineUninterceptedOrReturn { continuation ->
-      runCatching { method.isAccessible = true }
-      try {
-        method.invoke(null, *(args.toTypedArray() + continuation))
-      } catch (e: InvocationTargetException) {
-        throw e.cause ?: e
-      }
+  private suspend fun invokeSuspending(
+    method: Method,
+    args: List<Any?>,
+    trailing: List<Any?> = emptyList(),
+  ): Any? = suspendCoroutineUninterceptedOrReturn { continuation ->
+    runCatching { method.isAccessible = true }
+    val all = (args + continuation + trailing).toTypedArray()
+    try {
+      method.invoke(null, *all)
+    } catch (e: InvocationTargetException) {
+      throw e.cause ?: e
     }
+  }
 }
 
 /**
