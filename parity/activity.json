@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T05:51:27.501Z",
+  "generatedAt": "2026-09-05T06:01:40.315Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "0d64ae4f1419ec6f16debdab2812ee480097c316",
+        "subject": "feat(design-artifacts): give the catalog a locale axis so a bilingual fan-out folds (#5120)",
+        "at": "2026-09-05T06:47:13+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "f45b8b3fe2a9130e80c042f56a1718bf7dc0747b",
         "subject": "fix(design-artifacts): report every duplicate-output-axes collision in one pass (#5118)",
@@ -475,14 +483,6 @@
         "subject": "fix(ci): say which direction the rc-players pin has drifted (#5049)",
         "at": "2026-09-03T07:12:14+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "00d3dfd0b6bb03d52651135f344a39ed51acc7c7",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.68.0 (#5046)",
-        "at": "2026-09-03T07:02:13+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
