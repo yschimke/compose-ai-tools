@@ -1340,7 +1340,7 @@
     "functionName": "RedToBlueScrollTimedPreview",
     "module": "samples:android",
     "renderBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
-    "sha256": "fbf5b9a41a746717cf0dc280ed5ff455a49d2443db4c970c2765896dff5a8f83",
+    "sha256": "bc1ba5e2cb248819edb514fb952d2a64964e157b5617c92a23a605d7d3223b5c",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview": {
@@ -3796,7 +3796,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_long.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "65d2caa2784131e8fe4e829e12e67753654f1a2a6cc875f07c0e476e08c7b2de",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
@@ -3868,7 +3868,7 @@
     "functionName": "SettingsMainScreenLongPreview",
     "module": "samples:wear",
     "renderBasename": "SettingsMainScreenLongPreview_Devices_Large_Round-36703d30.png",
-    "sha256": "482aa3a6083abcdf621c76a98952c74793f0ae7e2ac5c9007df351c01cab27b0",
+    "sha256": "851882da586f0b860f6611f1f49c45d19545db4530df2ba2b7c5a3d955902de9",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.SystemClockPreviewsKt.WearAppSystemClockPreview_Devices - Large Round": {
