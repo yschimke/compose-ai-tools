@@ -46,8 +46,17 @@ class ComponentCallSiteCompileFunctionalTest {
    * -> Unit)?`): no lambda-shaped rule accepts a nullable function type, so both were refused until
    * the generator learned to answer `null` for any nullable parameter. They are what keeps that
    * answer honest against a real Material 3 signature rather than a hand-written record.
+   *
+   * `TextField` and `OutlinedTextField` are here for the **constructed placeholder** (issue #5067):
+   * their required `state: TextFieldState` has no literal, and the two were the last refusals on
+   * the measured Material 3 surface. `TextFieldState`'s constructor parameters all carry defaults,
+   * so `TextFieldState()` compiles from source even though the JVM sees only a `(String, long, int,
+   * DefaultConstructorMarker)` bridge — which is exactly why the claim has to be settled by the
+   * compiler here rather than by a hand-written record. They also cover the invariant that moved:
+   * these are the first snippets that emit an import beyond the callable.
    */
-  private val expectedEmitted = setOf("Text", "Button", "Card", "Checkbox", "Switch")
+  private val expectedEmitted =
+    setOf("Text", "Button", "Card", "Checkbox", "Switch", "TextField", "OutlinedTextField")
 
   private fun createTestProject(): File {
     val projectDir = tempDir.root
@@ -111,8 +120,11 @@ class ComponentCallSiteCompileFunctionalTest {
         import androidx.compose.material3.Button
         import androidx.compose.material3.Card
         import androidx.compose.material3.Checkbox
+        import androidx.compose.material3.OutlinedTextField
         import androidx.compose.material3.Switch
         import androidx.compose.material3.Text
+        import androidx.compose.material3.TextField
+        import androidx.compose.foundation.text.input.rememberTextFieldState
         import androidx.compose.runtime.Composable
         import androidx.compose.ui.tooling.preview.Preview
 
@@ -139,6 +151,15 @@ class ComponentCallSiteCompileFunctionalTest {
         fun TogglesPreview() {
             Checkbox(checked = true, onCheckedChange = {})
             Switch(checked = true, onCheckedChange = {})
+        }
+
+        // The `state`-based text fields: a required parameter with no literal, whose type
+        // nonetheless constructs itself with no arguments (issue #5067).
+        @Preview
+        @Composable
+        fun FieldsPreview() {
+            TextField(state = rememberTextFieldState())
+            OutlinedTextField(state = rememberTextFieldState())
         }
         """
           .trimIndent()

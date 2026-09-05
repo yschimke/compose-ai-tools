@@ -24,10 +24,13 @@ package ee.schimke.composeai.discovery
  * ## What is deliberately not attempted
  * - **No value invention.** A placeholder is written only for a type whose literal is unambiguous
  *   (see [placeholderFor]). Everything else refuses and names the parameter.
- * - **No import beyond the callable.** Every placeholder this object writes is a literal or an
- *   empty lambda, so the emitted snippet never needs a second import to resolve. That is a property
- *   of the placeholder table, not a coincidence: widening the table means widening the emitted
- *   imports too.
+ * - **Every emitted import is one this object resolved.** The rule used to be "no import beyond the
+ *   callable", because every placeholder was a literal or an empty lambda. Constructing a
+ *   no-arg-constructible type (issue #5067) breaks that on purpose — `TextField(state =
+ *   TextFieldState())` needs `TextFieldState` imported — so the invariant moved rather than
+ *   loosened: an import is emitted only for a type DISCOVERY resolved on the classpath and marked
+ *   [TargetParameter.noArgConstructible], never for a name read off the rendered spelling. The
+ *   compile gate is what checks it.
  * - **No scope synthesis.** A composable declared on a receiver is refused rather than wrapped in a
  *   guessed `Column { … }`, because the wrapper is a rendering decision this object has no basis to
  *   make.
@@ -90,6 +93,10 @@ object ComponentSnippets {
     }
 
     val arguments = mutableListOf<String>()
+    // Types a constructed placeholder names, in the order they were needed. A `Type()` placeholder
+    // is the one thing this object writes that does not resolve on its own, so its import is
+    // collected here rather than left to the caller to notice (see the object KDoc).
+    val constructedTypes = mutableListOf<String>()
     // Defaulted parameters are omitted rather than filled: omitting one is legal by definition,
     // whereas restating a default means guessing at an expression the metadata does not carry.
     for (parameter in record.parameters.filterNot { it.hasDefault }) {
@@ -99,10 +106,14 @@ object ComponentSnippets {
             "no placeholder can be written for required parameter " +
               "`${parameter.name}: ${parameter.type}`"
           )
+      constructedTypeOf(parameter)?.let(constructedTypes::add)
       arguments += "${escapeIfKeyword(parameter.name)} = $placeholder"
     }
     return ComponentSnippet.Emitted(
-      imports = listOf(escapeCallableIfKeyword(record.symbol.callable)),
+      imports =
+        (listOf(record.symbol.callable) + constructedTypes).distinct().map {
+          escapeCallableIfKeyword(it)
+        },
       code = "${escapeIfKeyword(record.symbol.name)}(${arguments.joinToString(", ")})",
       requiredOptIns = record.requiredOptIns,
       androidxOptIns = record.androidxOptIns,
@@ -223,6 +234,33 @@ object ComponentSnippets {
   internal fun escapeCallableIfKeyword(callable: String): String =
     callable.split('.').joinToString(".") { escapeIfKeyword(it) }
 
+  /**
+   * The qualified type a `Type()` placeholder for [parameter] names, or null when its placeholder
+   * needs no import.
+   *
+   * Reads the same two fields [placeholderFor] does, in the same order, so the import can never
+   * disagree with the expression it exists for — a snippet importing what it did not print, or
+   * printing what it did not import, is the failure this shares one source of truth to avoid.
+   */
+  internal fun constructedTypeOf(parameter: TargetParameter): String? =
+    if (constructsItsType(parameter)) parameter.typeFqn else null
+
+  /**
+   * Whether [parameter] is answered by constructing its type rather than by a literal.
+   *
+   * The nullable and slot tests come first for the same reason they do in [placeholderFor]: a
+   * nullable parameter takes `null` and a slot takes `{}` whatever its type can do, and both are
+   * shorter answers than a constructor call. `typeFqn` is required rather than defaulted, because a
+   * record written before [TargetParameter.noArgConstructible] existed carries `false` anyway, and
+   * one carrying the flag without a qualified name could not be imported.
+   */
+  private fun constructsItsType(parameter: TargetParameter): Boolean =
+    parameter.noArgConstructible &&
+      parameter.typeFqn != null &&
+      !parameter.nullable &&
+      !parameter.composableSlot &&
+      !parameter.type.contains("->")
+
   internal fun placeholderFor(parameter: TargetParameter): String? {
     if (parameter.nullable) return "null"
     val type = parameter.type
@@ -244,10 +282,19 @@ object ComponentSnippets {
       "kotlin.Long" -> "0L"
       "kotlin.Float" -> "0f"
       "kotlin.Double" -> "0.0"
-      // Everything else — `Modifier`, `ImageVector`, an enum, a domain type — has no literal that
-      // is correct without knowing the type, and inventing one is how generated code stops
-      // compiling.
-      else -> null
+      // A type that constructs itself with no arguments is answered by doing exactly that —
+      // `TextFieldState()` — which is not "inventing a value" but writing down the one the type
+      // already defines. Discovery proved it on the classpath (`ComposableSignature
+      // .isNoArgConstructible`): public, non-generic, non-value, non-inner, plain class, with a
+      // public constructor whose parameters all default. The simple name is safe to print here
+      // because the import above is the qualified one it resolves through.
+      else ->
+        if (constructsItsType(parameter))
+          "${escapeIfKeyword(parameter.typeFqn!!.substringAfterLast('.'))}()"
+        // Everything else — `Modifier`, `ImageVector`, an enum, a domain type — has no literal
+        // that is correct without knowing the type, and inventing one is how generated code stops
+        // compiling.
+        else null
     }
   }
 

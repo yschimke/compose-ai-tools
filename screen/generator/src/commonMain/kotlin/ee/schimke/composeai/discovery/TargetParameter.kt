@@ -47,4 +47,20 @@ data class TargetParameter(
    * first and not for the second. Recorded structurally so no consumer has to guess.
    */
   val nullable: Boolean = false,
+  /**
+   * Whether the parameter's own type can be constructed with **zero Kotlin arguments** —
+   * `TextFieldState()` — so a generator can write a value for a required parameter that has no
+   * literal (issue #5067).
+   *
+   * Resolved at discovery time against the classpath, never re-derived from [type]: the rendered
+   * spelling is a simple name with no package and nothing about constructibility, so a consumer
+   * reading it could only guess. `TextFieldState` is the case that motivated it — its primary
+   * constructor's parameters all carry defaults, which Kotlin emits as the `(String, long, int,
+   * DefaultConstructorMarker)` bridge, so `TextFieldState()` compiles from source and
+   * `TextField(state = TextFieldState())` does too. The record simply did not carry enough to say
+   * so, which is the same lesson [nullable] taught one level down.
+   *
+   * True implies [typeFqn] is set, because a call site emitting `Type()` also has to import it.
+   */
+  val noArgConstructible: Boolean = false,
 )

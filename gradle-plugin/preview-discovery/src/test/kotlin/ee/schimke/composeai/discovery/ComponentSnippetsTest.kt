@@ -44,6 +44,7 @@ class ComponentSnippetsTest {
     composableSlot: Boolean = false,
     nullable: Boolean = false,
     typeFqn: String? = null,
+    noArgConstructible: Boolean = false,
   ) =
     TargetParameter(
       name = name,
@@ -52,6 +53,7 @@ class ComponentSnippetsTest {
       hasDefault = hasDefault,
       composableSlot = composableSlot,
       nullable = nullable,
+      noArgConstructible = noArgConstructible,
     )
 
   private fun emitted(record: ComponentRecord): ComponentSnippet.Emitted =
@@ -361,5 +363,131 @@ class ComponentSnippetsTest {
     assertThat(snippet.code).isEqualTo("Button()")
     assertThat(snippet.requiredOptIns)
       .containsExactly("androidx.compose.material3.ExperimentalMaterial3Api")
+  }
+
+  // --- constructing a no-arg-constructible required parameter (issue #5067) ----------------------
+
+  private fun textFieldRecord(
+    state: TargetParameter =
+      parameter(
+        "state",
+        "TextFieldState",
+        typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
+        noArgConstructible = true,
+      )
+  ) =
+    record(
+      jvmOwner = "androidx.compose.material3.TextFieldKt",
+      name = "TextField",
+      callable = "androidx.compose.material3.TextField",
+      parameters = listOf(state, parameter("modifier", "Modifier", hasDefault = true)),
+    )
+
+  @Test
+  fun `a required parameter whose type constructs itself is written as that construction`() {
+    val snippet = emitted(textFieldRecord())
+
+    assertThat(snippet.code).isEqualTo("TextField(state = TextFieldState())")
+  }
+
+  @Test
+  fun `the constructed type is imported, because the call site names it by simple name`() {
+    val snippet = emitted(textFieldRecord())
+
+    assertThat(snippet.imports)
+      .containsExactly(
+        "androidx.compose.material3.TextField",
+        "androidx.compose.foundation.text.input.TextFieldState",
+      )
+      .inOrder()
+  }
+
+  @Test
+  fun `the same type needed twice is imported once`() {
+    val snippet =
+      emitted(
+        record(
+          parameters =
+            listOf(
+              parameter(
+                "state",
+                "TextFieldState",
+                typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
+                noArgConstructible = true,
+              ),
+              parameter(
+                "other",
+                "TextFieldState",
+                typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
+                noArgConstructible = true,
+              ),
+            )
+        )
+      )
+
+    assertThat(snippet.imports).hasSize(2)
+  }
+
+  @Test
+  fun `a constructible type without a qualified name is refused rather than imported blind`() {
+    // The flag alone cannot be acted on: printing `TextFieldState()` needs an import, and a record
+    // carrying no `typeFqn` cannot say which one. Refusing keeps emitted-implies-compiles true.
+    val reason =
+      refusal(textFieldRecord(parameter("state", "TextFieldState", noArgConstructible = true)))
+
+    assertThat(reason).contains("state: TextFieldState")
+  }
+
+  @Test
+  fun `a record predating the flag still refuses, so nothing is retracted or invented`() {
+    val reason =
+      refusal(
+        textFieldRecord(
+          parameter(
+            "state",
+            "TextFieldState",
+            typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
+          )
+        )
+      )
+
+    assertThat(reason).contains("state: TextFieldState")
+  }
+
+  @Test
+  fun `a nullable constructible parameter still takes null, the shorter answer`() {
+    val snippet =
+      emitted(
+        textFieldRecord(
+          parameter(
+            "state",
+            "TextFieldState?",
+            typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
+            nullable = true,
+            noArgConstructible = true,
+          )
+        )
+      )
+
+    assertThat(snippet.code).isEqualTo("TextField(state = null)")
+    assertThat(snippet.imports).containsExactly("androidx.compose.material3.TextField")
+  }
+
+  @Test
+  fun `a nested constructible type is imported by its full path and called by its last segment`() {
+    val snippet =
+      emitted(
+        textFieldRecord(
+          parameter(
+            "state",
+            "Outer.Inner",
+            typeFqn = "com.example.Outer.Inner",
+            noArgConstructible = true,
+          )
+        )
+      )
+
+    assertThat(snippet.code).isEqualTo("TextField(state = Inner())")
+    assertThat(snippet.imports).contains("com.example.Outer.Inner")
   }
 }
