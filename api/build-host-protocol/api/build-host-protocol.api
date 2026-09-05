@@ -1,0 +1,522 @@
+public final class ee/schimke/composeai/buildhost/BuildHostCodec {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostCodec;
+	public final fun decode (Ljava/lang/String;)Lee/schimke/composeai/buildhost/BuildHostEnvelope;
+	public final fun encode (Lee/schimke/composeai/buildhost/BuildHostEnvelope;)Ljava/lang/String;
+	public final fun getJson ()Lkotlinx/serialization/json/Json;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostEnvelope {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostEnvelope$Companion;
+	public fun <init> (JLee/schimke/composeai/buildhost/BuildHostRequest;Lee/schimke/composeai/buildhost/BuildHostResponse;Lee/schimke/composeai/buildhost/BuildHostEvent;)V
+	public synthetic fun <init> (JLee/schimke/composeai/buildhost/BuildHostRequest;Lee/schimke/composeai/buildhost/BuildHostResponse;Lee/schimke/composeai/buildhost/BuildHostEvent;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Lee/schimke/composeai/buildhost/BuildHostRequest;
+	public final fun component3 ()Lee/schimke/composeai/buildhost/BuildHostResponse;
+	public final fun component4 ()Lee/schimke/composeai/buildhost/BuildHostEvent;
+	public final fun copy (JLee/schimke/composeai/buildhost/BuildHostRequest;Lee/schimke/composeai/buildhost/BuildHostResponse;Lee/schimke/composeai/buildhost/BuildHostEvent;)Lee/schimke/composeai/buildhost/BuildHostEnvelope;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostEnvelope;JLee/schimke/composeai/buildhost/BuildHostRequest;Lee/schimke/composeai/buildhost/BuildHostResponse;Lee/schimke/composeai/buildhost/BuildHostEvent;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostEnvelope;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEvent ()Lee/schimke/composeai/buildhost/BuildHostEvent;
+	public final fun getId ()J
+	public final fun getRequest ()Lee/schimke/composeai/buildhost/BuildHostRequest;
+	public final fun getResponse ()Lee/schimke/composeai/buildhost/BuildHostResponse;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostEnvelope$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostEnvelope$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostEnvelope;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostEnvelope;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostEnvelope$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class ee/schimke/composeai/buildhost/BuildHostEvent {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostEvent$Companion;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostEvent$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostEvent$Log : ee/schimke/composeai/buildhost/BuildHostEvent {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostEvent$Log$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/buildhost/BuildHostEvent$Log;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostEvent$Log;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostEvent$Log;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLine ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostEvent$Log$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostEvent$Log$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostEvent$Log;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostEvent$Log;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostEvent$Log$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostProtocol {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostProtocol;
+	public static final field STDIO_FLAG Ljava/lang/String;
+	public static final field VERSION I
+}
+
+public abstract interface class ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostRequest$Companion;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProjectRoot ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$AutoInjectInitScriptArgs$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild$Companion;
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild;ZILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSilenceStdout ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$DiscoverAndBuild$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExtra ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$GradleBuildArgs$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$GradleProjectRoot : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$GradleProjectRoot;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$GradleProjects : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$GradleProjects;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$GradleVariantArgs : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$GradleVariantArgs;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$Handshake : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake$Companion;
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake;IILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProtocolVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostRequest$Handshake$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostRequest$Handshake;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$Handshake$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks : ee/schimke/composeai/buildhost/BuildHostRequest {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks$Companion;
+	public fun <init> (Ljava/util/List;Ljava/util/List;Z)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/util/List;Ljava/util/List;Z)Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks;Ljava/util/List;Ljava/util/List;ZILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArguments ()Ljava/util/List;
+	public final fun getSilenceStdout ()Z
+	public final fun getTasks ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostRequest$RunGradleTasks$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Companion;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$BuildResult : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult$Companion;
+	public fun <init> (Z)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult;ZILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuildOk ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$BuildResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$BuildResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$BuildResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Discovery : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery$Companion;
+	public fun <init> (ZLjava/util/List;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ZLjava/util/List;)Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery;ZLjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuildOk ()Z
+	public final fun getManifests ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$Discovery$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$Discovery;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Discovery$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Failure : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Failure$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/buildhost/BuildHostResponse$Failure;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$Failure;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$Failure;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$Failure$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$Failure$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$Failure;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$Failure;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Failure$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Handshake : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake$Companion;
+	public fun <init> (ILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;)Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake;ILjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHostVersion ()Ljava/lang/String;
+	public final fun getProtocolVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$Handshake$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$Handshake;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Handshake$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Modules : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Modules$Companion;
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/buildhost/BuildHostResponse$Modules;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$Modules;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$Modules;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getModules ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$Modules$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$Modules$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$Modules;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$Modules;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Modules$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Path : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Path$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/buildhost/BuildHostResponse$Path;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$Path;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$Path;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$Path$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$Path$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$Path;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$Path;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Path$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Strings : ee/schimke/composeai/buildhost/BuildHostResponse {
+	public static final field Companion Lee/schimke/composeai/buildhost/BuildHostResponse$Strings$Companion;
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/buildhost/BuildHostResponse$Strings;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/BuildHostResponse$Strings;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/BuildHostResponse$Strings;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValues ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/BuildHostResponse$Strings$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/BuildHostResponse$Strings$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/BuildHostResponse$Strings;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/BuildHostResponse$Strings;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/BuildHostResponse$Strings$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/WireModule {
+	public static final field Companion Lee/schimke/composeai/buildhost/WireModule$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/buildhost/WireModule;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/WireModule;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/WireModule;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGradlePath ()Ljava/lang/String;
+	public final fun getProjectDir ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun toPreviewModule ()Lee/schimke/composeai/previewdata/PreviewModule;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/WireModule$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/WireModule$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/WireModule;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/WireModule;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/WireModule$Companion {
+	public final fun from (Lee/schimke/composeai/previewdata/PreviewModule;)Lee/schimke/composeai/buildhost/WireModule;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public final fun wirePath (Ljava/io/File;)Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/buildhost/WireModuleManifest {
+	public static final field Companion Lee/schimke/composeai/buildhost/WireModuleManifest$Companion;
+	public fun <init> (Lee/schimke/composeai/buildhost/WireModule;Lee/schimke/composeai/previewdata/PreviewManifest;)V
+	public final fun component1 ()Lee/schimke/composeai/buildhost/WireModule;
+	public final fun component2 ()Lee/schimke/composeai/previewdata/PreviewManifest;
+	public final fun copy (Lee/schimke/composeai/buildhost/WireModule;Lee/schimke/composeai/previewdata/PreviewManifest;)Lee/schimke/composeai/buildhost/WireModuleManifest;
+	public static synthetic fun copy$default (Lee/schimke/composeai/buildhost/WireModuleManifest;Lee/schimke/composeai/buildhost/WireModule;Lee/schimke/composeai/previewdata/PreviewManifest;ILjava/lang/Object;)Lee/schimke/composeai/buildhost/WireModuleManifest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getManifest ()Lee/schimke/composeai/previewdata/PreviewManifest;
+	public final fun getModule ()Lee/schimke/composeai/buildhost/WireModule;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/buildhost/WireModuleManifest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/buildhost/WireModuleManifest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/buildhost/WireModuleManifest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/buildhost/WireModuleManifest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/buildhost/WireModuleManifest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+

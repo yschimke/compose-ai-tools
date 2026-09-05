@@ -227,6 +227,15 @@ dependencies {
   // `:data-a11y-core` used for the D2.2 extraction. External consumers (contrib scripting,
   // third-party tooling) pull `:preview-data-api` directly, not transitively through `:cli`.
   api(project(":preview-data-api"))
+
+  // The wire contract `compose-preview build-host` serves. `api` because `BuildHostCommand`'s
+  // testable seam takes and returns protocol types, and the CLI's own tests drive it by them.
+  //
+  // Note the direction: this module holds shape only, so depending on it costs the CLI nothing it
+  // did not already have, and the preview server can depend on the SAME module without acquiring
+  // the Gradle Tooling API. That asymmetry is the point of the protocol
+  // (yschimke/compose-preview-server#180, #9).
+  api(project(":build-host-protocol"))
   implementation(project(":common-image-crop"))
 
   // Gradle Tooling-API render pipeline + the `GradleConnection` / `PreviewModule` /

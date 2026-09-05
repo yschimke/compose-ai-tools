@@ -286,6 +286,16 @@ project(":bundle-coordinates").projectDir = file("bundle/coordinates")
 // third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling
 // API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENT_GUIDE.md
 // "Built-in scripts" / clean-API discussion.
+// The wire contract between a preview server and a Gradle build host process — the seven build
+// operations `ServeBuildHost` names, as messages rather than as a Kotlin interface. Lets the
+// preview server ask compose-ai-tools for Gradle work across a process boundary instead of the CLI
+// having to BE the server's build host, which is the forward edge of the dependency cycle in
+// yschimke/compose-preview-server#180. Published from here rather than from contracts because two
+// of the operations carry `PreviewModule` — docs/design/BUILD_HOST_PROTOCOL_PREVIEWMODULE.md.
+include(":build-host-protocol")
+
+project(":build-host-protocol").projectDir = file("api/build-host-protocol")
+
 include(":preview-data-api")
 
 project(":preview-data-api").projectDir = file("api/preview-data-api")
