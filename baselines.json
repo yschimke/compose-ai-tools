@@ -3207,6 +3207,30 @@
     "sha256": "496a199ed7bd41b41594110567911eb7201652c0e7f26a3723368d1d60f6845a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round": {
+    "captureLabel": "scroll long",
+    "functionName": "ActivityScreenLongPreview",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "ActivityScreenLongPreview_wearos_small_round-e3820901.png",
+    "sha256": "fdcac62610a51ef1b4c0e40bc5e6e761b72c511e57c527ec2fddce67b8e2381b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/UiBuilderGeneratedScreen.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "ActivityScreenPreview",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "ActivityScreenPreview_Devices_Large_Round-07b3e1dc.png",
+    "sha256": "1ee9892ccda0a0d98c50d51e1d047fba3ffb2c25be1717081671d68da43c922e",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/UiBuilderGeneratedScreen.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices - Small Round": {
+    "captureLabel": "",
+    "functionName": "ActivityScreenPreview",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "ActivityScreenPreview_Devices_Small_Round-acd68959.png",
+    "sha256": "e00a1ad27a96d4f09dda006f1077f89ac4185e4187d37489e2fd96b3443db1c2",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/UiBuilderGeneratedScreen.kt"
+  },
   "samples:design-catalog-wear-m3/shapecatalog__Wear_shapes": {
     "captureLabel": "",
     "functionName": "Wear shapes shapes",
