@@ -64,6 +64,39 @@ class ScreenGeneratorTest {
   private fun refusal(document: ScreenDocument, catalog: ComponentRecordFile) =
     (ScreenGenerator.generate(document, catalog) as ScreenGenerator.Result.Refused).reasons
 
+  private fun generated(
+    document: ScreenDocument,
+    catalog: ComponentRecordFile,
+    preview: ScreenGenerator.Preview,
+  ) =
+    ScreenGenerator.generate(document, catalog, preview = preview) as ScreenGenerator.Result.Emitted
+
+  private fun previewRefusal(
+    document: ScreenDocument,
+    catalog: ComponentRecordFile,
+    preview: ScreenGenerator.Preview,
+  ) =
+    (ScreenGenerator.generate(document, catalog, preview = preview)
+        as ScreenGenerator.Result.Refused)
+      .reasons
+
+  /** The same nested card-and-text screen several preview tests generate from. */
+  private fun screen() =
+    ScreenDocument(
+      name = "HomeScreen",
+      root =
+        ScreenNode(
+          componentId = card.canonicalId,
+          slots =
+            mapOf(
+              "content" to
+                listOf(
+                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi")))
+                )
+            ),
+        ),
+    )
+
   @Test
   fun `a screen binds the document's values and nests children into slots`() {
     val screen =
@@ -99,6 +132,118 @@ class ScreenGeneratorTest {
     assertThat(source).doesNotContain("androidx.compose.material3.Text(text = ")
     // `modifier` is defaulted and untouched, so it is omitted rather than guessed at.
     assertThat(source).doesNotContain("modifier =")
+  }
+
+  @Test
+  fun `no preview is emitted unless one is asked for`() {
+    // The annotation lives in an Android tooling dependency a consumer of this generator need not
+    // have, so the default has to stay "source that compiles wherever the screen does".
+    val source = emitted(screen(), catalog(card, text)).source
+
+    assertThat(source).doesNotContain("@Preview")
+    assertThat(source).doesNotContain("androidx.compose.ui.tooling.preview")
+  }
+
+  @Test
+  fun `a preview reproduces the design environment and calls the screen`() {
+    val source =
+      generated(
+          screen(),
+          catalog(card, text),
+          ScreenGenerator.Preview(
+            widthDp = 411,
+            heightDp = 914,
+            fontScale = 1.3,
+            locale = "en-US",
+            darkMode = true,
+          ),
+        )
+        .source
+
+    assertThat(source).contains("import androidx.compose.ui.tooling.preview.Preview")
+    assertThat(source).contains("widthDp = 411,")
+    assertThat(source).contains("heightDp = 914,")
+    // A Float literal: `@Preview.fontScale` is a Float, and an unsuffixed decimal is a Double.
+    assertThat(source).contains("fontScale = 1.3f,")
+    assertThat(source).contains("""locale = "en-US",""")
+    assertThat(source).contains("showBackground = true,")
+    assertThat(source).contains("uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,")
+    // A wrapper, not an annotation on the screen: the screen stays callable without dragging a
+    // preview onto every call site.
+    assertThat(source).contains("private fun HomeScreenPreview() {")
+    assertThat(source).contains("    HomeScreen()")
+    assertThat(source.indexOf("fun HomeScreen()")).isLessThan(source.indexOf("@Preview"))
+  }
+
+  @Test
+  fun `a light design gets no uiMode rather than a light one`() {
+    // `@Preview` already previews light; naming it would claim the design said something it did
+    // not, and `UI_MODE_NIGHT_NO` is not the same as "unspecified" to a device configuration.
+    val source =
+      generated(screen(), catalog(card, text), ScreenGenerator.Preview(darkMode = false)).source
+
+    assertThat(source).doesNotContain("uiMode")
+  }
+
+  @Test
+  fun `a locale that is not a language tag is refused rather than escaped into the file`() {
+    // The locale is wire data reaching a string literal. A quote would close it and continue in
+    // code, so the shape is checked rather than trusted.
+    val reasons =
+      previewRefusal(screen(), catalog(card, text), ScreenGenerator.Preview(locale = """en", x="""))
+
+    assertThat(reasons.single()).contains("is not a language tag")
+  }
+
+  @Test
+  fun `a nonsensical preview size or font scale is refused, and every problem is named`() {
+    val reasons =
+      previewRefusal(
+        screen(),
+        catalog(card, text),
+        ScreenGenerator.Preview(widthDp = 0, heightDp = -1, fontScale = 0.0),
+      )
+
+    assertThat(reasons).hasSize(3)
+    assertThat(reasons.joinToString("\n")).contains("widthDp must be positive")
+    assertThat(reasons.joinToString("\n")).contains("heightDp must be positive")
+    assertThat(reasons.joinToString("\n")).contains("fontScale must be finite and positive")
+  }
+
+  @Test
+  fun `a component named Preview is qualified only when a preview is emitted`() {
+    val previewComponent =
+      component("Preview", "androidx.compose.material3.Preview", parameters = emptyList())
+    val document =
+      ScreenDocument(name = "HomeScreen", root = ScreenNode(previewComponent.canonicalId))
+
+    // Without one, nothing has spent the name and the ordinary simple import stands.
+    val plain = emitted(document, catalog(previewComponent)).source
+    assertThat(plain).contains("import androidx.compose.material3.Preview")
+    assertThat(plain).contains("    Preview()")
+
+    // With one, the file's own `Preview` would make the call ambiguous, so the component is
+    // called fully qualified instead — the same answer a two-package collision gets.
+    val withPreview =
+      generated(document, catalog(previewComponent), ScreenGenerator.Preview()).source
+    assertThat(withPreview).doesNotContain("import androidx.compose.material3.Preview")
+    assertThat(withPreview).contains("androidx.compose.material3.Preview()")
+  }
+
+  @Test
+  fun `a component the preview wrapper would shadow is qualified instead`() {
+    // The wrapper is a top-level declaration, so it beats an import of the same simple name. Left
+    // alone, `HomeScreenPreview()` in the body would call the wrapper, which calls the screen —
+    // a stack overflow standing in for the component somebody placed.
+    val clashing =
+      component("HomeScreenPreview", "androidx.compose.material3.HomeScreenPreview", emptyList())
+    val document = ScreenDocument(name = "HomeScreen", root = ScreenNode(clashing.canonicalId))
+
+    val source = generated(document, catalog(clashing), ScreenGenerator.Preview()).source
+
+    assertThat(source).doesNotContain("import androidx.compose.material3.HomeScreenPreview")
+    assertThat(source).contains("androidx.compose.material3.HomeScreenPreview()")
+    assertThat(source).contains("private fun HomeScreenPreview() {")
   }
 
   @Test
@@ -555,7 +700,8 @@ class ScreenGeneratorTest {
   fun `a child inside a receiver slot is imported, like any other child`() {
     // This reverses a deliberate decision, so it records both halves. The hazard it avoided is
     // real: Kotlin resolves a simple name against implicit receivers before imports, so a
-    // `ColumnScope` declaring a member `Text` would outrank `import androidx.compose.material3.Text`
+    // `ColumnScope` declaring a member `Text` would outrank `import
+    // androidx.compose.material3.Text`
     // and draw something else. The receiver's members are not in the record, so it was avoided
     // rather than checked.
     //
