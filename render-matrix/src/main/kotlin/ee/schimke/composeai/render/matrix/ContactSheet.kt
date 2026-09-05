@@ -1,4 +1,4 @@
-package ee.schimke.composeai.mcp
+package ee.schimke.composeai.render.matrix
 
 import java.awt.Color
 import java.awt.Font
@@ -16,9 +16,9 @@ import kotlin.math.sqrt
  * eyeball "does this survive small screen + RTL + large font?" in one image instead of reading N
  * PNGs (issue #1788). Pure: PNG bytes + captions in, one stitched PNG out.
  */
-object ContactSheet {
+public object ContactSheet {
   /** One labelled tile: [png] is a rendered cell's PNG bytes, [label] is its caption-strip text. */
-  class Cell(val label: String, val png: ByteArray)
+  public class Cell(public val label: String, public val png: ByteArray)
 
   private const val PADDING = 12
   private const val CAPTION_HEIGHT = 22
@@ -30,7 +30,7 @@ object ContactSheet {
    * empty. A cell whose bytes don't decode renders as a captioned placeholder so the grid stays
    * aligned.
    */
-  fun stitch(cells: List<Cell>, columns: Int? = null): ByteArray? {
+  public fun stitch(cells: List<Cell>, columns: Int? = null): ByteArray? {
     if (cells.isEmpty()) return null
     val images = cells.map { runCatching { ImageIO.read(it.png.inputStream()) }.getOrNull() }
 

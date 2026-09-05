@@ -1,4 +1,4 @@
-package ee.schimke.composeai.mcp
+package ee.schimke.composeai.render.matrix
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
@@ -14,18 +14,18 @@ import kotlinx.serialization.json.put
  * identical across both surfaces. A null axis means "leave at the preview's default" for that
  * dimension.
  */
-data class MatrixCell(
-  val device: String? = null,
-  val locale: String? = null,
-  val uiMode: String? = null,
-  val fontScale: Float? = null,
+public data class MatrixCell(
+  public val device: String? = null,
+  public val locale: String? = null,
+  public val uiMode: String? = null,
+  public val fontScale: Float? = null,
 ) {
   /**
    * Typed [PreviewOverrides] for this cell, ready for `renderNow`. `uiMode` is parsed to [UiMode];
    * an unrecognised value throws so the caller surfaces "invalid axis values" rather than rendering
    * with a silent default.
    */
-  fun toOverrides(): PreviewOverrides =
+  public fun toOverrides(): PreviewOverrides =
     PreviewOverrides(
       device = device,
       localeTag = locale,
@@ -44,7 +44,7 @@ data class MatrixCell(
    * The cell's overrides echoed as the same wire JSON `render_preview.overrides` accepts, so an
    * agent can replay a single cell with `render_preview` to fetch its pixels.
    */
-  fun overridesJson(): JsonObject = buildJsonObject {
+  public fun overridesJson(): JsonObject = buildJsonObject {
     device?.let { put("device", it) }
     locale?.let { put("localeTag", it) }
     uiMode?.let { put("uiMode", it) }
@@ -55,7 +55,7 @@ data class MatrixCell(
    * Compact human caption for contact-sheet tiles / CLI rows, e.g. `id:pixel_5 · ar · dark · 2.0x`;
    * `default` when no axis is set (the lone cell of an all-default matrix).
    */
-  val label: String
+  public val label: String
     get() {
       val parts = listOfNotNull(device, locale, uiMode, fontScale?.let { "${it}x" })
       return if (parts.isEmpty()) "default" else parts.joinToString(" · ")
@@ -66,12 +66,12 @@ data class MatrixCell(
  * Cross-product expansion + bounds for a render matrix — the single source of truth for both the
  * MCP `render_matrix` tool and the CLI `render-matrix` command (issue #1788).
  */
-object MatrixAxes {
+public object MatrixAxes {
   /** Upper bound on matrix cells, so a careless cross-product can't fan out unboundedly. */
-  const val CELL_CAP = 24
+  public const val CELL_CAP: Int = 24
 
   /** Cells a cross-product of these axes would produce; an unset (null) axis contributes 1. */
-  fun cellCount(
+  public fun cellCount(
     devices: List<String>?,
     locales: List<String>?,
     uiModes: List<String>?,
@@ -84,7 +84,7 @@ object MatrixAxes {
    * order, so cell ordering is deterministic. An unset (null) axis contributes a single "leave at
    * default" value, so e.g. `uiModes=[light,dark]` with every other axis null yields two cells.
    */
-  fun expand(
+  public fun expand(
     devices: List<String>?,
     locales: List<String>?,
     uiModes: List<String>?,

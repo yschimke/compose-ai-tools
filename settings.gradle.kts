@@ -627,6 +627,12 @@ project(":daemon-client").projectDir = file("daemon/client")
 
 include(":mcp")
 
+// Render-matrix axes (`MatrixAxes`/`MatrixCell`) and the contact-sheet stitcher, shared by the
+// CLI's offline `render-matrix` command and the MCP server's `render_matrix` tool. Lifted out of
+// `:mcp` so an offline CLI command stops compiling against the MCP server, which is what has to be
+// true before `:mcp` moves to compose-preview-server (#5176). Same shape as `:daemon-client`.
+include(":render-matrix")
+
 // The render host, the bundle daemon and the git-backed preview history — daemon-backed rendering,
 // packed-bundle materialisation and manifest reads, with no web server underneath. Moved here from
 // yschimke/compose-preview-server. docs/build-scripts/SETTINGS.md#render-host

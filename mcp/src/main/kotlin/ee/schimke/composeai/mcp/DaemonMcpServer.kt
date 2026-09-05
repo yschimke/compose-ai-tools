@@ -39,6 +39,9 @@ import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
 import ee.schimke.composeai.mcp.protocol.ResourceDescriptor
 import ee.schimke.composeai.mcp.protocol.ToolDef
+import ee.schimke.composeai.render.matrix.ContactSheet
+import ee.schimke.composeai.render.matrix.MatrixAxes
+import ee.schimke.composeai.render.matrix.MatrixCell
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File
 import java.security.MessageDigest

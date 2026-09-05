@@ -1,7 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.mcp.MatrixCell
+import ee.schimke.composeai.render.matrix.MatrixCell
 import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
