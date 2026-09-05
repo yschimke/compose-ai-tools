@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T09:27:14.052Z",
+  "generatedAt": "2026-09-05T09:49:33.788Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "3e43c016224befaabb46ccca85a00fe94c8441f6",
+        "subject": "fix(design-artifacts): warn instead of failing when the pinned driver has no theme generator (#5162)",
+        "at": "2026-09-05T10:41:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0b07ea627bbfcc2083f029f2e70744bc9e74053a",
+        "subject": "ci: fetch the pinned contracts reader instead of checking that repo out (#5161)",
+        "at": "2026-09-05T10:25:16+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "105a5a6a0b18446518dca984eff3a96388fab9ed",
+        "subject": "fix(ci): let only the release-PR merge run cut a release, and sweep stranded drafts (#5160)",
+        "at": "2026-09-05T10:20:42+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3e13ee0eb9fb2a192c44c3216ff9b7c4c029f59f",
         "subject": "feat(design-artifacts): expose an imported project's themes (#5158)",
@@ -458,30 +482,6 @@
         "sha": "3a58c5014f1101bab3cf5b6c301049090677db34",
         "subject": "feat(renderer-android): record a preview's parameter knobs during a bake (#5099)",
         "at": "2026-09-04T18:18:42+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c8cb6a37f1fb847bfef8d7c40e22a964f5ab109b",
-        "subject": "ci(design-artifacts): say why a Remote Compose player lane dropped its column (#5096)",
-        "at": "2026-09-04T17:49:06+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "359b61cc2e4b0187054fbddfad41d87912b5fba9",
-        "subject": "fix(daemon): report the cause chain, not just the head throwable (#5098)",
-        "at": "2026-09-04T17:48:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "25f938816a1f2e28d8dc8d37a680ee7bce2b84a1",
-        "subject": "docs: correct which gap blocks the live-lane sample from migrating (#5097)",
-        "at": "2026-09-04T17:47:23+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
