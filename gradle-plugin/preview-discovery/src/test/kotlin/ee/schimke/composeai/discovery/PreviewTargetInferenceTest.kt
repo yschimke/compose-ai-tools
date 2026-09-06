@@ -38,6 +38,27 @@ class PreviewTargetInferenceTest {
   }
 
   @Test
+  fun `nameQualifies accepts a CamelCase qualifier after the candidate name`() {
+    // Confetti's `SessionCardPopulatedPreview`, `SessionCardLoadingPreview` and
+    // `SessionCardBookmarkedPreview` are all previews of `SessionCard`.
+    assertThat(PreviewTargetInference.nameQualifies("SessionCardPopulatedPreview", "SessionCard"))
+      .isTrue()
+    assertThat(PreviewTargetInference.nameQualifies("FooBar2Preview", "FooBar")).isTrue()
+    assertThat(PreviewTargetInference.nameQualifies("PreviewFooBar", "Foo")).isTrue()
+  }
+
+  @Test
+  fun `nameQualifies rejects a name that merely shares a prefix`() {
+    // `Foobar` is not `Foo` plus a qualifier — the continuation is lower-case.
+    assertThat(PreviewTargetInference.nameQualifies("FoobarPreview", "Foo")).isFalse()
+    // An exact match is `nameMatches`'s, and never both.
+    assertThat(PreviewTargetInference.nameQualifies("FooPreview", "Foo")).isFalse()
+    assertThat(PreviewTargetInference.nameQualifies("FooPreview", "FooBar")).isFalse()
+    assertThat(PreviewTargetInference.nameQualifies("Preview", "Foo")).isFalse()
+    assertThat(PreviewTargetInference.nameQualifies("FooBarPreview", "")).isFalse()
+  }
+
+  @Test
   fun `nameMatches rejects bare Preview when nothing left after strip`() {
     assertThat(PreviewTargetInference.nameMatches("Preview", "Anything")).isFalse()
   }

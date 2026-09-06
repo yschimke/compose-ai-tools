@@ -126,8 +126,9 @@ object PreviewTargetInference {
    * lambdas rather than one the preview body makes itself. The distinction has to be recorded here
    * because the two are indistinguishable afterwards, and because **whether a lambda is even
    * reachable depends on the Kotlin compiler, not on the preview**: a non-capturing composable
-   * lambda is lifted into a `ComposableSingletons$…` class (walked, narrowly, by
-   * [extractComposeSingletonLambdaCalls]), while one that captures compiles to a
+   * lambda is lifted into the file's `ComposableSingletons$…` class — as a class of its own or,
+   * from Kotlin 2.3, as a static method of it (both walked, narrowly, by
+   * [extractComposeSingletonLambdaCalls]) — while one that captures compiles to a
    * `<preview>$lambda$N` method of the preview's own class, which the nested-method walk follows
    * wholesale. Adding a single defaulted parameter to a preview flips it from the first shape to
    * the second, so without this flag `infer`'s "how many project composables did this preview
@@ -499,10 +500,23 @@ object PreviewTargetInference {
   private data class MethodBody(val calls: List<Invocation>, val nestedMethods: Set<MethodKey>)
 
   /**
-   * Compose 2.x stores non-capturing composable lambdas in generated
-   * `ComposableSingletons$…$lambda$<key>$…` classes. A preview only calls the matching
-   * `getLambda$<key>$…` getter, so walk that narrowly identified generated class to find the
-   * component rendered inside `Theme { … }` / `Wrap { … }`.
+   * The calls inside a preview's **non-capturing** composable lambdas — the `{ … }` of `Theme {
+   * Component() }` — which the Compose compiler lifts out of the preview body into the file's
+   * generated `ComposableSingletons$…` class. A preview only calls the matching `getLambda$<key>$…`
+   * getter, so the lambda is found by that key and walked narrowly.
+   *
+   * Where the body lives depends on the compiler, and both places are read:
+   * - **A class of its own**, `ComposableSingletons$…$lambda$<key>$…`, with the body in its
+   *   `invoke(Composer, Int)` — what Compose compilers up to Kotlin 2.2 emit.
+   * - **A static method of the singletons class**, `lambda_<key>$lambda$<n>(Composer, Int)`, wired
+   *   to the field by `invokedynamic` — what Kotlin 2.3+ emits. Until this half existed every
+   *   `Theme { Component() }` preview compiled by a current Kotlin reported the *theme* as its
+   *   subject, because the walker looked for a class that was no longer generated: Confetti's Wear
+   *   component catalog recorded `ConfettiThemeFixed` for every one of its stickers, and
+   *   `SessionCard` reached no record at all. The name is matched with `$` and `-` normalised
+   *   (`lambda$-767012711` is stored under `lambda__767012711$lambda$0`), and the descent follows
+   *   the body's own nested `$lambda$n$…` methods — the callbacks it declares — since a call made
+   *   from one of those is still a call the lambda makes.
    */
   private fun extractComposeSingletonLambdaCalls(
     directCalls: List<Invocation>,
@@ -522,33 +536,65 @@ object PreviewTargetInference {
         val lambdaClassPrefix = getter.ownerFqn + "\$lambda\$$lambdaKey\$"
         val ownerResource = scanResult.getClassInfo(getter.ownerFqn)?.resource
         if (ownerResource == null) return@flatMap emptySequence()
-        referencedClasses(ownerResource, lambdaClassPrefix)
-          .asSequence()
-          .flatMap { lambdaClassFqn ->
-            scanResult
-              .getResourcesWithPathIgnoringAccept(lambdaClassFqn.replace('.', '/') + ".class")
-              .asSequence()
-              .map { lambdaClassFqn to it }
-          }
-          .filter { it.second.classpathElementURI == ownerResource.classpathElementURI }
-          .flatMap { (lambdaClassFqn, resource) ->
-            try {
-              extractCalls(
-                  resource = resource,
-                  ownerFqn = lambdaClassFqn,
-                  isRoot = { key ->
-                    key.name == "invoke" && "Landroidx/compose/runtime/Composer;" in key.descriptor
-                  },
-                  shouldFollow = { false },
-                )
+        val lambdaClasses =
+          referencedClasses(ownerResource, lambdaClassPrefix)
+            .asSequence()
+            .flatMap { lambdaClassFqn ->
+              scanResult
+                .getResourcesWithPathIgnoringAccept(lambdaClassFqn.replace('.', '/') + ".class")
                 .asSequence()
-            } catch (_: Throwable) {
-              emptySequence()
+                .map { lambdaClassFqn to it }
             }
+            .filter { it.second.classpathElementURI == ownerResource.classpathElementURI }
+            .flatMap { (lambdaClassFqn, resource) ->
+              try {
+                extractCalls(
+                    resource = resource,
+                    ownerFqn = lambdaClassFqn,
+                    isRoot = { key ->
+                      key.name == "invoke" &&
+                        "Landroidx/compose/runtime/Composer;" in key.descriptor
+                    },
+                    shouldFollow = { false },
+                  )
+                  .asSequence()
+              } catch (_: Throwable) {
+                emptySequence()
+              }
+            }
+        val lambdaMethods =
+          try {
+            val bodyPrefix = "_" + normaliseLambdaName(lambdaKey) + "_lambda_"
+            extractCalls(
+                resource = ownerResource,
+                ownerFqn = getter.ownerFqn,
+                isRoot = { key ->
+                  isSingletonLambdaMethod(key.name, bodyPrefix) &&
+                    "Landroidx/compose/runtime/Composer;" in key.descriptor
+                },
+                shouldFollow = { key -> isSingletonLambdaMethod(key.name, bodyPrefix) },
+              )
+              .asSequence()
+          } catch (_: Throwable) {
+            emptySequence()
           }
+        lambdaClasses + lambdaMethods
       }
       .distinct()
       .toList()
+
+  /**
+   * Whether [methodName] is the static body of the singleton lambda whose normalised key gives
+   * [bodyPrefix], or one of that body's own nested lambdas. `lambda__767012711$lambda$0` and
+   * `lambda__767012711$lambda$0$1$0` both are, for the key `-767012711`; `lambda_1578330026$…` is
+   * not.
+   */
+  private fun isSingletonLambdaMethod(methodName: String, bodyPrefix: String): Boolean =
+    methodName.startsWith("lambda") &&
+      normaliseLambdaName(methodName.removePrefix("lambda")).startsWith(bodyPrefix)
+
+  /** `$` and `-` both become `_`, which is how the compiler spells a lambda key into a method. */
+  private fun normaliseLambdaName(name: String): String = name.replace('$', '_').replace('-', '_')
 
   private fun referencedClasses(resource: Resource, classFqnPrefix: String): Set<String> {
     val internalPrefix = classFqnPrefix.replace('.', '/')
@@ -710,6 +756,13 @@ object PreviewTargetInference {
     if (nameMatches(previewMethodName, callerSourceName)) {
       score += 2
       signals += TargetSignal.NAME_MATCH
+    } else if (nameQualifies(previewMethodName, callerSourceName)) {
+      // `SessionCardPopulatedPreview` is a preview *of* `SessionCard` as surely as
+      // `SessionCard_Populated_Preview` is; the qualifier is spelled in CamelCase rather than with
+      // an underscore. Worth one rather than two, so a candidate the preview names exactly still
+      // outranks one it merely starts with — `FooBarPreview` prefers `FooBar` to `Foo`.
+      score += 1
+      signals += TargetSignal.NAME_MATCH
     }
 
     // +1 if the candidate lives in a different .class file than the preview. Top-level functions
@@ -763,6 +816,16 @@ object PreviewTargetInference {
    * `FooScreen`. Internal-mangled JVM names (`InternalPreview$module`) are stripped first.
    */
   internal fun nameMatches(previewMethodName: String, candidateName: String): Boolean {
+    val stripped = strippedPreviewName(previewMethodName)
+    if (stripped.isBlank()) return false
+    if (stripped == candidateName) return true
+    // `Foo_Light_Preview` → `Foo_Light` → leading segment `Foo`.
+    val leadingSegment = stripped.substringBefore('_')
+    return leadingSegment.isNotBlank() && leadingSegment == candidateName
+  }
+
+  /** The preview's name with its `Preview` affixes, separators and JVM mangle removed. */
+  private fun strippedPreviewName(previewMethodName: String): String {
     // Strip the JVM `internal fun` mangle (`name$module`) before any name-shape work.
     val cleaned = previewMethodName.substringBefore('$')
     // Order matters: try the more specific affixes (`_Preview` / `Preview_`) before the bare ones,
@@ -774,11 +837,21 @@ object PreviewTargetInference {
         .removePrefix("Preview_")
         .removePrefix("Preview")
         .trim('_')
-    if (stripped.isBlank()) return false
-    if (stripped == candidateName) return true
-    // Allow `Foo_Light_Preview` → `Foo_Light` → match `Foo` by the leading segment.
-    val leadingSegment = stripped.substringBefore('_')
-    return leadingSegment.isNotBlank() && leadingSegment == candidateName
+    return stripped
+  }
+
+  /**
+   * `SessionCardPopulatedPreview` ↔ `SessionCard`: the stripped preview name starts with the
+   * candidate's and continues with a CamelCase qualifier — an upper-case letter or a digit, so
+   * `FooBarPreview` qualifies `Foo` while `FoobarPreview` does not. Never true where [nameMatches]
+   * already is.
+   */
+  internal fun nameQualifies(previewMethodName: String, candidateName: String): Boolean {
+    val stripped = strippedPreviewName(previewMethodName)
+    if (stripped.isBlank() || candidateName.isBlank()) return false
+    if (!stripped.startsWith(candidateName) || stripped.length == candidateName.length) return false
+    val next = stripped[candidateName.length]
+    return next.isUpperCase() || next.isDigit()
   }
 
   /**
