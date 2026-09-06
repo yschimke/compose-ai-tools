@@ -4811,12 +4811,19 @@ object PreviewDiscovery {
     val wear = DeviceDimensions.DEFAULT_WEAR
     return previews.map { info ->
       val p = info.params
+      val isWidget = isWearWidgetPreview(p)
+      // A widget carries its canvas in its `WearWidgetParams`, so a `device` on one describes a
+      // screen it never occupies — see [isWearWidgetPreview]. A device spec is already resolved
+      // into `widthDp`/`heightDp` by the time previews reach here, so dropping the device means
+      // dropping those with it: they are the spec's canvas, not a size asked of the widget.
+      val widgetCanvas = isWidget && p.device != null
       if (
-        p.kind == PreviewKind.COMPOSE && p.device == null && p.widthDp == null && p.heightDp == null
+        p.kind == PreviewKind.COMPOSE &&
+          (widgetCanvas || (p.device == null && p.widthDp == null && p.heightDp == null))
       ) {
         // A glance-wear widget keeps the generic sandbox even when the flag would otherwise hand it
         // the watch screen — `fillMaxWidth` inside a widget means "fill the widget".
-        val sandboxToWatch = pinWearCanvas && !isWearWidgetPreview(p)
+        val sandboxToWatch = pinWearCanvas && !isWidget
         if (sandboxToWatch) {
           // Measure against the wear screen (square 227dp) at wear density, so fill-width
           // components
@@ -4839,7 +4846,18 @@ object PreviewDiscovery {
           // than the inherited phone default (2.625x), so the cropped dp bounds scale to the
           // correct
           // watch-density px, not an oversized phone-scale export.
-          info.copy(params = p.copy(density = wear.density))
+          //
+          // The device goes with it for a widget, and only for a widget: a device that survived
+          // the branch above is a widget's, and honouring it renders the widget across that whole
+          // screen instead of cropping to its footprint.
+          if (widgetCanvas) {
+            info.copy(
+              params =
+                p.copy(device = null, widthDp = null, heightDp = null, density = wear.density)
+            )
+          } else {
+            info.copy(params = p.copy(density = wear.density))
+          }
         }
       } else {
         info
@@ -4858,10 +4876,18 @@ object PreviewDiscovery {
   private val WEAR_WIDGET_PARAM_PROVIDER_PREFIXES = listOf("androidx.glance.wear.")
 
   /**
-   * True when [params] is a glance-wear widget preview — a device-less `@PreviewParameter` preview
-   * whose provider comes from [WEAR_WIDGET_PARAM_PROVIDER_PREFIXES]. Such widgets are exported as
+   * True when [params] is a glance-wear widget preview — a `@PreviewParameter` preview whose
+   * provider comes from [WEAR_WIDGET_PARAM_PROVIDER_PREFIXES]. Such widgets are exported as
    * fixed-size drawable assets and must crop to their bounds regardless of the
    * `retargetWearPreviews` flag (#2670).
+   *
+   * A `device` on such a preview does not disqualify it, and [retargetWearStickers] drops that
+   * device rather than honouring it. A widget's canvas is its `WearWidgetParams` — the provider
+   * carries every footprint the container ships — so the screen beside it says nothing the params
+   * do not. Upstream's `wear-os-samples` widget previews (and the UI builder's generated widgets,
+   * which reproduce them) declare `device = "spec:width=1000dp,height=1000dp,dpi=320"` as a Studio
+   * scratch canvas; honouring it renders a 216×124dp widget's background across 1000×1000dp instead
+   * of cropping to the frame the widget was designed in.
    */
   private fun isWearWidgetPreview(params: PreviewParams): Boolean {
     val provider = params.previewParameterProviderClassName ?: return false
