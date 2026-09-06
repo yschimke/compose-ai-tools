@@ -89,7 +89,10 @@ For the **before** side, render at the base commit (`git stash`, or a worktree a
 1. Commit the PNGs you intend to cite to your working branch and push.
 2. Embed them as markdown images whose URLs are **commit-SHA-pinned**
    `raw.githubusercontent.com` links to those pushed files — the same form the diff
-   bot uses.
+   bot uses. This is not just convention: a `![alt](url)` whose host is not a
+   GitHub origin has its `!` stripped before it reaches the API, silently, so a
+   deployment URL or a CDN link arrives as a bare link and the evidence is gone.
+   Committing and citing the raw URL is what makes the image survive.
 3. Write `![alt](url)` plainly and **leave any backticks that appear alone**. They
    are injected between the agent and GitHub, and the `PR Body Syntax` workflow
    repairs them in place. The three cases it does not cover — review comments,

@@ -133,6 +133,17 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
   is not evidence. If a surface genuinely cannot be captured, say so and embed a
   renderable proxy or state how a human/CI verifies it. Text-only is correct for
   non-visual changes.
+- **Embed images only from a GitHub-hosted origin.** Claude Code on the web
+  silently rewrites `![alt](url)` to `[alt](url)` on the way to the API whenever
+  the destination is not a GitHub host, so the picture arrives as a bare link and
+  the call still succeeds. `raw.githubusercontent.com`,
+  `github.com/<owner>/<repo>/raw/<ref>/…`, `github.com/user-attachments/assets/…`
+  and the `user-images` / `private-user-images` / `avatars` / `objects` / `media`
+  / `gist` `.githubusercontent.com` hosts survive; everything else — a preview
+  deployment, a shields.io badge, `camo.githubusercontent.com` — does not. Applies
+  to issue bodies and comments as much as PR descriptions. The measured host list,
+  the upstream issue, and why it is not worth routing around are in
+  [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-workflow).
 - **Write `![alt](url)` and leave the backticks alone if they appear.** They are
   injected between the agent and GitHub, not authored, and the
   [`PR Body Syntax`](.github/workflows/pr-body-syntax.yml) workflow repairs them

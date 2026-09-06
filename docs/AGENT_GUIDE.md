@@ -286,6 +286,44 @@ the preview pipeline, don't auto-merge — is stated once in
   and push to it instead of opening a duplicate. A *merged* or *closed* PR does not
   count — that is the [PR-state re-check](../AGENTS.md#re-check-pr-state-immediately-before-every-push).
 
+- **A non-GitHub host loses the `!`, and nothing tells you.** Claude Code on the
+  web rewrites `![alt](url)` to `[alt](url)` on the way to the API whenever the
+  destination is not a GitHub origin, so the image arrives as a plain link. The
+  API returns 201, the tool reports success, and the only way to notice is to read
+  the stored body back. Upstream this is
+  [anthropics/claude-code#89540](https://github.com/anthropics/claude-code/issues/89540)
+  (open, labelled `area:security`): an anti-exfiltration control — a rendered image
+  makes GitHub's camo fetch the URL server-side, which is a data channel — so the
+  answer is to write an allowed destination, not to defeat it.
+
+  Measured variant by variant on
+  [compose-preview-server#456](https://github.com/yschimke/compose-preview-server/issues/456):
+
+  | Kept as an image | Rewritten to a link |
+  | --- | --- |
+  | `raw.githubusercontent.com` (any repo, any ref) | any non-GitHub host — a preview deployment, `img.shields.io`, a CDN |
+  | `github.com/<owner>/<repo>/raw/<ref>/…` | `camo.githubusercontent.com` |
+  | `github.com/user-attachments/assets/…` | |
+  | `user-images` / `private-user-images` / `avatars` / `objects` / `media` / `gist` `.githubusercontent.com` | |
+
+  Three properties matter when you are trying to work out what happened to a body:
+
+  - **It is a blind regex, not a markdown pass.** It fires on `![…](…)` inside
+    inline code spans and inside fenced code blocks, in table cells, in
+    reference-style images (`![x][r]`), through a backslash escape, and on the
+    inner image of `[![x](u)](t)`. Documenting the syntax in a fenced block is
+    itself rewritten.
+  - **`<img>` is not an escape hatch.** An HTML image is entity-escaped *and*
+    wrapped in a code span.
+  - **It applies to issue bodies and issue comments too**, not just PR
+    descriptions.
+
+  So: commit the PNG and point at it with a commit-pinned
+  `raw.githubusercontent.com` URL, or upload the image into the body so GitHub
+  hosts it. Both forms already satisfy the evidence bar in
+  [root `AGENTS.md`](../AGENTS.md#pr-workflow), so nothing else about the workflow
+  changes.
+
 - **Those backticks are usually not yours.** A posted body often lands as
   ``![alt](`url`)`` — or its cousin with the closing run pushed past the `)` —
   which renders as literal text plus a stray code span, so the image never appears
@@ -313,8 +351,10 @@ the preview pipeline, don't auto-merge — is stated once in
   - **It only repairs destinations that still look like one.** `DEST_LOOKS_LIKE_TARGET`
     rejects anything not starting with a scheme, `.`, `#`, `/` or a path segment —
     so a destination wrapped in quotes, or one whose leading `!` was stripped
-    (making it a link rather than an image), falls through untouched. Rewrite the
-    body once by hand in that case.
+    (making it a link rather than an image), falls through untouched. A stripped
+    `!` is the host rewrite above, not this one, and re-adding the `!` by hand only
+    holds if the destination is a GitHub origin; otherwise the next write strips it
+    again. Fix the host, not the punctuation.
   - **It does not prove the picture rendered.** Check the published page, and
     remember `WebFetch` caches per URL for ~15 minutes: re-checking a body you just
     fixed can hand you the stale broken copy and send you chasing a bug you already
