@@ -46,16 +46,77 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      # Which plugin version does THIS release's CLI actually ask Gradle for?
+      #
+      # Not necessarily its own any more. `maven-publish-guard` in release.yml skips the Central
+      # publish on a release where no published module changed, and the CLI built in that same
+      # run is baked to resolve the last version that IS on Central (MAVEN_LINE_VERSION — see
+      # cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt). Proving the release's own
+      # version resolvable would then poll for 55 minutes for artifacts that are never coming,
+      # and no marker would ever be attached — `latest` would freeze at the last publishing
+      # release and `compose-preview update` would stop offering anything.
+      #
+      # This reads the answer out of the shipped CLI rather than recomputing the guard's verdict
+      # here. Two reasons. It is ground truth about the artifact consumers will actually run, so
+      # it cannot drift from what the release did — a re-derivation in this separate workflow run
+      # could disagree with release.yml (its guard job is `continue-on-error`, so it may have
+      # published without ever writing a verdict), and disagreeing in the direction of "skipped"
+      # would attach a marker while the release's own artifacts were still propagating, which is
+      # exactly the #5051 failure this gate exists to prevent. And the tarball is a REQUIRED
+      # release asset, verified present by `finalize-release` before this job runs.
+      #
+      # Falling back to the release's own version is the conservative direction: on a skipped
+      # release it makes this job fail loudly with no marker attached (consumers keep the
+      # previous usable version) rather than pass with a wrong one.
+      - name: Resolve the plugin version this release's CLI asks Gradle for
+        id: line
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          V="${TAG#v}"
+          dl="$RUNNER_TEMP/cli-dist"
+          mkdir -p "$dl"
+          plugin_v=""
+          if gh release download "$TAG" --dir "$dl" --pattern "compose-preview-${V}.tar.gz"; then
+            # Targeted extraction: the dist carries every renderer and daemon jar and runs to
+            # ~200 MB, and only the CLI's own jar holds cli-version.properties.
+            if tar -xzf "$dl/compose-preview-${V}.tar.gz" -C "$dl" \
+                 --wildcards "*/lib/compose-preview-*.jar" 2>/dev/null; then
+              jar="$(find "$dl" -name 'compose-preview-*.jar' -path '*/lib/*' | head -1)"
+              if [ -n "$jar" ]; then
+                plugin_v="$(unzip -p "$jar" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null \
+                  | sed -n 's/^mavenLineVersion=//p' | head -1)"
+              fi
+            fi
+          fi
+          if [ -z "${plugin_v}" ]; then
+            echo "::warning::could not read mavenLineVersion from the shipped CLI — verifying ${V} itself."
+            plugin_v="${V}"
+          fi
+          rm -rf "$dl"
+          echo "plugin_version=${plugin_v}" >> "$GITHUB_OUTPUT"
+          if [ "${plugin_v}" = "${V}" ]; then
+            echo "This release published to Central; verifying ${V}."
+          else
+            echo "This release skipped the Central publish; its CLI resolves the plugin at ${plugin_v}."
+          fi
       - name: Resolve the released plugin from public Maven Central
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # The version to prove resolvable — this release's own on a publishing release, the
+          # Maven line it points consumers at on one that skipped.
+          PLUGIN_V: ${{ steps.line.outputs.plugin_version }}
         run: |
           set -euo pipefail
           V="${TAG#v}"
           [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || { echo "::error::unexpected release version: $V"; exit 1; }
+          [[ "$PLUGIN_V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::unexpected plugin version: $PLUGIN_V"; exit 1; }
 
           smoke="$RUNNER_TEMP/compose-preview-maven-readiness"
           gradle_home="$RUNNER_TEMP/compose-preview-maven-readiness-gradle-home"
@@ -65,7 +126,7 @@ jobs:
           printf '%s\n' \
             'buildscript {' \
             '  repositories { mavenCentral() }' \
-            "  dependencies { classpath(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${V}\") }" \
+            "  dependencies { classpath(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${PLUGIN_V}\") }" \
             '}' \
             > "$smoke/build.gradle.kts"
 
@@ -83,25 +144,32 @@ jobs:
                 -p "$smoke" help --no-daemon --refresh-dependencies \
                 > "$smoke/gradle.log" 2>&1; then
               ready=1
-              echo "plugin ${V} resolved from public Maven Central on attempt ${attempt}."
+              echo "plugin ${PLUGIN_V} resolved from public Maven Central on attempt ${attempt}."
               # Consumed by the milestone comment below.
               {
                 echo "version=${V}"
+                echo "plugin_version=${PLUGIN_V}"
                 echo "attempts=${attempt}"
-                echo "plugin_coordinate=ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${V}"
+                echo "plugin_coordinate=ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${PLUGIN_V}"
               } >> "$GITHUB_OUTPUT"
               break
             fi
-            echo "plugin ${V} not fully resolvable from public Maven Central (attempt ${attempt}/${attempts_max})."
+            echo "plugin ${PLUGIN_V} not fully resolvable from public Maven Central (attempt ${attempt}/${attempts_max})."
             tail -n 30 "$smoke/gradle.log"
             sleep 30
           done
           [ "$ready" -eq 1 ] \
-            || { echo "::error::plugin ${V} was not resolvable after ${attempts_max} attempts (~55 minutes)"; exit 1; }
+            || { echo "::error::plugin ${PLUGIN_V} was not resolvable after ${attempts_max} attempts (~55 minutes)"; exit 1; }
 
+          # The marker is still named for the RELEASE version — `resolve-version.py` and the
+          # bootstrap installer look it up as `compose-preview-maven-ready-<release>.json`, and
+          # its presence is what makes `latest` mean "latest usable". `pluginVersion` is what the
+          # release's CLI resolves, which is the release's own version on a publishing release
+          # and an earlier one when the publish was skipped. Consumers that only need "is this
+          # release usable" can keep reading nothing but the filename.
           marker="$RUNNER_TEMP/compose-preview-maven-ready-${V}.json"
-          printf '{"version":"%s","verifiedAt":"%s"}\n' \
-            "$V" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
+          printf '{"version":"%s","pluginVersion":"%s","verifiedAt":"%s"}\n' \
+            "$V" "$PLUGIN_V" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
           gh release upload "$TAG" "$marker" --clobber
           echo "uploaded $(basename "$marker")."
 
@@ -122,6 +190,7 @@ jobs:
           MILESTONE_KEY: maven-published
           MILESTONE_TAG: ${{ inputs.tag }}
           V: ${{ steps.resolve.outputs.version }}
+          PLUGIN_V: ${{ steps.resolve.outputs.plugin_version }}
           ATTEMPTS: ${{ steps.resolve.outputs.attempts }}
           COORDINATE: ${{ steps.resolve.outputs.plugin_coordinate }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag }}
@@ -131,8 +200,11 @@ jobs:
           # printf per line, not an indented heredoc — see the same note in preview-host-image.yml.
           md="$RUNNER_TEMP/maven-milestone.md"
           {
-            printf '### 📦 Artifacts on Maven Central — `%s` is resolvable\n\n' "${V}"
+            printf '### 📦 Artifacts on Maven Central — `%s` is resolvable\n\n' "${PLUGIN_V}"
             printf 'A clean Gradle project resolved the plugin classpath from `mavenCentral()` on attempt %s, so downstream builds can consume this release.\n\n' "${ATTEMPTS}"
+            if [ "${PLUGIN_V}" != "${V}" ]; then
+              printf 'This release **did not publish to Maven Central** — no published module changed since `%s`, so `maven-publish-guard` skipped the upload (see `docs/design/RELEASE_TRAINS.md`). Its CLI resolves the plugin at `%s`, which is what was verified above. Nothing downstream needs to change: `compose-preview` injects that version for you.\n\n' "${PLUGIN_V}" "${PLUGIN_V}"
+            fi
             printf -- '- **Verified coordinate** — `%s`\n' "${COORDINATE}"
             printf -- '- **Browse** — [central.sonatype.com](https://central.sonatype.com/search?namespace=ee.schimke.composeai)\n'
             printf -- '- **Readiness marker** — `compose-preview-maven-ready-%s.json` on [the release](%s), which is what lets `compose-preview update` offer this version\n' "${V}" "${RELEASE_URL}"

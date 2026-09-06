@@ -39,6 +39,14 @@ class PinCommand(
   private val args: List<String>,
   private val projectRoot: File? = findGradleProjectRoot(),
   private val cliVersion: String = BUNDLE_VERSION,
+  // What `--cli` actually writes. [MAVEN_LINE_VERSION], not [cliVersion]: the pin becomes
+  // `composePreview.version`, which every entrypoint hands to Gradle as a plugin coordinate, so
+  // it has to name a version that exists on Central. They differ only on a release whose Central
+  // publish `maven-publish-guard` skipped — and on such a release `--cli` writing [cliVersion]
+  // would produce a pin that resolves nothing. [cliVersion] stays the identity this command
+  // *reports* (`CLI:`, `cliVersion` in --json, the skew comparison), which is a different
+  // question. See the KDoc on MAVEN_LINE_VERSION.
+  private val mavenLineVersion: String = MAVEN_LINE_VERSION,
   private val fileSystem: FileSystem = SystemFileSystem,
   private val env: (String) -> String? = System::getenv,
   private val stdout: (String) -> Unit = ::println,
@@ -92,7 +100,7 @@ class PinCommand(
         report(root, json, warnSkew = false)
       }
       useCli || positional != null -> {
-        val version = (positional ?: cliVersion).trim().removePrefix("v")
+        val version = (positional ?: mavenLineVersion).trim().removePrefix("v")
         if (version.isEmpty()) {
           stderr("compose-preview pin: version must not be empty.")
           exitProcess(1)

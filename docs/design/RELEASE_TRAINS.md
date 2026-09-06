@@ -76,10 +76,10 @@ predecessor.
 | Lever | Effect | Status |
 |---|---|---|
 | Batch the release cut (release train for the *CLI* line) | 44/week → ~7/week; ~6× on every metric | **Out of scope.** The cadence is wanted. |
-| Publish only when a published module changed | § 4 | **Implemented, reporting only** |
+| Publish only when a published module changed | § 4 | **Implemented and gating** |
 | Split the Maven publish into several trains | § 5 | Proposed |
 | Version each module independently | Largest, but contradicts `VERSIONING.md` § 3.1 | **Out of scope** |
-| Narrow the shared-input rule with dependency lock state | § 6 — ~97% of the remaining cost | **Locking implemented; guard not reading it yet** |
+| Narrow the shared-input rule with dependency lock state | § 6 — ~97% of the remaining cost | **Implemented** |
 
 Batching is by far the biggest lever and it is deliberately not taken: the release frequency is
 a product decision, not an accident. Everything below therefore reduces *artifacts per release*
@@ -89,15 +89,16 @@ rather than releases.
 
 [`.github/scripts/maven-publish-needed.sh`](../../.github/scripts/maven-publish-needed.sh)
 answers one question — *could any published artifact's bytes differ from the last
-Maven-published release?* — and the `maven-publish-guard` job in `release.yml` reports the
-answer on every release.
+Maven-published release?* — and the `maven-publish-guard` job in `release.yml` gates
+`publish-gradle-plugin` on the answer.
 
 It watches every module applying `composeai.maven-publishing` (enumerated from the build files,
 not a hand-kept list) plus the shared inputs that can change all of them: `build-logic/`, the
-version catalog, the wrapper, `settings.gradle.kts`, the root `build.gradle.kts`, and
-`gradle.properties` minus its release-please version block — that block moves
-`composeaiReleasedRuntimeVersion` on every single release, so watching it naively would hold
-the guard permanently open.
+wrapper, `settings.gradle.kts`, the root `build.gradle.kts`, and `gradle.properties` minus its
+release-please version block — that block moves `composeaiReleasedRuntimeVersion` on every
+single release, so watching it naively would hold the guard permanently open. Dependency
+movement arrives through each module's own committed `gradle.lockfile` rather than through the
+version catalog, which is § 6.
 
 **It is all-or-nothing, and it fails open.** Publishing a subset would leave
 `renderer-desktop:X` naming `data-focus-core:X` in its POM with no such artifact on Central, so
@@ -277,14 +278,59 @@ module, exactly one always changed as a unit.
    Still outstanding, and only needed once the two versions actually diverge: the CLI→Maven map on
    the release readiness marker (`compose-preview-maven-ready-<version>.json`). A project pin names
    a *CLI* release, and a CLI cannot know another release's Maven line offline.
-3. **Let the guard gate** — `publish-gradle-plugin` takes
-   `if: needs.maven-publish-guard.outputs.needed == 'true'`, and the release sets
-   `MAVEN_LINE_VERSION` from the guard's verdict: the new version when it publishes, the last
-   version that reached Central when it does not. Step 2 is what makes this safe; the `-15.8%`
-   arrives here.
+3. **Let the guard gate** *(done)* — `publish-gradle-plugin` takes
+   `if: needs.maven-publish-guard.outputs.needed != 'false'`, and `build-applications` bakes
+   `MAVEN_LINE_VERSION` from the guard's `maven_line` output: the new version when it publishes,
+   the last version that reached Central when it does not. Step 2 is what makes this safe; the
+   `-15.8%` arrives here.
+
+   `!= 'false'` rather than `== 'true'` because the guard job is `continue-on-error`: a job that
+   dies without writing an output must publish, not skip. Failing the job instead would strand
+   the release as a draft over a guard with no opinion. The same asymmetry runs through
+   `maven-publish-needed.sh`, which fails open on every uncertainty.
+
+   Three things had to move with it.
+
+   **The readiness gate had to learn which version to prove.**
+   [`maven-readiness.yml`](../../.github/workflows/maven-readiness.yml) resolved the release's own
+   version from Central and attached `compose-preview-maven-ready-<version>.json` on success. On a
+   release that skips the publish that version never appears, so it would poll for 55 minutes and
+   attach nothing — and since `resolve-version.py` gates `latest` on that marker, `latest` would
+   freeze at the last publishing release and `compose-preview update` would stop offering
+   anything. It now reads `mavenLineVersion` out of the CLI tarball already attached to the
+   release and proves *that* resolvable, keeping the marker's name (the release's version, which
+   is what consumers look up) and adding a `pluginVersion` field.
+
+   Reading the shipped artifact rather than recomputing the verdict is deliberate. A second
+   derivation, in a different workflow run, can disagree with what the release actually did —
+   the guard job is `continue-on-error`, so a release can publish without ever writing a verdict
+   — and disagreeing in the direction of "skipped" would attach a marker while the release's own
+   artifacts were still propagating. That is precisely the #5051 failure this gate exists to
+   prevent. The tarball is a required asset, verified present by `finalize-release` before this
+   job runs, and it is the thing consumers actually execute.
+
+   **`pin --cli` had to stop writing the CLI's own version.** A pin becomes
+   `composePreview.version`, which every entrypoint hands to Gradle as a plugin coordinate, so on
+   a skipped release `--cli` would have written a pin that resolves nothing. It writes
+   `MAVEN_LINE_VERSION` now, as does the "re-pin with…" remedy in `warnOnCliSkew`. A version the
+   user types is still written verbatim — that is what a pin is for — which leaves a
+   hand-written pin as the one remaining way to name a version that was never published. See
+   [`RELEASING.md`](../RELEASING.md).
+
+   **The baseline resolver had to become shared.** `maven-publish-guard` runs before the publish
+   and the readiness gate after it, in separate workflow runs, and Central's `<latest>` means
+   different things at those two moments. Both now call
+   [`maven-line-baseline.sh`](../../.github/scripts/maven-line-baseline.sh), which selects the
+   greatest version **strictly below** the release under consideration — stable across the
+   publish by construction. Pinned by `test-maven-line-baseline.sh` in CI.
+
+   `required-release-assets.sh` needed **no** change, contrary to the note this section used to
+   carry: it lists only CLI assets, which a skipped publish still produces, so `finalize-release`
+   and the draft sweeper are unaffected.
 4. **Split the trains** — five version lines, each with its own guard and manifest entry, and
    renderer POMs naming the library trains' own versions. The remaining `-30%`.
 
-Steps 3 and 4 each need `required-release-assets.sh`, the readiness marker and
-[`RELEASING.md`](../RELEASING.md) updated in the same change: a release that publishes nothing to
-Central must not wait for a Maven-readiness marker that will never appear.
+Step 4 still needs the readiness marker and [`RELEASING.md`](../RELEASING.md) revisited in the
+same change: with five version lines there is no longer one Maven line for a release to name, and
+the marker has to carry a version per train rather than the single `pluginVersion` it gained in
+step 3.

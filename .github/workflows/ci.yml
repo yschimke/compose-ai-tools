@@ -1042,6 +1042,13 @@ jobs:
       # narrows to the shared build inputs and starts answering `false` for real changes.
       - name: Run Maven publish guard tests
         run: ./.github/scripts/test-maven-publish-needed.sh
+      # The baseline resolver the guard and the readiness gate share. They run in two SEPARATE
+      # workflow runs, one before the Central publish and one after it, and a resolver that
+      # answered differently at those two moments would have the readiness gate prove the wrong
+      # version resolvable — attaching a "this release is usable" marker for a plugin coordinate
+      # that does not exist. That property is what these tests pin.
+      - name: Run Maven line baseline tests
+        run: ./.github/scripts/test-maven-line-baseline.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
       # The Figma reference column cuts a node out of a repo's committed page

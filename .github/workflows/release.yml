@@ -59,23 +59,22 @@ env:
   TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  # REPORTING ONLY — nothing reads this job's output, and it must never be able to stop a release.
+  # Decides whether this release publishes to Maven Central at all, and — when it does not —
+  # which already-published version the CLI built in this same run resolves the plugin at.
   #
   # The root-level `publishAndReleaseToMavenCentral` below uploads all 94 publishing modules on
   # every release, whether or not one of them changed: over v1.57.0..v1.84.0 that was 3,572 module
-  # publications carrying 117 module-changes. This job runs the guard that decides whether a
-  # release needs a Central publish at all and writes the answer to the run summary, so the
-  # decision can be watched against real releases before it is allowed to act on one. Wiring it
-  # to `publish-gradle-plugin`'s `if:` is a deliberate second step, and it needs the CLI-side
-  # plugin-version pin to land first — see docs/design/RELEASE_TRAINS.md § Going live.
+  # publications carrying 117 module-changes, and six of those 38 releases changed no published
+  # module at all. Central meters file count, release size and release count per organisation.
+  # See docs/design/RELEASE_TRAINS.md.
   #
   # Its own job because the guard needs full history (`fetch-depth: 0`) and the publish job does
-  # not: deepening that checkout would slow the release for a step that only reports. It runs in
-  # parallel with everything else and has no dependents.
+  # not: deepening that checkout would slow every release down.
   #
-  # `continue-on-error` is the load-bearing line here, and "no dependents" is exactly why it was
-  # missed. Nothing needs this job's OUTPUT, but `release-please.yml` gates finalisation on the
-  # RESULT of the whole `release.yml` call:
+  # ## `continue-on-error` is still the load-bearing line, and it is not a leftover
+  #
+  # It was here when this job only reported, because `release-please.yml` gates finalisation on
+  # the RESULT of the whole `release.yml` call:
   #
   #     finalize-release:
   #       needs: [release-please, release]
@@ -84,14 +83,15 @@ jobs:
   # A workflow_call's result is the roll-up of every job inside it, so without this line a failure
   # here — a Maven Central blip while resolving the baseline, a git edge case — skips
   # `finalize-release` and leaves the GitHub Release a DRAFT: `/releases/latest` and every
-  # `latest/download/…` URL keep serving the previous version, with the new one published to Maven
-  # Central but invisible to installers. `release-draft-sweeper.yml` would recover it within the
-  # hour, which is a backstop, not a reason to allow it.
+  # `latest/download/…` URL keep serving the previous version. `release-draft-sweeper.yml` would
+  # recover it within the hour, which is a backstop, not a reason to allow it.
   #
-  # This is the same posture, for the same reason, as the release-milestone comment jobs described
-  # in docs/RELEASING.md: pure reporting that runs after a decision has been made must not be able
-  # to touch a publish that already succeeded. A red mark on this job in the run is the intended
-  # signal; a held release is not.
+  # That reasoning survives this job becoming a GATE, because the gate is one-directional: every
+  # consumer below tests `needed != 'false'`, so a job that dies without writing an answer
+  # publishes and builds the CLI at its own version, exactly as if this job did not exist. The
+  # only thing `continue-on-error` can now cost is an unnecessary publish. Removing it, so a
+  # crashed guard failed the release instead, would trade that for a stranded draft — the worse
+  # outcome by a wide margin, and the one this repository has been bitten by before.
   maven-publish-guard:
     continue-on-error: true
     runs-on: ubuntu-latest
@@ -100,6 +100,10 @@ jobs:
     outputs:
       needed: ${{ steps.guard.outputs.needed }}
       reason: ${{ steps.guard.outputs.reason }}
+      # The version of this repo's Maven artifacts a consumer of THIS release should resolve:
+      # the release's own version when it publishes, the last published version when it does not.
+      # Baked into the CLI by `build-applications` as MAVEN_LINE_VERSION.
+      maven_line: ${{ steps.line.outputs.maven_line }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -112,24 +116,19 @@ jobs:
       - name: Resolve the last Maven-published version
         # Central is the authority on what was actually published, which is exactly the baseline
         # the guard needs — and it stays correct once releases start skipping the publish, when
-        # "the previous tag" no longer means "the previous published version". `renderer-desktop`
-        # is the sentinel: it is published on every Central publish this repo does, and it is the
-        # coordinate the plugin injects, so if it is absent at a version nothing else is there
-        # either.
+        # "the previous tag" no longer means "the previous published version".
+        #
+        # Shared with `maven-readiness.yml`, which has to reach the same answer from a different
+        # workflow run AFTER the publish has happened; `maven-line-baseline.sh` explains why that
+        # forces "greatest version strictly below this release" rather than Central's `<latest>`.
         #
         # Failure to resolve leaves BASELINE empty, and the guard fails open on that.
         run: |
           set -uo pipefail
-          meta="$(curl -fsSL --max-time 30 \
-            https://repo1.maven.org/maven2/ee/schimke/composeai/renderer-desktop/maven-metadata.xml \
-            || true)"
-          latest="$(printf '%s' "${meta}" | sed -n 's:.*<latest>\(.*\)</latest>.*:\1:p' | head -1)"
-          if [ -z "${latest}" ]; then
-            latest="$(printf '%s' "${meta}" | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | tail -1)"
-          fi
+          latest="$(./.github/scripts/maven-line-baseline.sh --below "${TAG_NAME}")"
           if [ -n "${latest}" ] && git rev-parse --verify --quiet "v${latest}^{commit}" >/dev/null; then
             echo "BASELINE=v${latest}" >> "$GITHUB_ENV"
-            echo "Last published version on Central: ${latest}"
+            echo "Last published version below ${TAG_NAME}: ${latest}"
           else
             echo "BASELINE=" >> "$GITHUB_ENV"
             echo "Could not resolve a published baseline (got '${latest:-<none>}') — guard will fail open."
@@ -144,27 +143,56 @@ jobs:
             args=(--baseline "${BASELINE}" "${args[@]}")
           fi
           ./.github/scripts/maven-publish-needed.sh "${args[@]}"
+      - name: Resolve the Maven line this release's CLI resolves against
+        id: line
+        # The version consumers of this release get when the CLI asks Gradle for the plugin.
+        # Publishing → this release. Skipping → the baseline, which is the newest version that
+        # actually exists on Central.
+        #
+        # Only an EXPLICIT `false` skips: an empty `needed` (the guard job died before writing
+        # its output) lands here as "publish", matching the gate on `publish-gradle-plugin`. The
+        # two must agree — a CLI baked to resolve v(N-1) alongside a publish of vN is a silent
+        # downgrade for every consumer of this release.
+        env:
+          GUARD_NEEDED: ${{ steps.guard.outputs.needed }}
+        run: |
+          set -uo pipefail
+          if [ "${GUARD_NEEDED}" = "false" ] && [ -n "${BASELINE}" ]; then
+            line="${BASELINE#v}"
+          else
+            line="${TAG_NAME#v}"
+          fi
+          echo "maven_line=${line}" >> "$GITHUB_OUTPUT"
+          echo "CLI built by this release resolves the plugin at ${line}."
       - name: Report
         # Step outputs reach the shell through the environment, never through `${{ }}` inside the
         # script body — `reason` is free text and interpolating it would splice it into the shell.
         env:
           GUARD_NEEDED: ${{ steps.guard.outputs.needed }}
           GUARD_REASON: ${{ steps.guard.outputs.reason }}
+          MAVEN_LINE: ${{ steps.line.outputs.maven_line }}
         run: |
           {
-            echo "### Maven Central publish guard (reporting only)"
+            echo "### Maven Central publish guard"
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| Baseline (last published) | \`${BASELINE:-unresolved}\` |"
+            echo "| Baseline (last published below this release) | \`${BASELINE:-unresolved}\` |"
             echo "| This release | \`${TAG_NAME}\` |"
-            echo "| Publish needed | \`${GUARD_NEEDED}\` |"
+            echo "| Publish needed | \`${GUARD_NEEDED:-<no answer — publishing>}\` |"
             echo "| Reason | ${GUARD_REASON} |"
+            echo "| Maven line baked into the CLI | \`${MAVEN_LINE}\` |"
             echo
             if [ "${GUARD_NEEDED}" = "false" ]; then
-              echo "This release published 94 modules that no change could have altered."
+              echo "**Skipping the Central publish.** No published module differs from"
+              echo "\`${BASELINE}\`, so this release would have uploaded 94 modules that no change"
+              echo "could have altered. The CLI shipped by this release resolves the plugin at"
+              echo "\`${MAVEN_LINE}\`, which is on Central, so consumers are unaffected."
+            else
+              echo "Publishing to Central at \`${MAVEN_LINE}\`."
             fi
-            echo "Nothing was skipped — see \`docs/design/RELEASE_TRAINS.md\`."
+            echo
+            echo "See \`docs/design/RELEASE_TRAINS.md\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
@@ -195,7 +223,20 @@ jobs:
   publish-gradle-plugin:
     # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
     # remains buildable from source, but its per-OS packages are no longer core release artifacts.
-    needs: [build-applications]
+    needs: [build-applications, maven-publish-guard]
+    # …and on the guard actually having something to publish. `!= 'false'` rather than
+    # `== 'true'`, deliberately: the guard is `continue-on-error`, so a job that crashed leaves
+    # this output empty, and an empty answer must publish. Only the guard's explicit `false` —
+    # written after it has diffed every published module against the last published version —
+    # skips. `maven-publish-needed.sh` fails open on every uncertainty for the same reason:
+    # publishing when we did not need to costs quota, while not publishing when we did strips a
+    # version out from under consumers with no way back, since Central refuses a version twice.
+    #
+    # `!cancelled()` first, so this does not hang on how a `continue-on-error` job reports itself
+    # to `needs`. A guard that failed must still let the publish through — the whole gate is
+    # "skip only on an explicit `false`" — and spelling that out here means the behaviour does not
+    # rest on a subtlety of Actions' job-result semantics.
+    if: ${{ !cancelled() && needs.maven-publish-guard.outputs.needed != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -255,6 +296,16 @@ jobs:
   # silently fell off the shallow upload glob in the `release` job (zero assets
   # shipped on v0.10.2–v0.10.5).
   build-applications:
+    # The guard decides the version this CLI resolves the Gradle plugin at, and that is baked
+    # into the binary at build time — so the CLI cannot be built before the verdict exists.
+    needs: [maven-publish-guard]
+    # …but it must never be blocked by one. This job produces every GitHub Release asset, and
+    # `finalize-release` holds the release as a draft until they are all attached, so a guard
+    # crash that stopped this job from running would strand the release over a question that
+    # only affects Maven Central. An absent verdict leaves MAVEN_LINE_VERSION empty, which the
+    # build reads as "use the CLI's own version" — and `publish-gradle-plugin` publishes on the
+    # same absence, so the two still agree.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -267,6 +318,18 @@ jobs:
         with:
           cache-read-only: 'true'
       - name: Build CLI distribution
+        # MAVEN_LINE_VERSION is what `generateCliVersionResource` bakes into
+        # `cli-version.properties`, and therefore the coordinate this CLI's auto-inject,
+        # `init-script` and `doctor` hand to Gradle. It equals the release version on every
+        # release that publishes; on one that does not, it names the last version that IS on
+        # Central, so a skipped publish never sends a consumer at a coordinate that 404s.
+        #
+        # Empty means "not set" as far as the build script is concerned (it falls back to the
+        # CLI's own version), which is the right behaviour if the guard job died without an
+        # answer — that path also publishes, so the two agree. See cli/build.gradle.kts and the
+        # MAVEN_LINE_VERSION KDoc in cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt.
+        env:
+          MAVEN_LINE_VERSION: ${{ needs.maven-publish-guard.outputs.maven_line }}
         run: |
           ./gradlew \
             :cli:distZip :cli:distTar \
