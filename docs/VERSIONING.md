@@ -46,8 +46,10 @@ Ordinary semver, with the major effectively frozen:
 | a new major | **basically never** | only a from-scratch rewrite |
 
 This is release-please's **default** strategy — there is deliberately no `versioning` key in the
-config. The mechanism, the `!`-in-a-PR-title hazard, and how a deliberate major is forced are in
-[RELEASING.md → Versioning after 2.0.0](RELEASING.md#versioning-after-200).
+config. The `!` that would otherwise cut a major is rejected by CI (the `No breaking-change marker`
+job in [`pr-title.yml`](../.github/workflows/pr-title.yml)), so the only route to one is a
+deliberate `release-as`. Mechanism and rationale: [RELEASING.md → Versioning after
+2.0.0](RELEASING.md#versioning-after-200).
 
 **A major no longer signals a breaking change; it signals a rewrite.** Breaking changes ship in
 minors. What the major used to promise now has to be read out of §§ 3–5 and the changelog: § 3

@@ -124,11 +124,19 @@ for a breaking change. Breaking changes ship in minors and are announced in the 
 where a consumer has to read them — see [VERSIONING.md § 3](VERSIONING.md#3-what-counts-as-breaking)
 for what counts as breaking, and § 5 for the deprecation cycle that softens it.
 
-> **The one way to cut a major by accident is a `!` in a PR title.** `feat!:` / `fix!:` still maps
-> to a major under the default strategy, and the squash merge means the PR title *is* the commit
-> headline, so nothing downstream filters it. `RELEASING.md` used to call this "the single most
-> likely way to cut an unintended major" and that has not changed. **Don't write the `!`.** Write
-> `feat:` and describe the break in the body and the changelog.
+> **The `!` is rejected by CI.** `feat!:` / `fix!:` still maps to a major under the default
+> strategy, and the squash merge means the PR title *is* the commit headline, so nothing downstream
+> filters it — a title typed with a `!` would cut a major on merge. The `No breaking-change marker`
+> job in [`pr-title.yml`](../.github/workflows/pr-title.yml) fails the PR instead. There is no
+> bypass, because a deliberate major goes through `release-as` rather than a marker.
+>
+> **Shipping a breaking change? Put the break in the title**, not the body. The title is the
+> changelog entry — `feat: rename Foo to Bar (breaking)`. A `BREAKING CHANGE:` footer does not work
+> here for the reason given above: the body is discarded by the squash.
+>
+> The cost of the gate, stated plainly: the `!` is also what routes an entry into the changelog's
+> "⚠ BREAKING CHANGES" section, so rejecting it gives that section up. Breaks are announced in the
+> entry text instead.
 
 **A deliberate major** goes through `"release-as": "3.0.0"` in the config, which is the same route
 `1.0.0` used. It is sticky — not consumed by the release it forces, so left in place every
