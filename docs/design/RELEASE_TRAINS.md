@@ -77,7 +77,7 @@ predecessor.
 |---|---|---|
 | Batch the release cut (release train for the *CLI* line) | 44/week → ~7/week; ~6× on every metric | **Out of scope.** The cadence is wanted. |
 | Publish only when a published module changed | § 4 | **Implemented and gating** |
-| Split the Maven publish into several trains | § 5 | Proposed |
+| Split the Maven publish into several trains | § 5 | Proposed — **two** lines, not five |
 | Version each module independently | Largest, but contradicts `VERSIONING.md` § 3.1 | **Out of scope** |
 | Narrow the shared-input rule with dependency lock state | § 6 — ~97% of the remaining cost | **Implemented** |
 
@@ -107,14 +107,19 @@ shallow clone, broken module enumeration — answers `needed=true`, because Cent
 accept a version twice: an unnecessary publish costs quota, a wrongly-skipped one is
 unrepairable.
 
-**Replayed over the same 38 windows: 32 publishes, 6 skips.**
+**Replayed over the same 38 windows: 30 publishes, 8 skips.**
 
 | | Module-publications | vs today |
 |---|---|---|
 | Today | 3,572 | — |
-| With the guard | 3,008 | **−15.8%** |
+| With the guard | 2,820 | **−21.1%** |
 
-Six releases in a week that publish nothing is worth having, and it is the whole of what a
+This is better than the −15.8% first measured here, and the difference is the lockfile rule in
+§ 6: dropping `gradle/libs.versions.toml` as a blanket shared input turned two more windows into
+skips. Re-measure after changing the guard — the number moved by a third without anyone touching
+the split.
+
+Eight releases in a week that publish nothing is worth having, and it is the whole of what a
 single train can give. The rest needs the split.
 
 ## 5. The train split
@@ -125,21 +130,53 @@ changes, or when a shared build input does):
 
 | Train | Modules | Publishes | Module-publications |
 |---|---|---|---|
-| **core** — `gradle-plugin*`, `renderers/*`, `render-host`, `render-matrix`, `render-session/*`, `daemon/*` | 17 | 30 / 38 | 510 |
-| **data** — `data/*` | 58 | 19 / 38 | 1,102 |
-| **runtimes** — `runtimes/*` | 10 | 16 / 38 | 160 |
-| **api** — `api/*` | 4 | 18 / 38 | 72 |
-| **misc** — `bundle/*`, `common/*`, `screen/model` | 5 | 19 / 38 | 95 |
-| | **94** | | **1,939** |
+| **core** — `gradle-plugin*`, `renderers/*`, `render-host`, `render-matrix`, `render-session/*`, `daemon/*` | 17 | 27 / 38 | 459 |
+| **data** — `data/*` | 58 | 13 / 38 | 754 |
+| **runtimes** — `runtimes/*` | 10 | 7 / 38 | 70 |
+| **api** — `api/*` | 4 | 10 / 38 | 40 |
+| **misc** — `bundle/*`, `common/*`, `screen/model` | 5 | 10 / 38 | 50 |
+| | **94** | | **1,373** |
+
+(Every count here is lower than when this table was first written, for the § 4 reason: the guard
+now reads committed lock state rather than treating the version catalog as a blanket shared
+input.)
 
 | | Module-publications | vs today |
 |---|---|---|
 | Today | 3,572 | — |
-| Guard, one train | 3,008 | −15.8% |
-| Guard, five trains | **1,939** | **−45.7%** |
+| Guard, one train | 2,820 | −21.1% |
+| Guard, five trains | **1,373** | **−61.6%** |
 
-The shape of the win is `data/`: 58 modules — 62% of everything we publish — moving on half the
-releases. It is the single largest block of artifacts and close to the slowest-changing.
+The shape of the win is `data/`: 58 modules — 62% of everything we publish — moving on a third of
+the releases. It is the single largest block of artifacts and close to the slowest-changing.
+
+### How many trains is worth it
+
+Five was the first grouping costed, not a conclusion, and costing the alternatives says it is the
+wrong shape. Reproduce with
+[`scripts/release-train-costing.sh`](../../scripts/release-train-costing.sh), which mirrors the
+guard's own rules (its one-train column reproduces the guard's replay exactly, 30/38):
+
+| Grouping | Module-publications | vs today | Marginal |
+|---|---|---|---|
+| 1 train — no split | 2,820 | −21.1% | — |
+| **2 trains — `data` \| rest** | **1,762** | **−50.7%** | **−29.6 pp** |
+| 3 trains — `core` \| `data` \| rest | 1,460 | −59.1% | −8.5 pp |
+| 5 trains — the table above | 1,373 | −61.6% | −2.4 pp |
+
+**One extra version line buys 29.6 points; the next three buy 10.9 between them.** Separating
+`data/` alone captures nearly three quarters of everything the split has to offer, because the
+win was never really about cadence matching — it is about 58 of the 94 modules being both the
+largest block and one of the slowest-moving. Splitting `core` off as well is defensible at
+−8.5 pp. `runtimes`, `api` and `misc` are 19 modules between them, and separating all three buys
+2.4 points for three more version lines, three more changelogs, three more tag streams and three
+more chances to publish a POM naming a sibling version that does not exist.
+
+**So: two trains, and revisit at three.** Not five.
+
+Each train stays internally all-or-nothing, so no train ever publishes a POM naming a sibling
+version that does not exist. This is **not** per-module versioning (`VERSIONING.md` § 3.1,
+explicitly out of scope): it is two version lines instead of one, each still a lockstep set.
 
 > **These groups are drawn from directory paths, and the paths do not match the dependency graph.**
 > `render-session` spans layers 0, 2, 3 and 5; `daemon` spans 0, 1 and 4; `data` spans 0, 1 and 2.
@@ -147,10 +184,6 @@ releases. It is the single largest block of artifacts and close to the slowest-c
 > path-based grouping, which makes this table a costing of one candidate rather than a
 > recommendation. Restructuring the directories to match the layers would buy about three
 > percentage points — see § 6's propagation numbers — and is not worth a 94-module reshuffle.
-
-Each train stays internally all-or-nothing, so no train ever publishes a POM naming a sibling
-version that does not exist. This is **not** per-module versioning (`VERSIONING.md` § 3.1,
-explicitly out of scope): it is five version lines instead of one, each still a lockstep set.
 
 ### Why a train can be skipped safely
 
@@ -282,7 +315,7 @@ module, exactly one always changed as a unit.
    `if: needs.maven-publish-guard.outputs.needed != 'false'`, and `build-applications` bakes
    `MAVEN_LINE_VERSION` from the guard's `maven_line` output: the new version when it publishes,
    the last version that reached Central when it does not. Step 2 is what makes this safe; the
-   `-15.8%` arrives here.
+   `-21.1%` arrives here.
 
    `!= 'false'` rather than `== 'true'` because the guard job is `continue-on-error`: a job that
    dies without writing an output must publish, not skip. Failing the job instead would strand
@@ -327,10 +360,21 @@ module, exactly one always changed as a unit.
    `required-release-assets.sh` needed **no** change, contrary to the note this section used to
    carry: it lists only CLI assets, which a skipped publish still produces, so `finalize-release`
    and the draft sweeper are unaffected.
-4. **Split the trains** — five version lines, each with its own guard and manifest entry, and
-   renderer POMs naming the library trains' own versions. The remaining `-30%`.
+4. **Split the trains** — a second version line for `data/`, with its own guard verdict and
+   manifest entry, and core POMs naming the data train's version rather than their own. Takes the
+   saving from `-21.1%` to `-50.7%`; § 5 costs why it is two lines and not five.
 
 Step 4 still needs the readiness marker and [`RELEASING.md`](../RELEASING.md) revisited in the
-same change: with five version lines there is no longer one Maven line for a release to name, and
-the marker has to carry a version per train rather than the single `pluginVersion` it gained in
-step 3.
+same change: with two version lines there is no longer one Maven line for a release to name, so
+the marker's single `pluginVersion` (gained in step 3) becomes a version per train. The CLI needs
+only the **core** line — that is the coordinate it injects — so `MAVEN_LINE_VERSION` keeps its
+meaning and the data line reaches consumers as a POM transitive of core, which is how it already
+reaches them today.
+
+The open question step 4 has to answer first, and the reason it is not a mechanical follow-on:
+**where the second version number lives and who bumps it.** Today one release-please invocation
+owns one version. Two lines means either a second release-please component with its own tag
+stream and changelog, or a data-train version derived from the release version and frozen when
+the guard says the train did not change. The second is much less machinery and keeps one tag per
+release; it costs a version number that is not monotonic per artifact, which `VERSIONING.md`
+would have to say out loud.
