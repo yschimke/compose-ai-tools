@@ -905,6 +905,36 @@ gate over the corpora; retire the cleaner for migrated catalogs.
 > there refuses exactly as one at the root does. A field claiming it would be a second
 > fact taken on trust, and the check above exists to have one fewer.
 >
+> **A lambda that returns a value, and only that.** The vocabulary refused lambdas outright, and
+> said so in two places: a determinate `LinearProgressIndicator` takes `progress: () -> Float`, and
+> `rememberCarouselState { itemCount }` is how a carousel gets its state. Both refusals gave the
+> same reason — no `ScreenValue` is a lambda — and both were pointing at one narrow shape rather
+> than at an expression language: **a lambda whose whole body is a value the document already
+> holds**. `ScreenValue.Lambda` is that and nothing more; there are no parameters to bind and no
+> statements to run, which is the argument `ScreenAction` makes for being a closed set of
+> assignments, unchanged.
+>
+> What makes it a claim worth checking is `TargetParameter.lambdaReturnTypeFqn`. A function type's
+> classifier is `kotlin.Function0`, so every zero-argument lambda in a library shares one qualified
+> name and a body checked against that alone is checked against almost nothing — `progress = { "" }`
+> would type-check and fail to compile. The return type is read from the metadata type's last
+> argument, never parsed out of the rendered `() -> Float`, and the body is then checked by the
+> ordinary `argument` path so it inherits the `Int` range check, the `Float` narrowing and the
+> refusal of `NaN` rather than restating them.
+>
+> The same classifier decides whether the lambda fits at all. `Function0` is the only function type
+> with no value parameters *and* no receiver — Kotlin records an extension function type as a
+> `Function1` whose first argument is the receiver — so `(Int) -> Float` and `Float.() -> Float` are
+> both refused, and `{ 0.4f }` never lands on a lambda that was handed something it ignores.
+> `acceptsZeroArgLambda` answers a neighbouring question and is deliberately not reused: it requires
+> `-> Unit`, because it exists to decide whether an *event handler* can be written, and a
+> value-returning lambda is exactly what it is built to reject.
+>
+> It closed an adjacent gap on the way. `placeholderFor` could only write `{}`, for a `-> Unit`
+> slot, so a component with a **required** value-returning lambda had no call site at all and
+> refused before any document reached it. It now writes the same thing a document would — `{ 0f }`
+> for a `() -> Float` — from the one literal table, and a return type with no literal still refuses.
+>
 > **Six ways the compile claim was wider than the record could justify.** Persisting
 > the call site drew a review pass over the guarantee itself, and every one of these
 > was real. They share a root cause worth naming: `callSite` was deciding from a

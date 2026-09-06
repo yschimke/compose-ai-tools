@@ -102,4 +102,20 @@ data class TargetParameter(
    * generator does with it is `ScreenNode.slotItems`.
    */
   val scopeDslReceiver: String? = null,
+  /**
+   * For a **function-typed** parameter, the fully-qualified classifier its lambda returns —
+   * `kotlin.Float` for `progress: () -> Float`. Null for everything that is not a function type.
+   *
+   * [typeFqn] cannot answer this. A function type's classifier is `kotlin.Function0`, so every
+   * zero-argument lambda in the library shares one qualified name and a value checked against it
+   * alone is checked against almost nothing: `progress = { "" }` type-checks as a `Function0` and
+   * does not compile. The return type is the only part a generator can hold a
+   * [ScreenValue.Lambda]'s body to.
+   *
+   * Read from the metadata type's last argument rather than parsed out of [type]'s rendered `() ->
+   * Float` spelling — the same rule [nullable] and [scopeDslReceiver] exist for, and it matters
+   * more here than usual, because a rendered return type is exactly where a `com.example.Float`
+   * would be indistinguishable from `kotlin.Float`.
+   */
+  val lambdaReturnTypeFqn: String? = null,
 )

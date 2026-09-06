@@ -1617,4 +1617,115 @@ class ScreenValueVocabularyTest {
     const val ROW_SCOPE = "androidx.compose.foundation.layout.RowScope"
   }
 
+  private val progressParameter =
+    TargetParameter(
+      "progress",
+      "() -> Float",
+      typeFqn = "kotlin.Function0",
+      lambdaReturnTypeFqn = "kotlin.Float",
+    )
+
+  /** The determinate indicator, which was refused outright while no `ScreenValue` was a lambda. */
+  private val indicator =
+    component(
+      "LinearProgressIndicator",
+      "androidx.compose.material3.LinearProgressIndicator",
+      listOf(progressParameter, modifierParameter),
+      componentIds = listOf("m3/progress-indicator"),
+    )
+
+  private fun indicatorNode(value: ScreenValue) =
+    ScreenNode(componentId = indicator.canonicalId, arguments = mapOf("progress" to value))
+
+  @Test
+  fun `a lambda returning a constant is written as one, and is the whole of what it can do`() {
+    val result =
+      emitted(indicatorNode(ScreenValue.Lambda(ScreenValue.Fractional32(0.4f))), catalog(indicator))
+
+    assertThat(result.source).contains("progress = { 0.4f }")
+  }
+
+  @Test
+  fun `the body is checked against what the lambda returns, not against Function0`() {
+    // The check that makes the kind worth having. Every zero-argument function type in the library
+    // is a `kotlin.Function0`, so a value held only to the parameter's own `typeFqn` is held to
+    // almost nothing — and `progress = { "" }` compiles in this generator's head and nowhere else.
+    assertThat(refusal(indicatorNode(ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(indicator)))
+      .containsExactly("`LinearProgressIndicator`.`progress` is kotlin.Float, which Text is not")
+  }
+
+  @Test
+  fun `a lambda body gets the same narrowing rules an argument does`() {
+    // Reused rather than restated: a `Double` past `Float`'s range becomes `Infinity`, which is a
+    // number the design never contained. Restating the rule inside the lambda path is how two
+    // spellings of it start disagreeing.
+    assertThat(
+        refusal(
+          indicatorNode(ScreenValue.Lambda(ScreenValue.Fractional(1.0e40))),
+          catalog(indicator),
+        )
+      )
+      .containsExactly("`LinearProgressIndicator`.`progress` is kotlin.Float, which Fractional is not")
+  }
+
+  @Test
+  fun `a lambda is refused where the parameter takes an argument`() {
+    // `{ 0.4f }` satisfies `(Int) -> Float` only by ignoring the argument it was handed — the
+    // accident `acceptsZeroArgLambda` exists to catch, one value kind over.
+    val measured =
+      component(
+        "Measured",
+        "androidx.compose.material3.Measured",
+        listOf(
+          TargetParameter(
+            "measure",
+            "(Int) -> Float",
+            typeFqn = "kotlin.Function1",
+            lambdaReturnTypeFqn = "kotlin.Float",
+          )
+        ),
+      )
+
+    assertThat(
+        refusal(
+          ScreenNode(
+            componentId = measured.canonicalId,
+            arguments = mapOf("measure" to ScreenValue.Lambda(ScreenValue.Fractional32(1f))),
+          ),
+          catalog(measured),
+        )
+      )
+      .containsExactly(
+        "`Measured`.`measure` is `(Int) -> Float`, which a `{ … }` returning a value does not satisfy"
+      )
+  }
+
+  @Test
+  fun `a lambda is refused on a parameter that is not a function type at all`() {
+    assertThat(refusal(textNode("text" to ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(text)))
+      .containsExactly(
+        "`Text`.`text` is `String`, which a `{ … }` returning a value does not satisfy"
+      )
+  }
+
+  @Test
+  fun `a nested lambda is what makes a remembered factory writable`() {
+    // `rememberCarouselState { 5 }` — the other half of what this kind was added for. Nested there
+    // is no declared type, so the body takes the one fixed spelling its kind has, which is why the
+    // count comes out an `Int`.
+    val result =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Construct(
+              callableFqn = "androidx.compose.foundation.rememberCarouselState",
+              named = mapOf("itemCount" to ScreenValue.Lambda(ScreenValue.Whole(5))),
+              typeFqn = "androidx.compose.ui.Modifier",
+            )
+        ),
+        catalog(text),
+      )
+
+    assertThat(result.source).contains("rememberCarouselState(itemCount = { 5 })")
+  }
 }

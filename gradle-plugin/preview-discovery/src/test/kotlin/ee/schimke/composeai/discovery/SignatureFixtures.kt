@@ -32,6 +32,14 @@ fun scopeDslComponent(content: TestListScope.() -> Unit) {}
 @Suppress("unused", "UNUSED_PARAMETER")
 fun callbackComponent(onValueChange: (String) -> Unit) {}
 
+/** The shape a determinate progress indicator has: a lambda returning a value. */
+@Suppress("unused", "UNUSED_PARAMETER")
+fun valueReturningLambdaComponent(progress: () -> Float) {}
+
+/** The same return type behind an argument, which a bare `{ … }` must not be accepted for. */
+@Suppress("unused", "UNUSED_PARAMETER")
+fun argumentTakingLambdaComponent(measure: (Int) -> Float) {}
+
 class TestListScope
 
 @Suppress("unused") fun noParams() {}
