@@ -135,6 +135,22 @@ object ScreenGenerator {
      * a rendering fault to the person who pasted it.
      */
     val showBackground: Boolean = true,
+    /**
+     * Also emit a `@PreviewScreenSizes` wrapper, so the screen is drawn at every reference size
+     * rather than only at the one it was designed on.
+     *
+     * A screen is the one artifact whose whole job is to survive a size it was not drawn at, and a
+     * design carries exactly one frame — so the preview that reproduces that frame answers "does it
+     * look right?" and cannot answer "does it still look right?". The platform ships the second
+     * question's answer as a multipreview, so this emits *that* rather than a hand-written list of
+     * devices: `@PreviewScreenSizes` is maintained with the reference devices, and a list written
+     * here would be a copy of it that goes stale.
+     *
+     * Off by default for the same reason [Preview] itself is opt-in — it is a second tooling
+     * annotation, from the same artifact — and because a caller wanting one picture should not be
+     * handed five.
+     */
+    val screenSizes: Boolean = false,
   )
 
   private const val INDENT = "    "
@@ -231,7 +247,11 @@ object ScreenGenerator {
             // in for the component somebody placed.
             (preview == null ||
               (it.symbol.name != PREVIEW_SIMPLE_NAME &&
-                it.symbol.name != previewFunctionName(document.name)))
+                it.symbol.name != previewFunctionName(document.name))) &&
+            // The fan-out spends two more names on the same terms, and only when it is emitted.
+            (preview?.screenSizes != true ||
+              (it.symbol.name != PREVIEW_SCREEN_SIZES_SIMPLE_NAME &&
+                it.symbol.name != screenSizesPreviewFunctionName(document.name)))
         }
         .map { it.canonicalId }
         .toSet()
@@ -384,7 +404,10 @@ object ScreenGenerator {
       (context.imports +
           context.extensionImports +
           "androidx.compose.runtime.Composable" +
-          listOfNotNull(PREVIEW_ANNOTATION.takeIf { preview != null }))
+          listOfNotNull(
+            PREVIEW_ANNOTATION.takeIf { preview != null },
+            PREVIEW_SCREEN_SIZES_ANNOTATION.takeIf { preview?.screenSizes == true },
+          ))
         .distinct()
         .sorted()
     // Kotlin calls two imports of one simple name a conflicting import and compiles neither. The
@@ -445,6 +468,10 @@ object ScreenGenerator {
       if (preview != null) {
         appendLine()
         append(previewFunction(document.name, preview))
+        if (preview.screenSizes) {
+          appendLine()
+          append(screenSizesPreviewFunction(document.name))
+        }
       }
     }
     return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
@@ -1474,8 +1501,23 @@ object ScreenGenerator {
 
   private const val PREVIEW_SIMPLE_NAME = "Preview"
 
+  /**
+   * The platform's own reference-size multipreview, from the same tooling artifact as `@Preview`.
+   *
+   * Named rather than expanded into a list of `@Preview(device = …)` lines: the set of reference
+   * devices is androidx's to change, and a copy of it here would be the copy that disagrees with
+   * the IDE.
+   */
+  private const val PREVIEW_SCREEN_SIZES_ANNOTATION =
+    "androidx.compose.ui.tooling.preview.PreviewScreenSizes"
+
+  private const val PREVIEW_SCREEN_SIZES_SIMPLE_NAME = "PreviewScreenSizes"
+
   /** The wrapper's name, needed before it is emitted so a component cannot be shadowed by it. */
   private fun previewFunctionName(screenName: String) = "$screenName$PREVIEW_SIMPLE_NAME"
+
+  private fun screenSizesPreviewFunctionName(screenName: String) =
+    "$screenName$PREVIEW_SCREEN_SIZES_SIMPLE_NAME$PREVIEW_SIMPLE_NAME"
 
   /**
    * A language tag this generator is willing to put inside a string literal.
@@ -1539,5 +1581,23 @@ object ScreenGenerator {
       appendLine("$INDENT$screenName()")
       appendLine("}")
     }
+  }
+
+  /**
+   * The `@PreviewScreenSizes` wrapper: the same screen at every reference size.
+   *
+   * It carries none of the design's environment, and that is the point of it being a second
+   * function rather than another annotation on the first. The multipreview supplies each device's
+   * own width, height and density; a `widthDp` beside it would override the very thing being
+   * varied, and a `uiMode` or `fontScale` would quietly apply to all five. The design's own frame,
+   * theme and type scale stay on [previewFunction], where they describe one picture the author
+   * actually approved.
+   */
+  private fun screenSizesPreviewFunction(screenName: String): String = buildString {
+    appendLine("@$PREVIEW_SCREEN_SIZES_SIMPLE_NAME")
+    appendLine("@Composable")
+    appendLine("private fun ${screenSizesPreviewFunctionName(screenName)}() {")
+    appendLine("$INDENT$screenName()")
+    appendLine("}")
   }
 }
