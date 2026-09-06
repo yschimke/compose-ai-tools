@@ -158,6 +158,16 @@ number that falls out of a PR title.
 
 ## Fallback paths
 
+> **If `Create Release Tag` fails with `Resource not accessible by integration (HTTP 403)`**, the
+> default `GITHUB_TOKEN` is being refused ref creation. That is not a bug in the workflow — the job
+> requests `contents: write`, the repository's only ruleset targets the default *branch* with no tag
+> rules, and `release.yml` writes contents with the same token. Set a **`RELEASE_TAG_TOKEN`** secret
+> (fine-grained PAT or GitHub App installation token, `contents: write` on this repository) and the
+> workflow uses it automatically. Without one, create the tag by hand
+> (`git tag vX.Y.Z <sha> && git push origin vX.Y.Z`) and then dispatch `release.yml` **from `main`**
+> with that tag — dispatching from `main` runs main's workflow while building the tag's contents.
+> This happened on v2.1.0.
+
 **First, check whether the sweeper already has it.** A release left as a draft is picked up hourly by [`release-draft-sweeper.yml`](../.github/workflows/release-draft-sweeper.yml), which tags, rebuilds or publishes it as needed — Actions → **Release Draft Sweeper** → **Run workflow** runs it on demand, with a `dry_run` option that reports what it would do and touches nothing. It deliberately declines two things: publishing a release whose required assets are missing or whose plugin is not on Maven Central yet, and tagging a draft whose target is a branch rather than a commit (use **Create Release Tag** at the release PR's merge commit for that). Everything below is the manual version of the same levers.
 
 If the automatic chain ever leaves a release half-published (e.g. Maven Central rejected an upload, CLI build failed), you can re-run the build/publish against an existing tag without touching release-please:
