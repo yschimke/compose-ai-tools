@@ -1040,6 +1040,14 @@ jobs:
       # never exists and the plugin coordinate consumers resolve 404s. Every fail-open path is
       # pinned here, along with the module enumeration: if that ever stops matching, the guard
       # narrows to the shared build inputs and starts answering `false` for real changes.
+      # Workflow YAML that PyYAML accepts and GitHub Actions rejects. `safe_load` silently keeps
+      # the last of a duplicated key; Actions refuses the file — and the refusal surfaces as a run
+      # with ZERO jobs and no logs, on the calling workflow, which is close to undiagnosable from
+      # the Actions UI. A duplicate `env:` in release.yml failed the v2.1.0 release exactly that
+      # way, and the silent-discard behaviour had also dropped the Maven Central credentials from
+      # the step.
+      - name: Check workflow YAML
+        run: ./.github/scripts/check-workflow-yaml.sh
       - name: Run Maven publish guard tests
         run: ./.github/scripts/test-maven-publish-needed.sh
       # The baseline resolver the guard and the readiness gate share. They run in two SEPARATE

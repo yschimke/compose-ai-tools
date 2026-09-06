@@ -307,7 +307,6 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-        env:
           CORE_NEEDED: ${{ needs.maven-publish-guard.outputs.core_needed }}
           DATA_NEEDED: ${{ needs.maven-publish-guard.outputs.data_needed }}
         run: |
