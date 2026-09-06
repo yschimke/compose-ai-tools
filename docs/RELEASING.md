@@ -12,11 +12,11 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
 [release-please](https://github.com/googleapis/release-please) watches `main` for conventional-commit history and keeps a release PR up to date. Merging the PR is the only manual step.
 
-1. **Land conventional-commit PRs to `main`.** `fix:` and `feat:` trigger a release, and a `!` in the PR title (`feat!:`) cuts a major. `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. To force a bump with no releasable commit, set `"release-as": "0.3.4"` in `release-please-config.json`, let the release land, then revert that key in a follow-up PR — that is the **only** route.
+1. **Land conventional-commit PRs to `main`.** `fix:` and `feat:` trigger a release; `chore:`, `docs:`, `ci:`, `refactor:`, and `test:` do not. **Which** of those you write no longer changes the version — every release is a minor bump (see [Versioning after 2.0.0](#versioning-after-200)) — but it still decides whether a release happens at all, and which changelog section the entry lands in. To force a bump with no releasable commit, set `"release-as": "0.3.4"` in `release-please-config.json`, let the release land, then revert that key in a follow-up PR — that is the **only** route.
 
    > **Dispatching `Release PR` does not force a bump.** [`release-please.yml`](../.github/workflows/release-please.yml) declares `workflow_dispatch` with no inputs and runs the same release-please invocation, against the same config, that a push to `main` runs. It re-computes the answer; it cannot change it. Dispatch it to re-run a calculation that failed or raced — not to manufacture a release out of a history that warrants none, which just produces the same no-op however many times it is pressed.
 
-   > **A `BREAKING CHANGE:` footer does not reach release-please either**, for the reason below: it is a *body* footer, and the body is discarded. Only the `!` in the PR title survives the squash, so a breaking change has to be spelled `feat!:` / `fix!:` in the title. Writing `BREAKING CHANGE:` in the body and a plain `feat:` in the title yields a **minor** bump.
+   > **A `BREAKING CHANGE:` footer does not reach release-please**, for the reason below: it is a *body* footer, and the body is discarded by the squash. Only the `!` in the PR title survives it. Since 2.0.0 neither one changes the number — every release is a minor — but the `!` is still worth writing: it is what puts the change in the changelog's breaking section, which is now the only place a consumer sees it.
 
    > **A `Release-As:` footer does not work here.** release-please parses it from a commit's body, and this repo squash-merges with `squash_merge_commit_message=BLANK` — the squashed commit on `main` keeps the **PR title only**, so every body a human writes is discarded and the footer never arrives. Putting it in a branch commit, in the PR description, or in an empty commit all fail for the same reason (an empty commit additionally contributes no commit at all to a squash). `release-as` is the one route that survives.
    >
@@ -103,21 +103,84 @@ To move the pin by hand (or to repair a missed release), run it locally:
 
 `--check` runs in `ci` on every PR. It fails on an abbreviated, upper-case or missing SHA, a malformed tag, and a duplicated key — all of which otherwise fail *at runtime in a consumer's repo*, after that run has already paid for a checkout and a JDK. It is covered by `.github/scripts/test-refresh-driver-pin.sh`, also run by `ci`, which additionally pins the exact `sed` expression the workflow uses to read the file, so the reader and the validator cannot drift apart. Change either only with those passing.
 
-## Versioning after 1.0.0
+## Versioning after 2.0.0
 
-`v1.0.0` was cut by pinning `"release-as": "1.0.0"` in [`release-please-config.json`](../release-please-config.json). **That override has been removed, and it had to be** — `release-as` is sticky, not consumed by the release it forces, so left in place every subsequent release PR proposes 1.0.0 again, the tag already exists, and the release wedges. This repo had been bitten by it once before, by an override pinning 0.7.0 that outlived its release. If you ever force a version this way again, delete the key in the first PR after the release publishes.
-
-Removed alongside it: `bump-minor-pre-major` and `bump-patch-for-minor-pre-major`, which only ever applied while the major version was `0`.
-
-**Those two keys are what made `feat:` land as a *patch* bump for the whole `0.x` line**, which is how a repo with this much history spent so long on `0.19.x`. With them gone the usual semver mapping applies:
+**Every release is a minor bump.** `2.4.0 → 2.5.0`, whatever the commits said. There are no
+patch releases, and no further majors.
 
 | Commit type | Bump |
 |---|---|
-| `fix:` | patch |
+| `fix:` | minor |
 | `feat:` | minor |
-| `feat!:` (the `!`, in the **PR title**) | **major** |
+| `feat!:` / `fix!:` (the `!`, in the **PR title**) | minor |
+| `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release |
 
-So a PR titled `feat!:` now cuts **2.0.0**, not 1.0.1. Watch PR titles accordingly — this is the single most likely way to cut an unintended major.
+This is `"versioning": "always-bump-minor"` in
+[`release-please-config.json`](../release-please-config.json). The strategy ignores the version
+and the commits it is handed and returns a minor update unconditionally.
+
+> **Staged: not live yet.** The `always-bump-minor` key is *not* in the config as of this commit.
+> release-please reads its config from `main` at run time, so a single PR that both added the key
+> and carried a `!` would have applied its own new setting to itself and cut a minor instead of
+> 2.0.0. The key lands in the follow-up PR, once 2.0.0 has published. Until then the table above
+> describes the intended policy and the old mapping (`fix:` → patch, `feat:` → minor, `feat!:` →
+> major) is what actually runs. This note goes away with that PR.
+
+
+**Why.** At ~44 releases a week the distinction between a patch and a minor had stopped carrying
+information: a release is whatever landed since the last one, usually a mix, and the number was
+being read as a bump size when it only ever meant "later". Cutting a major on a `!` was worse
+than uninformative — it was a hazard, and `RELEASING.md` used to say so in as many words
+("the single most likely way to cut an unintended major"). One monotonic counter that nobody has
+to reason about beats a three-way choice that a PR title could get wrong.
+
+**What still decides whether a release happens at all.** The versioning strategy sets the *size*
+of a bump; it does not decide that there is one. That is a separate guard in release-please
+(`changelogEmpty` in `strategies/base.ts`): a window whose commits produce empty release notes
+proposes no release PR. `chore:`, `ci:`, `docs:`, `refactor:` and `test:` are hidden from the
+changelog by default, so a window containing only those still cuts nothing — exactly as before.
+**This is the load-bearing detail.** Had the release decision run off the versioning strategy,
+`always-bump-minor` would have cut a release for every dependency bump and every CI tweak, which
+at this repository's volume would have been a serious regression rather than a simplification.
+
+**Forcing a specific version.** `"release-as": "X.Y.Z"` in the config remains the only route, and
+it is still sticky — it is not consumed by the release it forces, so left in place every
+subsequent release PR re-proposes it, the tag already exists, and the release wedges. This repo
+has been bitten twice: an override pinning 0.7.0 that outlived its release, and `1.0.0`. Delete
+the key in the first PR after the forced release publishes.
+
+### How 2.0.0 was cut, and why it is the last major
+
+`v2.0.0` came from a PR titled `feat!:`, under the *previous* configuration, where the `!` still
+mapped to a major. That ordering was forced: release-please reads its config from `main` at run
+time, so a PR that both added `always-bump-minor` and carried a `!` would have had its own new
+setting applied to it and cut a minor. The policy change and the major it announces could not be
+the same commit.
+
+Under `always-bump-minor` the `!` no longer reaches the version number at all, so 2.0.0 is the
+last major this repository cuts by rule. A future one would have to be forced with `release-as`,
+deliberately, as a decision rather than a side effect of a PR title.
+
+### What this costs, stated plainly
+
+A breaking change is no longer legible from the version number. Two consequences follow, and
+neither is fixed by this change:
+
+- **`versionsIncompatible`** (`cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt`) compares
+  major versions to decide whether a pin/CLI skew is a `warning` or a `note`, on the documented
+  grounds that "a major release changes the render/daemon wire format". It backs the skew
+  diagnostics in `warnOnCliSkew` and two in `DoctorCommand`. Once no major is ever cut, that
+  predicate is permanently false across 2.x and every skew reports as a `note`. It stays correct
+  across the 1.x → 2.x boundary, which is why it is not being changed here, but it stops being a
+  signal after that.
+- **The changelog is now the only place a break is announced**, which is why `feat!:` is still
+  worth writing even though it moves no number.
+
+The honest framing: this repository was already not using majors to communicate breakage — the
+`0.x` line ran to `0.19.x` under `bump-minor-pre-major`, and `1.0.0` was forced with `release-as`
+rather than earned by a `!`. See [VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced)
+for what is and is not actually enforced. This change stops the version number implying a promise
+the machinery never kept.
 
 ## Fallback paths
 

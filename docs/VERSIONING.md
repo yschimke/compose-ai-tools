@@ -34,15 +34,39 @@ the `install` / `apply` composite actions alike, so a project can't render again
 three different releases depending on which door it was entered through. Full
 reference: [VERSION_PIN.md](VERSION_PIN.md). Set it with `compose-preview pin --cli`.
 
-## 2. Semver rules for the published artifacts
+## 2. Version bumps for the published artifacts
 
-For plugin, CLI, extension, MCP, annotations:
+**Every release is a minor bump.** `release-please` runs
+`"versioning": "always-bump-minor"`, so the version goes `2.4.0 → 2.5.0` whatever the commits
+said: a `fix:`, a `feat:` and a `feat!:` are indistinguishable to it. There are no patch
+releases and no further majors — 2.0.0 is the last one this repository cuts by rule.
 
-- **Major** — breaking change to any public contract on the artifact. See § 3.
-- **Minor** — additive change: new feature, new flag, new DSL property, new annotation, new CLI subcommand, new MCP tool. New optional fields on existing types.
-- **Patch** — bug fix with no contract change. No new public surface.
+| Commit type | Bump |
+|---|---|
+| `fix:` / `feat:` / `feat!:` | minor |
+| `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release |
 
-Through the `0.x` line, minor bumps could carry breaking changes with a clear note in CHANGELOG. From `1.0.0` they may not — see § 10.
+The mechanism, the reason, and the guard that keeps `chore:`-only windows from cutting a
+release are in [RELEASING.md → Versioning after 2.0.0](RELEASING.md#versioning-after-200).
+
+> **Staged: not live yet.** The `always-bump-minor` key is *not* in
+> `release-please-config.json` as of this commit, and it deliberately cannot be — release-please
+> reads its config from `main` at run time, so the PR that cuts 2.0.0 with a `!` and the PR that
+> stops `!` mapping to a major have to be two commits, in that order. Until the follow-up lands,
+> the machinery still does `fix:` → patch, `feat:` → minor, `feat!:` → major. This paragraph goes
+> away with that PR. Recorded here rather than left implicit because § 10 exists to stop exactly
+> this document describing machinery that is not running.
+
+
+**So the version number no longer tells a consumer what kind of change they are taking.** It
+orders releases and nothing else. What the number used to promise now has to be read out of §§ 3–5
+and the changelog: § 3 still defines what counts as breaking, § 5 still governs the deprecation
+cycle, and a `!` in a PR title still routes the entry to the changelog's breaking section. Writing
+the `!` matters more now, not less — it is the only place the break is announced.
+
+This is a narrowing of what the number claims, not of the underlying policy. § 10 already recorded
+that most of the enforcement these documents describe is not implemented; pinning the bump to
+minor stops the version implying a guarantee that was never mechanically kept.
 
 ## 3. What counts as breaking
 
