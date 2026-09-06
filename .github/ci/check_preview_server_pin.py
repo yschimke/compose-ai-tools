@@ -5,7 +5,11 @@
 yschimke/compose-preview-server, and since #5183 the CLI fetches it itself on first use rather than
 expecting the installer to: `ServerDistributionProvision` downloads
 `compose-preview-server-<pin>.tar.gz` from the Release tagged `v<pin>`, where `<pin>` is the
-`composeai-preview-serve` entry in `gradle/libs.versions.toml`, baked into the jar at build time.
+`composeai-preview-server-dist` entry in `gradle/libs.versions.toml`, baked into the jar at build
+time. That pin and not `composeai-preview-serve`: since the two were split, the latter names the
+published jar `:cli` compiles its wire-drift tests against, while this one names the RELEASE an
+installed CLI downloads. Only the latter needs a GitHub Release with tarballs attached, which is
+the only thing this gate can check.
 
 So that pin is now load-bearing for a command, not just for a compile. A pin naming a version whose
 Release does not exist — or exists without the distribution attached — is a `serve` that cannot
@@ -51,7 +55,9 @@ CATALOG = Path("gradle/libs.versions.toml")
 SERVER_REPO = "yschimke/compose-preview-server"
 VERSION_KT = Path("cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt")
 
-PIN_RE = re.compile(r'^\s*composeai-preview-serve\s*=\s*"([^"]+)"', re.MULTILINE)
+# Anchored on the full key: `composeai-preview-serve` is a *different* pin that sits a few lines
+# above this one in the catalog, and a prefix match would silently gate the wrong version.
+PIN_RE = re.compile(r'^\s*composeai-preview-server-dist\s*=\s*"([^"]+)"', re.MULTILINE)
 REPO_CONST_RE = re.compile(r'PREVIEW_SERVER_REPO\s*[:=][^"]*"([^"]+)"')
 
 # Deliberately loose: the pin must look like a release tag a consumer can resolve, not conform to
@@ -64,7 +70,7 @@ RELEASE_API = "https://api.github.com/repos/{repo}/releases/tags/v{version}"
 
 
 def pin_from(text: str) -> str | None:
-    """The `composeai-preview-serve` version declared in a `libs.versions.toml` body, or None."""
+    """The `composeai-preview-server-dist` version in a `libs.versions.toml` body, or None."""
     m = PIN_RE.search(text)
     return m.group(1) if m else None
 
@@ -72,7 +78,7 @@ def pin_from(text: str) -> str | None:
 def current_pin() -> str:
     pin = pin_from((REPO / CATALOG).read_text())
     if pin is None:
-        raise SystemExit(f'could not find `composeai-preview-serve = "…"` in {CATALOG}')
+        raise SystemExit(f'could not find `composeai-preview-server-dist = "…"` in {CATALOG}')
     return pin
 
 
@@ -127,7 +133,7 @@ def main() -> int:
     ap.add_argument(
         "--print-pin",
         action="store_true",
-        help="print the current compose-preview-serve pin and exit",
+        help="print the current compose-preview-server distribution pin and exit",
     )
     ap.add_argument(
         "--print-repo",
@@ -157,7 +163,7 @@ def main() -> int:
 
     if not VERSION_RE.match(pin):
         print(
-            f'::error::`composeai-preview-serve = "{pin}"` in {CATALOG} does not look like a '
+            f'::error::`composeai-preview-server-dist = "{pin}"` in {CATALOG} does not look like a '
             f"release version.\n"
             f"  `compose-preview serve` resolves the server distribution by this value alone, so "
             f"anything that is not a published tag leaves the command unable to start.",
@@ -198,8 +204,8 @@ def main() -> int:
 
     if published is None:
         print(
-            f'::error::`composeai-preview-serve = "{pin}"` in {CATALOG} names a release that does '
-            f"not exist: {declared} has no tag v{pin}.\n"
+            f'::error::`composeai-preview-server-dist = "{pin}"` in {CATALOG} names a release '
+            f"that does not exist: {declared} has no tag v{pin}.\n"
             f"  The CLI fetches the server from that tag on first `serve`, so this pin serves "
             f"nobody.\n"
             f"  Fix: pin a version {declared} has actually released, or cut that release first.",

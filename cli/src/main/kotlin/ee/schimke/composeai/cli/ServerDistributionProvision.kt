@@ -38,12 +38,15 @@ import kotlinx.coroutines.runBlocking
  *
  * # Which server
  *
- * [SERVE_VERSION] — the `composeai-preview-serve` pin in `gradle/libs.versions.toml`, baked into
- * the jar at build time. A **point pin, not "latest"**: the two repositories release on separate
- * cadences, so resolving `latest` at run time would let a server the CLI has never been built
- * against arrive under it without a pull request, which is the skew #5183 names. Moving the pin is
- * a reviewed change, and `.github/ci/check_preview_server_pin.py` fails a PR whose pin names a
- * release with no distribution attached — a pin that 404s is a `serve` that cannot start.
+ * [SERVE_VERSION] — the `composeai-preview-server-dist` pin in `gradle/libs.versions.toml`, baked
+ * into the jar at build time. That pin, not `composeai-preview-serve`: the latter names the
+ * published jar the wire-drift tests compile against, and compose-preview-server can release the
+ * distributions without republishing the library, so the two move independently. A **point pin, not
+ * "latest"**: the two repositories release on separate cadences, so resolving `latest` at run time
+ * would let a server the CLI has never been built against arrive under it without a pull request,
+ * which is the skew #5183 names. Moving the pin is a reviewed change, and
+ * `.github/ci/check_preview_server_pin.py` fails a PR whose pin names a release with no
+ * distribution attached — a pin that 404s is a `serve` that cannot start.
  *
  * `COMPOSE_PREVIEW_SERVER_VERSION` overrides it, for testing a release the pin has not moved to
  * yet. Pointing at a server you already have is [ServerBinaryDiscovery]'s job, not this one.

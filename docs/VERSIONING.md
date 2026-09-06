@@ -203,22 +203,45 @@ on its own cadence — it went to `2.0.0` when it left, while this repository wa
 **the two version lines mean nothing to each other**. A CLI version does not name a server version
 and never will.
 
-What names one is the `composeai-preview-serve` pin in
-[`gradle/libs.versions.toml`](../gradle/libs.versions.toml). It is the single statement of which
-server a given CLI expects:
+What names one is a pin in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml) — **two of
+them since the split**, because "which server does an installed CLI run" and "which jar do we
+compile against" turned out to be different questions:
+
+| Pin | Answers | Consumers |
+|---|---|---|
+| `composeai-preview-server-dist` | Which **release** an installed CLI downloads | `SERVE_VERSION` in the jar; `ServerDistributionProvision`; `check_preview_server_pin.py` |
+| `composeai-preview-serve` | Which **published jar and sources** this repository builds and tests against | `testImplementation` in `:cli`; the `v<pin>` tag ci.yml reads mirror sources from |
+
+The distribution pin is the one with user impact:
 
 - it is baked into the CLI jar at build time as `SERVE_VERSION`, so the installed CLI carries it;
 - `ServerDistributionProvision` fetches exactly that release's distribution
   (`compose-preview-server-<pin>.tar.gz`) on the first `serve` that finds no server, and caches it
   under `<cache>/composeai/preview-server/<pin>/` — keyed on the server's version, so a CLI upgrade
   does not orphan an unchanged server;
+- `compose-preview mcp serve` fetches `compose-preview-mcp-<pin>.tar.gz` from the **same** release,
+  so this one pin still governs that pair — the two archives ride one release and there is no
+  cadence on which they would skew usefully;
 - `compose-preview doctor` reports it, beside whichever binary it actually found (`env.preview-server`).
 
-A **point pin, never a range or `latest`**, for the reason every other cross-repository pin here is
-one: resolving at run time would let a server this CLI has never been built against arrive under it
-without a pull request. Moving it is the reviewed act, and the `XR Composite Pin` CI job fails a PR
-whose pin names a release that does not exist or carries no distribution — a pin that 404s is a
-`serve` that cannot start, which is what
+**Why they are separate.** compose-preview-server's release workflow has two lanes and can cut a
+release that carries the distributions without publishing anything to Maven Central (its
+`release:no-maven` label). A single pin could not name such a release at all: pointing at it would
+break `:cli`'s `testImplementation` even though the thing `serve` launches is exactly what changed.
+Conversely a library-only concern — a wire-drift test, a mirrored source file — has no reason to
+push a new server onto every installed CLI.
+
+They may differ, and when they do the distribution pin is normally the newer. Neither is allowed to
+drift on its own: moving either is a reviewed act in a pull request, and only
+`composeai-preview-server-dist` is gated against the server's Releases, because it is the only one
+that needs a Release to exist. The library pin is checked the ordinary way — by the build failing to
+resolve it.
+
+Both are **point pins, never a range or `latest`**, for the reason every other cross-repository pin
+here is one: resolving at run time would let a server this CLI has never been built against arrive
+under it without a pull request. Moving either is the reviewed act, and the `XR Composite Pin` CI
+job fails a PR whose **distribution** pin names a release that does not exist or carries no
+distribution — a pin that 404s is a `serve` that cannot start, which is what
 [#5183](https://github.com/yschimke/compose-ai-tools/issues/5183) reported.
 
 Skew is still possible and is bounded rather than prevented: an operator may point at any server

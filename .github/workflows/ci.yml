@@ -1192,8 +1192,10 @@ jobs:
   #
   # The preview-server pin rides the same job, for the same reason and against the same hazard
   # one degree louder: since #5183 `compose-preview serve` fetches its server from the release
-  # `composeai-preview-serve` names, so a pin naming a release with no distribution attached is
-  # not a degraded render but a command that cannot start at all. The job keeps its name — it is
+  # `composeai-preview-server-dist` names, so a pin naming a release with no distribution attached
+  # is not a degraded render but a command that cannot start at all. That pin and not
+  # `composeai-preview-serve`, which names the published jar `:cli` compiles against and needs no
+  # GitHub Release to exist — see the split in docs/VERSIONING.md § 8.1. The job keeps its name — it is
   # a required check, and renaming a required check blocks every PR until the ruleset catches up.
   xr-composite-pin:
     name: XR Composite Pin

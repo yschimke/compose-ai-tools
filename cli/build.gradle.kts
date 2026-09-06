@@ -965,7 +965,11 @@ val generateCliVersionResource =
     // fetches on first use. The catalog pin, NOT this CLI's version: the server releases on its own
     // cadence from its own repository, and an installed CLI cannot read the catalog. See
     // `SERVE_VERSION`.
-    val serveVersion = libs.versions.composeai.preview.serve.get()
+    //
+    // `composeai-preview-server-dist`, NOT `composeai-preview-serve`. The latter names the jar the
+    // wire-drift tests compile against; this names the release an installed CLI downloads, and a
+    // server-only release moves one without the other.
+    val serveVersion = libs.versions.composeai.preview.server.dist.get()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
     inputs.property("serveVersion", serveVersion)

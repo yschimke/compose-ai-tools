@@ -22,19 +22,27 @@ import check_preview_server_pin as gate
 
 class PinParsing(unittest.TestCase):
     def test_reads_the_pin(self):
-        self.assertEqual(gate.pin_from('composeai-preview-serve = "3.0.0"\n'), "3.0.0")
+        self.assertEqual(gate.pin_from('composeai-preview-server-dist = "3.0.0"\n'), "3.0.0")
 
     def test_reads_the_pin_among_neighbours(self):
         catalog = (
             'composeai-contracts = "2.5.0"\n'
-            "# a comment mentioning composeai-preview-serve\n"
-            'composeai-preview-serve = "3.1.0"\n'
+            "# a comment mentioning composeai-preview-server-dist\n"
+            'composeai-preview-server-dist = "3.1.0"\n'
             'rcplayers = "1.57.0"\n'
         )
         self.assertEqual(gate.pin_from(catalog), "3.1.0")
 
     def test_absent_pin_is_none(self):
         self.assertIsNone(gate.pin_from('composeai-contracts = "2.5.0"\n'))
+
+    def test_does_not_match_the_library_pin(self):
+        # The whole point of the split: `composeai-preview-serve` names the published jar `:cli`
+        # compiles against, and sits a few lines above this pin in the same catalog. Gating that
+        # version against GitHub Release assets would check the wrong thing, and would fail the
+        # moment a server-only release moved the two apart - which is the case the split exists
+        # to allow.
+        self.assertIsNone(gate.pin_from('composeai-preview-serve = "3.2.0"\n'))
 
     def test_does_not_match_the_library_coordinate(self):
         # The `[libraries]` entry of the same name is not a version assignment.
@@ -45,6 +53,12 @@ class PinParsing(unittest.TestCase):
                 'version.ref = "composeai-preview-serve" }\n'
             )
         )
+
+    def test_reads_the_real_catalog(self):
+        # Guards the split at the level that actually matters: whatever the regex says, the pin
+        # this gate reads must exist in the committed catalog. A rename on either side that
+        # nobody propagated here makes `current_pin()` raise rather than silently gate nothing.
+        self.assertRegex(gate.current_pin(), gate.VERSION_RE)
 
 
 class VersionShape(unittest.TestCase):

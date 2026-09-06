@@ -376,20 +376,48 @@ composeai-contracts = "2.5.0"
 # this repository (compose-preview-server#289), and 3.0.0 retired the old coordinate at its final
 # 2.x. `:cli` depends on `project(":render-host")`; there is no version ref to share any more.
 #
-# This pin is also RUNTIME-load-bearing, not just a compile-time coordinate, and for TWO commands
-# since #5176. `compose-preview serve` is a launcher, and since #5183 the CLI fetches the server
-# itself on first use: the pin is baked into the jar as `SERVE_VERSION` and names the release whose
-# `compose-preview-server-<pin>.tar.gz` `ServerDistributionProvision` downloads. `compose-preview
-# mcp serve` is a launcher over `compose-preview-mcp-<pin>.tar.gz` from the SAME release, so one pin
-# governs the pair. A pin naming a release that does not exist, or one carrying only one of the two
-# archives, is a command that cannot start — `check_preview_server_pin.py` fails the PR rather than
-# letting that reach an install, and it checks both. docs/VERSIONING.md § 8.1.
+# This pin names what this repository BUILDS AND TESTS AGAINST, and nothing else. Two consumers,
+# which must stay equal to each other:
+#
+#   * `testImplementation(libs.composeai.preview.serve)` in `:cli` — the published jar the
+#     wire-drift tests check this CLI's half against;
+#   * the `v<pin>` tag ci.yml's "Fetch the pinned preview-server mirror sources" step reads five
+#     source files from, so the mirror is compared against the same release as the artifact on the
+#     classpath. That step's own comment says why: checking head would fail a PR for drift that has
+#     not been released yet.
+#
+# What this pin no longer names is the server an INSTALLED CLI downloads. See
+# `composeai-preview-server-dist` below.
+composeai-preview-serve = "3.2.0"
+
+# The compose-preview-server RELEASE the installed CLI fetches at run time — a different question
+# from the one above, which is why it is a different pin.
+#
+# RUNTIME-load-bearing, for two commands since #5176. `compose-preview serve` is a launcher, and
+# since #5183 the CLI fetches the server itself on first use: this value is baked into the jar as
+# `SERVE_VERSION` and names the release whose `compose-preview-server-<pin>.tar.gz`
+# `ServerDistributionProvision` downloads. `compose-preview mcp serve` is a launcher over
+# `compose-preview-mcp-<pin>.tar.gz` from the SAME release, so one pin still governs that pair —
+# there is no cadence on which the two archives would skew usefully. A pin naming a release that
+# does not exist, or one carrying only one of the two archives, is a command that cannot start;
+# `check_preview_server_pin.py` fails the PR rather than letting that reach an install, and it
+# checks both archives. docs/VERSIONING.md § 8.1.
+#
+# Split from `composeai-preview-serve` because the two answer different questions and the server
+# now releases on lanes that can move one without the other. compose-preview-server can cut a
+# release carrying only the distributions and no Maven artifacts (its `release:no-maven` label), and
+# a single pin could not name such a release at all: pointing at it would break `:cli`'s
+# `testImplementation` even though the thing `serve` launches was exactly what changed.
+#
+# They may differ, and when they do this one is normally the newer. Moving either is a reviewed act;
+# moving this one changes which server every installed CLI downloads, so it is the one with user
+# impact even though the other is the one that shows up in a compile error.
 #
 # 3.2.0 is the first release carrying the MCP distribution: compose-preview-server#308 moved the
 # module there and #314 released it. 3.1.0 carried the archive but published a `compose-preview-serve`
 # POM naming an unpublished project (`ui-builder-export-jvm:unspecified`), so it resolves for nobody;
 # compose-preview-server#316 fixed that and rides in this release too.
-composeai-preview-serve = "3.2.0"
+composeai-preview-server-dist = "3.2.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
