@@ -175,6 +175,17 @@ publishing_module_paths() {
   grep -rl --include=build.gradle.kts 'composeai\.maven-publishing' . 2>/dev/null |
     sed 's|^\./||; s|/build\.gradle\.kts$||' |
     grep -v '^build-logic$' |
+    # The ROOT build file, whose path the sed above leaves as the bare `build.gradle.kts`. It can
+    # never be a module, and it is already watched as a shared input — but this enumeration also
+    # feeds the "every published module must have lock state" check, and a root file obviously has
+    # no `gradle.lockfile`. Left in, it fails the guard open on every release forever, which is the
+    # safe direction and therefore the silent one: the publish decision simply stops happening.
+    #
+    # It got in because the guard finds modules by grepping for the plugin id, and the root build
+    # file came to contain that string in a task that lists publishing projects. `--print-paths`
+    # did not show it, because `watch_paths` sorts the shared inputs and the modules together and
+    # `build.gradle.kts` is in both — the duplicate collapsed and the count never moved.
+    grep -v '^build\.gradle\.kts$' |
     sort -u |
     train_filter
 }
