@@ -559,6 +559,22 @@
     "sha256": "ff5facc1d296c487d6ff42e5664ffb435277e01595198fb80617b2cf794db585",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt"
   },
+  "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxFramePreview_Inbox Frame": {
+    "captureLabel": "",
+    "functionName": "ScaffoldedInboxFramePreview",
+    "module": "samples:android",
+    "renderBasename": "ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.png",
+    "sha256": "ec47d4100a1c2dc849646de65a2457148a5b5676d4d60733098207be3162e465",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/InboxScrollPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long": {
+    "captureLabel": "scroll long",
+    "functionName": "ScaffoldedInboxLongPreview",
+    "module": "samples:android",
+    "renderBasename": "ScaffoldedInboxLongPreview_Inbox_Long-7261c0ed.png",
+    "sha256": "979cadf508594b41098eaf4456bd51e46ff3605a113a47cc9d859466631a431f",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/InboxScrollPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
     "captureLabel": "",
     "functionName": "KeyboardDemoPreview",
