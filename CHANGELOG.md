@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.84.0](https://github.com/yschimke/compose-ai-tools/compare/v1.83.0...v1.84.0) (2026-09-06)
+
+
+### Features
+
+* **screen:** express a lambda that returns a value, and check what it returns ([#5219](https://github.com/yschimke/compose-ai-tools/issues/5219)) ([9efa10a](https://github.com/yschimke/compose-ai-tools/commit/9efa10a676e7059c2021d9a21fab6b4a885a4b5a))
+
 ## [1.83.0](https://github.com/yschimke/compose-ai-tools/compare/v1.82.0...v1.83.0) (2026-09-05)
 
 
