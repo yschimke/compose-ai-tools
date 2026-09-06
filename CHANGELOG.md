@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/yschimke/compose-ai-tools/compare/v1.85.0...v2.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* adopt minor-only versioning and cut 2.0.0 as the last major ([#5229](https://github.com/yschimke/compose-ai-tools/issues/5229))
+
+### Features
+
+* adopt minor-only versioning and cut 2.0.0 as the last major ([#5229](https://github.com/yschimke/compose-ai-tools/issues/5229)) ([ff4ae6b](https://github.com/yschimke/compose-ai-tools/commit/ff4ae6bc4ab49015ada99b44b331965b631a3e4f))
+* **screen:** let a generated screen preview at every reference size, not just its own ([#5230](https://github.com/yschimke/compose-ai-tools/issues/5230)) ([aa3377d](https://github.com/yschimke/compose-ai-tools/commit/aa3377deadb26f609c45b7aec5306037c3b07c5a))
+
+
+### Bug Fixes
+
+* **discovery:** a Wear widget preview's device is a scratch canvas, not its footprint ([#5225](https://github.com/yschimke/compose-ai-tools/issues/5225)) ([60f3010](https://github.com/yschimke/compose-ai-tools/commit/60f30104f005c1fe8ceafd111d2397b38ca816b2))
+
 ## [1.85.0](https://github.com/yschimke/compose-ai-tools/compare/v1.84.0...v1.85.0) (2026-09-06)
 
 
