@@ -1,7 +1,8 @@
 # Release trains
 
-**Status: measurement + proposal.** The guard described in § 4 is implemented and running in
-reporting mode; the train split in § 5 is not built. Issue
+**Status: measurement + proposal.** The guard in § 4 is implemented and running in reporting mode.
+The dependency lock state in § 6 is implemented; the guard does not read it yet. The train split in
+§ 5 is not built, and § 6's graph-based measurement supersedes its grouping. Issue
 [#4772](https://github.com/yschimke/compose-ai-tools/issues/4772).
 
 This repository publishes 94 Maven Central artifacts on a version line that cuts a release
@@ -78,6 +79,7 @@ predecessor.
 | Publish only when a published module changed | § 4 | **Implemented, reporting only** |
 | Split the Maven publish into several trains | § 5 | Proposed |
 | Version each module independently | Largest, but contradicts `VERSIONING.md` § 3.1 | **Out of scope** |
+| Narrow the shared-input rule with dependency lock state | § 6 — ~97% of the remaining cost | **Locking implemented; guard not reading it yet** |
 
 Batching is by far the biggest lever and it is deliberately not taken: the release frequency is
 a product decision, not an accident. Everything below therefore reduces *artifacts per release*
@@ -138,6 +140,13 @@ changes, or when a shared build input does):
 The shape of the win is `data/`: 58 modules — 62% of everything we publish — moving on half the
 releases. It is the single largest block of artifacts and close to the slowest-changing.
 
+> **These groups are drawn from directory paths, and the paths do not match the dependency graph.**
+> `render-session` spans layers 0, 2, 3 and 5; `daemon` spans 0, 1 and 4; `data` spans 0, 1 and 2.
+> § 6 measures the same question against the real graph and gets a better answer (−53.4%) than any
+> path-based grouping, which makes this table a costing of one candidate rather than a
+> recommendation. Restructuring the directories to match the layers would buy about three
+> percentage points — see § 6's propagation numbers — and is not worth a 94-module reshuffle.
+
 Each train stays internally all-or-nothing, so no train ever publishes a POM naming a sibling
 version that does not exist. This is **not** per-module versioning (`VERSIONING.md` § 3.1,
 explicitly out of scope): it is five version lines instead of one, each still a lockstep set.
@@ -166,17 +175,73 @@ GitHub Release carries the mapping** — extend the existing
 and the installer already gates on. The CLI uses its own baked value on the fast path and reads
 the marker only when the pin names a different release.
 
-## 6. What limits this further
+## 6. The shared-input rule is what limits this, and lockfiles are the fix
 
-The guard is conservative about shared build inputs, and that conservatism is most of the
-remaining gap: **16 of 38 windows touch a shared input, 13 of them the version catalog.** A
-Renovate bump of one dependency currently forces every train to publish, though it changes only
-the POMs of modules that actually depend on the bumped coordinate.
+The guard is conservative about shared build inputs, and that conservatism is now essentially the
+whole of the remaining cost:
 
-Narrowing this means resolving, per module, whether a catalog entry reaches its POM — a Gradle
-resolution rather than a path diff. It is the obvious next refinement and it is deliberately not
-in the first version: a wrong answer there skips a publish that was needed, which is the one
-failure this design does not tolerate.
+| | Module-publications |
+|---|---|
+| 16 windows forcing all 94 via a shared build input | **1,504** |
+| All other 22 windows **combined** | **50** |
+
+In 9 of those 16, the *only* shared file touched was `gradle/libs.versions.toml`. One Renovate
+dependency bump republishes all 94 modules, when it changes the POM of only those that actually
+resolve the bumped coordinate.
+
+### Why not just parse the catalog
+
+The obvious fix is to read the catalog diff, resolve `[versions]` refs to aliases, find the modules
+referencing those aliases, and take an upward closure. That is a static approximation of a question
+Gradle can answer exactly, and every gap in the approximation fails in the direction that skips a
+publish — the unrepairable one.
+
+It would also have to model something alias-matching handles badly. Published POMs here carry
+**declared** versions, not resolved ones (there is no `versionMapping`), so a bump to a purely
+transitive dependency does not change a consumer's POM at all. But Kotlin inlines `inline` functions
+from the compile classpath into the caller, so that consumer's **jar bytes** can still move. Getting
+that right by grepping means a coarse closure over dependents; getting it right with a resolved
+graph is free.
+
+### Dependency lock state
+
+`ComposeAiMavenPublishingPlugin` enables Gradle dependency locking on the configurations that decide
+a published artifact — the JVM, Android `release` and KMP `jvm` compile/runtime classpaths, and
+deliberately **not** the test classpaths, since a test-only bump cannot change published bytes.
+Gradle records what each module actually resolved in a committed `gradle.lockfile`, and the guard
+diffs that file instead of guessing from the catalog.
+
+`LockMode.DEFAULT`, not `STRICT`: DEFAULT does not fail a locked configuration that has no lock
+state, which is what makes the mechanism safe to land before a single lockfile exists.
+
+Keeping the files current is [`dependency-locks.yml`](../../.github/workflows/dependency-locks.yml).
+Renovate cannot do it — `postUpgradeTasks` needs a self-hosted Renovate with the command
+allow-listed, and this repository uses the hosted Mend app — so a workflow regenerates and pushes
+into the pull request branch. That workflow's header documents the constraint it is built around:
+`platformAutomerge` is on, a `GITHUB_TOKEN` push starts no workflow runs, and so the job either
+pushes with a real token or **fails**, never passes while the lock state is stale.
+
+### Propagation, measured
+
+The worry that a lower module's change would cascade upward and erase the saving does not hold. The
+in-repo graph is shallow and wide — 39 of 94 modules depend on no other published module, and only
+`daemon/core` has a large blast radius (47 modules, changed in 7 of 38 windows).
+
+| Model | Module-publications | vs today |
+|---|---|---|
+| Per-module, **no** propagation | 1,554 | −56.5% |
+| Per-module, **eager** propagation | 1,666 | **−53.4%** |
+
+Propagation costs three percentage points. It is not the thing to design around; the shared-input
+rule is.
+
+### The number that frames all of this
+
+**67 of the 94 modules changed in zero of the 38 windows** — 71% of the published surface, inert for
+a week and republished 38 times each regardless. Over a longer window more of them would move, so
+read it as "inert at this timescale", not "dead". It is the argument for not republishing unchanged
+modules, and not an argument for merging them: of 21 `data/*` families with more than one published
+module, exactly one always changed as a unit.
 
 ## 7. Going live
 
