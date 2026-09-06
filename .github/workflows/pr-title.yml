@@ -10,6 +10,9 @@ name: PR Title
 # The allowed types mirror what release-please understands: `feat` and `fix`
 # drive minor/patch bumps; the rest (`chore`, `docs`, `refactor`, …) still land
 # in the changelog under their section and keep history scannable.
+#
+# A second job rejects the conventional-commit breaking marker (`feat!:`), which
+# is the only way a major can be cut by accident here. See its own comment.
 
 on:
   pull_request:
@@ -68,3 +71,64 @@ jobs:
             style
             revert
           requireScope: false
+
+  # The `!` is the ONLY way this repository can cut a major version by accident.
+  #
+  # release-please runs its default versioning strategy, so `fix:` is a patch and
+  # `feat:` is a minor — and `feat!:` / `fix!:` is a MAJOR. Because PRs are
+  # squash-merged with `squash_merge_commit_message=BLANK`, the PR title becomes
+  # the commit headline verbatim, so nothing downstream filters the marker: a
+  # title typed with a `!` cuts `3.0.0` on merge. docs/RELEASING.md has called
+  # this "the single most likely way to cut an unintended major" for a while;
+  # this job is that sentence turned into a gate.
+  #
+  # Policy (docs/VERSIONING.md § 2): a major means a rewrite from scratch, not a
+  # breaking change. Breaking changes ship in minors. A deliberate major goes
+  # through `"release-as": "3.0.0"` in release-please-config.json — which is how
+  # 1.0.0 and every forced version before it were cut — so there is no case where
+  # a `!` is the right tool, and therefore no bypass here.
+  #
+  # KNOWN COST, stated rather than discovered later: the `!` is also what routes
+  # an entry into the changelog's "⚠ BREAKING CHANGES" section, and rejecting it
+  # gives that up. A `BREAKING CHANGE:` footer is not a substitute — it lives in
+  # the commit body, which `BLANK` discards (docs/RELEASING.md). So a break has to
+  # be legible in the PR TITLE itself, because the title is the changelog entry:
+  # `feat: rename Foo to Bar (breaking)`.
+  breaking:
+    name: No breaking-change marker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject `!` in the PR title
+        # Through `env:`, never interpolated into the script. A PR title is
+        # attacker-controlled on a fork, and `${{ }}` inside `run:` would splice it
+        # straight into the shell.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Matches the conventional-commit breaking marker: `type!:` or
+          # `type(scope)!:`. A `!` anywhere else in the subject is fine.
+          if ! printf '%s' "${PR_TITLE}" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:'; then
+            echo "OK: no breaking-change marker."
+            exit 0
+          fi
+          {
+            echo "### Breaking-change marker rejected"
+            echo
+            echo "\`${PR_TITLE}\`"
+            echo
+            echo "The \`!\` cuts a **major version** on merge — the PR title becomes the commit"
+            echo "headline verbatim, and release-please reads it."
+            echo
+            echo "A major here means a rewrite from scratch, not a breaking change."
+            echo "Breaking changes ship in minors."
+            echo
+            echo "- **Shipping a breaking change?** Drop the \`!\` and make the break legible in"
+            echo "  the title, since the title *is* the changelog entry:"
+            echo "  \`feat: rename Foo to Bar (breaking)\`. A \`BREAKING CHANGE:\` footer will not"
+            echo "  work — the commit body is discarded by the squash merge."
+            echo "- **Genuinely cutting a major?** Use \`\"release-as\": \"3.0.0\"\` in"
+            echo "  release-please-config.json, then delete the key in the first PR after it"
+            echo "  publishes. See docs/RELEASING.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Breaking-change marker in PR title::The '!' cuts a major on merge. See the job summary."
+          exit 1
