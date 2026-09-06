@@ -577,6 +577,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `ActivitySummaryWidgetSquirclePreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_0.png" width="150" /> |
+| `ActivitySummaryWidgetSquirclePreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_1.png" width="150" /> |
+| `ImageWidgetDeviceSpecPreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_0.png" width="150" /> |
+| `ImageWidgetDeviceSpecPreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_1.png" width="150" /> |
 | `ImageWidgetFixedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png" width="150" /> |
 | `ImageWidgetSquircleLargePreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_0.png" width="150" /> |
 | `ImageWidgetSquircleLargePreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_1.png" width="150" /> |

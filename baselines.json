@@ -3503,6 +3503,38 @@
     "sha256": "f296d3054785848e609eb0253de40d8c1609c413ff8ba7a960e29d81fc330a2b",
     "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt"
   },
+  "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview": {
+    "captureLabel": "parameter 0",
+    "functionName": "ActivitySummaryWidgetSquirclePreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_0.png",
+    "sha256": "68efbfea977d48ae94b9b13bcd567617196d4b870de81bf6c22337c36bc7d798",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview#1": {
+    "captureLabel": "parameter 1",
+    "functionName": "ActivitySummaryWidgetSquirclePreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_1.png",
+    "sha256": "3bb1204fec09ba51b3492a7bba7cbb7c79c3a75e76c107d22aec91890cd2ea48",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec": {
+    "captureLabel": "parameter 0",
+    "functionName": "ImageWidgetDeviceSpecPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_0.png",
+    "sha256": "527cb5f5ae91920cf8b8f9d8efb98d876dd56fbc038225044d79398177d4d23e",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec#1": {
+    "captureLabel": "parameter 1",
+    "functionName": "ImageWidgetDeviceSpecPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_1.png",
+    "sha256": "18157bf2ac691afb492ab80e8b8e7963dabf76243f156a959b70a95a4c12b409",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed": {
     "captureLabel": "",
     "functionName": "ImageWidgetFixedPreview",
