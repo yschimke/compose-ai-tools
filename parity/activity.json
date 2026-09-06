@@ -1,11 +1,107 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-06T08:55:53.175Z",
+  "generatedAt": "2026-09-06T15:23:23.261Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e23d67be62fc7322b50f5012303769443ad4cd54",
+        "subject": "chore(main): release 2.0.0 (#5226)",
+        "at": "2026-09-06T15:53:44+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bd72b77336b6f17893be38351192dc71ed7069d7",
+        "subject": "ci: stop the Maven publish guard from being able to strand a release (#5235)",
+        "at": "2026-09-06T15:51:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c037113d5b2096db3881fea9db5423b43f851f4b",
+        "subject": "chore(deps): move both preview-server pins to 3.9.0 (#5233)",
+        "at": "2026-09-06T14:34:37+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "30164a84cabfbc0bb5abf6d9ddd6ba8abada3adc",
+        "subject": "refactor(cli): split the preview-server pin into library and distribution (#5232)",
+        "at": "2026-09-06T13:54:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9d8818db487bd0aee68b0ef248c3dce9da746ffa",
+        "subject": "ci: lock each published module's resolved dependencies, with auto-regen (#5231)",
+        "at": "2026-09-06T13:22:33+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "aa3377deadb26f609c45b7aec5306037c3b07c5a",
+        "subject": "feat(screen): let a generated screen preview at every reference size, not just its own (#5230)",
+        "at": "2026-09-06T12:44:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b55be56b6eba1ddb838ce8a7bed4bd1f164f7b56",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.85.0 (#5228)",
+        "at": "2026-09-06T11:20:26Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ff4ae6bc4ab49015ada99b44b331965b631a3e4f",
+        "subject": "feat!: adopt minor-only versioning and cut 2.0.0 as the last major (#5229)",
+        "at": "2026-09-06T12:11:19+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1a68012586e55dd421acec6a82695117bf0ab095",
+        "subject": "ci: report whether a release needs a Maven Central publish (#5227)",
+        "at": "2026-09-06T12:01:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "60f30104f005c1fe8ceafd111d2397b38ca816b2",
+        "subject": "fix(discovery): a Wear widget preview's device is a scratch canvas, not its footprint (#5225)",
+        "at": "2026-09-06T11:33:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7e678c20330ebb871164ce087c66e4eb1d7ef382",
+        "subject": "chore(main): release 1.85.0 (#5223)",
+        "at": "2026-09-06T11:21:27+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "66c4eaa01eedb0f8c60d87fa901c5c4db23b3ceb",
+        "subject": "fix(discovery): look through a theme lambda Kotlin 2.3+ stores as a static method (#5224)",
+        "at": "2026-09-06T11:10:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "2c4e6ae2da5674c8405b2a97f21e3f3874f0b52b",
         "subject": "feat(design-artifacts): publish the component record beside catalog.json (#5222)",
@@ -387,102 +483,6 @@
         "subject": "feat(design-artifacts): expose an imported project's themes (#5158)",
         "at": "2026-09-05T10:11:32+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "778d4475db663ad2b976688f29de3fa2f5f7248a",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.79.0 (#5157)",
-        "at": "2026-09-05T10:10:52+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8deeab29ebc622fdb9290fec71065cbd0e72c891",
-        "subject": "chore(main): release 1.79.0 (#5156)",
-        "at": "2026-09-05T10:00:09+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "48a93ff67b544fae36ccb723cba0f15f3e3f20f5",
-        "subject": "feat(knobs): let an enum constant declare the seed text it answers to (#5155)",
-        "at": "2026-09-05T09:47:00+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e75cb7cea4310ccd25f4e47316541d0617a2c5e8",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.78.0 (#5153)",
-        "at": "2026-09-05T09:41:45+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5d71ce8cad8cb683ffbea5fa26eec9801d9b481c",
-        "subject": "fix(render): supply the poolingcontainer R class when AGP's merged R.jar does not (#5154)",
-        "at": "2026-09-05T09:41:34+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "368cfd41a51ad9242519bcd65214c26fb15c1056",
-        "subject": "chore(main): release 1.78.1 (#5152)",
-        "at": "2026-09-05T09:38:46+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d71ff34890edf21346d62b63b7f84ffb9d3340f7",
-        "subject": "fix(renderer-android): let Glance default its own composer parameters (#5151)",
-        "at": "2026-09-05T09:37:02+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "cd8757c2da4b5f9f40750ef6769f45968a73a812",
-        "subject": "fix(daemon): recognise Compose Multiplatform's own @Preview in incremental discovery (#5150)",
-        "at": "2026-09-05T09:23:24+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "da690ad5d6d7b74c271ca2f2081abebf71de52df",
-        "subject": "fix(renderer-android): resolve Glance's preview composer against the project's Glance (#5149)",
-        "at": "2026-09-05T09:23:14+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "972d74ac9f9c09aba474c96774e18e52191e633e",
-        "subject": "chore(main): release 1.78.0 (#5148)",
-        "at": "2026-09-05T09:22:20+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1f4f80268f2d85586a0e1dbde68dae3aa24bc27c",
-        "subject": "feat(build-host): serve the server's Gradle work over a process boundary (#5147)",
-        "at": "2026-09-05T09:20:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "186e838121a66475af3aeac765e24a71258a45ff",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.77.0 (#5146)",
-        "at": "2026-09-05T09:04:29+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }

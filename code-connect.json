@@ -7,7 +7,7 @@
     "ref": "main",
     "module": "samples:design-catalog-wear-m3"
   },
-  "generatedAt": "2026-09-06T08:55:47.532Z",
+  "generatedAt": "2026-09-06T15:23:16.552Z",
   "mappings": [
     {
       "componentId": "Button/Filled",
@@ -15,7 +15,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "FilledButton",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -44,7 +44,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "FilledTonalButtonSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -73,7 +73,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "OutlinedButtonSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -102,7 +102,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "ChildButtonSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -131,7 +131,7 @@
       "componentName": "FullScreenWear",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "EdgeButtonSticker",
       "codeSnippet": "FullScreenWear(\n    content = { },\n)",
       "imports": [
@@ -160,7 +160,7 @@
       "componentName": "FullScreenWear",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "EdgeButtonSticker",
       "codeSnippet": "FullScreenWear(\n    content = { },\n)",
       "imports": [
@@ -189,7 +189,7 @@
       "componentName": "FullScreenWear",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "EdgeButtonSticker",
       "codeSnippet": "FullScreenWear(\n    content = { },\n)",
       "imports": [
@@ -218,7 +218,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "IconButtonSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -247,7 +247,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "CompactButtonSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -276,7 +276,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "ButtonGroupSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -305,7 +305,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "SwitchButtonOn",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -334,7 +334,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "CardSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -363,7 +363,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "OutlinedCardSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -392,7 +392,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "TitleCardSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
@@ -421,7 +421,7 @@
       "componentName": "WearSticker",
       "source": "https://github.com/yschimke/compose-ai-tools/blob/main/samples/design-catalog-wear-m3/src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
       "label": "Compose",
-      "confidence": "HIGH",
+      "confidence": "MEDIUM",
       "previewName": "AppCardSticker",
       "codeSnippet": "WearSticker(\n    content = { },\n)",
       "imports": [
