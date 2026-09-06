@@ -278,6 +278,35 @@ git -C "${EMPTY}" commit -qm "drop publishing modules"
 git -C "${EMPTY}" tag v1.5.0
 expect true "$(needed --repo "${EMPTY}" --baseline v1.0.0 --head v1.5.0)" "no publishing modules found"
 
+echo "== the root build file is never enumerated as a module"
+# Regression. The enumeration finds modules by grepping build files for the plugin id, so any
+# mention of that string in the ROOT build.gradle.kts made the root itself a "module" — and since
+# a root build file has no gradle.lockfile, the guard failed open on every release from then on.
+# Safe direction, and therefore the silent one: the publish decision just stops happening.
+#
+# `--print-paths` could not have caught it. `watch_paths` sorts the shared inputs and the modules
+# together, `build.gradle.kts` is in both, and the duplicate collapsed — the path count never
+# moved. So this asserts on the verdict, which is what actually broke.
+ROOTREF="${tmp}/rootref"
+make_repo "${ROOTREF}"
+cat > "${ROOTREF}/build.gradle.kts" <<'EOF'
+// A task that lists the publishing projects, mentioning the plugin id in passing.
+tasks.register("printPublishTasks") {
+  doLast { subprojects.filter { it.plugins.hasPlugin("composeai.maven-publishing") } }
+}
+EOF
+git -C "${ROOTREF}" add -A
+git -C "${ROOTREF}" commit -qm "root build file mentions the publishing plugin id"
+git -C "${ROOTREF}" tag v1.1.0
+# The root build file IS a shared input, so changing it publishes — that is not what is under
+# test. Take a second window where nothing changes at all: the guard must reach `false`, which it
+# cannot do while it believes there is a module with no lock state.
+echo '// unrelated' >> "${ROOTREF}/cli/src/main/kotlin/Cli.kt"
+git -C "${ROOTREF}" commit -aqm "cli only"
+git -C "${ROOTREF}" tag v1.2.0
+expect false "$(needed --repo "${ROOTREF}" --baseline v1.1.0 --head v1.2.0)" \
+  "root build file naming the plugin id does not become an unlocked module"
+
 echo "== --print-paths lists the real repository's watch set"
 paths="$("${SCRIPT}" --print-paths)"
 count="$(printf '%s\n' "${paths}" | wc -l | tr -d ' ')"
