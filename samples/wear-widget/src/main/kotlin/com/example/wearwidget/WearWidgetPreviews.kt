@@ -49,6 +49,27 @@ fun ImageWidgetSquircleLargePreview(
   }
 }
 
+// The upstream shape, and the one the UI builder generates: a widget preview that also declares
+// `device = "spec:width=1000dp,height=1000dp,dpi=320"`. `wear-os-samples`' `WearWidget` sample
+// writes its previews this way, so any widget pasted out of that sample — or out of the builder's
+// Code pane, which reproduces it — arrives with that device attached.
+//
+// It is a Studio scratch canvas, not the widget's canvas: the widget's footprint is in its
+// `WearWidgetParams`, which the provider fans out. Discovery therefore drops the device for a
+// widget preview rather than honouring it (`PreviewDiscovery.retargetWearStickers`), and this
+// preview is the guard on that — honoured, it renders the widget's background across 1000x1000dp
+// instead of cropping to the 216x124dp frame, which is what it did until the retarget learned
+// to drop it.
+@Preview(name = "Image Widget Device Spec", device = "spec:width=1000dp,height=1000dp,dpi=320")
+@Composable
+fun ImageWidgetDeviceSpecPreview(
+  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams
+) {
+  CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
+    RemoteImageWidget()
+  }
+}
+
 // The squircle host spec (240dp screen), spelled out literally — same values as the upstream
 // `SquircleSmallWidgetPreviewParams`. Kept as a plain (non-`@PreviewParameter`) preview so it emits
 // a

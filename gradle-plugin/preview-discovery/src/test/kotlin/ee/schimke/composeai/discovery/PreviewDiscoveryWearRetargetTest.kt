@@ -131,6 +131,47 @@ class PreviewDiscoveryWearRetargetTest {
   }
 
   @Test
+  fun `on Wear, a glance-wear widget preview drops the scratch device it declares`() {
+    // Upstream's wear-os-samples widget previews — and the UI builder's generated widgets, which
+    // reproduce them — carry a 1000dp spec device as a Studio scratch canvas. Honouring it renders
+    // a 216x124dp widget's background across the whole 1000dp canvas instead of cropping to the
+    // frame; the widget's real footprint is in its WearWidgetParams, which the provider fans out.
+    val widget =
+      preview(
+        "ActivitySummaryWidgetSquirclePreview",
+        device = "spec:width=1000dp,height=1000dp,dpi=320",
+        // Resolved from that spec upstream of the retarget, which is why dropping the device has
+        // to drop them too: 1000x1000 is the spec's canvas, not a size anyone asked the widget for.
+        widthDp = 1000,
+        heightDp = 1000,
+        previewParameterProviderClassName =
+          "androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams",
+      )
+
+    val out =
+      PreviewDiscovery.retargetWearStickers(isWear = true, previews = listOf(widget))
+        .single()
+        .params
+
+    assertNull(out.device)
+    assertNull(out.widthDp)
+    assertNull(out.heightDp)
+    assertNull(out.wrapSandboxWidthDp)
+    assertEquals(DeviceDimensions.DEFAULT_WEAR.density, out.density)
+  }
+
+  @Test
+  fun `on Wear, a device-pinned preview that is not a widget keeps its device`() {
+    // The exemption above is the widget's alone: an ordinary component preview naming a device is
+    // an author pinning a screen, and #1985's rule is that discovery leaves those untouched.
+    val pinned = preview("Specimen", device = "id:wearos_small_round")
+
+    val out = PreviewDiscovery.retargetWearStickers(isWear = true, previews = listOf(pinned))
+
+    assertEquals(listOf(pinned), out)
+  }
+
+  @Test
   fun `on Wear, a glance-wear widget preview crops at wear density even with the canvas pin on`() {
     // Auto-detected via its androidx.glance.wear @PreviewParameter provider: a widget sticker must
     // never occupy the 227dp watch canvas, so it crops regardless of pinWearCanvas (#2670).
