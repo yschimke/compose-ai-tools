@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-05T22:40:42.398Z",
+  "generatedAt": "2026-09-06T08:29:26.379Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "86aa71305bd6892e0394f963141ecda26404566e",
+        "subject": "chore(main): release 1.84.0 (#5220)",
+        "at": "2026-09-06T08:58:39+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9efa10a676e7059c2021d9a21fab6b4a885a4b5a",
+        "subject": "feat(screen): express a lambda that returns a value, and check what it returns (#5219)",
+        "at": "2026-09-06T08:43:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "42e9f2f760c8a8723f933919ffdd7643fe1e6b83",
         "subject": "chore(ci): update the design-artifacts export driver to v1.83.0 (#5217)",
@@ -467,22 +483,6 @@
         "subject": "chore(main): release 1.77.0 (#5144)",
         "at": "2026-09-05T08:55:22+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f5f1854e98d3f00b2cf651b2c28d54c9a4a3c466",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.76.0 (#5143)",
-        "at": "2026-09-05T08:55:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e66261968364ddbe29397129c5e502572168db84",
-        "subject": "feat(knobs): add an enum knob kind so a closed value set keeps its picker (#5142)",
-        "at": "2026-09-05T08:49:00+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
