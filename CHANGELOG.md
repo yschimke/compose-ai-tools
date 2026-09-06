@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.1.1](https://github.com/yschimke/compose-ai-tools/compare/v2.1.0...v2.1.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* let Create Release Tag use a token that can create a ref ([#5255](https://github.com/yschimke/compose-ai-tools/issues/5255)) ([318975e](https://github.com/yschimke/compose-ai-tools/commit/318975e5c9f84f10b1d31b01beaa3426a49a5ce2))
+* merge the duplicate env block that broke the v2.1.0 release ([#5252](https://github.com/yschimke/compose-ai-tools/issues/5252)) ([bc094ab](https://github.com/yschimke/compose-ai-tools/commit/bc094abeb060f4182e677b33b26b9119a1c3e511))
+* pin published preview-runtimes to the line that actually published ([#5253](https://github.com/yschimke/compose-ai-tools/issues/5253)) ([04852ad](https://github.com/yschimke/compose-ai-tools/commit/04852ade1c86573269b472b6d46fd13f659e531d))
+
 ## [2.1.0](https://github.com/yschimke/compose-ai-tools/compare/v2.0.0...v2.1.0) (2026-09-06)
 
 
