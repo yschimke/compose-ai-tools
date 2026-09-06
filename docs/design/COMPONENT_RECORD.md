@@ -228,7 +228,13 @@ document → Kotlin → compile → render → pixel-compare round trip to pass.
 
 A new `components.json`, emitted by the Gradle plugin beside `previews.json` and
 carried in the bundle (`components.json` + per-component sidecars, the same
-convention `previews/<id>.overrides.json` already uses).
+convention `previews/<id>.overrides.json` already uses). The design-artifacts
+pipeline copies it out of the primary bundle onto the delivery branch root and
+declares it on `catalog.json` as `componentsFile`
+(`scripts/design-artifacts/catalog-component-record.mjs`), so a consumer that
+wants only the record — compose-preview-server's UI builder, offering a served
+catalog's composables as a component pack — fetches one file rather than the
+live bundle it also travels in.
 
 ```jsonc
 {

@@ -26,7 +26,8 @@
  *
  * A catalog's **top-level** files stay the host's: the manifest (`catalog.json`,
  * merged separately above), the token/Figma projections, the `code-connect.json`
- * mappings, and the generated `index.html` / `compare.html` / `README.md` pages
+ * mappings, the `components.json` component record (the host module's own
+ * discovery output), and the generated `index.html` / `compare.html` / `README.md` pages
  * — each is derived from that catalog's own component set, and both catalogs
  * (produced by the same generator) carry them, so copying the borrowed ones would
  * collide. The host's generated pages therefore don't reflect the folded section;

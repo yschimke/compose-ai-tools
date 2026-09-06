@@ -102,7 +102,8 @@ Each run renders the catalog module with `compose-preview bundle pack --with-sem
 to a **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
 `design-artifacts/wear-m3`, … — that a designer pulls into Figma / Stitch /
 Claude Design. The branch holds only the generated bundle (`catalog.json`,
-`tokens.dtcg.json`, `figma-variables.json`, `images/` PNGs, and `figma/` — the
+`tokens.dtcg.json`, `figma-variables.json`, `components.json` — the discovered
+component record, declared as `componentsFile` — `images/` PNGs, and `figma/` — the
 per-sticker layered **`compose/figma-svg`** vectors), regenerated from the code
 on each catalog change so it never drifts. Each component ships both the raster PNG (in
 `images/`) and its editable vector (`figma/<slug>.svg`): import the PNG for a
