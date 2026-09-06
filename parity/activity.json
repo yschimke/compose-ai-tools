@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-06T20:05:57.016Z",
+  "generatedAt": "2026-09-06T20:34:52.433Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c9a4582e85f88006b66b3e278fca7ce13d1359f4",
+        "subject": "chore(main): release 2.1.1 (#5256)",
+        "at": "2026-09-06T21:19:10+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "318975e5c9f84f10b1d31b01beaa3426a49a5ce2",
+        "subject": "fix: let Create Release Tag use a token that can create a ref (#5255)",
+        "at": "2026-09-06T21:07:53+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a0026342c2b900a630842b0970123177e46614d6",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.1.0 (#5254)",
+        "at": "2026-09-06T21:01:10+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "04852ade1c86573269b472b6d46fd13f659e531d",
         "subject": "fix: pin published preview-runtimes to the line that actually published (#5253)",
@@ -458,30 +482,6 @@
         "sha": "82c960c63d64043a82099bb43e7e0613115fc610",
         "subject": "test: pin the two preview-selector rules against a shared table (#5193)",
         "at": "2026-09-05T11:56:03+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "861afdc199e724cc72c7f9b57e572a7a63b46577",
-        "subject": "feat(serve): fetch the preview server on first use instead of demanding one (#5194)",
-        "at": "2026-09-05T11:55:48+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7a1359cacfd9bfb371f0e34a7306115e0d5cd4d8",
-        "subject": "fix(ci): follow a sysprop mirror that reads the shared constant (#5191)",
-        "at": "2026-09-05T11:55:30+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "28fb93b586de8d5cffb07db10df40658ff1a87a2",
-        "subject": "feat(render-host): enable explicitApi() and check an ABI dump (#5190)",
-        "at": "2026-09-05T11:43:08+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
