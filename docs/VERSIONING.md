@@ -36,37 +36,33 @@ reference: [VERSION_PIN.md](VERSION_PIN.md). Set it with `compose-preview pin --
 
 ## 2. Version bumps for the published artifacts
 
-**Every release is a minor bump.** `release-please` runs
-`"versioning": "always-bump-minor"`, so the version goes `2.4.0 → 2.5.0` whatever the commits
-said: a `fix:`, a `feat:` and a `feat!:` are indistinguishable to it. There are no patch
-releases and no further majors — 2.0.0 is the last one this repository cuts by rule.
+Ordinary semver, with the major effectively frozen:
 
-| Commit type | Bump |
-|---|---|
-| `fix:` / `feat:` / `feat!:` | minor |
-| `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release |
+| Commit type | Bump | Example |
+|---|---|---|
+| `fix:` | patch | `2.8.0 → 2.8.1` |
+| `feat:` | minor | `2.8.0 → 2.9.0` |
+| `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release | — |
+| a new major | **basically never** | only a from-scratch rewrite |
 
-The mechanism, the reason, and the guard that keeps `chore:`-only windows from cutting a
-release are in [RELEASING.md → Versioning after 2.0.0](RELEASING.md#versioning-after-200).
+This is release-please's **default** strategy — there is deliberately no `versioning` key in the
+config. The mechanism, the `!`-in-a-PR-title hazard, and how a deliberate major is forced are in
+[RELEASING.md → Versioning after 2.0.0](RELEASING.md#versioning-after-200).
 
-> **Staged: not live yet.** The `always-bump-minor` key is *not* in
-> `release-please-config.json` as of this commit, and it deliberately cannot be — release-please
-> reads its config from `main` at run time, so the PR that cuts 2.0.0 with a `!` and the PR that
-> stops `!` mapping to a major have to be two commits, in that order. Until the follow-up lands,
-> the machinery still does `fix:` → patch, `feat:` → minor, `feat!:` → major. This paragraph goes
-> away with that PR. Recorded here rather than left implicit because § 10 exists to stop exactly
-> this document describing machinery that is not running.
+**A major no longer signals a breaking change; it signals a rewrite.** Breaking changes ship in
+minors. What the major used to promise now has to be read out of §§ 3–5 and the changelog: § 3
+defines what counts as breaking, § 5 governs the deprecation cycle, and the changelog is where a
+consumer actually sees it. That is a narrowing of what the number claims, not of the policy behind
+it — § 10 already recorded that most of the enforcement these documents describe is not
+implemented, and freezing the major stops the number implying a guarantee that was never
+mechanically kept.
 
-
-**So the version number no longer tells a consumer what kind of change they are taking.** It
-orders releases and nothing else. What the number used to promise now has to be read out of §§ 3–5
-and the changelog: § 3 still defines what counts as breaking, § 5 still governs the deprecation
-cycle, and a `!` in a PR title still routes the entry to the changelog's breaking section. Writing
-the `!` matters more now, not less — it is the only place the break is announced.
-
-This is a narrowing of what the number claims, not of the underlying policy. § 10 already recorded
-that most of the enforcement these documents describe is not implemented; pinning the bump to
-minor stops the version implying a guarantee that was never mechanically kept.
+**One consequence, recorded rather than discovered later.** `versionsIncompatible`
+(`cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt`) compares major versions to decide
+whether a pin/CLI skew is a `warning` or a `note`, on the documented grounds that "a major release
+changes the render/daemon wire format". With the major frozen that predicate is false across all of
+`2.x`, so every skew reports as a `note`. It stays correct across the `1.x → 2.x` boundary, which
+is why it is unchanged, but it stops being a signal after that.
 
 ## 3. What counts as breaking
 
