@@ -1035,6 +1035,13 @@ jobs:
       # stays stuck. Both directions are pinned against a stubbed GitHub.
       - name: Run stranded release sweeper tests
         run: ./.github/scripts/test-sweep-stranded-releases.sh
+      # The Maven publish guard decides whether a release publishes to Central at all. A wrong
+      # `false` is unrepairable — Central will not accept a version twice, so the version simply
+      # never exists and the plugin coordinate consumers resolve 404s. Every fail-open path is
+      # pinned here, along with the module enumeration: if that ever stops matching, the guard
+      # narrows to the shared build inputs and starts answering `false` for real changes.
+      - name: Run Maven publish guard tests
+        run: ./.github/scripts/test-maven-publish-needed.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
       # The Figma reference column cuts a node out of a repo's committed page

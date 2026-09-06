@@ -59,6 +59,93 @@ env:
   TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  # REPORTING ONLY — this job cannot stop a publish, and nothing gates on it yet.
+  #
+  # The root-level `publishAndReleaseToMavenCentral` below uploads all 94 publishing modules on
+  # every release, whether or not one of them changed: over v1.57.0..v1.84.0 that was 3,572 module
+  # publications carrying 117 module-changes. This job runs the guard that decides whether a
+  # release needs a Central publish at all and writes the answer to the run summary, so the
+  # decision can be watched against real releases before it is allowed to act on one. Wiring it
+  # to `publish-gradle-plugin`'s `if:` is a deliberate second step, and it needs the CLI-side
+  # plugin-version pin to land first — see docs/design/RELEASE_TRAINS.md § Going live.
+  #
+  # Its own job because the guard needs full history (`fetch-depth: 0`) and the publish job does
+  # not: deepening that checkout would slow the release for a step that only reports. It runs in
+  # parallel with everything else and, having no dependents, cannot delay the release either.
+  maven-publish-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      needed: ${{ steps.guard.outputs.needed }}
+      reason: ${{ steps.guard.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG_NAME }}
+          # The guard diffs this tag against the last published version, so it needs the tags and
+          # the history joining them. Anything shallower makes it fail open and report nothing
+          # useful.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve the last Maven-published version
+        # Central is the authority on what was actually published, which is exactly the baseline
+        # the guard needs — and it stays correct once releases start skipping the publish, when
+        # "the previous tag" no longer means "the previous published version". `renderer-desktop`
+        # is the sentinel: it is published on every Central publish this repo does, and it is the
+        # coordinate the plugin injects, so if it is absent at a version nothing else is there
+        # either.
+        #
+        # Failure to resolve leaves BASELINE empty, and the guard fails open on that.
+        run: |
+          set -uo pipefail
+          meta="$(curl -fsSL --max-time 30 \
+            https://repo1.maven.org/maven2/ee/schimke/composeai/renderer-desktop/maven-metadata.xml \
+            || true)"
+          latest="$(printf '%s' "${meta}" | sed -n 's:.*<latest>\(.*\)</latest>.*:\1:p' | head -1)"
+          if [ -z "${latest}" ]; then
+            latest="$(printf '%s' "${meta}" | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | tail -1)"
+          fi
+          if [ -n "${latest}" ] && git rev-parse --verify --quiet "v${latest}^{commit}" >/dev/null; then
+            echo "BASELINE=v${latest}" >> "$GITHUB_ENV"
+            echo "Last published version on Central: ${latest}"
+          else
+            echo "BASELINE=" >> "$GITHUB_ENV"
+            echo "Could not resolve a published baseline (got '${latest:-<none>}') — guard will fail open."
+          fi
+      - name: Would this release need a Maven Central publish?
+        id: guard
+        run: |
+          # Build the argument list as an array. `--baseline` is omitted entirely when the
+          # resolution above found nothing, which is one of the script's fail-open paths.
+          args=(--head "${TAG_NAME}" --explain --github-output)
+          if [ -n "${BASELINE}" ]; then
+            args=(--baseline "${BASELINE}" "${args[@]}")
+          fi
+          ./.github/scripts/maven-publish-needed.sh "${args[@]}"
+      - name: Report
+        # Step outputs reach the shell through the environment, never through `${{ }}` inside the
+        # script body — `reason` is free text and interpolating it would splice it into the shell.
+        env:
+          GUARD_NEEDED: ${{ steps.guard.outputs.needed }}
+          GUARD_REASON: ${{ steps.guard.outputs.reason }}
+        run: |
+          {
+            echo "### Maven Central publish guard (reporting only)"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Baseline (last published) | \`${BASELINE:-unresolved}\` |"
+            echo "| This release | \`${TAG_NAME}\` |"
+            echo "| Publish needed | \`${GUARD_NEEDED}\` |"
+            echo "| Reason | ${GUARD_REASON} |"
+            echo
+            if [ "${GUARD_NEEDED}" = "false" ]; then
+              echo "This release published 94 modules that no change could have altered."
+            fi
+            echo "Nothing was skipped — see \`docs/design/RELEASE_TRAINS.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
   # published Maven Central artifact if the VSIX, CLI, or MCP build fails —
   # Central refuses to overwrite an already-published release version, so
