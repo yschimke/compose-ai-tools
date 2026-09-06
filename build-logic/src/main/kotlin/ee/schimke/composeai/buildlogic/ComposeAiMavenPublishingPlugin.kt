@@ -43,9 +43,7 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
       )
 
     project.group = "ee.schimke.composeai"
-    project.version =
-      project.providers.environmentVariable("PLUGIN_VERSION").orNull
-        ?: project.nextPatchSnapshotVersion()
+    project.version = project.publishedVersion()
 
     project.configureAndroidLibraryPublication()
     project.configureDependencyLocking()
@@ -124,6 +122,49 @@ private fun Project.configureAndroidLibraryPublication() {
       )
     }
   }
+}
+
+/**
+ * Which of the two Maven version lines this module publishes on.
+ *
+ * Everything under `data/` versions separately from everything else. That split is lopsided on purpose: 58 of the
+ * 94 published modules live under `data/` and they change on roughly a third of releases, so
+ * giving them their own line stops the largest and slowest-moving block of artifacts being
+ * republished byte-identical on every release. Costed at −50.7% of module-publications in
+ * `docs/design/RELEASE_TRAINS.md` § 5, against −61.6% for a five-way split that needs three more
+ * version lines to get there.
+ *
+ * Derived from the module's directory rather than a list, for the same reason the guard enumerates
+ * modules from the build files: a list is a thing that goes stale silently, and here going stale
+ * means publishing a POM that names a sibling version which does not exist.
+ */
+internal fun Project.mavenTrain(): String =
+  if (projectDir.relativeTo(rootDir).invariantSeparatorsPath.startsWith("data/")) "data" else "core"
+
+/**
+ * The version this module publishes at.
+ *
+ * `core` takes `PLUGIN_VERSION` — the release tag — as it always has. `data` takes
+ * `DATA_LINE_VERSION` when the release sets it, which is the last version at which the data train
+ * actually changed. On a release where `data/` changed, the two are equal and this is a no-op; on
+ * one where it did not, the data modules keep the version they already have on Central and are not
+ * republished at all.
+ *
+ * Cross-train POMs come out right for free: a `core` module depending on `project(":data:…")` gets
+ * that project's `version`, so `renderer-desktop:2.9.0` names `data-focus-core:2.7.0` in its POM
+ * and Gradle resolves the artifact that genuinely exists.
+ *
+ * **`DATA_LINE_VERSION` is ignored unless `PLUGIN_VERSION` is set.** Outside a release both are
+ * absent and everything falls to the snapshot version; a stray `DATA_LINE_VERSION` in a developer
+ * shell must not silently version half the build differently from the other half.
+ */
+private fun Project.publishedVersion(): String {
+  val pluginVersion =
+    providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
+      ?: return nextPatchSnapshotVersion()
+  if (mavenTrain() != "data") return pluginVersion
+  return providers.environmentVariable("DATA_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
+    ?: pluginVersion
 }
 
 private fun Project.nextPatchSnapshotVersion(): String {

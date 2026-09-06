@@ -307,3 +307,65 @@ tasks.register("functionalTestWithAndroidBundleDaemon") {
 // the second invocation sees the install up-to-date, so the only cost is dodging the race. The
 // functionalTest also self-checks the binary's presence past its opt-in gate and fails with a
 // useful message rather than a bare `NoClassDefFoundError`.
+
+// The Gradle task list `release.yml` runs to publish one Maven version line.
+//
+// Two version lines means the publish can no longer always be the root-level
+// `publishAndReleaseToMavenCentral` that fans out to everything: when one train is skipped, its
+// modules are already on Central at the version they carry, and Central refuses a version twice —
+// re-uploading them would fail the whole deployment, not just their part of it. So the skipped
+// train's tasks must not be in the invocation at all.
+//
+// Naming the tasks explicitly is not a different kind of publish. The root-level abbreviation just
+// selects `publishAndReleaseToMavenCentral` in every subproject that has one; listing a subset of
+// those same task paths in one invocation produces one deployment containing that subset.
+//
+// The list cannot be written down by hand. The guard enumerates modules by DIRECTORY (it works on
+// a git diff), Gradle addresses them by PROJECT PATH, and `settings.gradle.kts` deliberately
+// decouples the two — `:preview-data-api` lives in `api/preview-data-api`. A hand-kept mapping is
+// exactly the artefact that goes stale silently, and going stale here means either publishing a
+// module twice or dropping one out of a release.
+//
+// So Gradle prints the mapping it actually has. `mavenTrain()` in the publishing convention plugin
+// is the single definition of which train a module is on, shared with the version it publishes at,
+// so the task list and the version can never disagree about a module.
+//
+// Deliberately NOT wired into the release yet: this prints, and nothing consumes it.
+val printPublishTasks by
+  tasks.registering {
+    group = "publishing"
+    description =
+      "Print the publish task path for each module on a Maven train (-Ptrain=core|data|all)."
+    notCompatibleWithConfigurationCache("Inspects the project tree at execution time")
+    val requested = (project.findProperty("train") as String? ?: "all")
+    val rootDirPath = rootDir
+    val rows =
+      subprojects
+        .filter { it.plugins.hasPlugin("composeai.maven-publishing") }
+        .map { p ->
+          val dir = p.projectDir.relativeTo(rootDirPath).invariantSeparatorsPath
+          Triple(
+            if (dir.startsWith("data/")) "data" else "core",
+            "${p.path}:publishAndReleaseToMavenCentral",
+            dir,
+          )
+        }
+    doLast {
+      require(requested in setOf("core", "data", "all")) {
+        "unknown train '$requested' (expected core, data or all)"
+      }
+      // `gradle-plugin` is an includeBuild, so its four publishing modules are not `subprojects`
+      // of this build and the enumeration above cannot see them. They are addressed through the
+      // included build's own root task, which is what the release has always done — and they are
+      // all on the `core` train, being the plugin itself and its helpers. Emitted here rather
+      // than left for the caller to remember: a task list that silently omits the Gradle plugin
+      // is a release that publishes everything except the artifact consumers actually apply.
+      val all =
+        rows +
+          Triple("core", ":gradle-plugin:publishAndReleaseToMavenCentral", "gradle-plugin")
+      all
+        .filter { (train, _, _) -> requested == "all" || train == requested }
+        .sortedBy { (_, task, _) -> task }
+        .forEach { (train, task, dir) -> println("$train\t$task\t$dir") }
+    }
+  }
