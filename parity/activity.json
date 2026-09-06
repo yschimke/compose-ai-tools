@@ -1,11 +1,147 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-06T15:23:23.261Z",
+  "generatedAt": "2026-09-06T20:05:57.016Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "04852ade1c86573269b472b6d46fd13f659e531d",
+        "subject": "fix: pin published preview-runtimes to the line that actually published (#5253)",
+        "at": "2026-09-06T20:58:12+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bc094abeb060f4182e677b33b26b9119a1c3e511",
+        "subject": "fix: merge the duplicate env block that broke the v2.1.0 release (#5252)",
+        "at": "2026-09-06T19:04:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "57ae39ea939b7eaab695d2588c9f82ed83d170d1",
+        "subject": "chore(main): release 2.1.0 (#5238)",
+        "at": "2026-09-06T18:56:01+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6bd41ce31dd53332fb756f0db674a377bba92f69",
+        "subject": "feat: gate the Maven publish per version line (#5251)",
+        "at": "2026-09-06T18:50:59+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "dc988f9c485e412d89f2f04bb86d40d7bc1edddd",
+        "subject": "fix: stop the root build file being enumerated as a published module (#5250)",
+        "at": "2026-09-06T18:42:05+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7dbd10f378bc13b09a4518a91480765ef07ae241",
+        "subject": "feat: give data/ its own Maven version line, inert until wired (#5249)",
+        "at": "2026-09-06T18:38:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "96467ea819672a6c1cc1f62895b8506615c5df45",
+        "subject": "feat(screen): draw a generated screen on the devices its design named (#5248)",
+        "at": "2026-09-06T18:30:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a808a4145a80b0cc282c7794d1e50aa2b01c1fc7",
+        "subject": "docs: cost the train split, and land on two lines rather than five (#5247)",
+        "at": "2026-09-06T18:19:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cae5f9371e50d03076fbeb5f74b1d74fe3cb3c1a",
+        "subject": "feat: publish to Maven Central only when a published module changed (#5246)",
+        "at": "2026-09-06T18:09:43+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d1db6ca1fcecaca74c2c52b39739d27b97577ec6",
+        "subject": "feat: resolve the Gradle plugin at a separate Maven-line version (#5245)",
+        "at": "2026-09-06T17:19:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e800532db64a8c93f8701b1a41511473b935e17d",
+        "subject": "docs: require a GitHub-hosted origin for embedded images (#5244)",
+        "at": "2026-09-06T16:57:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2ffe815b399da5ffc98fe280c9731412ca3c9bb4",
+        "subject": "ci: read dependency lock state instead of the version catalog (#5243)",
+        "at": "2026-09-06T16:53:55+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "460f095f2813af6a9368989baca8e50c7c65da19",
+        "subject": "ci: reject the breaking-change marker in PR titles (#5242)",
+        "at": "2026-09-06T16:39:12+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2c1c55837bcbff00b14490bd23572d3a5a759f66",
+        "subject": "ci: commit the dependency lock state for all 94 published modules (#5240)",
+        "at": "2026-09-06T16:35:48+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ed37daf1718d011b159326213732d9ba6e561f7b",
+        "subject": "chore(ci): update the design-artifacts export driver to v2 (#5239)",
+        "at": "2026-09-06T16:31:05+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7026c5f7c5a26c2c066cd960cfcc8b317c1747b7",
+        "subject": "docs: correct the versioning policy — patch for fixes, frozen major (#5241)",
+        "at": "2026-09-06T16:30:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9c568c2f4029cd77a3cb8e55935e039f5b5be11b",
+        "subject": "fix(scroll): stop LONG repeating top-pinned chrome at every seam (#5236)",
+        "at": "2026-09-06T16:18:19+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "e23d67be62fc7322b50f5012303769443ad4cd54",
         "subject": "chore(main): release 2.0.0 (#5226)",
@@ -346,142 +482,6 @@
         "sha": "28fb93b586de8d5cffb07db10df40658ff1a87a2",
         "subject": "feat(render-host): enable explicitApi() and check an ABI dump (#5190)",
         "at": "2026-09-05T11:43:08+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "cdc4bb1c0d741ab37ce883b01904f840b7de5eb7",
-        "subject": "refactor(mcp): lift the render-matrix helpers into :render-matrix (#5188)",
-        "at": "2026-09-05T11:40:01+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f018302ec908782bec533d5c5b4689ee6f7f313d",
-        "subject": "fix(scroll): verify every LONG stride and seam, and stop black overlaps winning the stitch (#5187)",
-        "at": "2026-09-05T11:34:39+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ac87b283e70f8cb00ad961aec06ab327e696afcd",
-        "subject": "fix(cli): carry non-ASCII preview ids through a file, not a process argument (#5186)",
-        "at": "2026-09-05T11:26:47+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7460d58488e00b5eb5004496d4efdfb77fb53975",
-        "subject": "refactor(daemon): dispatch RPC through a handler registry (#5179)",
-        "at": "2026-09-05T11:26:35+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9ebc52f31a2d85dba7b6a2f3d14217f40d7dba75",
-        "subject": "refactor(daemon): give the composeai.daemon.* sysprops a typed registry (#5182)",
-        "at": "2026-09-05T11:19:02+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4183c1ded6e29a807a00565596663af1c9e00244",
-        "subject": "fix(cli): report a cancelled discovery as a timeout, not a missing plugin (#5181)",
-        "at": "2026-09-05T11:15:47+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6c558318c27a070532ad4f5851a4b2a99326ecf9",
-        "subject": "refactor(daemon): share one soft-keyboard band between both connectors (#5180)",
-        "at": "2026-09-05T11:15:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e60a9e4a6d6c1ecadc1c80b599774b88979933e0",
-        "subject": "docs: move settings.gradle.kts narrative into docs/build-scripts/ (#5175)",
-        "at": "2026-09-05T11:14:50+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "464e9fdfc185df03d1f2fda358db593a521ac677",
-        "subject": "chore: remove dead scaffolding — placeholder tests and the history/diff gate (#5173)",
-        "at": "2026-09-05T11:14:45+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "51bcd549ceff584933ad167fb0a506787908dc32",
-        "subject": "ci: retire the integration push lane and file bugs for nightly failures (#5170)",
-        "at": "2026-09-05T11:14:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b839f9fd39c363f5269314328114899688069b47",
-        "subject": "feat(serve): launch the published server instead of linking it (#5177)",
-        "at": "2026-09-05T11:14:03+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a42dd16b53c73c8f4c1f78300d109e51053a7c95",
-        "subject": "fix(cli): depend on the local :render-host instead of the retired coordinate (#5178)",
-        "at": "2026-09-05T11:11:08+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2ee93ec58aebf2d94e24f95b8fa8831be699b6a3",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3 (#5164)",
-        "at": "2026-09-05T10:44:19+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3e43c016224befaabb46ccca85a00fe94c8441f6",
-        "subject": "fix(design-artifacts): warn instead of failing when the pinned driver has no theme generator (#5162)",
-        "at": "2026-09-05T10:41:00+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0b07ea627bbfcc2083f029f2e70744bc9e74053a",
-        "subject": "ci: fetch the pinned contracts reader instead of checking that repo out (#5161)",
-        "at": "2026-09-05T10:25:16+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "105a5a6a0b18446518dca984eff3a96388fab9ed",
-        "subject": "fix(ci): let only the release-PR merge run cut a release, and sweep stranded drafts (#5160)",
-        "at": "2026-09-05T10:20:42+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3e13ee0eb9fb2a192c44c3216ff9b7c4c029f59f",
-        "subject": "feat(design-artifacts): expose an imported project's themes (#5158)",
-        "at": "2026-09-05T10:11:32+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
