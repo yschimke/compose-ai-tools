@@ -105,82 +105,48 @@ To move the pin by hand (or to repair a missed release), run it locally:
 
 ## Versioning after 2.0.0
 
-**Every release is a minor bump.** `2.4.0 → 2.5.0`, whatever the commits said. There are no
-patch releases, and no further majors.
+**Ordinary semver, with the major effectively frozen.**
 
-| Commit type | Bump |
-|---|---|
-| `fix:` | minor |
-| `feat:` | minor |
-| `feat!:` / `fix!:` (the `!`, in the **PR title**) | minor |
-| `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release |
+| Commit type | Bump | Example |
+|---|---|---|
+| `fix:` | patch | `2.8.0 → 2.8.1` |
+| `feat:` | minor | `2.8.0 → 2.9.0` |
+| `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no release | — |
+| a new major | **basically never** | only a from-scratch rewrite |
 
-This is `"versioning": "always-bump-minor"` in
-[`release-please-config.json`](../release-please-config.json). The strategy ignores the version
-and the commits it is handed and returns a minor update unconditionally.
+This is release-please's **default** versioning strategy — there is deliberately no `versioning`
+key in [`release-please-config.json`](../release-please-config.json). The default already does
+what we want for `fix:` and `feat:`; the only thing that needed changing was our willingness to
+cut majors.
 
-> **Staged: not live yet.** The `always-bump-minor` key is *not* in the config as of this commit.
-> release-please reads its config from `main` at run time, so a single PR that both added the key
-> and carried a `!` would have applied its own new setting to itself and cut a minor instead of
-> 2.0.0. The key lands in the follow-up PR, once 2.0.0 has published. Until then the table above
-> describes the intended policy and the old mapping (`fix:` → patch, `feat:` → minor, `feat!:` →
-> major) is what actually runs. This note goes away with that PR.
+**What "basically never" means in practice.** A major is reserved for a rewrite from scratch, not
+for a breaking change. Breaking changes ship in minors and are announced in the changelog, which is
+where a consumer has to read them — see [VERSIONING.md § 3](VERSIONING.md#3-what-counts-as-breaking)
+for what counts as breaking, and § 5 for the deprecation cycle that softens it.
 
+> **The one way to cut a major by accident is a `!` in a PR title.** `feat!:` / `fix!:` still maps
+> to a major under the default strategy, and the squash merge means the PR title *is* the commit
+> headline, so nothing downstream filters it. `RELEASING.md` used to call this "the single most
+> likely way to cut an unintended major" and that has not changed. **Don't write the `!`.** Write
+> `feat:` and describe the break in the body and the changelog.
 
-**Why.** At ~44 releases a week the distinction between a patch and a minor had stopped carrying
-information: a release is whatever landed since the last one, usually a mix, and the number was
-being read as a bump size when it only ever meant "later". Cutting a major on a `!` was worse
-than uninformative — it was a hazard, and `RELEASING.md` used to say so in as many words
-("the single most likely way to cut an unintended major"). One monotonic counter that nobody has
-to reason about beats a three-way choice that a PR title could get wrong.
-
-**What still decides whether a release happens at all.** The versioning strategy sets the *size*
-of a bump; it does not decide that there is one. That is a separate guard in release-please
-(`changelogEmpty` in `strategies/base.ts`): a window whose commits produce empty release notes
-proposes no release PR. `chore:`, `ci:`, `docs:`, `refactor:` and `test:` are hidden from the
-changelog by default, so a window containing only those still cuts nothing — exactly as before.
-**This is the load-bearing detail.** Had the release decision run off the versioning strategy,
-`always-bump-minor` would have cut a release for every dependency bump and every CI tweak, which
-at this repository's volume would have been a serious regression rather than a simplification.
-
-**Forcing a specific version.** `"release-as": "X.Y.Z"` in the config remains the only route, and
-it is still sticky — it is not consumed by the release it forces, so left in place every
-subsequent release PR re-proposes it, the tag already exists, and the release wedges. This repo
-has been bitten twice: an override pinning 0.7.0 that outlived its release, and `1.0.0`. Delete
+**A deliberate major** goes through `"release-as": "3.0.0"` in the config, which is the same route
+`1.0.0` used. It is sticky — not consumed by the release it forces, so left in place every
+subsequent release PR re-proposes it, the tag already exists, and the release wedges. This repo has
+been bitten twice: an override pinning 0.7.0 that outlived its release, and `1.0.0` itself. Delete
 the key in the first PR after the forced release publishes.
 
-### How 2.0.0 was cut, and why it is the last major
+**What decides whether a release happens at all**, independently of the bump size: release-please's
+`changelogEmpty` guard proposes no release PR when a window's commits produce empty release notes.
+`chore:`, `ci:`, `docs:`, `refactor:` and `test:` are hidden from the changelog by default, so a
+window of only those cuts nothing.
 
-`v2.0.0` came from a PR titled `feat!:`, under the *previous* configuration, where the `!` still
-mapped to a major. That ordering was forced: release-please reads its config from `main` at run
-time, so a PR that both added `always-bump-minor` and carried a `!` would have had its own new
-setting applied to it and cut a minor. The policy change and the major it announces could not be
-the same commit.
+### How 2.0.0 was cut
 
-Under `always-bump-minor` the `!` no longer reaches the version number at all, so 2.0.0 is the
-last major this repository cuts by rule. A future one would have to be forced with `release-as`,
-deliberately, as a decision rather than a side effect of a PR title.
-
-### What this costs, stated plainly
-
-A breaking change is no longer legible from the version number. Two consequences follow, and
-neither is fixed by this change:
-
-- **`versionsIncompatible`** (`cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt`) compares
-  major versions to decide whether a pin/CLI skew is a `warning` or a `note`, on the documented
-  grounds that "a major release changes the render/daemon wire format". It backs the skew
-  diagnostics in `warnOnCliSkew` and two in `DoctorCommand`. Once no major is ever cut, that
-  predicate is permanently false across 2.x and every skew reports as a `note`. It stays correct
-  across the 1.x → 2.x boundary, which is why it is not being changed here, but it stops being a
-  signal after that.
-- **The changelog is now the only place a break is announced**, which is why `feat!:` is still
-  worth writing even though it moves no number.
-
-The honest framing: this repository was already not using majors to communicate breakage — the
-`0.x` line ran to `0.19.x` under `bump-minor-pre-major`, and `1.0.0` was forced with `release-as`
-rather than earned by a `!`. See [VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced)
-for what is and is not actually enforced. This change stops the version number implying a promise
-the machinery never kept.
+`v2.0.0` came from a PR titled `feat!:` (#5229) — the `!` mapping to a major under the default
+strategy, exactly as described above. It marked the point at which this repository stopped cutting
+majors as a matter of course. Under the policy above the next major is a rewrite, not a version
+number that falls out of a PR title.
 
 ## Fallback paths
 
