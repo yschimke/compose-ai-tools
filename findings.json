@@ -2981,6 +2981,44 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview.a11y.png",
+      "cleanBasename": "",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,364,224",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ActivitySummaryWidgetSquirclePreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview",
+      "rendersDir": "wear-widget",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec.a11y.png",
+      "cleanBasename": "",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,364,224",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ImageWidgetDeviceSpecPreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec",
+      "rendersDir": "wear-widget",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.a11y.png",
       "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png",
       "findings": [
