@@ -12,9 +12,11 @@ package ee.schimke.composeai.cli
  * because everything except the names below is identical: the same discovery ordering, the same
  * fetch-on-first-use, the same cache layout, the same failure text shape.
  *
- * One pin covers both. The MCP tarball is attached to the *same* release as the server
- * distribution, so a single reviewed pin move keeps the pair in step; a second version would let
- * them skew, and there is no cadence on which they would skew usefully.
+ * One pin — `composeai-preview-server-dist` — covers both. The MCP tarball is attached to the
+ * *same* release as the server distribution, so a single reviewed pin move keeps the pair in step;
+ * a second version would let them skew, and there is no cadence on which they would skew usefully.
+ * That reasoning is about these two archives only, and is why the pin split that separated the
+ * distribution from the published library left this pair together.
  */
 internal data class ReleasedDistribution(
   /** Launcher script name inside `bin/`, and the name looked up on `PATH`. */
