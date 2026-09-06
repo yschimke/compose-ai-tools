@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.85.0](https://github.com/yschimke/compose-ai-tools/compare/v1.84.0...v1.85.0) (2026-09-06)
+
+
+### Features
+
+* **design-artifacts:** publish the component record beside catalog.json ([#5222](https://github.com/yschimke/compose-ai-tools/issues/5222)) ([2c4e6ae](https://github.com/yschimke/compose-ai-tools/commit/2c4e6ae2da5674c8405b2a97f21e3f3874f0b52b))
+
+
+### Bug Fixes
+
+* **discovery:** look through a theme lambda Kotlin 2.3+ stores as a static method ([#5224](https://github.com/yschimke/compose-ai-tools/issues/5224)) ([66c4eaa](https://github.com/yschimke/compose-ai-tools/commit/66c4eaa01eedb0f8c60d87fa901c5c4db23b3ceb))
+
 ## [1.84.0](https://github.com/yschimke/compose-ai-tools/compare/v1.83.0...v1.84.0) (2026-09-06)
 
 
