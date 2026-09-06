@@ -7,7 +7,7 @@
     "ref": "main",
     "module": ":samples:design-catalog-m3"
   },
-  "generatedAt": "2026-09-05T22:41:24.857Z",
+  "generatedAt": "2026-09-06T08:28:54.411Z",
   "mappings": [
     {
       "componentId": "Button/Filled",
@@ -32,7 +32,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/button-filled.svg"
@@ -60,7 +61,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/progress-linear.svg"
@@ -88,7 +90,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/badge.svg"
@@ -116,7 +119,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/card-slots.svg"
@@ -144,7 +148,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/checkbox-checked.svg"
@@ -172,7 +177,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/switch-on.svg"
@@ -200,7 +206,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/slider.svg"
@@ -228,7 +235,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/shape-morph.svg"
@@ -256,7 +264,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": "kotlin.Unit"
         }
       ],
       "figmaSvg": "figma/template-appscaffold.svg"
@@ -284,7 +293,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/textfield-filled.svg"
@@ -312,7 +322,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/text-maxlines-truncated.svg"
@@ -340,7 +351,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/text-serif.svg"
@@ -368,7 +380,8 @@
           "nullable": false,
           "noArgConstructible": false,
           "noArgFactory": null,
-          "scopeDslReceiver": null
+          "scopeDslReceiver": null,
+          "lambdaReturnTypeFqn": null
         }
       ],
       "figmaSvg": "figma/text-monospace.svg"
