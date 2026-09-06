@@ -388,7 +388,15 @@ composeai-contracts = "2.5.0"
 #
 # What this pin no longer names is the server an INSTALLED CLI downloads. See
 # `composeai-preview-server-dist` below.
-composeai-preview-serve = "3.2.0"
+#
+# 3.9.0 is the first release since 3.2.0 whose POM a consumer can actually resolve. 3.3.0 through
+# 3.8.0 each published a `compose-preview-ui-builder-runtime` POM naming
+# `compose-preview-ui-builder-render-bundle` at compile scope, an artifact that was never uploaded —
+# so `compose-preview-serve` was unresolvable for six consecutive releases and this pin could not
+# have moved off 3.2.0 even if something had wanted it to. compose-preview-server#449 made the
+# publish set derive from the modules that apply the publishing plugin, and #452's release published
+# the missing coordinate.
+composeai-preview-serve = "3.9.0"
 
 # The compose-preview-server RELEASE the installed CLI fetches at run time — a different question
 # from the one above, which is why it is a different pin.
@@ -413,11 +421,11 @@ composeai-preview-serve = "3.2.0"
 # moving this one changes which server every installed CLI downloads, so it is the one with user
 # impact even though the other is the one that shows up in a compile error.
 #
-# 3.2.0 is the first release carrying the MCP distribution: compose-preview-server#308 moved the
-# module there and #314 released it. 3.1.0 carried the archive but published a `compose-preview-serve`
-# POM naming an unpublished project (`ui-builder-export-jvm:unspecified`), so it resolves for nobody;
-# compose-preview-server#316 fixed that and rides in this release too.
-composeai-preview-server-dist = "3.2.0"
+# 3.2.0 was the first release carrying the MCP distribution (compose-preview-server#308 moved the
+# module there, #314 released it), which is why this pin sat there. Every release since has carried
+# both archives; 3.9.0 is verified to carry `compose-preview-server-3.9.0.tar.gz` and
+# `compose-preview-mcp-3.9.0.tar.gz`, which is the property `check_preview_server_pin.py` enforces.
+composeai-preview-server-dist = "3.9.0"
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
