@@ -59,7 +59,7 @@ env:
   TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  # REPORTING ONLY — this job cannot stop a publish, and nothing gates on it yet.
+  # REPORTING ONLY — nothing reads this job's output, and it must never be able to stop a release.
   #
   # The root-level `publishAndReleaseToMavenCentral` below uploads all 94 publishing modules on
   # every release, whether or not one of them changed: over v1.57.0..v1.84.0 that was 3,572 module
@@ -71,8 +71,29 @@ jobs:
   #
   # Its own job because the guard needs full history (`fetch-depth: 0`) and the publish job does
   # not: deepening that checkout would slow the release for a step that only reports. It runs in
-  # parallel with everything else and, having no dependents, cannot delay the release either.
+  # parallel with everything else and has no dependents.
+  #
+  # `continue-on-error` is the load-bearing line here, and "no dependents" is exactly why it was
+  # missed. Nothing needs this job's OUTPUT, but `release-please.yml` gates finalisation on the
+  # RESULT of the whole `release.yml` call:
+  #
+  #     finalize-release:
+  #       needs: [release-please, release]
+  #       if: ... && needs.release.result == 'success'
+  #
+  # A workflow_call's result is the roll-up of every job inside it, so without this line a failure
+  # here — a Maven Central blip while resolving the baseline, a git edge case — skips
+  # `finalize-release` and leaves the GitHub Release a DRAFT: `/releases/latest` and every
+  # `latest/download/…` URL keep serving the previous version, with the new one published to Maven
+  # Central but invisible to installers. `release-draft-sweeper.yml` would recover it within the
+  # hour, which is a backstop, not a reason to allow it.
+  #
+  # This is the same posture, for the same reason, as the release-milestone comment jobs described
+  # in docs/RELEASING.md: pure reporting that runs after a decision has been made must not be able
+  # to touch a publish that already succeeded. A red mark on this job in the run is the intended
+  # signal; a held release is not.
   maven-publish-guard:
+    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       contents: read
