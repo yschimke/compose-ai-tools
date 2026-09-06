@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.0](https://github.com/yschimke/compose-ai-tools/compare/v2.0.0...v2.1.0) (2026-09-06)
+
+
+### Features
+
+* give data/ its own Maven version line, inert until wired ([#5249](https://github.com/yschimke/compose-ai-tools/issues/5249)) ([7dbd10f](https://github.com/yschimke/compose-ai-tools/commit/7dbd10f378bc13b09a4518a91480765ef07ae241))
+* publish to Maven Central only when a published module changed ([#5246](https://github.com/yschimke/compose-ai-tools/issues/5246)) ([cae5f93](https://github.com/yschimke/compose-ai-tools/commit/cae5f9371e50d03076fbeb5f74b1d74fe3cb3c1a))
+* resolve the Gradle plugin at a separate Maven-line version ([#5245](https://github.com/yschimke/compose-ai-tools/issues/5245)) ([d1db6ca](https://github.com/yschimke/compose-ai-tools/commit/d1db6ca1fcecaca74c2c52b39739d27b97577ec6))
+* **screen:** draw a generated screen on the devices its design named ([#5248](https://github.com/yschimke/compose-ai-tools/issues/5248)) ([96467ea](https://github.com/yschimke/compose-ai-tools/commit/96467ea819672a6c1cc1f62895b8506615c5df45))
+
+
+### Bug Fixes
+
+* **scroll:** stop LONG repeating top-pinned chrome at every seam ([#5236](https://github.com/yschimke/compose-ai-tools/issues/5236)) ([9c568c2](https://github.com/yschimke/compose-ai-tools/commit/9c568c2f4029cd77a3cb8e55935e039f5b5be11b))
+* stop the root build file being enumerated as a published module ([#5250](https://github.com/yschimke/compose-ai-tools/issues/5250)) ([dc988f9](https://github.com/yschimke/compose-ai-tools/commit/dc988f9c485e412d89f2f04bb86d40d7bc1edddd))
+
 ## [2.0.0](https://github.com/yschimke/compose-ai-tools/compare/v1.85.0...v2.0.0) (2026-09-06)
 
 

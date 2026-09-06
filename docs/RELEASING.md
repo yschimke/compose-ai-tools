@@ -383,7 +383,7 @@ live there), just apply the plugin:
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "2.0.0"
+    id("ee.schimke.composeai.preview") version "2.1.0"
 }
 ```
 <!-- x-release-please-end -->
@@ -439,9 +439,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-2.0.0.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-2.1.0.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-2.0.0/bin/compose-preview list
+./compose-preview-2.1.0/bin/compose-preview list
 ```
 <!-- x-release-please-end -->
 
@@ -454,9 +454,9 @@ want the server binary:
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview-mcp.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-2.0.0.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-2.1.0.tar.gz
 tar xzf compose-preview-mcp.tar.gz
-./compose-preview-mcp-2.0.0/bin/compose-preview-mcp
+./compose-preview-mcp-2.1.0/bin/compose-preview-mcp
 ```
 <!-- x-release-please-end -->
 
