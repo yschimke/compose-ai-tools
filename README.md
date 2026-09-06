@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 286 preview(s) across 17 module(s) · 15 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 288 preview(s) across 17 module(s) · 15 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -572,6 +572,18 @@ _No findings._
 ### `RuntimeShaderGradientBlobPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL-b0110a02.png" width="400" />
+
+_No findings._
+
+### `ScaffoldedInboxFramePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.a11y.png" width="400" />
+
+_No findings._
+
+### `ScaffoldedInboxLongPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long.a11y.png" width="400" />
 
 _No findings._
 

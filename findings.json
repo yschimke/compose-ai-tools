@@ -1360,6 +1360,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.a11y.png",
+      "cleanBasename": "ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.png",
+      "findings": [],
+      "functionName": "ScaffoldedInboxFramePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxFramePreview_Inbox Frame",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/InboxScrollPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "ScaffoldedInboxLongPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/InboxScrollPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SemanticsClickableButtonPreview-aa893247.a11y.png",
       "cleanBasename": "SemanticsClickableButtonPreview-aa893247.png",
       "findings": [],
