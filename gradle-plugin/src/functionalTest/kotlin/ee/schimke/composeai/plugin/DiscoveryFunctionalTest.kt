@@ -16,7 +16,15 @@ class DiscoveryFunctionalTest {
 
   private val json = Json { ignoreUnknownKeys = true }
 
-  private fun createCmpTestProject(): File {
+  /**
+   * @param kotlinVersion the Kotlin and Compose compiler the fixture compiles with. The default is
+   *   the oldest toolchain the plugin supports; a test about a **bytecode shape** a newer compiler
+   *   emits (see the singleton-lambda case) names the version that emits it.
+   */
+  private fun createCmpTestProject(
+    kotlinVersion: String = "2.2.21",
+    composeVersion: String = "1.10.3",
+  ): File {
     val projectDir = tempDir.root
 
     // settings.gradle.kts
@@ -48,9 +56,9 @@ class DiscoveryFunctionalTest {
         """
         @file:Suppress("DEPRECATION")
         plugins {
-            kotlin("jvm") version "2.2.21"
-            kotlin("plugin.compose") version "2.2.21"
-            id("org.jetbrains.compose") version "1.10.3"
+            kotlin("jvm") version "$kotlinVersion"
+            kotlin("plugin.compose") version "$kotlinVersion"
+            id("org.jetbrains.compose") version "$composeVersion"
             id("ee.schimke.composeai.preview")
         }
         dependencies {
@@ -4155,6 +4163,89 @@ class DiscoveryFunctionalTest {
     // left null so a consumer never has to write `jvmName ?: functionName`.
     assertThat(themeTarget.jvmName).isEqualTo("HomeScreen")
     assertThat(themeTarget.descriptor).isNotNull()
+  }
+
+  /**
+   * The same `Theme { Component() }` shape, compiled by a Kotlin whose Compose compiler stores the
+   * non-capturing lambda as a **static method** of `ComposableSingletons$…` rather than as a class
+   * of its own. The walker used to look only for the class, so under a current Kotlin every such
+   * preview reported the *theme* as its subject — which is how Confetti's Wear component catalog
+   * came to record `ConfettiThemeFixed` for every sticker and no `SessionCard` at all.
+   *
+   * The wrapper is deliberately not one `isPreviewOnlyWrapper` recognises by name, and the preview
+   * is named the way Confetti names its variants — `SessionCardPopulatedPreview`, a CamelCase
+   * qualifier after the component — so the test also pins that such a name counts for the component
+   * it starts with.
+   */
+  @Test
+  fun `composePreviewDiscover looks through a theme lambda stored as a static method`() {
+    val projectDir = createCmpTestProject(kotlinVersion = "2.4.10", composeVersion = "1.11.1")
+
+    val srcDir = File(projectDir, "src/main/kotlin/test")
+    File(srcDir, "Previews.kt").delete()
+
+    File(srcDir, "Components.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun SessionCard(title: String) {
+            Text(title)
+        }
+        """
+          .trimIndent()
+      )
+
+    File(srcDir, "Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Composable
+        fun DemoThemeFixed(content: @Composable () -> Unit) {
+            content()
+        }
+
+        @Preview
+        @Composable
+        fun SessionCardPopulatedPreview() {
+            DemoThemeFixed { SessionCard("Compose everywhere") }
+        }
+        """
+          .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    // The shape under test, asserted rather than assumed: the singletons class exists and no
+    // `$lambda$…` class was generated beside it, so the lambda body can only be a method of it.
+    val classes = File(projectDir, "build/classes/kotlin/main/test").listFiles().orEmpty()
+    assertThat(classes.map { it.name }).contains("ComposableSingletons\$PreviewsKt.class")
+    assertThat(classes.filter { it.name.startsWith("ComposableSingletons\$PreviewsKt\$") })
+      .isEmpty()
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val target =
+      manifest.previews.single { it.functionName == "SessionCardPopulatedPreview" }.targets.single()
+    assertThat(target.functionName).isEqualTo("SessionCard")
+    assertThat(target.sourceFile).contains("Components.kt")
+    assertThat(target.signals)
+      .containsAtLeast(TargetSignal.WRAPPER_UNWRAPPED, TargetSignal.NAME_MATCH)
+    assertThat(target.parameters.map { it.name }).containsExactly("title")
   }
 
   @Test
