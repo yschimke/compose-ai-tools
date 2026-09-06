@@ -1,0 +1,383 @@
+{
+    "schemaVersion": 2,
+    "module": "design-catalog-m3",
+    "variant": "debug",
+    "components": [
+        {
+            "canonicalId": "design-catalog-m3/com.example.designcatalogm3.CatalogStickersKt.Sticker",
+            "componentIds": [
+                "Badge",
+                "Button/Filled",
+                "Card/Slots",
+                "Checkbox/Checked",
+                "Progress/Linear",
+                "Shape/Morph",
+                "Slider",
+                "Switch/On",
+                "Text/MaxLines-Truncated",
+                "Text/Monospace",
+                "Text/Serif",
+                "TextField/Filled"
+            ],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogm3.CatalogStickersKt",
+                "callable": "com.example.designcatalogm3.Sticker",
+                "name": "Sticker",
+                "origin": "PROJECT",
+                "jvmName": "Sticker",
+                "descriptor": "(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "id",
+                    "type": "String",
+                    "typeFqn": "kotlin.String",
+                    "hasDefault": false,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                }
+            ],
+            "slots": [],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Dark",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Dark_VARIANT_disabled",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Light",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Light_VARIANT_disabled",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.BadgeSticker_Dark",
+                    "componentId": "Badge"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.BadgeSticker_Light",
+                    "componentId": "Badge"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Dark",
+                    "componentId": "Progress/Linear"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Light",
+                    "componentId": "Progress/Linear"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Dark",
+                    "componentId": "Card/Slots"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Light",
+                    "componentId": "Card/Slots"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.FilledButtonLargeFont_Dark",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.FilledButtonLargeFont_Light",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Dark",
+                    "componentId": "Card/Slots"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Light",
+                    "componentId": "Card/Slots"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Dark",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Light",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnPseudo_Dark",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnPseudo_Light",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark",
+                    "componentId": "Checkbox/Checked"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark_VARIANT_unchecked",
+                    "componentId": "Checkbox/Checked"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Light",
+                    "componentId": "Checkbox/Checked"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Light_VARIANT_unchecked",
+                    "componentId": "Checkbox/Checked"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SliderMid_Dark",
+                    "componentId": "Slider"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SliderMid_Light",
+                    "componentId": "Slider"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark_VARIANT_off",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light_VARIANT_off",
+                    "componentId": "Switch/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Dark",
+                    "componentId": "Shape/Morph"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Light",
+                    "componentId": "Shape/Morph"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Dark",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Light",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Dark",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Light",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Dark",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Light",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.TextFieldSticker_Dark",
+                    "componentId": "TextField/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.TextFieldSticker_Light",
+                    "componentId": "TextField/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Dark",
+                    "componentId": null
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Light",
+                    "componentId": null
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMaxLinesTruncated_Dark",
+                    "componentId": "Text/MaxLines-Truncated"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMaxLinesTruncated_Light",
+                    "componentId": "Text/MaxLines-Truncated"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMonospaceSpecimen_Dark",
+                    "componentId": "Text/Monospace"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMonospaceSpecimen_Light",
+                    "componentId": "Text/Monospace"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextSerifSpecimen_Dark",
+                    "componentId": "Text/Serif"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTextKt.TextSerifSpecimen_Light",
+                    "componentId": "Text/Serif"
+                }
+            ],
+            "code": {
+                "call": "Sticker(id = \"\")",
+                "imports": [
+                    "com.example.designcatalogm3.Sticker"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-m3/com.example.designcatalogm3.CatalogThemeKt.CatalogSticker",
+            "componentIds": [
+                "Card/Slots"
+            ],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogm3.CatalogThemeKt",
+                "callable": "com.example.designcatalogm3.CatalogSticker",
+                "name": "CatalogSticker",
+                "origin": "PROJECT",
+                "jvmName": "CatalogSticker",
+                "descriptor": "(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTheme.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "content",
+                    "type": "() -> Unit",
+                    "typeFqn": "kotlin.Function0",
+                    "hasDefault": false,
+                    "composableSlot": true,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [
+                {
+                    "name": "content",
+                    "required": true,
+                    "receiverScope": null
+                }
+            ],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Dark",
+                    "componentId": "Card/Slots"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Light",
+                    "componentId": "Card/Slots"
+                }
+            ],
+            "code": {
+                "call": "CatalogSticker(content = {})",
+                "imports": [
+                    "com.example.designcatalogm3.CatalogSticker"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-m3/com.example.designcatalogm3.CatalogThemeKt.FullScreenM3",
+            "componentIds": [
+                "Template/AppScaffold"
+            ],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogm3.CatalogThemeKt",
+                "callable": "com.example.designcatalogm3.FullScreenM3",
+                "name": "FullScreenM3",
+                "origin": "PROJECT",
+                "jvmName": "FullScreenM3",
+                "descriptor": "(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTheme.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "content",
+                    "type": "() -> Unit",
+                    "typeFqn": "kotlin.Function0",
+                    "hasDefault": false,
+                    "composableSlot": true,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [
+                {
+                    "name": "content",
+                    "required": true,
+                    "receiverScope": null
+                }
+            ],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Dark",
+                    "componentId": "Template/AppScaffold"
+                },
+                {
+                    "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Light",
+                    "componentId": "Template/AppScaffold"
+                }
+            ],
+            "code": {
+                "call": "FullScreenM3(content = {})",
+                "imports": [
+                    "com.example.designcatalogm3.FullScreenM3"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        }
+    ]
+}

@@ -6982,7 +6982,7 @@
     "androidx.compose.material3.adaptive:adaptive (planned)"
   ],
   "renderer": "compose-preview 1.84.1-SNAPSHOT",
-  "generatedAt": "2026-09-06T08:28:53.735Z",
+  "generatedAt": "2026-09-06T08:56:52.247Z",
   "display": {
     "hero": "Template/AppScaffold"
   },
@@ -7055,6 +7055,7 @@
       "previewIdPrefix": ""
     }
   ],
+  "componentsFile": "components.json",
   "source": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
