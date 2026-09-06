@@ -91,7 +91,18 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Regenerate lockfiles
-        run: ./gradlew resolveAndLockAll --write-locks
+        # `--no-configuration-cache` is load-bearing, not tidying. `gradle.properties` sets
+        # `org.gradle.configuration-cache=true` AND `configuration-cache.problems=fail`, and
+        # writing lock state means resolving configurations at execution time — which is
+        # `Task.project` access, one of the things the configuration cache forbids. The task
+        # carries `notCompatibleWithConfigurationCache`, and that is NOT enough on its own: the
+        # first run of this workflow still failed with 152 problems and a discarded entry.
+        #
+        # Turning the cache off for this one invocation is the right trade rather than a
+        # workaround. Regenerating lock state is a maintenance task that runs once per dependency
+        # PR and resolves everything by definition, so it has nothing to gain from a cache whose
+        # whole purpose is to skip configuration.
+        run: ./gradlew resolveAndLockAll --write-locks --no-configuration-cache
 
       - name: Did anything move?
         id: diff
