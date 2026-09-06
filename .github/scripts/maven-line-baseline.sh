@@ -16,10 +16,15 @@
 # the release under consideration is stable across the publish: it is `v(N-1)` at both moments,
 # whether or not `vN` ever reaches Central.
 #
-# `renderer-desktop` is the sentinel coordinate. It is published on every Central publish this
-# repo does and it is the artifact the injected plugin resolves, so if it is absent at a version
-# then nothing else is there either. See `maven-publish-needed.sh` for the all-or-nothing rule
-# that makes one sentinel sufficient.
+# Each version line is probed through ONE sentinel coordinate, because a train publishes
+# all-or-nothing: if the sentinel is absent at a version then nothing else on that train is there
+# either. See `maven-publish-needed.sh` for the rule that makes one sentinel sufficient.
+#
+#   core  ->  renderer-desktop        (the artifact the injected plugin resolves)
+#   data  ->  data-remotecompose-core
+#
+# `--artifact` selects it. The default stays `renderer-desktop`, which is also the right answer
+# for the undivided `--train all` question.
 #
 # Prints the bare version (no leading `v`) on stdout, or NOTHING when it cannot resolve one —
 # a network failure, an empty metadata document, or a first-ever release with nothing below it.
@@ -28,18 +33,19 @@
 # itself broke.
 #
 # Usage:
-#   maven-line-baseline.sh --below <version>              # query Central
+#   maven-line-baseline.sh --below <version>                     # query Central (core line)
+#   maven-line-baseline.sh --below <version> --artifact <name>   # a different train's sentinel
 #   maven-line-baseline.sh --below <version> --metadata <file>   # read a maven-metadata.xml
 set -euo pipefail
 
-METADATA_URL="https://repo1.maven.org/maven2/ee/schimke/composeai/renderer-desktop/maven-metadata.xml"
-
+ARTIFACT="renderer-desktop"
 BELOW=""
 METADATA_FILE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --below) BELOW="${2:?--below needs a version}"; shift 2 ;;
+    --artifact) ARTIFACT="${2:?--artifact needs a coordinate name}"; shift 2 ;;
     --metadata) METADATA_FILE="${2:?--metadata needs a path}"; shift 2 ;;
     *) echo "maven-line-baseline.sh: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -54,7 +60,8 @@ else
   # `|| true`: a network failure must leave us with an empty document and print nothing, not
   # abort the calling job. Fail-open is the caller's contract, and it can only honour it if it
   # gets an answer back.
-  meta="$(curl -fsSL --max-time 30 "${METADATA_URL}" || true)"
+  meta="$(curl -fsSL --max-time 30 \
+    "https://repo1.maven.org/maven2/ee/schimke/composeai/${ARTIFACT}/maven-metadata.xml" || true)"
 fi
 
 # One <version> element per line. `sed -n s///p` over the whole document rather than a parse:

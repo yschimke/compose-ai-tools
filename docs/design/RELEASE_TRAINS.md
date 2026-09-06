@@ -397,9 +397,38 @@ module, exactly one always changed as a unit.
    Inert today: nothing sets `DATA_LINE_VERSION`, nothing consumes `printPublishTasks`, and the
    guard is still asked `--train all`.
 
-   **4b. Wire it into the release** — `release.yml` runs the guard once per train, resolves each
-   line's baseline, and publishes each train's task list only when its verdict says so. This is
-   where the `-50.7%` arrives, and it is the step that touches the irreversible path.
+   **4b. Wire it into the release** *(done)* — `release.yml`'s `maven-publish-guard` loops over
+   both lines, resolving each one's baseline from its own sentinel coordinate on Central
+   (`renderer-desktop` for core, `data-remotecompose-core` for data — one sentinel per line is
+   enough because a train publishes all-or-nothing) and emitting a verdict and a version per
+   line. This is where the `-50.7%` arrives.
+
+   `publish-gradle-plugin` runs when **either** line needs publishing, and:
+
+   - **both lines publishing is byte-for-byte the command it has always run.** The generated task
+     list is used only on a split release. Keeping the common path unchanged means the split
+     cannot regress an ordinary release.
+   - `DATA_LINE_VERSION` is exported **unconditionally**, not only when data is skipped. It is
+     what core POMs name for `data-*` coordinates, so on a release where data does not publish it
+     is the only thing keeping `renderer-desktop`'s POM pointed at a version that exists. When
+     data does publish it equals `PLUGIN_VERSION` and setting it is a no-op.
+   - an empty task list is a hard failure. `./gradlew` with no tasks runs `help` and exits 0 —
+     the v1.56.0 failure mode, a green job that published nothing — and the guard having said
+     this line changed means an empty list is a broken enumeration, not an empty train.
+
+   Everything fails open in the same direction as before: an unresolvable baseline omits
+   `--baseline` (one of the guard's own fail-open paths), and only an explicit `false` freezes a
+   line. An empty verdict publishes *and* takes this release's version, so the `if:` and the
+   version can never disagree — a POM naming `v(N-1)` beside a publish of `vN`, or the reverse, is
+   a coordinate no consumer can resolve.
+
+   `maven-readiness.yml` needed no change. It reads `mavenLineVersion` from the shipped CLI, which
+   is the **core** line, and resolves the plugin classpath — whose `data-*` transitives are named
+   by the core POMs at a version that is on Central by construction.
+
+   One consequence worth knowing: a release where **data publishes but core does not** uploads
+   `data-*` artifacts that no published POM references yet. They are picked up by the next core
+   publish, which names data's then-current line. Harmless, and rarer than the reverse.
 
 Step 4 still needs the readiness marker and [`RELEASING.md`](../RELEASING.md) revisited in the
 same change: with two version lines there is no longer one Maven line for a release to name, so
