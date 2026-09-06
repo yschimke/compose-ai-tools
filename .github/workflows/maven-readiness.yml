@@ -79,6 +79,7 @@ jobs:
           dl="$RUNNER_TEMP/cli-dist"
           mkdir -p "$dl"
           plugin_v=""
+          data_v=""
           if gh release download "$TAG" --dir "$dl" --pattern "compose-preview-${V}.tar.gz"; then
             # Targeted extraction: the dist carries every renderer and daemon jar and runs to
             # ~200 MB, and only the CLI's own jar holds cli-version.properties.
@@ -86,8 +87,9 @@ jobs:
                  --wildcards "*/lib/compose-preview-*.jar" 2>/dev/null; then
               jar="$(find "$dl" -name 'compose-preview-*.jar' -path '*/lib/*' | head -1)"
               if [ -n "$jar" ]; then
-                plugin_v="$(unzip -p "$jar" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null \
-                  | sed -n 's/^mavenLineVersion=//p' | head -1)"
+                props="$(unzip -p "$jar" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null)"
+                plugin_v="$(printf '%s' "$props" | sed -n 's/^mavenLineVersion=//p' | head -1)"
+                data_v="$(printf '%s' "$props" | sed -n 's/^dataLineVersion=//p' | head -1)"
               fi
             fi
           fi
@@ -95,8 +97,12 @@ jobs:
             echo "::warning::could not read mavenLineVersion from the shipped CLI — verifying ${V} itself."
             plugin_v="${V}"
           fi
+          # The data line falls back to the plugin line, which is what it equals on every release
+          # that publishes both trains — and on an older CLI built before this key existed.
+          [ -n "${data_v}" ] || data_v="${plugin_v}"
           rm -rf "$dl"
           echo "plugin_version=${plugin_v}" >> "$GITHUB_OUTPUT"
+          echo "data_version=${data_v}" >> "$GITHUB_OUTPUT"
           if [ "${plugin_v}" = "${V}" ]; then
             echo "This release published to Central; verifying ${V}."
           else
@@ -110,6 +116,7 @@ jobs:
           # The version to prove resolvable — this release's own on a publishing release, the
           # Maven line it points consumers at on one that skipped.
           PLUGIN_V: ${{ steps.line.outputs.plugin_version }}
+          DATA_V: ${{ steps.line.outputs.data_version }}
         run: |
           set -euo pipefail
           V="${TAG#v}"
@@ -149,6 +156,7 @@ jobs:
               {
                 echo "version=${V}"
                 echo "plugin_version=${PLUGIN_V}"
+                echo "data_version=${DATA_V}"
                 echo "attempts=${attempt}"
                 echo "plugin_coordinate=ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${PLUGIN_V}"
               } >> "$GITHUB_OUTPUT"
@@ -168,8 +176,8 @@ jobs:
           # and an earlier one when the publish was skipped. Consumers that only need "is this
           # release usable" can keep reading nothing but the filename.
           marker="$RUNNER_TEMP/compose-preview-maven-ready-${V}.json"
-          printf '{"version":"%s","pluginVersion":"%s","verifiedAt":"%s"}\n' \
-            "$V" "$PLUGIN_V" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
+          printf '{"version":"%s","pluginVersion":"%s","dataVersion":"%s","verifiedAt":"%s"}\n' \
+            "$V" "$PLUGIN_V" "$DATA_V" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
           gh release upload "$TAG" "$marker" --clobber
           echo "uploaded $(basename "$marker")."
 

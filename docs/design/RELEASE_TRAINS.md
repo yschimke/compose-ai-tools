@@ -422,9 +422,40 @@ module, exactly one always changed as a unit.
    version can never disagree — a POM naming `v(N-1)` beside a publish of `vN`, or the reverse, is
    a coordinate no consumer can resolve.
 
-   `maven-readiness.yml` needed no change. It reads `mavenLineVersion` from the shipped CLI, which
-   is the **core** line, and resolves the plugin classpath — whose `data-*` transitives are named
-   by the core POMs at a version that is on Central by construction.
+   `maven-readiness.yml` needed no change to *gate* correctly. It reads `mavenLineVersion` from
+   the shipped CLI, which is the **core** line, and resolves the plugin classpath — whose `data-*`
+   transitives are named by the core POMs at a version that is on Central by construction.
+
+   **4c. The published-runtime pin** *(done)* — one consumer did break, and it would have broken
+   on the very first skipped release.
+
+   `design-artifacts.yml` pins the catalog's two preview runtimes to released coordinates and
+   polls Central for them for up to 60 minutes before rendering, deliberately failing loudly
+   rather than rendering an unpinned bundle. It took the version from
+   `composeaiReleasedRuntimeVersion`, which release-please bumps when the release PR is **cut** —
+   before the guard has decided anything. On a release where a line does not publish, that
+   property names a version that never appears, so the poll would burn an hour and fail.
+
+   Worse, one version cannot answer the question at all: `slot-preview-runtime` lives under
+   `runtimes/` (core) and `data-preview-overrides-runtime` under `data/` (data), so a release that
+   publishes only core leaves them on *different* versions.
+
+   The fix records both lines and reads them back:
+
+   - `generateCliVersionResource` bakes `dataLineVersion` beside `mavenLineVersion`. It is there
+     for the release chain, not the CLI runtime — nothing in the CLI resolves a `data-*`
+     coordinate directly — but this properties file is the one artifact that durably records what
+     a release decided per line.
+   - `maven-readiness.yml` reads both out of the shipped tarball and writes them into the marker:
+     `{"version":…,"pluginVersion":…,"dataVersion":…}`.
+   - `design-artifacts.yml` reads the marker and exports
+     `ORG_GRADLE_PROJECT_composeaiReleased{,Data}RuntimeVersion`, then waits for *those*.
+   - Both catalog samples substitute the data runtime at its own property, defaulting to the core
+     one — so a local build and any release that publishes both trains behave exactly as before.
+
+   **Probing Central is not an alternative**, and that is the crux: a 404 cannot distinguish "this
+   line was skipped" from "not propagated yet". It is the same race that made reading the shipped
+   artifact the right answer for the plugin version in 4b, and the same answer applies.
 
    One consequence worth knowing: a release where **data publishes but core does not** uploads
    `data-*` artifacts that no published POM references yet. They are picked up by the next core
