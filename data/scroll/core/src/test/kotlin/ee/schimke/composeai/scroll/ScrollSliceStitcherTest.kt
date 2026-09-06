@@ -203,6 +203,59 @@ class ScrollSliceStitcherTest {
    * - Two rows at different y never accidentally share a pixel pattern, so no two shifts look
    *   equally plausible to the matcher.
    */
+  /**
+   * A pinned top bar appears once, at the top, however large the stride is.
+   *
+   * Each slice carries its own copy of the bar at the same rows, and the painter takes its band off
+   * the *bottom* of the list region — so a stride shorter than that region never reaches the bar
+   * and this passed long before the fix. A stride approaching a full viewport does reach it, and
+   * the bar was painted into the middle of the strip on top of whatever row was there: a 480dp
+   * screen with a 64dp `TopAppBar` crosses that line easily (issue #5234).
+   *
+   * The assertion is that the bar's colour occurs in exactly one run of rows. Counting runs rather
+   * than comparing to a reconstructed source, because the source here is not reconstructible: the
+   * bar is scroll-independent, so a stitched strip is not a window onto one tall image.
+   */
+  @Test
+  fun `a pinned top bar is painted once, not at every seam`() {
+    val width = 40
+    val barRows = 12
+    val viewport = 100
+    val bar = 0xFF102030.toInt()
+    val content = buildSource(width = width, height = 600)
+    // Stride of 92 against a 100-row viewport and a 12-row bar: the 88-row list region is shorter
+    // than the stride, which is exactly the case that used to drag the bar into the strip.
+    val offsets = listOf(0, 92, 184, 276)
+    val slices = offsets.mapIndexed { i, off ->
+      val slice = BufferedImage(width, viewport, BufferedImage.TYPE_INT_ARGB)
+      val g = slice.createGraphics()
+      try {
+        g.drawImage(content.getSubimage(0, off, width, viewport - barRows), 0, barRows, null)
+        g.color = java.awt.Color(bar, true)
+        g.fillRect(0, 0, width, barRows)
+      } finally {
+        g.dispose()
+      }
+      val file = tmp.newFile("pinned_top_$i.png")
+      ImageIO.write(slice, "PNG", file)
+      SliceCapture(off.toFloat(), file, measured = true)
+    }
+
+    val out = tmp.newFile("pinned_top_out.png")
+    assertTrue(stitchSlices(slices, viewportLayoutPx = viewport, outputFile = out) != null)
+    val stitched = ImageIO.read(out)
+
+    val barRunStarts =
+      (0 until stitched.height).filter { y ->
+        val isBar = (0 until width).all { x -> stitched.getRGB(x, y) == bar }
+        val previousWasBar = y > 0 && (0 until width).all { x -> stitched.getRGB(x, y - 1) == bar }
+        isBar && !previousWasBar
+      }
+
+    assertEquals("the bar should be one run of rows, found $barRunStarts", 1, barRunStarts.size)
+    assertEquals("and it should be at the top", 0, barRunStarts.single())
+  }
+
   private fun buildSource(width: Int, height: Int): BufferedImage {
     val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
     for (y in 0 until height) {
