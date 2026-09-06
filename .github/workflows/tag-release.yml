@@ -47,7 +47,23 @@ jobs:
     permissions:
       contents: write # create the tag ref
     env:
-      GH_TOKEN: ${{ github.token }}
+      # `RELEASE_TAG_TOKEN` when it exists, else the default token.
+      #
+      # The default token was refused outright on 2026-09-06 — `POST /git/refs` answered
+      # `Resource not accessible by integration (HTTP 403)` — while a release was stranded and this
+      # workflow was the documented way out. That is worth knowing precisely, because none of the
+      # usual explanations fit: the job declares `contents: write`, the repository's only ruleset
+      # targets the default BRANCH (no tag rules, no bypass list), and `release.yml`'s `release`
+      # job wrote contents with the same token forty minutes earlier. Whatever refuses ref creation
+      # here is not visible from inside the workflow.
+      #
+      # So this escape hatch no longer depends on being able to explain it: give it a token that
+      # can create a ref and it works. A fine-grained PAT or GitHub App installation token with
+      # `contents: write` is enough. Same pattern, and the same reason, as `LOCKFILE_REGEN_TOKEN`
+      # in dependency-locks.yml — a job whose whole purpose is unblocking a stuck state must not be
+      # the thing that is stuck.
+      GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
+      USING_PAT: ${{ secrets.RELEASE_TAG_TOKEN != '' }}
       GH_REPO: ${{ github.repository }}
       # Referenced only via these env vars in the script below — never
       # interpolated into the run block — so a crafted input can't inject shell.
@@ -74,7 +90,30 @@ jobs:
             exit 0
           fi
 
-          gh api --method POST "repos/${GH_REPO}/git/refs" \
-            -f ref="refs/tags/${TAG}" -f sha="${full_sha}"
+          echo "Creating refs/tags/${TAG} at ${full_sha} (token: $([ "${USING_PAT}" = "true" ] && echo RELEASE_TAG_TOKEN || echo GITHUB_TOKEN))."
+
+          # Capture the response rather than letting `set -e` kill the step on a bare API error:
+          # a stranded release is exactly when someone needs to know WHY this did not work, and
+          # `gh`'s one-line message on its own sent a person hunting through repository settings.
+          if ! out="$(gh api --method POST "repos/${GH_REPO}/git/refs" \
+                -f ref="refs/tags/${TAG}" -f sha="${full_sha}" 2>&1)"; then
+            echo "${out}"
+            if printf '%s' "${out}" | grep -q 'Resource not accessible by integration'; then
+              {
+                echo "::error title=Cannot create the tag ref::The token was refused ref creation (HTTP 403)."
+                echo "The job requests \`contents: write\`, so this is a repository or account"
+                echo "restriction on the default GITHUB_TOKEN rather than a bug in this workflow."
+                echo "Two ways out, in order of preference:"
+                echo "  1. Add a \`RELEASE_TAG_TOKEN\` secret — a fine-grained PAT or GitHub App"
+                echo "     installation token with \`contents: write\` on this repository. This"
+                echo "     workflow prefers it automatically and needs no further change."
+                echo "  2. Create the tag by hand:"
+                echo "       git tag ${TAG} ${full_sha} && git push origin ${TAG}"
+                echo "Then run \`release.yml\` (workflow_dispatch, tag=${TAG}) FROM \`main\` to build"
+                echo "and publish — dispatching from main uses main's workflow while building the tag."
+              } >&2
+            fi
+            exit 1
+          fi
           echo "created tag ${TAG} at ${full_sha}."
           echo "note: this did NOT trigger release.yml (token-created ref) — build/publish separately if you want artifacts."
