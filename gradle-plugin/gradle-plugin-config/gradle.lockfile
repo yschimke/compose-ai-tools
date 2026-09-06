@@ -1,0 +1,15 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :gradle-plugin-config:dependencies --write-locks
+io.github.classgraph:classgraph:4.8.194=compileClasspath
+org.jetbrains.kotlin:kotlin-reflect:2.4.0=compileClasspath
+org.jetbrains.kotlin:kotlin-stdlib:2.4.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-bom:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-core:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0=compileClasspath
+org.jetbrains:annotations:13.0=compileClasspath
+org.ow2.asm:asm:9.10.1=compileClasspath
+empty=

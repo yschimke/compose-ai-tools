@@ -1,0 +1,24 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :data-ambient-core:dependencies --write-locks
+com.squareup.okio:okio-jvm:3.18.1=runtimeClasspath
+com.squareup.okio:okio:3.18.1=runtimeClasspath
+ee.schimke.composeai:common-io:2.5.0=runtimeClasspath
+ee.schimke.composeai:daemon-bta:2.5.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:daemon-devices:2.5.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:daemon-protocol:2.5.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:data-layoutinspector-core:2.5.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:data-preview-overrides-core:2.5.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:data-render-core:2.5.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:data-theme-core:2.5.0=compileClasspath,runtimeClasspath
+io.github.classgraph:classgraph:4.8.194=runtimeClasspath
+org.jetbrains.kotlin:kotlin-build-tools-api:2.4.10=compileClasspath,runtimeClasspath
+org.jetbrains.kotlin:kotlin-stdlib:2.4.10=compileClasspath,runtimeClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-bom:1.11.0=compileClasspath,runtimeClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.11.0=compileClasspath,runtimeClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-core:1.11.0=compileClasspath,runtimeClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0=compileClasspath,runtimeClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0=compileClasspath,runtimeClasspath
+org.jetbrains:annotations:13.0=compileClasspath,runtimeClasspath
+empty=
