@@ -1076,11 +1076,16 @@ abstract class Command(
     resolveVersionPin(findProjectRoot(), args)
   }
 
-  /** The compose-preview plugin version this run injects — the pin when there is one, else ours. */
+  /**
+   * The compose-preview plugin version this run injects — the pin when there is one, else the Maven
+   * line this CLI resolves against. Must agree with what [autoInjectInitScriptArgs] actually
+   * injects (it defaults through [resolvePluginVersion], same fallback), or the diagnosis in
+   * [buildFailureAdvice] would name a different coordinate than the one that failed.
+   */
   protected val injectedPluginVersion: String
-    get() = resolvedPin?.version ?: BUNDLE_VERSION
+    get() = resolvedPin?.version ?: MAVEN_LINE_VERSION
 
-  /** Where [injectedPluginVersion] came from, or null when it is simply the CLI's own version. */
+  /** Where [injectedPluginVersion] came from, or null when it is simply the default line. */
   protected val injectedPluginVersionSource: String?
     get() = resolvedPin?.source?.display
 

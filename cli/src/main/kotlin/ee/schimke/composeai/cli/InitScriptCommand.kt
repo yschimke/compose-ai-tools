@@ -19,7 +19,7 @@ import okio.FileSystem
  *
  * The version baked into the script follows the same precedence as every other entrypoint:
  * `--plugin-version`, then the project's pin (`COMPOSE_PREVIEW_VERSION`, `gradle.properties`,
- * version catalog — see [resolveVersionPin]), then this CLI's [BUNDLE_VERSION]. So a `./gradlew
+ * version catalog — see [resolveVersionPin]), then this CLI's [MAVEN_LINE_VERSION]. So a `./gradlew
  * --init-script "$(compose-preview init-script --path)"` invocation applies the same plugin version
  * a bare `compose-preview render` would.
  */

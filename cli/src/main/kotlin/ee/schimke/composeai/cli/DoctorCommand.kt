@@ -97,11 +97,13 @@ class DoctorCommand(
   /**
    * Version the CLI suggests in remediation messages ("install version X"). Comes from
    * `--plugin-version`, else the project's version pin once [checkVersionPin] has read it, else the
-   * CLI's compiled-in default. Distinct from [appliedPluginVersion], which is what the project
-   * actually has on its classpath — a project can be pinned to one version and still have another
-   * applied, which is exactly the state the pin check exists to surface.
+   * CLI's compiled-in Maven-line default. Distinct from [appliedPluginVersion], which is what the
+   * project actually has on its classpath — a project can be pinned to one version and still have
+   * another applied, which is exactly the state the pin check exists to surface.
    */
-  private var recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
+  // [MAVEN_LINE_VERSION], not [BUNDLE_VERSION]: doctor prints this into snippets a user pastes
+  // into a build, so it has to name a version Gradle can actually resolve.
+  private var recommendedPluginVersion = args.flagValue("--plugin-version") ?: MAVEN_LINE_VERSION
 
   /**
    * `--variant <name>` forwarded as `-PcomposePreview.variant=<name>` on the Gradle connection,
@@ -473,7 +475,10 @@ class DoctorCommand(
     // that should print the generic "check wrapper/cache access" line when the real cause is that
     // the plugin version this project asks for isn't published yet (issue #5034).
     val pin = resolveVersionPin(projectDir, args, fileSystem = fileSystem)
-    val pluginVersion = pin?.version ?: BUNDLE_VERSION
+    // [MAVEN_LINE_VERSION], not [BUNDLE_VERSION]. This feeds `pluginResolutionGuidance`, whose
+    // whole job is diagnosing "the plugin version this project asks for is not published"
+    // (#5034) — so it must be the version that IS published, not the CLI's own.
+    val pluginVersion = pin?.version ?: MAVEN_LINE_VERSION
     val pluginVersionSource = pin?.source?.display
     val diagnosePublicationRace = { text: String ->
       pluginResolutionGuidance(text, pluginVersion, pluginVersionSource)
@@ -712,7 +717,7 @@ class DoctorCommand(
                 commands =
                   listOf(
                     "# bump the plugin to match the CLI:",
-                    "compose-preview init-script --plugin-version $BUNDLE_VERSION",
+                    "compose-preview init-script --plugin-version $MAVEN_LINE_VERSION",
                     "# …or update the CLI to match the plugin (see install.sh):",
                     "compose-preview update",
                   ),
