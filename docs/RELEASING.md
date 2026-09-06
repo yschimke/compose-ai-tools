@@ -202,25 +202,32 @@ republishing the release.
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
 
-   **Not every release publishes.** `maven-publish-guard` diffs every module applying
-   `composeai.maven-publishing` — plus the shared inputs that change all of their bytes — against
-   the last version actually on Central, and `publish-gradle-plugin` is skipped when nothing
-   differs. Measured over `v1.57.0..v1.84.0`: 117 module-changes against 3,572 module
+   **Not every release publishes, and the publish is split in two.** There are two Maven version
+   lines — `data/*` and everything else — and `maven-publish-guard` decides each independently. It
+   diffs that line's modules applying `composeai.maven-publishing` — plus the shared inputs that
+   change every module's bytes on both lines — against the version that line is already at on
+   Central, and skips it when nothing differs. Measured over `v1.57.0..v1.84.0`: 117 module-changes against 3,572 module
    publications, and six of those 38 releases changed no published module at all. Central meters
    file count, release size and release count per organisation, which is what this is for
    ([`docs/design/RELEASE_TRAINS.md`](design/RELEASE_TRAINS.md), issue #4772).
 
-   It is **all-or-nothing** and it **fails open**: either every module publishes at this version
-   or none does, and every uncertainty — an unresolvable baseline, a shallow clone, an empty
+   Each line is **all-or-nothing** and the whole thing **fails open**: either every module on a
+   line publishes at that line's version or none does, and every uncertainty — an unresolvable baseline, a shallow clone, an empty
    module enumeration, a guard job that crashed — publishes. The asymmetry is total because the
    mistakes are: publishing needlessly costs quota, while *not* publishing when we should have
    cannot be repaired, since Central refuses a version twice.
 
-   **A release that skips the publish is still fully usable**, because the CLI it ships is baked
-   to resolve the plugin at the last version that *is* on Central rather than at its own
+   A release where `data/` did not change therefore republishes 36 modules rather than 94, and
+   one where neither line changed republishes none. The job summary names both lines' verdicts,
+   baselines and versions.
+
+   **A release that skips a publish is still fully usable.** The CLI it ships is baked to resolve
+   the plugin at the last version of the **core** line that *is* on Central rather than at its own
    (`MAVEN_LINE_VERSION`; see
    [`Version.kt`](../cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt)). Auto-inject,
-   `compose-preview init-script` and `doctor`'s recommendations all follow it. The job summary on
+   `compose-preview init-script` and `doctor`'s recommendations all follow it. The data line needs
+   no CLI-side pin: consumers reach it as a POM transitive of core, and the release exports
+   `DATA_LINE_VERSION` so those POMs name a version that exists. The job summary on
    every release run names the verdict, the baseline it diffed against and the Maven line the CLI
    was built with.
 

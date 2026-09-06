@@ -59,14 +59,16 @@ env:
   TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
-  # Decides whether this release publishes to Maven Central at all, and — when it does not —
-  # which already-published version the CLI built in this same run resolves the plugin at.
+  # Decides, per Maven version line, whether this release publishes to Central — and when a line
+  # does not, which already-published version its artifacts keep.
   #
-  # The root-level `publishAndReleaseToMavenCentral` below uploads all 94 publishing modules on
-  # every release, whether or not one of them changed: over v1.57.0..v1.84.0 that was 3,572 module
-  # publications carrying 117 module-changes, and six of those 38 releases changed no published
-  # module at all. Central meters file count, release size and release count per organisation.
-  # See docs/design/RELEASE_TRAINS.md.
+  # There are two lines: `data/*` and everything else. The root-level
+  # `publishAndReleaseToMavenCentral` below used to upload all 94 publishing modules on every
+  # release whether or not one of them changed — over v1.57.0..v1.84.0 that was 3,572 module
+  # publications carrying 117 module-changes. Gating one undivided publish removed 21.1% of that;
+  # splitting `data/` off, 58 modules that change on about a third of releases, takes it to 50.7%.
+  # Central meters file count, release size and release count per organisation. Costing for this
+  # split and the alternatives: docs/design/RELEASE_TRAINS.md § 5.
   #
   # Its own job because the guard needs full history (`fetch-depth: 0`) and the publish job does
   # not: deepening that checkout would slow every release down.
@@ -98,12 +100,23 @@ jobs:
     permissions:
       contents: read
     outputs:
-      needed: ${{ steps.guard.outputs.needed }}
-      reason: ${{ steps.guard.outputs.reason }}
-      # The version of this repo's Maven artifacts a consumer of THIS release should resolve:
-      # the release's own version when it publishes, the last published version when it does not.
-      # Baked into the CLI by `build-applications` as MAVEN_LINE_VERSION.
-      maven_line: ${{ steps.line.outputs.maven_line }}
+      # Per version line, because the publish is split in two: `data/*` versions separately from
+      # everything else. 58 of the 94 published modules are on the data line and they change on
+      # about a third of releases, which is where -50.7% of module-publications comes from.
+      # docs/design/RELEASE_TRAINS.md § 5.
+      core_needed: ${{ steps.guard.outputs.core_needed }}
+      core_reason: ${{ steps.guard.outputs.core_reason }}
+      data_needed: ${{ steps.guard.outputs.data_needed }}
+      data_reason: ${{ steps.guard.outputs.data_reason }}
+      # The version each line's artifacts carry in THIS release: the release's own version when
+      # that line publishes, the last version it reached Central at when it does not.
+      #
+      # `maven_line` is the CORE line, and it is what `build-applications` bakes into the CLI as
+      # MAVEN_LINE_VERSION — the plugin coordinate the CLI injects lives on that line. The data
+      # line never needs a CLI-side pin: consumers reach it as a POM transitive of core, and
+      # `data_line` is what makes those POMs name a version that exists.
+      maven_line: ${{ steps.guard.outputs.core_line }}
+      data_line: ${{ steps.guard.outputs.data_line }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,85 +126,102 @@ jobs:
           # useful.
           fetch-depth: 0
           persist-credentials: false
-      - name: Resolve the last Maven-published version
-        # Central is the authority on what was actually published, which is exactly the baseline
-        # the guard needs — and it stays correct once releases start skipping the publish, when
-        # "the previous tag" no longer means "the previous published version".
-        #
-        # Shared with `maven-readiness.yml`, which has to reach the same answer from a different
-        # workflow run AFTER the publish has happened; `maven-line-baseline.sh` explains why that
-        # forces "greatest version strictly below this release" rather than Central's `<latest>`.
-        #
-        # Failure to resolve leaves BASELINE empty, and the guard fails open on that.
-        run: |
-          set -uo pipefail
-          latest="$(./.github/scripts/maven-line-baseline.sh --below "${TAG_NAME}")"
-          if [ -n "${latest}" ] && git rev-parse --verify --quiet "v${latest}^{commit}" >/dev/null; then
-            echo "BASELINE=v${latest}" >> "$GITHUB_ENV"
-            echo "Last published version below ${TAG_NAME}: ${latest}"
-          else
-            echo "BASELINE=" >> "$GITHUB_ENV"
-            echo "Could not resolve a published baseline (got '${latest:-<none>}') — guard will fail open."
-          fi
-      - name: Would this release need a Maven Central publish?
+      - name: Decide each Maven version line
         id: guard
-        run: |
-          # Build the argument list as an array. `--baseline` is omitted entirely when the
-          # resolution above found nothing, which is one of the script's fail-open paths.
-          args=(--head "${TAG_NAME}" --explain --github-output)
-          if [ -n "${BASELINE}" ]; then
-            args=(--baseline "${BASELINE}" "${args[@]}")
-          fi
-          ./.github/scripts/maven-publish-needed.sh "${args[@]}"
-      - name: Resolve the Maven line this release's CLI resolves against
-        id: line
-        # The version consumers of this release get when the CLI asks Gradle for the plugin.
-        # Publishing → this release. Skipping → the baseline, which is the newest version that
-        # actually exists on Central.
+        # One loop, two lines. Each resolves its OWN baseline from Central — a train is
+        # all-or-nothing, so one sentinel coordinate per train answers "what version is this line
+        # actually at" — then diffs this tag against it, and lands on the version its artifacts
+        # carry in this release.
         #
-        # Only an EXPLICIT `false` skips: an empty `needed` (the guard job died before writing
-        # its output) lands here as "publish", matching the gate on `publish-gradle-plugin`. The
-        # two must agree — a CLI baked to resolve v(N-1) alongside a publish of vN is a silent
-        # downgrade for every consumer of this release.
-        env:
-          GUARD_NEEDED: ${{ steps.guard.outputs.needed }}
+        # Baselines come from `maven-line-baseline.sh`, which picks the greatest version STRICTLY
+        # BELOW this release rather than Central's `<latest>`: `maven-readiness.yml` has to reach
+        # the same answer from a different workflow run AFTER the publish, and `<latest>` means
+        # different things at those two moments.
+        #
+        # Everything here fails open, in both halves. An unresolvable baseline omits `--baseline`
+        # entirely, which is one of the guard's own fail-open paths; and only an EXPLICIT `false`
+        # freezes a line at its baseline. An empty verdict — the guard died before writing one —
+        # publishes and takes this release's version, matching the gate on `publish-gradle-plugin`
+        # exactly. The two must agree: a POM naming v(N-1) beside a publish of vN, or the reverse,
+        # is a coordinate no consumer can resolve.
         run: |
           set -uo pipefail
-          if [ "${GUARD_NEEDED}" = "false" ] && [ -n "${BASELINE}" ]; then
-            line="${BASELINE#v}"
-          else
-            line="${TAG_NAME#v}"
-          fi
-          echo "maven_line=${line}" >> "$GITHUB_OUTPUT"
-          echo "CLI built by this release resolves the plugin at ${line}."
+          for train in core data; do
+            case "${train}" in
+              core) sentinel=renderer-desktop ;;
+              data) sentinel=data-remotecompose-core ;;
+            esac
+
+            baseline=""
+            latest="$(./.github/scripts/maven-line-baseline.sh --below "${TAG_NAME}" --artifact "${sentinel}")"
+            if [ -n "${latest}" ] && git rev-parse --verify --quiet "v${latest}^{commit}" >/dev/null; then
+              baseline="v${latest}"
+              echo "${train}: last published at ${latest} (via ${sentinel})"
+            else
+              echo "${train}: no published baseline (got '${latest:-<none>}') — failing open."
+            fi
+
+            args=(--train "${train}" --head "${TAG_NAME}" --explain)
+            if [ -n "${baseline}" ]; then
+              args=(--baseline "${baseline}" "${args[@]}")
+            fi
+            verdict="$(./.github/scripts/maven-publish-needed.sh "${args[@]}")"
+            printf '%s\n' "${verdict}"
+
+            needed="$(printf '%s' "${verdict}" | sed -n 's/^needed=//p' | head -1)"
+            reason="$(printf '%s' "${verdict}" | sed -n 's/^reason=//p' | head -1)"
+
+            if [ "${needed}" = "false" ] && [ -n "${baseline}" ]; then
+              line="${baseline#v}"
+            else
+              line="${TAG_NAME#v}"
+            fi
+
+            {
+              echo "${train}_needed=${needed}"
+              echo "${train}_reason=${reason}"
+              echo "${train}_line=${line}"
+              echo "${train}_baseline=${baseline}"
+            } >> "$GITHUB_OUTPUT"
+            echo "${train}: needed=${needed:-<none>} line=${line}"
+          done
       - name: Report
         # Step outputs reach the shell through the environment, never through `${{ }}` inside the
-        # script body — `reason` is free text and interpolating it would splice it into the shell.
+        # script body — the reasons are free text and interpolating them would splice them into
+        # the shell.
         env:
-          GUARD_NEEDED: ${{ steps.guard.outputs.needed }}
-          GUARD_REASON: ${{ steps.guard.outputs.reason }}
-          MAVEN_LINE: ${{ steps.line.outputs.maven_line }}
+          CORE_NEEDED: ${{ steps.guard.outputs.core_needed }}
+          CORE_REASON: ${{ steps.guard.outputs.core_reason }}
+          CORE_LINE: ${{ steps.guard.outputs.core_line }}
+          CORE_BASELINE: ${{ steps.guard.outputs.core_baseline }}
+          DATA_NEEDED: ${{ steps.guard.outputs.data_needed }}
+          DATA_REASON: ${{ steps.guard.outputs.data_reason }}
+          DATA_LINE: ${{ steps.guard.outputs.data_line }}
+          DATA_BASELINE: ${{ steps.guard.outputs.data_baseline }}
         run: |
           {
-            echo "### Maven Central publish guard"
+            echo "### Maven Central publish guard — ${TAG_NAME}"
             echo
-            echo "| | |"
-            echo "|---|---|"
-            echo "| Baseline (last published below this release) | \`${BASELINE:-unresolved}\` |"
-            echo "| This release | \`${TAG_NAME}\` |"
-            echo "| Publish needed | \`${GUARD_NEEDED:-<no answer — publishing>}\` |"
-            echo "| Reason | ${GUARD_REASON} |"
-            echo "| Maven line baked into the CLI | \`${MAVEN_LINE}\` |"
+            echo "| Train | Modules | Baseline | Publishing | Version | Reason |"
+            echo "|---|---|---|---|---|---|"
+            echo "| core | 36 | \`${CORE_BASELINE:-unresolved}\` | \`${CORE_NEEDED:-<no answer — publishing>}\` | \`${CORE_LINE}\` | ${CORE_REASON} |"
+            echo "| data | 58 | \`${DATA_BASELINE:-unresolved}\` | \`${DATA_NEEDED:-<no answer — publishing>}\` | \`${DATA_LINE}\` | ${DATA_REASON} |"
             echo
-            if [ "${GUARD_NEEDED}" = "false" ]; then
-              echo "**Skipping the Central publish.** No published module differs from"
-              echo "\`${BASELINE}\`, so this release would have uploaded 94 modules that no change"
-              echo "could have altered. The CLI shipped by this release resolves the plugin at"
-              echo "\`${MAVEN_LINE}\`, which is on Central, so consumers are unaffected."
+            if [ "${CORE_NEEDED}" = "false" ] && [ "${DATA_NEEDED}" = "false" ]; then
+              echo "**Nothing publishes to Central.** No published module on either line differs"
+              echo "from what is already there, so this release would have uploaded 94 modules that"
+              echo "no change could have altered."
+            elif [ "${DATA_NEEDED}" = "false" ]; then
+              echo "**Skipping the data line** — 58 modules, unchanged since \`${DATA_BASELINE}\`."
+              echo "Core POMs published here name \`${DATA_LINE}\` for those coordinates, which is"
+              echo "the version already on Central."
+            elif [ "${CORE_NEEDED}" = "false" ]; then
+              echo "**Skipping the core line** — 36 modules, unchanged since \`${CORE_BASELINE}\`."
             else
-              echo "Publishing to Central at \`${MAVEN_LINE}\`."
+              echo "Publishing both lines."
             fi
             echo
+            echo "The CLI shipped by this release resolves the plugin at \`${CORE_LINE}\`."
             echo "See \`docs/design/RELEASE_TRAINS.md\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -224,19 +254,23 @@ jobs:
     # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
     # remains buildable from source, but its per-OS packages are no longer core release artifacts.
     needs: [build-applications, maven-publish-guard]
-    # …and on the guard actually having something to publish. `!= 'false'` rather than
-    # `== 'true'`, deliberately: the guard is `continue-on-error`, so a job that crashed leaves
-    # this output empty, and an empty answer must publish. Only the guard's explicit `false` —
-    # written after it has diffed every published module against the last published version —
-    # skips. `maven-publish-needed.sh` fails open on every uncertainty for the same reason:
-    # publishing when we did not need to costs quota, while not publishing when we did strips a
-    # version out from under consumers with no way back, since Central refuses a version twice.
+    # …and on at least one version line actually having something to publish. `!= 'false'` rather
+    # than `== 'true'`, deliberately: the guard is `continue-on-error`, so a job that crashed
+    # leaves these outputs empty, and an empty answer must publish. Only an explicit `false` —
+    # written after the guard has diffed that line's modules against the version it is already at
+    # on Central — skips. `maven-publish-needed.sh` fails open on every uncertainty for the same
+    # reason: publishing when we did not need to costs quota, while not publishing when we did
+    # strips a version out from under consumers with no way back, since Central refuses a version
+    # twice.
     #
     # `!cancelled()` first, so this does not hang on how a `continue-on-error` job reports itself
     # to `needs`. A guard that failed must still let the publish through — the whole gate is
     # "skip only on an explicit `false`" — and spelling that out here means the behaviour does not
     # rest on a subtlety of Actions' job-result semantics.
-    if: ${{ !cancelled() && needs.maven-publish-guard.outputs.needed != 'false' }}
+    if: >-
+      ${{ !cancelled()
+      && (needs.maven-publish-guard.outputs.core_needed != 'false'
+          || needs.maven-publish-guard.outputs.data_needed != 'false') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -253,6 +287,19 @@ jobs:
         # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
         # is inherited by every subsequent step in this job.
         run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
+      - name: Derive the data line's version
+        # DATA_LINE_VERSION is what every `data/*` module publishes at, and — crucially — what
+        # CORE POMs name for those coordinates even when the data line is NOT publishing. Set it
+        # unconditionally: when data does publish it equals PLUGIN_VERSION and this is a no-op,
+        # and when it does not, it is the only thing keeping `renderer-desktop`'s POM pointing at
+        # a `data-*` version that exists.
+        env:
+          GUARD_DATA_LINE: ${{ needs.maven-publish-guard.outputs.data_line }}
+        run: |
+          set -uo pipefail
+          # Empty means the guard never answered, and everything publishes at this release's
+          # version — the same direction the `if:` above takes on an empty verdict.
+          echo "DATA_LINE_VERSION=${GUARD_DATA_LINE:-${TAG_NAME#v}}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
@@ -260,7 +307,11 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        env:
+          CORE_NEEDED: ${{ needs.maven-publish-guard.outputs.core_needed }}
+          DATA_NEEDED: ${{ needs.maven-publish-guard.outputs.data_needed }}
         run: |
+          set -uo pipefail
           # See the comment in snapshot.yml's publish step: root-level abbreviation fans out
           # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
           # includeBuild and needs an explicit address.
@@ -270,9 +321,40 @@ jobs:
           # job goes green having published nothing. That is how v1.56.0 and v1.56.1 shipped
           # as public GitHub Releases with no artifacts on Central (#4845 deleted this task
           # list along with the `-x :rc-player-*` exclusions that used to follow it).
-          ./gradlew \
-            :gradle-plugin:publishAndReleaseToMavenCentral \
-            publishAndReleaseToMavenCentral
+          #
+          # BOTH lines publishing is still exactly that command, byte for byte. A split release
+          # is the new case, and only then is the task list generated: the skipped line's modules
+          # are already on Central at the version they carry, and Central refuses a version twice,
+          # so re-uploading them fails the WHOLE deployment rather than just their part of it.
+          # Keeping the common path on the command it has always run means the split cannot
+          # regress an ordinary release.
+          if [ "${CORE_NEEDED}" != "false" ] && [ "${DATA_NEEDED}" != "false" ]; then
+            echo "Publishing both lines at ${PLUGIN_VERSION}."
+            ./gradlew \
+              :gradle-plugin:publishAndReleaseToMavenCentral \
+              publishAndReleaseToMavenCentral
+            exit $?
+          fi
+
+          if [ "${CORE_NEEDED}" != "false" ]; then train=core; else train=data; fi
+          echo "Publishing the ${train} line only (core=${CORE_NEEDED:-<none>} data=${DATA_NEEDED:-<none>})."
+
+          # `printPublishTasks` prints `<train>\t<task path>\t<dir>`. The mapping has to come from
+          # Gradle: the guard enumerates modules by DIRECTORY and Gradle addresses them by PROJECT
+          # PATH, and settings.gradle.kts deliberately decouples the two.
+          mapfile -t tasks < <(
+            ./gradlew printPublishTasks -Ptrain="${train}" --quiet --no-configuration-cache |
+              awk -F'\t' '$2 ~ /publishAndReleaseToMavenCentral$/ { print $2 }'
+          )
+          # An empty list would make `./gradlew` run `help` and exit 0 — the v1.56.0 failure mode
+          # again, a green job that published nothing. The guard said this line changed, so an
+          # empty list is a broken enumeration, not an empty train.
+          if [ "${#tasks[@]}" -eq 0 ]; then
+            echo "::error::printPublishTasks returned no tasks for the ${train} line"
+            exit 1
+          fi
+          echo "${#tasks[@]} task(s) for the ${train} line."
+          ./gradlew "${tasks[@]}"
 
   # The Remote Compose player stack used to be published from here — a macOS job for its Apple
   # klibs, plus an XCFramework job that rewrote `Package.swift` and cut a bare SwiftPM version tag.

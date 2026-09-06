@@ -91,11 +91,24 @@ echo "== a leading v is accepted =="
 meta="$(metadata vprefix 2.0.0 2.1.0)"
 expect "2.1.0" "$(baseline --below v2.2.0 --metadata "${meta}")" "--below v2.2.0"
 
+echo "== --artifact selects the train's sentinel =="
+# Two version lines, one sentinel each: `renderer-desktop` for core, `data-remotecompose-core`
+# for data. The flag has to actually change which document is read, or both lines would be
+# resolved from the core sentinel and the data train would freeze at whatever core last did.
+core="$(metadata core-line 2.0.0 2.4.0)"
+data="$(metadata data-line 2.0.0 2.1.0)"
+expect "2.4.0" "$(baseline --below 2.5.0 --metadata "${core}")" "core sentinel"
+expect "2.1.0" "$(baseline --below 2.5.0 --metadata "${data}" --artifact data-remotecompose-core)" "data sentinel"
+# …and the default is the core sentinel, which is also the right answer for the undivided
+# `--train all` question the guard asked before the split.
+expect "2.4.0" "$(baseline --below 2.5.0 --metadata "${core}")" "default sentinel is core"
+
 echo "== argument errors are hard failures, not a silent empty baseline =="
 # A caller that fat-fingers a flag must see a broken script, not "no baseline" — the latter is
 # indistinguishable from a network failure and would quietly change the release's behaviour.
 expect "error" "$(baseline --metadata "${meta}")" "missing --below"
 expect "error" "$(baseline --below 2.2.0 --nonsense)" "unknown flag"
+expect "error" "$(baseline --below 2.2.0 --artifact)" "--artifact with no value"
 
 echo
 echo "${pass} passed, ${fail} failed"
