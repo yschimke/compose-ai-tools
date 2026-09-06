@@ -1,0 +1,158 @@
+name: Dependency Locks
+
+# Keeps every published module's committed `gradle.lockfile` in step with the dependency
+# declarations that produced it.
+#
+# ## Why a workflow and not Renovate itself
+#
+# Renovate's own `postUpgradeTasks` would be the obvious home for this — it runs a command after an
+# upgrade and folds the result into the same commit. It is not available here: that feature needs a
+# SELF-HOSTED Renovate with the command allow-listed (`allowedPostUpgradeCommands`), and this
+# repository uses the hosted Mend app (there is no renovate workflow; `.github/renovate.json` just
+# extends `github>yschimke/renovate-config`). So the regeneration has to be a workflow that pushes
+# into the pull request branch.
+#
+# ## The automerge hazard this is built around
+#
+# `.github/renovate.json` sets `platformAutomerge: true`, and the shared preset automerges
+# minor/patch/digest/pin. A dependency PR therefore merges the moment the last REQUIRED check of the
+# `Protect Main` ruleset reports green. If the lockfiles were stale at that moment, `main` takes a
+# lock state that does not match its own dependency declarations.
+#
+# Pushing a fix is only half an answer, because of a constraint this repository has already been
+# bitten by once (see docs/RELEASING.md on the retired `refresh-driver-pin.yml`): **a push made with
+# `GITHUB_TOKEN` does not start workflow runs.** So regenerating and pushing with the default token
+# leaves the new head commit with no checks reporting at all — the PR does not merge stale, it
+# simply never merges.
+#
+# Hence the two modes below, and the deliberate refusal in the middle:
+#
+#   * `LOCKFILE_REGEN_TOKEN` set (a GitHub App installation token or fine-grained PAT with
+#     `contents: write`) — the push starts workflow runs like any human push, every check re-runs
+#     against the regenerated commit, and automerge proceeds normally. This is the intended setup.
+#   * No such secret — the job REGENERATES, and if any *tracked* lockfile went stale it FAILS with
+#     the list in the log. Nothing is pushed. Make this a required check and a stale-lock PR is held
+#     open rather than merged, which is the safe direction; a human runs the one command in the
+#     failure message. A lockfile that is merely NEW (untracked) does not fail — see the step
+#     comment on why stale and new are not the same situation.
+#
+# What must never happen is this job passing while the lockfiles are stale, so there is no third
+# branch here that "warns" and goes green.
+#
+# ## Bootstrapping
+#
+# Locking is enabled with `LockMode.DEFAULT` (see `ComposeAiMavenPublishingPlugin`), which does NOT
+# fail a locked configuration that has no lock state — so the repository builds exactly as before
+# until the first lockfile is written. To generate them all the first time, dispatch this workflow
+# on a branch (not `main`): every lockfile is new rather than stale, so the job reports them and —
+# with a token — pushes them to that branch for review, without failing.
+
+on:
+  pull_request:
+    paths:
+      - 'gradle/libs.versions.toml'
+      - '**/build.gradle.kts'
+      - 'build-logic/**'
+      - 'gradle/wrapper/gradle-wrapper.properties'
+      - '**/gradle.lockfile'
+      - '.github/workflows/dependency-locks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-locks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    # A fork PR has no writable token and must not be handed one. Renovate's branches live in this
+    # repository, so the case this job exists for is unaffected.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Job level, not step level: a step's own `env:` is not in scope for that step's `if:`.
+    env:
+      HAVE_TOKEN: ${{ secrets.LOCKFILE_REGEN_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The PR's head BRANCH, not the merge ref: a push has to land on the branch, and a
+          # detached merge commit cannot be pushed anywhere useful.
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          token: ${{ secrets.LOCKFILE_REGEN_TOKEN || github.token }}
+          persist-credentials: true
+
+      - uses: ./.github/actions/setup
+
+      - name: Regenerate lockfiles
+        run: ./gradlew resolveAndLockAll --write-locks
+
+      - name: Did anything move?
+        id: diff
+        # STALE and NEW are different situations and are not treated the same.
+        #
+        # A *tracked* lockfile that changed is stale: the branch moved a dependency and the
+        # recorded lock state no longer matches. That is the case this workflow exists for, and it
+        # must never reach `main` unnoticed.
+        #
+        # An *untracked* lockfile is a module acquiring lock state for the first time — a newly
+        # added module, or the initial bootstrap across the whole repository. Nothing is stale
+        # there, because there was no previous state to go stale, and `LockMode.DEFAULT` means the
+        # build resolved exactly as before. Failing on that would make the very change that
+        # introduces locking fail its own check.
+        #
+        # `git ls-files` rather than a `**/gradle.lockfile` pathspec: that glob misses a lockfile
+        # at the repository root, and `git diff` cannot see an untracked file at all.
+        run: |
+          git ls-files -m | grep -E '(^|/)gradle\.lockfile$' > /tmp/stale-locks.txt || true
+          git ls-files -o --exclude-standard | grep -E '(^|/)gradle\.lockfile$' \
+            > /tmp/new-locks.txt || true
+          cat /tmp/stale-locks.txt /tmp/new-locks.txt > /tmp/moved-locks.txt
+          stale=$(wc -l < /tmp/stale-locks.txt)
+          new=$(wc -l < /tmp/new-locks.txt)
+          echo "stale=${stale}" >> "$GITHUB_OUTPUT"
+          echo "changed=$([ -s /tmp/moved-locks.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "stale lockfiles: ${stale}, new lockfiles: ${new}"
+          [ -s /tmp/stale-locks.txt ] && cat /tmp/stale-locks.txt
+          exit 0
+
+      - name: Push the regenerated lockfiles
+        if: steps.diff.outputs.changed == 'true' && env.HAVE_TOKEN == 'true'
+        run: |
+          git config user.name 'Yuri Schimke'
+          git config user.email 'yuri@schimke.ee'
+          xargs -a /tmp/moved-locks.txt git add --
+          # `chore(deps):` deliberately: a squash merge takes the PR TITLE, so this commit's own
+          # subject never reaches release-please — but a branch commit still shows up in review, and
+          # `chore` is what it is. See docs/RELEASING.md.
+          git commit -m 'chore(deps): regenerate Gradle dependency lockfiles'
+          git push origin HEAD
+
+      - name: Refuse to pass with stale lockfiles
+        # Only STALE (tracked, modified) lockfiles fail. New ones are reported by the step above and,
+        # with a token, pushed; without one they are simply left for a human, since a module with no
+        # lock state is exactly what the build did before this workflow existed.
+        if: steps.diff.outputs.stale != '0' && env.HAVE_TOKEN != 'true'
+        run: |
+          {
+            echo "### Dependency lockfiles are stale"
+            echo
+            echo "This branch changes dependency declarations but its \`gradle.lockfile\`s do not"
+            echo "match. No \`LOCKFILE_REGEN_TOKEN\` secret is configured, so this job will not push"
+            echo "the fix itself — pushing with the default token would leave the new commit with no"
+            echo "checks reporting, and the pull request would never merge."
+            echo
+            echo "Regenerate locally and push:"
+            echo
+            echo '```'
+            echo './gradlew resolveAndLockAll --write-locks'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Lockfiles are stale and no LOCKFILE_REGEN_TOKEN is configured."
+          exit 1

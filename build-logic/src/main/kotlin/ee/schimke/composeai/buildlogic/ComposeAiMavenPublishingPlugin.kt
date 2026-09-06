@@ -4,6 +4,7 @@ import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import com.vanniktech.maven.publish.SourcesJar
+import org.gradle.api.artifacts.dsl.LockMode
 import java.io.File
 import javax.inject.Inject
 import org.gradle.api.Plugin
@@ -47,6 +48,7 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
         ?: project.nextPatchSnapshotVersion()
 
     project.configureAndroidLibraryPublication()
+    project.configureDependencyLocking()
 
     project.afterEvaluate {
       val artifactId =
@@ -134,3 +136,89 @@ private fun Project.nextPatchSnapshotVersion(): String {
   val (major, minor, patch) = current.split(".").map { it.toInt() }
   return "$major.$minor.${patch + 1}-SNAPSHOT"
 }
+
+/**
+ * Record each published module's resolved dependency graph in a committed `gradle.lockfile`.
+ *
+ * ## Why this module and not the whole build
+ *
+ * The release guard ([.github/scripts/maven-publish-needed.sh]) has to answer "could this
+ * artifact's bytes differ from the last published release?". Its crudest rule is that ANY change
+ * to `gradle/libs.versions.toml` dirties all 94 published modules, because a path diff cannot tell
+ * which of them actually resolve the bumped coordinate. Measured over v1.57.0..v1.84.0, that one
+ * rule accounts for ~97% of the publishing the guard cannot eliminate: 16 of 38 release windows
+ * touched a shared build input, 9 of them the version catalog alone.
+ *
+ * A lock state answers the question exactly instead of approximating it. Gradle records what each
+ * module actually resolved, the file is committed, and the guard diffs it — no parsing of catalog
+ * aliases, no upward closure, no guessing. It also catches a case alias-matching would miss: the
+ * POM carries *declared* versions (there is no `versionMapping` here), so a bump to a purely
+ * transitive dependency does not change a consumer's POM — but Kotlin inlines `inline` functions
+ * from the compile classpath into the caller, so the consumer's jar bytes can still move.
+ *
+ * ## LockMode.DEFAULT, deliberately
+ *
+ * DEFAULT does not fail a locked configuration that has no lock state; STRICT does. That is what
+ * makes this safe to land before a single lockfile exists — every module resolves exactly as it
+ * did, and the files arrive when `dependency-locks.yml` first writes them. STRICT is also a known
+ * source of false failures on configurations that are not really resolvable (gradle#12010), which
+ * is the second reason not to reach for it.
+ *
+ * ## Only the configurations that decide a published artifact
+ *
+ * NOT `lockAllConfigurations()`. Locking the test classpaths would mean a test-only dependency
+ * bump rewrote a lockfile and so dirtied a module whose published bytes cannot have changed —
+ * re-introducing, one layer down, exactly the over-reporting this exists to remove. The names
+ * below are the resolvable compile/runtime classpaths of the variants we actually publish: the
+ * plain JVM pair, the Android `release` pair (we publish `AndroidSingleVariantLibrary("release")`),
+ * and the KMP `jvm` pair.
+ *
+ * Known gap, stated rather than discovered later: a KMP module publishing targets beyond `jvm`
+ * has classpaths not named here, so its lock state is incomplete and the guard learns nothing
+ * about those targets' dependencies. The guard fails open on a module with no lock state, so this
+ * is safe — it just does not save anything for those modules yet.
+ */
+private fun Project.configureDependencyLocking() {
+  dependencyLocking { lockMode.set(LockMode.DEFAULT) }
+
+  configurations.configureEach {
+    if (name in LOCKED_CONFIGURATIONS) {
+      resolutionStrategy.activateDependencyLocking()
+    }
+  }
+
+  // `./gradlew resolveAndLockAll --write-locks` regenerates every lockfile in one invocation.
+  // Resolving inside the task (rather than relying on some other task to touch the configuration)
+  // is what makes a module with no consumers still get a lockfile written.
+  tasks.register("resolveAndLockAll") {
+    group = "help"
+    description = "Resolves the published configurations so --write-locks can record them."
+    notCompatibleWithConfigurationCache("Resolves configurations at execution time")
+    doFirst {
+      require(project.gradle.startParameter.isWriteDependencyLocks) {
+        "resolveAndLockAll must be run with --write-locks"
+      }
+    }
+    doLast {
+      configurations
+        .filter { it.isCanBeResolved && it.name in LOCKED_CONFIGURATIONS }
+        .forEach { it.resolve() }
+    }
+  }
+}
+
+/**
+ * The resolvable classpaths that determine a published artifact's POM and bytecode. Explicit names
+ * rather than a pattern: `^(release)?(compile|runtime)Classpath$` would read as if it excluded the
+ * test classpaths by luck of anchoring, and the cost of it one day not doing so is a lockfile that
+ * churns on test-only bumps.
+ */
+private val LOCKED_CONFIGURATIONS =
+  setOf(
+    "compileClasspath",
+    "runtimeClasspath",
+    "releaseCompileClasspath",
+    "releaseRuntimeClasspath",
+    "jvmCompileClasspath",
+    "jvmRuntimeClasspath",
+  )
