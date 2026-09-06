@@ -176,6 +176,64 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `the screen sizes fan-out is a second wrapper carrying no environment`() {
+    val source =
+      generated(
+          screen(),
+          catalog(card, text),
+          ScreenGenerator.Preview(
+            widthDp = 411,
+            heightDp = 914,
+            fontScale = 1.3,
+            darkMode = true,
+            screenSizes = true,
+          ),
+        )
+        .source
+
+    assertThat(source).contains("import androidx.compose.ui.tooling.preview.PreviewScreenSizes")
+    assertThat(source).contains("@PreviewScreenSizes")
+    assertThat(source).contains("private fun HomeScreenPreviewScreenSizesPreview() {")
+    // The design's own frame stays on its own wrapper: a widthDp beside the multipreview would
+    // override the very axis it varies, and a fontScale or uiMode would apply to all of them.
+    val fanOut = source.substringAfter("@PreviewScreenSizes")
+    assertThat(fanOut).doesNotContain("widthDp")
+    assertThat(fanOut).doesNotContain("fontScale")
+    assertThat(fanOut).doesNotContain("uiMode")
+    // Both wrappers call the screen, and both come after it.
+    assertThat(source.indexOf("fun HomeScreen()")).isLessThan(source.indexOf("@PreviewScreenSizes"))
+  }
+
+  /** The fan-out is the caller's second question, not a thing every preview drags along. */
+  @Test
+  fun `a preview without the fan-out names neither the annotation nor the wrapper`() {
+    val source = generated(screen(), catalog(card, text), ScreenGenerator.Preview()).source
+
+    assertThat(source).contains("@Preview")
+    assertThat(source).doesNotContain("PreviewScreenSizes")
+  }
+
+  @Test
+  fun `a component the fan-out wrapper would shadow is qualified instead`() {
+    // Same trap as the plain wrapper's: the emitted function is top-level, so it beats an import
+    // of the same simple name and the body's call would land on the wrapper that calls the screen.
+    val clashing =
+      component(
+        "HomeScreenPreviewScreenSizesPreview",
+        "androidx.compose.material3.HomeScreenPreviewScreenSizesPreview",
+        emptyList(),
+      )
+    val document = ScreenDocument(name = "HomeScreen", root = ScreenNode(clashing.canonicalId))
+
+    val source =
+      generated(document, catalog(clashing), ScreenGenerator.Preview(screenSizes = true)).source
+
+    assertThat(source)
+      .doesNotContain("import androidx.compose.material3.HomeScreenPreviewScreenSizesPreview")
+    assertThat(source).contains("androidx.compose.material3.HomeScreenPreviewScreenSizesPreview()")
+  }
+
+  @Test
   fun `a light design gets no uiMode rather than a light one`() {
     // `@Preview` already previews light; naming it would claim the design said something it did
     // not, and `UI_MODE_NIGHT_NO` is not the same as "unspecified" to a device configuration.
