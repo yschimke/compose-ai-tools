@@ -1,0 +1,36 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :dependencies --write-locks
+com.android.tools.build:apksig:9.4.0=compileClasspath
+com.android.tools.build:apkzlib:9.4.0=compileClasspath
+com.android.tools.build:builder-model:9.4.0=compileClasspath
+com.android.tools.build:builder:9.4.0=compileClasspath
+com.android.tools.build:gradle-api:9.4.0=compileClasspath
+com.android.tools.build:gradle-common-api:9.4.0=compileClasspath
+com.android.tools.build:gradle:9.4.0=compileClasspath
+com.android.tools.build:manifest-merger:32.4.0=compileClasspath
+com.android:zipflinger:9.4.0=compileClasspath
+com.squareup.okhttp3:okhttp-jvm:5.5.0=compileClasspath
+com.squareup.okhttp3:okhttp:5.5.0=compileClasspath
+com.squareup.okio:okio-jvm:3.18.1=compileClasspath
+com.squareup.okio:okio:3.18.1=compileClasspath
+com.squareup:javawriter:2.5.0=compileClasspath
+io.github.classgraph:classgraph:4.8.194=compileClasspath
+org.jetbrains.kotlin:kotlin-build-tools-api:2.2.10=compileClasspath
+org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:2.2.10=compileClasspath
+org.jetbrains.kotlin:kotlin-gradle-plugin-api:2.2.10=compileClasspath
+org.jetbrains.kotlin:kotlin-gradle-plugins-bom:2.2.10=compileClasspath
+org.jetbrains.kotlin:kotlin-native-utils:2.2.10=compileClasspath
+org.jetbrains.kotlin:kotlin-reflect:2.4.0=compileClasspath
+org.jetbrains.kotlin:kotlin-stdlib:2.4.0=compileClasspath
+org.jetbrains.kotlin:kotlin-tooling-core:2.2.10=compileClasspath
+org.jetbrains.kotlin:kotlin-util-io:2.2.10=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-bom:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-core:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0=compileClasspath
+org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0=compileClasspath
+org.jetbrains:annotations:13.0=compileClasspath
+org.ow2.asm:asm:9.10.1=compileClasspath
+empty=

@@ -74,3 +74,8 @@ site/vendor/
 
 # CI checks the extension out here so the cross-repo daemon-launch schema check is real.
 .compose-preview-vscode/
+
+# Side effect of `--write-locks`: the settings classpath lock. Nothing enables locking
+# there, and dependency-locks.yml only regenerates `**/gradle.lockfile`, so a committed copy
+# would go stale with nothing to refresh it.
+settings-gradle.lockfile
