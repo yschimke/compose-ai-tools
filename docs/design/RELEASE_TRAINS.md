@@ -1,7 +1,7 @@
 # Release trains
 
 **Status: measurement + proposal.** The guard in § 4 is implemented and running in reporting mode.
-The dependency lock state in § 6 is implemented; the guard does not read it yet. The train split in
+The dependency lock state in § 6 is implemented and the guard now reads it. The train split in
 § 5 is not built, and § 6's graph-based measurement supersedes its grouping. Issue
 [#4772](https://github.com/yschimke/compose-ai-tools/issues/4772).
 
@@ -213,6 +213,18 @@ diffs that file instead of guessing from the catalog.
 
 `LockMode.DEFAULT`, not `STRICT`: DEFAULT does not fail a locked configuration that has no lock
 state, which is what makes the mechanism safe to land before a single lockfile exists.
+
+**The guard now reads that lock state instead of the catalog.** `gradle/libs.versions.toml` is no
+longer a blanket shared input: a module's `gradle.lockfile` lives inside the module directory, which
+is already watched, so dependency movement is caught by the same rule that catches source changes. A
+bump that moves nothing any published module resolves now correctly publishes nothing.
+
+One hole had to be closed separately. The build **toolchain** — AGP, the Compose compiler, Kotlin —
+lives in the catalog's `[plugins]` block, changes the bytecode we publish, and need not appear on any
+module's classpath, so no lockfile moves when it does. `toolchain_fingerprint` compares that block
+plus the `[versions]` entries those plugins reference. Over the same 38 windows the toolchain moved
+exactly once (AGP 9.3.2 → 9.4.0 at v1.62.2 → v1.63.0) against 13 windows that touched the catalog —
+so 12 of 13 catalog changes stop forcing a publish, and the one that must still force one, does.
 
 Keeping the files current is [`dependency-locks.yml`](../../.github/workflows/dependency-locks.yml).
 Renovate cannot do it — `postUpgradeTasks` needs a self-hosted Renovate with the command

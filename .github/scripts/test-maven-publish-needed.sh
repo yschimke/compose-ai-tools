@@ -59,7 +59,26 @@ EOF
   echo 'plugins { kotlin("jvm") }' > "${dir}/cli/build.gradle.kts"
   echo 'fun cli() = 1' > "${dir}/cli/src/main/kotlin/Cli.kt"
   echo '// build logic' > "${dir}/build-logic/build.gradle.kts"
-  echo '[versions]' > "${dir}/gradle/libs.versions.toml"
+  # Lock state for the publishing module. Without it the guard fails open on every case (a
+  # published module with no lockfile is a module whose dependencies it cannot see), so this is
+  # what makes the rest of these assertions meaningful rather than vacuously true.
+  cat > "${dir}/data/focus/core/gradle.lockfile" <<'EOF'
+com.example:lib:1.0.0=compileClasspath,runtimeClasspath
+empty=
+EOF
+  # A catalog with both halves: a library entry (covered by lock state) and a plugin entry whose
+  # version.ref points into [versions] (covered by the toolchain fingerprint).
+  cat > "${dir}/gradle/libs.versions.toml" <<'EOF'
+[versions]
+somelib = "1.0.0"
+agp = "9.0.0"
+
+[libraries]
+somelib = { module = "com.example:lib", version.ref = "somelib" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+EOF
   echo 'rootProject.name = "fixture"' > "${dir}/settings.gradle.kts"
   echo '// root' > "${dir}/build.gradle.kts"
   cat > "${dir}/gradle.properties" <<'EOF'
@@ -113,7 +132,12 @@ release "${R}" 1.4.0
 expect false "$(needed --repo "${R}" --baseline v1.3.0 --head v1.4.0)" "published test source changed"
 
 echo "== each shared build input forces a publish on its own"
-for f in build-logic/build.gradle.kts gradle/libs.versions.toml settings.gradle.kts build.gradle.kts; do
+# `gradle/libs.versions.toml` is deliberately NOT in this list any more — it stopped being a
+# blanket shared input when lock state took over the library half. Leaving it here would have
+# kept passing for the wrong reason: appending a line puts it inside the trailing [plugins]
+# section, so the toolchain fingerprint trips and the assertion goes green while asserting an
+# invariant that no longer holds. The catalog's two halves are covered by their own cases below.
+for f in build-logic/build.gradle.kts settings.gradle.kts build.gradle.kts; do
   base="$(git -C "${R}" describe --tags --abbrev=0)"
   echo "// touched $(date +%s%N)" >> "${R}/${f}"
   git -C "${R}" add -A
@@ -133,6 +157,45 @@ echo "== the baseline advancing only on a publish is the caller's job, but a mul
 expect false "$(needed --repo "${R}" --baseline v1.0.0 --head v1.2.0)" "span of two skippable releases"
 # ...and a span that contains the module change says yes, so nothing is lost by coalescing.
 expect true "$(needed --repo "${R}" --baseline v1.0.0 --head v1.3.0)" "span containing a real change"
+
+echo "== a LIBRARY-only catalog bump that moves no lockfile does not need a publish"
+# The headline change: this used to force all 94 modules because the catalog was a blanket
+# shared input. Lock state is what makes it answerable.
+base="$(git -C "${R}" rev-parse HEAD)"
+sed -i.bak 's/^somelib = "1.0.0"/somelib = "1.1.0"/' "${R}/gradle/libs.versions.toml"
+rm -f "${R}/gradle/libs.versions.toml.bak"
+git -C "${R}" add -A && git -C "${R}" commit -qm "chore(deps): bump somelib"
+expect false "$(needed --repo "${R}" --baseline "${base}" --head HEAD)" "library-only catalog bump, no lockfile movement"
+
+echo "== the same bump DOES need a publish once it moves a module's lock state"
+base="$(git -C "${R}" rev-parse HEAD)"
+sed -i.bak 's/^com.example:lib:1.0.0=/com.example:lib:1.1.0=/' "${R}/data/focus/core/gradle.lockfile"
+rm -f "${R}/data/focus/core/gradle.lockfile.bak"
+git -C "${R}" add -A && git -C "${R}" commit -qm "chore(deps): regenerate lockfiles"
+expect true "$(needed --repo "${R}" --baseline "${base}" --head HEAD)" "lockfile moved"
+
+echo "== a TOOLCHAIN bump needs a publish even though no lockfile moves"
+# AGP and friends change the bytecode we publish but need not appear on any module's classpath,
+# so lock state cannot see them. This is the hole the fingerprint closes.
+base="$(git -C "${R}" rev-parse HEAD)"
+sed -i.bak 's/^agp = "9.0.0"/agp = "9.1.0"/' "${R}/gradle/libs.versions.toml"
+rm -f "${R}/gradle/libs.versions.toml.bak"
+git -C "${R}" add -A && git -C "${R}" commit -qm "chore(deps): bump agp"
+expect true "$(needed --repo "${R}" --baseline "${base}" --head HEAD)" "plugin-referenced version moved"
+
+echo "== a comment-only edit inside [plugins] does not need a publish"
+base="$(git -C "${R}" rev-parse HEAD)"
+printf '\n# a prose note about the plugins above\n' >> "${R}/gradle/libs.versions.toml"
+git -C "${R}" add -A && git -C "${R}" commit -qm "docs: comment the catalog"
+expect false "$(needed --repo "${R}" --baseline "${base}" --head HEAD)" "comment-only catalog edit"
+
+echo "== a published module with NO lock state fails open"
+NOLOCK="${tmp}/nolock"
+make_repo "${NOLOCK}"
+git -C "${NOLOCK}" rm -q "data/focus/core/gradle.lockfile"
+git -C "${NOLOCK}" commit -qm "chore: drop lock state"
+git -C "${NOLOCK}" tag v1.9.0
+expect true "$(needed --repo "${NOLOCK}" --baseline v1.0.0 --head v1.9.0)" "module without a lockfile"
 
 echo "== fail-open paths"
 expect true "$(needed --repo "${R}")" "no baseline"

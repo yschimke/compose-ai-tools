@@ -29,8 +29,13 @@
 #
 # Any file under a module that applies `composeai.maven-publishing` (enumerated from the working
 # tree, so a newly added module is picked up as its own change), plus the shared inputs that
-# change the bytes or the POM of every one of them: `build-logic/`, the version catalog, the
-# wrapper, `settings.gradle.kts` and the root `build.gradle.kts`.
+# change the bytes or the POM of every one of them: `build-logic/`, the wrapper,
+# `settings.gradle.kts` and the root `build.gradle.kts`.
+#
+# A module's committed `gradle.lockfile` lives inside that module, so DEPENDENCY movement is
+# caught by the same rule that catches source changes. The version catalog is therefore no longer
+# a blanket shared input — only its build-toolchain half is checked separately. See
+# `toolchain_fingerprint`.
 #
 # `gradle.properties` is watched with ONE exclusion: the `x-release-please-start-version` block.
 # Release-please rewrites `composeaiReleasedRuntimeVersion` there on every single release (see
@@ -78,10 +83,67 @@ cd "${REPO}"
 shared_paths() {
   printf '%s\n' \
     'build-logic' \
-    'gradle/libs.versions.toml' \
     'gradle/wrapper' \
     'settings.gradle.kts' \
     'build.gradle.kts'
+}
+
+# `gradle/libs.versions.toml` is deliberately NOT in that list any more.
+#
+# It used to be, and it was the single most expensive rule here: any catalog edit dirtied all 94
+# modules, because a path diff cannot tell which of them actually resolve the bumped coordinate.
+# Over v1.57.0..v1.84.0 that rule was ~97% of the publishing this guard could not eliminate.
+#
+# Committed lock state answers that exactly. Each module's `gradle.lockfile` lives INSIDE the
+# module directory, which is already watched, so a catalog bump that moves a module's resolved
+# classpath shows up as a change to that module and needs no special handling. A bump that moves
+# nothing any published module resolves — a test-only dependency, something only the CLI uses —
+# leaves every lockfile untouched, and now correctly publishes nothing.
+#
+# That leaves one hole, which `toolchain_fingerprint` below closes: the BUILD TOOLCHAIN. AGP, the
+# Compose compiler and friends are `[plugins]` entries, they change the bytecode we publish, and
+# they do not necessarily appear on any module's compile or runtime classpath — so no lockfile
+# moves when they do. Measured over the same window, 13 release windows touched the catalog and 1
+# of them was a toolchain move: rare, but a wrongly skipped publish is unrepairable, so it is
+# checked rather than hoped about.
+
+# The `[plugins]` block plus the `[versions]` entries those plugins reference, for one git ref.
+# Anything else in the catalog is a library and is covered by lock state.
+#
+# Two awk passes rather than one because `[versions]` is declared above `[plugins]`, so the refs
+# are not known on first read. Empty output for a ref that has no catalog at all is fine — the
+# caller compares two of these and only cares whether they differ.
+toolchain_fingerprint() {
+  local ref="$1" catalog
+  catalog="$(git show "${ref}:gradle/libs.versions.toml" 2>/dev/null)" || return 1
+  local refs
+  refs="$(printf '%s\n' "${catalog}" | awk '
+    /^\[/        { section = $0; next }
+    section == "[plugins]" && match($0, /version\.ref[ \t]*=[ \t]*"[^"]+"/) {
+      # Strip the key and the quotes off the matched fragment with anchored subs. NOT
+      # `gsub(/.*"/, ...)`: `.*` is greedy, so it eats through the closing quote and yields an
+      # empty ref — which silently reduced this fingerprint to the [plugins] text alone, so an
+      # `agp` or `kotlin` version bump moved nothing and the guard would have skipped a publish
+      # it needed. That is the one direction this script must never fail in.
+      s = substr($0, RSTART, RLENGTH)
+      sub(/^version\.ref[ \t]*=[ \t]*"/, "", s)
+      sub(/"$/, "", s)
+      print s
+    }')"
+  {
+    printf '%s\n' "${catalog}" | awk '
+      /^\[/ { section = $0; next }
+      # Comment lines are skipped: a `#` line in TOML is inert, and this repository comments
+      # heavily enough that including them would force a 94-module publish for a prose edit.
+      section == "[plugins]" && NF && $0 !~ /^[ \t]*#/ { print "plugin " $0 }'
+    printf '%s\n' "${catalog}" | awk -v refs="${refs}" '
+      BEGIN { n = split(refs, a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 }
+      /^\[/ { section = $0; next }
+      section == "[versions]" && match($0, /^[ \t]*[A-Za-z0-9_.-]+[ \t]*=/) {
+        key = $0; sub(/[ \t]*=.*/, "", key); gsub(/^[ \t]+/, "", key)
+        if (key in want) print "version " key " " $0
+      }'
+  } | sort
 }
 
 # Every module that publishes, derived from the build files themselves rather than a hand-kept
@@ -138,6 +200,16 @@ git merge-base "${BASELINE}" "${HEAD_REF}" >/dev/null 2>&1 ||
 mapfile -t MODULES < <(publishing_module_paths)
 [ "${#MODULES[@]}" -gt 0 ] || emit true "found no modules applying composeai.maven-publishing"
 
+# Dependency movement is now read from committed lock state, so a published module WITHOUT a
+# lockfile is a module whose dependencies we cannot see. Its source changes are still caught, but a
+# catalog bump that moved only its classpath would look like nothing at all — the one direction
+# this script must never fail in. So: any module missing lock state, and the whole thing fails open.
+mapfile -t UNLOCKED < <(
+  for m in "${MODULES[@]}"; do [ -f "${m}/gradle.lockfile" ] || printf '%s\n' "${m}"; done
+)
+[ "${#UNLOCKED[@]}" -eq 0 ] ||
+  emit true "${#UNLOCKED[@]} published module(s) have no gradle.lockfile (e.g. ${UNLOCKED[0]})"
+
 mapfile -t WATCHED < <(watch_paths)
 
 # `--` and the explicit pathspec list keep this to the watched set; everything else in the diff
@@ -193,4 +265,14 @@ if [ "${gradle_properties_changed}" = 1 ]; then
   emit true "gradle.properties changed outside the release-please version block"
 fi
 
-emit false "no published module or shared build input changed since ${BASELINE}"
+# The build toolchain, which lock state cannot see. See the comment on `toolchain_fingerprint`.
+# A failure to read either catalog fails open rather than silently comparing nothing.
+tc_baseline="$(toolchain_fingerprint "${BASELINE}")" ||
+  emit true "could not read the version catalog at ${BASELINE}"
+tc_head="$(toolchain_fingerprint "${HEAD_REF}")" ||
+  emit true "could not read the version catalog at ${HEAD_REF}"
+if [ "${tc_baseline}" != "${tc_head}" ]; then
+  emit true "the build toolchain moved ([plugins], or a version they reference)"
+fi
+
+emit false "no published module, shared build input or build-toolchain pin changed since ${BASELINE}"
