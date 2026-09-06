@@ -633,11 +633,12 @@ internal val ISOLATED_PROJECTS_OFF_ARGS: List<String> =
  *
  * The injected plugin version is the **project's version pin** when it has one —
  * `--plugin-version`, `COMPOSE_PREVIEW_VERSION`, `gradle.properties`' `composePreview.version`, or
- * the catalog's `[versions] composePreviewCli` (see [resolveVersionPin]) — and this CLI's own
- * [BUNDLE_VERSION] otherwise. That is what makes a pin mean the same thing here as it does in VS
- * Code and in the `install` / `apply` actions (issue #3738). Callers that already know the version
- * they want (the `init-script` command's `--plugin-version`, tests) pass [pluginVersion] explicitly
- * and no project lookup happens.
+ * the catalog's `[versions] composePreviewCli` (see [resolveVersionPin]) — and this CLI's
+ * [MAVEN_LINE_VERSION] otherwise (the Maven line it resolves against, which is [BUNDLE_VERSION]
+ * unless a release skipped publishing). That is what makes a pin mean the same thing here as it
+ * does in VS Code and in the `install` / `apply` actions (issue #3738). Callers that already know
+ * the version they want (the `init-script` command's `--plugin-version`, tests) pass
+ * [pluginVersion] explicitly and no project lookup happens.
  *
  * Opt-out (any one of these disables auto-inject):
  * - `--no-auto-inject` in [args],

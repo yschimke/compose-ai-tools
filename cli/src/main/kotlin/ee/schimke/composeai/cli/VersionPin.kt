@@ -404,7 +404,10 @@ internal fun resolvePluginVersion(
   args: List<String> = emptyList(),
   env: (String) -> String? = System::getenv,
   fileSystem: FileSystem = SystemFileSystem,
-  fallback: String = BUNDLE_VERSION,
+  // [MAVEN_LINE_VERSION], not [BUNDLE_VERSION]: this value becomes a Gradle coordinate, so it has
+  // to name a version that exists on Maven Central rather than the version this CLI happens to be.
+  // Identical today; see the KDoc on MAVEN_LINE_VERSION for when and why they diverge.
+  fallback: String = MAVEN_LINE_VERSION,
   stderr: (String) -> Unit = System.err::println,
 ): String {
   val pin = resolveVersionPin(projectRoot, args, env, fileSystem)

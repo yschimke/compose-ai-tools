@@ -970,15 +970,31 @@ val generateCliVersionResource =
     // wire-drift tests compile against; this names the release an installed CLI downloads, and a
     // server-only release moves one without the other.
     val serveVersion = libs.versions.composeai.preview.server.dist.get()
+    // The version of THIS repository's Maven artifacts the CLI should ask Gradle for — the plugin
+    // coordinate it auto-injects, and the coordinate `doctor` recommends. Deliberately a separate
+    // value from `cliVersion`, for the same reason `serveVersion` is: what the CLI IS and what it
+    // RESOLVES stop being the same number the moment a release does not publish to Central.
+    //
+    // Today they are identical, because every release publishes and nothing sets the override, so
+    // this is inert. It becomes load-bearing when `maven-publish-guard` is allowed to skip a
+    // publish: the release then sets MAVEN_LINE_VERSION to the last version that IS on Central, and
+    // a CLI built at 2.5.0 keeps injecting the plugin at 2.4.0 rather than a coordinate that 404s.
+    // See docs/design/RELEASE_TRAINS.md and `MAVEN_LINE_VERSION`.
+    val mavenLineVersion =
+      project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull ?: cliVersion
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
     inputs.property("serveVersion", serveVersion)
+    inputs.property("mavenLineVersion", mavenLineVersion)
     outputs.dir(outputDir)
     doLast {
       val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
       file.parentFile.mkdirs()
       file.writeText(
-        "version=$cliVersion\nxrCompositeVersion=$xrCompositeVersion\nserveVersion=$serveVersion\n"
+        "version=$cliVersion\n" +
+          "xrCompositeVersion=$xrCompositeVersion\n" +
+          "serveVersion=$serveVersion\n" +
+          "mavenLineVersion=$mavenLineVersion\n"
       )
     }
   }

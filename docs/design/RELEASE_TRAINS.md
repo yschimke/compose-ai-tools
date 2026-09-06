@@ -259,13 +259,29 @@ module, exactly one always changed as a unit.
 
 1. **Report only** *(done)* — the `maven-publish-guard` job records its verdict on every release
    and gates nothing. Watch it against real releases; a wrong `false` here costs nothing.
-2. **Bake the plugin-version pin** — `pluginVersion` into `cli-version.properties`, the
-   `resolvePluginVersion` fallback reading it, and the CLI→Maven map on the release marker.
-   Nothing skips yet, so the pin still equals the release version and the change is a no-op in
-   production.
+2. **Bake the plugin-version pin** *(done, inert)* — `generateCliVersionResource` writes a
+   `mavenLineVersion` key into `cli-version.properties` from a `MAVEN_LINE_VERSION` environment
+   override, defaulting to the CLI's own version; `MAVEN_LINE_VERSION` in `Version.kt` reads it;
+   and every site that turns a version into a **Gradle coordinate** now reads that rather than
+   `BUNDLE_VERSION` — the `resolvePluginVersion` fallback (so auto-inject and `init-script`
+   follow), `Commands.injectedPluginVersion`, and doctor's `recommendedPluginVersion`,
+   `pluginResolutionGuidance` input and `--plugin-version` snippet. Sites that state an
+   **identity** or measure **skew** — `compose-preview --version`, the update check,
+   `versionsIncompatible(applied, BUNDLE_VERSION)`, the build-host handshake — deliberately keep
+   `BUNDLE_VERSION`: they are about which CLI this is, not about what Gradle can resolve.
+
+   Nothing sets the override and every release still publishes, so today the two values are equal
+   and this is a no-op in production. That is the point: the seam lands while it is inert, so
+   step 3 is a workflow change rather than a redesign.
+
+   Still outstanding, and only needed once the two versions actually diverge: the CLI→Maven map on
+   the release readiness marker (`compose-preview-maven-ready-<version>.json`). A project pin names
+   a *CLI* release, and a CLI cannot know another release's Maven line offline.
 3. **Let the guard gate** — `publish-gradle-plugin` takes
-   `if: needs.maven-publish-guard.outputs.needed == 'true'`. Step 2 is what makes this safe; the
-   `-15.8%` arrives here.
+   `if: needs.maven-publish-guard.outputs.needed == 'true'`, and the release sets
+   `MAVEN_LINE_VERSION` from the guard's verdict: the new version when it publishes, the last
+   version that reached Central when it does not. Step 2 is what makes this safe; the `-15.8%`
+   arrives here.
 4. **Split the trains** — five version lines, each with its own guard and manifest entry, and
    renderer POMs naming the library trains' own versions. The remaining `-30%`.
 
