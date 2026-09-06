@@ -55,6 +55,7 @@ import {
   motionPreviewFor,
 } from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
+import { publishComponentRecord } from "./catalog-component-record.mjs";
 import { checkMotionCarried } from "./motion-carried.mjs";
 import {
   unclaimedMotionPreviews,
@@ -1666,6 +1667,25 @@ if (values["publish-live-bundle"]) {
   }
 }
 
+// The discovered component record, out of the primary bundle and onto the branch root, so a
+// consumer that wants only the record (the UI builder, offering this catalog's composables as a
+// component pack) fetches one file rather than the live bundle it also travels in — and so a
+// catalog that publishes no live bundle still carries it somewhere a reader can reach.
+const componentRecord = await publishComponentRecord(
+  combinedBundleEntries(allBundles),
+  outPath,
+);
+if (componentRecord) {
+  console.log(
+    `[${spec.system}] published component record → ${componentRecord.path} ` +
+      `(schema ${componentRecord.schemaVersion}, ${componentRecord.components} component(s))`,
+  );
+} else {
+  console.log(
+    `[${spec.system}] bundle carries no component record — the catalog is not authorable from`,
+  );
+}
+
 {
   const catalogJsonPath = join(outPath, "catalog.json");
   const manifest = JSON.parse(await readFile(catalogJsonPath, "utf8"));
@@ -1761,6 +1781,8 @@ if (values["publish-live-bundle"]) {
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
   if (liveBundles.length > 0) manifest.liveBundles = liveBundles;
+  // Declared the way `tokensFile` is: a branch-relative path a consumer fetches by name.
+  if (componentRecord) manifest.componentsFile = componentRecord.path;
   // Deferred (live-only) coverage, recorded alongside the baked components rather than inside
   // `components[].images` — an image with no `path` would reach every consumer that assumes
   // `images[]` is the baked sticker set (index.html, compare.html, matches.html, the per-variant
