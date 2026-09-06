@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "57657448b9c27e363a36e74863019f6a85dece3a",
+    "generatedFrom": "cda7bf632876c7b95788c55615f3e19cde8a0770",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -7520,6 +7520,66 @@
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
                     "sourceSha": "02b540ff",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview": {
+            "path": "renders/samples:wear-widget/ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_0.png",
+            "versions": [
+                {
+                    "blob": "4cd8faccbb4e2b5c5148489429ff3aba3fe31dc5",
+                    "commit": "cda7bf632876c7b95788c55615f3e19cde8a0770",
+                    "date": "2026-09-06T10:51:46Z",
+                    "sourceSha": "60f30104",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview#1": {
+            "path": "renders/samples:wear-widget/ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_1.png",
+            "versions": [
+                {
+                    "blob": "5bb11ddb975cfa57c6630e60deb3abb4cd10f93e",
+                    "commit": "cda7bf632876c7b95788c55615f3e19cde8a0770",
+                    "date": "2026-09-06T10:51:46Z",
+                    "sourceSha": "60f30104",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec": {
+            "path": "renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_0.png",
+            "versions": [
+                {
+                    "blob": "520a0deb482a2fffb19e4fc1e683c64aa96691f2",
+                    "commit": "cda7bf632876c7b95788c55615f3e19cde8a0770",
+                    "date": "2026-09-06T10:51:46Z",
+                    "sourceSha": "60f30104",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec#1": {
+            "path": "renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_1.png",
+            "versions": [
+                {
+                    "blob": "17f0d783e1d0ebeac8f1dbeb3a36fce0840b7e64",
+                    "commit": "cda7bf632876c7b95788c55615f3e19cde8a0770",
+                    "date": "2026-09-06T10:51:46Z",
+                    "sourceSha": "60f30104",
                     "commits": 1
                 }
             ],
