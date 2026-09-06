@@ -133,6 +133,20 @@ class ScreenGeneratorCompileFunctionalTest {
         fun FeedPreview() {
             Feed { item { Text(text = "Row") } }
         }
+
+        // A determinate progress indicator: the shape refused while no `ScreenValue` was a
+        // lambda. `LinearProgressIndicator` itself is not a discovery target here, so the shape is
+        // carried by a project-local wrapper, exactly as `Feed` carries the lazy one.
+        @Composable
+        fun Gauge(progress: () -> Float) {
+            Text(text = progress().toString())
+        }
+
+        @Preview
+        @Composable
+        fun GaugePreview() {
+            Gauge(progress = { 0.4f })
+        }
         """
           .trimIndent()
       )
@@ -354,6 +368,60 @@ class ScreenGeneratorCompileFunctionalTest {
     val generated = File(projectDir, "src/main/kotlin/generated")
     generated.mkdirs()
     File(generated, "FeedScreen.kt").writeText(emitted.source)
+
+    val compile = runGradle(projectDir, "compileKotlin")
+    assertThat(compile.task(":compileKotlin")?.outcome)
+      .isIn(listOf(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE))
+  }
+
+  @Test
+  fun `a lambda returning a constant compiles where the parameter takes one`() {
+    // `progress: () -> Float` was refused outright with "no value in this vocabulary is a lambda",
+    // which was true of the vocabulary and not of the need — a determinate indicator, a
+    // `rememberCarouselState { n }`, and both pickers all want the same narrow thing. The compile
+    // at the end is what settles that `{ 0.4f }` is really what the parameter takes.
+    val projectDir = createTestProject()
+
+    val discover = runGradle(projectDir, "composePreviewDiscover")
+    assertThat(discover.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    val components =
+      json.decodeFromString(
+        ComponentRecordFile.serializer(),
+        File(projectDir, "build/compose-previews/components.json").readText(),
+      )
+
+    // Discovery states the return type; this test reads it rather than asserting it into being.
+    val gauge = components.components.single { it.symbol.name == "Gauge" }
+    val progress = gauge.parameters.single { it.name == "progress" }
+    assertThat(progress.typeFqn).isEqualTo("kotlin.Function0")
+    assertThat(progress.lambdaReturnTypeFqn).isEqualTo("kotlin.Float")
+
+    val screen =
+      ScreenDocument(
+        name = "GaugeScreen",
+        root =
+          ScreenNode(
+            componentId = idOf(components, "Gauge"),
+            arguments = mapOf("progress" to ScreenValue.Lambda(ScreenValue.Fractional32(0.4f))),
+          ),
+      )
+
+    val result =
+      ScreenGenerator.generate(screen, components, expressionPackages = setOf("androidx.compose"))
+    val emitted =
+      assertWithMessage(
+          "generation refused: %s",
+          (result as? ScreenGenerator.Result.Refused)?.reasons,
+        )
+        .that(result)
+        .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+        .let { result as ScreenGenerator.Result.Emitted }
+
+    assertThat(emitted.source).contains("progress = { 0.4f }")
+
+    val generated = File(projectDir, "src/main/kotlin/generated")
+    generated.mkdirs()
+    File(generated, "GaugeScreen.kt").writeText(emitted.source)
 
     val compile = runGradle(projectDir, "compileKotlin")
     assertThat(compile.task(":compileKotlin")?.outcome)

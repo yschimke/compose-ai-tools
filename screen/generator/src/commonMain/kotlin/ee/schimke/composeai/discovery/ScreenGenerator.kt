@@ -904,6 +904,55 @@ object ScreenGenerator {
       return "$escaped.value"
     }
 
+    /**
+     * `{ 0.4f }` for a parameter that takes a zero-argument lambda, or null having said why not.
+     *
+     * Two things are checked and neither is optional. The parameter has to actually take a bare
+     * zero-argument lambda, and the body has to fit what that lambda returns.
+     *
+     * The first is asked of the **classifier**, not of the rendered spelling: `kotlin.Function0`
+     * means no value parameters and no receiver, because Kotlin records an extension function type
+     * as a `Function1` whose first argument is the receiver. So `(Int) -> Float` and `Float.() ->
+     * Float` are both `Function1` and both refused, and `{ 0.4f }` never lands on a lambda that was
+     * handed something it ignores.
+     *
+     * `ComponentSnippets.acceptsZeroArgLambda` answers a neighbouring question and is deliberately
+     * not reused: it requires `-> Unit`, because it exists to decide whether an *event handler* can
+     * be written, and a value-returning lambda is the case it is built to reject.
+     *
+     * The body is checked by [argument] against a parameter standing for the return type, so a
+     * lambda's result gets the identical literal rules an argument does: the `Int` range check, the
+     * `Float` narrowing, the refusal of `NaN`. Restating them here is how two spellings of one rule
+     * start disagreeing.
+     */
+    private fun lambda(
+      value: ScreenValue.Lambda,
+      parameter: TargetParameter,
+      owner: String,
+    ): String? {
+      val where = "`$owner`.`${parameter.name}`"
+      val returns = parameter.lambdaReturnTypeFqn
+      if (returns == null || parameter.typeFqn != "kotlin.Function0") {
+        reasons +=
+          "$where is `${parameter.type}`, which a `{ … }` returning a value does not satisfy"
+        return null
+      }
+      // A parameter that stands for the lambda's RESULT, so the body is checked as an argument to
+      // it. `hasDefault` is irrelevant to a value that is present, and the name is only ever read
+      // back out in a refusal, where the parameter it came from is the useful thing to name.
+      val body =
+        argument(
+          value.result,
+          TargetParameter(
+            name = parameter.name,
+            type = returns.substringAfterLast('.'),
+            typeFqn = returns,
+          ),
+          owner,
+        ) ?: return null
+      return "{ $body }"
+    }
+
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
@@ -957,6 +1006,9 @@ object ScreenGenerator {
               type == "kotlin.Double" -> value.value.toString()
               else -> null
             }
+          // A lambda returning a constant. Held to the parameter's *return* type rather than to
+          // its `kotlin.Function0` classifier, which every zero-argument function type shares.
+          is ScreenValue.Lambda -> lambda(value, parameter, owner)
           // Every case with a claimed type left through the branch above.
           else -> null
         }
@@ -1011,6 +1063,11 @@ object ScreenGenerator {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
           }
+        // Nested, there is no declared type to check the body against — the same trade every
+        // literal makes here — so the body takes the one fixed spelling its kind has. That is what
+        // makes `rememberCarouselState { 5 }` writable: the count is an `Int` because a nested
+        // whole number always is.
+        is ScreenValue.Lambda -> expression(value.result, where, depth + 1)?.let { "{ $it }" }
         is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null

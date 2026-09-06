@@ -316,6 +316,29 @@ class ComposableSignatureTest {
   }
 
   @Test
+  fun `a function-typed parameter records what its lambda returns`() {
+    // `typeFqn` cannot answer this: every zero-argument function type in the library is a
+    // `kotlin.Function0`, so a value checked against it alone is checked against almost nothing.
+    val progress = parametersOf("valueReturningLambdaComponent").single()
+
+    assertThat(progress.typeFqn).isEqualTo("kotlin.Function0")
+    assertThat(progress.lambdaReturnTypeFqn).isEqualTo("kotlin.Float")
+  }
+
+  @Test
+  fun `the recorded return type is the last type argument, not the first`() {
+    // `(Int) -> Float` is a `Function1<Int, Float>`, and reading the wrong end would hold a
+    // lambda's body to the type of the argument it was handed.
+    assertThat(parametersOf("argumentTakingLambdaComponent").single().lambdaReturnTypeFqn)
+      .isEqualTo("kotlin.Float")
+  }
+
+  @Test
+  fun `a parameter that is not a function type records no lambda return`() {
+    assertThat(parametersOf("sampleComponent").first().lambdaReturnTypeFqn).isNull()
+  }
+
+  @Test
   fun `an ordinary callback is not a scope DSL`() {
     // The signal is the receiver, not the lambda. `(String) -> Unit` has no receiver, so nothing
     // is in scope inside it and there is no member a child could be wrapped in.

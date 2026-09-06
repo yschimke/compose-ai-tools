@@ -416,6 +416,7 @@ internal object ComposableSignature {
       composableSlotReceiver = if (slot) receiverFqnOf(type) else null,
       nullable = type.isNullable,
       scopeDslReceiver = dsl,
+      lambdaReturnTypeFqn = lambdaReturnFqnOf(type),
     )
   }
 
@@ -588,6 +589,22 @@ internal object ComposableSignature {
    * deliberately reduces to, because a consumer generating an import or deciding which scoped
    * modifier APIs are legal cannot use `RowScope` on its own.
    */
+  /**
+   * The classifier a function type returns, or null when [type] is not a function type.
+   *
+   * A function type's arguments are its parameters followed by its return, so the last one is it —
+   * `Function0<Float>` has exactly one and `Function1<Int, Float>` has the return second. Taken
+   * structurally so a consumer never has to read it off the rendered spelling; see
+   * [TargetParameter.lambdaReturnTypeFqn].
+   */
+  private fun lambdaReturnFqnOf(type: KmType): String? {
+    val classifier = (type.classifier as? KmClassifier.Class)?.name ?: return null
+    if (!isFunctionClassName(classifier)) return null
+    val returned = type.arguments.lastOrNull()?.type ?: return null
+    val name = (returned.classifier as? KmClassifier.Class)?.name ?: return null
+    return name.replace('/', '.').replace('$', '.')
+  }
+
   private fun receiverFqnOf(type: KmType): String? {
     if (type.annotations.none { it.className == "kotlin/ExtensionFunctionType" }) return null
     val receiver = type.arguments.firstOrNull()?.type ?: return null

@@ -297,6 +297,31 @@ object ComponentSnippets {
       !parameter.composableSlot &&
       !parameter.type.contains("->")
 
+  /** The literal a built-in type answers with, or null for everything that has none. */
+  private fun literalFor(typeFqn: String?): String? =
+    when (typeFqn) {
+      "kotlin.String" -> "\"\""
+      "kotlin.Boolean" -> "false"
+      "kotlin.Int" -> "0"
+      "kotlin.Long" -> "0L"
+      "kotlin.Float" -> "0f"
+      "kotlin.Double" -> "0.0"
+      else -> null
+    }
+
+  /**
+   * `{ 0f }` for a required `() -> Float`, or null when the return type has no literal.
+   *
+   * The classifier decides, not the spelling: `kotlin.Function0` is the only function type with no
+   * value parameters and no receiver, so this never writes a body for a lambda that was handed
+   * something. Anything whose return type has no literal — an `ImageVector`, a domain type — still
+   * refuses its call site, which is the honest answer and the one `m3/icon` documents downstream.
+   */
+  private fun valueReturningLambda(parameter: TargetParameter): String? {
+    if (parameter.typeFqn != "kotlin.Function0") return null
+    return literalFor(parameter.lambdaReturnTypeFqn)?.let { "{ $it }" }
+  }
+
   internal fun placeholderFor(parameter: TargetParameter): String? {
     if (parameter.nullable) return "null"
     val type = parameter.type
@@ -306,18 +331,24 @@ object ComponentSnippets {
     // not reach here looking nullable — and this reads it as the fallback it is. Function types
     // deliberately get no fallback: `(Int) -> String?` ends in `?` and is *not* nullable.
     if (!type.contains("->") && type.endsWith("?")) return "null"
-    if (parameter.composableSlot || type.contains("->")) return emptyLambda(type)
+    // `emptyLambda` answers for a `-> Unit` slot or callback. A lambda that must RETURN something
+    // has no empty form, and until `ScreenValue.Lambda` existed there was nothing to write there
+    // either, so a component with a required `() -> Float` got no call site at all. Now the
+    // placeholder is the same thing a document would supply: a lambda returning that type's own
+    // literal.
+    if (parameter.composableSlot || type.contains("->"))
+      return emptyLambda(type) ?: valueReturningLambda(parameter)
     // Matched on the QUALIFIED type, never the rendered spelling: `com.example.String` renders as
     // `String` exactly like `kotlin.String`, and answering `""` for the first emits source that
     // does not compile. A record written before `typeFqn` existed has null here and falls back to
     // the spelling, which is what it always did — no worse, and no silent retraction.
-    return when (qualifiedTypeOf(parameter)) {
-      "kotlin.String" -> "\"\""
-      "kotlin.Boolean" -> "false"
-      "kotlin.Int" -> "0"
-      "kotlin.Long" -> "0L"
-      "kotlin.Float" -> "0f"
-      "kotlin.Double" -> "0.0"
+    return when (val qualified = qualifiedTypeOf(parameter)) {
+      "kotlin.String",
+      "kotlin.Boolean",
+      "kotlin.Int",
+      "kotlin.Long",
+      "kotlin.Float",
+      "kotlin.Double" -> literalFor(qualified)
       // A type that constructs itself with no arguments is answered by doing exactly that —
       // `TextFieldState()` — which is not "inventing a value" but writing down the one the type
       // already defines. Discovery proved it on the classpath (`ComposableSignature
