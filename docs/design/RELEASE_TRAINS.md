@@ -360,9 +360,46 @@ module, exactly one always changed as a unit.
    `required-release-assets.sh` needed **no** change, contrary to the note this section used to
    carry: it lists only CLI assets, which a skipped publish still produces, so `finalize-release`
    and the draft sweeper are unaffected.
-4. **Split the trains** — a second version line for `data/`, with its own guard verdict and
-   manifest entry, and core POMs naming the data train's version rather than their own. Takes the
-   saving from `-21.1%` to `-50.7%`; § 5 costs why it is two lines and not five.
+4. **Split the trains** — a second version line for `data/`, with its own guard verdict, and core
+   POMs naming the data train's version rather than their own. Takes the saving from `-21.1%` to
+   `-50.7%`; § 5 costs why it is two lines and not five.
+
+   **4a. The mechanism** *(done, inert)* — three pieces, all verifiable without publishing
+   anything:
+
+   - `maven-publish-needed.sh --train core|data|all` answers the same question for one version
+     line. `all` remains the default, so the guard's current behaviour is untouched. Shared build
+     inputs are deliberately **not** split by the train filter: `build-logic/` or the wrapper can
+     move the bytes of every module on either line, so they publish both.
+   - `ComposeAiMavenPublishingPlugin` gives a module under `data/` the `DATA_LINE_VERSION` the
+     release sets, and everything else `PLUGIN_VERSION` as before. `mavenTrain()` derives the
+     train from the module's directory — one definition, shared with the task list below, so the
+     two can never disagree about a module. `DATA_LINE_VERSION` is ignored unless `PLUGIN_VERSION`
+     is also set, so a stray value in a developer shell cannot version half a build differently
+     from the other half.
+   - `./gradlew printPublishTasks -Ptrain=<train>` prints the publish task path for each module on
+     a train. Needed because the skipped train's tasks must be absent from the invocation entirely
+     — its modules are already on Central at the version they carry, and Central refuses a version
+     twice, so re-uploading them fails the whole deployment rather than just their part of it. The
+     list has to come from Gradle: the guard enumerates by directory, Gradle addresses by project
+     path, and `settings.gradle.kts` decouples the two (`:preview-data-api` lives in
+     `api/preview-data-api`). It also emits `:gradle-plugin:publishAndReleaseToMavenCentral`,
+     since that included build's four modules are not `subprojects` of this one and a task list
+     that silently omits them is a release publishing everything except the plugin consumers
+     apply.
+
+   **Cross-train POMs need no machinery at all.** A core module depending on `project(":data:…")`
+   picks up that project's `version`, so with `PLUGIN_VERSION=2.9.0 DATA_LINE_VERSION=2.7.0` the
+   generated `render-host` POM reads `2.9.0` for itself and `2.7.0` for `data-remotecompose-core`.
+   That is the whole of the "no train publishes a POM naming a sibling version that does not
+   exist" requirement, discharged by Gradle.
+
+   Inert today: nothing sets `DATA_LINE_VERSION`, nothing consumes `printPublishTasks`, and the
+   guard is still asked `--train all`.
+
+   **4b. Wire it into the release** — `release.yml` runs the guard once per train, resolves each
+   line's baseline, and publishes each train's task list only when its verdict says so. This is
+   where the `-50.7%` arrives, and it is the step that touches the irreversible path.
 
 Step 4 still needs the readiness marker and [`RELEASING.md`](../RELEASING.md) revisited in the
 same change: with two version lines there is no longer one Maven line for a release to name, so

@@ -61,6 +61,15 @@ HEAD_REF="HEAD"
 GITHUB_OUTPUT_MODE=0
 EXPLAIN=0
 PRINT_PATHS=0
+# Which train to answer for. `all` is every published module — the single-train question this
+# script has always answered, and still the default. `data` and `core` split the same set in two,
+# for the two version lines docs/design/RELEASE_TRAINS.md § 5 costs at -50.7%.
+#
+# The split is `data/*` against everything else, and it is that lopsided on purpose: 58 of the 94
+# modules live under `data/` and they move on a third of the releases, so separating them alone
+# buys 29.6 of the 40 percentage points any split has to offer. Costing for the three- and
+# five-way alternatives is in § 5; `scripts/release-train-costing.sh` reproduces it.
+TRAIN=all
 # The repository to inspect. Defaults to this checkout; the self-test points it at a fixture so
 # the logic can be exercised against histories this repository does not have.
 REPO="${SCRIPT_DIR}/../.."
@@ -72,6 +81,13 @@ while [ $# -gt 0 ]; do
     --github-output) GITHUB_OUTPUT_MODE=1; shift ;;
     --explain) EXPLAIN=1; shift ;;
     --print-paths) PRINT_PATHS=1; shift ;;
+    --train)
+      TRAIN="${2:?--train needs core|data|all}"
+      case "${TRAIN}" in
+        core|data|all) ;;
+        *) echo "unknown train: ${TRAIN} (expected core, data or all)" >&2; exit 2 ;;
+      esac
+      shift 2 ;;
     --repo) REPO="${2:?--repo needs a directory}"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -159,7 +175,19 @@ publishing_module_paths() {
   grep -rl --include=build.gradle.kts 'composeai\.maven-publishing' . 2>/dev/null |
     sed 's|^\./||; s|/build\.gradle\.kts$||' |
     grep -v '^build-logic$' |
-    sort -u
+    sort -u |
+    train_filter
+}
+
+# Restrict the enumeration to one train. Note what this does NOT touch: `shared_paths` is applied
+# to every train, because a change to `build-logic/` or the wrapper can move the bytes of every
+# module regardless of which line it versions on. Splitting the trains does not split that rule.
+train_filter() {
+  case "${TRAIN}" in
+    all) cat ;;
+    data) grep '^data/' || true ;;
+    core) grep -v '^data/' || true ;;
+  esac
 }
 
 watch_paths() {

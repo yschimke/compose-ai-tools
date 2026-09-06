@@ -47,6 +47,7 @@ make_repo() {
   git -C "${dir}" config user.name Test
   mkdir -p "${dir}/data/focus/core/src/main/kotlin" \
     "${dir}/data/focus/core/src/test/kotlin" \
+    "${dir}/renderers/desktop/src/main/kotlin" \
     "${dir}/cli/src/main/kotlin" \
     "${dir}/build-logic" \
     "${dir}/gradle"
@@ -55,6 +56,16 @@ plugins { id("composeai.maven-publishing") }
 EOF
   echo 'fun a() = 1' > "${dir}/data/focus/core/src/main/kotlin/A.kt"
   echo 'fun t() = 1' > "${dir}/data/focus/core/src/test/kotlin/ATest.kt"
+  # A second publishing module, on the OTHER train. Without one the `--train` assertions below
+  # could not tell "this train did not change" from "this train has no modules".
+  cat > "${dir}/renderers/desktop/build.gradle.kts" <<'EOF'
+plugins { id("composeai.maven-publishing") }
+EOF
+  echo 'fun r() = 1' > "${dir}/renderers/desktop/src/main/kotlin/R.kt"
+  cat > "${dir}/renderers/desktop/gradle.lockfile" <<'EOF'
+com.example:lib:1.0.0=compileClasspath,runtimeClasspath
+empty=
+EOF
   # No publishing plugin: changes here must never force a publish.
   echo 'plugins { kotlin("jvm") }' > "${dir}/cli/build.gradle.kts"
   echo 'fun cli() = 1' > "${dir}/cli/src/main/kotlin/Cli.kt"
@@ -213,10 +224,56 @@ git -C "${UNREL}" commit -qm "orphan"
 git -C "${UNREL}" tag v2.0.0
 expect true "$(needed --repo "${UNREL}" --baseline v1.0.0 --head v2.0.0)" "no common history"
 
+echo "== --train answers per version line"
+# The two-train split (docs/design/RELEASE_TRAINS.md § 5): `data/*` versions separately from
+# everything else, so a release touching only one of them republishes only that one. These are the
+# assertions that make a skipped train safe — a wrong `false` here strands 58 artifacts exactly
+# the way a wrong `false` on the whole publish strands 94.
+TR="${tmp}/trains"
+make_repo "${TR}"
+
+echo 'fun a() = 2' > "${TR}/data/focus/core/src/main/kotlin/A.kt"
+git -C "${TR}" commit -aqm "data only"
+git -C "${TR}" tag v1.1.0
+expect true  "$(needed --repo "${TR}" --baseline v1.0.0 --head v1.1.0 --train data)" "data change -> data publishes"
+expect false "$(needed --repo "${TR}" --baseline v1.0.0 --head v1.1.0 --train core)" "data change -> core does not"
+expect true  "$(needed --repo "${TR}" --baseline v1.0.0 --head v1.1.0 --train all)"  "data change -> the single train still publishes"
+
+echo 'fun r() = 2' > "${TR}/renderers/desktop/src/main/kotlin/R.kt"
+git -C "${TR}" commit -aqm "core only"
+git -C "${TR}" tag v1.2.0
+expect false "$(needed --repo "${TR}" --baseline v1.1.0 --head v1.2.0 --train data)" "core change -> data does not"
+expect true  "$(needed --repo "${TR}" --baseline v1.1.0 --head v1.2.0 --train core)" "core change -> core publishes"
+
+# A shared build input is NOT split by the train filter: it can move the bytes of every module on
+# either line, so it publishes both. Getting this wrong is the quiet way a train goes stale.
+echo '// touched' >> "${TR}/build-logic/build.gradle.kts"
+git -C "${TR}" commit -aqm "shared input"
+git -C "${TR}" tag v1.3.0
+expect true "$(needed --repo "${TR}" --baseline v1.2.0 --head v1.3.0 --train data)" "shared input -> data publishes"
+expect true "$(needed --repo "${TR}" --baseline v1.2.0 --head v1.3.0 --train core)" "shared input -> core publishes"
+
+# The narrowings the whole-set guard makes still apply per train, rather than being lost when the
+# module set shrinks.
+echo 'fun t() = 2' > "${TR}/data/focus/core/src/test/kotlin/ATest.kt"
+git -C "${TR}" commit -aqm "data test only"
+git -C "${TR}" tag v1.4.0
+expect false "$(needed --repo "${TR}" --baseline v1.3.0 --head v1.4.0 --train data)" "data test source -> data does not publish"
+
+# An unknown train is a hard failure, never a silently empty module set: an empty set would look
+# like "this train did not change" and skip a publish that was needed.
+if "${SCRIPT}" --repo "${TR}" --baseline v1.3.0 --head v1.4.0 --train nonsense >/dev/null 2>&1; then
+  bad "--train nonsense was accepted"
+else
+  ok "--train nonsense is rejected"
+fi
+
 echo "== a tree with no publishing modules fails open"
 EMPTY="${tmp}/empty"
 make_repo "${EMPTY}"
-git -C "${EMPTY}" rm -rq data
+# Both trains' modules, not just `data` — the case under test is an enumeration that finds
+# nothing at all, and leaving the other train in place would make this assert something else.
+git -C "${EMPTY}" rm -rq data renderers
 git -C "${EMPTY}" commit -qm "drop publishing modules"
 git -C "${EMPTY}" tag v1.5.0
 expect true "$(needed --repo "${EMPTY}" --baseline v1.0.0 --head v1.5.0)" "no publishing modules found"
