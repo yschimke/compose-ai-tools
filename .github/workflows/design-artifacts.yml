@@ -323,6 +323,9 @@ jobs:
       # (inlined) bundle.
       - name: Wait for released preview-runtimes on Maven Central
         if: ${{ matrix.wasmModule != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           version="$(grep -oP '(?<=^composeaiReleasedRuntimeVersion=).*' gradle.properties || true)"
@@ -330,21 +333,65 @@ jobs:
             echo "::error title=Released runtime version missing::gradle.properties has no composeaiReleasedRuntimeVersion, so the catalog cannot resolve its published preview runtimes." >&2
             exit 1
           fi
+          data_version="$version"
+
+          # `composeaiReleasedRuntimeVersion` is bumped by release-please when the release PR is
+          # CUT — before `maven-publish-guard` decides whether that version publishes at all. On a
+          # release where a Maven line did not change, the guard skips its publish and the runtimes
+          # on that line stay at their previous version, so this property names something that will
+          # never appear on Central and the poll below would burn 60 minutes and then fail.
+          #
+          # The release records what it actually did, per line, in the readiness marker it attaches
+          # once Central has resolved. Prefer that over the property. Probing Central directly is
+          # NOT an alternative: a 404 cannot distinguish "this line was skipped" from "not
+          # propagated yet", which is the same race that made the marker the right answer for the
+          # plugin version. See docs/design/RELEASE_TRAINS.md § 7.
+          #
+          # Falls through to the property when there is no marker — an older release, or a regen
+          # running before readiness finished — which is exactly the previous behaviour.
+          # `release_version` is fixed before the lines are resolved: it names the marker's file
+          # and the tag it hangs off, and both `version` and `data_version` are reassigned below.
+          release_version="$version"
+          marker_name="compose-preview-maven-ready-${release_version}.json"
+          marker_dir="$RUNNER_TEMP/maven-ready"
+          mkdir -p "$marker_dir"
+          # `--dir` only, no `-O`: the two are mutually exclusive in `gh release download`.
+          if gh release download "v${release_version}" --dir "$marker_dir" \
+               --pattern "$marker_name" 2>/dev/null && [ -s "$marker_dir/$marker_name" ]; then
+            m_core="$(sed -n 's/.*"pluginVersion":"\([^"]*\)".*/\1/p' "$marker_dir/$marker_name" | head -1)"
+            m_data="$(sed -n 's/.*"dataVersion":"\([^"]*\)".*/\1/p' "$marker_dir/$marker_name" | head -1)"
+            # Each field is taken only when present. A marker written before `dataVersion` existed
+            # still pins the core line correctly and leaves data on the property.
+            [ -n "$m_core" ] && version="$m_core"
+            [ -n "$m_data" ] && data_version="$m_data"
+            echo "Readiness marker for v${release_version}: core=${m_core:-<absent>} data=${m_data:-<absent>}."
+          else
+            echo "No readiness marker for v${release_version} — using composeaiReleasedRuntimeVersion for both lines."
+          fi
+
+          # Hand the resolved lines to the render. The catalog samples substitute the two runtimes
+          # at these properties, and they are separate because the runtimes are on separate lines.
+          {
+            echo "ORG_GRADLE_PROJECT_composeaiReleasedRuntimeVersion=${version}"
+            echo "ORG_GRADLE_PROJECT_composeaiReleasedDataRuntimeVersion=${data_version}"
+          } >> "$GITHUB_ENV"
+
           base="https://repo1.maven.org/maven2/ee/schimke/composeai"
-          echo "Waiting for preview-runtimes $version on Maven Central (up to 60 minutes)…"
+          echo "Waiting for preview-runtimes core=$version data=$data_version on Maven Central (up to 60 minutes)…"
           last_status=""
           for i in $(seq 1 60); do
             ok=1
             statuses=()
-            for a in data-preview-overrides-runtime slot-preview-runtime; do
+            for entry in "data-preview-overrides-runtime:$data_version" "slot-preview-runtime:$version"; do
+              a="${entry%%:*}"; v="${entry##*:}"
               code="$(curl -s -o /dev/null -w '%{http_code}' \
-                "$base/$a/$version/$a-$version.pom" || true)"
-              statuses+=("$a=HTTP ${code:-000}")
+                "$base/$a/$v/$a-$v.pom" || true)"
+              statuses+=("$a@$v=HTTP ${code:-000}")
               [ "$code" = "200" ] || ok=0
             done
             last_status=$(IFS=,; echo "${statuses[*]}")
             if [ "$ok" = 1 ]; then
-              echo "✓ preview-runtimes $version available (attempt $i)."
+              echo "✓ preview-runtimes core=$version data=$data_version available (attempt $i)."
               exit 0
             fi
             if [ "$i" -eq 1 ] || [ $((i % 5)) -eq 0 ]; then
@@ -352,7 +399,7 @@ jobs:
             fi
             sleep 60
           done
-          echo "::error title=Preview runtimes unavailable::Version $version did not fully appear on Maven Central after 60 minutes. Last response: $last_status" >&2
+          echo "::error title=Preview runtimes unavailable::core=$version data=$data_version did not fully appear on Maven Central after 60 minutes. Last response: $last_status" >&2
           exit 1
 
       - name: Render catalog bundle

@@ -149,10 +149,21 @@ if (useReleasedRuntimes) {
         "composeaiUseReleasedRuntimes is set but composeaiReleasedRuntimeVersion is missing from " +
           "gradle.properties"
       )
+  // The two runtimes below are on DIFFERENT Maven version lines: `slot-preview-runtime` lives
+  // under `runtimes/` (the core line) and `data-preview-overrides-runtime` under `data/` (the data
+  // line). `maven-publish-guard` publishes those lines independently, so a release that changed
+  // only core leaves the data runtime at an earlier version and one substitution version cannot
+  // name both. Defaults to the core version, which is what they are equal to on every release that
+  // publishes both trains — so nothing changes for a local build or an ordinary release.
+  // docs/design/RELEASE_TRAINS.md § 5.
+  val dataVersion =
+    providers.gradleProperty("composeaiReleasedDataRuntimeVersion").orNull?.takeIf {
+      it.isNotBlank()
+    } ?: version
   configurations.all {
     resolutionStrategy.dependencySubstitution {
       substitute(project(":data-preview-overrides-runtime"))
-        .using(module("ee.schimke.composeai:data-preview-overrides-runtime:$version"))
+        .using(module("ee.schimke.composeai:data-preview-overrides-runtime:$dataVersion"))
         .because("published previews reference released preview-runtimes (see :design-catalog-m3)")
       substitute(project(":slot-preview-runtime"))
         .using(module("ee.schimke.composeai:slot-preview-runtime:$version"))

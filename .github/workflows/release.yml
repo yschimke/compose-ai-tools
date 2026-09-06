@@ -411,6 +411,11 @@ jobs:
         # MAVEN_LINE_VERSION KDoc in cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt.
         env:
           MAVEN_LINE_VERSION: ${{ needs.maven-publish-guard.outputs.maven_line }}
+          # Recorded alongside it, for the release chain rather than the CLI runtime — see the
+          # comment on `dataLineVersion` in cli/build.gradle.kts. `design-artifacts.yml` pins
+          # `data-preview-overrides-runtime` to this, and it cannot derive it by probing Central
+          # without confusing a skipped data train with an unpropagated one.
+          DATA_LINE_VERSION: ${{ needs.maven-publish-guard.outputs.data_line }}
         run: |
           ./gradlew \
             :cli:distZip :cli:distTar \

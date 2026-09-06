@@ -991,10 +991,24 @@ val generateCliVersionResource =
     val mavenLineVersion =
       project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
         ?: cliVersion
+    // The data train's version, recorded for the RELEASE CHAIN rather than for the CLI runtime:
+    // nothing in the CLI resolves a `data-*` coordinate directly (they arrive as POM transitives of
+    // core), so there is no `DATA_LINE_VERSION` constant in Version.kt to match this.
+    //
+    // It is here because this properties file is the one artifact that durably records what a
+    // release decided about each Maven line, and `maven-readiness.yml` already reads it out of the
+    // shipped tarball. `design-artifacts.yml` needs the data line to pin `data-preview-overrides-
+    // runtime`, and deriving it by probing Central cannot distinguish "this release skipped the
+    // data train" from "Central has not propagated yet" — the same race that made reading this
+    // file the right answer for the plugin version. See docs/design/RELEASE_TRAINS.md § 7.
+    val dataLineVersion =
+      project.providers.environmentVariable("DATA_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
+        ?: cliVersion
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
     inputs.property("serveVersion", serveVersion)
     inputs.property("mavenLineVersion", mavenLineVersion)
+    inputs.property("dataLineVersion", dataLineVersion)
     outputs.dir(outputDir)
     doLast {
       val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
@@ -1003,7 +1017,8 @@ val generateCliVersionResource =
         "version=$cliVersion\n" +
           "xrCompositeVersion=$xrCompositeVersion\n" +
           "serveVersion=$serveVersion\n" +
-          "mavenLineVersion=$mavenLineVersion\n"
+          "mavenLineVersion=$mavenLineVersion\n" +
+          "dataLineVersion=$dataLineVersion\n"
       )
     }
   }
