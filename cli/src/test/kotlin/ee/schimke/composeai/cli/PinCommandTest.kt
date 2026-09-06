@@ -24,12 +24,20 @@ class PinCommandTest {
     val err = mutableListOf<String>()
   }
 
-  private fun run(args: List<String>, root: File, cliVersion: String = "1.1.0"): Sink {
+  private fun run(
+    args: List<String>,
+    root: File,
+    cliVersion: String = "1.1.0",
+    // Defaults to [cliVersion], which is the state on every release that publishes to Central.
+    // The tests that pass it separately are the ones covering a release that did not.
+    mavenLineVersion: String = cliVersion,
+  ): Sink {
     val sink = Sink()
     PinCommand(
         args = args,
         projectRoot = root,
         cliVersion = cliVersion,
+        mavenLineVersion = mavenLineVersion,
         env = { null },
         stdout = { sink.out += it },
         stderr = { sink.err += it },
@@ -51,6 +59,26 @@ class PinCommandTest {
     val root = tempDir()
     run(listOf("--cli"), root, cliVersion = "1.1.0")
     assertEquals("1.1.0", readGradlePropertiesPin(root))
+  }
+
+  @Test
+  fun `pin --cli writes the Maven line, not the CLI's own version`() {
+    // The distinction only exists on a release whose Central publish `maven-publish-guard`
+    // skipped: the CLI is 1.1.0 but no artifact was published at 1.1.0, so a pin naming it
+    // resolves nothing. What `--cli` means to a user — "make this project use my CLI" — is
+    // satisfied by the version that CLI actually injects, which is the Maven line.
+    val root = tempDir()
+    run(listOf("--cli"), root, cliVersion = "1.1.0", mavenLineVersion = "1.0.9")
+    assertEquals("1.0.9", readGradlePropertiesPin(root))
+  }
+
+  @Test
+  fun `an explicit version always wins over the Maven line`() {
+    // `--cli` is the only path that substitutes anything. A version the user typed is written
+    // verbatim, whether or not it is the one this CLI would have chosen.
+    val root = tempDir()
+    run(listOf("1.2.3"), root, cliVersion = "1.1.0", mavenLineVersion = "1.0.9")
+    assertEquals("1.2.3", readGradlePropertiesPin(root))
   }
 
   @Test

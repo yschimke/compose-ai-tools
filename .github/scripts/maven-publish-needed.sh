@@ -2,8 +2,9 @@
 # Does this release actually need a Maven Central publish?
 #
 # `release.yml`'s `publish-gradle-plugin` runs a root-level `publishAndReleaseToMavenCentral`,
-# which fans out to every subproject applying `composeai.maven-publishing` — 94 modules — on
-# every release, whether or not any of them changed. Measured over v1.57.0..v1.84.0 (38
+# which fans out to every subproject applying `composeai.maven-publishing` — 94 modules. It used
+# to do that on every release, whether or not any of them changed; this script is what that job's
+# `if:` now consults. Measured over v1.57.0..v1.84.0 (38
 # releases): 117 module-changes against 3,572 module publications, so 96.7% of what we upload
 # is a version-bumped rebuild of identical code. Six of those 38 releases changed no published
 # module at all. Maven Central meters file count, release size and release count per

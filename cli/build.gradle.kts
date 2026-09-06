@@ -980,8 +980,17 @@ val generateCliVersionResource =
     // publish: the release then sets MAVEN_LINE_VERSION to the last version that IS on Central, and
     // a CLI built at 2.5.0 keeps injecting the plugin at 2.4.0 rather than a coordinate that 404s.
     // See docs/design/RELEASE_TRAINS.md and `MAVEN_LINE_VERSION`.
+    //
+    // `takeIf { isNotBlank() }` is load-bearing, not defensive noise. release.yml passes this
+    // through as `env: MAVEN_LINE_VERSION: ${{ needs.maven-publish-guard.outputs.maven_line }}`,
+    // and an Actions expression that resolves to nothing sets the variable to the EMPTY STRING
+    // rather than leaving it unset — Gradle then reports it as present, and `orNull` alone would
+    // bake `mavenLineVersion=` into the properties file. Every consumer would ask Gradle for the
+    // plugin at version "". The guard is `continue-on-error`, so "no answer" is a path that can
+    // really happen, and it has to land on the CLI's own version.
     val mavenLineVersion =
-      project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull ?: cliVersion
+      project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
+        ?: cliVersion
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
     inputs.property("serveVersion", serveVersion)

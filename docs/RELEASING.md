@@ -191,7 +191,7 @@ republishing the release.
 
 ### What the `release.yml` workflow does
 
-1. Publishes to **Maven Central** via the Central Portal:
+1. Publishes to **Maven Central** via the Central Portal — **when there is anything to publish**:
    - **Gradle plugin** — `ee.schimke.composeai:compose-preview-plugin`
    - **Android renderer AAR** — `ee.schimke.composeai:renderer-android`
    - **Preview annotations** — `ee.schimke.composeai:preview-annotations`
@@ -201,6 +201,37 @@ republishing the release.
    - **Data product connectors** — `ee.schimke.composeai:data-*-connector` artifacts used by daemon modules, including recomposition
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
+
+   **Not every release publishes.** `maven-publish-guard` diffs every module applying
+   `composeai.maven-publishing` — plus the shared inputs that change all of their bytes — against
+   the last version actually on Central, and `publish-gradle-plugin` is skipped when nothing
+   differs. Measured over `v1.57.0..v1.84.0`: 117 module-changes against 3,572 module
+   publications, and six of those 38 releases changed no published module at all. Central meters
+   file count, release size and release count per organisation, which is what this is for
+   ([`docs/design/RELEASE_TRAINS.md`](design/RELEASE_TRAINS.md), issue #4772).
+
+   It is **all-or-nothing** and it **fails open**: either every module publishes at this version
+   or none does, and every uncertainty — an unresolvable baseline, a shallow clone, an empty
+   module enumeration, a guard job that crashed — publishes. The asymmetry is total because the
+   mistakes are: publishing needlessly costs quota, while *not* publishing when we should have
+   cannot be repaired, since Central refuses a version twice.
+
+   **A release that skips the publish is still fully usable**, because the CLI it ships is baked
+   to resolve the plugin at the last version that *is* on Central rather than at its own
+   (`MAVEN_LINE_VERSION`; see
+   [`Version.kt`](../cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt)). Auto-inject,
+   `compose-preview init-script` and `doctor`'s recommendations all follow it. The job summary on
+   every release run names the verdict, the baseline it diffed against and the Maven line the CLI
+   was built with.
+
+   **A hand-written pin is the one thing that can still name a version that does not exist.**
+   `composePreview.version` in `gradle.properties`, `COMPOSE_PREVIEW_VERSION`, `--plugin-version`
+   and the catalog's `composePreviewCli` are all taken literally — that is the point of a pin —
+   so one naming a release that skipped the publish resolves nothing. `compose-preview pin --cli`
+   is safe: it writes the Maven line rather than the CLI's own version, for exactly this reason.
+   To pin by hand, read `pluginVersion` out of a release's
+   `compose-preview-maven-ready-<version>.json` marker, which records the version that release's
+   CLI resolves.
 2. Builds the **CLI** and the standalone **MCP server** as `.zip` / `.tar.gz` distributions:
    - `compose-preview-<ver>.{zip,tar.gz}` — the CLI; the tarball bundles the desktop renderer. It no longer bundles an MCP server: that module moved to yschimke/compose-preview-server (#5176), which attaches `compose-preview-mcp-<ver>.tar.gz` to its own releases, and `compose-preview mcp serve` fetches it on first use exactly as `serve` fetches the preview server.
    - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.

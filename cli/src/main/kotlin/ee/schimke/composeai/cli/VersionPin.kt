@@ -375,6 +375,10 @@ internal fun warnOnCliSkew(
   cliVersion: String = BUNDLE_VERSION,
   stderr: (String) -> Unit = System.err::println,
   once: AtomicBoolean = cliSkewWarned,
+  // The version the "re-pin" remedy names. [MAVEN_LINE_VERSION], not [cliVersion]: a pin is a
+  // plugin coordinate, and advising someone to pin a version whose Central publish was skipped
+  // hands them a build that resolves nothing. The two differ only on such a release.
+  mavenLineVersion: String = MAVEN_LINE_VERSION,
 ) {
   if (pin == null || pin.version == cliVersion) return
   if (cliVersion.endsWith("-SNAPSHOT") || pin.version.endsWith("-SNAPSHOT")) return
@@ -390,7 +394,7 @@ internal fun warnOnCliSkew(
       else "") +
       "Injecting the pinned plugin version. Align the CLI with " +
       "`compose-preview update ${pin.version}`, or re-pin with " +
-      "`compose-preview pin $cliVersion`."
+      "`compose-preview pin $mavenLineVersion`."
   )
 }
 
