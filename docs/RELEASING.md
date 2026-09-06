@@ -119,14 +119,6 @@ This is `"versioning": "always-bump-minor"` in
 [`release-please-config.json`](../release-please-config.json). The strategy ignores the version
 and the commits it is handed and returns a minor update unconditionally.
 
-> **Staged: not live yet.** The `always-bump-minor` key is *not* in the config as of this commit.
-> release-please reads its config from `main` at run time, so a single PR that both added the key
-> and carried a `!` would have applied its own new setting to itself and cut a minor instead of
-> 2.0.0. The key lands in the follow-up PR, once 2.0.0 has published. Until then the table above
-> describes the intended policy and the old mapping (`fix:` → patch, `feat:` → minor, `feat!:` →
-> major) is what actually runs. This note goes away with that PR.
-
-
 **Why.** At ~44 releases a week the distinction between a patch and a minor had stopped carrying
 information: a release is whatever landed since the last one, usually a mix, and the number was
 being read as a bump size when it only ever meant "later". Cutting a major on a `!` was worse

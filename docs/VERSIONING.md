@@ -49,15 +49,6 @@ releases and no further majors — 2.0.0 is the last one this repository cuts by
 The mechanism, the reason, and the guard that keeps `chore:`-only windows from cutting a
 release are in [RELEASING.md → Versioning after 2.0.0](RELEASING.md#versioning-after-200).
 
-> **Staged: not live yet.** The `always-bump-minor` key is *not* in
-> `release-please-config.json` as of this commit, and it deliberately cannot be — release-please
-> reads its config from `main` at run time, so the PR that cuts 2.0.0 with a `!` and the PR that
-> stops `!` mapping to a major have to be two commits, in that order. Until the follow-up lands,
-> the machinery still does `fix:` → patch, `feat:` → minor, `feat!:` → major. This paragraph goes
-> away with that PR. Recorded here rather than left implicit because § 10 exists to stop exactly
-> this document describing machinery that is not running.
-
-
 **So the version number no longer tells a consumer what kind of change they are taking.** It
 orders releases and nothing else. What the number used to promise now has to be read out of §§ 3–5
 and the changelog: § 3 still defines what counts as breaking, § 5 still governs the deprecation
