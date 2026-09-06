@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "cda7bf632876c7b95788c55615f3e19cde8a0770",
+    "generatedFrom": "2d820a5ff19cddb1e84ea30e9e419a1057bb8091",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -1094,6 +1094,36 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxFramePreview_Inbox Frame": {
+            "path": "renders/samples:android/ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.png",
+            "versions": [
+                {
+                    "blob": "d628d851eabd58e128b2d3baeaa8e92b08a75740",
+                    "commit": "2d820a5ff19cddb1e84ea30e9e419a1057bb8091",
+                    "date": "2026-09-06T15:54:53Z",
+                    "sourceSha": "460f095f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long": {
+            "path": "renders/samples:android/ScaffoldedInboxLongPreview_Inbox_Long-7261c0ed.png",
+            "versions": [
+                {
+                    "blob": "ea106a0c5cc0ac18475b7db6f025e22985415842",
+                    "commit": "2d820a5ff19cddb1e84ea30e9e419a1057bb8091",
+                    "date": "2026-09-06T15:54:53Z",
+                    "sourceSha": "460f095f",
                     "commits": 1
                 }
             ],
