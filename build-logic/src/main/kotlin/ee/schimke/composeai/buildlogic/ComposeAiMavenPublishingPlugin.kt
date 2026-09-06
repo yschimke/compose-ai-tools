@@ -202,7 +202,17 @@ private fun Project.configureDependencyLocking() {
     doLast {
       configurations
         .filter { it.isCanBeResolved && it.name in LOCKED_CONFIGURATIONS }
-        .forEach { it.resolve() }
+        // GRAPH resolution, not `resolve()`. `resolve()` asks for the configuration's *files*,
+        // which forces artifact-variant selection — and on an Android `releaseCompileClasspath`
+        // that fails outright, because AGP normally supplies `artifactType` through its own
+        // ArtifactViews and a raw request cannot choose between `android-classes-jar`,
+        // `android-lint`, `android-manifest`, `jar`, `r-class-jar` and the rest
+        // ("cannot choose between the following variants of project ':data-a11y-core'").
+        //
+        // Lock state records module versions, so the graph is all it needs and no file has to be
+        // selected or downloaded. This is the same path Gradle's own `dependencies` report takes —
+        // which is what the generated lockfile header tells you to run to regenerate it.
+        .forEach { it.incoming.resolutionResult.root }
     }
   }
 }
