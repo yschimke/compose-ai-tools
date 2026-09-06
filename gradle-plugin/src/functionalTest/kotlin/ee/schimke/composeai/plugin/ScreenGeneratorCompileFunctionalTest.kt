@@ -253,6 +253,11 @@ class ScreenGeneratorCompileFunctionalTest {
         screen,
         components,
         expressionPackages = setOf("androidx.compose"),
+        // The device fan-out rides on this case rather than getting its own project, because what
+        // it needs proving is exactly what this test already provides: that the Kotlin compiler
+        // accepts what was emitted. `@Preview` is repeatable, and "repeatable" is a claim about a
+        // real annotation on a real classpath — a string assertion cannot check it.
+        preview = ScreenGenerator.Preview(devices = listOf("id:pixel_6", "id:pixel_fold")),
       )
     val emitted =
       assertWithMessage(
@@ -285,6 +290,10 @@ class ScreenGeneratorCompileFunctionalTest {
     // library; `ComposableSignatureTest` covers the same trap on fixtures.
     assertThat(emitted.requiredOptIns).isEmpty()
     assertThat(emitted.source).doesNotContain("@OptIn")
+    // Two stacked `@Preview`s on one wrapper, which the compile below is the real check on.
+    assertThat(emitted.source).contains("""device = "id:pixel_6"""")
+    assertThat(emitted.source).contains("""device = "id:pixel_fold"""")
+    assertThat(emitted.source).contains("private fun HomeScreenDevicesPreview() {")
 
     val generated = File(projectDir, "src/main/kotlin/generated")
     generated.mkdirs()

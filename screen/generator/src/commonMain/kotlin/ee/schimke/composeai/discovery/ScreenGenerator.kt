@@ -151,6 +151,26 @@ object ScreenGenerator {
      * handed five.
      */
     val screenSizes: Boolean = false,
+    /**
+     * Device ids to draw the screen at, one `@Preview(device = …)` each, beside the design's own
+     * frame.
+     *
+     * These are what a *design* named rather than what the platform ships, which is the whole
+     * difference between this and [screenSizes]. `@PreviewScreenSizes` answers "does it still look
+     * right at the reference sizes?" and is androidx's to maintain; this answers "does it look
+     * right on the devices this screen claims to work on?", which only the design knows. A screen
+     * claiming a foldable and nothing else should get a foldable and nothing else, and the
+     * multipreview cannot express that.
+     *
+     * Ids, not geometry: `id:pixel_6` is what `@Preview.device` resolves against the tooling's own
+     * catalog, so a list here cannot describe a frame no renderer produces. A width and height
+     * would be a second copy of that catalog, free to disagree with it.
+     *
+     * Empty by default, and empty means the design's own frame alone — what every caller before
+     * this field asked for. Order is kept and repeats are dropped: two identical previews are not
+     * two answers.
+     */
+    val devices: List<String> = emptyList(),
   )
 
   private const val INDENT = "    "
@@ -251,7 +271,11 @@ object ScreenGenerator {
             // The fan-out spends two more names on the same terms, and only when it is emitted.
             (preview?.screenSizes != true ||
               (it.symbol.name != PREVIEW_SCREEN_SIZES_SIMPLE_NAME &&
-                it.symbol.name != screenSizesPreviewFunctionName(document.name)))
+                it.symbol.name != screenSizesPreviewFunctionName(document.name))) &&
+            // The device fan-out spends one more name, on the same terms. It reuses the `Preview`
+            // annotation already reserved above, so only the wrapper is new.
+            (preview?.devices.isNullOrEmpty() ||
+              it.symbol.name != devicesPreviewFunctionName(document.name))
         }
         .map { it.canonicalId }
         .toSet()
@@ -471,6 +495,11 @@ object ScreenGenerator {
         if (preview.screenSizes) {
           appendLine()
           append(screenSizesPreviewFunction(document.name))
+        }
+        val devices = preview.devices.distinct()
+        if (devices.isNotEmpty()) {
+          appendLine()
+          append(devicesPreviewFunction(document.name, devices))
         }
       }
     }
@@ -1513,11 +1542,17 @@ object ScreenGenerator {
 
   private const val PREVIEW_SCREEN_SIZES_SIMPLE_NAME = "PreviewScreenSizes"
 
+  /** Names the device fan-out's wrapper, e.g. `HomeScreenDevicesPreview`. */
+  private const val DEVICES_SIMPLE_NAME = "Devices"
+
   /** The wrapper's name, needed before it is emitted so a component cannot be shadowed by it. */
   private fun previewFunctionName(screenName: String) = "$screenName$PREVIEW_SIMPLE_NAME"
 
   private fun screenSizesPreviewFunctionName(screenName: String) =
     "$screenName$PREVIEW_SCREEN_SIZES_SIMPLE_NAME$PREVIEW_SIMPLE_NAME"
+
+  private fun devicesPreviewFunctionName(screenName: String) =
+    "$screenName$DEVICES_SIMPLE_NAME$PREVIEW_SIMPLE_NAME"
 
   /**
    * A language tag this generator is willing to put inside a string literal.
@@ -1531,6 +1566,18 @@ object ScreenGenerator {
    */
   private val LANGUAGE_TAG = Regex("[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*")
 
+  /**
+   * A device specifier this generator is willing to put inside a string literal.
+   *
+   * Deliberately a shape check and not a catalog. `@Preview.device` takes both `id:pixel_6` and the
+   * `spec:width=411dp,height=891dp,dpi=420` form, and which ids exist is the *tooling's* question,
+   * answered by whichever Android Studio or render lane resolves the string — a list here would go
+   * stale against it and refuse devices that work. What this can settle is that the value is a
+   * device specifier at all rather than something that closes the literal and continues in code, so
+   * a quote, a backslash or a newline is refused by name.
+   */
+  private val DEVICE_SPEC = Regex("[A-Za-z0-9_.:=,%/+-]+")
+
   /** Every problem with [preview], so a caller fixes them in one pass rather than one per run. */
   private fun previewRefusals(preview: Preview): List<String> = buildList {
     preview.widthDp?.let { if (it <= 0) add("preview widthDp must be positive, not $it") }
@@ -1543,6 +1590,9 @@ object ScreenGenerator {
     }
     preview.locale?.let {
       if (!LANGUAGE_TAG.matches(it)) add("preview locale `$it` is not a language tag")
+    }
+    preview.devices.forEach {
+      if (!DEVICE_SPEC.matches(it)) add("preview device `$it` is not a device specifier")
     }
   }
 
@@ -1593,6 +1643,31 @@ object ScreenGenerator {
    * theme and type scale stay on [previewFunction], where they describe one picture the author
    * actually approved.
    */
+  /**
+   * The device fan-out: one `@Preview(device = …)` per id the design named, on one wrapper.
+   *
+   * Stacked annotations rather than a function each, because `@Preview` is repeatable and N
+   * wrappers calling one screen would be N identical bodies differing only in an annotation.
+   *
+   * It carries none of the design's frame, for [screenSizesPreviewFunction]'s reason exactly: the
+   * device supplies its own width, height and density, and a `widthDp` beside it would override the
+   * thing being varied. `name` is the id itself — the generator has no label for a device and
+   * inventing one would be a second catalog — so each picture is identifiable by what asked for it.
+   */
+  private fun devicesPreviewFunction(screenName: String, devices: List<String>): String =
+    buildString {
+      devices.forEach {
+        appendLine("@$PREVIEW_SIMPLE_NAME(")
+        appendLine("${INDENT}name = \"$it\",")
+        appendLine("${INDENT}device = \"$it\",")
+        appendLine(")")
+      }
+      appendLine("@Composable")
+      appendLine("private fun ${devicesPreviewFunctionName(screenName)}() {")
+      appendLine("$INDENT$screenName()")
+      appendLine("}")
+    }
+
   private fun screenSizesPreviewFunction(screenName: String): String = buildString {
     appendLine("@$PREVIEW_SCREEN_SIZES_SIMPLE_NAME")
     appendLine("@Composable")

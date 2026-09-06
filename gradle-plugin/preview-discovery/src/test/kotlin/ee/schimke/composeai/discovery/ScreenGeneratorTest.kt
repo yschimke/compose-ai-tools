@@ -204,6 +204,110 @@ class ScreenGeneratorTest {
     assertThat(source.indexOf("fun HomeScreen()")).isLessThan(source.indexOf("@PreviewScreenSizes"))
   }
 
+  @Test
+  fun `named devices become one Preview each, on one wrapper`() {
+    val source =
+      generated(
+          screen(),
+          catalog(card, text),
+          ScreenGenerator.Preview(
+            widthDp = 411,
+            heightDp = 914,
+            fontScale = 1.3,
+            darkMode = true,
+            devices = listOf("id:pixel_6", "id:pixel_fold"),
+          ),
+        )
+        .source
+
+    assertThat(source).contains("private fun HomeScreenDevicesPreview() {")
+    assertThat(source).contains("device = \"id:pixel_6\",")
+    assertThat(source).contains("device = \"id:pixel_fold\",")
+    // The design's own frame stays on its own wrapper: the device supplies width, height and
+    // density, so a widthDp beside it would override the very thing being varied.
+    val fanOut = source.substringAfter("private fun HomeScreenDevicesPreview")
+    assertThat(fanOut).doesNotContain("widthDp")
+    assertThat(fanOut).doesNotContain("fontScale")
+    val devices = source.substringAfter("@Composable\nprivate fun HomeScreenPreview")
+    assertThat(source.indexOf("fun HomeScreen()"))
+      .isLessThan(source.indexOf("HomeScreenDevicesPreview"))
+    assertThat(devices).isNotEmpty()
+  }
+
+  /**
+   * The named set is the design's answer and the multipreview is androidx's, so they are two
+   * questions rather than two spellings of one: a screen claiming a foldable and nothing else gets
+   * a foldable and nothing else.
+   */
+  @Test
+  fun `devices and the reference-size fan-out are independent`() {
+    val source =
+      generated(
+          screen(),
+          catalog(card, text),
+          ScreenGenerator.Preview(devices = listOf("id:pixel_fold"), screenSizes = false),
+        )
+        .source
+
+    assertThat(source).contains("device = \"id:pixel_fold\",")
+    assertThat(source).doesNotContain("PreviewScreenSizes")
+  }
+
+  /** Two identical previews are not two answers. */
+  @Test
+  fun `a repeated device is emitted once`() {
+    val source =
+      generated(
+          screen(),
+          catalog(card, text),
+          ScreenGenerator.Preview(devices = listOf("id:pixel_6", "id:pixel_6")),
+        )
+        .source
+
+    assertThat(source.split("device = \"id:pixel_6\",")).hasSize(2)
+  }
+
+  /**
+   * A shape check rather than a catalog: which ids exist is the tooling's question, and a list here
+   * would go stale and refuse devices that work. What it does settle is that the value cannot close
+   * the string literal and continue in code.
+   */
+  @Test
+  fun `a device that would escape its string literal is refused by name`() {
+    val refused =
+      ScreenGenerator.generate(
+        screen(),
+        catalog(card, text),
+        preview = ScreenGenerator.Preview(devices = listOf("id:pixel_6\", showBackground = evil()")),
+      )
+
+    assertThat(refused).isInstanceOf(ScreenGenerator.Result.Refused::class.java)
+    assertThat((refused as ScreenGenerator.Result.Refused).reasons.single())
+      .contains("is not a device specifier")
+  }
+
+  @Test
+  fun `a component the device wrapper would shadow is qualified instead`() {
+    val clashing =
+      component(
+        "HomeScreenDevicesPreview",
+        "androidx.compose.material3.HomeScreenDevicesPreview",
+        emptyList(),
+      )
+    val document = ScreenDocument(name = "HomeScreen", root = ScreenNode(clashing.canonicalId))
+
+    val source =
+      generated(
+          document,
+          catalog(clashing),
+          ScreenGenerator.Preview(devices = listOf("id:pixel_6")),
+        )
+        .source
+
+    assertThat(source).doesNotContain("import androidx.compose.material3.HomeScreenDevicesPreview")
+    assertThat(source).contains("androidx.compose.material3.HomeScreenDevicesPreview()")
+  }
+
   /** The fan-out is the caller's second question, not a thing every preview drags along. */
   @Test
   fun `a preview without the fan-out names neither the annotation nor the wrapper`() {
