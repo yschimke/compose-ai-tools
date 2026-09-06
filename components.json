@@ -1,0 +1,384 @@
+{
+    "schemaVersion": 2,
+    "module": "design-catalog-wear-m3",
+    "variant": "debug",
+    "components": [
+        {
+            "canonicalId": "design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogThemeKt.FullScreenWear",
+            "componentIds": [
+                "EdgeButton",
+                "TransformingLazyColumn"
+            ],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogwearm3.CatalogThemeKt",
+                "callable": "com.example.designcatalogwearm3.FullScreenWear",
+                "name": "FullScreenWear",
+                "origin": "PROJECT",
+                "jvmName": "FullScreenWear",
+                "descriptor": "(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "content",
+                    "type": "() -> Unit",
+                    "typeFqn": "kotlin.Function0",
+                    "hasDefault": false,
+                    "composableSlot": true,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [
+                {
+                    "name": "content",
+                    "required": true,
+                    "receiverScope": null
+                }
+            ],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
+                    "componentId": "EdgeButton"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
+                    "componentId": "EdgeButton"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
+                    "componentId": "EdgeButton"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
+                    "componentId": "TransformingLazyColumn"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
+                    "componentId": "TransformingLazyColumn"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
+                    "componentId": "TransformingLazyColumn"
+                }
+            ],
+            "code": {
+                "call": "FullScreenWear(content = {})",
+                "imports": [
+                    "com.example.designcatalogwearm3.FullScreenWear"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogThemeKt.WearScaffoldTemplate",
+            "componentIds": [
+                "Template/PageIndicator",
+                "Template/TimeText"
+            ],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogwearm3.CatalogThemeKt",
+                "callable": "com.example.designcatalogwearm3.WearScaffoldTemplate",
+                "name": "WearScaffoldTemplate",
+                "origin": "PROJECT",
+                "jvmName": "WearScaffoldTemplate",
+                "descriptor": "(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "content",
+                    "type": "() -> Unit",
+                    "typeFqn": "kotlin.Function0",
+                    "hasDefault": false,
+                    "composableSlot": true,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [
+                {
+                    "name": "content",
+                    "required": true,
+                    "receiverScope": null
+                }
+            ],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/PageIndicator"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
+                    "componentId": "Template/PageIndicator"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
+                    "componentId": "Template/PageIndicator"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/TimeText"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
+                    "componentId": "Template/TimeText"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
+                    "componentId": "Template/TimeText"
+                }
+            ],
+            "code": {
+                "call": "WearScaffoldTemplate(content = {})",
+                "imports": [
+                    "com.example.designcatalogwearm3.WearScaffoldTemplate"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogThemeKt.WearSticker",
+            "componentIds": [
+                "AppCard",
+                "Button/Child",
+                "Button/Filled",
+                "Button/Outlined",
+                "Button/Tonal",
+                "ButtonGroup",
+                "Card",
+                "Card/Outlined",
+                "ColorScheme",
+                "CompactButton",
+                "Icon",
+                "IconButton",
+                "Progress/Circular",
+                "Progress/Circular/Indeterminate",
+                "SwitchButton/On",
+                "Text/MaxLines-Truncated",
+                "TitleCard",
+                "Typography"
+            ],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogwearm3.CatalogThemeKt",
+                "callable": "com.example.designcatalogwearm3.WearSticker",
+                "name": "WearSticker",
+                "origin": "PROJECT",
+                "jvmName": "WearSticker",
+                "descriptor": "(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogTheme.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "content",
+                    "type": "() -> Unit",
+                    "typeFqn": "kotlin.Function0",
+                    "hasDefault": false,
+                    "composableSlot": true,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [
+                {
+                    "name": "content",
+                    "required": true,
+                    "receiverScope": null
+                }
+            ],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
+                    "componentId": "AppCard"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
+                    "componentId": "ButtonGroup"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
+                    "componentId": "Card"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
+                    "componentId": "Button/Child"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
+                    "componentId": "Progress/Circular"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen",
+                    "componentId": "ColorScheme"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
+                    "componentId": "CompactButton"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_VARIANT_disabled",
+                    "componentId": "Button/Filled"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
+                    "componentId": "Button/Tonal"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
+                    "componentId": "IconButton"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
+                    "componentId": "Icon"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressGif",
+                    "componentId": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
+                    "componentId": "Progress/Circular/Indeterminate"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
+                    "componentId": "Button/Outlined"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
+                    "componentId": "Card/Outlined"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
+                    "componentId": "SwitchButton/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off",
+                    "componentId": "SwitchButton/On"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
+                    "componentId": "Text/MaxLines-Truncated"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
+                    "componentId": "TitleCard"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
+                    "componentId": "Typography"
+                }
+            ],
+            "code": {
+                "call": "WearSticker(content = {})",
+                "imports": [
+                    "com.example.designcatalogwearm3.WearSticker"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-wear-m3/com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreen",
+            "componentIds": [],
+            "symbol": {
+                "jvmOwner": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt",
+                "callable": "com.example.designcatalogwearm3.ActivityScreen",
+                "name": "ActivityScreen",
+                "origin": "PROJECT",
+                "jvmName": "ActivityScreen",
+                "descriptor": "(Landroidx/compose/runtime/Composer;I)V",
+                "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/UiBuilderGeneratedScreen.kt",
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [],
+            "slots": [],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null
+                }
+            ],
+            "code": {
+                "call": "ActivityScreen()",
+                "imports": [
+                    "com.example.designcatalogwearm3.ActivityScreen"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        }
+    ]
+}

@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-06T08:29:26.379Z",
+  "generatedAt": "2026-09-06T08:55:53.175Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "2c4e6ae2da5674c8405b2a97f21e3f3874f0b52b",
+        "subject": "feat(design-artifacts): publish the component record beside catalog.json (#5222)",
+        "at": "2026-09-06T09:48:16+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "47af8806e6097a1819cf5bf09f7d557af293f599",
+        "subject": "chore(ci): update the design-artifacts export driver to v1.84.0 (#5221)",
+        "at": "2026-09-06T08:41:42Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "86aa71305bd6892e0394f963141ecda26404566e",
         "subject": "chore(main): release 1.84.0 (#5220)",
@@ -467,22 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v1.77.0 (#5146)",
         "at": "2026-09-05T09:04:29+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ccb996f49930bd8554edf92fe7a2d46833985a8a",
-        "subject": "docs(build-host): decide where PreviewModule lives in the build-host protocol (#5145)",
-        "at": "2026-09-05T09:02:16+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ea5d1aeec70d2f97edd216a3c1380e8658907b6d",
-        "subject": "chore(main): release 1.77.0 (#5144)",
-        "at": "2026-09-05T08:55:22+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }

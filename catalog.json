@@ -4232,7 +4232,7 @@
     "androidx.wear.compose:compose-material3"
   ],
   "renderer": "compose-preview 1.84.1-SNAPSHOT",
-  "generatedAt": "2026-09-06T08:29:19.210Z",
+  "generatedAt": "2026-09-06T08:55:46.847Z",
   "display": {
     "surface": "dark",
     "hero": "Template/TimeText/largeRound"
@@ -4250,6 +4250,7 @@
       "previewIdPrefix": ""
     }
   ],
+  "componentsFile": "components.json",
   "source": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
