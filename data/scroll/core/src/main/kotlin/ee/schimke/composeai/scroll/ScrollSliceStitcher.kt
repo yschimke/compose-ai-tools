@@ -445,6 +445,17 @@ private fun buildStitchedContent(
       sliceH
     }
 
+  // Where the list region starts, which is not row 0 on a screen with a pinned `TopAppBar`.
+  //
+  // Slice 0 contributes the whole region above [pinnedBottomTop], top chrome included, and that is
+  // the copy of the bar the reader wants. Every later slice carries its own copy at the same rows,
+  // and the painter below takes a band off the *bottom* of each — so as long as that band is
+  // shorter than the list region the bar is never reached. A stride approaching a full viewport
+  // reaches it, and the bar lands in the middle of the strip on top of whatever row was there
+  // (issue #5234). Clamping the band's top edge here is what stops that, and costs nothing when a
+  // design has no top chrome: [topPinnedRowsBottom] reports 0 and the arithmetic is unchanged.
+  val pinnedTopBottom = topPinnedRowsBottom(luminance, width, sliceH).coerceAtMost(pinnedBottomTop)
+
   val shifts = IntArray(slices.size - 1)
   val seams = mutableListOf<ScrollSeam>()
   for (i in 1 until slices.size) {
@@ -483,13 +494,15 @@ private fun buildStitchedContent(
       )
   }
 
-  // Rows painted per intermediate slice = min(d, pinnedBottomTop).
-  // Anything above that is redundant (seen in a prior slice) or in
-  // the pinned band (handled by the final-frame overlay).
+  // Rows painted per intermediate slice = min(d, the list region).
+  // Anything above that is redundant (seen in a prior slice), in the
+  // pinned bottom band (handled by the final-frame overlay), or in the
+  // pinned top band (slice 0 already carries it — see [pinnedTopBottom]).
+  val listRegionRows = pinnedBottomTop - pinnedTopBottom
   val rowsPainted =
     IntArray(shifts.size) { idx ->
       val d = shifts[idx]
-      if (d <= 0) 0 else minOf(d, pinnedBottomTop)
+      if (d <= 0) 0 else minOf(d, listRegionRows)
     }
   val contentHeight = pinnedBottomTop + rowsPainted.sum()
   val tailHeight = sliceH - pinnedBottomTop
@@ -615,6 +628,46 @@ private fun bottomPinnedRowsTop(luminance: List<Array<IntArray>>, width: Int, sl
   }
   perPairTops.sort()
   return perPairTops[perPairTops.size / 2]
+}
+
+/**
+ * The mirror of [bottomPinnedRowsTop]: walks each adjacent pair from the top downward and returns
+ * the first row where they diverge, median across pairs. Rows above it carry content that did not
+ * move between two captures taken at different scroll positions — a pinned `TopAppBar`, a status
+ * bar, `TimeText` — or a uniformly blank band, which is harmless to treat the same way.
+ *
+ * Zero when there are too few slices to vote, which is also what a design with no top chrome
+ * reports, so the painter's arithmetic degrades to what it did before this existed.
+ */
+private fun topPinnedRowsBottom(luminance: List<Array<IntArray>>, width: Int, sliceH: Int): Int {
+  val pairs = luminance.size - 1
+  if (pairs < 1) return 0
+  val perPairBottoms = IntArray(pairs)
+  val threshold = PINNED_ROW_DIFF_THRESHOLD * width.toLong()
+  for (i in 1..pairs) {
+    val a = luminance[i - 1]
+    val b = luminance[i]
+    var pinnedBottom = 0
+    var y = 0
+    while (y < sliceH) {
+      val ar = a[y]
+      val br = b[y]
+      var diff = 0L
+      for (x in 0 until width) {
+        val d = ar[x] - br[x]
+        diff += if (d < 0) -d.toLong() else d.toLong()
+      }
+      if (diff <= threshold) {
+        pinnedBottom = y + 1
+        y++
+      } else {
+        break
+      }
+    }
+    perPairBottoms[i - 1] = pinnedBottom
+  }
+  perPairBottoms.sort()
+  return perPairBottoms[perPairBottoms.size / 2]
 }
 
 /** The matcher's answer for one slice pair — see [findOverlapShift]. */
