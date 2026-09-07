@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T18:46:53.876Z",
+  "generatedAt": "2026-09-07T18:58:21.017Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "a980b5e6c5ec23632f2a1b05796471b4e917f2fc",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.2.1 (#5275)",
+        "at": "2026-09-07T18:50:41Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c358d35ce1ec01de30a4453134a595c703b5dc3a",
+        "subject": "chore(main): release 2.2.1 (#5274)",
+        "at": "2026-09-07T19:38:27+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "89fcbbf2f95a953bb2be4d97a493779601a01a8e",
         "subject": "chore(deps): bump the actions-minor group with 5 updates (#5271)",
@@ -466,22 +482,6 @@
         "sha": "b8c8e5778d997589ec477099681c51fb18b7e6d8",
         "subject": "feat(screen): express a scoped modifier, so a layout weight is generable (#5212)",
         "at": "2026-09-05T19:19:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e7f54d3dee1508232fc4b508961337625abdc150",
-        "subject": "feat(cli): check the JVM the server will run on before launching it (#5211)",
-        "at": "2026-09-05T18:39:17+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1af7bbf699a8f47a103de4add9bb27f6584e2658",
-        "subject": "fix(design-artifacts): carry locator `scope` in the issue index, and mirror the producer (#5210)",
-        "at": "2026-09-05T18:14:51+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
