@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T11:49:34.039Z",
+  "generatedAt": "2026-09-07T18:46:53.876Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "89fcbbf2f95a953bb2be4d97a493779601a01a8e",
+        "subject": "chore(deps): bump the actions-minor group with 5 updates (#5271)",
+        "at": "2026-09-07T19:38:03+01:00",
+        "author": "dependabot[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a46d0b3d34a6f9dbd545c370b03d7678787ff2d0",
+        "subject": "fix: report the file an Android file-backed face was built from (#5273)",
+        "at": "2026-09-07T19:37:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "ec07b7088240ebd25f75bce2ebce965f056c501b",
         "subject": "ci: wait for released runtimes before building the CLI, and retry the snapshot publish (#5270)",
@@ -466,22 +482,6 @@
         "sha": "1af7bbf699a8f47a103de4add9bb27f6584e2658",
         "subject": "fix(design-artifacts): carry locator `scope` in the issue index, and mirror the producer (#5210)",
         "at": "2026-09-05T18:14:51+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4977d0aeccc76524a9ebba73e404a7150c7652d9",
-        "subject": "fix(screen): import a generated screen's references instead of qualifying them (#5207)",
-        "at": "2026-09-05T18:04:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e03d455f0d8ca159c318917212141ec382a6b91b",
-        "subject": "test(wear-m3): render the UI builder's generated Wear screen for real (#5208)",
-        "at": "2026-09-05T18:04:15+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
