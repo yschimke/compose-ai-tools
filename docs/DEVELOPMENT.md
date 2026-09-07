@@ -239,9 +239,10 @@ exist.
 
 ## Testing a downstream project against a `-SNAPSHOT`
 
-Every push to `main` publishes `<next-patch>-SNAPSHOT` to Central
-snapshots. For PR testing, run the **Publish snapshot** workflow
-manually from the branch — it produces a branch-qualified version
+Snapshots are published on demand only — the **Publish snapshot**
+workflow is manual, with no push-to-`main` trigger. Run it from `main`
+for `<next-patch>-SNAPSHOT`, or from your branch for PR testing, where
+it produces a branch-qualified version
 (`<next-patch>-<branch-name>-<short-sha>-SNAPSHOT`) that won't collide
 with `main`. See [RELEASING.md § Snapshots](RELEASING.md#snapshots) for
 the full recipe and consumer-side `pluginManagement` block.

@@ -1,13 +1,19 @@
 name: Publish snapshot
 
 # Publish a -SNAPSHOT build to the Maven Central snapshots repo
-# (https://central.sonatype.com/repository/maven-snapshots/) on every push to
-# main. The vanniktech plugin routes `-SNAPSHOT` versions to that URL
-# automatically; snapshots are unsigned.
+# (https://central.sonatype.com/repository/maven-snapshots/). The vanniktech
+# plugin routes `-SNAPSHOT` versions to that URL automatically; snapshots are
+# unsigned.
+#
+# DISABLED on pushes to main: the `push` trigger is intentionally removed, so
+# nothing publishes automatically. The workflow is manual-only — run it from
+# the Actions tab against whatever ref you want a snapshot of. Restore the
+# trigger by re-adding:
+#
+#   push:
+#     branches: [main]
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       suffix:
