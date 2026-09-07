@@ -45,7 +45,10 @@ internal object CliRouter {
       // server spawns is still a command, and one that cannot be found is one nobody can debug.
       // `ui-builder` joins them because all three are the same binary: `serve` hosts it,
       // `build-host` is the Gradle half it spawns, and `ui-builder` launches its `ui` command.
-      "share" to listOf("serve", "ui-builder", "build-host", "share-preview"),
+      // `design` is the fourth face of that binary and the only one that does not serve: it talks
+      // to a server that is already up and writes a design's pixels or source to a file
+      // (yschimke/compose-preview-server#529).
+      "share" to listOf("serve", "ui-builder", "design", "build-host", "share-preview"),
       "setup" to listOf("update", "init-script", "pin", "auth"),
     )
 

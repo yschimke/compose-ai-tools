@@ -105,6 +105,42 @@ class ServeLauncherTest {
         .launchCommand("/opt/compose-preview-server"),
     )
   }
+
+  /**
+   * `design` is the one launcher whose target does not serve: the verb and the design id are the
+   * server's argv, forwarded untouched, and the exit code that comes back is what says whether an
+   * export was refused (yschimke/compose-preview-server#529).
+   */
+  @Test
+  fun `design launches the server's design command with the caller's argv`() {
+    assertEquals(
+      listOf("/opt/compose-preview-server", "design", "render", "my-widget", "--out", "cover.png"),
+      ServeCommand(
+          listOf("render", "my-widget", "--out", "cover.png"),
+          serverCommand = DesignCommand.SERVER_COMMAND,
+        )
+        .launchCommand("/opt/compose-preview-server"),
+    )
+  }
+
+  /** `--server-binary` is this side's own flag and is the only thing dropped on the way through. */
+  @Test
+  fun `design drops the launcher's own flag rather than forwarding it`() {
+    assertEquals(
+      listOf("/opt/from-flag", "design", "list", "--server", "https://preview.coo.ee"),
+      ServeCommand(
+          listOf(
+            "list",
+            ServerBinaryDiscovery.FLAG,
+            "/opt/from-flag",
+            "--server",
+            "https://preview.coo.ee",
+          ),
+          serverCommand = DesignCommand.SERVER_COMMAND,
+        )
+        .launchCommand("/opt/from-flag"),
+    )
+  }
 }
 
 class ServerBinaryDiscoveryTest {

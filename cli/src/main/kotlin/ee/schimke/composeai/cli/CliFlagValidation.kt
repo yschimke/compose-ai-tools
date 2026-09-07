@@ -249,6 +249,26 @@ internal object CliFlagValidation {
             "--ui-builder-runtime-dir",
             "--ui-builder-state-dir",
           ),
+      // A launcher for the server's `design` command, so the flags are that command's. No
+      // selectors: this command names a design on a server rather than a preview in this project,
+      // so `--module` and friends would be noise it forwards for nobody. `--token` is listed
+      // because the server refuses it by name — a credential does not go on a command line — and
+      // that refusal is a better message than "unrecognised option".
+      "design" to
+        setOf(
+          "--format",
+          "--help",
+          "-h",
+          "--limit",
+          "--no-authorize",
+          "--out",
+          "-o",
+          "--revision",
+          "--server",
+          "--server-binary",
+          "--timeout",
+          "--token",
+        ),
       // The flags a preview server passes when it spawns the Gradle half of `serve`. Deliberately
       // narrow: this command is machine-facing, and every flag here is one the server has to know
       // to send. `--stdio` selects the transport; `--module` and `--variant` are the two selectors

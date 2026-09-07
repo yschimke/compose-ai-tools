@@ -27,6 +27,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "browse" to { a -> BrowseCommand(a).run() },
     "serve" to { a -> ServeCommand(a).run() },
     "ui-builder" to { a -> UiBuilderCommand(a).run() },
+    "design" to { a -> DesignCommand(a).run() },
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -142,7 +143,7 @@ private fun printUsage(full: Boolean = false) {
     Command groups (each command is also callable directly by its name):
       inspect   a11y · diff-semantics · devices · extensions · history · profile
       capture   render-matrix · record · bundle
-      share     serve · ui-builder · share-preview
+      share     serve · ui-builder · design · share-preview
       setup     update · init-script · pin · auth
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
@@ -216,6 +217,12 @@ private fun printFullUsage() {
       ui-builder       Build this project's previews and open the Compose UI builder against
                        them, so exported code calls your composables. Launches the preview
                        server's `ui` command; see `ui-builder --help` for its options.
+      design           Get a UI-builder design out of a running server: `design render <id>` for a
+                       PNG or SVG, `design export <id>` for the generated Kotlin, `design get` for
+                       the document, `design list` for what you can see. Launches the preview
+                       server's `design` command, which is a client rather than a server: it needs
+                       a `--server` that is already up, and exits non-zero when an export is
+                       refused, so it composes in CI. See `design --help`.
       share-preview    Share rendered previews (a markdown report + images, or a directory of
                        PNGs) somewhere openable. Picks the mechanism by what's available: a gist
                        when the GitHub CLI is installed + authenticated, otherwise a push to a
