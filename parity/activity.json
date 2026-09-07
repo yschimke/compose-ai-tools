@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-06T20:34:52.433Z",
+  "generatedAt": "2026-09-07T08:47:06.616Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "210f6cc5f5f188428de56fc7dd54d34297c4741c",
+        "subject": "chore(deps): update dependency yschimke/rc-players to v1.59.2 (#5262)",
+        "at": "2026-09-07T09:39:26+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c885e549e03565b3a497c224b1a910a6c4bcb465",
+        "subject": "feat(cli): compose-preview design, a launcher for the server's design command (#5261)",
+        "at": "2026-09-07T09:27:38+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fe34afcd3714cc081ca3f857d96e47c487be752f",
+        "subject": "fix(samples): regenerate the Wear widget fixture from the current generator (#5258)",
+        "at": "2026-09-07T07:53:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "47989f23d52d7c2a0451a8a4160bfc553933fa70",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.1.1 (#5257)",
+        "at": "2026-09-07T02:01:11Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c9a4582e85f88006b66b3e278fca7ce13d1359f4",
         "subject": "chore(main): release 2.1.1 (#5256)",
@@ -451,38 +483,6 @@
         "subject": "chore(main): release 1.80.0 (#5159)",
         "at": "2026-09-05T12:16:00+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7377d9c70639d954d581bf52de7f37989053b430",
-        "subject": "feat(cli): add `ui-builder`, the launcher for the server's `ui` command (#5195)",
-        "at": "2026-09-05T12:09:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fd2aa2647f1115c7387add5438a3a8db65471eef",
-        "subject": "test: let the consumer notice know its third consumer (#5196)",
-        "at": "2026-09-05T12:09:29+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "190b6c89eea8944237cea03ba184efa640b4b77e",
-        "subject": "fix(cli): make optional captures visible in show output (#5192)",
-        "at": "2026-09-05T11:56:17+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "82c960c63d64043a82099bb43e7e0613115fc610",
-        "subject": "test: pin the two preview-selector rules against a shared table (#5193)",
-        "at": "2026-09-05T11:56:03+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
