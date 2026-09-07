@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T20:37:27.994Z",
+  "generatedAt": "2026-09-07T21:22:25.760Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c8a54a7188d13e67bf3342eaf183694267450d49",
+        "subject": "ci: give the integration job the retry script it invokes (#5284)",
+        "at": "2026-09-07T21:51:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "39767beb5b7a9e1989b60542ca63d0695473a7bf",
+        "subject": "chore(main): release 2.2.3 (#5282)",
+        "at": "2026-09-07T21:48:06+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cb6e5ff5ec335c9d84e68136eb17e7dc8b73278c",
+        "subject": "fix: name a family-less text run the family the render recorded (#5283)",
+        "at": "2026-09-07T21:42:45+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "4c0ddde791d00d399e87feba1284436feea99e9c",
         "subject": "chore(ci): update the design-artifacts export driver to v2.2.2 (#5280)",
@@ -458,30 +482,6 @@
         "sha": "86aa71305bd6892e0394f963141ecda26404566e",
         "subject": "chore(main): release 1.84.0 (#5220)",
         "at": "2026-09-06T08:58:39+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9efa10a676e7059c2021d9a21fab6b4a885a4b5a",
-        "subject": "feat(screen): express a lambda that returns a value, and check what it returns (#5219)",
-        "at": "2026-09-06T08:43:18+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "42e9f2f760c8a8723f933919ffdd7643fe1e6b83",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.83.0 (#5217)",
-        "at": "2026-09-05T23:13:46+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "295788aa9c3ab3bbda4bb4e5d81789be68391710",
-        "subject": "chore(main): release 1.83.0 (#5215)",
-        "at": "2026-09-05T23:10:08+01:00",
         "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
