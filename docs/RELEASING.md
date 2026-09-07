@@ -349,9 +349,11 @@ the same way the extension's own release stamps its version, so nothing in the t
 
 ## Snapshots
 
-Every push to `main` triggers `snapshot.yml`, which computes the next
-patch-SNAPSHOT version from `git describe` (e.g. last tag `v0.3.3` →
-`0.3.4-SNAPSHOT`) and publishes to the Central snapshots repository:
+`snapshot.yml` is **manual-only** — the push-to-`main` trigger is disabled,
+so no snapshot is published automatically. Run **Publish snapshot** from the
+Actions tab against the ref you want. It computes the next patch-SNAPSHOT
+version from `git describe` (e.g. last tag `v0.3.3` → `0.3.4-SNAPSHOT`) and
+publishes to the Central snapshots repository:
 
 ```
 https://central.sonatype.com/repository/maven-snapshots/
@@ -360,9 +362,9 @@ https://central.sonatype.com/repository/maven-snapshots/
 Snapshots are unsigned, so they only need `MAVEN_CENTRAL_USERNAME` /
 `MAVEN_CENTRAL_PASSWORD`.
 
-For pre-merge testing, run **Publish snapshot** manually from the branch
-you want to test. Branch/manual runs publish the same Maven artifacts
-with a branch-qualified version by default:
+For pre-merge testing, run it from the branch you want to test. Branch
+runs publish the same Maven artifacts with a branch-qualified version by
+default:
 
 ```
 <next-patch>-<branch-name>-<short-sha>-SNAPSHOT
