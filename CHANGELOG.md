@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.2.4](https://github.com/yschimke/compose-ai-tools/compare/v2.2.3...v2.2.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* **catalog:** annotate each published render from its own semantics tree ([#5286](https://github.com/yschimke/compose-ai-tools/issues/5286)) ([ea7ff88](https://github.com/yschimke/compose-ai-tools/commit/ea7ff88913112ec53d3e3ade4a811549751035f5))
+* rebuild gvar when subsetting a variable font ([#5289](https://github.com/yschimke/compose-ai-tools/issues/5289)) ([0989b86](https://github.com/yschimke/compose-ai-tools/commit/0989b862ddbaf73d4cd758f4801b99f45f867d11))
+* scope a family's resolved font file to the preview that drew it ([#5290](https://github.com/yschimke/compose-ai-tools/issues/5290)) ([42d615e](https://github.com/yschimke/compose-ai-tools/commit/42d615e06dca9238f87671c3927791fe905a32e2))
+
 ## [2.2.3](https://github.com/yschimke/compose-ai-tools/compare/v2.2.2...v2.2.3) (2026-09-07)
 
 
