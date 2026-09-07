@@ -50,11 +50,17 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
   protected open val profile: Profile = RcPlatformProfiles.ANDROIDX
 
   /**
-   * Player used to replay the captured document. [RemoteComposePlayerKind.EMBEDDED] — the vendored
-   * AndroidX `RcPlayer` — since it is what the rest of the pipeline defaults to; see
-   * [RemoteOverridablePreview] for why, and [RemoteViewPreviewWrapper] for the old lane.
+   * Player used to replay the captured document — the build-wide
+   * [RemoteComposePlayerSelection.configured], which is the vendored AndroidX `RcPlayer`
+   * ([RemoteComposePlayerKind.EMBEDDED]) unless `-PcomposePreview.rcPlayer=view` says otherwise.
+   * See [RemoteComposePlayerSelection] for what outranks what, and [RemoteViewPreviewWrapper] for
+   * pinning the old lane on one preview regardless of the build setting.
+   *
+   * Read per instance rather than captured once, so a host that sets the property before the first
+   * render is honoured; the resolution behind it is memoised per JVM.
    */
-  protected open val player: RemoteComposePlayerKind = RemoteComposePlayerKind.EMBEDDED
+  protected open val player: RemoteComposePlayerKind
+    get() = RemoteComposePlayerSelection.configured
 
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
@@ -126,7 +132,7 @@ class RemoteViewPreviewWrapper : RemoteOverridablePreviewWrapper() {
 fun RemoteOverridablePreview(
   profile: Profile,
   modifier: Modifier = Modifier,
-  player: RemoteComposePlayerKind = RemoteComposePlayerKind.EMBEDDED,
+  player: RemoteComposePlayerKind = RemoteComposePlayerSelection.configured,
   content: @Composable @RemoteComposable () -> Unit,
 ) {
   val context = LocalContext.current

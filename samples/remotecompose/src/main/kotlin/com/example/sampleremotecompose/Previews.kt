@@ -29,6 +29,17 @@ import ee.schimke.composeai.preview.AnimatedPreview
 // releases paired with stable Compose). This renders the pixels but does not expose
 // the recorded Remote Compose document to compose-preview, so it does not emit an
 // `.rc` data product.
+//
+// It also pins the **player**, which is the other half of that cost and the more visible one.
+// `RemoteContentPreview` is upstream's, and it plays the document into an `AndroidView`-hosted
+// `RemoteComposePlayer` — one opaque view, which the a11y lane can only report as a single
+// unlabelled item (issue #5259, and the two previews below are what that looks like in the
+// report). Nothing in this pipeline can intercept a direct call to an upstream composable, so
+// `composePreview.rcPlayer` does not reach these two: naming the player in the body IS the
+// selection. Approach 2 below, and `RemoteOverridablePreview(profile) { ... }` for a body-call
+// that still wants the connector, both draw with the configured player instead — the embedded
+// Compose player by default, which composes into real nodes and carries the document's own
+// content description into semantics.
 // ---------------------------------------------------------------------------
 
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)

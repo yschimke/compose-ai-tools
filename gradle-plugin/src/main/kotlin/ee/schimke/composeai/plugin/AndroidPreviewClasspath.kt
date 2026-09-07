@@ -394,6 +394,7 @@ internal object AndroidPreviewClasspath {
     hostTheme: String = "",
     fixedTime: String = "",
     linkBufferComposer: String = "false",
+    rcPlayer: String = "cmp",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -476,6 +477,12 @@ internal object AndroidPreviewClasspath {
       // composition — so it has to arrive as a launch property, not as something the Gradle JVM
       // reads. `"false"` by default: an opt-in stays opt-in.
       "composeai.render.linkBufferComposer" to linkBufferComposer,
+      // Which player replays a Remote Compose preview's captured document — `cmp` (default, the
+      // embedded Compose player) or `view` (the `AndroidView`-hosted `RemoteComposePlayer`). Read
+      // inside the render JVM by `RemoteComposePlayerSelection`, so like its neighbours it has to
+      // be forwarded here or `-PcomposePreview.rcPlayer=view` set on the Gradle invocation never
+      // reaches the JVM that composes.
+      "composeai.render.rcPlayer" to rcPlayer,
     )
 }
 
@@ -686,6 +693,42 @@ internal fun composeAiFixedTime(
     .orElse(project.providers.gradleProperty("composePreview.fixedTime"))
     .let { if (extension != null) it.orElse(extension.fixedTime) else it }
     .orElse("")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.render.rcPlayer` — which
+ * player replays a **Remote Compose** preview's captured document. `"cmp"` (the default, the
+ * vendored embedded Compose player) or `"view"` (the `AndroidView`-hosted `RemoteComposePlayer`).
+ *
+ * Build-wide, not per surface: one value moves every Remote Compose preview the render draws — a
+ * `RemotePreview` sticker through `RemoteOverridablePreviewWrapper`, a bundle replayed from its
+ * captured `ir/<id>.rc`, and a Glance Wear widget through `CapturingWearWidgetPreview`. Read in the
+ * JVM that composes (`RemoteComposePlayerSelection` in `:data-remotecompose-connector`, and its
+ * pinned twin in `:wear-preview-runtime`), so like its neighbours here it has to be forwarded onto
+ * that JVM rather than resolved on the Gradle one.
+ *
+ * It is the **weakest** of the three ways a player is chosen, so it cannot override what a preview
+ * or a request already said: a per-preview pin (`@PreviewWrapper(RemoteViewPreviewWrapper::class)`)
+ * and a per-render `renderNow.overrides.remoteCompose.player` (which `serve`'s `?rcPlayer=` chips
+ * ride) both still win.
+ *
+ * Sourced from `-Dcomposeai.render.rcPlayer` first (the flag the runtime itself reads), then
+ * `-PcomposePreview.rcPlayer`, else `"cmp"`.
+ *
+ * Android-only, and deliberately not forwarded to the Desktop lane: the connector and both players
+ * are Android artifacts rendered under Robolectric, so there is no Desktop preview for the setting
+ * to be true of (`serve`'s `cmp-jvm` lane is a separate subprocess renderer, not this property).
+ *
+ * The default is `"cmp"` rather than the historical `"view"` because the View lane makes every
+ * Remote Compose preview report the same unlabelled-`RemoteComposePlayer` accessibility error
+ * (issue #5259) — see `RemoteComposePlayerSelection` for what each lane costs. Unlike the opt-ins
+ * around it this one therefore defaults to *on*: `view` is the escape hatch, for a preview whose
+ * fidelity depends on the framework `Canvas`.
+ */
+internal fun composeAiRcPlayer(project: Project): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.render.rcPlayer")
+    .orElse(project.providers.gradleProperty("composePreview.rcPlayer"))
+    .orElse("cmp")
 
 /**
  * The resolved value to forward as the render / daemon JVM's `composeai.render.linkBufferComposer`

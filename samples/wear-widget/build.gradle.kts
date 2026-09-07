@@ -76,6 +76,12 @@ dependencies {
   // sidecar next to the PNG. Shared with the `remote-m3` catalog (in yschimke/wear-m3-catalog)
   // so both widget surfaces capture their document the same way.
   implementation(project(":wear-preview-runtime"))
+  // The embedded Compose player, on the *runtime* classpath. `:wear-preview-runtime` declares it
+  // `compileOnly` (like its alpha `compose-remote` deps), so a consumer that wants the default CMP
+  // lane has to supply it — without it `embeddedWearWidgetPlayerAvailable` finds nothing and every
+  // widget preview quietly falls back to upstream's View-backed player, which is what issue #5259
+  // is about.
+  implementation(libs.rcplayer.embedded.android)
   // `IrSidecarChannel` itself — `:wear-preview-runtime` keeps it `implementation`-scoped, and this
   // module's `WearWidgetDocCaptureTest` asserts on the sidecar it produces.
   implementation(libs.composeai.data.render.core)

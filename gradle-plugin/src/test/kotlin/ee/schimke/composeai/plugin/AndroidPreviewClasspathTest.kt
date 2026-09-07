@@ -287,6 +287,35 @@ class AndroidPreviewClasspathTest {
       .containsEntry("composeai.render.linkBufferComposer", "false")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the Remote Compose player into the render jvm`() {
+    // `RemoteComposePlayerSelection` reads `composeai.render.rcPlayer` inside the render /
+    // Robolectric sandbox, so a selection that doesn't reach this map is a selection that does
+    // nothing.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          rcPlayer = "view",
+        )
+      )
+      .containsEntry("composeai.render.rcPlayer", "view")
+    // Unlike the opt-ins above it, this one defaults to ON: the CMP player is what stopped every
+    // Remote Compose preview reporting an unlabelled `RemoteComposePlayer` (issue #5259), so
+    // nothing asked for still means `cmp`.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.render.rcPlayer", "cmp")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }
