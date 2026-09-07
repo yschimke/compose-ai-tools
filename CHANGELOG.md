@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.3](https://github.com/yschimke/compose-ai-tools/compare/v2.2.2...v2.2.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.16.0 ([#5281](https://github.com/yschimke/compose-ai-tools/issues/5281)) ([279169d](https://github.com/yschimke/compose-ai-tools/commit/279169d4aacc51bd0c4f7a7003f9d7dc1507c332))
+* name a family-less text run the family the render recorded ([#5283](https://github.com/yschimke/compose-ai-tools/issues/5283)) ([cb6e5ff](https://github.com/yschimke/compose-ai-tools/commit/cb6e5ff5ec335c9d84e68136eb17e7dc8b73278c))
+
 ## [2.2.2](https://github.com/yschimke/compose-ai-tools/compare/v2.2.1...v2.2.2) (2026-09-07)
 
 
