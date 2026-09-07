@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/yschimke/compose-ai-tools/compare/v2.2.0...v2.2.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* report the file an Android file-backed face was built from ([#5273](https://github.com/yschimke/compose-ai-tools/issues/5273)) ([a46d0b3](https://github.com/yschimke/compose-ai-tools/commit/a46d0b3d34a6f9dbd545c370b03d7678787ff2d0))
+
 ## [2.2.0](https://github.com/yschimke/compose-ai-tools/compare/v2.1.1...v2.2.0) (2026-09-07)
 
 
