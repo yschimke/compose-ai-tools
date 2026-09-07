@@ -394,6 +394,7 @@ internal object AndroidPreviewClasspath {
     hostTheme: String = "",
     fixedTime: String = "",
     linkBufferComposer: String = "false",
+    wearWidgetPlayer: String = "cmp",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -476,6 +477,12 @@ internal object AndroidPreviewClasspath {
       // composition — so it has to arrive as a launch property, not as something the Gradle JVM
       // reads. `"false"` by default: an opt-in stays opt-in.
       "composeai.render.linkBufferComposer" to linkBufferComposer,
+      // Which Remote Compose player draws a Glance Wear widget preview — `cmp` (default, the
+      // embedded Compose player) or `view` (upstream's `AndroidView`-hosted `RemoteComposePlayer`).
+      // Read inside the render JVM by `WearWidgetPreviewPlayer` (`:wear-preview-runtime`), so like
+      // its neighbours it has to be forwarded here or `-PcomposePreview.wearWidgetPlayer=view` set
+      // on the Gradle invocation never reaches the JVM that composes the widget.
+      "composeai.wear.widgetPlayer" to wearWidgetPlayer,
     )
 }
 
@@ -686,6 +693,34 @@ internal fun composeAiFixedTime(
     .orElse(project.providers.gradleProperty("composePreview.fixedTime"))
     .let { if (extension != null) it.orElse(extension.fixedTime) else it }
     .orElse("")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.wear.widgetPlayer` — which
+ * Remote Compose player draws a Glance Wear widget `@Preview` routed through
+ * `CapturingWearWidgetPreview` (`:wear-preview-runtime`). `"cmp"` (the default, the vendored
+ * embedded Compose player) or `"view"` (upstream's `AndroidView`-hosted `RemoteComposePlayer`).
+ *
+ * Sourced from `-Dcomposeai.wear.widgetPlayer` first (the flag the runtime itself reads), then
+ * `-PcomposePreview.wearWidgetPlayer`, else `"cmp"`. Forwarded onto the forked render / daemon JVM
+ * for the same reason as its neighbours here: `WearWidgetPreviewPlayer` resolves the property
+ * inside the JVM that composes, so a value set on the Gradle invocation reaches nothing unless it
+ * is put on that JVM's command line.
+ *
+ * Android-only, and deliberately not forwarded to the Desktop lane: a Glance Wear widget is
+ * captured through Android Glance and rendered under Robolectric, so there is no Desktop preview
+ * for the setting to be true of.
+ *
+ * The default is `"cmp"` rather than the historical `"view"` because the View lane made every
+ * widget preview report the same unlabelled-`RemoteComposePlayer` accessibility error (issue #5259)
+ * — see `WearWidgetPreviewPlayer` for what each lane costs. Unlike the opt-ins around it this one
+ * therefore defaults to *on*: `view` is the escape hatch, for a widget whose fidelity depends on
+ * the framework `Canvas`.
+ */
+internal fun composeAiWearWidgetPlayer(project: Project): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.wear.widgetPlayer")
+    .orElse(project.providers.gradleProperty("composePreview.wearWidgetPlayer"))
+    .orElse("cmp")
 
 /**
  * The resolved value to forward as the render / daemon JVM's `composeai.render.linkBufferComposer`

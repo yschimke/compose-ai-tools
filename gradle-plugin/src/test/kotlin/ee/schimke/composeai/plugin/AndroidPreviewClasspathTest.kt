@@ -287,6 +287,34 @@ class AndroidPreviewClasspathTest {
       .containsEntry("composeai.render.linkBufferComposer", "false")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the wear widget player into the render jvm`() {
+    // `WearWidgetPreviewPlayer` reads `composeai.wear.widgetPlayer` inside the render / Robolectric
+    // sandbox, so a selection that doesn't reach this map is a selection that does nothing.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          wearWidgetPlayer = "view",
+        )
+      )
+      .containsEntry("composeai.wear.widgetPlayer", "view")
+    // Unlike the opt-ins above it, this one defaults to ON: the CMP player is what stopped every
+    // widget preview reporting an unlabelled `RemoteComposePlayer` (issue #5259), so nothing asked
+    // for still means `cmp`.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.wear.widgetPlayer", "cmp")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }

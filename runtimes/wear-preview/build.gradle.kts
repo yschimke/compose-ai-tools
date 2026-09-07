@@ -87,6 +87,30 @@ dependencies {
   compileOnly(libs.glance.wear.core)
   compileOnly(libs.glance.wear.tooling.preview)
   compileOnly(libs.compose.remote.creation.compose)
+
+  // The players `CapturingWearWidgetPreview` can replay the captured document through. The default
+  // is the embedded Compose player (`ExperimentalRemoteDocumentPlayer`) — see
+  // `WearWidgetPreviewPlayer` for why — reached through `RemoteDocument` from `remote-player-core`.
+  // `compileOnly` for the same reason as everything above it: a consumer that doesn't ship the
+  // embedded player still loads this runtime, and `embeddedWearWidgetPlayerAvailable` gates the
+  // call site so it degrades to the upstream View-backed `WearWidgetPreview` instead of dying.
+  compileOnly(libs.compose.remote.player.core)
+  compileOnly(libs.rcplayer.embedded.android)
+
+  // `WearWidgetPreviewPlayerTest` covers the property parsing; `EmbeddedWearWidgetPlayerTest`
+  // resolves the real embedded-player facade off the test classpath and asserts the pinned entry
+  // point still describes it — which is the whole value of the pin, so the player has to be a real
+  // (test-scoped) dependency here even though it is `compileOnly` for consumers.
+  //
+  // The Compose BOM + runtime are here for the *compiler*, not for the tests: this module applies
+  // the Compose compiler plugin, which runs over the test source set too and fails outright when
+  // no Compose runtime is on that classpath ("requires the Compose Runtime to be on the class
+  // path"). Main gets its own through `compileOnly`; the test source set has to say so itself.
+  testImplementation(platform(libs.compose.bom.stable))
+  testImplementation(libs.compose.runtime)
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
+  testImplementation(libs.rcplayer.embedded.android)
 }
 
 composeAiMavenPublishing {
