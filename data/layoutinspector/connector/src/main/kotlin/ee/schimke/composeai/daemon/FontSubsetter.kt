@@ -85,8 +85,18 @@ object FontSubsetter {
       val subsetter = TTFSubsetter(ttf)
       subsetter.addAll(codePoints)
       val subset = ByteArrayOutputStream().also { subsetter.writeToStream(it) }.toByteArray()
-      val stripped = stripTables(repairMalformedOs2Table(subset), DROPPABLE)
-      stripped.takeIf { it.size < fontBytes.size }
+      // FontBox rebuilds `glyf`/`loca` and copies every other table VERBATIM — including `gvar`,
+      // which on a variable font is the overwhelming majority of the file and is indexed by the
+      // ORIGINAL glyph ids. Left alone it is both enormous and wrong: Roboto Flex subset to one
+      // sticker's 98 glyphs still carried all 1.58 MB of deltas, 96.5% of the emitted face, so the
+      // export shipped 4.4 MB of SVG per comparison where 100 KB would do.
+      val repacked =
+        repairMalformedOs2Table(subset).let { face ->
+          subsetGvar(fontBytes, face, subsetter.gidMap)?.let { gvar ->
+            repackTables(face, DROPPABLE, mapOf("gvar" to gvar))
+          } ?: stripTables(face, DROPPABLE)
+        }
+      repacked.takeIf { it.size < fontBytes.size }
     }
       .getOrNull()
   }
@@ -117,7 +127,21 @@ object FontSubsetter {
    * whole-font checksum stays consistent after tables are removed. Pure byte surgery: the kept
    * tables' contents are copied verbatim.
    */
-  private fun stripTables(font: ByteArray, drop: Set<String>): ByteArray {
+  private fun stripTables(font: ByteArray, drop: Set<String>): ByteArray =
+    repackTables(font, drop, emptyMap())
+
+  /**
+   * Repacks [font] without the tables in [drop] and with each tag in [replace] carrying those bytes
+   * instead of its own. One packer for both jobs: a replaced table changes length, so the directory
+   * offsets, the per-table checksums and `head.checkSumAdjustment` all have to be recomputed
+   * exactly as a drop does, and having two of these would mean two places to get sfnt checksums
+   * wrong.
+   */
+  private fun repackTables(
+    font: ByteArray,
+    drop: Set<String>,
+    replace: Map<String, ByteArray>,
+  ): ByteArray {
     val input = ByteBuffer.wrap(font)
     val numTables = input.getShort(4).toInt() and 0xFFFF
     val kept = ArrayList<Rec>(numTables)
@@ -125,7 +149,9 @@ object FontSubsetter {
       val rec = 12 + i * 16
       val tag = String(font, rec, 4, Charsets.ISO_8859_1)
       if (tag in drop) continue
-      kept.add(Rec(tag, input.getInt(rec + 8), input.getInt(rec + 12)))
+      val subst = replace[tag]
+      if (subst != null) kept.add(Rec(tag, -1, subst.size))
+      else kept.add(Rec(tag, input.getInt(rec + 8), input.getInt(rec + 12)))
     }
     kept.sortBy { it.tag }
 
@@ -153,7 +179,9 @@ object FontSubsetter {
       val r = kept[i]
       val rec = 12 + i * 16
       System.arraycopy(r.tag.toByteArray(Charsets.ISO_8859_1), 0, out, rec, 4)
-      System.arraycopy(font, r.offset, out, newOffsets[i], r.length)
+      val subst = replace[r.tag]
+      if (subst != null) System.arraycopy(subst, 0, out, newOffsets[i], subst.size)
+      else System.arraycopy(font, r.offset, out, newOffsets[i], r.length)
       // `head.checkSumAdjustment` (bytes 8..11) must be treated as 0 when its own table checksum is
       // computed and the whole-font checksum is taken (sfnt spec), so zero it *before*
       // checksumming.
@@ -174,6 +202,116 @@ object FontSubsetter {
     }
     return out
   }
+
+  /**
+   * `gvar` rebuilt for a subset face, or null when there is nothing to do (no `gvar`, or it cannot
+   * be read).
+   *
+   * `gvar` holds the per-glyph outline deltas a variable font interpolates between its axes, in an
+   * array indexed by GLYPH ID. FontBox's subsetter renumbers glyphs and copies `gvar` across
+   * untouched, so every delta afterwards belongs to whichever glyph now holds its old id — wrong,
+   * and carrying the whole original table besides. On Roboto Flex that is 1.58 MB of the 1.64 MB
+   * emitted face.
+   *
+   * The rebuild is a re-index, not a re-encode: each retained glyph's variation blob is copied
+   * byte-for-byte from the original into its new slot, and the shared-tuple array is copied whole.
+   * That is exact because subsetting does not touch outlines — a glyph keeps its points and their
+   * order, so the deltas that described it still do. Anything this cannot honour (a `gvar` version
+   * it does not know, an axis count disagreeing with `fvar`, a truncated table) returns null and
+   * the caller keeps the intact face rather than emitting a plausible-looking wrong one.
+   *
+   * Long offsets are always written. The short form stores `offset / 2` in a `uint16`, which cannot
+   * address a data array past 128 KB, and the saving over a hundred-odd glyphs is a few hundred
+   * bytes against the megabyte this removes.
+   */
+  private fun subsetGvar(
+    original: ByteArray,
+    subset: ByteArray,
+    newToOldGid: Map<Int, Int>,
+  ): ByteArray? = runCatching {
+    val src = tableRecord(original, "gvar") ?: return@runCatching null
+    if (tableRecord(subset, "gvar") == null) return@runCatching null
+    val b = ByteBuffer.wrap(original)
+    val base = src.offset
+    if (b.getShort(base).toInt() != 1) return@runCatching null // majorVersion
+    val axisCount = b.getShort(base + 4).toInt() and 0xFFFF
+    val sharedTupleCount = b.getShort(base + 6).toInt() and 0xFFFF
+    val sharedTuplesOffset = b.getInt(base + 8)
+    val oldGlyphCount = b.getShort(base + 12).toInt() and 0xFFFF
+    val longOffsets = (b.getShort(base + 14).toInt() and 0x0001) == 1
+    val dataArrayOffset = b.getInt(base + 16)
+    val offsetsAt = base + GVAR_HEADER_LENGTH
+
+    fun offsetAt(index: Int): Int =
+      if (longOffsets) b.getInt(offsetsAt + index * 4)
+      else (b.getShort(offsetsAt + index * 2).toInt() and 0xFFFF) * 2
+
+    // `maxp.numGlyphs` of the SUBSET is the authority on how many slots the new table needs: the
+    // GID map only lists glyphs that were mapped, and a face can retain an unmapped one.
+    val maxp = tableRecord(subset, "maxp") ?: return@runCatching null
+    val newGlyphCount = ByteBuffer.wrap(subset).getShort(maxp.offset + 4).toInt() and 0xFFFF
+    val oldForNew = HashMap<Int, Int>(newToOldGid.size * 2)
+    newToOldGid.forEach { (new, old) -> oldForNew[new] = old }
+
+    val blobs = ArrayList<ByteArray>(newGlyphCount)
+    for (newGid in 0 until newGlyphCount) {
+      val oldGid = oldForNew[newGid]
+      if (oldGid == null || oldGid < 0 || oldGid >= oldGlyphCount) {
+        blobs.add(ByteArray(0))
+        continue
+      }
+      val from = offsetAt(oldGid)
+      val to = offsetAt(oldGid + 1)
+      // A zero-length entry is the encoding for "this glyph does not vary", and is normal.
+      if (to <= from) {
+        blobs.add(ByteArray(0))
+        continue
+      }
+      blobs.add(original.copyOfRange(base + dataArrayOffset + from, base + dataArrayOffset + to))
+    }
+
+    val sharedTuplesLength = sharedTupleCount * axisCount * 2
+    val newOffsetsLength = (newGlyphCount + 1) * 4
+    val newSharedTuplesOffset = GVAR_HEADER_LENGTH + newOffsetsLength
+    val newDataArrayOffset = newSharedTuplesOffset + sharedTuplesLength
+    val out = ByteArray(newDataArrayOffset + blobs.sumOf { align4(it.size) })
+    val ob = ByteBuffer.wrap(out)
+    ob.putShort(0, 1) // majorVersion
+    ob.putShort(2, 0) // minorVersion
+    ob.putShort(4, axisCount.toShort())
+    ob.putShort(6, sharedTupleCount.toShort())
+    ob.putInt(8, newSharedTuplesOffset)
+    ob.putShort(12, newGlyphCount.toShort())
+    ob.putShort(14, 1) // flags: long offsets
+    ob.putInt(16, newDataArrayOffset)
+    if (sharedTuplesLength > 0) {
+      System.arraycopy(
+        original,
+        base + sharedTuplesOffset,
+        out,
+        newSharedTuplesOffset,
+        sharedTuplesLength,
+      )
+    }
+    var cursor = 0
+    for (i in 0 until newGlyphCount) {
+      ob.putInt(offsetsAt(i), cursor)
+      val blob = blobs[i]
+      if (blob.isNotEmpty()) {
+        System.arraycopy(blob, 0, out, newDataArrayOffset + cursor, blob.size)
+      }
+      cursor += align4(blob.size)
+    }
+    ob.putInt(offsetsAt(newGlyphCount), cursor)
+    out
+  }
+    .getOrNull()
+
+  /** Byte position of the `index`th entry in the rebuilt (always long) offset array. */
+  private fun offsetsAt(index: Int): Int = GVAR_HEADER_LENGTH + index * 4
+
+  /** `gvar` header: version, axisCount, sharedTupleCount+offset, glyphCount, flags, data offset. */
+  private const val GVAR_HEADER_LENGTH = 20
 
   private data class Rec(val tag: String, val offset: Int, val length: Int)
 
