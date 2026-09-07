@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T08:47:06.616Z",
+  "generatedAt": "2026-09-07T10:05:31.304Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c5f8141e173f3fac335a0f4571e4d30ea0098156",
+        "subject": "chore(deps): update dependency yschimke/rc-players to v1.59.3 (#5268)",
+        "at": "2026-09-07T09:57:49Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d1a9f22d419bde9d4b3be72ba185109e39b8c7da",
+        "subject": "fix(deps): update compose-ai-tools to v2.11.0 (#5264)",
+        "at": "2026-09-07T09:36:40Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "be6769fd8e8682b015b3295b8a1db48662b71a88",
+        "subject": "fix(deps): update compose-preview-contracts to v2.11.0 (#5265)",
+        "at": "2026-09-07T09:36:07Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "04cb044a0da7d1c1d83204a0f7e31172133cea08",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.13.0 (#5266)",
+        "at": "2026-09-07T09:34:07Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "210f6cc5f5f188428de56fc7dd54d34297c4741c",
         "subject": "chore(deps): update dependency yschimke/rc-players to v1.59.2 (#5262)",
@@ -451,38 +483,6 @@
         "subject": "feat(mcp): launch the MCP server instead of bundling it (#5200)",
         "at": "2026-09-05T13:42:40+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4e9bfa6289ef430e652f7f28990779f10e804ba9",
-        "subject": "fix(daemon): record the ABI :daemon:core actually has (#5201)",
-        "at": "2026-09-05T13:41:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "734e906bcaba663169e450870158f6278f74dd91",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.80.0 (#5199)",
-        "at": "2026-09-05T12:49:47+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6a9593f822f6852ae5b79620845da56eaaf6add6",
-        "subject": "fix(scroll): set aside chrome revealed at the foot of a slice when scoring a seam (#5197)",
-        "at": "2026-09-05T12:31:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8a994c8020ace06fe2bc008607728de361458754",
-        "subject": "chore(main): release 1.80.0 (#5159)",
-        "at": "2026-09-05T12:16:00+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
