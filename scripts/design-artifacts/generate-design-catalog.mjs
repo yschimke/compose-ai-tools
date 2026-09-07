@@ -42,7 +42,11 @@ import {
   catalogTokensFromBundle,
   themeTokenSetsFromBundle,
 } from "@design-parity/candidate";
-import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
+import {
+  buildCatalog,
+  treeAnnotations,
+  writeCatalog,
+} from "@design-parity/catalog-export";
 
 import {
   duplicateAxesFailure,
@@ -158,6 +162,7 @@ import {
   resolveSemanticsIds,
 } from "./bridge-live-preview-ids.mjs";
 import { catalogTagIndex } from "./tag-index.mjs";
+import { perRenderAnnotations } from "./annotation-index.mjs";
 import {
   catalogImagePath,
   derivationMismatches,
@@ -2263,6 +2268,65 @@ if (values["defer-figma-svg"]) {
           `to close the gap — an unindexed preview simply gets no element gate)`
         : ""),
   );
+}
+
+// The published design annotations (`annotations/index.json`), re-keyed to the render each layer
+// describes — same join as the tag index above, one file along.
+//
+// `writeCatalog` walks one semantics tree per COMPONENT and writes that layer under every sticker
+// the component publishes. Right for a palette or a locale arm; wrong for a content variant, whose
+// render has different text in different places — so the viewer's Typography layer drew the default
+// cell's boxes over `button-filled__ideal__icon__compact` (compose-preview-server#555). See
+// annotation-index.mjs for why an absent overlay beats a sibling's.
+//
+// Only the preview side is touched. The reference side is merged in later, by
+// `emit-design-references.mjs`, which reads this file back — so it must be written before that step
+// and must carry `references` through untouched.
+{
+  const file = join(outPath, "annotations", "index.json");
+  // Absent whenever `buildAnnotationManifest` had nothing to write (a catalog with no semantics at
+  // all): there is then no fan-out to correct, and this pass has no tree of its own to publish
+  // from either. Fail-soft like every other carried artifact — an unreadable manifest costs the
+  // correction, never the catalog.
+  const publishedAnnotations = await readFile(file, "utf8").then(
+    (text) => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    },
+    () => null,
+  );
+  const layers = publishedAnnotations
+    ? perRenderAnnotations(
+        publishedAnnotations,
+        indexManifest,
+        allBundles,
+        resolveSemanticsIds(indexManifest, spec, allBundles),
+        treeAnnotations,
+      )
+    : null;
+  if (layers) {
+    await writeFile(
+      file,
+      `${JSON.stringify(layers.manifest, null, 2)}\n`,
+      "utf8",
+    );
+    console.log(
+      `[${spec.system}] design annotations: ${layers.measured} render(s) annotated from their ` +
+        `own semantics tree` +
+        (layers.dropped > 0
+          ? `, ${layers.dropped} carried a sibling render's layer and were cleared` +
+            (layers.gaps > 0
+              ? ` (${layers.gaps} of them for want of a tree — pack with --with-semantics)`
+              : "")
+          : "") +
+        (layers.unresolved > 0
+          ? `, ${layers.unresolved} component(s) resolved no tree and keep the exported layer`
+          : ""),
+    );
+  }
 }
 
 // Figma Code Connect manifest next to the figma-svg vectors: one mapping per component binding its
