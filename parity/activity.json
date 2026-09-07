@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T22:22:49.596Z",
+  "generatedAt": "2026-09-07T23:36:26.243Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "cec0a474434975aea57eff8ba6cb33d65462269c",
+        "subject": "chore(main): release 2.2.4 (#5288)",
+        "at": "2026-09-08T00:09:06+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "42d615e06dca9238f87671c3927791fe905a32e2",
+        "subject": "fix: scope a family's resolved font file to the preview that drew it (#5290)",
+        "at": "2026-09-08T00:08:22+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0989b862ddbaf73d4cd758f4801b99f45f867d11",
+        "subject": "fix: rebuild gvar when subsetting a variable font (#5289)",
+        "at": "2026-09-07T23:37:48+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "57b84418adc94920589abfb7e3c5fbc5e4ced1b3",
+        "subject": "ci: make the snapshot publish manual-only (#5285)",
+        "at": "2026-09-07T23:15:13+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "ea7ff88913112ec53d3e3ade4a811549751035f5",
         "subject": "fix(catalog): annotate each published render from its own semantics tree (#5286)",
@@ -450,38 +482,6 @@
         "sha": "1a68012586e55dd421acec6a82695117bf0ab095",
         "subject": "ci: report whether a release needs a Maven Central publish (#5227)",
         "at": "2026-09-06T12:01:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "60f30104f005c1fe8ceafd111d2397b38ca816b2",
-        "subject": "fix(discovery): a Wear widget preview's device is a scratch canvas, not its footprint (#5225)",
-        "at": "2026-09-06T11:33:09+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7e678c20330ebb871164ce087c66e4eb1d7ef382",
-        "subject": "chore(main): release 1.85.0 (#5223)",
-        "at": "2026-09-06T11:21:27+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "66c4eaa01eedb0f8c60d87fa901c5c4db23b3ceb",
-        "subject": "fix(discovery): look through a theme lambda Kotlin 2.3+ stores as a static method (#5224)",
-        "at": "2026-09-06T11:10:24+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2c4e6ae2da5674c8405b2a97f21e3f3874f0b52b",
-        "subject": "feat(design-artifacts): publish the component record beside catalog.json (#5222)",
-        "at": "2026-09-06T09:48:16+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
