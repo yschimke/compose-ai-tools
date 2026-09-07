@@ -1043,7 +1043,19 @@ jobs:
           # Unqualified task name runs composePreviewDiscover in every subproject
           # the init script applied the plugin to (i.e. every Android /
           # Compose-multiplatform module).
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewDiscover \
+          #
+          # Wrapped in retry-gradle-repository.sh: these cells clone a consumer
+          # whose Gradle home starts cold ("Entry not restored: no match found"),
+          # so the very first task resolves the consumer's whole buildscript graph
+          # from repo.maven.apache.org / plugins.gradle.org in one burst. A shared
+          # runner IP that is already near Central's threshold gets 403 Forbidden
+          # for artifacts that plainly exist — the cadence cell died that way in
+          # run 34122295656 on ~67 coordinates including jsr305 3.0.2, while every
+          # other cell in the same run was green. The wrapper retries ONLY on
+          # "Could not GET '<url>'" + a 403/429/5xx status, so a real build break
+          # still fails on the first attempt.
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewDiscover \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -1058,7 +1070,8 @@ jobs:
           # Tooling API and drives composePreviewDiscover under the hood, so this
           # exercises the CLI binary's end-to-end pipeline (not just the
           # Gradle path used by the other matrix entries).
-          compose-preview list --module "${{ matrix.module }}"
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            compose-preview list --module "${{ matrix.module }}"
 
       - name: Verify previews.json was produced
         # Skip the assertion on cells whose discovery was skipped above, else it
@@ -1095,7 +1108,8 @@ jobs:
           # invocation. This is the step that exercises renderer-android AAR
           # resolution from mavenLocal — the artifact path external consumers
           # hit at runtime.
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -1109,7 +1123,8 @@ jobs:
           # `compose-preview render` drives composePreviewRender end-to-end via
           # the Tooling API, including renderer-android AAR resolution from
           # the mavenLocal snapshot we seeded earlier.
-          compose-preview render --module "${{ matrix.module }}"
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            compose-preview render --module "${{ matrix.module }}"
 
       - name: Verify PNGs were produced
         if: ${{ matrix.render && env.CELL_ACTIVE == '1' }}
@@ -1150,7 +1165,8 @@ jobs:
           # runtime on the :renderer-xr render configuration and writes
           # renders/<preview>/scene.json plus a <testTag>.png texture per
           # SpatialPanel.
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRenderXr \
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRenderXr \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -1364,7 +1380,8 @@ jobs:
         run: |
           # Writes <module>/build/compose-previews/daemon-launch.json (the JSON the
           # VS Code extension reads to spawn the daemon JVM directly).
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewDaemonStart \
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewDaemonStart \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -1763,7 +1780,8 @@ jobs:
           # resolution from the mavenLocal snapshot seeded earlier. This is
           # the "oldest AGP × Kotlin together" floor-coverage cell (Gradle
           # 8.13 + AGP 8.13.0 + Kotlin 2.0.21 + JDK 17 + compose-bom 2026.05.00).
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
+            ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
             --no-configuration-cache --stacktrace
 
       - name: Verify previews.json was produced
