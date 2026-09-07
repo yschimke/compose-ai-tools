@@ -3024,15 +3024,7 @@
     {
       "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec.a11y.png",
       "cleanBasename": "",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,364,224",
-          "level": "ERROR",
-          "message": "This item may not have a label readable by screen readers.",
-          "type": "SpeakableTextPresentCheck",
-          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        }
-      ],
+      "findings": [],
       "functionName": "ImageWidgetDeviceSpecPreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec",
@@ -3043,15 +3035,7 @@
     {
       "annotatedBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.a11y.png",
       "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,567,199",
-          "level": "ERROR",
-          "message": "This item may not have a label readable by screen readers.",
-          "type": "SpeakableTextPresentCheck",
-          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        }
-      ],
+      "findings": [],
       "functionName": "ImageWidgetFixedPreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed",
@@ -3062,15 +3046,7 @@
     {
       "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large.a11y.png",
       "cleanBasename": "",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,364,224",
-          "level": "ERROR",
-          "message": "This item may not have a label readable by screen readers.",
-          "type": "SpeakableTextPresentCheck",
-          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        }
-      ],
+      "findings": [],
       "functionName": "ImageWidgetSquircleLargePreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large",
@@ -3081,15 +3057,7 @@
     {
       "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle.a11y.png",
       "cleanBasename": "",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,364,152",
-          "level": "ERROR",
-          "message": "This item may not have a label readable by screen readers.",
-          "type": "SpeakableTextPresentCheck",
-          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        }
-      ],
+      "findings": [],
       "functionName": "ImageWidgetSquirclePreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle",
