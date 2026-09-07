@@ -49,6 +49,16 @@ class FontResolverRecorder(private val context: Context? = null) {
     // exporter uses, so the rendered-font audit compares `Roboto` with `Roboto` rather than a cache
     // filename with `Roboto` and falsely switches the whole document to tofu (issue #4935).
     val fileFamily = matched?.let(::recoverFileFontFamily)
+    // Publish the file under that family as well. The export reaches a face through
+    // [FigmaResourceFonts] by NAME, and a text run that states no family is looked up under the
+    // family this recorder published — so without this the export knows which face was drawn but
+    // not where its bytes are, and re-fetches a woff2 by name instead of embedding the ones the
+    // render used. Same contract as [recoverDownloadableFont] below, for the file-backed shape.
+    if (fileFamily != null && matched != null) {
+      fileFor(matched)?.let {
+        FigmaResourceFonts.register(fileFamily, weight, style == "italic", it.absolutePath)
+      }
+    }
     val displayName = matched?.let { displayFamilyName(fontLabel(it)) }
     // A downloadable `Font(GoogleFont("Lato"), …)` resolved to a real TTF in the renderer's font
     // cache for the PNG. Publish that file so the figma-svg export embeds the same bytes rather

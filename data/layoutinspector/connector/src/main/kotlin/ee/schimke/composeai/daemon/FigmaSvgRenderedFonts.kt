@@ -59,6 +59,21 @@ object FigmaSvgRenderedFonts {
   fun snapshot(): Set<String> = synchronized(families) { families.toSet() }
 
   /**
+   * The one family this preview drew with, or null when it drew none or several.
+   *
+   * What the `compose/figma-svg` export names a text run that states no family of its own. Exactly
+   * one recorded family means every run drew that face, so it is a fact rather than a guess — and
+   * guessing is what boxed whole documents: the export hardcoded its own default, compared that
+   * against this record, found them different and concluded a face had been lost.
+   *
+   * Null on two or more, deliberately. Several families means some run drew one and some another,
+   * the export cannot tell which from a family-less node, and the audit firing is then correct. It
+   * is also null on none, which is the stock-Material case the recorder stays quiet about.
+   */
+  fun singleRenderedFamily(): String? =
+    snapshot().singleOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+
+  /**
    * The families the render drew with that [named] does not account for — the faces the export is
    * about to misrepresent. Compared case-insensitively because a family reaches the two sides by
    * different routes (a declared `GoogleFont` name vs a name read out of font bytes).
