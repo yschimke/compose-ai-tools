@@ -4,11 +4,11 @@
 # To regenerate this file, run: ./gradlew :bundle-coordinates:dependencies --write-locks
 com.squareup.okhttp3:okhttp-jvm:5.3.2=compileClasspath,runtimeClasspath
 com.squareup.okhttp3:okhttp:5.3.2=compileClasspath,runtimeClasspath
-com.squareup.okio:okio-jvm:3.18.1=compileClasspath,runtimeClasspath
-com.squareup.okio:okio:3.18.1=compileClasspath,runtimeClasspath
-ee.schimke.composeai:common-io:2.5.0=compileClasspath,runtimeClasspath
-ee.schimke.composeai:daemon-protocol:2.5.0=compileClasspath,runtimeClasspath
-ee.schimke.composeai:data-layoutinspector-core:2.5.0=compileClasspath,runtimeClasspath
+com.squareup.okio:okio-jvm:3.18.2=compileClasspath,runtimeClasspath
+com.squareup.okio:okio:3.18.2=compileClasspath,runtimeClasspath
+ee.schimke.composeai:common-io:2.11.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:daemon-protocol:2.11.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:data-layoutinspector-core:2.11.0=compileClasspath,runtimeClasspath
 io.ktor:ktor-client-core-jvm:3.5.2=compileClasspath,runtimeClasspath
 io.ktor:ktor-client-core:3.5.2=compileClasspath,runtimeClasspath
 io.ktor:ktor-client-okhttp-jvm:3.5.2=compileClasspath,runtimeClasspath
