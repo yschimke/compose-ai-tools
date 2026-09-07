@@ -40,9 +40,16 @@ class FontsRecorderExtension(context: Context? = null) :
 
   @Composable
   override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
-    // Each preview's SVG export must see only its own faces, so clear the shared buffer as this
+    // Each preview's SVG export must see only its own faces, so clear the shared buffers as this
     // preview starts composing rather than after it renders.
+    //
+    // Both, not just the recorded families. Which FILE a family resolved to is as much a
+    // per-preview fact as which families were drawn: a specimen declaring font-variation axes
+    // resolves the family's variable file where a sticker declaring none resolves a static
+    // instance, and left process-wide the first of those was embedded into every preview that
+    // followed it in the same catalog run.
     FigmaSvgRenderedFonts.begin()
+    FigmaResourceFonts.beginPreview()
     val baseFontResolver = LocalFontFamilyResolver.current
     CompositionLocalProvider(
       LocalFontFamilyResolver provides recordingFontFamilyResolver(baseFontResolver, recorder),
