@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T21:22:25.760Z",
+  "generatedAt": "2026-09-07T22:22:49.596Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "ea7ff88913112ec53d3e3ade4a811549751035f5",
+        "subject": "fix(catalog): annotate each published render from its own semantics tree (#5286)",
+        "at": "2026-09-07T23:14:30+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f71e4f571939b96c2f26b9355cff974d1c39b33e",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.2.3 (#5287)",
+        "at": "2026-09-07T21:33:23Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c8a54a7188d13e67bf3342eaf183694267450d49",
         "subject": "ci: give the integration job the retry script it invokes (#5284)",
@@ -467,22 +483,6 @@
         "subject": "feat(design-artifacts): publish the component record beside catalog.json (#5222)",
         "at": "2026-09-06T09:48:16+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "47af8806e6097a1819cf5bf09f7d557af293f599",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.84.0 (#5221)",
-        "at": "2026-09-06T08:41:42Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "86aa71305bd6892e0394f963141ecda26404566e",
-        "subject": "chore(main): release 1.84.0 (#5220)",
-        "at": "2026-09-06T08:58:39+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
