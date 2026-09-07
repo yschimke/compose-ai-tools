@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.glance.wear.GlanceWearWidget
 import androidx.glance.wear.WearWidgetBrush
 import androidx.glance.wear.WearWidgetData
@@ -56,6 +55,7 @@ fun ActivitySummaryWidgetContent() {
         RemoteRow(
           modifier = RemoteModifier.fillMaxWidth(),
           horizontalArrangement = RemoteArrangement.spacedBy(6.rdp),
+          verticalAlignment = RemoteAlignment.CenterVertically,
         ) {
           RemoteText(
             text = "8,412".rs,
@@ -90,6 +90,8 @@ class ActivitySummaryWidget : GlanceWearWidget() {
 
 @Preview(name = "Squircle Preview")
 @Composable
-fun ActivitySummaryWidgetSquirclePreview(
-  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams
-) = WearWidgetPreview(ActivitySummaryWidget(), params)
+fun ActivitySummaryWidgetSquirclePreview() =
+  WearWidgetPreview(
+    ActivitySummaryWidget(),
+    SquircleLargeWidgetPreviewParams().values.maxBy { it.widthDp },
+  )
