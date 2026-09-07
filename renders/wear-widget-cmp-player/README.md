@@ -3,7 +3,7 @@
 The four `:samples:wear-widget` previews that go through `CapturingWearWidgetPreview` drawn twice on
 this branch, from the **same captured `RemoteDocument`**, differing only in which player replays it:
 
-* `*-before.png` — `-PcomposePreview.wearWidgetPlayer=view`, upstream `WearWidgetPreview`'s
+* `*-before.png` — `-PcomposePreview.rcPlayer=view`, upstream `WearWidgetPreview`'s
   `AndroidView`-hosted `RemoteComposePlayer`. This is what every widget preview drew before this
   change.
 * `*-after.png` — the new default (`cmp`), the vendored embedded Compose player

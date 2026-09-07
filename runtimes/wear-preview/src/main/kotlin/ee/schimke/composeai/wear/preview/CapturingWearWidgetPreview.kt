@@ -44,10 +44,10 @@ import kotlinx.coroutines.runBlocking
  * The captured bytes are played by the Compose Multiplatform player ([WearWidgetPreviewPlayer.CMP])
  * — a widget composes into real Compose nodes rather than into one opaque `View`, which is what
  * stopped every widget preview reporting the same unlabelled `RemoteComposePlayer` accessibility
- * error (issue #5259). Select the View-backed lane with `-PcomposePreview.wearWidgetPlayer=view`
- * (or `-Dcomposeai.wear.widgetPlayer=view` on the render JVM); see [WearWidgetPreviewPlayer].
- * Either way the pixels are drawn from the *same* captured document, sized exactly as upstream
- * sizes it — the widget's footprint plus its container padding.
+ * error (issue #5259). Select the View-backed lane with `-PcomposePreview.rcPlayer=view` (or
+ * `-Dcomposeai.render.rcPlayer=view` on the render JVM); see [WearWidgetPreviewPlayer]. Either way
+ * the pixels are drawn from the *same* captured document, sized exactly as upstream sizes it — the
+ * widget's footprint plus its container padding.
  *
  * Where the embedded player is not on the render classpath, or the capture itself failed, this
  * falls back to the upstream [WearWidgetPreview] rather than failing the render — the same

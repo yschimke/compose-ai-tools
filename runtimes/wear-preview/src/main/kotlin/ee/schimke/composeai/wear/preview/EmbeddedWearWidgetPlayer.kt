@@ -6,12 +6,11 @@ import java.lang.reflect.Modifier
  * The lane [CapturingWearWidgetPreview] draws through in this JVM, resolved once.
  *
  * Read from the system property rather than passed in, because the choice is a property of the
- * *render*, not of any one preview: the Gradle plugin forwards
- * `-PcomposePreview.wearWidgetPlayer=…` onto the render / daemon JVM as
- * [WearWidgetPreviewPlayer.PROPERTY], and every widget preview in that JVM then draws through the
- * same player. Resolved lazily (not at class-init) so a host that sets the property
- * programmatically before the first render is still honoured, and once so a bad value is reported
- * once rather than once per composition.
+ * *render*, not of any one preview: the Gradle plugin forwards `-PcomposePreview.rcPlayer=…` onto
+ * the render / daemon JVM as [WearWidgetPreviewPlayer.PROPERTY], and every widget preview in that
+ * JVM then draws through the same player. Resolved lazily (not at class-init) so a host that sets
+ * the property programmatically before the first render is still honoured, and once so a bad value
+ * is reported once rather than once per composition.
  */
 internal val wearWidgetPreviewPlayer: WearWidgetPreviewPlayer by lazy {
   WearWidgetPreviewPlayer.resolve(System.getProperty(WearWidgetPreviewPlayer.PROPERTY))

@@ -19,10 +19,11 @@ package ee.schimke.composeai.wear.preview
  * hosting it. Under [CMP] there is no such view: the widget composes, and a document that carries a
  * root content description labels the player through it.
  *
- * Select the other lane per build with the `composeai.wear.widgetPlayer` system property
- * ([PROPERTY]), which the Gradle plugin wires from `-PcomposePreview.wearWidgetPlayer=view` onto
- * every render / daemon JVM. That is the escape hatch for a widget whose fidelity depends on the
- * framework `Canvas` — glyph hinting is the usual one — and for reproducing a pre-#5259 render.
+ * Select the other lane per build with the `composeai.render.rcPlayer` system property
+ * ([PROPERTY]), which the Gradle plugin wires from `-PcomposePreview.rcPlayer=view` onto every
+ * render / daemon JVM — the same knob that moves every other Remote Compose preview. That is the
+ * escape hatch for a widget whose fidelity depends on the framework `Canvas` — glyph hinting is the
+ * usual one — and for reproducing a pre-#5259 render.
  */
 enum class WearWidgetPreviewPlayer(
   /** Stable spelling of this lane, as the system property and the Gradle property take it. */
@@ -48,8 +49,17 @@ enum class WearWidgetPreviewPlayer(
   VIEW("view");
 
   companion object {
-    /** System property naming the lane, read once per render JVM. */
-    const val PROPERTY: String = "composeai.wear.widgetPlayer"
+    /**
+     * System property naming the player, read once per render JVM.
+     *
+     * Not Wear-specific: it is the **same** build-wide property every Remote Compose preview reads
+     * (`RemoteComposePlayerSelection.PROPERTY` in `:data-remotecompose-connector`), so one
+     * `-PcomposePreview.rcPlayer=view` moves widget previews and ordinary `RemotePreview` stickers
+     * together rather than leaving a consumer to discover a second knob. This module cannot depend
+     * on the connector — it is a standalone runtime with `compileOnly` alpha deps — so the name is
+     * spelled twice and pinned by a test on each side.
+     */
+    const val PROPERTY: String = "composeai.render.rcPlayer"
 
     /** The lane a preview draws through when nothing selects one. */
     val DEFAULT: WearWidgetPreviewPlayer = CMP
@@ -77,9 +87,9 @@ enum class WearWidgetPreviewPlayer(
      * The lane to draw through given [raw] — [DEFAULT] when it names none.
      *
      * An unrecognised value is reported on stderr rather than silently ignored: it is nearly always
-     * a typo in a `-PcomposePreview.wearWidgetPlayer=` invocation, and a silent fallback would draw
-     * the default lane while the author believes they pinned the other one. It is not fatal,
-     * because a preview render should not die over a player selection.
+     * a typo in a `-PcomposePreview.rcPlayer=` invocation, and a silent fallback would draw the
+     * default lane while the author believes they pinned the other one. It is not fatal, because a
+     * preview render should not die over a player selection.
      */
     fun resolve(raw: String?): WearWidgetPreviewPlayer {
       val selected = fromWire(raw)

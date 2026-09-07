@@ -48,7 +48,12 @@ class WearWidgetPreviewPlayerTest {
   }
 
   @Test
-  fun `the property is the one the Gradle plugin forwards`() {
-    assertThat(WearWidgetPreviewPlayer.PROPERTY).isEqualTo("composeai.wear.widgetPlayer")
+  fun `the property is the shared one the Gradle plugin forwards`() {
+    // Deliberately the same literal `RemoteComposePlayerSelection.PROPERTY` carries in
+    // `:data-remotecompose-connector`, which this module cannot depend on: one
+    // `-PcomposePreview.rcPlayer=view` has to move widget previews and ordinary Remote Compose
+    // previews together, so the two spellings are pinned on both sides rather than trusted to stay
+    // in step.
+    assertThat(WearWidgetPreviewPlayer.PROPERTY).isEqualTo("composeai.render.rcPlayer")
   }
 }

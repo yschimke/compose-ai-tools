@@ -2629,11 +2629,11 @@ internal object AndroidPreviewSupport {
         // `LinkBufferComposer` inside the Robolectric sandbox, so like the two above it has to be
         // forwarded onto the forked render JVM rather than resolved on the Gradle one.
         val linkBufferComposer = composeAiLinkBufferComposer(project, extension)
-        // Which Remote Compose player draws a Glance Wear widget preview (`cmp` by default, `view`
-        // for upstream's `AndroidView`-hosted player). Read by `WearWidgetPreviewPlayer` inside the
-        // Robolectric sandbox, so it is forwarded onto the forked render JVM rather than resolved
-        // on the Gradle one.
-        val wearWidgetPlayer = composeAiWearWidgetPlayer(project)
+        // Which player replays a Remote Compose preview's captured document (`cmp` by default,
+        // `view` for the `AndroidView`-hosted player). Read by `RemoteComposePlayerSelection`
+        // inside the Robolectric sandbox, so it is forwarded onto the forked render JVM rather
+        // than resolved on the Gradle one.
+        val rcPlayer = composeAiRcPlayer(project)
         // Static system properties (Robolectric modes + the path-bearing composeai.*
         // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
         // preview daemon can replay the same set when launching its own JVM. The
@@ -2650,7 +2650,7 @@ internal object AndroidPreviewSupport {
             hostTheme = hostTheme.get(),
             fixedTime = fixedTime.get(),
             linkBufferComposer = linkBufferComposer.get(),
-            wearWidgetPlayer = wearWidgetPlayer.get(),
+            rcPlayer = rcPlayer.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
@@ -3381,11 +3381,11 @@ internal object AndroidPreviewSupport {
     // clock-bearing screen would drift while the batch render stayed fixed.
     val daemonFixedTime = composeAiFixedTime(project, extension)
     val daemonLinkBufferComposer = composeAiLinkBufferComposer(project, extension)
-    // Which player draws a Glance Wear widget preview, forwarded for the same reason as the two
-    // above: `WearWidgetPreviewPlayer` reads it in the daemon JVM, so without this line the VS Code
-    // / MCP / a11y routes would keep drawing widgets on whichever player the daemon defaults to
-    // while a `-PcomposePreview.wearWidgetPlayer=view` batch render used the other one.
-    val daemonWearWidgetPlayer = composeAiWearWidgetPlayer(project)
+    // Which player replays a Remote Compose preview, forwarded for the same reason as the two
+    // above: `RemoteComposePlayerSelection` reads it in the daemon JVM, so without this line the VS
+    // Code / MCP / a11y routes would keep drawing on whichever player the daemon defaults to while
+    // a `-PcomposePreview.rcPlayer=view` batch render used the other one.
+    val daemonRcPlayer = composeAiRcPlayer(project)
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
     // mustn't capture `project`. The cheap-signal set used to be collected at task-action
     // time so newly-added subproject scripts were seen on the same run, but doing it
@@ -3559,7 +3559,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       this.systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
       this.systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
-      this.systemProperties.put("composeai.wear.widgetPlayer", daemonWearWidgetPlayer)
+      this.systemProperties.put("composeai.render.rcPlayer", daemonRcPlayer)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(
