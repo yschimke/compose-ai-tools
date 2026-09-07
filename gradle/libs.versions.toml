@@ -396,7 +396,7 @@ composeai-contracts = "2.11.0"
 # have moved off 3.2.0 even if something had wanted it to. compose-preview-server#449 made the
 # publish set derive from the modules that apply the publishing plugin, and #452's release published
 # the missing coordinate.
-composeai-preview-serve = "3.13.0"
+composeai-preview-serve = "3.16.0"
 
 # The compose-preview-server RELEASE the installed CLI fetches at run time — a different question
 # from the one above, which is why it is a different pin.
