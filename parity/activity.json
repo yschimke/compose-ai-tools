@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T10:05:31.304Z",
+  "generatedAt": "2026-09-07T10:57:45.517Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "ec07b7088240ebd25f75bce2ebce965f056c501b",
+        "subject": "ci: wait for released runtimes before building the CLI, and retry the snapshot publish (#5270)",
+        "at": "2026-09-07T11:50:22+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b58f31f0341099bf9be8a590ea32a6f6fd775313",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.2.0 (#5269)",
+        "at": "2026-09-07T10:49:27Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "377341df5800dcb89555a79a2a67a0a14ce2c732",
+        "subject": "chore(main): release 2.2.0 (#5260)",
+        "at": "2026-09-07T11:37:56+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1a76d42e945064707f19e357b5c58ee58e485d07",
+        "subject": "feat(remotecompose): make the render-time player configurable, CMP by default (#5263)",
+        "at": "2026-09-07T11:26:12+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d3d236261728eae1a45a82bcad739c9d70d740c8",
+        "subject": "fix(deps): update rc-players to 1.59.3 (#5267)",
+        "at": "2026-09-07T11:05:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c5f8141e173f3fac335a0f4571e4d30ea0098156",
         "subject": "chore(deps): update dependency yschimke/rc-players to v1.59.3 (#5268)",
@@ -442,46 +482,6 @@
         "sha": "e03d455f0d8ca159c318917212141ec382a6b91b",
         "subject": "test(wear-m3): render the UI builder's generated Wear screen for real (#5208)",
         "at": "2026-09-05T18:04:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "22e026a0677bdc701fc955f3dcd075aab975c5ed",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.81.0 (#5204)",
-        "at": "2026-09-05T16:10:04Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e9c4fcfd51455eca139530bfb143c96d89a71867",
-        "subject": "chore(main): release 1.81.0 (#5198)",
-        "at": "2026-09-05T16:59:14+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1a0e973740f53011e7b0e2a64e2560e6174804b0",
-        "subject": "feat(screen): let a generated screen carry an opt-in @Preview (#5203)",
-        "at": "2026-09-05T14:54:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9b686908774462061ea752947a2783212789aa21",
-        "subject": "chore(deps): pin the preview server to 3.2.0 (#5202)",
-        "at": "2026-09-05T14:53:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "36f3960635ff3fb88384719cf498ba40239a7f9c",
-        "subject": "feat(mcp): launch the MCP server instead of bundling it (#5200)",
-        "at": "2026-09-05T13:42:40+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
