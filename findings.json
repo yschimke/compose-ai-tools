@@ -3003,11 +3003,11 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview.a11y.png",
-      "cleanBasename": "",
+      "annotatedBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12.a11y.png",
+      "cleanBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,364,224",
+          "boundsInScreen": "0,0,432,248",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
