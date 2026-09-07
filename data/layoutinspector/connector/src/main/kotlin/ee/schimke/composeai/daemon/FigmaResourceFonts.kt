@@ -31,6 +31,34 @@ object FigmaResourceFonts {
   private val paths = ConcurrentHashMap<String, String>()
 
   /**
+   * Family-keyed registrations, scoped to the preview that made them.
+   *
+   * A `res/font/<resId>` handle names one concrete face and resolves to the same bytes for the life
+   * of the render JVM, so [paths] keeps those for the process. A FAMILY does not: which file
+   * `Roboto Flex` resolved to is a fact about one render, and the catalog's own documents disagree
+   * about it — a typography specimen declaring `wght`/`wdth` axes resolves the family's VARIABLE
+   * file, while a sticker that declares no axes resolves a static per-weight instance.
+   *
+   * Held process-wide, the specimen's registration outlived it and every later preview in the same
+   * catalog run embedded the variable file instead of the one it drew: 1.6 MB of `gvar` for a
+   * document that varies nothing, in an SVG that came to 4.4 MB. The recorder publishes during the
+   * render and the export reads at post-capture, so the window is a preview — the same window
+   * [FigmaSvgRenderedFonts] is already scoped to, and for the same reason.
+   */
+  private val previewPaths = ConcurrentHashMap<String, String>()
+
+  /**
+   * Drop the family-keyed registrations of the preview that just ended.
+   *
+   * Called as each preview starts composing, beside [FigmaSvgRenderedFonts.begin]. Resource-id
+   * registrations are deliberately kept: those are process facts, and re-extracting them per
+   * preview would cost a whole-catalog render the same work over and over for no gain.
+   */
+  fun beginPreview() {
+    previewPaths.clear()
+  }
+
+  /**
    * The captured identity for an Android font resource — matching what
    * `ComposeSemanticsDataProducer` writes into `typography.fontFamily` for a `ResourceFont`.
    */
@@ -57,7 +85,7 @@ object FigmaResourceFonts {
    */
   fun register(identity: String, weight: Int, italic: Boolean, path: String) {
     if (identity.isBlank() || path.isBlank()) return
-    paths[key(identity, weight, italic)] = path
+    previewPaths[key(identity, weight, italic)] = path
   }
 
   /** The registered file for [identity], or null when nothing recovered that face. */
@@ -69,7 +97,7 @@ object FigmaResourceFonts {
    * (`res/font/<resId>`) resolving through the same lookup.
    */
   fun pathFor(identity: String, weight: Int, italic: Boolean): String? =
-    paths[key(identity, weight, italic)] ?: paths[identity]
+    previewPaths[key(identity, weight, italic)] ?: paths[identity]
 
   /**
    * The CSS/Figma family declared inside one font file, or null when [bytes] are not a readable
@@ -113,6 +141,7 @@ object FigmaResourceFonts {
   /** Drop every registration. Tests only — production accumulates for the process's life. */
   fun clear() {
     paths.clear()
+    previewPaths.clear()
   }
 
   private const val NAME_ID_TYPOGRAPHIC_FAMILY = 16
