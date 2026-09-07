@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.2.0](https://github.com/yschimke/compose-ai-tools/compare/v2.1.1...v2.2.0) (2026-09-07)
+
+
+### Features
+
+* **cli:** compose-preview design, a launcher for the server's design command ([#5261](https://github.com/yschimke/compose-ai-tools/issues/5261)) ([c885e54](https://github.com/yschimke/compose-ai-tools/commit/c885e549e03565b3a497c224b1a910a6c4bcb465))
+* **remotecompose:** make the render-time player configurable, CMP by default ([#5263](https://github.com/yschimke/compose-ai-tools/issues/5263)) ([1a76d42](https://github.com/yschimke/compose-ai-tools/commit/1a76d42e945064707f19e357b5c58ee58e485d07))
+
+
+### Bug Fixes
+
+* **deps:** update compose-ai-tools to v2.11.0 ([#5264](https://github.com/yschimke/compose-ai-tools/issues/5264)) ([d1a9f22](https://github.com/yschimke/compose-ai-tools/commit/d1a9f22d419bde9d4b3be72ba185109e39b8c7da))
+* **deps:** update compose-preview-contracts to v2.11.0 ([#5265](https://github.com/yschimke/compose-ai-tools/issues/5265)) ([be6769f](https://github.com/yschimke/compose-ai-tools/commit/be6769fd8e8682b015b3295b8a1db48662b71a88))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.13.0 ([#5266](https://github.com/yschimke/compose-ai-tools/issues/5266)) ([04cb044](https://github.com/yschimke/compose-ai-tools/commit/04cb044a0da7d1c1d83204a0f7e31172133cea08))
+* **deps:** update rc-players to 1.59.3 ([#5267](https://github.com/yschimke/compose-ai-tools/issues/5267)) ([d3d2362](https://github.com/yschimke/compose-ai-tools/commit/d3d236261728eae1a45a82bcad739c9d70d740c8))
+* **samples:** regenerate the Wear widget fixture from the current generator ([#5258](https://github.com/yschimke/compose-ai-tools/issues/5258)) ([fe34afc](https://github.com/yschimke/compose-ai-tools/commit/fe34afcd3714cc081ca3f857d96e47c487be752f))
+
 ## [2.1.1](https://github.com/yschimke/compose-ai-tools/compare/v2.1.0...v2.1.1) (2026-09-06)
 
 
