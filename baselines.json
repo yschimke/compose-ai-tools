@@ -3532,7 +3532,7 @@
     "functionName": "ImageWidgetDeviceSpecPreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_0.png",
-    "sha256": "527cb5f5ae91920cf8b8f9d8efb98d876dd56fbc038225044d79398177d4d23e",
+    "sha256": "1cc565a20102da539ac67bd496c3aa886b174f17005c1cf6dc2c2dd3fdae7758",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec#1": {
@@ -3540,7 +3540,7 @@
     "functionName": "ImageWidgetDeviceSpecPreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_1.png",
-    "sha256": "18157bf2ac691afb492ab80e8b8e7963dabf76243f156a959b70a95a4c12b409",
+    "sha256": "23ef4065a2d337447f8e804d5673ed50ba0c7509f77a8b79963afa64a0a8c414",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed": {
@@ -3548,7 +3548,7 @@
     "functionName": "ImageWidgetFixedPreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png",
-    "sha256": "620361814e919be9403dc64e97f7c7eccf41e0c248cb047b76917e17d7bab378",
+    "sha256": "37c9334d30bc047c1ee504fbf4b07aae1d27290c9618a970db5d23b3d0d5e8b7",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large": {
@@ -3556,7 +3556,7 @@
     "functionName": "ImageWidgetSquircleLargePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_0.png",
-    "sha256": "527cb5f5ae91920cf8b8f9d8efb98d876dd56fbc038225044d79398177d4d23e",
+    "sha256": "1cc565a20102da539ac67bd496c3aa886b174f17005c1cf6dc2c2dd3fdae7758",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large#1": {
@@ -3564,7 +3564,7 @@
     "functionName": "ImageWidgetSquircleLargePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_1.png",
-    "sha256": "18157bf2ac691afb492ab80e8b8e7963dabf76243f156a959b70a95a4c12b409",
+    "sha256": "23ef4065a2d337447f8e804d5673ed50ba0c7509f77a8b79963afa64a0a8c414",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle": {
@@ -3572,7 +3572,7 @@
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_0.png",
-    "sha256": "a38e4a85a31c3a4e908b1c17743952ce1e8bd3afcc00b04c7a5e1c4bdec4d859",
+    "sha256": "65823bff918ab4b144c2ef6fcae93f413de3f61b5ac87dddee2e233c851231d4",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#1": {
@@ -3580,7 +3580,7 @@
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_1.png",
-    "sha256": "eac65001ae6d06e5a841859ca2c3962e9bb6e8d474ee5fec0bef2b3393649b09",
+    "sha256": "efbe15fb4a7e7d3a06fefb57fc49d29e48d2673c18f53773610cd8f39b89445a",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#2": {
@@ -3588,7 +3588,7 @@
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_2.png",
-    "sha256": "527cb5f5ae91920cf8b8f9d8efb98d876dd56fbc038225044d79398177d4d23e",
+    "sha256": "1cc565a20102da539ac67bd496c3aa886b174f17005c1cf6dc2c2dd3fdae7758",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#3": {
@@ -3596,7 +3596,7 @@
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_3.png",
-    "sha256": "18157bf2ac691afb492ab80e8b8e7963dabf76243f156a959b70a95a4c12b409",
+    "sha256": "23ef4065a2d337447f8e804d5673ed50ba0c7509f77a8b79963afa64a0a8c414",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear/activity__MainActivity": {
