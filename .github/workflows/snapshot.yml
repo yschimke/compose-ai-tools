@@ -72,7 +72,24 @@ jobs:
           # publish list that previously drifted out of sync (PR #724 added
           # `:data-a11y-hierarchy-android` here but missed adding it to this list, leaving
           # consumers' `renderer-android` POM resolution broken at snapshot time).
-          ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral
+          #
+          # RETRIED ONCE, and with a longer socket timeout than Gradle's 30s default. The upload is
+          # hundreds of POMs and jars over one connection to Sonatype, and a single "Read timed out"
+          # partway through fails the whole task and reds main for a reason that has nothing to do
+          # with the tree (runs 34106995040 and 34109570587). Re-publishing a -SNAPSHOT coordinate
+          # is idempotent — snapshots are overwritable by definition — so a retry costs time and
+          # nothing else. Two attempts, then the failure is real.
+          set -euo pipefail
+          publish() {
+            ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral \
+              -Dorg.gradle.internal.http.socketTimeout=120000 \
+              -Dorg.gradle.internal.http.connectionTimeout=60000
+          }
+          publish || {
+            echo "::warning title=Snapshot publish retry::The first publish attempt failed; retrying once before failing the job."
+            sleep 30
+            publish
+          }
           # Note: `--no-configuration-cache` is incompatible with
           # `org.gradle.unsafe.isolated-projects=true` set in gradle.properties
           # (Gradle fails with "Configuration Cache cannot be disabled when
