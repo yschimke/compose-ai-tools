@@ -287,6 +287,21 @@ jobs:
         # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
         # is inherited by every subsequent step in this job.
         run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
+      - name: Derive the core line's version
+        # CORE_LINE_VERSION is what every core module publishes at, and — crucially — what DATA
+        # POMs name for those coordinates even when the core line is NOT publishing. The mirror of
+        # the step below, and it was missing: core took the raw tag whatever the guard said, so a
+        # data-only release stamped a never-uploaded version onto every core module and the data
+        # POMs pinned it. v2.2.1 shipped `data-remotecompose-connector:2.2.1` requiring
+        # `daemon-core:2.2.1` with core held at 2.2.0, which resolves for nobody
+        # (yschimke/wear-m3-catalog#350).
+        env:
+          GUARD_CORE_LINE: ${{ needs.maven-publish-guard.outputs.maven_line }}
+        run: |
+          set -uo pipefail
+          # Empty means the guard never answered, and everything publishes at this release's
+          # version — the same direction the `if:` above takes on an empty verdict.
+          echo "CORE_LINE_VERSION=${GUARD_CORE_LINE:-${TAG_NAME#v}}" >> "$GITHUB_ENV"
       - name: Derive the data line's version
         # DATA_LINE_VERSION is what every `data/*` module publishes at, and — crucially — what
         # CORE POMs name for those coordinates even when the data line is NOT publishing. Set it

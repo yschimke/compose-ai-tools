@@ -144,26 +144,34 @@ internal fun Project.mavenTrain(): String =
 /**
  * The version this module publishes at.
  *
- * `core` takes `PLUGIN_VERSION` — the release tag — as it always has. `data` takes
- * `DATA_LINE_VERSION` when the release sets it, which is the last version at which the data train
- * actually changed. On a release where `data/` changed, the two are equal and this is a no-op; on
- * one where it did not, the data modules keep the version they already have on Central and are not
- * republished at all.
+ * Each train takes **its own line's** version — `CORE_LINE_VERSION` / `DATA_LINE_VERSION` — which
+ * is the release tag when that train publishes and the last version it actually reached Central at
+ * when it does not. On a release where both trains change the three values are equal and this is a
+ * no-op; on a split release they are not, and a module must carry the version its own line
+ * publishes at rather than the tag's.
  *
- * Cross-train POMs come out right for free: a `core` module depending on `project(":data:…")` gets
- * that project's `version`, so `renderer-desktop:2.9.0` names `data-focus-core:2.7.0` in its POM
- * and Gradle resolves the artifact that genuinely exists.
+ * Cross-train POMs then come out right in **both** directions, because a module depending on
+ * `project(":…")` across the trains gets that project's `version`: `renderer-desktop:2.9.0` names
+ * `data-focus-core:2.7.0`, and `data-remotecompose-connector:2.9.0` names `daemon-core:2.7.0`.
  *
- * **`DATA_LINE_VERSION` is ignored unless `PLUGIN_VERSION` is set.** Outside a release both are
- * absent and everything falls to the snapshot version; a stray `DATA_LINE_VERSION` in a developer
- * shell must not silently version half the build differently from the other half.
+ * Only the first direction used to hold. `core` took `PLUGIN_VERSION` — the raw tag — whether or
+ * not the core train published, so on a data-only release every core module carried a version that
+ * was never uploaded, and the data POMs naming those coordinates pinned it. That shipped in v2.2.1:
+ * `data-remotecompose-connector:2.2.1` requires `daemon-core:2.2.1`, core having stayed at 2.2.0,
+ * so the data line resolved for nobody and consumers bumping to it went red at dependency
+ * resolution (yschimke/wear-m3-catalog#350). A skipped train has to stop stamping its tag onto the
+ * one that shipped.
+ *
+ * **Both line versions are ignored unless `PLUGIN_VERSION` is set.** Outside a release all three
+ * are absent and everything falls to the snapshot version; a stray `CORE_LINE_VERSION` in a
+ * developer shell must not silently version half the build differently from the other half.
  */
 private fun Project.publishedVersion(): String {
   val pluginVersion =
     providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
       ?: return nextPatchSnapshotVersion()
-  if (mavenTrain() != "data") return pluginVersion
-  return providers.environmentVariable("DATA_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
+  val lineVariable = if (mavenTrain() == "data") "DATA_LINE_VERSION" else "CORE_LINE_VERSION"
+  return providers.environmentVariable(lineVariable).orNull?.takeIf { it.isNotBlank() }
     ?: pluginVersion
 }
 

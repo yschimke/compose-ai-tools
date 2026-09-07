@@ -371,12 +371,14 @@ module, exactly one always changed as a unit.
      line. `all` remains the default, so the guard's current behaviour is untouched. Shared build
      inputs are deliberately **not** split by the train filter: `build-logic/` or the wrapper can
      move the bytes of every module on either line, so they publish both.
-   - `ComposeAiMavenPublishingPlugin` gives a module under `data/` the `DATA_LINE_VERSION` the
-     release sets, and everything else `PLUGIN_VERSION` as before. `mavenTrain()` derives the
-     train from the module's directory — one definition, shared with the task list below, so the
-     two can never disagree about a module. `DATA_LINE_VERSION` is ignored unless `PLUGIN_VERSION`
-     is also set, so a stray value in a developer shell cannot version half a build differently
-     from the other half.
+   - `ComposeAiMavenPublishingPlugin` gives every module **its own line's** version — a module
+     under `data/` the `DATA_LINE_VERSION` the release sets, everything else the
+     `CORE_LINE_VERSION` — falling back to `PLUGIN_VERSION` when the release names neither (a
+     snapshot publishes both trains at one version). `mavenTrain()` derives the train from the
+     module's directory — one definition, shared with the task list below, so the two can never
+     disagree about a module. Both line versions are ignored unless `PLUGIN_VERSION` is also set,
+     so a stray value in a developer shell cannot version half a build differently from the other
+     half.
    - `./gradlew printPublishTasks -Ptrain=<train>` prints the publish task path for each module on
      a train. Needed because the skipped train's tasks must be absent from the invocation entirely
      — its modules are already on Central at the version they carry, and Central refuses a version
@@ -388,11 +390,22 @@ module, exactly one always changed as a unit.
      that silently omits them is a release publishing everything except the plugin consumers
      apply.
 
-   **Cross-train POMs need no machinery at all.** A core module depending on `project(":data:…")`
-   picks up that project's `version`, so with `PLUGIN_VERSION=2.9.0 DATA_LINE_VERSION=2.7.0` the
-   generated `render-host` POM reads `2.9.0` for itself and `2.7.0` for `data-remotecompose-core`.
-   That is the whole of the "no train publishes a POM naming a sibling version that does not
-   exist" requirement, discharged by Gradle.
+   **Cross-train POMs need no machinery at all** — *provided every train reads its own line's
+   version.* A module depending on `project(":…")` across the trains picks up that project's
+   `version`, so with `CORE_LINE_VERSION=2.9.0 DATA_LINE_VERSION=2.7.0` the generated `render-host`
+   POM reads `2.9.0` for itself and `2.7.0` for `data-remotecompose-core`. That is the whole of the
+   "no train publishes a POM naming a sibling version that does not exist" requirement, discharged
+   by Gradle.
+
+   The proviso is load-bearing and was missed the first time. Core took `PLUGIN_VERSION` — the raw
+   tag — rather than its own line's version, which is identical whenever core publishes and wrong
+   whenever it does not: on a data-only release every core module carried a version that was never
+   uploaded, and the data POMs naming those coordinates pinned it. v2.2.1 shipped
+   `data-remotecompose-connector:2.2.1` requiring `daemon-core:2.2.1` with core held at 2.2.0, so
+   the data line resolved for nobody and a consumer bumping to it went red at dependency resolution
+   ([wear-m3-catalog#350](https://github.com/yschimke/wear-m3-catalog/pull/350)). The symmetry is
+   the invariant: **a skipped train must not stamp its tag onto the one that shipped**, in either
+   direction.
 
    Inert today: nothing sets `DATA_LINE_VERSION`, nothing consumes `printPublishTasks`, and the
    guard is still asked `--train all`.
@@ -408,10 +421,13 @@ module, exactly one always changed as a unit.
    - **both lines publishing is byte-for-byte the command it has always run.** The generated task
      list is used only on a split release. Keeping the common path unchanged means the split
      cannot regress an ordinary release.
-   - `DATA_LINE_VERSION` is exported **unconditionally**, not only when data is skipped. It is
-     what core POMs name for `data-*` coordinates, so on a release where data does not publish it
-     is the only thing keeping `renderer-desktop`'s POM pointed at a version that exists. When
-     data does publish it equals `PLUGIN_VERSION` and setting it is a no-op.
+   - both `CORE_LINE_VERSION` and `DATA_LINE_VERSION` are exported **unconditionally**, not only
+     when their train is skipped. Each is what the *other* train's POMs name for that line's
+     coordinates, so on a release where one line does not publish it is the only thing keeping the
+     other's POMs pointed at a version that exists — `renderer-desktop` naming `data-*` one way,
+     `data-remotecompose-connector` naming `daemon-core` the other. When a line does publish, its
+     value equals `PLUGIN_VERSION` and setting it is a no-op. Exporting only the data half is what
+     let v2.2.1 publish a data line pinning a `daemon-core` that was never uploaded.
    - an empty task list is a hard failure. `./gradlew` with no tasks runs `help` and exits 0 —
      the v1.56.0 failure mode, a green job that published nothing — and the guard having said
      this line changed means an empty list is a broken enumeration, not an empty train.
