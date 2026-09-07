@@ -158,7 +158,22 @@ object ComposeFigmaSvgDataProducer {
         deviceBackground = background,
         backgroundMode = mode,
       )
-    val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
+    // The face the render actually drew for text that states no family of its own. The export used
+    // to hardcode [DEFAULT_EMBED_FAMILY] here and then compare that guess against what the render
+    // recorded — manufacturing its own mismatch and boxing the whole document whenever the two
+    // differed. When the render drew exactly ONE family, that is by construction what the
+    // family-less runs drew, so it is the answer rather than something to guess at.
+    //
+    // A singleton is the whole of the claim. Two or more recorded families means some run drew one
+    // and some another, and nothing here can say which is which — the guard is then right to fire.
+    // The recorded name is already the clean CSS family (`Roboto Flex`): it is read out of the
+    // face's own bytes by `FigmaResourceFonts.familyName`, never from the document, so a player's
+    // resolution namespace (`google:` / `device:`) cannot leak into a `font-family`.
+    val recordedFamily = FigmaSvgRenderedFonts.singleRenderedFamily()
+    val defaultFamily = recordedFamily ?: DEFAULT_EMBED_FAMILY
+    val fonts = fontResolver?.let {
+      resolveFonts(model, it, fileSystem, recordedFamily, defaultFamily)
+    }
     // Everything this export can put a real name to: the faces it embedded, the captured→emitted
     // family map, and the families named straight on a `<text>` when nothing was embedded.
     val named = buildSet {
@@ -198,7 +213,7 @@ object ComposeFigmaSvgDataProducer {
         else ->
           FigmaLayeredSvg.render(
             model,
-            FigmaLayeredSvg.Options(defaultFontFamily = DEFAULT_EMBED_FAMILY),
+            FigmaLayeredSvg.Options(defaultFontFamily = defaultFamily),
             fonts.faces,
             fonts.familyOverrides,
           )
@@ -309,11 +324,17 @@ object ComposeFigmaSvgDataProducer {
     model: FigmaSvgModel,
     resolver: FigmaFontResolver,
     fileSystem: FileSystem,
+    recordedFamily: String?,
+    defaultFamily: String,
   ): FontPlan {
     val faces = LinkedHashMap<String, FigmaSvgFontFace>()
     val overrides = HashMap<String, String>()
     fun add(captured: String?, weight: Int, italic: Boolean, codePoints: Set<Int>) {
-      val fontPath = captured?.let { fontFilePath(it, weight, italic, fileSystem) }
+      // A family-less run looks the face up under [recordedFamily] — the render published its file
+      // there — so it embeds the exact bytes that were drawn rather than re-fetching a woff2 by
+      // name, which is the same reason the captured-family path consults the registry (#2906).
+      val lookupFamily = captured ?: recordedFamily
+      val fontPath = lookupFamily?.let { fontFilePath(it, weight, italic, fileSystem) }
       if (fontPath != null) {
         // Subset to a stable base charset (printable ASCII) plus whatever this face actually draws,
         // so every Latin sticker asks for the *same* subset — computed once, cached process-wide,
@@ -358,12 +379,14 @@ object ComposeFigmaSvgDataProducer {
                 .also { fontFaceCache[cacheKey] = it }
             }
         faces["${face.family}|$weight|$italic|${face.format}"] = face
-        overrides[captured] = face.family
+        if (captured != null) overrides[captured] = face.family
         return
       }
       // A meaningful generic (serif/monospace) maps to a concrete embeddable family; a bare
       // cursive/fantasy has none, so skip embedding and let the text fall back to the generic.
-      val name = FigmaLayeredSvg.embedFamily(captured, DEFAULT_EMBED_FAMILY) ?: return
+      val name =
+        if (captured == null) defaultFamily
+        else FigmaLayeredSvg.embedFamily(captured, DEFAULT_EMBED_FAMILY) ?: return
       val bytes = resolver.woff2(name, weight, italic)
       if (bytes == null) {
         // Fail loud: embedding was asked for (a resolver is present) but this concrete face didn't

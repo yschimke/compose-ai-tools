@@ -229,4 +229,75 @@ class FigmaSvgTofuFallbackTest {
         .contains(TofuFont.FAMILY),
     )
   }
+
+  @Test
+  fun `a family-less run is named the one family the render recorded`() {
+    // The `remote-m3` shape: the document declares `google:Roboto Flex`, the embedded player
+    // resolves it to a file, the capture cannot name that file's face — and the export used to
+    // fill the gap with its own hardcoded default, then box the document for disagreeing with the
+    // record it had in hand all along.
+    FigmaSvgRenderedFonts.record("Roboto Flex")
+    val resolver = FigmaFontResolver { family, weight, italic ->
+      if (family == "Roboto Flex" && weight == 500 && !italic) byteArrayOf(1, 2, 3) else null
+    }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "recorded-default",
+      layout = layout(),
+      semantics = payload(),
+      fontResolver = resolver,
+    )
+
+    val svg =
+      dir.resolve("recorded-default").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("the recorded face must be named, got:\n$svg", svg.contains("Roboto Flex"))
+    assertFalse("nothing was lost, so no boxes", svg.contains(TofuFont.FAMILY))
+    assertFalse(
+      "the hardcoded default must not stand in for a face the render named",
+      svg.contains("font-family=\"${ComposeFigmaSvgDataProducer.DEFAULT_EMBED_FAMILY},"),
+    )
+    assertFalse("nothing was lost, so no warning", warnings("recorded-default").exists())
+  }
+
+  @Test
+  fun `two recorded families leave a family-less run to the guard`() {
+    // Ambiguous by construction: some run drew Karla and some drew Orbitron, and a node carrying
+    // no family cannot say which. Guessing either would be the original defect with a new default,
+    // so the export must keep boxing rather than pick.
+    FigmaSvgRenderedFonts.record("Karla")
+    FigmaSvgRenderedFonts.record("Orbitron")
+    val resolver = FigmaFontResolver { _, _, _ -> byteArrayOf(1, 2, 3) }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "ambiguous",
+      layout = layout(),
+      semantics = payload(),
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("ambiguous").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("an unresolvable family-less run must still box", svg.contains(TofuFont.FAMILY))
+    assertTrue("and must still say what it lost", warnings("ambiguous").exists())
+  }
+
+  @Test
+  fun `a recorded face the resolver cannot supply still boxes`() {
+    // Naming a face the SVG carries no `@font-face` for is the wrong-and-plausible failure the
+    // guard exists to prevent, so the default only applies when the face can actually be embedded.
+    FigmaSvgRenderedFonts.record("Orbitron")
+    val resolver = FigmaFontResolver { _, _, _ -> null }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "unembeddable",
+      layout = layout(),
+      semantics = payload(),
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("unembeddable").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("a face that cannot be embedded must still box", svg.contains(TofuFont.FAMILY))
+  }
 }
