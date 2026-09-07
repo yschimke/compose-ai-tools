@@ -3520,19 +3520,11 @@
     "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt"
   },
   "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview": {
-    "captureLabel": "parameter 0",
+    "captureLabel": "",
     "functionName": "ActivitySummaryWidgetSquirclePreview",
     "module": "samples:wear-widget",
-    "renderBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_0.png",
-    "sha256": "68efbfea977d48ae94b9b13bcd567617196d4b870de81bf6c22337c36bc7d798",
-    "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt"
-  },
-  "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview#1": {
-    "captureLabel": "parameter 1",
-    "functionName": "ActivitySummaryWidgetSquirclePreview",
-    "module": "samples:wear-widget",
-    "renderBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12_PARAM_1.png",
-    "sha256": "3bb1204fec09ba51b3492a7bba7cbb7c79c3a75e76c107d22aec91890cd2ea48",
+    "renderBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12.png",
+    "sha256": "24a88dc8ce211539eded5f7c223cae1050c9ab511091453da3651837f68f5b49",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec": {
