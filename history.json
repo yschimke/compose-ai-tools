@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "4e417d3ddd00ad2dd169dd40dbc694efea537674",
+    "generatedFrom": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -7576,6 +7576,13 @@
             "path": "renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_0.png",
             "versions": [
                 {
+                    "blob": "182fd9091439da969a5c05376424ddaf97fa2fb9",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
+                {
                     "blob": "520a0deb482a2fffb19e4fc1e683c64aa96691f2",
                     "commit": "cda7bf632876c7b95788c55615f3e19cde8a0770",
                     "date": "2026-09-06T10:51:46Z",
@@ -7583,13 +7590,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetDeviceSpecPreview_Image Widget Device Spec#1": {
             "path": "renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_1.png",
             "versions": [
+                {
+                    "blob": "edb0c8549591763fbb482186f210f726e5e7ecd1",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "17f0d783e1d0ebeac8f1dbeb3a36fce0840b7e64",
                     "commit": "cda7bf632876c7b95788c55615f3e19cde8a0770",
@@ -7598,13 +7612,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed": {
             "path": "renders/samples:wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png",
             "versions": [
+                {
+                    "blob": "ed9210ee575bdd556bc6ec2eb70ac5bdf9bf7d22",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "3468434b4ee4e50caa53c0de9fe71aa79a02eb5c",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7613,13 +7634,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large": {
             "path": "renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_0.png",
             "versions": [
+                {
+                    "blob": "182fd9091439da969a5c05376424ddaf97fa2fb9",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "520a0deb482a2fffb19e4fc1e683c64aa96691f2",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7628,13 +7656,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large#1": {
             "path": "renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large-3af652d3_PARAM_1.png",
             "versions": [
+                {
+                    "blob": "edb0c8549591763fbb482186f210f726e5e7ecd1",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "17f0d783e1d0ebeac8f1dbeb3a36fce0840b7e64",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7643,13 +7678,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle": {
             "path": "renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_0.png",
             "versions": [
+                {
+                    "blob": "86fc8cb11c69bc4c99280a1d3cdfc7f2f7e40e05",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "bd66b2d42bd6b3f3104b8503691acee73ae6dae7",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7658,13 +7700,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#1": {
             "path": "renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_1.png",
             "versions": [
+                {
+                    "blob": "fac93998ac5d721e8858885599a2fd3fc45f0901",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "323b7a720e70abe12cdf3341786528960e09324b",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7673,13 +7722,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#2": {
             "path": "renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_2.png",
             "versions": [
+                {
+                    "blob": "182fd9091439da969a5c05376424ddaf97fa2fb9",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "520a0deb482a2fffb19e4fc1e683c64aa96691f2",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7688,13 +7744,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#3": {
             "path": "renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle-a5e42be2_PARAM_3.png",
             "versions": [
+                {
+                    "blob": "edb0c8549591763fbb482186f210f726e5e7ecd1",
+                    "commit": "4c7b981eac6faacfc9258aedb39a64d21fc4e966",
+                    "date": "2026-09-07T11:06:11Z",
+                    "sourceSha": "ec07b708",
+                    "commits": 1
+                },
                 {
                     "blob": "17f0d783e1d0ebeac8f1dbeb3a36fce0840b7e64",
                     "commit": "9b299ea4bd914cf32ef0241133345f8f44e491a1",
@@ -7703,7 +7766,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
