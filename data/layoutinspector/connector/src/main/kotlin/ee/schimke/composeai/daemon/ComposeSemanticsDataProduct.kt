@@ -746,9 +746,10 @@ object ComposeSemanticsDataProducer {
   /**
    * Stable identity for a resolved [Font]: a downloadable face's Google-Fonts name, then the
    * [system family][deviceFontFamilyName] a `DeviceFontFamilyName` face names, then the platform
-   * font's `identity` (a file path / declared name on desktop), falling back to `res/font/<id>` for
-   * an Android `ResourceFont`. Every one of those getters lives on a platform-specific subtype (and
-   * the device-family one on a *private* class), so they are read reflectively. Null when none
+   * font's `identity` (a file path / declared name on desktop), then the [file][fileFontPath] an
+   * Android file-backed face was built from, falling back to `res/font/<id>` for an Android
+   * `ResourceFont`. Every one of those getters lives on a platform-specific subtype (and the
+   * device-family one on a *private* class), so they are read reflectively. Null when none
    * resolves.
    */
   private fun fontIdentity(font: Font): String? =
@@ -764,6 +765,7 @@ object ComposeSemanticsDataProducer {
         // A vendored desktop GoogleFont face carries the `Font(GoogleFont("X", …))` label as its
         // identity; surface the clean display name so the figma-svg names the family, not the blob.
         ?.let { googleFontNameFromIdentity(it) ?: it }
+      ?: fileFontPath(font)
       ?: runCatching {
         font.javaClass.methods
           .firstOrNull { it.name == "getResId" && it.parameterCount == 0 }
@@ -771,6 +773,43 @@ object ComposeSemanticsDataProducer {
       }
         .getOrNull()
         ?.let { "res/font/$it" }
+
+  /**
+   * The absolute path of the font file an Android **file-backed** face was built from (`Font(File,
+   * …)` → `AndroidFileFont`), or null for any other face.
+   *
+   * `identity` above is a *desktop* concept: `AndroidFileFont` declares `getFile()` and
+   * `getCacheKey()` and nothing else, so every branch before this one misses and a file-backed face
+   * reached the capture with **no family at all**. That is not a cosmetic gap. The embedded Remote
+   * Compose player resolves a `google:` family straight to a cached file whenever the render was
+   * given a font cache (`GoogleFontFamilies` in `rc-embedded-player`, which is the only path that
+   * can apply variation axes), so on that lane every text run lost its family, the export fell
+   * through to `FigmaLayeredSvg.embedFamily(null, …)` and named the default `Roboto` — while the
+   * render's own recorder published the real family off the same bytes. `FigmaSvgRenderedFonts`
+   * then compared `Roboto Flex` against `Roboto`, correctly concluded a face had been lost, and
+   * boxed every text run in the document as `ComposeAI Missing Font` — which is what put the whole
+   * of `remote-m3`'s published comparison wall in tofu.
+   *
+   * A **path** rather than a name, matching what desktop's `identity` already yields for a
+   * file-backed face and what [FigmaResourceFonts] documents as this face's captured identity: the
+   * export resolves it through `ComposeFigmaSvgDataProducer.fontFilePath`, embeds those exact
+   * bytes, and names the `@font-face` from the file's own typographic family via
+   * [FigmaResourceFonts.familyName] — the same function `FontResolverRecorder` names it by. Both
+   * sides therefore derive the family from one set of bytes through one parser, which is what keeps
+   * the audit from disagreeing with itself (the shape issue #4935 settled for the recorder half).
+   *
+   * Existence is checked here rather than at the export: a face whose cache entry has since been
+   * swept is better reported as unstated (the export names a generic and the audit fires) than as a
+   * path that resolves to nothing.
+   */
+  private fun fileFontPath(font: Font): String? = runCatching {
+    font.javaClass.methods
+      .firstOrNull { it.name == "getFile" && it.parameterCount == 0 }
+      ?.invoke(font) as? java.io.File
+  }
+    .getOrNull()
+    ?.takeIf { runCatching { it.isFile }.getOrDefault(false) }
+    ?.absolutePath
 
   /** The alignment names the export knows how to act on; anything else is dropped, not guessed. */
   private val WIRE_TEXT_ALIGNS = setOf("left", "right", "center", "justify", "start", "end")
