@@ -134,7 +134,7 @@ The CLI ([cli/](../cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code e
 
 ### The launcher checks the JVM the server will run on
 
-`serve`, `browse`, `ui-builder` and `mcp serve` exec a start script, and a Gradle start script
+`serve`, `browse`, `ui-builder`, `design` and `mcp serve` exec a start script, and a Gradle start script
 resolves `java` from `JAVA_HOME`/`PATH` — it does **not** inherit the CLI's JVM. So the JVM that
 loads the server's classes is one neither repository picked, and on a host below the server's floor
 the user got an `UnsupportedClassVersionError` from a process they did not know existed:
