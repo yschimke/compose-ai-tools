@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/yschimke/compose-ai-tools/compare/v2.2.1...v2.2.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* give the core train its own line version, not the release tag ([#5277](https://github.com/yschimke/compose-ai-tools/issues/5277)) ([604ff1f](https://github.com/yschimke/compose-ai-tools/commit/604ff1f51726eff0ce74c6aaf1a9a89ccb7b333f))
+
 ## [2.2.1](https://github.com/yschimke/compose-ai-tools/compare/v2.2.0...v2.2.1) (2026-09-07)
 
 
