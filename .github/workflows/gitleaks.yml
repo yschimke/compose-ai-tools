@@ -28,6 +28,6 @@ jobs:
           # Full history so gitleaks can scan every reachable commit on main.
           fetch-depth: 0
           persist-credentials: false
-      - uses: gacts/gitleaks@c9a0338361dc45a01aa7ebaaa5330179f3c62873 # v1.3.2
+      - uses: gacts/gitleaks@4fd785dcdaf557fda64e05b0ae033b8f7d82fb81 # v1.3.3
         with:
           version: 8.30.1
