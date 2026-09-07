@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-07T18:58:21.017Z",
+  "generatedAt": "2026-09-07T20:37:27.994Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "4c0ddde791d00d399e87feba1284436feea99e9c",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.2.2 (#5280)",
+        "at": "2026-09-07T21:17:38+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "279169d4aacc51bd0c4f7a7003f9d7dc1507c332",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.16.0 (#5281)",
+        "at": "2026-09-07T21:17:27+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "52d758e032950ef47954e6ffcb2f8e0d8927ef2a",
+        "subject": "chore(main): release 2.2.2 (#5278)",
+        "at": "2026-09-07T20:59:17+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "604ff1f51726eff0ce74c6aaf1a9a89ccb7b333f",
+        "subject": "fix: give the core train its own line version, not the release tag (#5277)",
+        "at": "2026-09-07T20:52:43+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5d5688d4462fd02380d4ff9355a979d45d97c018",
+        "subject": "ci: retry external-consumer Gradle runs on a transient repository 403 (#5276)",
+        "at": "2026-09-07T20:09:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "a980b5e6c5ec23632f2a1b05796471b4e917f2fc",
         "subject": "chore(ci): update the design-artifacts export driver to v2.2.1 (#5275)",
@@ -443,46 +483,6 @@
         "subject": "chore(main): release 1.83.0 (#5215)",
         "at": "2026-09-05T23:10:08+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d333109e97ff2d622590a0e9dc3f7a7a91dc1d56",
-        "subject": "feat(screen): let a slot's children be declared through its receiver's DSL (#5216)",
-        "at": "2026-09-05T23:00:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "26608e78bc12c930ff03d09075f74ec2f7185656",
-        "subject": "feat(design-artifacts): check that parity locators still name a cell the catalog draws (#5214)",
-        "at": "2026-09-05T21:00:28+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0c3c6527974bfa62b9f7d2ce23a7bd2e2a8f930e",
-        "subject": "chore(ci): update the design-artifacts export driver to v1.82.0 (#5213)",
-        "at": "2026-09-05T19:05:59Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bf54588b24f2d800e6bec4d724626c918d382cc2",
-        "subject": "chore(main): release 1.82.0 (#5209)",
-        "at": "2026-09-05T19:27:53+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b8c8e5778d997589ec477099681c51fb18b7e6d8",
-        "subject": "feat(screen): express a scoped modifier, so a layout weight is generable (#5212)",
-        "at": "2026-09-05T19:19:15+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
