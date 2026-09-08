@@ -139,6 +139,12 @@ CURL_OK=false run central
 logged central "PATCH" && fail "a release whose plugin is not on Central must stay a draft"
 
 # 5. Assets missing means the build never finished — rebuild it for the tag rather than publish.
+#    No ${DISPATCHES} fixture is set, so this is also the "no recovery run has ever been
+#    dispatched" case, and it is the one that caught `date -u -d ""` reading an empty timestamp as
+#    midnight today rather than failing: the sweeper saw a phantom recovery <minutes since UTC
+#    midnight> old and sat inside its own cooldown. That made both assertions below — and the real
+#    sweeper — fail for the first RECOVERY_COOLDOWN_MINUTES of every UTC day. Keep this case
+#    fixture-less; its independence from the wall clock is the assertion.
 fixture "${ASSETS}" '[{"name":"compose-preview-1.78.0.zip"}]'
 run rebuild
 [[ $status -eq 0 ]] || fail "dispatching a rebuild should exit 0"
