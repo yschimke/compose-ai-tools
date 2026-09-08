@@ -1,0 +1,310 @@
+package ee.schimke.composeai.discovery
+
+import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.json.Json
+import org.junit.Test
+
+/**
+ * The generator that turns a discovered record, a cover sheet and an authored policy into the
+ * `ui-builder.json` a catalog repository publishes.
+ *
+ * The interesting half is the diagnostics. A builder catalog is data now, so the two questions
+ * somebody asks of a shelf — "why is this component not on it" and "why is all of it placeholders"
+ * — have to be answerable from the published artifact by a person who was not watching the build.
+ */
+class UiBuilderCatalogsTest {
+
+  private val cover = UiBuilderCatalogs.CoverSheet(system = "wear-m3", title = "Wear M3")
+
+  private fun policy(
+    platform: String = "wear",
+    platformLabel: String? = null,
+    builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
+    code: UiBuilderCode? = null,
+  ) =
+    UiBuilderPolicyFile(
+      schema = UI_BUILDER_POLICY_SCHEMA,
+      platform = platform,
+      platformLabel = platformLabel,
+      builtins = builtins,
+      code = code,
+    )
+
+  private fun record(vararg components: ComponentRecord) =
+    ComponentRecordFile(module = ":catalog", variant = "debug", components = components.toList())
+
+  private fun component(
+    name: String,
+    catalogId: String? = null,
+    builder: BuilderPolicy? = null,
+    parameters: List<TargetParameter> = emptyList(),
+    signatureKnown: Boolean = true,
+  ) =
+    ComponentRecord(
+      canonicalId = ":catalog/androidx.wear.compose.material3.${name}Kt.$name",
+      componentIds = listOfNotNull(catalogId),
+      symbol =
+        ComponentSymbol(
+          jvmOwner = "androidx.wear.compose.material3.${name}Kt",
+          callable = "androidx.wear.compose.material3.$name",
+          name = name,
+          origin = ComponentOrigin.LIBRARY,
+        ),
+      parameters = parameters,
+      slots = ComponentRecords.slotsOf(parameters),
+      signatureKnown = signatureKnown,
+      builder = builder,
+    )
+
+  @Test
+  fun `a catalog that authors no policy publishes no builder file`() {
+    // What makes this contract cost nothing for the catalogs that have not adopted it: the task
+    // runs for every module and writes this file for almost none of them.
+    assertThat(UiBuilderCatalogs.generate(record(), cover, policy = null)).isNull()
+  }
+
+  @Test
+  fun `identity comes from the cover sheet and the policy, with the label defaulted`() {
+    val generated = UiBuilderCatalogs.generate(record(), cover, policy())!!
+
+    assertThat(generated.schema).isEqualTo(UI_BUILDER_CATALOG_SCHEMA)
+    assertThat(generated.catalog.id).isEqualTo("wear-m3")
+    assertThat(generated.catalog.title).isEqualTo("Wear M3")
+    assertThat(generated.catalog.platform).isEqualTo("wear")
+    assertThat(generated.catalog.platformLabel).isEqualTo("Wear")
+    assertThat(generated.statusSemantics.platformLabel).isEqualTo("Wear")
+  }
+
+  @Test
+  fun `a builder id is derived from the catalog identity and overridden by the annotation`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            catalogId = "Toggles/CheckboxButton",
+            builder = BuilderPolicy(canvas = "placeholder"),
+          ),
+          component("EdgeButton", builder = BuilderPolicy(id = "wear-m3/edge", canvas = "p")),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.statusSemantics.components.keys)
+      .containsExactly("wear-m3/checkbox-button", "wear-m3/edge")
+    // The join back to the record is the load-bearing field: this file is policy, and the record
+    // beside it is the inventory.
+    assertThat(generated.statusSemantics.components["wear-m3/checkbox-button"]?.record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CheckboxButtonKt.CheckboxButton")
+  }
+
+  @Test
+  fun `the slug keeps a run of capitals as one word`() {
+    assertThat(UiBuilderCatalogs.slug("CheckboxButton")).isEqualTo("checkbox-button")
+    assertThat(UiBuilderCatalogs.slug("TopAppBar")).isEqualTo("top-app-bar")
+    assertThat(UiBuilderCatalogs.slug("RTLText")).isEqualTo("rtl-text")
+    assertThat(UiBuilderCatalogs.slug("Button2")).isEqualTo("button2")
+    assertThat(UiBuilderCatalogs.slug("Screen Scaffold")).isEqualTo("screen-scaffold")
+  }
+
+  @Test
+  fun `two components claiming one builder id keep the first and report the collision`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Button", builder = BuilderPolicy(id = "wear-m3/button", canvas = "p")),
+          component("FilledButton", builder = BuilderPolicy(id = "wear-m3/button", canvas = "p")),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.statusSemantics.components).hasSize(1)
+    val collision =
+      generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.ID_COLLISION }
+    assertThat(collision.subject).isEqualTo("wear-m3/button")
+    assertThat(collision.message).contains("FilledButton")
+  }
+
+  @Test
+  fun `an unclaimed canvas adapter is reported without being an error`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy())),
+        cover,
+        policy(),
+      )!!
+
+    // Placeholder is the honest default and needs no fixing. It is reported so that a shelf drawn
+    // entirely in placeholders is visible rather than mysterious.
+    assertThat(generated.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.CANVAS_UNCLAIMED)
+    assertThat(generated.statusSemantics.components).hasSize(1)
+  }
+
+  @Test
+  fun `a state callback naming a parameter the component does not take is reported`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters = listOf(parameter("checked")),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks =
+                  listOf(
+                    BuilderPair("onCheckedChange", "checked:boolean"),
+                    BuilderPair("onSelectedChange", "selected:boolean"),
+                  ),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_UNKNOWN
+      }
+    assertThat(reported.subject).endsWith("onSelectedChange")
+    // The claim the record CAN check. Unchecked, a misspelt state is invisible until an export
+    // silently stops hoisting a `remember` and somebody ships a picture of a checkbox.
+    assertThat(reported.message).contains("'selected'")
+  }
+
+  @Test
+  fun `nothing is checked against a signature that was never recovered`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            signatureKnown = false,
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+                slots = listOf(BuilderPair("content", "Content")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    // "No parameters" and "we could not look" are different facts, and checking against the second
+    // would report every entry of a correct policy as wrong.
+    assertThat(generated.diagnostics.map { it.code })
+      .containsNoneOf(
+        UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_UNKNOWN,
+        UiBuilderCatalogs.Diagnostics.SLOT_UNKNOWN,
+      )
+  }
+
+  @Test
+  fun `a builtin must name a structural role and must not shadow a record component`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "wear-m3/screen-scaffold" to UiBuilderBuiltin(role = "screen-root"),
+              "wear-m3/mystery" to UiBuilderBuiltin(role = "carousel"),
+              "wear-m3/card" to UiBuilderBuiltin(role = "list"),
+            )
+        ),
+      )!!
+
+    val codes = generated.diagnostics.map { it.code to it.subject }
+    assertThat(codes)
+      .contains(UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN to "wear-m3/mystery")
+    // A builtin is for a component with no call site. One that has a call site belongs in the
+    // record, with its policy on the sticker — otherwise this file is the second inventory the
+    // whole contract exists to avoid.
+    assertThat(codes)
+      .contains(UiBuilderCatalogs.Diagnostics.BUILTIN_SHADOWS_RECORD to "wear-m3/card")
+    assertThat(codes.map { it.first })
+      .doesNotContain(
+        UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN to "wear-m3/screen-scaffold"
+      )
+  }
+
+  @Test
+  fun `templates and the strategy have to agree`() {
+    val declaredButUnused =
+      UiBuilderCatalogs.generate(
+        record(),
+        cover,
+        policy(code = UiBuilderCode(strategy = "record", templates = mapOf("list" to "…"))),
+      )!!
+    assertThat(declaredButUnused.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.TEMPLATES_WITHOUT_STRATEGY)
+
+    val claimedButAbsent =
+      UiBuilderCatalogs.generate(
+        record(),
+        cover,
+        policy(code = UiBuilderCode(strategy = "templates")),
+      )!!
+    assertThat(claimedButAbsent.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.STRATEGY_WITHOUT_TEMPLATES)
+
+    val unknownRole =
+      UiBuilderCatalogs.generate(
+        record(),
+        cover,
+        policy(
+          code =
+            UiBuilderCode(
+              strategy = "templates",
+              templates = mapOf("screen-root" to "…", "previews" to "…", "carousel" to "…"),
+            )
+        ),
+      )!!
+    assertThat(
+        unknownRole.diagnostics.filter {
+          it.code == UiBuilderCatalogs.Diagnostics.TEMPLATE_ROLE_UNKNOWN
+        }
+      )
+      .hasSize(1)
+  }
+
+  @Test
+  fun `the generated file round-trips through JSON`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            catalogId = "Toggles/CheckboxButton",
+            parameters = listOf(parameter("checked")),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                starter = listOf(BuilderPair("label", "Checkbox")),
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+                traits = listOf("Action"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val json = Json { ignoreUnknownKeys = true }
+    val text = json.encodeToString(generated)
+    assertThat(json.decodeFromString<UiBuilderCatalogFile>(text)).isEqualTo(generated)
+    // The record it was generated against, so a consumer can tell the two files are a pair.
+    assertThat(generated.record.file).isEqualTo(UI_BUILDER_RECORD_FILE)
+    assertThat(generated.record.components).isEqualTo(1)
+  }
+
+  private fun parameter(name: String) =
+    TargetParameter(name = name, type = "kotlin.Boolean", hasDefault = true)
+}

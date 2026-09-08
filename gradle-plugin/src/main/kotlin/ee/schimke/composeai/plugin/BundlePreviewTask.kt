@@ -10,6 +10,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -339,6 +340,21 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val dataExtensionFiles: ConfigurableFileCollection
 
   /** Output `.png` polyglot file. */
+  /**
+   * `ui-builder.policy.json` candidates, most specific first: the module's own, then the repository
+   * root's. A file collection rather than an optional `@InputFile` for the reason
+   * `DiscoverPreviewsTask` uses one — "no policy" is the ordinary case, and an `@InputFile` that
+   * does not exist fails the build.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderPolicyCandidates: ConfigurableFileCollection
+
+  /** `catalog.spec.json` candidates, in the same order and for the same reason. */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val catalogSpecCandidates: ConfigurableFileCollection
+
   @get:OutputFile abstract val output: RegularFileProperty
 
   @TaskAction
@@ -663,6 +679,11 @@ abstract class BundlePreviewTask : DefaultTask() {
             ComponentRecordFile.serializer(),
             ComponentRecords.from(filteredManifest),
           ),
+        // Generated here rather than copied out of `build/compose-previews/`, and from the SAME
+        // filtered record, so a policy entry in the bundle always names a component the bundle
+        // carries. A copy would be the producer's full-module catalog inside a filtered bundle,
+        // which is the kind of quiet mismatch a consumer has no way to notice.
+        uiBuilderJson = uiBuilderJsonFor(ComponentRecords.from(filteredManifest)),
         appJar = appJarBytes,
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
@@ -1550,6 +1571,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     bundleJson: String,
     previewsJson: String,
     componentsJson: String,
+    uiBuilderJson: String?,
     appJar: ByteArray,
     inlinedProjectJars: Map<String, File>,
     report: String,
@@ -1569,6 +1591,11 @@ abstract class BundlePreviewTask : DefaultTask() {
       // existed in the producer's build directory would be unreachable to exactly the readers the
       // wire contract names.
       zip.writeFile("components.json", componentsJson.toByteArray(Charsets.UTF_8))
+      // `ui-builder.json` beside it, when this module authors a builder policy. Absent for every
+      // module that does not, which is almost all of them: a bundle entry that is not there is how
+      // a consumer is told there is no builder catalog, rather than by an empty one it has to
+      // recognise.
+      uiBuilderJson?.let { zip.writeFile("ui-builder.json", it.toByteArray(Charsets.UTF_8)) }
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // Renderer-named APNG/GIF siblings consumed by catalog motion publishing and bundle readers.
@@ -1798,6 +1825,46 @@ abstract class BundlePreviewTask : DefaultTask() {
       baos.toByteArray()
     }
   }
+
+  /**
+   * The module's builder catalog as JSON, or null when it authors no `ui-builder.policy.json`.
+   *
+   * Shares [DiscoverPreviewsTask]'s reader policy for the same reasons: lenient about unknown keys,
+   * because neither authored file is a contract this task owns, and silent about a malformed one
+   * beyond a warning, because a bundle that failed to pack over a typo in a file no renderer reads
+   * would be a poor trade.
+   */
+  private fun uiBuilderJsonFor(record: ComponentRecordFile): String? {
+    val policyFile = uiBuilderPolicyCandidates.files.firstOrNull { it.isFile } ?: return null
+    val lenient = Json { ignoreUnknownKeys = true }
+    val policy = runCatching {
+      lenient.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
+    }
+      .getOrElse { failure ->
+        logger.warn(
+          "composePreview: ${policyFile.path} could not be read " +
+            "(${failure.message ?: failure::class.simpleName}); the bundle carries no " +
+            "ui-builder.json."
+        )
+        return null
+      }
+    val spec =
+      catalogSpecCandidates.files
+        .firstOrNull { it.isFile }
+        ?.let {
+          runCatching { lenient.decodeFromString<BundleCoverSheet>(it.readText()) }.getOrNull()
+        }
+    val cover =
+      UiBuilderCatalogs.CoverSheet(
+        system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),
+        title = spec?.title ?: policy.catalogId ?: record.module,
+      )
+    val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return null
+    return JSON.encodeToString(UiBuilderCatalogFile.serializer(), catalog)
+  }
+
+  /** The two `catalog.spec.json` fields a builder catalog wants; the rest is the pipeline's. */
+  @Serializable private data class BundleCoverSheet(val system: String, val title: String)
 }
 
 /**

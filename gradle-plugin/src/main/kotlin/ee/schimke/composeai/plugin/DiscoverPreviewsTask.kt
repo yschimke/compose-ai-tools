@@ -1,7 +1,10 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.ComponentRecordFile
 import ee.schimke.composeai.discovery.ComponentRecords
 import ee.schimke.composeai.discovery.PreviewDiscovery
+import ee.schimke.composeai.discovery.UiBuilderCatalogs
+import ee.schimke.composeai.discovery.UiBuilderPolicyFile
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
@@ -135,6 +138,40 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:OutputFile abstract val componentsFile: RegularFileProperty
 
   /**
+   * `ui-builder.policy.json` candidates, most specific first: the module's own, then the repository
+   * root's. The first that exists wins.
+   *
+   * A **file collection** rather than two optional `@InputFile`s because an `@InputFile` pointing
+   * at a file that does not exist fails the build, and "no policy" is the ordinary case — every
+   * module that is not a design catalog, and every design catalog that has not adopted the builder
+   * contract. A collection simply does not contain what is not there.
+   *
+   * Two locations because both shapes exist in the wild: wear-m3-catalog keeps one
+   * `catalog.spec.json` at its root for `:catalog` and a second inside `remote-catalog/` for the
+   * module that publishes a different system, and the policy has to be findable beside either.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderPolicyCandidates: ConfigurableFileCollection
+
+  /** `catalog.spec.json` candidates, in the same order and for the same reason. */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val catalogSpecCandidates: ConfigurableFileCollection
+
+  /**
+   * `ui-builder.json` — the builder catalog this module publishes, or nothing when it authors no
+   * policy.
+   *
+   * Declared for the reason [componentsFile] is: this task is `@CacheableTask` and Gradle restores
+   * only declared outputs, so an undeclared write would be missing on a cache hit while the task
+   * still reported success. A module with no policy has the file deleted rather than left stale —
+   * removing `ui-builder.policy.json` has to remove the catalog it produced, or the build keeps
+   * publishing a description nobody authored any more.
+   */
+  @get:OutputFile abstract val uiBuilderFile: RegularFileProperty
+
+  /**
    * Subdirectory for Lottie capture `renderOutput` paths (see
    * [PreviewDiscovery.Input.lottieRenderSubdir]). Defaults to `"renders"`; the Android task sets a
    * disjoint dir so its JVM Lottie render doesn't share the `renders/` output with the Robolectric
@@ -200,6 +237,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     encodeDefaults = true
   }
 
+  /**
+   * The reader for the two files the catalog repository authors, as opposed to the writer for the
+   * files this task produces.
+   *
+   * `ignoreUnknownKeys` because both are contracts this task does not own: `catalog.spec.json`
+   * belongs to the design-artifacts pipeline and has a large schema, and `ui-builder.policy.json`
+   * will grow fields a plugin released today has never heard of. Refusing either over a key this
+   * task never reads would make every additive change to those schemas a plugin release.
+   */
+  private val lenientJson = Json { ignoreUnknownKeys = true }
+
   @TaskAction
   fun discover() {
     // Union the directory-scan candidates ([classDirs]) with the scoped PROJECT
@@ -251,6 +299,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         val componentsOut = componentsFile.get().asFile
         componentsOut.parentFile.mkdirs()
         componentsOut.writeText(json.encodeToString(ComponentRecords.from(outcome.manifest)))
+        writeUiBuilderCatalog(ComponentRecords.from(outcome.manifest))
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }
       is PreviewDiscovery.Outcome.Failure -> {
@@ -264,4 +313,66 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       }
     }
   }
+
+  /**
+   * Write `ui-builder.json` beside the record, or remove a stale one.
+   *
+   * The generator is [UiBuilderCatalogs.generate], which lives in the shared `screen/generator`
+   * source so the same code runs here, in a test, and in the browser. Nothing about it is
+   * Gradle-shaped; this method's whole job is finding the two authored files and reporting what
+   * happened.
+   *
+   * **Never fails the build.** A malformed policy costs the builder catalog and a warning, not the
+   * discovery run: `previews.json` and `components.json` are what every other consumer of this task
+   * is waiting for, and a render lane stopped by a typo in a file it does not read would be a poor
+   * trade. The generator's own findings travel *inside* the published file as `diagnostics`, where
+   * a person who was not watching this build can still read them.
+   */
+  private fun writeUiBuilderCatalog(record: ComponentRecordFile) {
+    val out = uiBuilderFile.get().asFile
+    val policyFile = uiBuilderPolicyCandidates.files.firstOrNull { it.isFile }
+    if (policyFile == null) {
+      // Removing the policy has to remove the catalog it produced. A stale file would keep being
+      // published, and would describe a catalog nobody authors any more.
+      if (out.exists()) out.delete()
+      return
+    }
+    val policy = runCatching {
+      lenientJson.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
+    }
+      .getOrElse { failure ->
+        logger.warn(
+          "composePreview: ${policyFile.path} could not be read " +
+            "(${failure.message ?: failure::class.simpleName}); no ui-builder.json written."
+        )
+        if (out.exists()) out.delete()
+        return
+      }
+    val specFile = catalogSpecCandidates.files.firstOrNull { it.isFile }
+    val spec = specFile?.let {
+      runCatching { lenientJson.decodeFromString<CatalogCoverSheet>(it.readText()) }.getOrNull()
+    }
+    // A policy with no readable cover sheet still publishes: `system` and `title` are the only two
+    // fields wanted from it, the policy can name the id itself, and a catalog with no title is
+    // worth more than no catalog at all.
+    val cover =
+      UiBuilderCatalogs.CoverSheet(
+        system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),
+        title = spec?.title ?: policy.catalogId ?: record.module,
+      )
+    val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return
+    out.parentFile.mkdirs()
+    out.writeText(json.encodeToString(catalog))
+    val unresolved = catalog.diagnostics.size
+    logger.lifecycle(
+      "composePreview: wrote ${out.name} for ${catalog.catalog.id} " +
+        "(platform ${catalog.catalog.platform}, " +
+        "${catalog.statusSemantics.components.size} component policies, " +
+        "${catalog.statusSemantics.builtins.size} builtins, $unresolved diagnostic(s))"
+    )
+  }
+
+  /** The two `catalog.spec.json` fields a builder catalog wants; the rest is the pipeline's. */
+  @kotlinx.serialization.Serializable
+  private data class CatalogCoverSheet(val system: String, val title: String)
 }

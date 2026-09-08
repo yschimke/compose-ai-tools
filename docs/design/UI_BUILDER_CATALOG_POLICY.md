@@ -154,8 +154,9 @@ and the VS Code extension reading through one of those. So:
 - [x] `@BuilderComponent` in `preview-annotations`, read by `PreviewDiscovery` into `BuilderPolicy`
       and carried onto `ComponentRecord.builder`.
 - [x] `ui-builder.policy.schema.json` — what the catalog repositories author against.
-- [ ] The generator (record + cover sheet + policy → `ui-builder.json`) in the discovery task.
-- [ ] `catalog-ui-builder.mjs`: publish it to the branch root, stamp `uiBuilderFile`.
+- [x] The generator (record + cover sheet + policy → `ui-builder.json`) in the discovery task and
+      in the bundle, written to `build/compose-previews/ui-builder.json`.
+- [x] `catalog-ui-builder.mjs`: publish it to the branch root, stamp `uiBuilderFile`.
 - [ ] The structural template engine in `screen/generator`, beside `ScreenGenerator`.
 - [ ] Typed fields on `CatalogCapabilityV1` in compose-preview-contracts (not on the critical path;
       `statusSemantics` carries them until then).
