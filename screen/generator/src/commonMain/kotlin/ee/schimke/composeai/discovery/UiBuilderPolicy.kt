@@ -53,6 +53,17 @@ data class UiBuilderPolicyFile(
   val schema: String,
   /** The id the builder authors against; defaults to `catalog.spec.json`'s `system`. */
   val catalogId: String? = null,
+  /**
+   * What a derived builder id is prefixed with, when it is not `<catalogId>/`.
+   *
+   * A component's builder id is the string a saved design stores in every node, so it is derived
+   * rather than authored per component — but the derivation has to be able to produce the ids
+   * designs *already* store. m3-catalog's are `m3/button` and `m3/card`, not `m3-catalog/button`:
+   * the catalog is named for the repository and the components for the library, and no rename can
+   * reconcile that without invalidating every saved design. An explicit `@BuilderComponent(id = …)`
+   * still wins over this.
+   */
+  val componentIdPrefix: String? = null,
   /** The platform word. Equality is compatibility; there is no enum. */
   val platform: String,
   /** What the New design chooser prints over the group; defaults to [platform] title-cased. */

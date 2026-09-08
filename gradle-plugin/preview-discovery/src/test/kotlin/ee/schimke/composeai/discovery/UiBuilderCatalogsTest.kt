@@ -21,6 +21,7 @@ class UiBuilderCatalogsTest {
     platformLabel: String? = null,
     builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
     code: UiBuilderCode? = null,
+    componentIdPrefix: String? = null,
   ) =
     UiBuilderPolicyFile(
       schema = UI_BUILDER_POLICY_SCHEMA,
@@ -28,6 +29,7 @@ class UiBuilderCatalogsTest {
       platformLabel = platformLabel,
       builtins = builtins,
       code = code,
+      componentIdPrefix = componentIdPrefix,
     )
 
   private fun record(vararg components: ComponentRecord) =
@@ -97,6 +99,24 @@ class UiBuilderCatalogsTest {
     // beside it is the inventory.
     assertThat(generated.statusSemantics.components["wear-m3/checkbox-button"]?.record)
       .isEqualTo(":catalog/androidx.wear.compose.material3.CheckboxButtonKt.CheckboxButton")
+  }
+
+  @Test
+  fun `a declared component id prefix produces the ids designs already store`() {
+    // m3-catalog's components are `m3/button`, not `m3-catalog/button`: the catalog is named for
+    // the repository and the components for the library, and no rename reconciles that without
+    // invalidating every saved design. So the prefix is declared rather than derived from the id.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Button", catalogId = "Buttons/Filled", builder = BuilderPolicy(canvas = "p"))
+        ),
+        UiBuilderCatalogs.CoverSheet(system = "m3-catalog", title = "Material 3"),
+        policy(platform = "mobile", componentIdPrefix = "m3/"),
+      )!!
+
+    assertThat(generated.catalog.id).isEqualTo("m3-catalog")
+    assertThat(generated.statusSemantics.components.keys).containsExactly("m3/filled")
   }
 
   @Test
@@ -303,6 +323,88 @@ class UiBuilderCatalogsTest {
     // The record it was generated against, so a consumer can tell the two files are a pair.
     assertThat(generated.record.file).isEqualTo(UI_BUILDER_RECORD_FILE)
     assertThat(generated.record.components).isEqualTo(1)
+  }
+
+  @Test
+  fun `a policy file as a catalog repository actually writes it decodes`() {
+    // Shaped after wear-m3-catalog's own `ui-builder.policy.json`, and here rather than in that
+    // repository because this is where the reader lives. Two things it pins that a
+    // model-constructed test cannot:
+    //
+    //   - `$comment` keys. A policy file is read far more often than written, so it carries prose,
+    //     and `ignoreUnknownKeys` has to cover the nested objects too — but NOT inside `builtins`,
+    //     whose values are typed, where a comment entry would decode as a builtin with no role.
+    //     The convention that keeps both true is a `$comment_<field>` key beside the field.
+    //   - `frame`, kept as a raw JsonElement, carrying a geometry block with numbers and prose in
+    //     it that this generator deliberately does not parse.
+    val text =
+      """
+      {
+        "${'$'}schema": "https://example/ui-builder.policy.schema.json",
+        "${'$'}comment": "Catalog-level policy; per-component policy is @BuilderComponent.",
+        "schema": "compose-ui-builder-policy/v1",
+        "${'$'}comment_catalogId": "The delivery system is wear-m3-catalog; designs store wear-m3.",
+        "catalogId": "wear-m3",
+        "platform": "wear",
+        "platformLabel": "Wear",
+        "previewSurfaces": {
+          "wasm": { "fidelity": "approximate", "reason": "cannot link an Android AAR" },
+          "native": { "fidelity": "authoritative", "backend": "android" }
+        },
+        "frame": {
+          "adapter": "frame/round-screen",
+          "${'$'}comment_seedDevice": "the first documented breakpoint",
+          "seedDevice": "id:wearos_small_round",
+          "geometry": {
+            "${'$'}comment": "written by ScreenScaffoldContentPaddingTest, never by hand",
+            "contentPadding": [ { "screenDp": 192, "horizontalDp": 10, "verticalDp": 20 } ]
+          }
+        },
+        "${'$'}comment_builtins": "the only components this file may declare",
+        "builtins": {
+          "wear-m3/screen-scaffold": {
+            "role": "screen-root",
+            "displayName": "Screen",
+            "group": "Layout",
+            "canvas": "frame/round-screen",
+            "slots": { "content": { "required": true, "role": "list" } }
+          }
+        },
+        "menu": {
+          "${'$'}comment": "the catalog's own @CatalogGroup sections, in reaching order",
+          "groupOrder": ["Layout", "Navigation", "Actions"]
+        },
+        "${'$'}comment_code": "no templates until the engine that runs them exists"
+      }
+      """
+        .trimIndent()
+
+    val policy = Json { ignoreUnknownKeys = true }.decodeFromString<UiBuilderPolicyFile>(text)
+
+    assertThat(policy.catalogId).isEqualTo("wear-m3")
+    assertThat(policy.platform).isEqualTo("wear")
+    assertThat(policy.builtins.keys).containsExactly("wear-m3/screen-scaffold")
+    assertThat(policy.builtins.getValue("wear-m3/screen-scaffold").role).isEqualTo("screen-root")
+    assertThat(policy.menu?.groupOrder).containsExactly("Layout", "Navigation", "Actions").inOrder()
+    assertThat(policy.code).isNull()
+
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        cover,
+        policy,
+      )!!
+
+    // The declared id wins over the cover sheet's `system`, and the frame rides through verbatim.
+    assertThat(generated.catalog.id).isEqualTo("wear-m3")
+    assertThat(generated.statusSemantics.frame).isEqualTo(policy.frame)
+    assertThat(generated.statusSemantics.builtins).isEqualTo(policy.builtins)
+    assertThat(generated.diagnostics.map { it.code })
+      .containsNoneOf(
+        UiBuilderCatalogs.Diagnostics.POLICY_SCHEMA_UNKNOWN,
+        UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN,
+        UiBuilderCatalogs.Diagnostics.BUILTIN_SHADOWS_RECORD,
+      )
   }
 
   private fun parameter(name: String) =

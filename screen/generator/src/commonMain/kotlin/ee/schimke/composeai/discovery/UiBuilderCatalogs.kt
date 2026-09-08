@@ -213,17 +213,18 @@ object UiBuilderCatalogs {
         )
     }
     val catalogId = policy.catalogId?.takeIf { it.isNotBlank() } ?: cover.system
+    val idPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() } ?: "$catalogId/"
     val platformLabel =
       policy.platformLabel?.takeIf { it.isNotBlank() } ?: titleCase(policy.platform)
 
     validateCode(policy, diagnostics)
-    validateBuiltins(policy, record, catalogId, diagnostics)
+    validateBuiltins(policy, record, idPrefix, diagnostics)
 
     val components = linkedMapOf<String, UiBuilderComponentPolicy>()
     val menuEntries = linkedMapOf<String, UiBuilderMenuEntry>()
     for (component in record.components) {
       val builder = component.builder ?: continue
-      val builderId = builderIdFor(catalogId, component, builder)
+      val builderId = builderIdFor(idPrefix, component, builder)
       val existing = components[builderId]
       if (existing != null) {
         diagnostics +=
@@ -281,15 +282,15 @@ object UiBuilderCatalogs {
   }
 
   /**
-   * The builder id for a record component: the annotation's, else `<catalogId>/<slug>` of the
-   * catalog identity, else of the symbol's own name.
+   * The builder id for a record component: the annotation's, else [prefix] plus a slug of the
+   * catalog identity's last segment, else of the symbol's own name.
    *
    * Derived rather than required so the common case costs nothing, and overridable because a
    * published design stores this string: a component renamed in the catalog can keep the id designs
    * already reference.
    */
   internal fun builderIdFor(
-    catalogId: String,
+    prefix: String,
     component: ComponentRecord,
     builder: BuilderPolicy,
   ): String {
@@ -301,7 +302,7 @@ object UiBuilderCatalogs {
     val leaf =
       component.componentIds.firstOrNull()?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
         ?: component.symbol.name
-    return "$catalogId/${slug(leaf)}"
+    return "$prefix${slug(leaf)}"
   }
 
   /**
@@ -470,13 +471,13 @@ object UiBuilderCatalogs {
   private fun validateBuiltins(
     policy: UiBuilderPolicyFile,
     record: ComponentRecordFile,
-    catalogId: String,
+    idPrefix: String,
     into: MutableList<UiBuilderDiagnostic>,
   ) {
     val recordIds =
       record.components
         .mapNotNull { component ->
-          component.builder?.let { builderIdFor(catalogId, component, it) }
+          component.builder?.let { builderIdFor(idPrefix, component, it) }
         }
         .toSet()
     for ((id, builtin) in policy.builtins) {

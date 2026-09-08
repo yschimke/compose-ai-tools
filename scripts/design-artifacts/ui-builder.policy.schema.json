@@ -6,6 +6,12 @@
   "type": "object",
   "required": ["schema", "platform"],
   "additionalProperties": false,
+  "patternProperties": {
+    "^\\$comment": {
+      "type": "string",
+      "description": "Prose for a reader, ignored by every consumer. Several are allowed and are named for what they explain ($comment_catalogId, $comment_code) because a policy file is read far more often than it is written, and one comment field for a document with this many decisions in it forces them into a paragraph nobody finishes."
+    }
+  },
   "properties": {
     "$schema": { "type": "string" },
     "$comment": { "type": "string" },
@@ -17,6 +23,11 @@
       "type": "string",
       "minLength": 1,
       "description": "The id the builder authors against, and the id a saved design pins. Defaults to catalog.spec.json's `system`, which is the right answer whenever the builder catalog and the served catalog are the same thing — and under this contract they are, by construction. Override only to keep an id designs already store after the delivery system is renamed."
+    },
+    "componentIdPrefix": {
+      "type": "string",
+      "description": "What a derived builder id is prefixed with, when it is not `<catalogId>/`. A component's builder id is the string a saved design stores in every node, so it is derived rather than authored per component — but the derivation has to be able to produce the ids designs ALREADY store. m3-catalog's are `m3/button`, `m3/card`, not `m3-catalog/button`: the catalog is named for the repository and the components for the library. An explicit `@BuilderComponent(id = …)` still wins over this.",
+      "pattern": "^[a-z0-9][a-z0-9-]*/$"
     },
     "platform": {
       "type": "string",
@@ -55,6 +66,7 @@
       "type": "object",
       "description": "The screen frame the canvas draws this catalog's designs inside.",
       "additionalProperties": false,
+      "patternProperties": { "^\\$comment": { "type": "string" } },
       "required": ["adapter"],
       "properties": {
         "adapter": {
@@ -175,6 +187,7 @@
     "menu": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": { "^\\$comment": { "type": "string" } },
       "description": "How the builder shelves this catalog in its insert panel. The shelves themselves come from `@CatalogGroup`; only their ORDER is authored, because alphabetical is wrong and no annotation on one component can state a total order over all of them.",
       "properties": {
         "groupOrder": {
