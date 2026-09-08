@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.3.0](https://github.com/yschimke/compose-ai-tools/compare/v2.2.4...v2.3.0) (2026-09-08)
+
+
+### Features
+
+* let a Remote Compose capture defer density to the player ([#5296](https://github.com/yschimke/compose-ai-tools/issues/5296)) ([ede31f6](https://github.com/yschimke/compose-ai-tools/commit/ede31f6127f8298b29a2cfba5ee3d5e974099853))
+
+
+### Bug Fixes
+
+* carry the figma-svg font warning and refuse to publish boxes ([#5292](https://github.com/yschimke/compose-ai-tools/issues/5292)) ([9037f0c](https://github.com/yschimke/compose-ai-tools/commit/9037f0c3ffe72e61598e2470d6bc3db3c01db276))
+* **ci:** treat an absent recovery timestamp as unknown, not as midnight ([#5294](https://github.com/yschimke/compose-ai-tools/issues/5294)) ([a575154](https://github.com/yschimke/compose-ai-tools/commit/a575154149bd95d84935bdf5ba3c1e48ab40e647))
+* clear every Kotlin compile warning in the build ([#5293](https://github.com/yschimke/compose-ai-tools/issues/5293)) ([f37fe3e](https://github.com/yschimke/compose-ai-tools/commit/f37fe3e40099be7a0df1f8cae0a869b8696884ee))
+* track rc-players 1.59.4 for the font-scale fix ([#5298](https://github.com/yschimke/compose-ai-tools/issues/5298)) ([42efc71](https://github.com/yschimke/compose-ai-tools/commit/42efc710cbc73b15a5f5a7531a8567b556d7d82a))
+
 ## [2.2.4](https://github.com/yschimke/compose-ai-tools/compare/v2.2.3...v2.2.4) (2026-09-07)
 
 
