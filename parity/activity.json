@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-08T07:52:46.267Z",
+  "generatedAt": "2026-09-08T11:50:10.267Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "fe96bac2def567d25bcb0a07094ed17462979f2f",
+        "subject": "chore(deps): update dependency yschimke/rc-players to v1.60.0 (#5306)",
+        "at": "2026-09-08T12:39:55+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "31c13de0e891b06376b90cf4f34bafb709e144a1",
+        "subject": "fix(deps): update dependency io.github.classgraph:classgraph to v4.8.195 (#5304)",
+        "at": "2026-09-08T12:39:26+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "dfd90e5d853fc8204e7804c0746e64ceb312ab40",
+        "subject": "test: pin the capture's non-linear sp-to-px font scale curve (#5301)",
+        "at": "2026-09-08T08:57:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "50c086c5601bce832ebd77c49630109bdf00a589",
         "subject": "chore(main): release 2.3.0 (#5297)",
@@ -459,30 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v2 (#5239)",
         "at": "2026-09-06T16:31:05+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7026c5f7c5a26c2c066cd960cfcc8b317c1747b7",
-        "subject": "docs: correct the versioning policy — patch for fixes, frozen major (#5241)",
-        "at": "2026-09-06T16:30:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9c568c2f4029cd77a3cb8e55935e039f5b5be11b",
-        "subject": "fix(scroll): stop LONG repeating top-pinned chrome at every seam (#5236)",
-        "at": "2026-09-06T16:18:19+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e23d67be62fc7322b50f5012303769443ad4cd54",
-        "subject": "chore(main): release 2.0.0 (#5226)",
-        "at": "2026-09-06T15:53:44+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
