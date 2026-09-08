@@ -44,7 +44,26 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 public enum class RcPlayerBackend(
   /** Stable wire id — the `rcPlayer=` query value and the `/api/previews` capability spelling. */
   public val wire: String,
-  /** Short human label for the selector chip. */
+  /**
+   * Short human label for the selector chip — and the **only** place these lanes are named
+   * accurately, because [wire] cannot be.
+   *
+   * The wire ids grew a `cmp-` prefix that spans two unrelated implementations, so reading one and
+   * inferring what drew the pixels is a trap:
+   * * `cmp-android` and `cmp-jvm` are the vendored **AndroidX embedded** player
+   *   (`third-party-rc-embedded-player`, upstream's `player-compose-embedded`), Android and
+   *   desktop-JVM cuts of one codebase. Neither is "the CMP player on Android/JVM".
+   * * `cmp-wasm` **is** the CMP player — `rc-player-compose`, a different codebase with its own
+   *   runtime — running in the browser. It is the only `cmp-` lane the prefix is true of.
+   * * `js` is the vendored TypeScript player from `camaelon/remotecompose-experiments`, which the
+   *   name says nothing about.
+   * * `java` is the `AndroidView`-hosted `RemoteComposePlayer` from `remote-player-view`.
+   *
+   * [wire] stays frozen regardless: it is in published `?rcPlayer=` links, `capturePlayer`
+   * sidecars, `data-rc-baked-player` attributes and `rc-compare` columns, so correcting it would
+   * break a bookmark to make a point. The label is what a human reads, so the label is what gets to
+   * be right.
+   */
   public val label: String,
   /**
    * The daemon player kind a **server-side** backend renders through, or null for the lanes that
@@ -75,29 +94,37 @@ public enum class RcPlayerBackend(
    */
   public val rcCompareLane: String?,
 ) {
-  JS("js", "JS", playerKind = null, clientSide = true, rcCompareLane = "js"),
+  // The labels name the IMPLEMENTATION that draws; the wire ids are frozen history. See the note on
+  // [label] for why the two disagree and why the wire ids cannot be corrected.
+  JS("js", "Camaelon JS", playerKind = null, clientSide = true, rcCompareLane = "js"),
   CMP_WASM(
     "cmp-wasm",
-    "CMP Wasm",
+    "rc-player Wasm",
     playerKind = null,
     clientSide = true,
     rcCompareLane = "cmp-wasm",
   ),
   JAVA(
     "java",
-    "Java",
+    "AndroidX View",
     playerKind = RemoteComposePlayerKind.VIEW,
     clientSide = false,
     rcCompareLane = null,
   ),
   CMP_ANDROID(
     "cmp-android",
-    "CMP Android",
+    "AndroidX Embedded",
     playerKind = RemoteComposePlayerKind.EMBEDDED,
     clientSide = false,
     rcCompareLane = "embedded",
   ),
-  CMP_JVM("cmp-jvm", "CMP JVM", playerKind = null, clientSide = false, rcCompareLane = "cmp-jvm");
+  CMP_JVM(
+    "cmp-jvm",
+    "AndroidX Embedded (JVM)",
+    playerKind = null,
+    clientSide = false,
+    rcCompareLane = "cmp-jvm",
+  );
 
   public companion object {
     /** The fixed universe the viewer renders as chips, in display order. */
