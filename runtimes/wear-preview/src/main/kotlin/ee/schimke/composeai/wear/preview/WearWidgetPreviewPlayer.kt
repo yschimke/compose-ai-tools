@@ -68,16 +68,30 @@ enum class WearWidgetPreviewPlayer(
      * The lane [raw] names, or null when it names none — blank, unset, or a value neither lane
      * answers to.
      *
-     * Accepts each lane's own [wire] id plus the spellings the rest of the pipeline already uses
-     * for the same two players, so a value copied from a `?rcPlayer=` link or from
-     * `RemoteComposePlayerKind` selects what it looks like it selects: `cmp-android` / `embedded`
-     * for [CMP], `java` for [VIEW]. Case- and whitespace-insensitive.
+     * Accepts each lane's own [wire] id, the canonical implementation names, and every historical
+     * spelling the rest of the pipeline uses, so a value copied from a `?rcPlayer=` link or from
+     * `RemoteComposePlayerKind` selects what it looks like it selects. Case- and
+     * whitespace-insensitive.
+     *
+     * `androidx-embedded` is the canonical name for [CMP], and `cmp-android` / `cmp` / `embedded`
+     * are historical. The old name is misleading and kept only because it is on the wire: it does
+     * **not** mean "the CMP player on Android" but the vendored AndroidX embedded player
+     * (`third-party-rc-embedded-player`). The genuine CMP player is `rc-player-compose`, a
+     * different codebase that this lane never runs. Likewise `androidx-view` is canonical for
+     * [VIEW], with `java` / `view` historical.
+     *
+     * Keep this set identical to `RemoteComposePlayerSelection.fromWire` in
+     * `:data-remotecompose-connector` — the vocabulary is spelled twice for the dependency reason
+     * in [PROPERTY], and a divergence means one property selects two different players.
      */
     fun fromWire(raw: String?): WearWidgetPreviewPlayer? =
       when (raw?.trim()?.lowercase()) {
+        // Canonical first, historical after — the order is documentation, not behaviour.
+        "androidx-embedded",
         "cmp",
         "cmp-android",
         "embedded" -> CMP
+        "androidx-view",
         "view",
         "java" -> VIEW
         else -> null

@@ -61,22 +61,48 @@ object RemoteComposePlayerSelection {
    * The player [raw] names, or null when it names none — blank, unset, or a value neither player
    * answers to.
    *
-   * Accepts every spelling the rest of the pipeline already uses for these two players, so a value
-   * copied from a `?rcPlayer=` link, from an `rc-compare` column or from
-   * [RemoteComposePlayerKind]'s own vocabulary selects what it looks like it selects: `cmp` /
-   * `cmp-android` / `embedded` for the embedded player, `java` / `view` for the View-backed one.
-   * Case- and whitespace-insensitive.
+   * ## The names, and why there are several
    *
-   * The viewer's other three lanes (`js`, `cmp-wasm`, `cmp-jvm`) are deliberately **not** accepted:
-   * they are not render-time players at all — two replay the document in the browser and the third
-   * renders in its own subprocess — so a build asking for one of them is asking for something this
-   * property cannot deliver, and should hear so rather than silently get the default.
+   * `cmp-android` is a **misleading historical name** and the reason this doc block exists. It does
+   * not mean "the CMP player on Android": it names the vendored **AndroidX embedded** player
+   * (`third-party-rc-embedded-player`, upstream's `player-compose-embedded`). The genuine CMP
+   * player is a different codebase — `rc-player-compose`, with its own runtime — and the viewer
+   * lane that actually runs it is `cmp-wasm`. So the `cmp-` prefix spans two unrelated
+   * implementations, which is a trap for anyone reading a `?rcPlayer=` value and inferring what
+   * drew the pixels.
+   *
+   * The canonical name for each player is therefore its **implementation**:
+   * * `androidx-embedded` — the vendored AndroidX embedded player. Historical: `cmp`,
+   *   `cmp-android`, `embedded`.
+   * * `androidx-view` — the `AndroidView`-hosted `RemoteComposePlayer` from `remote-player-view`.
+   *   Historical: `java`, `view`.
+   *
+   * Every historical spelling stays accepted, permanently and without deprecation: they are on the
+   * wire in published `?rcPlayer=` links, in `capturePlayer` sidecars and in served HTML
+   * attributes, so rejecting one would break a bookmark to prove a point. New names are what this
+   * repository *writes* in prose and what the viewer shows; old names are what it *reads*. Case-
+   * and whitespace-insensitive throughout.
+   *
+   * The viewer's other three lanes are deliberately **not** accepted here, because none is a
+   * render-time player this property can select:
+   * * `rcplayer-wasm` (historically `cmp-wasm`) — the rc-players CMP player, in the browser. This
+   *   is the lane that genuinely runs `rc-player-compose`, which is why the `cmp-` prefix on its
+   *   Android and JVM neighbours is so misleading.
+   * * `camaelon-js` (historically `js`) — the vendored TypeScript player, also in the browser, from
+   *   `camaelon/remotecompose-experiments`.
+   * * `androidx-embedded-jvm` (historically `cmp-jvm`) — the same vendored AndroidX player as
+   *   `androidx-embedded`, desktop-JVM cut, rendering in its own subprocess.
+   *
+   * A build asking for one of them should hear so rather than silently get the default.
    */
   fun fromWire(raw: String?): RemoteComposePlayerKind? =
     when (raw?.trim()?.lowercase()) {
+      // Canonical first, historical after — the order is documentation, not behaviour.
+      "androidx-embedded",
       "cmp",
       "cmp-android",
       "embedded" -> RemoteComposePlayerKind.EMBEDDED
+      "androidx-view",
       "java",
       "view" -> RemoteComposePlayerKind.VIEW
       else -> null
@@ -95,7 +121,8 @@ object RemoteComposePlayerSelection {
     if (selected == null && !raw.isNullOrBlank()) {
       System.err.println(
         "compose-preview: -D$PROPERTY=$raw names no render-time Remote Compose player; drawing " +
-          "with the default (cmp). Valid values: cmp (aka cmp-android, embedded), view (aka java)."
+          "with the default (androidx-embedded). Valid values: androidx-embedded (aka cmp, " +
+          "cmp-android, embedded), androidx-view (aka java, view)."
       )
     }
     return selected ?: DEFAULT

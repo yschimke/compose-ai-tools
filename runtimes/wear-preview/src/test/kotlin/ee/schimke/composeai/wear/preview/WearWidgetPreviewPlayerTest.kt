@@ -24,6 +24,11 @@ class WearWidgetPreviewPlayerTest {
   fun `each lane answers to its own wire id`() {
     assertThat(WearWidgetPreviewPlayer.fromWire("cmp")).isEqualTo(WearWidgetPreviewPlayer.CMP)
     assertThat(WearWidgetPreviewPlayer.fromWire("view")).isEqualTo(WearWidgetPreviewPlayer.VIEW)
+    // Canonical implementation names, kept in lockstep with `RemoteComposePlayerSelection`.
+    assertThat(WearWidgetPreviewPlayer.fromWire("androidx-embedded"))
+      .isEqualTo(WearWidgetPreviewPlayer.CMP)
+    assertThat(WearWidgetPreviewPlayer.fromWire("androidx-view"))
+      .isEqualTo(WearWidgetPreviewPlayer.VIEW)
   }
 
   @Test
@@ -31,7 +36,8 @@ class WearWidgetPreviewPlayerTest {
     // `?rcPlayer=cmp-android` / `RemoteComposePlayerKind.EMBEDDED` and `?rcPlayer=java` /
     // `RemoteComposePlayerKind.VIEW` name these players elsewhere; a value copied from either
     // should select what it looks like it selects.
-    for (cmp in listOf("cmp-android", "embedded", "CMP-ANDROID", " Embedded ")) {
+    for (cmp in
+      listOf("androidx-embedded", "cmp-android", "embedded", "CMP-ANDROID", " Embedded ")) {
       assertThat(WearWidgetPreviewPlayer.fromWire(cmp)).isEqualTo(WearWidgetPreviewPlayer.CMP)
     }
     for (view in listOf("java", "JAVA", " view ")) {

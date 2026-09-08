@@ -23,6 +23,42 @@ class RemoteComposePlayerSelectionTest {
   }
 
   @Test
+  fun `the canonical implementation names are accepted`() {
+    // `androidx-embedded` says which codebase draws; `cmp-android` does not, and actively misleads
+    // — it names the vendored AndroidX embedded player, not the CMP player (`rc-player-compose`),
+    // whose lane is `cmp-wasm`/`rcplayer-wasm`. Both spellings resolve, forever.
+    assertEquals(
+      RemoteComposePlayerKind.EMBEDDED,
+      RemoteComposePlayerSelection.fromWire("androidx-embedded"),
+    )
+    assertEquals(
+      RemoteComposePlayerKind.VIEW,
+      RemoteComposePlayerSelection.fromWire("androidx-view"),
+    )
+    assertEquals(
+      RemoteComposePlayerKind.EMBEDDED,
+      RemoteComposePlayerSelection.fromWire(" AndroidX-Embedded "),
+    )
+  }
+
+  @Test
+  fun `the viewer-only lanes stay unaccepted under their new names too`() {
+    // Renaming them must not quietly turn them into render-time selections: none of these is a
+    // player this property can pick, under either spelling.
+    for (lane in
+      listOf(
+        "rcplayer-wasm",
+        "cmp-wasm",
+        "camaelon-js",
+        "js",
+        "androidx-embedded-jvm",
+        "cmp-jvm",
+      )) {
+      assertNull(lane, RemoteComposePlayerSelection.fromWire(lane))
+    }
+  }
+
+  @Test
   fun `every spelling the pipeline uses for these two players is accepted`() {
     // `?rcPlayer=cmp-android` in the viewer, `embedded` as the daemon player kind, `cmp` as the
     // Gradle property's own short form — a value copied from any of them must select what it looks
