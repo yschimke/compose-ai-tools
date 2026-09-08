@@ -62,9 +62,16 @@ CENTRAL_BASE_URL="${CENTRAL_BASE_URL:-https://repo1.maven.org/maven2}"
 now="$(date -u +%s)"
 exit_code=0
 
-minutes_since() { # <ISO-8601 timestamp> → whole minutes, or empty if unreadable
+minutes_since() { # <ISO-8601 timestamp> → whole minutes, or empty if absent/unreadable
   local epoch
-  epoch="$(date -u -d "${1:-}" +%s 2>/dev/null)" || return 0
+  # An EMPTY timestamp has to answer "unknown", not a number. GNU `date -u -d ""` does not fail —
+  # it reads the empty string as midnight today and exits 0 — so without this guard "no recovery
+  # run has ever been dispatched" came back as "dispatched <minutes since UTC midnight> ago". For
+  # the first RECOVERY_COOLDOWN_MINUTES of every UTC day that is inside the cooldown, so the
+  # sweeper declined to dispatch the rebuild it exists to dispatch, and its self-test failed for
+  # the same six hours daily.
+  [[ -n "${1:-}" ]] || return 0
+  epoch="$(date -u -d "$1" +%s 2>/dev/null)" || return 0
   [[ -n "${epoch}" ]] && echo $(( (now - epoch) / 60 ))
 }
 
