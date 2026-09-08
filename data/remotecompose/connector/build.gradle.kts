@@ -133,6 +133,7 @@ dependencies {
   // selecting `player = embedded` there falls back to the view player instead of dying.
   compileOnly(libs.rcplayer.embedded.android)
   testImplementation(libs.compose.remote.player.core)
+  testImplementation(libs.compose.remote.creation.compose)
   testImplementation(libs.compose.remote.core)
 
   testImplementation(libs.junit)
