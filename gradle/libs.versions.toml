@@ -446,7 +446,7 @@ composeai-preview-server-dist = "3.9.0"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "1.59.3"
+rcplayers = "1.59.4"
 
 [libraries]
 
