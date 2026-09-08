@@ -355,6 +355,126 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `a state callback that is not a parameter is reported, not just its state`() {
+    // A `onChekedChange` typo passes a state-only check, publishes the misspelled key, and the
+    // export then has nothing to hoist against — a component that draws, compiles and does not
+    // tick, with no diagnostic anywhere.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters = listOf(parameter("checked"), parameter("onCheckedChange")),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks = listOf(BuilderPair("onChekedChange", "checked:boolean")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER
+      }
+    assertThat(reported.subject).endsWith("onChekedChange")
+  }
+
+  @Test
+  fun `a policy that bound to nothing is reported by the preview that declared it`() {
+    // The generator reads the record, not the manifest, so an orphan has to travel in the file or
+    // it cannot be reported anywhere a person will look.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p")))
+          .copy(
+            builderOrphans =
+              listOf(
+                BuilderOrphan(
+                  previewId = "p1",
+                  component = "CheckboxButton",
+                  candidates = listOf(":catalog/…CardKt.Card"),
+                )
+              )
+          ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED }
+    assertThat(reported.subject).isEqualTo("p1")
+    assertThat(reported.message).contains("CheckboxButton")
+    assertThat(reported.message).contains("CardKt.Card")
+  }
+
+  @Test
+  fun `a derived id comes from the sticker that declared the policy`() {
+    // One callable is routinely published under several catalog ids — `Button/Filled` and
+    // `Button/Tonal` over one `Button` — and `componentIds` is the sorted union across previews.
+    // Taking its first would give a policy declared on Tonal the identity `…/filled`, which is the
+    // string every saved design then stores.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Button", catalogId = "Buttons/Filled", builder = BuilderPolicy(canvas = "p"))
+            .let { it.copy(componentIds = listOf("Buttons/Filled", "Buttons/Tonal")) }
+            .let { it.copy(builder = it.builder!!.copy(declaredForCatalogId = "Buttons/Tonal")) }
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.statusSemantics.components.keys).containsExactly("wear-m3/tonal")
+  }
+
+  @Test
+  fun `a builtin colliding with an unannotated record component is reported`() {
+    // An unannotated component is still shelved under its derived id — the honest default the whole
+    // contract rests on — so a builtin sharing that id is two components claiming one saved-design
+    // identity, which is exactly what this check is for.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", catalogId = "Containment/Card")),
+        cover,
+        policy(builtins = mapOf("wear-m3/card" to UiBuilderBuiltin(role = "decoration"))),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code to it.subject })
+      .contains(UiBuilderCatalogs.Diagnostics.BUILTIN_SHADOWS_RECORD to "wear-m3/card")
+  }
+
+  @Test
+  fun `a template hole no role supplies is reported against the role`() {
+    // `${'$'}{contnet}` is a perfectly valid NAME, so nothing about the syntax catches it. Only
+    // knowing
+    // which names the role will have values for does — and without that the refusal arrives at
+    // export, weeks from the person who typed it.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(),
+        cover,
+        policy(
+          code =
+            UiBuilderCode(
+              strategy = "templates",
+              templates = mapOf("screen-root" to "AppScaffold {\n  \${contnet}\n}"),
+            )
+        ),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.TEMPLATE_HOLE_UNKNOWN
+      }
+    assertThat(reported.subject).isEqualTo("screen-root.contnet")
+    assertThat(reported.message).contains("content")
+  }
+
+  @Test
   fun `the generated file round-trips through JSON`() {
     val generated =
       UiBuilderCatalogs.generate(

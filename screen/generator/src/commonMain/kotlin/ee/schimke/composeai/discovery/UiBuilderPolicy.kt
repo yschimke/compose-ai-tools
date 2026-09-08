@@ -19,6 +19,43 @@ val UI_BUILDER_STRUCTURAL_ROLES: Set<String> =
   setOf("screen-root", "list", "list-item", "overlay", "controlled", "decoration")
 
 /**
+ * The named holes each template role may use, and the whole reason a template can be checked when
+ * the catalog is published rather than when somebody exports through it.
+ *
+ * A `${'$'}{contnet}` typo parses perfectly well — it is a valid name — so nothing about the
+ * template's *syntax* catches it. What catches it is knowing which names the engine will have
+ * values for in each role, and that is a contract rather than an implementation detail: it is
+ * exactly the list of things the surrounding structure can hand a template, and a catalog author
+ * needs it written down before they write a template rather than discovered from a refused export.
+ *
+ * Closed for the same reason the role set is. A template asking for a name no role supplies would
+ * be refused at render, weeks from the person who typed it, and the refusal would name a hole
+ * rather than the mistake.
+ *
+ * `${'$'}{call(...)}` is not here: it is a hole *kind* rather than a name, legal in every role, and
+ * it is what puts a record call site into the structure.
+ */
+val UI_BUILDER_TEMPLATE_HOLES: Map<String, Set<String>> =
+  mapOf(
+    // The screen's own frame: the list state it shares with the list inside it (the reason this
+    // role exists at all), the slot bodies, and an edge-anchored action.
+    "screen-root" to setOf("listState", "content", "edgeButton", "overlays", "contentPadding"),
+    // A scrolling list: the same state object its scaffold holds, the padding the frame measured,
+    // and the items.
+    "list" to setOf("listState", "contentPadding", "items"),
+    // One item, wrapped in whatever scope its parent requires. `${'$'}{call(...)}` does the work.
+    "list-item" to setOf("index", "children"),
+    // A sibling of the screen rather than a child, shown by a hoisted state.
+    "overlay" to setOf("state", "children"),
+    // The hoisted `remember` a state callback needs; see BuilderComponent.stateCallbacks.
+    "controlled" to setOf("name", "type", "initial"),
+    "decoration" to setOf("children"),
+    // Whole-file templates rather than node roles.
+    "previews" to setOf("name", "widthDp", "heightDp", "device"),
+    "file" to setOf("packageName", "imports", "name", "body"),
+  )
+
+/**
  * `ui-builder.policy.json` — the **catalog-level** half of what a catalog tells a UI builder,
  * authored beside `catalog.spec.json`.
  *

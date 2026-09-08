@@ -679,11 +679,16 @@ abstract class BundlePreviewTask : DefaultTask() {
             ComponentRecordFile.serializer(),
             ComponentRecords.from(filteredManifest),
           ),
-        // Generated here rather than copied out of `build/compose-previews/`, and from the SAME
-        // filtered record, so a policy entry in the bundle always names a component the bundle
-        // carries. A copy would be the producer's full-module catalog inside a filtered bundle,
-        // which is the kind of quiet mismatch a consumer has no way to notice.
-        uiBuilderJson = uiBuilderJsonFor(ComponentRecords.from(filteredManifest)),
+        // Generated here rather than copied out of `build/compose-previews/`, and derived from
+        // BOTH records: policy is a component-wide fact declared by whichever preview happens to
+        // carry the annotation, so `bundle pack --id …` selecting a different preview of the same
+        // component must not silently revert that component to defaults. The full record supplies
+        // the declarations; the filtered one decides which components the bundle actually carries.
+        uiBuilderJson =
+          uiBuilderJsonFor(
+            ComponentRecords.from(manifest),
+            ComponentRecords.from(filteredManifest),
+          ),
         appJar = appJarBytes,
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
@@ -1827,15 +1832,45 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
+   * The authored pair — policy and cover sheet — resolved from ONE location.
+   *
+   * Both are looked for in the module directory first and the repository root second, but they are
+   * chosen *together*: a multi-catalog repository routinely has a root policy for its main catalog
+   * and a nested module with its own `catalog.spec.json` and deliberately no policy of its own.
+   * Picking each file independently would hand that module the root's platform, frame, builtins and
+   * templates under its own cover sheet's identity — a hybrid catalog describing a module nobody
+   * wrote a policy for, which is worse than the nothing it should publish.
+   *
+   * So: if the module has either file, the module's location wins outright and a missing policy
+   * there means this module publishes no builder catalog. Only a module with neither falls back to
+   * the root.
+   */
+  private fun authoredPair(): Pair<File, File?>? {
+    val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
+    val moduleSpec = catalogSpecCandidates.files.firstOrNull()?.takeIf { it.isFile }
+    if (modulePolicy != null || moduleSpec != null) {
+      return modulePolicy?.let { it to moduleSpec }
+    }
+    val rootPolicy = uiBuilderPolicyCandidates.files.drop(1).firstOrNull { it.isFile }
+    val rootSpec = catalogSpecCandidates.files.drop(1).firstOrNull { it.isFile }
+    return rootPolicy?.let { it to rootSpec }
+  }
+
+  /**
    * The module's builder catalog as JSON, or null when it authors no `ui-builder.policy.json`.
    *
-   * Shares [DiscoverPreviewsTask]'s reader policy for the same reasons: lenient about unknown keys,
-   * because neither authored file is a contract this task owns, and silent about a malformed one
-   * beyond a warning, because a bundle that failed to pack over a typo in a file no renderer reads
-   * would be a poor trade.
+   * Two records, and the distinction is the whole point. [full] is every preview in the module, so
+   * a `@BuilderComponent` declared on one preview of a component still reaches that component when
+   * `bundle pack --id …` selected a different one — policy is a fact about the COMPONENT, not about
+   * the preview that happened to declare it, and a single-preview bundle silently reverting a
+   * component's canvas, starter and callbacks to defaults is a mismatch a consumer cannot notice.
+   * [carried] is what the bundle actually contains, so a published entry never names a component
+   * that is not in it.
    */
-  private fun uiBuilderJsonFor(record: ComponentRecordFile): String? {
-    val policyFile = uiBuilderPolicyCandidates.files.firstOrNull { it.isFile } ?: return null
+  private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {
+    val carriedIds = carried.components.map { it.canonicalId }.toSet()
+    val record = full.copy(components = full.components.filter { it.canonicalId in carriedIds })
+    val (policyFile, specFile) = authoredPair() ?: return null
     val lenient = Json { ignoreUnknownKeys = true }
     val policy = runCatching {
       lenient.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())

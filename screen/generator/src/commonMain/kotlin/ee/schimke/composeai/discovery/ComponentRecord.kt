@@ -43,6 +43,26 @@ data class ComponentRecordFile(
   val module: String,
   val variant: String,
   val components: List<ComponentRecord>,
+  /**
+   * `@BuilderComponent` declarations that bound to no component, with the reason.
+   *
+   * A policy naming a subject the preview does not render is a rename that got away, and dropping
+   * it silently leaves the component with a default nobody meant it to have and no symptom at all.
+   * The generator cannot see the annotation — it reads this file, not the manifest — so the orphan
+   * has to travel here or it cannot be reported anywhere a person will look.
+   */
+  val builderOrphans: List<BuilderOrphan> = emptyList(),
+)
+
+/** A `@BuilderComponent` that bound to nothing, and what it was looking for. */
+@Serializable
+data class BuilderOrphan(
+  /** The preview whose annotation this was. */
+  val previewId: String,
+  /** The `component = "…"` it named. */
+  val component: String,
+  /** The components that preview actually renders, so the message can suggest one. */
+  val candidates: List<String> = emptyList(),
 )
 
 /**

@@ -315,6 +315,31 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   }
 
   /**
+   * The authored pair — policy and cover sheet — resolved from ONE location.
+   *
+   * Both are looked for in the module directory first and the repository root second, but they are
+   * chosen *together*: a multi-catalog repository routinely has a root policy for its main catalog
+   * and a nested module with its own `catalog.spec.json` and deliberately no policy of its own.
+   * Picking each file independently would hand that module the root's platform, frame, builtins and
+   * templates under its own cover sheet's identity — a hybrid catalog describing a module nobody
+   * wrote a policy for, which is worse than the nothing it should publish.
+   *
+   * So: if the module has either file, the module's location wins outright and a missing policy
+   * there means this module publishes no builder catalog. Only a module with neither falls back to
+   * the root.
+   */
+  private fun authoredPair(): Pair<File, File?>? {
+    val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
+    val moduleSpec = catalogSpecCandidates.files.firstOrNull()?.takeIf { it.isFile }
+    if (modulePolicy != null || moduleSpec != null) {
+      return modulePolicy?.let { it to moduleSpec }
+    }
+    val rootPolicy = uiBuilderPolicyCandidates.files.drop(1).firstOrNull { it.isFile }
+    val rootSpec = catalogSpecCandidates.files.drop(1).firstOrNull { it.isFile }
+    return rootPolicy?.let { it to rootSpec }
+  }
+
+  /**
    * Write `ui-builder.json` beside the record, or remove a stale one.
    *
    * The generator is [UiBuilderCatalogs.generate], which lives in the shared `screen/generator`
@@ -330,13 +355,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   private fun writeUiBuilderCatalog(record: ComponentRecordFile) {
     val out = uiBuilderFile.get().asFile
-    val policyFile = uiBuilderPolicyCandidates.files.firstOrNull { it.isFile }
-    if (policyFile == null) {
-      // Removing the policy has to remove the catalog it produced. A stale file would keep being
-      // published, and would describe a catalog nobody authors any more.
-      if (out.exists()) out.delete()
-      return
-    }
+    // No authored pair — this module publishes no builder catalog. Removing the policy has to
+    // remove the catalog it produced: a stale file would keep being published and would describe a
+    // catalog nobody authors any more.
+    val (policyFile, specFile) = authoredPair() ?: return run { if (out.exists()) out.delete() }
     val policy = runCatching {
       lenientJson.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
     }
@@ -348,7 +370,6 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         if (out.exists()) out.delete()
         return
       }
-    val specFile = catalogSpecCandidates.files.firstOrNull { it.isFile }
     val spec = specFile?.let {
       runCatching { lenientJson.decodeFromString<CatalogCoverSheet>(it.readText()) }.getOrNull()
     }

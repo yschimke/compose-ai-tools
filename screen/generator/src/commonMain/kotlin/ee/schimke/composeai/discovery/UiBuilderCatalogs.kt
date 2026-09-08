@@ -170,6 +170,7 @@ object UiBuilderCatalogs {
     const val BUILTIN_ROLE_UNKNOWN = "policy.builtin.role.unknown"
     const val TEMPLATE_ROLE_UNKNOWN = "policy.code.template.role.unknown"
     const val TEMPLATE_MALFORMED = "policy.code.template.malformed"
+    const val TEMPLATE_HOLE_UNKNOWN = "policy.code.template.hole.unknown"
     const val TEMPLATES_WITHOUT_STRATEGY = "policy.code.templates.withoutStrategy"
     const val STRATEGY_WITHOUT_TEMPLATES = "policy.code.strategy.withoutTemplates"
     const val CANVAS_UNCLAIMED = "component.canvas.unclaimed"
@@ -179,6 +180,8 @@ object UiBuilderCatalogs {
     const val POLICY_CONFLICT = "component.policy.conflict"
     const val POLICY_AMBIGUOUS_SUBJECT = "component.policy.ambiguousSubject"
     const val POLICY_MALFORMED_ENTRY = "component.policy.malformedEntry"
+    const val POLICY_ORPHANED = "component.policy.orphaned"
+    const val STATE_CALLBACK_NOT_A_PARAMETER = "component.stateCallback.notAParameter"
     const val ID_COLLISION = "component.id.collision"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
@@ -222,6 +225,18 @@ object UiBuilderCatalogs {
 
     validateCode(policy, diagnostics)
     validateBuiltins(policy, record, idPrefix, diagnostics)
+    for (orphan in record.builderOrphans) {
+      diagnostics +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.POLICY_ORPHANED,
+          subject = orphan.previewId,
+          message =
+            "@BuilderComponent(component = \"${orphan.component}\") names nothing ${orphan.previewId} " +
+              "renders, so its policy was attached to no component and every field in it does " +
+              "nothing. That preview renders: " +
+              (orphan.candidates.takeIf { it.isNotEmpty() }?.joinToString() ?: "no components"),
+        )
+    }
 
     val components = linkedMapOf<String, UiBuilderComponentPolicy>()
     val menuEntries = linkedMapOf<String, UiBuilderMenuEntry>()
@@ -302,9 +317,15 @@ object UiBuilderCatalogs {
       ?.let {
         return it
       }
+    // The DECLARING sticker's catalog id, not the record's first alias. One callable is routinely
+    // published under several — `Button/Filled` and `Button/Tonal` over one `Button` — and
+    // `componentIds` is the sorted union across every preview, so the first of it can belong to a
+    // different sticker than the one that declared this policy. The id a saved design stores must
+    // come from the sticker whose author chose it.
     val leaf =
-      component.componentIds.firstOrNull()?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-        ?: component.symbol.name
+      (builder.declaredForCatalogId ?: component.componentIds.firstOrNull())
+        ?.substringAfterLast('/')
+        ?.takeIf { it.isNotBlank() } ?: component.symbol.name
     return "$prefix${slug(leaf)}"
   }
 
@@ -427,6 +448,19 @@ object UiBuilderCatalogs {
     if (!component.signatureKnown) return
     val parameterNames = component.parameters.map { it.name }.toSet()
     for (pair in builder.stateCallbacks) {
+      // The CALLBACK has to be a parameter as well as the state. A `onChekedChange` typo passes a
+      // state-only check, publishes the misspelled key, and the export then has nothing to hoist
+      // against — a component that draws, compiles and does not tick, with no diagnostic.
+      if (pair.key !in parameterNames) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER,
+            subject = "$builderId.${pair.key}",
+            message =
+              "'${pair.key}' is not a parameter of ${component.canonicalId}, so nothing hoists " +
+                "against it and the component exports as a picture of itself.",
+          )
+      }
       val state = pair.value.substringBefore(':').trim()
       if (state.isNotEmpty() && state !in parameterNames) {
         into +=
@@ -476,16 +510,41 @@ object UiBuilderCatalogs {
     // will ever resolve is a message for the person editing this policy; without this it is a
     // refused export weeks later, for somebody who did not write it.
     for ((role, template) in code.templates) {
-      val holes = StructuralTemplate.holes(template)
-      if (holes is StructuralTemplate.Result2.Failed) {
-        into +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.TEMPLATE_MALFORMED,
-            subject = role,
-            message =
-              "the template cannot be read: ${holes.reasons.joinToString("; ")}. A template is " +
-                "${'$'}{name} substitution and ${'$'}{call(...)} call sites, and nothing else.",
-          )
+      when (val holes = StructuralTemplate.holes(template)) {
+        is StructuralTemplate.Result2.Failed ->
+          into +=
+            UiBuilderDiagnostic(
+              code = Diagnostics.TEMPLATE_MALFORMED,
+              subject = role,
+              message =
+                "the template cannot be read: ${holes.reasons.joinToString("; ")}. A template is " +
+                  "${'$'}{name} substitution and ${'$'}{call(...)} call sites, and nothing else.",
+            )
+        is StructuralTemplate.Result2.Ok -> {
+          // A `${'$'}{contnet}` typo is a perfectly valid NAME, so nothing about the syntax catches
+          // it.
+          // What catches it is knowing which names this role will have values for — the reason
+          // UI_BUILDER_TEMPLATE_HOLES is a contract rather than an implementation detail. Without
+          // this the refusal arrives at export, weeks from the person who typed it, naming a hole
+          // rather than the mistake.
+          val known = UI_BUILDER_TEMPLATE_HOLES[role].orEmpty()
+          val unknown =
+            holes.value
+              .filterIsInstance<StructuralTemplate.Hole.Named>()
+              .map { it.name }
+              .filterNot { it in known }
+          for (name in unknown.distinct()) {
+            into +=
+              UiBuilderDiagnostic(
+                code = Diagnostics.TEMPLATE_HOLE_UNKNOWN,
+                subject = "$role.$name",
+                message =
+                  "no value is supplied for ${'$'}{$name} in a `$role` template, so an export " +
+                    "through it is refused. Holes this role supplies: " +
+                    "${known.sorted().joinToString()}.",
+              )
+          }
+        }
       }
     }
     if (code.strategy == "templates" && code.templates.isEmpty()) {
@@ -516,10 +575,14 @@ object UiBuilderCatalogs {
     idPrefix: String,
     into: MutableList<UiBuilderDiagnostic>,
   ) {
+    // EVERY admitted record component, not only the annotated ones. A component with no
+    // `@BuilderComponent` is still shelved under its derived id — that is the honest default the
+    // whole contract rests on — so a builtin colliding with one is two components claiming one
+    // saved-design identity, which is exactly what this check exists to catch.
     val recordIds =
       record.components
-        .mapNotNull { component ->
-          component.builder?.let { builderIdFor(idPrefix, component, it) }
+        .map { component ->
+          builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
         }
         .toSet()
     for ((id, builtin) in policy.builtins) {

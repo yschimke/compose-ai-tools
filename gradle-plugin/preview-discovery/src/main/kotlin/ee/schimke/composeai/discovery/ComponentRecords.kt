@@ -25,8 +25,9 @@ object ComponentRecords {
    */
   fun from(manifest: PreviewManifest): ComponentRecordFile {
     val byId = linkedMapOf<String, MutableComponent>()
+    val orphans = mutableListOf<BuilderOrphan>()
     for (preview in manifest.previews) {
-      val subject = builderSubject(preview, manifest.module)
+      val subject = builderSubject(preview, manifest.module, orphans)
       collect(
         preview,
         preview.componentTargets,
@@ -41,6 +42,7 @@ object ComponentRecords {
       module = manifest.module,
       variant = manifest.variant,
       components = byId.values.map { it.toRecord() }.sortedBy { it.canonicalId },
+      builderOrphans = orphans.sortedBy { it.previewId },
     )
   }
 
@@ -160,27 +162,46 @@ object ComponentRecords {
    *    than a refusal because the alternative is an annotation somebody wrote that silently does
    *    nothing, and a wrong-but-reported binding is the one a person can see and fix.
    */
-  private fun builderSubject(preview: PreviewInfo, module: String): BuilderSubject? {
+  private fun builderSubject(
+    preview: PreviewInfo,
+    module: String,
+    orphans: MutableList<BuilderOrphan>,
+  ): BuilderSubject? {
     val policy = preview.builder ?: return null
     val candidates =
       (preview.componentTargets + preview.targets)
         .map { canonicalId(module, it) to it }
         .distinctBy { it.first }
-    if (candidates.isEmpty()) return null
+    // The catalog identity of the sticker that declared this, so a derived builder id comes from
+    // THIS sticker rather than from the alphabetically first of a shared callable's aliases.
+    val declared =
+      policy.copy(declaredForCatalogId = preview.catalog?.componentId?.takeIf { it.isNotBlank() })
+    if (candidates.isEmpty()) {
+      if (policy.component?.isNotBlank() == true) {
+        orphans += BuilderOrphan(preview.id, policy.component, emptyList())
+      }
+      return null
+    }
 
     val named = policy.component?.takeIf { it.isNotBlank() }
     if (named != null) {
-      val match =
-        candidates.firstOrNull { (_, target) ->
-          callableFqn(target) == named || target.functionName == named
-        } ?: return null
-      return BuilderSubject(match.first, policy)
+      val match = candidates.firstOrNull { (_, target) ->
+        callableFqn(target) == named || target.functionName == named
+      }
+      if (match == null) {
+        // Reported rather than dropped. A subject naming nothing the preview renders is a rename
+        // that got away, and the generator reads the record rather than the manifest — so if the
+        // orphan does not travel in the file, it cannot be reported anywhere a person will look.
+        orphans += BuilderOrphan(preview.id, named, candidates.map { it.first })
+        return null
+      }
+      return BuilderSubject(match.first, declared)
     }
 
     val (subject, rest) = candidates.first() to candidates.drop(1)
     return BuilderSubject(
       subject.first,
-      if (rest.isEmpty()) policy else policy.copy(ambiguousWith = rest.map { it.first }),
+      if (rest.isEmpty()) declared else declared.copy(ambiguousWith = rest.map { it.first }),
     )
   }
 

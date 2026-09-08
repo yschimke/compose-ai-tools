@@ -50,6 +50,16 @@ data class BuilderPolicy(
    * several. A callable FQN or a simple name; null when the sticker renders one.
    */
   val component: String? = null,
+  /**
+   * The `@CatalogComponent.id` of the sticker that declared this policy.
+   *
+   * A derived builder id is a slug of the catalog identity, and one callable is routinely published
+   * under several — `Button/Filled` and `Button/Tonal` are two stickers over one `Button`, and the
+   * record's `componentIds` is the sorted union across every preview. Deriving from the first of
+   * that list would hand a policy declared on `Button/Tonal` the identity `…/filled`, which is the
+   * string every saved design then stores. So the declaring binding is recorded and used.
+   */
+  val declaredForCatalogId: String? = null,
   /** Insert-panel group override; null keeps the catalog's own `@CatalogGroup`. */
   val group: String? = null,
   /** Insert-panel label; null derives one from the id's last segment. */
