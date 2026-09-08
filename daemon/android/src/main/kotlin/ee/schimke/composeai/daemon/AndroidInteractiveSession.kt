@@ -282,8 +282,8 @@ internal constructor(
     if (hasTarget && replyMatched?.get() == false) {
       val message =
         "AndroidInteractiveSession.dispatch: target did not resolve to a node " +
-          "(ref=${rawTarget?.ref}, testTag=${rawTarget?.testTag}, role=${rawTarget?.role}, " +
-          "text=${rawTarget?.text})"
+          "(ref=${rawTarget.ref}, testTag=${rawTarget.testTag}, role=${rawTarget.role}, " +
+          "text=${rawTarget.text})"
       val reason =
         replyUnresolvedReasonJson?.get()?.let { json ->
           runCatching {

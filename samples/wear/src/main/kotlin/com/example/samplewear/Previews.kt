@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -370,7 +370,7 @@ private val settingsList =
     SettingsItem(id = 1, title = "Notifications", icon = Icons.Default.Notifications),
     SettingsItem(id = 2, title = "Privacy", icon = Icons.Default.Lock),
     SettingsItem(id = 3, title = "Display", icon = Icons.Default.PlayArrow),
-    SettingsItem(id = 4, title = "Sound & vibration", icon = Icons.Default.VolumeUp),
+    SettingsItem(id = 4, title = "Sound & vibration", icon = Icons.AutoMirrored.Filled.VolumeUp),
     SettingsItem(id = 5, title = "About", icon = Icons.Default.Info),
   )
 

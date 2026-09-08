@@ -48,7 +48,10 @@ import android.graphics.drawable.Drawable
  * above (`getText`, `getColor`, the dimension family) and every `getDrawable*` overload are the
  * common crashes the live server hits.
  */
-@Suppress("DEPRECATION")
+// `OVERRIDE_DEPRECATION` alongside `DEPRECATION`: `getColor(id)`, `getDrawable(id)` and
+// `getDrawableForDensity(id, density)` are deprecated on `Resources`, and this wrapper has to
+// override them anyway — the throwing `loadDrawable` path is reached through them.
+@Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
 internal class PlaceholderFallbackResources(private val base: Resources) :
   Resources(base.assets, base.displayMetrics, base.configuration) {
 
