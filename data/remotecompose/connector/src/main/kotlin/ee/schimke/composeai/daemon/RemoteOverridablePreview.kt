@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import androidx.compose.ui.unit.LayoutDirection
 import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
@@ -62,9 +63,25 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
   protected open val player: RemoteComposePlayerKind
     get() = RemoteComposePlayerSelection.configured
 
+  /**
+   * Whether the capture folds density and font scale in as constants or defers them to the player's
+   * own variables — the build-wide [RemoteDensitySelection.configured], which is
+   * [RemoteCaptureDensity.FIXED] unless `-PcomposePreview.rcDensity=host` says otherwise.
+   *
+   * Read per instance for the same reason [player] is: a host that sets the property before the
+   * first render is honoured, and the resolution behind it is memoised per JVM.
+   */
+  protected open val captureDensity: RemoteCaptureDensity
+    get() = RemoteDensitySelection.configured
+
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
-    RemoteOverridablePreview(profile = profile, player = player, content = content)
+    RemoteOverridablePreview(
+      profile = profile,
+      player = player,
+      captureDensity = captureDensity,
+      content = content,
+    )
   }
 }
 
@@ -84,7 +101,12 @@ class RemoteEmbeddedPreviewWrapper : RemoteOverridablePreviewWrapper() {
   // concrete wrapper rather than inherited from RemoteOverridablePreviewWrapper.
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
-    RemoteOverridablePreview(profile = profile, player = player, content = content)
+    RemoteOverridablePreview(
+      profile = profile,
+      player = player,
+      captureDensity = captureDensity,
+      content = content,
+    )
   }
 }
 
@@ -103,7 +125,12 @@ class RemoteViewPreviewWrapper : RemoteOverridablePreviewWrapper() {
   // Declared here for the same reflective-resolution reason as the sibling above.
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
-    RemoteOverridablePreview(profile = profile, player = player, content = content)
+    RemoteOverridablePreview(
+      profile = profile,
+      player = player,
+      captureDensity = captureDensity,
+      content = content,
+    )
   }
 }
 
@@ -133,11 +160,24 @@ fun RemoteOverridablePreview(
   profile: Profile,
   modifier: Modifier = Modifier,
   player: RemoteComposePlayerKind = RemoteComposePlayerSelection.configured,
+  captureDensity: RemoteCaptureDensity = RemoteDensitySelection.configured,
   content: @Composable @RemoteComposable () -> Unit,
 ) {
   val context = LocalContext.current
 
   val displayMetrics = context.resources.displayMetrics
+  // The render's font scale, which `Density.fontScale` carries and `displayMetrics` does not.
+  //
+  // Load-bearing on BOTH lanes, for different reasons. `RemoteCreationDisplayInfo`'s `fontScale`
+  // parameter defaults to `1f` — not to the host's — so the call below omitting it is what made a
+  // `FIXED` capture bake `fontScale = 1` no matter what the render spec asked for. The Android
+  // lane sets `Configuration.fontScale` per render spec and Compose surfaces it here, so reading
+  // it is the difference between recording the requested scale and recording the number one.
+  //
+  // Under `HOST` the value does not reach the sp→px conversions (the player's `FONT_SIZE` does),
+  // but it still describes the composition the capture ran in, so it is passed either way rather
+  // than being made conditional on the lane.
+  val fontScale = LocalDensity.current.fontScale
   // Capture in `Legacy` density behavior — the library's own default, and the only value that
   // describes what `remote-creation-compose` actually writes.
   //
@@ -182,11 +222,20 @@ fun RemoteOverridablePreview(
   // `DOC_DENSITY_AT_GENERATION` is still stamped below: the alpha writer records DOC_WIDTH/HEIGHT
   // in px and the behavior but not the density value, and the player needs it to resolve the
   // dp-typed dimensions.
+  //
+  // None of the above changes under `RemoteCaptureDensity.HOST`. That setting picks what the
+  // conversions are written *as* — a constant, or an expression over `FLOAT_DENSITY` — while
+  // `densityBehavior` declares how the player should *interpret* what it finds. A `RemoteDp.toPx()`
+  // that used to emit the number 24 emits an expression evaluating to 24 at the capture density;
+  // it is still the pixel-typed payload `Legacy` describes, so the per-op predicates above still
+  // land the same way. What does change is that the value is no longer knowable without running
+  // the graph — see `RemoteDensitySelection` for who that matters to.
   val displayInfo =
     RemoteCreationDisplayInfo(
       displayMetrics.widthPixels,
       displayMetrics.heightPixels,
       displayMetrics.densityDpi,
+      fontScale,
       densityBehavior = RemoteDensityBehavior.Legacy,
     )
   // Same capture pattern as upstream `RemotePreview` — `runBlocking` inside `remember` so the
@@ -197,11 +246,31 @@ fun RemoteOverridablePreview(
     remember(profile, content) {
       RemoteComposeController.collectingDeclarations {
         runBlocking {
+          // Which `RemoteDensity` the capture converts dp and sp through, and therefore whether
+          // the document that comes out can answer a `?fontScale=` request at all.
+          //
+          //   FIXED  `from(displayInfo)` folds `density` and `fontScale` into literal
+          //          `RemoteFloat` constants. Nothing downstream can move them.
+          //   HOST   `RemoteDensity.Host` binds density to `RemoteContext.FLOAT_DENSITY` and font
+          //          scale to `Rc.System.FONT_SIZE / 14 / density`; both resolve at paint time
+          //          from the variables every player already writes.
+          //
+          // The property is Kotlin-cased `Host`, not `HOST` — it is a companion `val` on
+          // `RemoteDensity`, not an enum constant, and the capital is the whole name.
+          //
+          // `RemoteDensitySelection` explains why this is a per-build setting defaulting to
+          // FIXED rather than a straight fix: HOST also defers *density*, so it changes what a
+          // captured `.rc` means about geometry, not only about text.
+          val remoteDensity =
+            when (captureDensity) {
+              RemoteCaptureDensity.HOST -> RemoteDensity.Host
+              RemoteCaptureDensity.FIXED -> RemoteDensity.from(displayInfo)
+            }
           val bytes =
             captureSingleRemoteDocument(
                 context,
                 displayInfo,
-                RemoteDensity.from(displayInfo),
+                remoteDensity,
                 LayoutDirection.Ltr,
                 profile = profile,
                 content = content,
@@ -213,6 +282,16 @@ fun RemoteOverridablePreview(
           // DOC_DENSITY_AT_GENERATION into the header so the rc-player can scale the dp modifiers
           // back to px; without it the fills/indicator render ~1/density too small. Best-effort and
           // idempotent — never fail the render over it.
+          //
+          // This is the one density LITERAL that survives a `HOST` capture, and it is meant to.
+          // The header property describes the density the document was GENERATED at; it is what
+          // the player scales the **dp-typed** dimension ops with (`heightIn` / `widthIn`, written
+          // as dp by the creation library and left for core to resolve). Those ops never went
+          // through `RemoteDensity` in the first place, so the setting does not reach them and the
+          // stamp stays as necessary and as correct under `HOST` as under `FIXED`. What changes is
+          // only that its neighbours — padding, gaps, clip radii — are now expressions over
+          // `FLOAT_DENSITY` rather than numbers, so this value no longer describes the whole
+          // document, just the dp-typed part of it. Read it as "generated at", not "renders at".
           val stamped = runCatching {
             stampGenerationDensity(bytes, displayMetrics.density)
           }

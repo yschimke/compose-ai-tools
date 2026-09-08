@@ -2634,6 +2634,11 @@ internal object AndroidPreviewSupport {
         // inside the Robolectric sandbox, so it is forwarded onto the forked render JVM rather
         // than resolved on the Gradle one.
         val rcPlayer = composeAiRcPlayer(project)
+        // Whether a Remote Compose capture bakes density and font scale in as constants (`fixed`)
+        // or defers them to the player's variables (`host`). Read by `RemoteDensitySelection`
+        // inside the Robolectric sandbox — the JVM that captures — so it is forwarded onto the
+        // forked render JVM alongside the player selection above.
+        val rcDensity = composeAiRcDensity(project)
         // Static system properties (Robolectric modes + the path-bearing composeai.*
         // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
         // preview daemon can replay the same set when launching its own JVM. The
@@ -2651,6 +2656,7 @@ internal object AndroidPreviewSupport {
             fixedTime = fixedTime.get(),
             linkBufferComposer = linkBufferComposer.get(),
             rcPlayer = rcPlayer.get(),
+            rcDensity = rcDensity.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
@@ -3386,6 +3392,11 @@ internal object AndroidPreviewSupport {
     // Code / MCP / a11y routes would keep drawing on whichever player the daemon defaults to while
     // a `-PcomposePreview.rcPlayer=view` batch render used the other one.
     val daemonRcPlayer = composeAiRcPlayer(project)
+    // And how that document was captured in the first place. Forwarded for the same reason: the
+    // daemon does its own captures, so without this line a `-PcomposePreview.rcDensity=host` batch
+    // render would bake host-scaling documents while the VS Code / MCP / serve routes kept baking
+    // constant-folded ones from the same sources.
+    val daemonRcDensity = composeAiRcDensity(project)
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
     // mustn't capture `project`. The cheap-signal set used to be collected at task-action
     // time so newly-added subproject scripts were seen on the same run, but doing it
@@ -3560,6 +3571,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
       this.systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
       this.systemProperties.put("composeai.render.rcPlayer", daemonRcPlayer)
+      this.systemProperties.put("composeai.render.rcDensity", daemonRcDensity)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(

@@ -77,6 +77,20 @@ public object RcJvmServerRenderer {
    * Render [docBytes] to [format] at [spec]'s pixel size and density, applying any [seeds] (the
    * serve `rc.<name>=…` knob edits) on top of the document's authored defaults. Reports whether the
    * subprocess is unavailable, timed out, or could not draw the document.
+   *
+   * **[RcJvmRenderSpec.fontScale] does not move pixels yet, and the gap is in the sidecar.** This
+   * function spells the axis on the wire — `--fontScale` below — but `lib-rcjvm` 1.59.3 cannot read
+   * it: `renderRemoteDocumentToPng(bytes, w, h, density, seeds, theme, …)` takes no font-scale
+   * parameter and builds its `ImageComposeScene` with `Density(density)`, whose `fontScale`
+   * defaults to `1f`. The player underneath is willing — `initDrawContext` writes `ID_FONT_SIZE =
+   * 14 × fontScale × density` from whatever `Density` it is handed, and the *Android* cut of the
+   * same player reads `LocalDensity.current` and therefore already scales — so what is missing is
+   * only the headless entry point's parameter. Tracked upstream in `yschimke/rc-players`; when it
+   * lands, this call site needs no change and the pooled frame gains the field at
+   * `RcJvmWorkerPool.PROTOCOL_VERSION` 3.
+   *
+   * Until then a `?fontScale=` request routed to **this** lane comes back unscaled. It is honoured
+   * end-to-end on the Android replay lane, whose player reads the render spec's own density.
    */
   public fun render(
     docBytes: ByteArray,
@@ -106,29 +120,36 @@ public object RcJvmServerRenderer {
     // Compose Desktop + Skiko startup again (~2.3 s). Only `Unusable` falls through to the one-shot
     // path below — a `Failed` is the player's real answer about this document, and re-rendering it
     // cold would double the cost of every document that cannot be drawn.
-    pool(cp)?.let { pool ->
-      val pooled =
-        pool.render(
-          docBytes,
-          spec,
-          seedLines(seeds).joinToString("\n"),
-          format,
-          theme,
-          secondsLeft(),
-        )
-      when (pooled) {
-        is RcJvmWorkerPool.PoolResult.Ok -> return RenderResult.Ok(pooled.bytes)
-        is RcJvmWorkerPool.PoolResult.Failed -> return RenderResult.Failed(pooled.reason)
-        is RcJvmWorkerPool.PoolResult.Unusable -> {
-          // A pool that declined instantly (disabled, stale sidecar, spawn refused) leaves the
-          // budget intact and the cold retry is free to use it. A pool that declined by *timing
-          // out* has already spent it — retrying cold would only blow through the deadline the
-          // caller is holding a semaphore permit against, so report the failure instead.
-          if (secondsLeft() < MIN_FALLBACK_SECONDS) {
-            return RenderResult.Failed(
-              "${pooled.reason}; no time left in the ${RENDER_TIMEOUT_SECONDS}s render budget " +
-                "for a one-shot retry"
-            )
+    // The pooled worker frame is fixed at `PROTOCOL_VERSION` 2 and carries no font-scale field, so
+    // a request that asks for one cannot be expressed on it. Take the one-shot lane instead, which
+    // can at least spell the flag — rather than serving a warm render that silently ignored the
+    // axis. Costs the pool's ~85 ms vs ~2.3 s only on requests that actually scale text; an
+    // unscaled render (every ordinary browse) is untouched and stays pooled.
+    if (!spec.scalesText) {
+      pool(cp)?.let { pool ->
+        val pooled =
+          pool.render(
+            docBytes,
+            spec,
+            seedLines(seeds).joinToString("\n"),
+            format,
+            theme,
+            secondsLeft(),
+          )
+        when (pooled) {
+          is RcJvmWorkerPool.PoolResult.Ok -> return RenderResult.Ok(pooled.bytes)
+          is RcJvmWorkerPool.PoolResult.Failed -> return RenderResult.Failed(pooled.reason)
+          is RcJvmWorkerPool.PoolResult.Unusable -> {
+            // A pool that declined instantly (disabled, stale sidecar, spawn refused) leaves the
+            // budget intact and the cold retry is free to use it. A pool that declined by *timing
+            // out* has already spent it — retrying cold would only blow through the deadline the
+            // caller is holding a semaphore permit against, so report the failure instead.
+            if (secondsLeft() < MIN_FALLBACK_SECONDS) {
+              return RenderResult.Failed(
+                "${pooled.reason}; no time left in the ${RENDER_TIMEOUT_SECONDS}s render budget " +
+                  "for a one-shot retry"
+              )
+            }
           }
         }
       }
@@ -175,6 +196,12 @@ public object RcJvmServerRenderer {
         add(spec.heightPx.toString())
         add("--density")
         add(spec.density.toString())
+        // Forward-compatible: `RcJvmRenderMain.parseArgs` collects `--flag value` pairs into a map
+        // and ignores keys it does not know, so a sidecar predating this flag drops it rather than
+        // failing. Sent unconditionally so the day `lib-rcjvm` reads it, every already-deployed
+        // caller starts scaling without a second change here.
+        add("--fontScale")
+        add(spec.fontScale.toString())
         add("--format")
         add(format.wire)
         add("--theme")
@@ -378,6 +405,25 @@ public object RcJvmServerRenderer {
 }
 
 /**
- * The pixel size and density a cmp-jvm render should use — matched to the baked/View-player lane.
+ * The pixel size, density and font scale a cmp-jvm render should use — matched to the baked/View-
+ * player lane.
+ *
+ * [fontScale] is the `?fontScale=` axis, and it is the one field the sidecar may not be able to
+ * honour yet: see [RcJvmServerRenderer.render] for what reaches the player today and what is
+ * waiting on `yschimke/rc-players`.
  */
-public data class RcJvmRenderSpec(val widthPx: Int, val heightPx: Int, val density: Float)
+public data class RcJvmRenderSpec(
+  val widthPx: Int,
+  val heightPx: Int,
+  val density: Float,
+  /**
+   * The multiplier the player should apply to text — Compose's `Density.fontScale`, which the
+   * player turns into `ID_FONT_SIZE = 14 × density × fontScale`. `1f` is "unscaled", and is what
+   * every caller got implicitly before this field existed.
+   */
+  val fontScale: Float = 1f,
+) {
+  /** True when [fontScale] asks for something the un-scaled default does not already give. */
+  internal val scalesText: Boolean
+    get() = fontScale != 1f
+}
