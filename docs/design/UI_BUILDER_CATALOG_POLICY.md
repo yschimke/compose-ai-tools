@@ -103,7 +103,19 @@ Three properties worth stating, because each is a decision rather than an accide
 ## `ui-builder.policy.json`
 
 Schema: [`scripts/design-artifacts/ui-builder.policy.schema.json`](../../scripts/design-artifacts/ui-builder.policy.schema.json),
-which carries the field-by-field documentation. The shape, in brief:
+which carries the field-by-field documentation, and a build-free pre-flight beside
+`validate-catalog-spec.mjs`:
+
+```
+node scripts/design-artifacts/validate-ui-builder-policy.mjs --policy ui-builder.policy.json
+```
+
+Not a JSON Schema validator — the schema is the contract and the thing an editor autocompletes
+against, and a second hand-rolled implementation of it would drift. It checks the subset a schema
+states poorly or not at all: that a builtin names a role the engine knows, that templates and the
+declared strategy agree, that padding rows ascend (a reader interpolates between adjacent ones), and
+that prose has not been written inside `builtins`, where it is a *parse* failure rather than a
+schema one because those values are typed. The shape, in brief:
 
 ```jsonc
 {
@@ -153,7 +165,8 @@ and the VS Code extension reading through one of those. So:
 
 - [x] `@BuilderComponent` in `preview-annotations`, read by `PreviewDiscovery` into `BuilderPolicy`
       and carried onto `ComponentRecord.builder`.
-- [x] `ui-builder.policy.schema.json` — what the catalog repositories author against.
+- [x] `ui-builder.policy.schema.json` — what the catalog repositories author against, plus
+      `validate-ui-builder-policy.mjs`, the pre-flight that reads one before a 90-minute render does.
 - [x] The generator (record + cover sheet + policy → `ui-builder.json`) in the discovery task and
       in the bundle, written to `build/compose-previews/ui-builder.json`.
 - [x] `catalog-ui-builder.mjs`: publish it to the branch root, stamp `uiBuilderFile`.
