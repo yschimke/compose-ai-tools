@@ -395,6 +395,7 @@ internal object AndroidPreviewClasspath {
     fixedTime: String = "",
     linkBufferComposer: String = "false",
     rcPlayer: String = "cmp",
+    rcDensity: String = "fixed",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -483,6 +484,14 @@ internal object AndroidPreviewClasspath {
       // be forwarded here or `-PcomposePreview.rcPlayer=view` set on the Gradle invocation never
       // reaches the JVM that composes.
       "composeai.render.rcPlayer" to rcPlayer,
+      // Whether a Remote Compose capture folds density and font scale into the document as
+      // constants (`fixed`, the default) or records them as references to the player's
+      // `FLOAT_DENSITY` / `FONT_SIZE` variables (`host`). Read inside the render JVM by
+      // `RemoteDensitySelection`, so like its neighbours it has to be forwarded here or
+      // `-PcomposePreview.rcDensity=host` set on the Gradle invocation never reaches the JVM that
+      // captures. This one decides what gets *written*, so unlike `rcPlayer` no later request can
+      // revisit it — a constant-folded document cannot be asked to scale.
+      "composeai.render.rcDensity" to rcDensity,
     )
 }
 
@@ -729,6 +738,37 @@ internal fun composeAiRcPlayer(project: Project): org.gradle.api.provider.Provid
     .systemProperty("composeai.render.rcPlayer")
     .orElse(project.providers.gradleProperty("composePreview.rcPlayer"))
     .orElse("cmp")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.render.rcDensity` — whether
+ * a **Remote Compose** capture writes density and font scale as constants or as references to the
+ * player's own system variables. `"fixed"` (the default, `RemoteDensity.from(displayInfo)`) or
+ * `"host"` (`RemoteDensity.Host`).
+ *
+ * Build-wide, like its `rcPlayer` neighbour, and read in the JVM that composes
+ * (`RemoteDensitySelection` in `:data-remotecompose-connector`) rather than resolved on the Gradle
+ * one. Unlike `rcPlayer` it is not the weakest of several tiers — it is the only tier. The setting
+ * decides what the capture writes into the document, and no per-preview annotation or per-render
+ * `renderNow` override can revisit that afterwards: a document whose sp→px was folded to a constant
+ * cannot be re-scaled by asking the player nicely.
+ *
+ * Sourced from `-Dcomposeai.render.rcDensity` first (the flag the runtime itself reads), then
+ * `-PcomposePreview.rcDensity`, else `"fixed"`.
+ *
+ * The default is `"fixed"` — the *less* capable value — because flipping it rewrites the bytes of
+ * every captured document in the consuming build and makes the replay density a correctness input
+ * where it used to be ignored. A catalog opts in when it is ready to re-bake and look at the
+ * pixels; `wear-m3-catalog` does so in its own `gradle.properties`.
+ *
+ * Android-only, and deliberately not forwarded to the Desktop lane, for the same reason as
+ * `composeAiRcPlayer`: the creation library and both players are Android artifacts rendered under
+ * Robolectric, so there is no Desktop capture for the setting to be true of.
+ */
+internal fun composeAiRcDensity(project: Project): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.render.rcDensity")
+    .orElse(project.providers.gradleProperty("composePreview.rcDensity"))
+    .orElse("fixed")
 
 /**
  * The resolved value to forward as the render / daemon JVM's `composeai.render.linkBufferComposer`
