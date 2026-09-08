@@ -44,6 +44,8 @@ class BundleSplitTest {
         "previews/A.png" to "PNG-A".encodeToByteArray(),
         "previews/A.semantics.json" to """{"nodes":["a"]}""".encodeToByteArray(),
         "previews/A.figma.svg" to "<svg>A</svg>".encodeToByteArray(),
+        "previews/A.figma-fonts.warnings.json" to
+          """{"unnamedRenderedFamilies":["Orbitron"]}""".encodeToByteArray(),
         "previews/B.png" to "PNG-B".encodeToByteArray(),
         // C has NO baked image on purpose — it must be skipped.
         "previews/C.semantics.json" to """{"nodes":["c"]}""".encodeToByteArray(),
@@ -110,6 +112,9 @@ class BundleSplitTest {
     assertTrue("previews/A.png" in entries)
     assertTrue("previews/A.semantics.json" in entries)
     assertTrue("previews/A.figma.svg" in entries)
+    // The font-warning sidecar has to follow the sticker it explains: a split bundle is what the
+    // delivery branch serves, so dropping it here is what left the boxes unexplained downstream.
+    assertTrue("previews/A.figma-fonts.warnings.json" in entries)
     assertFalse("previews/B.png" in entries)
     // FULL keeps the shared re-render classpath.
     assertTrue("classes/app.jar" in entries)

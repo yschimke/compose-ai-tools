@@ -769,6 +769,7 @@ public final class ee/schimke/composeai/bundle/FigmaRasterScalingKt {
 }
 
 public final class ee/schimke/composeai/bundle/PreviewBundleFormatKt {
+	public static final field BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX Ljava/lang/String;
 	public static final field BUNDLE_FIGMA_RASTER_DIR_SUFFIX Ljava/lang/String;
 	public static final field BUNDLE_FIGMA_SVG_SUFFIX Ljava/lang/String;
 	public static final field BUNDLE_FONTS_SUFFIX Ljava/lang/String;
@@ -780,6 +781,8 @@ public final class ee/schimke/composeai/bundle/PreviewBundleFormatKt {
 	public static synthetic fun addOrReplaceZipEntries$default ([BLjava/util/Map;Ljava/util/Set;ILjava/lang/Object;)[B
 	public static final fun embedWebIntoZip ([BLjava/util/Map;)[B
 	public static final fun getZIP_DOS_EPOCH_MS ()J
+	public static final fun injectFigmaFontWarningsIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectFigmaFontWarningsIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
 	public static final fun injectFigmaRasterIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;I)I
 	public static synthetic fun injectFigmaRasterIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;IILjava/lang/Object;)I
 	public static final fun injectFigmaSvgIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I

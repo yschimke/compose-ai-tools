@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.addOrReplaceZipEntries
+import ee.schimke.composeai.bundle.injectFigmaFontWarningsIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaSvgIntoBundle
 import ee.schimke.composeai.bundle.injectFontsIntoBundle
@@ -226,6 +227,54 @@ class BundleSemanticsInjectTest {
       names.getValue("previews/a.semantics.json").toString(Charsets.UTF_8),
     )
     assertEquals(svg, names.getValue("previews/a.figma.svg").toString(Charsets.UTF_8))
+  }
+
+  @Test
+  fun `carries the figma-svg font-warning sidecar beside the svg it explains`() {
+    // The export writes this file ONLY for a preview it had to draw as missing-glyph boxes, so an
+    // entry here is the defect. It used to be written into the render's data dir and collected by
+    // nobody, which is how a sheet of boxes published with the one artefact naming the lost face
+    // left behind on the build machine.
+    val cover = png(4, 8)
+    val svg = """<svg xmlns="http://www.w3.org/2000/svg"><g id="Box"/></svg>"""
+    val file =
+      polyglot(
+        cover,
+        linkedMapOf(
+          "bundle.json" to "{}".toByteArray(),
+          "previews/a.png" to cover,
+          "previews/a.figma.svg" to svg.toByteArray(),
+        ),
+      )
+
+    val warnings =
+      """{"unnamedRenderedFamilies":["Orbitron"],"namedFamilies":["Roboto"],""" +
+        """"tofuFamily":"ComposeAI Missing Font"}"""
+    val written = injectFigmaFontWarningsIntoBundle(file, mapOf("a" to warnings.toByteArray()))
+
+    assertEquals(1, written)
+    val names = entries(BundleReader.extractZipBytes(file))
+    assertEquals(svg, names.getValue("previews/a.figma.svg").toString(Charsets.UTF_8))
+    assertEquals(
+      warnings,
+      names.getValue("previews/a.figma-fonts.warnings.json").toString(Charsets.UTF_8),
+    )
+  }
+
+  @Test
+  fun `a healthy sheet carries no font-warning sidecar at all`() {
+    // Absence is the healthy signal, so "no entries" has to stay reachable: a reader treats the
+    // presence of one of these as "this sticker's text is wrong".
+    val cover = png(4, 8)
+    val file =
+      polyglot(cover, linkedMapOf("bundle.json" to "{}".toByteArray(), "previews/a.png" to cover))
+
+    assertEquals(0, injectFigmaFontWarningsIntoBundle(file, emptyMap()))
+    assertTrue(
+      entries(BundleReader.extractZipBytes(file)).keys.none {
+        it.endsWith(".figma-fonts.warnings.json")
+      }
+    )
   }
 
   @Test

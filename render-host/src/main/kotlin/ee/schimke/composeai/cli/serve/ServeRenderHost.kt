@@ -287,6 +287,18 @@ public data class ServePreview(
   /** Published render failure for a catalog card that has no PNG. */
   val renderFailure: CatalogRenderFailure? = null,
   /**
+   * The font families the render drew that this preview's `compose/figma-svg` export could not
+   * name, so its text was exported as **missing-glyph boxes** rather than silently substituted.
+   * From the bundle's `previews/<id>.figma-fonts.warnings.json` sidecar; empty is the healthy
+   * state, because the export writes that sidecar only when it degrades.
+   *
+   * Carried so the viewer can say so on the sticker. The sidecar existed for a year and reached
+   * nobody — written into the render's data dir, collected by nothing — which is how a sheet of
+   * boxes published and was found by eye in a live catalog days later. A signal that stops one hop
+   * short of the reader is not a signal.
+   */
+  val lostFontFamilies: List<String> = emptyList(),
+  /**
    * Animated captures published for this preview. Empty for the overwhelming majority — a still is
    * the whole artifact for most components — so a viewer treats this as opt-in extra surface and
    * never as a replacement for the baked pixels.

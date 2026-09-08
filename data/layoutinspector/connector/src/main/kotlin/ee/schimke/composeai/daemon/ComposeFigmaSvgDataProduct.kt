@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.FigmaSvgBackgroundMode
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.SamplingPolicy
+import ee.schimke.composeai.data.fonts.FigmaSvgFontWarningsSidecar
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.FigmaLayeredSvg
@@ -233,7 +234,7 @@ object ComposeFigmaSvgDataProducer {
   const val DEFAULT_EMBED_FAMILY: String = "Roboto"
 
   /** Sidecar naming the faces the render drew with that the export could not reproduce. */
-  const val FILE_FONT_WARNINGS: String = "compose-figma-fonts.warnings.json"
+  const val FILE_FONT_WARNINGS: String = FigmaSvgFontWarningsSidecar.FILE
 
   /** Every family named on a `<text>` or curved `<textPath>` run in [layer]'s subtree. */
   private fun capturedFamilies(layer: FigmaSvgLayer): Set<String> = buildSet {

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_FIGMA_RASTER_DIR_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_FIGMA_SVG_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_FONTS_SUFFIX
@@ -11,6 +12,7 @@ import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.WebEmbed
 import ee.schimke.composeai.bundle.embedWebIntoZip
 import ee.schimke.composeai.bundle.expandZipBytesSafely
+import ee.schimke.composeai.bundle.injectFigmaFontWarningsIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaSvgIntoBundle
 import ee.schimke.composeai.bundle.injectFontsIntoBundle
@@ -118,7 +120,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       A <bundle> below is a local path OR an http(s)/file URL — URLs are downloaded first.
 
       Usage:
-        compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics]
+        compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics] [--allow-lost-font-families]
         compose-preview bundle pack --per-preview [--module <name>] [--id <preview>...] [-o <dir>]
         compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only | --shared-classpath-out <pool>] [--carriage-report <file.json>]
         compose-preview bundle inspect <bundle.png | URL>
@@ -212,14 +214,24 @@ class BundleCommand(args: List<String>) : Command(args) {
                             design-catalog export generates the in-browser tier's fonts.json, and the
                             layered compose/figma-svg export (editable vector) as
                             previews/<id>.figma.svg, shipped per sticker beside the raster PNG.
+                            A preview whose figma-svg export could not name a font family the
+                            render drew also carries the export's warning as
+                            previews/<id>.figma-fonts.warnings.json, and FAILS THE PACK — see
+                            --allow-lost-font-families.
                             Produced by a short-lived daemon render (no separate --with-extension
                             pass needed). Off by default; ignored with --no-render.
+        --allow-lost-font-families
+                            Pack anyway when a figma-svg export lost a font family. Such a preview
+                            exports its text as missing-glyph boxes, which is loud in the sticker
+                            and silent in the build log, so the pack refuses by default rather
+                            than let a sheet of boxes publish. Same posture as the render's
+                            -Dcomposeai.fonts.failOnFallback gate.
 
       Split flags (sheet → one bundle per preview):
         -o, --output <dir>  Directory to write <id>.png bundles into. Default: <sheet>-split/.
         --view-only         Drop the re-render classpath (classes/app.jar + libs/) from each output,
                             keeping the baked image + every sidecar (semantics / layout / figma.svg /
-                            overrides / catalog / fonts). Produces small (~tens of KB) addressable
+                            figma-fonts.warnings / overrides / catalog / fonts). Produces small (~tens of KB) addressable
                             stickers a viewer / detached reader opens, at the cost of live re-render.
                             Without it, each bundle carries the shared classpath and can re-render
                             (larger — the shared jars repeat per preview). A sheet packed
@@ -273,6 +285,17 @@ private class PackSubcommand(private val args: List<String>) {
   private val embedDeps: Boolean = "--embed-deps" in args
   private val includeDataExtensions: Boolean = "--include-data-extensions" in args
   private val withSemantics: Boolean = "--with-semantics" in args
+
+  /**
+   * Let a pack whose figma-svg export lost a font family succeed anyway.
+   *
+   * Off by default, and that default is the point. A lost family exports as missing-glyph boxes,
+   * which is loud in a rendered sticker and completely silent in a build log, so a degraded sheet
+   * published and sat in the catalog until somebody happened to look at one. Mirrors the render's
+   * own `-Dcomposeai.fonts.failOnFallback` gate, which fails a render that drew the wrong typeface
+   * for the same reason.
+   */
+  private val allowLostFontFamilies: Boolean = "--allow-lost-font-families" in args
   private val perPreview: Boolean = "--per-preview" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val progress: Boolean = verbose || "--progress" in args
@@ -464,7 +487,20 @@ private class PackSubcommand(private val args: List<String>) {
               } else null
 
             printPackSummary(resolvedOutput, meta)
-            semanticsLine?.let { println(it) }
+            semanticsLine?.let { println(it.summary) }
+            // A figma-svg export that lost a font family drew that preview's text as
+            // missing-glyph boxes. That is a defect in the artefact, not in the run that produced
+            // it, so it does not fall under the best-effort rule above: refuse the pack rather
+            // than let a sheet of boxes publish and be found by eye days later.
+            lostFontFamilyRefusal(
+                degradedPreviewIds = semanticsLine?.degradedPreviewIds.orEmpty(),
+                allowed = allowLostFontFamilies,
+                bundlePath = resolvedOutput.path,
+              )
+              ?.let {
+                System.err.println(it)
+                exitProcess(1)
+              }
           }
         }
       }
@@ -679,6 +715,18 @@ private class PackSubcommand(private val args: List<String>) {
   }
 
   /**
+   * What a `--with-semantics` pack carried: the stdout [summary] to print after the main pack
+   * summary, and the previews whose figma-svg export degraded to missing-glyph boxes.
+   *
+   * [degradedPreviewIds] is empty on a healthy sheet — the export writes its font-warning sidecar
+   * only when it could not name a family the render drew.
+   */
+  private data class PackedSemantics(
+    val summary: String,
+    val degradedPreviewIds: List<String> = emptyList(),
+  )
+
+  /**
    * Carry the per-preview semantics blob inside [bundleFile] (issue #1843). Drives a short-lived
    * daemon ([DaemonSemanticsFetcher]) to render the bundle's selected previews and read back each
    * one's `compose/semantics` tree (with resolved foreground/background colours), then injects them
@@ -687,15 +735,20 @@ private class PackSubcommand(private val args: List<String>) {
    *
    * Best-effort: any failure (missing descriptor, daemon open/render error, an unsupported backend)
    * warns to stderr and leaves the already-written bundle untouched rather than failing the pack —
-   * the cover PNG and every other entry are preserved and the polyglot stays valid. Returns the
-   * stdout summary line to print after the main pack summary, or null when nothing was carried.
+   * the cover PNG and every other entry are preserved and the polyglot stays valid. Returns what
+   * was carried, or null when nothing was.
+   *
+   * "Best-effort" covers *infrastructure* — a daemon that would not start says nothing about the
+   * bundle already on disk. It deliberately does not cover a figma-svg export that lost a font
+   * family, which is a statement about the artefact itself: those previews come back in
+   * [PackedSemantics.degradedPreviewIds] for the caller to refuse the pack over.
    */
   private fun packSemanticsBlob(
     target: PreviewModule,
     bundleFile: File,
     meta: BundleReader.Metadata,
     renderTimeout: Duration,
-  ): String? {
+  ): PackedSemantics? {
     val previewIds = meta.manifest.previewIds
     if (previewIds.isEmpty()) return null
     // The manifest's previewIds carry the sanitised in-bundle form; the daemon keys renders on the
@@ -782,6 +835,15 @@ private class PackSubcommand(private val args: List<String>) {
         // export copies the SVG onto the delivery branch. Empty for the common vector-only case.
         val figmaRasterWritten =
           injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById.keyedByBundleId())
+        // The export's font-warning sidecars. Written only for a preview drawn in missing-glyph
+        // boxes, so this is a no-op on a healthy sheet and the entries ARE the defect on a
+        // degraded one. Carried so the warning reaches the delivery branch (and the viewer) with
+        // the artefact it describes, instead of staying on the build machine as it used to.
+        val fontWarningsWritten =
+          injectFigmaFontWarningsIntoBundle(
+            bundleFile,
+            outcome.figmaFontWarningsById.keyedByBundleId(),
+          )
         val semanticsLine =
           "  semantics:     $written / $captureCount preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
@@ -807,8 +869,16 @@ private class PackSubcommand(private val args: List<String>) {
               "\n  figma-raster:  $figmaRasterWritten crop(s) carried as " +
                 "previews/<id>$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/<node>.png"
             )
+          if (fontWarningsWritten > 0)
+            append(
+              "\n  figma-fonts:   $fontWarningsWritten preview(s) DEGRADED — text exported as " +
+                "missing-glyph boxes, carried as previews/<id>$BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX"
+            )
         }
-        return semanticsLine + extraLines
+        return PackedSemantics(
+          summary = semanticsLine + extraLines,
+          degradedPreviewIds = outcome.figmaFontWarningsById.keys.sorted(),
+        )
       }
       is DaemonSemanticsFetcher.Outcome.DescriptorMissing ->
         System.err.println(
@@ -1675,3 +1745,27 @@ private fun encodePreviewId(id: String): String =
       append(c)
     }
   }
+
+/**
+ * Why a `--with-semantics` pack must not publish, or null when it may.
+ *
+ * A figma-svg export that could not name a font family the render drew exports that preview's text
+ * as missing-glyph boxes. Nothing downstream distinguishes that from a deliberate rendering, which
+ * is how a whole sheet of boxes reached a live catalog and was found days later by eye — so the
+ * pack refuses by default and names both the previews and the sidecar that says which face was
+ * lost. [allowed] is the deliberate override.
+ */
+internal fun lostFontFamilyRefusal(
+  degradedPreviewIds: List<String>,
+  allowed: Boolean,
+  bundlePath: String,
+): String? {
+  if (degradedPreviewIds.isEmpty() || allowed) return null
+  return "bundle pack: ${degradedPreviewIds.size} preview(s) exported their text as " +
+    "missing-glyph boxes because the figma-svg export could not name a font family the render " +
+    "drew:\n" +
+    degradedPreviewIds.joinToString("\n") { "  - $it" } +
+    "\nEach carries previews/<id>$BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX in $bundlePath naming the " +
+    "face that was lost. Fix the export, or pass --allow-lost-font-families to publish the boxes " +
+    "deliberately."
+}

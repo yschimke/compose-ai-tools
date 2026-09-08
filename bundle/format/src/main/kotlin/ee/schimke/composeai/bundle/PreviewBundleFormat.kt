@@ -79,6 +79,20 @@ public const val BUNDLE_FIGMA_SVG_SUFFIX: String = ".figma.svg"
 public const val BUNDLE_FIGMA_RASTER_DIR_SUFFIX: String = ".figma-raster"
 
 /**
+ * Suffix for the `compose/figma-svg` export's font-warning sidecar, carried beside
+ * `previews/<id>.figma.svg`. The payload is the export's own `compose-figma-fonts.warnings.json` —
+ * which families the render drew that the SVG could not name, which it could, and the missing-glyph
+ * family it substituted.
+ *
+ * **Absent is the healthy state.** The export writes the sidecar only for a degraded preview, so an
+ * entry here means that sticker's text shipped as boxes. Carried because it previously went
+ * nowhere: the export wrote it into the render's data dir, nothing collected it, and a whole sheet
+ * published in missing-glyph boxes with the one artefact naming the lost face left behind on the
+ * build machine.
+ */
+public const val BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX: String = ".figma-fonts.warnings.json"
+
+/**
  * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
  * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
  * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
@@ -130,6 +144,20 @@ public fun injectFigmaSvgIntoBundle(
   figmaSvgById: Map<String, ByteArray>,
   fileSystem: FileSystem = SystemFileSystem,
 ): Int = injectSidecarsIntoBundle(bundleFile, figmaSvgById, BUNDLE_FIGMA_SVG_SUFFIX, fileSystem)
+
+/**
+ * Inject `previews/<id>.figma-fonts.warnings.json` entries (id →
+ * `compose-figma-fonts.warnings.json` bytes) into [bundleFile] — the font-warning sidecar the
+ * figma-svg export writes for a preview it had to draw in missing-glyph boxes. Only degraded
+ * previews have one, so this is normally a no-op. Same in-place, idempotent, byte-stable contract
+ * as [injectSemanticsIntoBundle]. Returns the number of entries written.
+ */
+public fun injectFigmaFontWarningsIntoBundle(
+  bundleFile: File,
+  warningsById: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int =
+  injectSidecarsIntoBundle(bundleFile, warningsById, BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX, fileSystem)
 
 /**
  * Inject a hybrid figma-svg's per-node raster crops ([figmaRasterById]: preview id → (crop filename
