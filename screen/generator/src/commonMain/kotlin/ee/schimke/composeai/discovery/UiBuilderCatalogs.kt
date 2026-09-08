@@ -169,6 +169,7 @@ object UiBuilderCatalogs {
     const val POLICY_SCHEMA_UNKNOWN = "policy.schema.unknown"
     const val BUILTIN_ROLE_UNKNOWN = "policy.builtin.role.unknown"
     const val TEMPLATE_ROLE_UNKNOWN = "policy.code.template.role.unknown"
+    const val TEMPLATE_MALFORMED = "policy.code.template.malformed"
     const val TEMPLATES_WITHOUT_STRATEGY = "policy.code.templates.withoutStrategy"
     const val STRATEGY_WITHOUT_TEMPLATES = "policy.code.strategy.withoutTemplates"
     const val CANVAS_UNCLAIMED = "component.canvas.unclaimed"
@@ -445,6 +446,23 @@ object UiBuilderCatalogs {
               "${UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString()}, plus 'previews' and 'file'. " +
               "A build that does not know a role refuses that export, not the catalog.",
         )
+    }
+    // The templates are read as templates, not merely as strings. A `${'$'}{contnet}` that no
+    // builder
+    // will ever resolve is a message for the person editing this policy; without this it is a
+    // refused export weeks later, for somebody who did not write it.
+    for ((role, template) in code.templates) {
+      val holes = StructuralTemplate.holes(template)
+      if (holes is StructuralTemplate.Result2.Failed) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.TEMPLATE_MALFORMED,
+            subject = role,
+            message =
+              "the template cannot be read: ${holes.reasons.joinToString("; ")}. A template is " +
+                "${'$'}{name} substitution and ${'$'}{call(...)} call sites, and nothing else.",
+          )
+      }
     }
     if (code.strategy == "templates" && code.templates.isEmpty()) {
       into +=

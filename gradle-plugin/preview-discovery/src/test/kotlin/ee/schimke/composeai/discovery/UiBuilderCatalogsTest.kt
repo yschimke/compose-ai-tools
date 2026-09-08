@@ -296,6 +296,30 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `a template that cannot be read is reported against the role that declares it`() {
+    // Read as templates, not merely as strings. Without this, a typo'd hole is a refused export
+    // weeks later, for somebody who did not write the policy.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(),
+        cover,
+        policy(
+          code =
+            UiBuilderCode(
+              strategy = "templates",
+              templates =
+                mapOf("screen-root" to "AppScaffold {\n  \${content}\n}", "list" to "a \${ b"),
+            )
+        ),
+      )!!
+
+    val reported =
+      generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.TEMPLATE_MALFORMED }
+    assertThat(reported.subject).isEqualTo("list")
+    assertThat(reported.message).contains("unterminated")
+  }
+
+  @Test
   fun `the generated file round-trips through JSON`() {
     val generated =
       UiBuilderCatalogs.generate(
