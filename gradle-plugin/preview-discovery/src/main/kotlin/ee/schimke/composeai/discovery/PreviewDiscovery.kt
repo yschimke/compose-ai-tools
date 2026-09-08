@@ -416,6 +416,12 @@ object PreviewDiscovery {
   internal const val CATALOG_VARIANT_FQN = "ee.schimke.composeai.preview.CatalogVariant"
   internal const val CATALOG_GROUP_FQN = "ee.schimke.composeai.preview.CatalogGroup"
 
+  // `@BuilderComponent` — per-component UI builder policy, on the same `@Preview` FUNCTION as
+  // `@CatalogComponent` and read by the same scan. Not part of the catalog inventory: it says how a
+  // component behaves in a drawing tool, and a module with no catalog at all may still carry it.
+  // See `BuilderComponent.kt` and [extractBuilderEntry].
+  internal const val BUILDER_COMPONENT_FQN = "ee.schimke.composeai.preview.BuilderComponent"
+
   // Fallback group for a `@CatalogComponent` with no `group` argument and no file `@CatalogGroup`.
   private const val DEFAULT_CATALOG_COMPONENT_GROUP = "Components"
 
@@ -1271,6 +1277,57 @@ object PreviewDiscovery {
       breakpointKit = annStringArray(component, "breakpointKit"),
     )
   }
+
+  /**
+   * UI-builder policy for a preview function from `@BuilderComponent`, or `null` when it carries
+   * none — which is the case for nearly every preview, including every component of a catalog that
+   * has no disagreements with the builder's defaults.
+   *
+   * Nothing is defaulted on the catalog's behalf. A blank annotation argument records `null`, not
+   * the value the generator would pick, so "the catalog did not say" survives into the record and
+   * the generator can report an unclaimed canvas adapter or an underived id as such.
+   *
+   * An annotation whose every field is left at its default resolves to a policy that says nothing.
+   * It is still recorded rather than folded to `null`: writing `@BuilderComponent` on a sticker is
+   * a statement that somebody considered this component's builder policy, and the generator's
+   * "which components has nobody looked at" report is only true if it can tell that apart from
+   * silence.
+   */
+  private fun extractBuilderEntry(annotations: List<AnnotationInfo>): BuilderPolicy? {
+    val builder = annotations.firstOrNull { it.name == BUILDER_COMPONENT_FQN } ?: return null
+    return BuilderPolicy(
+      id = annStringOrNull(builder, "id"),
+      group = annStringOrNull(builder, "group"),
+      displayName = annStringOrNull(builder, "displayName"),
+      canvas = annStringOrNull(builder, "canvas"),
+      stateCallbacks = builderPairs(builder, "stateCallbacks"),
+      starter = builderPairs(builder, "starter"),
+      slots = builderPairs(builder, "slots"),
+      traits = annStringArray(builder, "traits").map { it.trim() }.filter { it.isNotEmpty() },
+      variantProperty = annStringOrNull(builder, "variantProperty"),
+      variants = builderPairs(builder, "variants"),
+      nativeOnly = annBoolean(builder, "nativeOnly"),
+      exclude = annStringOrNull(builder, "exclude"),
+    )
+  }
+
+  /**
+   * A `@BuilderComponent` `key=value` array parameter as [BuilderPair]s, split on the FIRST `=` so
+   * a value may contain one (`"onCheckedChange=checked:boolean"` has none; a starter string can).
+   *
+   * An entry with no `=`, or with a blank key, is dropped rather than failing the build — the same
+   * bargain `@CatalogComponent.breakpointKit` strikes. The generator reports what it received and
+   * what it could not use, so the drop is visible where somebody is already reading a report,
+   * rather than in a Gradle log nobody opens.
+   */
+  private fun builderPairs(ann: AnnotationInfo, param: String): List<BuilderPair> =
+    annStringArray(ann, param).mapNotNull { entry ->
+      val separator = entry.indexOf('=')
+      if (separator <= 0) return@mapNotNull null
+      val key = entry.substring(0, separator).trim()
+      if (key.isEmpty()) return@mapNotNull null
+      BuilderPair(key = key, value = entry.substring(separator + 1).trim())
+    }
 
   /** Reads a `String` annotation parameter, returning `null` when absent or blank. */
   private fun annStringOrNull(ann: AnnotationInfo, param: String): String? {
@@ -2247,6 +2304,10 @@ object PreviewDiscovery {
     // tag — so it's resolved once here and stamped onto each entry this method contributes below.
     val catalogEntry =
       extractCatalogEntry(method, annotations, catalogGroupsByFile[previewSourceFile])
+    // `@BuilderComponent` is function-level for the same reason: builder policy describes the
+    // COMPONENT, so it holds for every `@Preview` expansion of the function rather than for one of
+    // them. Resolved here and stamped alongside the catalog identity.
+    val builderEntry = extractBuilderEntry(annotations)
     // `@CaptureGutter` is function-level for the same reason: the gutter describes what the
     // COMPONENT draws past its bounds, so it holds for every `@Preview` expansion of the function
     // — light and dark, every size cell, every override variant — not for one of them.
@@ -2278,12 +2339,13 @@ object PreviewDiscovery {
     }
     val firstNewPreviewIndex = previews.size
     fun tagFunctionLevel() {
-      if (catalogEntry == null && captureGutter == null) return
+      if (catalogEntry == null && captureGutter == null && builderEntry == null) return
       for (i in firstNewPreviewIndex until previews.size) {
         val preview = previews[i]
         previews[i] =
           preview.copy(
             catalog = catalogEntry ?: preview.catalog,
+            builder = builderEntry ?: preview.builder,
             params =
               if (captureGutter == null) preview.params
               else preview.params.copy(captureGutter = captureGutter),

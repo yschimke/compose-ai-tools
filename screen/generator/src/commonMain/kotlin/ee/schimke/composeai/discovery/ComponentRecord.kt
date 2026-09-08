@@ -120,6 +120,15 @@ data class ComponentRecord(
    */
   val overloadsCollided: Boolean = false,
   /**
+   * UI-builder policy this component's stickers declared with `@BuilderComponent`, or null when
+   * none did — which is the case for every component of a catalog that has no disagreements with
+   * the builder's defaults, and for every ordinary application preview.
+   *
+   * Additive and ignorable: a consumer that does not build UIs reads the record exactly as before.
+   * See [BuilderPolicy] for why it is not defaulted here.
+   */
+  val builder: BuilderPolicy? = null,
+  /**
    * Fully-qualified `@RequiresOptIn` markers the declaration carries. Copied onto
    * [ComponentCode.requiredOptIns] for the emitted call; see that field for what a caller does with
    * them.

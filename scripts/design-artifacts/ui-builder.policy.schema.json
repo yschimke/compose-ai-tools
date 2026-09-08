@@ -1,0 +1,246 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/ui-builder.policy.schema.json",
+  "title": "UI builder catalog policy",
+  "description": "Catalog-level UI builder policy, authored beside catalog.spec.json as `ui-builder.policy.json`. It carries what no component signature can say and what no single component owns: the platform word, the screen frame and its measured geometry, the structural code templates, the template designs. Per-COMPONENT policy is not here — it is `@BuilderComponent` beside `@CatalogComponent` on the sticker, so a component is never renamed in two places. Read together with the discovered component record and the cover sheet by the generator that writes `ui-builder.json`, which is published beside catalog.json and components.json on the delivery branch and written to build/compose-previews/ for a local `compose-preview-server ui`. The contract: https://github.com/yschimke/compose-preview-server/blob/main/docs/design/UI_BUILDER_CATALOG_CONTRACT.md",
+  "type": "object",
+  "required": ["schema", "platform"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "$comment": { "type": "string" },
+    "schema": {
+      "const": "compose-ui-builder-policy/v1",
+      "description": "Schema identity and major version. A reader refuses a major it does not know rather than guessing at it; it must NOT refuse an unknown minor or an unknown field, because this file is published once and read by builders of several vintages that the publisher cannot upgrade."
+    },
+    "catalogId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The id the builder authors against, and the id a saved design pins. Defaults to catalog.spec.json's `system`, which is the right answer whenever the builder catalog and the served catalog are the same thing — and under this contract they are, by construction. Override only to keep an id designs already store after the delivery system is renamed."
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "The platform word. A WORD, not a member of an enum: compatibility is declared equality, so a component pack lands in a catalog whose platform matches its own, and the New design chooser groups catalogs by this string. `mobile`, `wear`, `remote-compose` are the words in use; a new one costs nothing here and at most one frame adapter in the builder."
+    },
+    "platformLabel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the chooser prints over the group of catalogs sharing this platform (\"Mobile\", \"Wear\", \"RemoteCompose\"). Defaults to the platform word title-cased. Two catalogs on one platform that disagree about the label is a fact the generator reports rather than resolving."
+    },
+    "previewSurfaces": {
+      "type": "object",
+      "description": "Which render surfaces are honest for this catalog, and which daemon backs the authoritative one. Read by the editor's Preview and by the native lane's backend choice. Exactly the shape statusSemantics.previewSurfaces already carries.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fidelity": {
+            "enum": ["authoritative", "approximate", "unsupported"],
+            "description": "`authoritative`: these pixels are the product. `approximate`: a drawing aid, honest about being one. `unsupported`: this surface cannot draw the catalog at all."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the fidelity is what it is, in words a person reading a fuzzy preview needs. Required for anything other than `authoritative`."
+          },
+          "backend": {
+            "type": "string",
+            "description": "The render backend that serves this surface (`android`, `desktop`). Meaningful on an authoritative surface."
+          }
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "description": "The screen frame the canvas draws this catalog's designs inside.",
+      "additionalProperties": false,
+      "required": ["adapter"],
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Id of a frame adapter the builder ships — `frame/rect`, `frame/round-screen`, `frame/widget-host`. A builder with no adapter by this name draws a plain rectangle and logs the adapter and the catalog once; it never refuses the catalog. Adding a genuinely new frame shape is the one residual per-platform cost in the server, and it is one adapter, not a catalog."
+        },
+        "seedDevice": {
+          "type": "string",
+          "description": "Which device a new design in this catalog opens on, as a device-preset reference (`id:pixel_6`, `id:wearos_small_round`). Defaults to the device of the first entry in catalog.spec.json's `breakpoints`."
+        },
+        "geometry": {
+          "type": "object",
+          "description": "Measured frame geometry — WRITTEN BY A TEST, NEVER BY HAND. The Robolectric probe that measures the numbers asserts the committed file equals its measurement, so a library bump changes the number where the number is measured rather than where somebody copied it. A hand-edited block is a failing test, which is the entire point of putting it here.",
+          "properties": {
+            "contentPadding": {
+              "type": "array",
+              "description": "Per-screen-size content insets, as measured.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["screenDp"],
+                "properties": {
+                  "screenDp": { "type": "number" },
+                  "horizontalDp": { "type": "number" },
+                  "verticalDp": { "type": "number" },
+                  "topDp": { "type": "number" },
+                  "bottomDp": { "type": "number" }
+                }
+              }
+            },
+            "cornerRadiusDp": { "type": "number" },
+            "sizesDp": {
+              "type": "array",
+              "description": "The fixed sizes this frame is drawn at, when it has them rather than a device (a widget host's 216x76 and 216x124).",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["widthDp", "heightDp"],
+                "properties": {
+                  "widthDp": { "type": "number" },
+                  "heightDp": { "type": "number" },
+                  "label": { "type": "string" }
+                }
+              }
+            },
+            "colors": {
+              "type": "object",
+              "description": "Sampled frame colours by role, as #RRGGBB or #AARRGGBB.",
+              "additionalProperties": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }
+            },
+            "timeText": {
+              "type": "object",
+              "description": "A Wear frame's clock: where it sits and what it is frozen to, so a render is reproducible.",
+              "additionalProperties": false,
+              "properties": {
+                "topDp": { "type": "number" },
+                "frozen": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "builtins": {
+      "type": "object",
+      "description": "The ONLY components this file may declare, and the reason the restriction exists: a builtin has no call site and therefore cannot be in the record — a screen scaffold the catalog structures around, a shape or an image asset that is not a composable at all. A component that HAS a call site belongs in the record, with `@BuilderComponent` on its sticker for anything the signature cannot say. A builtin must name a structural role, so the template engine knows which template writes it.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role"],
+        "properties": {
+          "role": {
+            "enum": ["screen-root", "list", "list-item", "overlay", "controlled", "decoration"],
+            "description": "Which structural template writes this builtin. The set is closed on purpose: a catalog that needs a seventh role means the engine grows one, once, with a test — not that every catalog ships a compiler. The test that a new role is general is that two catalogs use it."
+          },
+          "displayName": { "type": "string" },
+          "group": { "type": "string" },
+          "canvas": {
+            "type": "string",
+            "description": "Canvas adapter id, or `placeholder`. Same negotiation as `frame.adapter`: unknown to this build means placeholder plus a log line, never a refused catalog."
+          },
+          "slots": {
+            "type": "object",
+            "description": "What each of the builtin's slots accepts.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "acceptedTraits": { "type": "array", "items": { "type": "string" } },
+                "required": { "type": "boolean" },
+                "role": {
+                  "type": "string",
+                  "description": "The structural role each child of this slot is written with, when it is not the child's own."
+                }
+              }
+            }
+          },
+          "properties": {
+            "type": "array",
+            "description": "Editable properties of a builtin, since no signature declares them.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "jsonType"],
+              "properties": {
+                "name": { "type": "string" },
+                "jsonType": {},
+                "required": { "type": "boolean" },
+                "allowedValues": { "type": "array" },
+                "notes": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "menu": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the builder shelves this catalog in its insert panel. The shelves themselves come from `@CatalogGroup`; only their ORDER is authored, because alphabetical is wrong and no annotation on one component can state a total order over all of them.",
+      "properties": {
+        "groupOrder": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Groups in the order the panel lists them. A group a component names that this array omits sorts after the ones it lists, rather than disappearing."
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How this catalog's designs are written as source.",
+      "properties": {
+        "strategy": {
+          "enum": ["record", "templates"],
+          "description": "`record` (the default): every node is a call site printed from the component record, which is what a catalog of leaf components needs and all a catalog has to say. `templates`: the design has structure the record cannot print — a scroll state shared between a scaffold and the list inside it, an item wrapper that only compiles inside `item { }` — and the catalog supplies it below."
+        },
+        "language": {
+          "type": "string",
+          "description": "What the export produces, for the label a person reads: `kotlin` (Compose source, the default), or a catalog-specific dialect such as `kotlin-remote-compose` for a creation-DSL widget body."
+        },
+        "imports": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Imports every generated file needs, whatever it contains. PER-COMPONENT imports are not here — the record already carries each call site's own."
+        },
+        "templates": {
+          "type": "object",
+          "description": "Structural Kotlin with named holes, one per role. A hole-filler, not a language: `${name}` substitutes, `${call(...)}` prints a record call site with named argument overrides, `${children}` / `${items}` write a slot's nodes each wrapped in the role their parent declares. No conditionals — a template that would need one is two roles.",
+          "additionalProperties": { "type": "string" },
+          "propertyNames": {
+            "enum": [
+              "screen-root",
+              "list",
+              "list-item",
+              "overlay",
+              "controlled",
+              "decoration",
+              "previews",
+              "file"
+            ]
+          }
+        }
+      }
+    },
+    "templates": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Branch-relative paths of the template DESIGNS this catalog offers in the New design chooser (`ui-builder/designs/wear-list.json`). Each is an ordinary design document carrying a template marker and a seed environment. Ordinary designs published under the same directory are the design library and are not listed here."
+    },
+    "colorTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The theme roles a colour property or a background modifier may name — the roles the canvas can actually draw. A colour outside this list is a literal.",
+      "properties": {
+        "roles": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "assetRegistry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Asset keys the catalog itself ships, which the canvas draws from its own resources. A design extends this set with keys pinned through the asset lane; both reducers refuse any other key at commit.",
+      "properties": {
+        "keys": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

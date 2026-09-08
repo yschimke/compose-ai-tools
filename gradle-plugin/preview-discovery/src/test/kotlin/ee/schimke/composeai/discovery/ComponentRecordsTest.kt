@@ -29,6 +29,7 @@ class ComponentRecordsTest {
     id: String,
     componentTargets: List<PreviewTarget> = emptyList(),
     targets: List<PreviewTarget> = emptyList(),
+    builder: BuilderPolicy? = null,
   ) =
     PreviewInfo(
       id = id,
@@ -36,6 +37,7 @@ class ComponentRecordsTest {
       className = "com.example.PreviewsKt",
       targets = targets,
       componentTargets = componentTargets,
+      builder = builder,
     )
 
   private fun manifest(vararg previews: PreviewInfo) =
@@ -372,5 +374,102 @@ class ComponentRecordsTest {
       )
 
     assertThat(file.components.single().code?.refusedReason).contains("not recovered")
+  }
+
+  @Test
+  fun `builder policy reaches the record and names the preview that declared it`() {
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview("p1", componentTargets = listOf(card)),
+          preview(
+            "p2",
+            componentTargets = listOf(card),
+            builder = BuilderPolicy(canvas = "material3/Card"),
+          ),
+        )
+      )
+
+    val record = file.components.single()
+    assertThat(record.builder?.canvas).isEqualTo("material3/Card")
+    // Which sticker to edit, which is not answerable from the policy alone once several previews
+    // render one component.
+    assertThat(record.builder?.declaredBy).containsExactly("p2")
+    assertThat(record.builder?.conflicting).isEmpty()
+  }
+
+  @Test
+  fun `two previews declaring the same policy agree rather than conflict`() {
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val policy = BuilderPolicy(canvas = "material3/Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview("p2", componentTargets = listOf(card), builder = policy),
+          preview("p1", componentTargets = listOf(card), builder = policy),
+        )
+      )
+
+    val merged = file.components.single().builder!!
+    assertThat(merged.canvas).isEqualTo("material3/Card")
+    assertThat(merged.declaredBy).containsExactly("p1", "p2").inOrder()
+    assertThat(merged.conflicting).isEmpty()
+  }
+
+  @Test
+  fun `disagreeing policies resolve to the lowest preview id and name the rest`() {
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          // Declared in the manifest in the order that would win under first-seen, to pin that the
+          // resolution is by preview id: manifest order is not a fact anybody controls, and a
+          // record that changed which policy it published when a preview was renamed would be
+          // unreviewable.
+          preview("p9", componentTargets = listOf(card), builder = BuilderPolicy(canvas = "b")),
+          preview("p1", componentTargets = listOf(card), builder = BuilderPolicy(canvas = "a")),
+        )
+      )
+
+    val merged = file.components.single().builder!!
+    assertThat(merged.canvas).isEqualTo("a")
+    assertThat(merged.declaredBy).containsExactly("p1")
+    // Recorded rather than resolved in silence: the resolution is arbitrary and the disagreement
+    // is what somebody has to fix.
+    assertThat(merged.conflicting).containsExactly("p9")
+  }
+
+  @Test
+  fun `a preview that resolves one component through both paths declares its policy once`() {
+    val card = target("com.example.CardKt", "Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(card),
+            targets = listOf(card),
+            builder = BuilderPolicy(canvas = "material3/Card"),
+          )
+        )
+      )
+
+    assertThat(file.components.single().builder?.declaredBy).containsExactly("p1")
+  }
+
+  @Test
+  fun `a component no preview declared a policy for carries none`() {
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(target("androidx.compose.material3.CardKt", "Card")),
+          )
+        )
+      )
+
+    assertThat(file.components.single().builder).isNull()
   }
 }

@@ -117,6 +117,10 @@ object ComponentRecords {
           previewId = preview.id,
           componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
         )
+      // Builder policy travels with the preview that declared it, so the merge below can name who
+      // said what — and, when two stickers of one component disagree, say that they did rather
+      // than pick one in silence.
+      preview.builder?.let { existing.builderDeclarations += preview.id to it }
     }
   }
 
@@ -193,6 +197,39 @@ object ComponentRecords {
 
     var bindings: List<ComponentBinding> = emptyList()
 
+    /**
+     * Every `@BuilderComponent` policy declared for this component, with the preview that declared
+     * it. Reduced by [mergedBuilderPolicy]; kept as a list until then because the reduction needs
+     * to know how many there were and whether they agreed.
+     */
+    var builderDeclarations: List<Pair<String, BuilderPolicy>> = emptyList()
+
+    /**
+     * The one policy this component publishes, or null when no sticker declared one.
+     *
+     * Several previews may render one component and any of them may carry the annotation. Where
+     * they agree — the ordinary case, including one preview declaring it and the rest declaring
+     * nothing — the agreed policy is published and [BuilderPolicy.declaredBy] names every preview
+     * that said it. Where they disagree, the **lowest preview id wins** and the rest are named in
+     * [BuilderPolicy.conflicting].
+     *
+     * Lowest-id rather than first-seen because manifest order is not a fact anybody controls, and a
+     * record that changes which policy it publishes when a preview is renamed is a record nobody
+     * can review. Recorded rather than resolved silently for the same reason the descriptor merge
+     * drops to null: the resolution is arbitrary, and the disagreement is what somebody has to fix.
+     */
+    fun mergedBuilderPolicy(): BuilderPolicy? {
+      if (builderDeclarations.isEmpty()) return null
+      // Deduplicated first: `collect` runs once over a preview's componentTargets and again over
+      // its targets, so a sticker that resolves the same component through both paths declares its
+      // policy twice and `declaredBy` would name the preview twice for saying it once.
+      val ordered = builderDeclarations.distinct().sortedBy { it.first }
+      val winner = ordered.first().second
+      val agreed = ordered.filter { it.second == winner }.map { it.first }
+      val conflicting = ordered.filterNot { it.second == winner }.map { it.first }
+      return winner.copy(declaredBy = agreed, conflicting = conflicting)
+    }
+
     fun toRecord(): ComponentRecord {
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
       val record =
@@ -213,6 +250,7 @@ object ComponentRecords {
           hasContextReceivers = hasContextReceivers,
           requiredOptIns = requiredOptIns,
           androidxOptIns = androidxOptIns,
+          builder = mergedBuilderPolicy(),
         )
       // Printed from the finished record, so the snippet is answering the same symbol, parameters
       // and receiver a consumer will read beside it.
