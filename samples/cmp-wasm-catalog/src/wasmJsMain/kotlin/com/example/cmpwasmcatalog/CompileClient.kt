@@ -158,7 +158,7 @@ private suspend fun await(promise: Promise<JsString>): String =
       }
       .catch { e ->
         if (cont.isActive) {
-          cont.resumeWithException(IllegalStateException(e?.toString() ?: "the request failed"))
+          cont.resumeWithException(IllegalStateException(e.toString()))
         }
         null
       }

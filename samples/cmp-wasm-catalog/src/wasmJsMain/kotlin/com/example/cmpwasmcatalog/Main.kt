@@ -347,8 +347,7 @@ private suspend fun fetchBytes(url: String): ByteArray = suspendCancellableCorou
       null
     }
     .catch { e ->
-      if (cont.isActive)
-        cont.resumeWithException(IllegalStateException(e?.toString() ?: "fetch failed"))
+      if (cont.isActive) cont.resumeWithException(IllegalStateException(e.toString()))
       null
     }
 }
@@ -368,8 +367,7 @@ private suspend fun fetchText(url: String): String = suspendCancellableCoroutine
       null
     }
     .catch { e ->
-      if (cont.isActive)
-        cont.resumeWithException(IllegalStateException(e?.toString() ?: "fetch failed"))
+      if (cont.isActive) cont.resumeWithException(IllegalStateException(e.toString()))
       null
     }
 }

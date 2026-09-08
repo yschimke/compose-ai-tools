@@ -54,7 +54,7 @@ class FontResolverRecorder(private val context: Context? = null) {
     // family this recorder published — so without this the export knows which face was drawn but
     // not where its bytes are, and re-fetches a woff2 by name instead of embedding the ones the
     // render used. Same contract as [recoverDownloadableFont] below, for the file-backed shape.
-    if (fileFamily != null && matched != null) {
+    if (fileFamily != null) {
       fileFor(matched)?.let {
         FigmaResourceFonts.register(fileFamily, weight, style == "italic", it.absolutePath)
       }
