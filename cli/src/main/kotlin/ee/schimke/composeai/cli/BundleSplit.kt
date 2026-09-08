@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.bundle.BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_FIGMA_RASTER_DIR_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_FIGMA_SVG_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_FONTS_SUFFIX
@@ -210,6 +211,10 @@ private val SPLIT_SIDECAR_SUFFIXES =
     BUNDLE_LAYOUT_SUFFIX,
     BUNDLE_FONTS_SUFFIX,
     BUNDLE_FIGMA_SVG_SUFFIX,
+    // Only present on a preview whose text exported as missing-glyph boxes. It must follow the
+    // sticker it describes: a split bundle is what the delivery branch serves, so dropping the
+    // warning here is what left the boxes unexplained in the viewer.
+    BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX,
     ".overrides.json",
     ".catalog.json",
   )

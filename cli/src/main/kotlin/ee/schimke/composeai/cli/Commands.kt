@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.bundle.BUNDLE_FIGMA_SVG_SUFFIX
 import ee.schimke.composeai.bundle.BundleReader
+import ee.schimke.composeai.bundle.injectFigmaFontWarningsIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaRasterIntoBundle
 import ee.schimke.composeai.bundle.injectFigmaSvgIntoBundle
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -2246,10 +2247,12 @@ class RenderCommand(args: List<String>) : Command(args) {
         )
       val svgById: Map<String, ByteArray>
       val rasterById: Map<String, Map<String, ByteArray>>
+      val fontWarningsById: Map<String, ByteArray>
       when (outcome) {
         is DaemonSemanticsFetcher.Outcome.Ok -> {
           svgById = outcome.figmaSvgById
           rasterById = outcome.figmaRasterById
+          fontWarningsById = outcome.figmaFontWarningsById
         }
         is DaemonSemanticsFetcher.Outcome.DescriptorMissing -> {
           System.err.println(
@@ -2268,8 +2271,19 @@ class RenderCommand(args: List<String>) : Command(args) {
       }
 
       totalWritten +=
-        if (bundle) injectSvgIntoModuleBundle(module, modulePath, svgById, rasterById)
+        if (bundle)
+          injectSvgIntoModuleBundle(module, modulePath, svgById, rasterById, fontWarningsById)
         else writeLooseSvgFiles(module, rows, svgById, rasterById)
+      // The export drew these previews' text as missing-glyph boxes because it could not name a
+      // family the render used. Say so on the way past — this command writes SVGs for a human to
+      // look at, and boxes are the one defect that reads as a rendering choice rather than a bug.
+      if (fontWarningsById.isNotEmpty()) {
+        System.err.println(
+          "render --format svg: ${fontWarningsById.size} preview(s) exported as missing-glyph " +
+            "boxes (a font family the render drew could not be named):"
+        )
+        for (id in fontWarningsById.keys.sorted()) System.err.println("  $id")
+      }
 
       val noSvg = rows.filter { it.id !in svgById }
       if (noSvg.isNotEmpty()) {
@@ -2326,6 +2340,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     modulePath: String,
     svgById: Map<String, ByteArray>,
     rasterById: Map<String, Map<String, ByteArray>>,
+    fontWarningsById: Map<String, ByteArray>,
   ): Int {
     val bundleFile = module.projectDir.resolve("build/compose-previews/bundle.png")
     if (!bundleFile.isFile) {
@@ -2337,6 +2352,9 @@ class RenderCommand(args: List<String>) : Command(args) {
     }
     val svgWritten = injectFigmaSvgIntoBundle(bundleFile, svgById, fileSystem)
     val rasterWritten = injectFigmaRasterIntoBundle(bundleFile, rasterById, fileSystem)
+    // Only a degraded preview has one, so this is a no-op on a healthy module. Carried on the same
+    // trip as the SVG it explains — the two are useless apart.
+    injectFigmaFontWarningsIntoBundle(bundleFile, fontWarningsById, fileSystem)
     if (svgWritten > 0) {
       println(
         "Injected $svgWritten figma-svg" +

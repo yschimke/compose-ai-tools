@@ -333,6 +333,7 @@ internal object CliFlagValidation {
             "--trust",
             "--view-only",
             "--with-semantics",
+            "--allow-lost-font-families",
           ),
       "mcp" to
         setOf(

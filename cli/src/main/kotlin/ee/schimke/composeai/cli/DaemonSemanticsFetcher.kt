@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.data.fonts.FigmaSvgFontWarningsSidecar
 import ee.schimke.composeai.data.fonts.FontsUsedDataProducer
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
@@ -197,6 +198,7 @@ internal class DaemonSemanticsFetcher(
       val fontsById = LinkedHashMap<String, ByteArray>()
       val figmaSvgById = LinkedHashMap<String, ByteArray>()
       val figmaRasterById = LinkedHashMap<String, Map<String, ByteArray>>()
+      val figmaFontWarningsById = LinkedHashMap<String, ByteArray>()
       for (previewId in previewIds) {
         val file = sidecarFile(projectDir, previewId)
         if (file.isFile && file.length() > 0) {
@@ -239,6 +241,16 @@ internal class DaemonSemanticsFetcher(
               .orEmpty()
           if (crops.isNotEmpty()) figmaRasterById[previewId] = crops
         }
+        // The export's font-warning sidecar, written ONLY when it had to draw text as
+        // missing-glyph boxes because the render used a family it could not name. Collected
+        // unconditionally of the SVG above: a degraded preview is exactly the one whose warning
+        // has to travel, and it is the caller — not this fetcher — that decides whether a
+        // degraded catalog may publish.
+        val fontWarnings = figmaFontWarningsSidecarFile(projectDir, previewId)
+        if (fontWarnings.isFile && fontWarnings.length() > 0) {
+          figmaFontWarningsById[previewId] =
+            fileSystem.read(fontWarnings.path.toPath()) { readByteArray() }
+        }
       }
       Outcome.Ok(
         semanticsById = byId,
@@ -246,6 +258,7 @@ internal class DaemonSemanticsFetcher(
         fontsById = fontsById,
         figmaSvgById = figmaSvgById,
         figmaRasterById = figmaRasterById,
+        figmaFontWarningsById = figmaFontWarningsById,
       )
     }
   }
@@ -265,6 +278,9 @@ internal class DaemonSemanticsFetcher(
   private fun figmaRasterDir(projectDir: File, previewId: String): File =
     File(projectDir, "build/compose-previews/data/$previewId/${ComposeFigmaSvgProduct.RASTER_DIR}")
 
+  private fun figmaFontWarningsSidecarFile(projectDir: File, previewId: String): File =
+    File(projectDir, "build/compose-previews/data/$previewId/${FigmaSvgFontWarningsSidecar.FILE}")
+
   sealed interface Outcome {
     /**
      * Session opened and renders attempted. [semanticsById] holds one entry per preview whose
@@ -277,7 +293,9 @@ internal class DaemonSemanticsFetcher(
      * produced drawing layers. [figmaRasterById] holds, for each preview whose figma-svg is
      * **hybrid** (opaque Image/Icon/Canvas node), its `figma-raster/<node>.png` crops (filename →
      * bytes) so the SVG's `<image>` layers still resolve once carried; empty for a vector-only
-     * export.
+     * export. [figmaFontWarningsById] holds the export's font-warning sidecar for each preview it
+     * had to draw in missing-glyph boxes — **normally empty**, since a healthy export writes no
+     * sidecar, and an entry is the signal that this preview's text is wrong.
      */
     data class Ok(
       val semanticsById: Map<String, ByteArray>,
@@ -285,6 +303,7 @@ internal class DaemonSemanticsFetcher(
       val fontsById: Map<String, ByteArray> = emptyMap(),
       val figmaSvgById: Map<String, ByteArray> = emptyMap(),
       val figmaRasterById: Map<String, Map<String, ByteArray>> = emptyMap(),
+      val figmaFontWarningsById: Map<String, ByteArray> = emptyMap(),
     ) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome
