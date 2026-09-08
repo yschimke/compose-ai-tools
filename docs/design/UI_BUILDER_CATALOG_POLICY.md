@@ -170,6 +170,13 @@ and the VS Code extension reading through one of those. So:
 - [x] The generator (record + cover sheet + policy → `ui-builder.json`) in the discovery task and
       in the bundle, written to `build/compose-previews/ui-builder.json`.
 - [x] `catalog-ui-builder.mjs`: publish it to the branch root, stamp `uiBuilderFile`.
-- [ ] The structural template engine in `screen/generator`, beside `ScreenGenerator`.
+- [x] The structural template engine (`StructuralTemplate`) in `screen/generator`, beside
+      `ScreenGenerator`: `${name}` substitution and `${call(...)}` record call sites, no
+      conditionals, and indentation of a multi-line value to the column of the hole that starts its
+      line. `UiBuilderCatalogs` reads each declared template through it, so a malformed one is
+      reported against the role that declares it when the catalog is published.
+- [ ] Wiring the engine to a design: resolving a node's role, its slot children and its record call
+      site, so a `code.strategy: "templates"` catalog exports through its own structure. The engine
+      fills holes; nothing yet decides what goes in them.
 - [ ] Typed fields on `CatalogCapabilityV1` in compose-preview-contracts (not on the critical path;
       `statusSemantics` carries them until then).
