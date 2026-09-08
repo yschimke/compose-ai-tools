@@ -613,7 +613,7 @@ class RenderEngine(
                           // AndroidView-hosted shape as the live tile branch, so captureRoboImage
                           // walks an identical Compose tree.
                           ee.schimke.composeai.renderer.TileIrReplayComposable(
-                            layoutBytes = irReplay!!.bytes,
+                            layoutBytes = irReplay.bytes,
                             resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
                             label = "IR replay ${spec.previewId ?: spec.outputBaseName}",
                           )
@@ -2819,8 +2819,7 @@ internal fun SemanticsNode.shownDialogWindow(): android.view.Window? = runCatchi
       val decor = dialog.window?.decorView
       dialog.isShowing &&
         decor != null &&
-        generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
-          .any { it === decor }
+        generateSequence(rootView) { it.parent as? android.view.View }.any { it === decor }
     }
     ?.window
 }

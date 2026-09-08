@@ -741,7 +741,7 @@ open class RobolectricHost(
 
       System.err.println(
         "RobolectricHost: sandbox slot $i failed to boot with a recorded error " +
-          "(attempt ${attempt}/${MAX_SANDBOX_BOOT_RETRIES + 1}: ${bootErr!!.message}); " +
+          "(attempt ${attempt}/${MAX_SANDBOX_BOOT_RETRIES + 1}: ${bootErr.message}); " +
           "retrying with a fresh worker."
       )
       // The failed worker has exited (its `SandboxRunner` JUnit run returned with the failure);
@@ -3208,7 +3208,7 @@ open class RobolectricHost(
                               // `RenderEngine.render`'s branch, so a held frame and a one-shot
                               // capture walk an identical Compose tree.
                               ee.schimke.composeai.renderer.TileIrReplayComposable(
-                                layoutBytes = irReplay!!.bytes,
+                                layoutBytes = irReplay.bytes,
                                 resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
                                 label = "IR replay ${start.previewId ?: start.outputBaseName}",
                               )

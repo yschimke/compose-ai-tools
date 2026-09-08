@@ -61,6 +61,10 @@ fun RemoteImageWidget() {
  * frames the player. One `@PreviewWrapper`, both the encoded doc and the ideal shape.
  */
 class SquircleRemoteWidgetWrapper : RemoteOverridablePreviewWrapper() {
+  // The applier check reads this override as RemoteCompose-targeted and `Box` as a UI composable.
+  // Framing is exactly the host/preview concern this wrapper exists to add around the captured
+  // document, so the mismatch is the design rather than a mistake.
+  @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
     // RoundedCornerShape(45%) reads as a squircle on a square widget; the point here is that the
