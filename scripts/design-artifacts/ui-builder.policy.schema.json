@@ -46,6 +46,8 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
+        "required": ["fidelity"],
+        "description": "One surface's claim. `fidelity` is required because a surface entry that does not say how honest it is tells a consumer less than no entry at all, and `reason` is required alongside anything but `authoritative`: a person looking at an approximate preview needs to know what about it is approximate, and the schema is the only place that can be insisted on before a render.",
         "properties": {
           "fidelity": {
             "enum": ["authoritative", "approximate", "unsupported"],
@@ -53,13 +55,16 @@
           },
           "reason": {
             "type": "string",
+            "minLength": 1,
             "description": "Why the fidelity is what it is, in words a person reading a fuzzy preview needs. Required for anything other than `authoritative`."
           },
           "backend": {
             "type": "string",
             "description": "The render backend that serves this surface (`android`, `desktop`). Meaningful on an authoritative surface."
           }
-        }
+        },
+        "if": { "properties": { "fidelity": { "enum": ["approximate", "unsupported"] } } },
+        "then": { "required": ["fidelity", "reason"] }
       }
     },
     "frame": {
@@ -159,8 +164,8 @@
                 "acceptedTraits": { "type": "array", "items": { "type": "string" } },
                 "required": { "type": "boolean" },
                 "role": {
-                  "type": "string",
-                  "description": "The structural role each child of this slot is written with, when it is not the child's own."
+                  "enum": ["screen-root", "list", "list-item", "overlay", "controlled", "decoration"],
+                  "description": "The structural role each child of this slot is written with, when it is not the child's own. The same closed set the containing builtin's `role` uses, and closed for the same reason: a role the engine does not know selects no template, and a typo caught here is caught before a render rather than during an export."
                 }
               }
             }

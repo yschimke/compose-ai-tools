@@ -459,6 +459,66 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `a sticker that renders several components binds its policy to one of them`() {
+    // The bug this exists for: a `Button { Text(label) }` sticker records BOTH calls, and writing
+    // the button's builder id, canvas adapter and state callbacks onto `Text` as well hands a
+    // second component an identity that belongs to the first.
+    val button = target("androidx.wear.compose.material3.ButtonKt", "Button")
+    val text = target("androidx.wear.compose.material3.TextKt", "Text")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(button, text),
+            builder = BuilderPolicy(id = "wear-m3/button", canvas = "placeholder"),
+          )
+        )
+      )
+
+    val withPolicy = file.components.filter { it.builder != null }
+    assertThat(withPolicy.map { it.canonicalId })
+      .containsExactly("app/androidx.wear.compose.material3.ButtonKt.Button")
+    // A guess, and said so: the generator reports it and names the fix.
+    assertThat(withPolicy.single().builder?.ambiguousWith)
+      .containsExactly("app/androidx.wear.compose.material3.TextKt.Text")
+  }
+
+  @Test
+  fun `naming the subject settles it, and naming nothing the preview renders binds nothing`() {
+    val button = target("androidx.wear.compose.material3.ButtonKt", "Button")
+    val text = target("androidx.wear.compose.material3.TextKt", "Text")
+
+    val named =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(button, text),
+            builder = BuilderPolicy(component = "Text", canvas = "material3/Text"),
+          )
+        )
+      )
+    val subject = named.components.single { it.builder != null }
+    assertThat(subject.canonicalId).endsWith("TextKt.Text")
+    assertThat(subject.builder?.ambiguousWith).isEmpty()
+
+    // A policy attached to a component that is not there is a rename that got away. Quietly
+    // attaching it to whatever else was in the list would hide exactly that.
+    val missing =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p2",
+            componentTargets = listOf(button, text),
+            builder = BuilderPolicy(component = "CheckboxButton", canvas = "p"),
+          )
+        )
+      )
+    assertThat(missing.components.filter { it.builder != null }).isEmpty()
+  }
+
+  @Test
   fun `a component no preview declared a policy for carries none`() {
     val file =
       ComponentRecords.from(

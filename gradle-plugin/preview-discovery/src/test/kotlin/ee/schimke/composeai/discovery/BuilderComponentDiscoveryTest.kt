@@ -56,6 +56,10 @@ class BuilderComponentDiscoveryTest {
     // Split on the FIRST `=`, so a value may contain one; an entry with a blank key or no
     // separator at all costs that entry rather than the build.
     assertThat(policy.starter).containsExactly(BuilderPair("query", "a=b"))
+    // …and is kept, verbatim, for the generator to report. The leniency is only cheaper than a
+    // build failure because the entry is reported; discarding the raw string here would leave the
+    // component with a default nobody meant it to have and no symptom at all.
+    assertThat(policy.malformed).containsExactly("starter: =dropped", "starter: noSeparator")
   }
 
   @Test

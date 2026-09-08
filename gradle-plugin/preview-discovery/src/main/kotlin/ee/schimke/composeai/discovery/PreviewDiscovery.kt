@@ -1295,19 +1295,22 @@ object PreviewDiscovery {
    */
   private fun extractBuilderEntry(annotations: List<AnnotationInfo>): BuilderPolicy? {
     val builder = annotations.firstOrNull { it.name == BUILDER_COMPONENT_FQN } ?: return null
+    val malformed = mutableListOf<String>()
     return BuilderPolicy(
       id = annStringOrNull(builder, "id"),
+      component = annStringOrNull(builder, "component"),
       group = annStringOrNull(builder, "group"),
       displayName = annStringOrNull(builder, "displayName"),
       canvas = annStringOrNull(builder, "canvas"),
-      stateCallbacks = builderPairs(builder, "stateCallbacks"),
-      starter = builderPairs(builder, "starter"),
-      slots = builderPairs(builder, "slots"),
+      stateCallbacks = builderPairs(builder, "stateCallbacks", malformed),
+      starter = builderPairs(builder, "starter", malformed),
+      slots = builderPairs(builder, "slots", malformed),
       traits = annStringArray(builder, "traits").map { it.trim() }.filter { it.isNotEmpty() },
       variantProperty = annStringOrNull(builder, "variantProperty"),
-      variants = builderPairs(builder, "variants"),
+      variants = builderPairs(builder, "variants", malformed),
       nativeOnly = annBoolean(builder, "nativeOnly"),
       exclude = annStringOrNull(builder, "exclude"),
+      malformed = malformed,
     )
   }
 
@@ -1316,16 +1319,23 @@ object PreviewDiscovery {
    * a value may contain one (`"onCheckedChange=checked:boolean"` has none; a starter string can).
    *
    * An entry with no `=`, or with a blank key, is dropped rather than failing the build — the same
-   * bargain `@CatalogComponent.breakpointKit` strikes. The generator reports what it received and
-   * what it could not use, so the drop is visible where somebody is already reading a report,
-   * rather than in a Gradle log nobody opens.
+   * bargain `@CatalogComponent.breakpointKit` strikes. But it is dropped **into [into]**, verbatim:
+   * the leniency is only cheaper than a build failure because the entry is reported, and discarding
+   * the raw string here would leave the generator with nothing to report and the component with a
+   * default nobody meant it to have.
    */
-  private fun builderPairs(ann: AnnotationInfo, param: String): List<BuilderPair> =
+  private fun builderPairs(
+    ann: AnnotationInfo,
+    param: String,
+    into: MutableList<String>,
+  ): List<BuilderPair> =
     annStringArray(ann, param).mapNotNull { entry ->
       val separator = entry.indexOf('=')
-      if (separator <= 0) return@mapNotNull null
-      val key = entry.substring(0, separator).trim()
-      if (key.isEmpty()) return@mapNotNull null
+      val key = if (separator <= 0) "" else entry.substring(0, separator).trim()
+      if (key.isEmpty()) {
+        into += "$param: $entry"
+        return@mapNotNull null
+      }
       BuilderPair(key = key, value = entry.substring(separator + 1).trim())
     }
 

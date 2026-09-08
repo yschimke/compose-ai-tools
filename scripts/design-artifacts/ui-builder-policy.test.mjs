@@ -118,6 +118,33 @@ test("a geometry block with no provenance note is warned about", () => {
   assert.match(warnings[0], /measured, not authored/);
 });
 
+test("a preview surface must say how honest it is, and why when it is not the product", () => {
+  const policy = wellFormed();
+  policy.previewSurfaces = {
+    native: { fidelity: "authoritative", backend: "android" },
+    wasm: { fidelity: "approximate" },
+    silent: {},
+  };
+
+  const { errors } = codes(policy);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /wasm is approximate but gives no reason/);
+  assert.match(errors[1], /silent declares no fidelity/);
+});
+
+test("a builtin slot's role is the same closed set as the builtin's own", () => {
+  const policy = wellFormed();
+  policy.builtins["wear-m3/screen-scaffold"].slots = {
+    content: { role: "list" },
+    grid: { role: "grid" },
+    untyped: { acceptedTraits: ["Action"] },
+  };
+
+  const { errors } = codes(policy);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /slot "grid" names role "grid"/);
+});
+
 test("a component id prefix must end in a slash", () => {
   const policy = wellFormed();
   policy.componentIdPrefix = "m3";

@@ -320,6 +320,41 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `an ambiguous subject and a malformed entry are both reported by name`() {
+    // Both are things discovery deliberately does not fail on — it binds a guess, it drops an
+    // unreadable entry — and both are only acceptable because they are reported here, in the
+    // published file, to somebody who was not watching the build.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Button",
+            builder =
+              BuilderPolicy(
+                id = "wear-m3/button",
+                canvas = "placeholder",
+                ambiguousWith = listOf(":catalog/…TextKt.Text"),
+                malformed = listOf("starter: noSeparator"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val ambiguous =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.POLICY_AMBIGUOUS_SUBJECT
+      }
+    assertThat(ambiguous.message).contains("@BuilderComponent(component = ")
+    val malformed =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.POLICY_MALFORMED_ENTRY
+      }
+    assertThat(malformed.message).contains("starter: noSeparator")
+  }
+
+  @Test
   fun `the generated file round-trips through JSON`() {
     val generated =
       UiBuilderCatalogs.generate(

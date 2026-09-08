@@ -45,6 +45,11 @@ data class BuilderPolicy(
    * saved design stores in a node. Null derives one from the catalog identity.
    */
   val id: String? = null,
+  /**
+   * `@BuilderComponent.component` — which component this policy is about, when its sticker renders
+   * several. A callable FQN or a simple name; null when the sticker renders one.
+   */
+  val component: String? = null,
   /** Insert-panel group override; null keeps the catalog's own `@CatalogGroup`. */
   val group: String? = null,
   /** Insert-panel label; null derives one from the id's last segment. */
@@ -107,4 +112,21 @@ data class BuilderPolicy(
    * disagreement is the thing somebody needs to fix.
    */
   val conflicting: List<String> = emptyList(),
+  /**
+   * Other components the sticker renders that this policy could equally have been about.
+   *
+   * Empty in the ordinary case. Non-empty means the sticker renders several components, the
+   * annotation named none of them with `component`, and the policy was bound to the first — a guess
+   * discovery is honest about rather than a rule. The generator reports it and names the fix.
+   */
+  val ambiguousWith: List<String> = emptyList(),
+  /**
+   * `key=value` entries the annotation carried that could not be read, verbatim.
+   *
+   * A malformed entry costs that entry rather than the build, and the reason that is an acceptable
+   * trade is that it is *reported*. Dropping the raw string at the point of the split would leave
+   * nothing to report with, and the component would keep a default nobody meant it to have with no
+   * symptom at all — which is the failure the leniency was supposed to be cheaper than.
+   */
+  val malformed: List<String> = emptyList(),
 )

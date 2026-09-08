@@ -84,6 +84,7 @@ export function validatePolicy(policy) {
     );
   }
 
+  validateSurfaces(policy.previewSurfaces, errors);
   validateBuiltins(policy.builtins, errors, warnings);
   validateCode(policy.code, errors, warnings);
   validateFrame(policy.frame, errors, warnings);
@@ -103,6 +104,37 @@ export function validatePolicy(policy) {
   }
 
   return { errors, warnings };
+}
+
+function validateSurfaces(surfaces, errors) {
+  if (surfaces === undefined) return;
+  if (!isObject(surfaces)) {
+    errors.push('"previewSurfaces" is an object keyed by surface name');
+    return;
+  }
+  for (const [name, surface] of Object.entries(surfaces)) {
+    if (isCommentKey(name)) continue;
+    if (!isObject(surface)) {
+      errors.push(`previewSurfaces.${name} is not an object`);
+      continue;
+    }
+    const fidelity = surface.fidelity;
+    if (!["authoritative", "approximate", "unsupported"].includes(fidelity)) {
+      // A surface entry that does not say how honest it is tells a consumer less than no entry
+      // at all: absent means "nobody claimed anything", present-and-silent looks like a claim.
+      errors.push(
+        `previewSurfaces.${name} declares no fidelity (authoritative, approximate, unsupported)`,
+      );
+      continue;
+    }
+    if (fidelity !== "authoritative" && !surface.reason) {
+      // The person this field is for is looking at a fuzzy preview and wondering what about it is
+      // fuzzy. Nothing downstream can supply that answer, so it is insisted on here.
+      errors.push(
+        `previewSurfaces.${name} is ${fidelity} but gives no reason; say what about it is not the product`,
+      );
+    }
+  }
 }
 
 function validateBuiltins(builtins, errors, warnings) {
@@ -136,6 +168,18 @@ function validateBuiltins(builtins, errors, warnings) {
     }
     if (builtin.slots !== undefined && !isObject(builtin.slots)) {
       errors.push(`builtin ${JSON.stringify(id)} has a "slots" that is not an object`);
+    } else if (isObject(builtin.slots)) {
+      for (const [slot, spec] of Object.entries(builtin.slots)) {
+        if (!isObject(spec) || spec.role === undefined) continue;
+        // The same closed set the builtin's own role uses. A role the engine does not know selects
+        // no template, and it should fail where somebody is editing the policy rather than during
+        // an export weeks later.
+        if (!STRUCTURAL_ROLES.includes(spec.role)) {
+          errors.push(
+            `builtin ${JSON.stringify(id)} slot ${JSON.stringify(slot)} names role ${JSON.stringify(spec.role)}; known roles are ${STRUCTURAL_ROLES.join(", ")}`,
+          );
+        }
+      }
     }
   }
 }

@@ -26,8 +26,16 @@ object ComponentRecords {
   fun from(manifest: PreviewManifest): ComponentRecordFile {
     val byId = linkedMapOf<String, MutableComponent>()
     for (preview in manifest.previews) {
-      collect(preview, preview.componentTargets, ComponentOrigin.LIBRARY, manifest.module, byId)
-      collect(preview, preview.targets, ComponentOrigin.PROJECT, manifest.module, byId)
+      val subject = builderSubject(preview, manifest.module)
+      collect(
+        preview,
+        preview.componentTargets,
+        ComponentOrigin.LIBRARY,
+        manifest.module,
+        byId,
+        subject,
+      )
+      collect(preview, preview.targets, ComponentOrigin.PROJECT, manifest.module, byId, subject)
     }
     return ComponentRecordFile(
       module = manifest.module,
@@ -42,6 +50,7 @@ object ComponentRecords {
     origin: ComponentOrigin,
     module: String,
     into: MutableMap<String, MutableComponent>,
+    builderSubject: BuilderSubject?,
   ) {
     for (target in targets) {
       val id = canonicalId(module, target)
@@ -117,11 +126,62 @@ object ComponentRecords {
           previewId = preview.id,
           componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
         )
-      // Builder policy travels with the preview that declared it, so the merge below can name who
-      // said what — and, when two stickers of one component disagree, say that they did rather
-      // than pick one in silence.
-      preview.builder?.let { existing.builderDeclarations += preview.id to it }
+      // Builder policy travels with the preview that declared it — but onto ONE component, not
+      // every component the preview renders. A sticker is routinely `Button { Text(label) }`, and
+      // both calls are recorded here; writing the button's builder id, canvas adapter and state
+      // callbacks onto `Text` as well would hand a second component an identity that belongs to
+      // the first.
+      if (builderSubject != null && builderSubject.canonicalId == id) {
+        existing.builderDeclarations += preview.id to builderSubject.policy
+      }
     }
+  }
+
+  /** The one component a preview's `@BuilderComponent` is about, and the policy it carries. */
+  private data class BuilderSubject(val canonicalId: String, val policy: BuilderPolicy)
+
+  /**
+   * Which component a preview's builder policy is about, or null when it declares none.
+   *
+   * The candidates are every component the preview renders, library targets first: a catalog
+   * sticker exists to demonstrate the library component it wraps, and its own project composables —
+   * where it has any — are the wrapper rather than the subject.
+   *
+   * Three cases, in order:
+   *
+   * 1. **The annotation names one** (`component = "…CheckboxButton"`, by FQN or simple name). That
+   *    wins, and a name matching nothing the preview renders binds nothing — a policy attached to a
+   *    component that is not there is a rename that got away, and quietly attaching it to whatever
+   *    else was in the list would hide it.
+   * 2. **One candidate.** The ordinary sticker. No ambiguity to record.
+   * 3. **Several, unnamed.** Bound to the first, with the rest recorded in
+   *    [BuilderPolicy.ambiguousWith] for the generator to report by name. The first is discovery's
+   *    inference order — the outermost call, usually, but a guess either way. It is a guess rather
+   *    than a refusal because the alternative is an annotation somebody wrote that silently does
+   *    nothing, and a wrong-but-reported binding is the one a person can see and fix.
+   */
+  private fun builderSubject(preview: PreviewInfo, module: String): BuilderSubject? {
+    val policy = preview.builder ?: return null
+    val candidates =
+      (preview.componentTargets + preview.targets)
+        .map { canonicalId(module, it) to it }
+        .distinctBy { it.first }
+    if (candidates.isEmpty()) return null
+
+    val named = policy.component?.takeIf { it.isNotBlank() }
+    if (named != null) {
+      val match =
+        candidates.firstOrNull { (_, target) ->
+          callableFqn(target) == named || target.functionName == named
+        } ?: return null
+      return BuilderSubject(match.first, policy)
+    }
+
+    val (subject, rest) = candidates.first() to candidates.drop(1)
+    return BuilderSubject(
+      subject.first,
+      if (rest.isEmpty()) policy else policy.copy(ambiguousWith = rest.map { it.first }),
+    )
   }
 
   /**

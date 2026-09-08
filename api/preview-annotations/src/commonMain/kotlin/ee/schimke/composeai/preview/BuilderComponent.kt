@@ -84,6 +84,22 @@ annotation class BuilderComponent(
    */
   val id: String = "",
   /**
+   * Which component this policy is about, when the sticker renders more than one.
+   *
+   * A sticker is routinely `Button { Text(label) }`, and discovery records **both** calls as
+   * components the preview renders. The policy is a singular claim — one builder id, one canvas
+   * adapter, one variant property — so writing it onto both would give `Text` the button's identity
+   * and callbacks. Naming the subject settles it: the callable's fully-qualified name
+   * (`androidx.wear.compose.material3.CheckboxButton`) or its simple name (`CheckboxButton`).
+   *
+   * Empty is right for the ordinary sticker that renders one component, and for one whose extra
+   * calls are scaffolding the record already drops. Where it is empty and several remain, discovery
+   * binds the policy to the first component the preview renders and records the others, and the
+   * generator reports the ambiguity by name — because the alternative, binding to none, is an
+   * annotation that silently does nothing.
+   */
+  val component: String = "",
+  /**
    * Insert-panel group, when the builder should shelve this component somewhere other than its
    * [CatalogGroup]. Empty keeps the catalog's own grouping, which is the answer nearly always.
    *

@@ -177,6 +177,8 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_UNKNOWN = "component.stateCallback.unknownParameter"
     const val SLOT_UNKNOWN = "component.slot.unknown"
     const val POLICY_CONFLICT = "component.policy.conflict"
+    const val POLICY_AMBIGUOUS_SUBJECT = "component.policy.ambiguousSubject"
+    const val POLICY_MALFORMED_ENTRY = "component.policy.malformedEntry"
     const val ID_COLLISION = "component.id.collision"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
@@ -377,6 +379,28 @@ object UiBuilderCatalogs {
             "several previews declare a different @BuilderComponent for ${component.canonicalId}: " +
               "${builder.declaredBy.joinToString()} won, ${builder.conflicting.joinToString()} " +
               "was dropped. The resolution is by preview id and is arbitrary; make them agree.",
+        )
+    }
+    if (builder.ambiguousWith.isNotEmpty()) {
+      into +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.POLICY_AMBIGUOUS_SUBJECT,
+          subject = builderId,
+          message =
+            "the sticker renders ${builder.ambiguousWith.size + 1} components and the annotation " +
+              "names none of them, so the policy was bound to ${component.canonicalId} rather " +
+              "than to ${builder.ambiguousWith.joinToString()}. That is a guess: name the subject " +
+              "with @BuilderComponent(component = \"…\").",
+        )
+    }
+    for (entry in builder.malformed) {
+      into +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.POLICY_MALFORMED_ENTRY,
+          subject = builderId,
+          message =
+            "@BuilderComponent carries `$entry`, which is not a `key=value` entry and was " +
+              "dropped. The component keeps the default this entry meant to change.",
         )
     }
     builder.exclude?.let { reason ->
