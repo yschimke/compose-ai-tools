@@ -26,6 +26,7 @@ import androidx.glance.wear.WearWidgetBrush
 import androidx.glance.wear.WearWidgetData
 import androidx.glance.wear.WearWidgetDocument
 import androidx.glance.wear.core.WearWidgetParams
+import androidx.glance.wear.tooling.preview.RectangularLargeWidgetPreviewParams
 import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
 import androidx.glance.wear.tooling.preview.WearWidgetPreview
 import androidx.glance.wear.verticalGradient
@@ -94,4 +95,12 @@ fun ActivitySummaryWidgetSquirclePreview() =
   WearWidgetPreview(
     ActivitySummaryWidget(),
     SquircleLargeWidgetPreviewParams().values.maxBy { it.widthDp },
+  )
+
+@Preview(name = "Rectangular Preview")
+@Composable
+fun ActivitySummaryWidgetRectangularPreview() =
+  WearWidgetPreview(
+    ActivitySummaryWidget(),
+    RectangularLargeWidgetPreviewParams().values.maxBy { it.widthDp },
   )
