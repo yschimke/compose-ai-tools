@@ -122,7 +122,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
-                    "componentId": "ButtonGroup"
+                    "componentId": "ButtonGroup",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -139,6 +140,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -327,23 +329,28 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
-                    "componentId": "ButtonGroup"
+                    "componentId": "ButtonGroup",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_VARIANT_disabled",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -360,6 +367,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -547,7 +555,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
-                    "componentId": "Button/Child"
+                    "componentId": "Button/Child",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -564,6 +573,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -769,7 +779,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
-                    "componentId": "CompactButton"
+                    "componentId": "CompactButton",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -786,6 +797,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -973,7 +985,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
-                    "componentId": "Button/Tonal"
+                    "componentId": "Button/Tonal",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -990,6 +1003,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -1177,7 +1191,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
-                    "componentId": "Button/Outlined"
+                    "componentId": "Button/Outlined",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -1194,6 +1209,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -1453,7 +1469,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
-                    "componentId": "AppCard"
+                    "componentId": "AppCard",
+                    "group": "Containment"
                 }
             ],
             "code": {
@@ -1470,6 +1487,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -1657,11 +1675,13 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScaling_Large_Round",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
-                    "componentId": "Card"
+                    "componentId": "Card",
+                    "group": "Containment"
                 }
             ],
             "code": {
@@ -1678,6 +1698,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -1865,7 +1886,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
-                    "componentId": "Card/Outlined"
+                    "componentId": "Card/Outlined",
+                    "group": "Containment"
                 }
             ],
             "code": {
@@ -1882,6 +1904,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2123,7 +2146,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
-                    "componentId": "TitleCard"
+                    "componentId": "TitleCard",
+                    "group": "Containment"
                 }
             ],
             "code": {
@@ -2140,6 +2164,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2283,15 +2308,18 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
-                    "componentId": "Progress/Circular"
+                    "componentId": "Progress/Circular",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressGif",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
-                    "componentId": "Progress/Circular/Indeterminate"
+                    "componentId": "Progress/Circular/Indeterminate",
+                    "group": "Communication"
                 }
             ],
             "code": {
@@ -2306,6 +2334,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": true,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2441,15 +2470,18 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -2466,6 +2498,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2627,7 +2660,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
-                    "componentId": "IconButton"
+                    "componentId": "IconButton",
+                    "group": "Buttons"
                 }
             ],
             "code": {
@@ -2644,6 +2678,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2722,11 +2757,13 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
-                    "componentId": "IconButton"
+                    "componentId": "IconButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
-                    "componentId": "Icon"
+                    "componentId": "Icon",
+                    "group": "Iconography"
                 }
             ],
             "code": {
@@ -2741,6 +2778,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2852,39 +2890,48 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 }
             ],
             "code": {
@@ -2901,6 +2948,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -2991,15 +3039,18 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
-                    "componentId": "Template/PageIndicator"
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
-                    "componentId": "Template/PageIndicator"
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
-                    "componentId": "Template/PageIndicator"
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
                 }
             ],
             "code": {
@@ -3014,6 +3065,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -3179,39 +3231,48 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 }
             ],
             "code": {
@@ -3226,6 +3287,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": true,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -3423,11 +3485,13 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
-                    "componentId": "SwitchButton/On"
+                    "componentId": "SwitchButton/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off",
-                    "componentId": "SwitchButton/On"
+                    "componentId": "SwitchButton/On",
+                    "group": "Selection"
                 }
             ],
             "code": {
@@ -3444,6 +3508,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -3702,79 +3767,98 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScaling_Large_Round",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
-                    "componentId": "AppCard"
+                    "componentId": "AppCard",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
-                    "componentId": "ButtonGroup"
+                    "componentId": "ButtonGroup",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
-                    "componentId": "Card"
+                    "componentId": "Card",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
-                    "componentId": "Button/Child"
+                    "componentId": "Button/Child",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
-                    "componentId": "CompactButton"
+                    "componentId": "CompactButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_VARIANT_disabled",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
-                    "componentId": "Button/Tonal"
+                    "componentId": "Button/Tonal",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
-                    "componentId": "Button/Outlined"
+                    "componentId": "Button/Outlined",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
-                    "componentId": "Card/Outlined"
+                    "componentId": "Card/Outlined",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
-                    "componentId": "Text/MaxLines-Truncated"
+                    "componentId": "Text/MaxLines-Truncated",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
-                    "componentId": "TitleCard"
+                    "componentId": "TitleCard",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
-                    "componentId": "Typography"
+                    "componentId": "Typography",
+                    "group": "Theme"
                 }
             ],
             "code": {
@@ -3791,6 +3875,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -3827,7 +3912,8 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScaling_Large_Round",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 }
             ],
             "code": {
@@ -3844,6 +3930,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -3889,27 +3976,33 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
-                    "componentId": "EdgeButton"
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
-                    "componentId": "TransformingLazyColumn"
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
                 }
             ],
             "code": {
@@ -3926,6 +4019,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -3971,27 +4065,33 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
-                    "componentId": "Template/PageIndicator"
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
-                    "componentId": "Template/PageIndicator"
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
-                    "componentId": "Template/PageIndicator"
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
-                    "componentId": "Template/TimeText"
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 }
             ],
             "code": {
@@ -4008,6 +4108,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -4069,95 +4170,118 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
-                    "componentId": "AppCard"
+                    "componentId": "AppCard",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
-                    "componentId": "ButtonGroup"
+                    "componentId": "ButtonGroup",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
-                    "componentId": "Card"
+                    "componentId": "Card",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
-                    "componentId": "Button/Child"
+                    "componentId": "Button/Child",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
-                    "componentId": "Progress/Circular"
+                    "componentId": "Progress/Circular",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen",
-                    "componentId": "ColorScheme"
+                    "componentId": "ColorScheme",
+                    "group": "Theme"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
-                    "componentId": "CompactButton"
+                    "componentId": "CompactButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_VARIANT_disabled",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
-                    "componentId": "Button/Tonal"
+                    "componentId": "Button/Tonal",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
-                    "componentId": "IconButton"
+                    "componentId": "IconButton",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
-                    "componentId": "Icon"
+                    "componentId": "Icon",
+                    "group": "Iconography"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressGif",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
-                    "componentId": "Progress/Circular/Indeterminate"
+                    "componentId": "Progress/Circular/Indeterminate",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
-                    "componentId": "Button/Outlined"
+                    "componentId": "Button/Outlined",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
-                    "componentId": "Card/Outlined"
+                    "componentId": "Card/Outlined",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
-                    "componentId": "SwitchButton/On"
+                    "componentId": "SwitchButton/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off",
-                    "componentId": "SwitchButton/On"
+                    "componentId": "SwitchButton/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
-                    "componentId": "Text/MaxLines-Truncated"
+                    "componentId": "Text/MaxLines-Truncated",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
-                    "componentId": "TitleCard"
+                    "componentId": "TitleCard",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
-                    "componentId": "Typography"
+                    "componentId": "Typography",
+                    "group": "Theme"
                 }
             ],
             "code": {
@@ -4174,6 +4298,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -4196,15 +4321,18 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 }
             ],
             "code": {
@@ -4221,8 +4349,10 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         }
-    ]
+    ],
+    "builderOrphans": []
 }

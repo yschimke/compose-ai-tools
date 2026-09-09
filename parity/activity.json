@@ -1,11 +1,59 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-08T11:50:10.267Z",
+  "generatedAt": "2026-09-09T04:39:15.356Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "b12ee694379086f1cb752360875088c7378f5a5b",
+        "subject": "feat(discovery): publish a catalog's ui-builder.json from @BuilderComponent and a policy file (#5312)",
+        "at": "2026-09-09T05:30:58+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d7e16757b3000b7ccdfc87e46921f1cb2f2d16ac",
+        "subject": "test(wear-widget): regenerate the fixture with its rectangular preview (#5313)",
+        "at": "2026-09-09T05:22:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0e5b860ae9b6fd6a44851b25082c1c00cb5bb8d6",
+        "subject": "chore(deps): regenerate Gradle dependency lockfiles for roborazzi 1.74.0 (#5311)",
+        "at": "2026-09-08T17:59:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6b3f6d59ab5bc2fadcc0cd0ae46f640d8aee1ea5",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.3.0 (#5300)",
+        "at": "2026-09-08T13:34:57+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8e4da81a5a4bbd43b78681471196c91bcff04dd6",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.18.0 (#5307)",
+        "at": "2026-09-08T12:40:46+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bbb591658a0f1052a9cda1ae28da1f20a88c5e43",
+        "subject": "fix(deps): update roborazzi to v1.74.0 (#5308)",
+        "at": "2026-09-08T12:40:21+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "fe96bac2def567d25bcb0a07094ed17462979f2f",
         "subject": "chore(deps): update dependency yschimke/rc-players to v1.60.0 (#5306)",
@@ -435,54 +483,6 @@
         "subject": "feat: publish to Maven Central only when a published module changed (#5246)",
         "at": "2026-09-06T18:09:43+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d1db6ca1fcecaca74c2c52b39739d27b97577ec6",
-        "subject": "feat: resolve the Gradle plugin at a separate Maven-line version (#5245)",
-        "at": "2026-09-06T17:19:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e800532db64a8c93f8701b1a41511473b935e17d",
-        "subject": "docs: require a GitHub-hosted origin for embedded images (#5244)",
-        "at": "2026-09-06T16:57:24+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2ffe815b399da5ffc98fe280c9731412ca3c9bb4",
-        "subject": "ci: read dependency lock state instead of the version catalog (#5243)",
-        "at": "2026-09-06T16:53:55+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "460f095f2813af6a9368989baca8e50c7c65da19",
-        "subject": "ci: reject the breaking-change marker in PR titles (#5242)",
-        "at": "2026-09-06T16:39:12+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2c1c55837bcbff00b14490bd23572d3a5a759f66",
-        "subject": "ci: commit the dependency lock state for all 94 published modules (#5240)",
-        "at": "2026-09-06T16:35:48+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ed37daf1718d011b159326213732d9ba6e561f7b",
-        "subject": "chore(ci): update the design-artifacts export driver to v2 (#5239)",
-        "at": "2026-09-06T16:31:05+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
