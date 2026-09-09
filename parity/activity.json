@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T04:51:47.710Z",
+  "generatedAt": "2026-09-09T05:32:52.097Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "3fa2244446c67a9262706129fec4608718b988ab",
+        "subject": "chore(main): release 2.4.0 (#5309)",
+        "at": "2026-09-09T05:57:33+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "909bfb6e96d5b5c6681f03200fc28db86301529e",
+        "subject": "build: extend ktfmtCheckAll into the gradle-plugin included build's subprojects (#5316)",
+        "at": "2026-09-09T05:52:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ca7b0b1ece67d2123f541f0518a54d07970146c4",
+        "subject": "test(cli): widen the semantics inactivity test's stall margin (#5315)",
+        "at": "2026-09-09T05:52:44+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "57811aa75b865b7128894e98f1aedc64fdc87349",
         "subject": "fix(ui-builder): apply four fixes to the places they were left out of (#5314)",
@@ -458,30 +482,6 @@
         "sha": "dc988f9c485e412d89f2f04bb86d40d7bc1edddd",
         "subject": "fix: stop the root build file being enumerated as a published module (#5250)",
         "at": "2026-09-06T18:42:05+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7dbd10f378bc13b09a4518a91480765ef07ae241",
-        "subject": "feat: give data/ its own Maven version line, inert until wired (#5249)",
-        "at": "2026-09-06T18:38:52+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "96467ea819672a6c1cc1f62895b8506615c5df45",
-        "subject": "feat(screen): draw a generated screen on the devices its design named (#5248)",
-        "at": "2026-09-06T18:30:18+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a808a4145a80b0cc282c7794d1e50aa2b01c1fc7",
-        "subject": "docs: cost the train split, and land on two lines rather than five (#5247)",
-        "at": "2026-09-06T18:19:54+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
