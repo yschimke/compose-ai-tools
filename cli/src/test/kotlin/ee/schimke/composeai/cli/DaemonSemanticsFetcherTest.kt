@@ -296,21 +296,29 @@ class DaemonSemanticsFetcherTest {
   fun `render timeout is an inactivity window, not a batch-wide budget`() {
     // Issue #2948: a wide catalog (a component library fanning out across many themes) renders far
     // more previews than fit inside a single `--timeout`, yet each individual render still lands
-    // quickly. The daemon here completes one render every 20ms across 15 previews (~300ms total),
-    // well past the 150ms window — but never idle for that long. Every semantics sidecar must still
-    // be collected: the old batch-wide budget cut the batch off mid-flight and silently dropped
+    // quickly. The daemon here completes one render every 20ms across 100 previews (~2s total),
+    // well past the 1s window — but never idle for that long. Every semantics sidecar must still be
+    // collected: the old batch-wide budget cut the batch off mid-flight and silently dropped
     // roughly a third of the catalog's semantics.
+    //
+    // Two numbers carry the test and they are independent. Total elapsed must exceed the window —
+    // that is the property, and it is why this test cannot be made cheap by simply widening the
+    // window. The stagger must sit far *below* the window — that is the margin, and 150ms against
+    // a 20ms stagger was not enough of it: the wait below trips on a single scheduling stall or GC
+    // pause longer than one window, and a CI runner encoding shader GIFs while it renders stalls a
+    // thread past 150ms routinely. At 1s the same stall has to be ~50x the stagger to fail. Retune
+    // both together if this ever gets too slow; do not close the gap between them.
     val projectDir = newTempFolder("semantics-inactivity")
     writeDescriptor(projectDir)
 
-    val ids = (1..15).map { "Preview$it" }
+    val ids = (1..100).map { "Preview$it" }
     val produced = ids.associateWith { """{"root":{"nodeId":"$it","boundsInRoot":"0,0,4,8"}}""" }
     val logs = mutableListOf<String>()
     val fetcher =
       DaemonSemanticsFetcher(
         factory = FakeFactory(produced = produced, staggerMs = 20),
         onLog = { logs += it },
-        renderTimeout = 150.milliseconds,
+        renderTimeout = 1.seconds,
       )
 
     val outcome = fetcher.fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
