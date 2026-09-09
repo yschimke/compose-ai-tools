@@ -33,9 +33,11 @@ ktfmt { googleStyle() }
 // are **shared source**, not a copy: they live in `screen/model/src/commonMain`, and this module
 // compiles them from there.
 //
-// They have to be in two places at once and cannot be. The browser UI builder needs to generate code
+// They have to be in two places at once and cannot be. The browser UI builder needs to generate
+// code
 // with no server, which means a `wasmJs` target; this module is `kotlin("jvm")` inside a
-// `kotlin-dsl` plugin build pinned to Gradle's embedded Kotlin, where adding Kotlin Multiplatform is
+// `kotlin-dsl` plugin build pinned to Gradle's embedded Kotlin, where adding Kotlin Multiplatform
+// is
 // a fight over the toolchain rather than a configuration. And the dependency cannot run the other
 // way — an included build cannot depend on a project of the build that includes it.
 //
@@ -43,7 +45,9 @@ ktfmt { googleStyle() }
 // `preview-discovery` jar is unchanged: it still carries these classes, compiled from the same
 // files the `:screen-model` KMP module compiles for `wasmJs`. The alternative was a mirror, and the
 // `serve-wasm` fork is this repository's own evidence for what mirrors cost.
-sourceSets.named("main") { kotlin.srcDir(rootDir.resolve("../screen/generator/src/commonMain/kotlin")) }
+sourceSets.named("main") {
+  kotlin.srcDir(rootDir.resolve("../screen/generator/src/commonMain/kotlin"))
+}
 
 dependencies {
   api(libs.kotlinx.serialization.json)

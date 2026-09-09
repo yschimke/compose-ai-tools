@@ -25,16 +25,13 @@ class TestRowScope
  * The shape `LazyColumn` has: a receiver lambda that is **not** `@Composable`, whose children are
  * declared through members of the receiver rather than composed into it.
  */
-@Suppress("unused", "UNUSED_PARAMETER")
-fun scopeDslComponent(content: TestListScope.() -> Unit) {}
+@Suppress("unused", "UNUSED_PARAMETER") fun scopeDslComponent(content: TestListScope.() -> Unit) {}
 
 /** An ordinary callback, to prove the signal is about the receiver and not about being a lambda. */
-@Suppress("unused", "UNUSED_PARAMETER")
-fun callbackComponent(onValueChange: (String) -> Unit) {}
+@Suppress("unused", "UNUSED_PARAMETER") fun callbackComponent(onValueChange: (String) -> Unit) {}
 
 /** The shape a determinate progress indicator has: a lambda returning a value. */
-@Suppress("unused", "UNUSED_PARAMETER")
-fun valueReturningLambdaComponent(progress: () -> Float) {}
+@Suppress("unused", "UNUSED_PARAMETER") fun valueReturningLambdaComponent(progress: () -> Float) {}
 
 /** The same return type behind an argument, which a bare `{ … }` must not be accepted for. */
 @Suppress("unused", "UNUSED_PARAMETER")

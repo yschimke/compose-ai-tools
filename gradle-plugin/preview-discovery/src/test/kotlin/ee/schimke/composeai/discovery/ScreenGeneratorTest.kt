@@ -278,7 +278,8 @@ class ScreenGeneratorTest {
       ScreenGenerator.generate(
         screen(),
         catalog(card, text),
-        preview = ScreenGenerator.Preview(devices = listOf("id:pixel_6\", showBackground = evil()")),
+        preview =
+          ScreenGenerator.Preview(devices = listOf("id:pixel_6\", showBackground = evil()")),
       )
 
     assertThat(refused).isInstanceOf(ScreenGenerator.Result.Refused::class.java)

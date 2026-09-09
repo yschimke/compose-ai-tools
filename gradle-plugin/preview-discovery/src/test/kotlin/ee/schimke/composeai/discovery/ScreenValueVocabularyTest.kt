@@ -140,8 +140,7 @@ class ScreenValueVocabularyTest {
     // the theme once per coloured node, so this is most of what a generated file says.
     assertThat(result.source).contains("color = MaterialTheme.colorScheme.primary")
     assertThat(result.source).contains("import androidx.compose.material3.MaterialTheme")
-    assertThat(result.source)
-      .doesNotContain("androidx.compose.material3.MaterialTheme.colorScheme")
+    assertThat(result.source).doesNotContain("androidx.compose.material3.MaterialTheme.colorScheme")
   }
 
   @Test
@@ -214,7 +213,8 @@ class ScreenValueVocabularyTest {
       )
     assertThat(result.source).contains("color = ColorDefaults.brand()")
     assertThat(result.source).contains("import androidx.compose.material3.ColorDefaults")
-    assertThat(result.source).doesNotContain("import androidx.compose.material3.ColorDefaults.brand")
+    assertThat(result.source)
+      .doesNotContain("import androidx.compose.material3.ColorDefaults.brand")
   }
 
   @Test
@@ -330,7 +330,8 @@ class ScreenValueVocabularyTest {
         catalog(text, column),
       )
     assertThat(result.source).contains("modifier = Modifier.weight(1.0f)")
-    assertThat(result.source).doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
+    assertThat(result.source)
+      .doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
   }
 
   @Test
@@ -558,8 +559,7 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    assertThat(result.source)
-      .contains("color = Color(4284960932L, 2.0)")
+    assertThat(result.source).contains("color = Color(4284960932L, 2.0)")
   }
 
   @Test
@@ -1421,8 +1421,7 @@ class ScreenValueVocabularyTest {
       )
         as ScreenGenerator.Result.Emitted
 
-    assertThat(result.source)
-      .contains("val tintInitial = MaterialTheme.colorScheme.primary")
+    assertThat(result.source).contains("val tintInitial = MaterialTheme.colorScheme.primary")
     assertThat(result.source)
       .contains("mutableStateOf<androidx.compose.ui.graphics.Color>(tintInitial)")
   }
@@ -1499,8 +1498,7 @@ class ScreenValueVocabularyTest {
       )
         as ScreenGenerator.Result.Emitted
 
-    assertThat(result.source)
-      .contains("val tintInitial_ = MaterialTheme.colorScheme.primary")
+    assertThat(result.source).contains("val tintInitial_ = MaterialTheme.colorScheme.primary")
   }
 
   @Test
@@ -1612,6 +1610,7 @@ class ScreenValueVocabularyTest {
 
     assertThat(reasons.single()).contains("has no `onLongPress`")
   }
+
   private companion object {
     const val COLUMN_SCOPE = "androidx.compose.foundation.layout.ColumnScope"
     const val ROW_SCOPE = "androidx.compose.foundation.layout.RowScope"
@@ -1650,7 +1649,9 @@ class ScreenValueVocabularyTest {
     // The check that makes the kind worth having. Every zero-argument function type in the library
     // is a `kotlin.Function0`, so a value held only to the parameter's own `typeFqn` is held to
     // almost nothing — and `progress = { "" }` compiles in this generator's head and nowhere else.
-    assertThat(refusal(indicatorNode(ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(indicator)))
+    assertThat(
+        refusal(indicatorNode(ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(indicator))
+      )
       .containsExactly("`LinearProgressIndicator`.`progress` is kotlin.Float, which Text is not")
   }
 
@@ -1665,7 +1666,9 @@ class ScreenValueVocabularyTest {
           catalog(indicator),
         )
       )
-      .containsExactly("`LinearProgressIndicator`.`progress` is kotlin.Float, which Fractional is not")
+      .containsExactly(
+        "`LinearProgressIndicator`.`progress` is kotlin.Float, which Fractional is not"
+      )
   }
 
   @Test
@@ -1702,7 +1705,9 @@ class ScreenValueVocabularyTest {
 
   @Test
   fun `a lambda is refused on a parameter that is not a function type at all`() {
-    assertThat(refusal(textNode("text" to ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(text)))
+    assertThat(
+        refusal(textNode("text" to ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(text))
+      )
       .containsExactly(
         "`Text`.`text` is `String`, which a `{ … }` returning a value does not satisfy"
       )
