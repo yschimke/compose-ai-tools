@@ -6,7 +6,6 @@ import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.ClasspathNormalizer
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
@@ -584,37 +583,45 @@ tasks.withType<Test>().configureEach {
 }
 
 abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {
-  @get:Classpath abstract val runtimeClasspath: ConfigurableFileCollection
+  /** `group:module` of every resolved module artifact on the CLI's runtime classpath. */
+  @get:Input abstract val resolvedModules: ListProperty<String>
 
-  @get:Input abstract val forbiddenProjectDirs: ListProperty<String>
+  @get:Input abstract val forbiddenModules: ListProperty<String>
 
   @TaskAction
   fun checkBoundary() {
-    val forbiddenDirs = forbiddenProjectDirs.get()
-    val forbidden =
-      runtimeClasspath.files
-        .filter { file ->
-          val path = file.invariantSeparatorsPath
-          forbiddenDirs.any { forbiddenDir -> path.startsWith("$forbiddenDir/") }
-        }
-        .map { it.path }
-        .sorted()
+    val forbidden = forbiddenModules.get().toSet()
+    val leaked = resolvedModules.get().filter { it in forbidden }.sorted()
 
-    check(forbidden.isEmpty()) {
-      "CLI may depend on renderer-agnostic :daemon:core only; forbidden renderer artifacts on " +
-        "runtimeClasspath: ${forbidden.joinToString(", ")}"
+    check(leaked.isEmpty()) {
+      "CLI may depend on the renderer-agnostic daemon-core only; forbidden renderer artifacts on " +
+        "runtimeClasspath: ${leaked.joinToString(", ")}"
     }
   }
 }
 
+// The renderers and daemon hosts are published coordinates since compose-ai-tools#5336, so the
+// check reads resolved module identities rather than project directories — the same shape as
+// build-logic's `checkLayerBoundary`, and the only one that sees a coordinate arriving
+// transitively through a daemon-line POM.
 tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
   description = "Fails if renderer implementations leak onto the CLI runtime classpath."
   group = "verification"
 
-  runtimeClasspath.from(configurations.named("runtimeClasspath"))
-  forbiddenProjectDirs.set(
-    listOf(":daemon:android", ":daemon:desktop", ":renderer-android", ":renderer-desktop").map {
-      project(it).projectDir.invariantSeparatorsPath
+  resolvedModules.set(
+    configurations.named("runtimeClasspath").flatMap { configuration ->
+      configuration.incoming.artifacts.resolvedArtifacts.map { artifacts ->
+        artifacts.mapNotNull { artifact ->
+          (artifact.id.componentIdentifier as? ModuleComponentIdentifier)?.let {
+            "${it.group}:${it.module}"
+          }
+        }
+      }
+    }
+  )
+  forbiddenModules.set(
+    listOf("daemon-android", "daemon-desktop", "renderer-android", "renderer-desktop").map {
+      "ee.schimke.composeai:$it"
     }
   )
 }
