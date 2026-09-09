@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import {
   FILE_TEMPLATES,
   STRUCTURAL_ROLES,
+  TEMPLATE_DIR,
   UI_BUILDER_POLICY_SCHEMA,
   validatePolicy,
 } from "./ui-builder-policy.mjs";
@@ -172,4 +173,28 @@ test("the role vocabulary matches the Kotlin the generator actually reads", asyn
   // reader of the validator will see it.
   assert.deepEqual(FILE_TEMPLATES, ["previews", "file"]);
   for (const name of FILE_TEMPLATES) assert.ok(!STRUCTURAL_ROLES.includes(name));
+});
+
+test("a templates path outside ui-builder is an error, not a shrug", async () => {
+  // The pre-flight exists to catch a typo before a twenty-minute render. `UiBuilderTemplateLookup`
+  // silently DROPS a path outside `ui-builder/` — that tree is what the publishing tasks declare as
+  // an input — so a validator that accepted one reported "fine" about the exact case it exists to
+  // catch, and the published catalog then named a template nothing carries.
+  const outside = wellFormed();
+  outside.templates = ["designs/wear-list.json"];
+  const errors = validatePolicy(outside).errors;
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /is not under ui-builder\//);
+
+  const inside = wellFormed();
+  inside.templates = [`${TEMPLATE_DIR}/designs/wear-list.json`];
+  assert.deepEqual(validatePolicy(inside).errors, []);
+
+  // The rules the runtime enforces and the rules this states have to be the same set, so the
+  // constant is read from the Kotlin rather than written twice.
+  const lookup = await readFile(
+    join(here, "../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/UiBuilderTemplateLookup.kt"),
+    "utf8",
+  );
+  assert.match(lookup, new RegExp(`UI_BUILDER_DIR: String = "${TEMPLATE_DIR}"`));
 });

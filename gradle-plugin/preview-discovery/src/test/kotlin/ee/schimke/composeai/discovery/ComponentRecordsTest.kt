@@ -560,6 +560,30 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `orphans belong to the previews they were read from`() {
+    // The premise `BundlePreviewTask` relies on when it packs a selection: an orphan is a property
+    // of a PREVIEW, so the record built from a filtered manifest carries only the orphans of the
+    // previews that survived the filter. Bundling components from the full record while carrying
+    // every orphan beside them made `bundle pack --id A` report a diagnostic about a preview B that
+    // its own previews.json does not contain.
+    val wearText = target("androidx.wear.compose.material3.TextKt", "Text")
+    val foundationText = target("androidx.compose.foundation.text.TextKt", "Text")
+    val orphaning =
+      preview(
+        "p-orphan",
+        componentTargets = listOf(wearText, foundationText),
+        builder = BuilderPolicy(component = "Text", canvas = "p"),
+      )
+    val plain = preview("p-plain", componentTargets = listOf(wearText))
+
+    assertThat(
+        ComponentRecords.from(manifest(orphaning, plain)).builderOrphans.map { it.previewId }
+      )
+      .containsExactly("p-orphan")
+    assertThat(ComponentRecords.from(manifest(plain)).builderOrphans).isEmpty()
+  }
+
+  @Test
   fun `a component no preview declared a policy for carries none`() {
     val file =
       ComponentRecords.from(

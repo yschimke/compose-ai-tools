@@ -596,6 +596,37 @@ object UiBuilderCatalogs {
         )
     }
 
+    // A key named twice in any list that later becomes a MAP.
+    //
+    // `policyFor` collapses four of these with `associate`, which keeps the last silently — so
+    // `stateCallbacks = ["onChange=checked:boolean", "onChange=value:number"]` publishes whichever
+    // the author happened to write second, and the contradiction never appears anywhere. Both
+    // entries pass every check above, because every check above asks about ONE entry.
+    //
+    // All four lists, not just the callbacks: they are collapsed by the same call in the same
+    // expression, so a check covering one of them would be a rule somebody has to remember to
+    // extend, and this file already has a history of that.
+    for ((label, pairs) in
+      listOf(
+        "stateCallbacks" to builder.stateCallbacks,
+        "starter" to builder.starter,
+        "slots" to builder.slots,
+        "variants" to builder.variants,
+      )) {
+      for ((key, entries) in pairs.groupBy { it.key }.filterValues { it.size > 1 }) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.POLICY_MALFORMED_ENTRY,
+            subject = "$builderId.$key",
+            message =
+              "'$label' names '$key' ${entries.size} times " +
+                "(${entries.joinToString { it.value }}). Only the last survives being read into a " +
+                "map, so the others do nothing and the one that wins is whichever was written " +
+                "last — say it once.",
+          )
+      }
+    }
+
     // The claims that need the record. Only worth checking against a signature that was actually
     // read: an unrecovered one reports "no parameters", and every entry would look wrong.
     if (!component.signatureKnown) return
@@ -669,14 +700,23 @@ object UiBuilderCatalogs {
       // argument and no receiver, and says nothing about any other. `checked: Boolean` with
       // `onCheckedChange: (String) -> Unit` is the case: every check above passes and the export
       // threads a Boolean into a String-taking lambda.
-      val callbackInput = target?.type?.let(::soleFunctionInput)?.let(::classifierOf)
+      val callbackInputType = target?.type?.let(::soleFunctionInput)
+      val callbackInput = callbackInputType?.let(::classifierOf)
+      // Nullability, in the direction the export actually assigns. The generated lambda writes the
+      // callback's argument back into the hoisted state — `onCheckedChange = { checked = it }` — so
+      // a `(Boolean?) -> Unit` over a `Boolean` state assigns a nullable into a non-null var and
+      // does not compile, while the reverse is ordinary and correct. Comparing bare classifiers
+      // strips the `?` off both sides and could see neither.
+      val nullableIntoNonNull =
+        callbackInputType?.trim()?.endsWith("?") == true &&
+          stateParam?.type?.trim()?.endsWith("?") == false
       // Not when the branch above already fired: one entry, one disagreement, one diagnostic. Two
       // messages under the same code about the same three names read as two separate defects.
       if (
         !declaredTypeWrong &&
           callbackInput != null &&
           classifier != null &&
-          callbackInput != classifier
+          (callbackInput != classifier || nullableIntoNonNull)
       ) {
         into +=
           UiBuilderDiagnostic(
@@ -684,9 +724,9 @@ object UiBuilderCatalogs {
             subject = "$builderId.${pair.key}",
             message =
               "state '$state' is a ${stateParam?.type}, but '${pair.key}' takes " +
-                "'${target.type}'. The export hoists the state and passes it to the callback, so " +
-                "the two have to agree; one of the component's two parameters is not the one this " +
-                "entry means.",
+                "'${target.type}'. The export writes the callback's argument back into the hoisted " +
+                "state, so the two have to agree; one of the component's two parameters is not " +
+                "the one this entry means.",
           )
       }
       if (state.isNotEmpty() && state !in parameterNames) {

@@ -1133,6 +1133,102 @@ class UiBuilderCatalogsTest {
       .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH)
   }
 
+  @Test
+  fun `a callback taking a nullable of the state's type is reported`() {
+    // The bare classifiers agree — both are Boolean — so only nullability separates these. The
+    // export writes the callback's argument back into the hoisted state, and a nullable `it` into a
+    // non-null `var` does not compile.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+              ),
+            parameters =
+              listOf(
+                parameter("checked", type = "kotlin.Boolean"),
+                parameter("onCheckedChange", type = "(kotlin.Boolean?) -> kotlin.Unit"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH)
+  }
+
+  @Test
+  fun `a non-null callback over nullable state is not reported`() {
+    // The other direction is ordinary and correct: `it` is a Boolean, the state is a `Boolean?`
+    // var, and the assignment compiles. Reporting it would be the false positive this check has
+    // already produced once.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+              ),
+            parameters =
+              listOf(
+                parameter("checked", type = "kotlin.Boolean?"),
+                parameter("onCheckedChange", type = "(kotlin.Boolean) -> kotlin.Unit"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH)
+  }
+
+  @Test
+  fun `a key named twice in a list that becomes a map is reported`() {
+    // `policyFor` collapses these with `associate`, which keeps the last silently, so the entry
+    // that wins is whichever was written second and the contradiction appears nowhere. Every check
+    // above passes because every check above asks about one entry.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks =
+                  listOf(
+                    BuilderPair("onChange", "checked:boolean"),
+                    BuilderPair("onChange", "value:number"),
+                  ),
+                starter = listOf(BuilderPair("label", "A"), BuilderPair("label", "B")),
+              ),
+            signatureKnown = false,
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val repeated =
+      generated.diagnostics.filter {
+        it.code == UiBuilderCatalogs.Diagnostics.POLICY_MALFORMED_ENTRY
+      }
+    // Both lists, not just the callbacks: they are collapsed by the same call.
+    assertThat(repeated.map { it.subject })
+      .containsAtLeast("wear-m3/checkbox-button.onChange", "wear-m3/checkbox-button.label")
+  }
+
   private fun parameter(name: String, type: String = "kotlin.Boolean") =
     TargetParameter(name = name, type = type, hasDefault = true)
 }

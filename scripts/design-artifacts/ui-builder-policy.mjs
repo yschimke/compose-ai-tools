@@ -37,6 +37,15 @@ export const STRUCTURAL_ROLES = [
   "decoration",
 ];
 
+/**
+ * The one directory a `templates` path may live under.
+ *
+ * Mirrors `UI_BUILDER_DIR` in
+ * gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/UiBuilderTemplateLookup.kt, which is the
+ * code that decides at publish time whether a design is carried.
+ */
+export const TEMPLATE_DIR = "ui-builder";
+
 /** Whole-file templates, which are not node roles and are legal keys in `code.templates`. */
 export const FILE_TEMPLATES = ["previews", "file"];
 
@@ -98,6 +107,17 @@ export function validatePolicy(policy) {
           errors.push(`"templates" contains ${JSON.stringify(entry)}, which is not a path`);
         } else if (entry.startsWith("/") || entry.includes("..")) {
           errors.push(`"templates" entry ${JSON.stringify(entry)} is not branch-relative`);
+        } else if (entry !== TEMPLATE_DIR && !entry.startsWith(`${TEMPLATE_DIR}/`)) {
+          // The same prefix `UiBuilderTemplateLookup` enforces at publish time, stated here so the
+          // two agree. It drops a path outside `ui-builder/` silently — that tree is what the tasks
+          // declare as an input, so a design anywhere else would be read from somewhere Gradle is
+          // not watching — and this validator accepting one meant the build-free pre-flight passed,
+          // the twenty-minute render ran, and the published catalog named a template neither
+          // discovery nor bundling carries. A pre-flight whose rules are a subset of the runtime's
+          // reports "fine" about exactly the cases it exists to catch.
+          errors.push(
+            `"templates" entry ${JSON.stringify(entry)} is not under ${TEMPLATE_DIR}/, so nothing will carry it`,
+          );
         }
       }
     }

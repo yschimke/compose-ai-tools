@@ -1951,7 +1951,18 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {
     val carriedIds = carried.components.map { it.canonicalId }.toSet()
-    val record = full.copy(components = full.components.filter { it.canonicalId in carriedIds })
+    // Components from `full`, orphans from `carried`, and the asymmetry is deliberate. A component
+    // keeps its whole record — every binding, every catalog id — because bundling one of its
+    // previews does not shrink what the component IS. An orphan is a property of a PREVIEW, so an
+    // orphan for a preview this bundle does not carry is a diagnostic about something the bundle's
+    // own previews.json and components.json do not contain. Filtering the components and carrying
+    // every orphan beside them was half the filter: `carried` already holds exactly the orphans of
+    // the previews that were selected, so there is nothing to recompute.
+    val record =
+      full.copy(
+        components = full.components.filter { it.canonicalId in carriedIds },
+        builderOrphans = carried.builderOrphans,
+      )
     val authored = authoredPair() ?: return null
     val (policyFile, specFile) = authored.policy to authored.spec
     val lenient = Json { ignoreUnknownKeys = true }
