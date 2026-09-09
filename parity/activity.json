@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T21:22:25.461Z",
+  "generatedAt": "2026-09-09T23:20:00.679Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "d4b1824b1bfe1fed97eb1156ac2f46b30313d632",
+        "subject": "chore(main): release 2.5.0 (#5328)",
+        "at": "2026-09-09T23:54:41+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "56d533d6affd643d21b809a2d75a7eaa7ab4ec91",
+        "subject": "feat(ui-builder): let a catalog state a component's vocabulary in its policy file (#5351)",
+        "at": "2026-09-09T23:53:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8d7208450023d9e5a202ebfc2269afa4233a4285",
+        "subject": "fix(discovery): follow the project's own composables to the component a preview renders (#5350)",
+        "at": "2026-09-09T23:44:40+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7ad45448643ad2549f023fa1d502a7a196b37a73",
+        "subject": "fix(deps): update rc-players to v1.60.1 (#5342)",
+        "at": "2026-09-09T21:53:24Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "77c1c6c3ec6f165400e8cb10b75e4159a6cf8a0d",
         "subject": "refactor: consume the renderers, data extractors and daemon from compose-preview-daemon (#5346)",
@@ -450,38 +482,6 @@
         "sha": "279169d4aacc51bd0c4f7a7003f9d7dc1507c332",
         "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.16.0 (#5281)",
         "at": "2026-09-07T21:17:27+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "52d758e032950ef47954e6ffcb2f8e0d8927ef2a",
-        "subject": "chore(main): release 2.2.2 (#5278)",
-        "at": "2026-09-07T20:59:17+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "604ff1f51726eff0ce74c6aaf1a9a89ccb7b333f",
-        "subject": "fix: give the core train its own line version, not the release tag (#5277)",
-        "at": "2026-09-07T20:52:43+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5d5688d4462fd02380d4ff9355a979d45d97c018",
-        "subject": "ci: retry external-consumer Gradle runs on a transient repository 403 (#5276)",
-        "at": "2026-09-07T20:09:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a980b5e6c5ec23632f2a1b05796471b4e917f2fc",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.2.1 (#5275)",
-        "at": "2026-09-07T18:50:41Z",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []

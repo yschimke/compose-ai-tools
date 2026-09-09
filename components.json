@@ -4,6 +4,199 @@
     "variant": "debug",
     "components": [
         {
+            "canonicalId": "design-catalog-wear-m3/androidx.wear.compose.material3.AppScaffoldKt.AppScaffold",
+            "componentIds": [
+                "EdgeButton",
+                "Template/PageIndicator",
+                "Template/TimeText",
+                "TransformingLazyColumn"
+            ],
+            "symbol": {
+                "jvmOwner": "androidx.wear.compose.material3.AppScaffoldKt",
+                "callable": "androidx.wear.compose.material3.AppScaffold",
+                "name": "AppScaffold",
+                "origin": "LIBRARY",
+                "jvmName": "AppScaffold-t6yy7ic",
+                "descriptor": "(Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function2;JJLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V",
+                "sourceFile": null,
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "modifier",
+                    "type": "Modifier",
+                    "typeFqn": "androidx.compose.ui.Modifier",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "timeText",
+                    "type": "() -> Unit",
+                    "typeFqn": "kotlin.Function0",
+                    "hasDefault": true,
+                    "composableSlot": true,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                },
+                {
+                    "name": "containerColor",
+                    "type": "Color",
+                    "typeFqn": "androidx.compose.ui.graphics.Color",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "contentColor",
+                    "type": "Color",
+                    "typeFqn": "androidx.compose.ui.graphics.Color",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "content",
+                    "type": "BoxScope.() -> Unit",
+                    "typeFqn": "kotlin.Function1",
+                    "hasDefault": false,
+                    "composableSlot": true,
+                    "composableSlotReceiver": "androidx.compose.foundation.layout.BoxScope",
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [
+                {
+                    "name": "timeText",
+                    "required": false,
+                    "receiverScope": null
+                },
+                {
+                    "name": "content",
+                    "required": true,
+                    "receiverScope": "androidx.compose.foundation.layout.BoxScope"
+                }
+            ],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
+                }
+            ],
+            "code": {
+                "call": "AppScaffold(content = {})",
+                "imports": [
+                    "androidx.wear.compose.material3.AppScaffold"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "builder": null,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
             "canonicalId": "design-catalog-wear-m3/androidx.wear.compose.material3.ButtonGroupKt.ButtonGroup",
             "componentIds": [
                 "ButtonGroup"
@@ -2148,6 +2341,21 @@
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
                     "componentId": "TitleCard",
                     "group": "Containment"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
                 }
             ],
             "code": {
@@ -2932,6 +3140,21 @@
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
                     "componentId": "Template/TimeText",
                     "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
                 }
             ],
             "code": {
@@ -3273,6 +3496,21 @@
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
                     "componentId": "Template/TimeText",
                     "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
                 }
             ],
             "code": {
@@ -3287,6 +3525,121 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": true,
+            "builder": null,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-wear-m3/androidx.wear.compose.material3.ScrollIndicatorKt.ScrollIndicator",
+            "componentIds": [],
+            "symbol": {
+                "jvmOwner": "androidx.wear.compose.material3.ScrollIndicatorKt",
+                "callable": "androidx.wear.compose.material3.ScrollIndicator",
+                "name": "ScrollIndicator",
+                "origin": "LIBRARY",
+                "jvmName": "ScrollIndicator",
+                "descriptor": "(Landroidx/compose/foundation/ScrollState;Landroidx/compose/ui/Modifier;Landroidx/wear/compose/material3/ScrollIndicatorColors;ZLandroidx/compose/animation/core/AnimationSpec;Landroidx/compose/runtime/Composer;II)V",
+                "sourceFile": null,
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "state",
+                    "type": "ScrollState",
+                    "typeFqn": "androidx.compose.foundation.ScrollState",
+                    "hasDefault": false,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "modifier",
+                    "type": "Modifier",
+                    "typeFqn": "androidx.compose.ui.Modifier",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "colors",
+                    "type": "ScrollIndicatorColors",
+                    "typeFqn": "androidx.wear.compose.material3.ScrollIndicatorColors",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "reverseDirection",
+                    "type": "Boolean",
+                    "typeFqn": "kotlin.Boolean",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "positionAnimationSpec",
+                    "type": "AnimationSpec<Float>",
+                    "typeFqn": "androidx.compose.animation.core.AnimationSpec",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                }
+            ],
+            "slots": [],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
+                }
+            ],
+            "code": {
+                "call": null,
+                "imports": [],
+                "refusedReason": "no placeholder can be written for required parameter `state: ScrollState`",
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
             "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
@@ -3859,12 +4212,235 @@
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
                     "componentId": "Typography",
                     "group": "Theme"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
                 }
             ],
             "code": {
                 "call": "Text(text = \"\")",
                 "imports": [
                     "androidx.wear.compose.material3.Text"
+                ],
+                "refusedReason": null,
+                "requiredOptIns": [],
+                "androidxOptIns": []
+            },
+            "signatureKnown": true,
+            "callableFromAnotherFile": true,
+            "hasTypeParameters": false,
+            "hasContextReceivers": false,
+            "overloadsCollided": false,
+            "builder": null,
+            "requiredOptIns": [],
+            "androidxOptIns": []
+        },
+        {
+            "canonicalId": "design-catalog-wear-m3/androidx.wear.compose.material3.TimeTextKt.TimeText",
+            "componentIds": [
+                "EdgeButton",
+                "Template/PageIndicator",
+                "Template/TimeText",
+                "TransformingLazyColumn"
+            ],
+            "symbol": {
+                "jvmOwner": "androidx.wear.compose.material3.TimeTextKt",
+                "callable": "androidx.wear.compose.material3.TimeText",
+                "name": "TimeText",
+                "origin": "LIBRARY",
+                "jvmName": "TimeText-hYmLsZ8",
+                "descriptor": "(Landroidx/compose/ui/Modifier;Landroidx/wear/compose/foundation/CurvedModifier;FJLandroidx/wear/compose/material3/TimeSource;Landroidx/compose/foundation/layout/PaddingValues;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V",
+                "sourceFile": null,
+                "docs": "unavailable",
+                "receiver": null
+            },
+            "parameters": [
+                {
+                    "name": "modifier",
+                    "type": "Modifier",
+                    "typeFqn": "androidx.compose.ui.Modifier",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "curvedModifier",
+                    "type": "CurvedModifier",
+                    "typeFqn": "androidx.wear.compose.foundation.CurvedModifier",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "maxSweepAngle",
+                    "type": "Float",
+                    "typeFqn": "kotlin.Float",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "backgroundColor",
+                    "type": "Color",
+                    "typeFqn": "androidx.compose.ui.graphics.Color",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "timeSource",
+                    "type": "TimeSource",
+                    "typeFqn": "androidx.wear.compose.material3.TimeSource",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "contentPadding",
+                    "type": "PaddingValues",
+                    "typeFqn": "androidx.compose.foundation.layout.PaddingValues",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": null,
+                    "lambdaReturnTypeFqn": null
+                },
+                {
+                    "name": "content",
+                    "type": "CurvedScope.(String) -> Unit",
+                    "typeFqn": "kotlin.Function2",
+                    "hasDefault": true,
+                    "composableSlot": false,
+                    "composableSlotReceiver": null,
+                    "nullable": false,
+                    "noArgConstructible": false,
+                    "noArgFactory": null,
+                    "scopeDslReceiver": "androidx.wear.compose.foundation.CurvedScope",
+                    "lambdaReturnTypeFqn": "kotlin.Unit"
+                }
+            ],
+            "slots": [],
+            "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Extra_Large_Round",
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Large_Round",
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonSticker_Small_Round",
+                    "componentId": "EdgeButton",
+                    "group": "Buttons"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenLongPreview_wearos_small_round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Large_Round",
+                    "componentId": null,
+                    "group": null
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.UiBuilderGeneratedScreenKt.ActivityScreenPreview_Devices_-_Small_Round",
+                    "componentId": null,
+                    "group": null
+                }
+            ],
+            "code": {
+                "call": "TimeText()",
+                "imports": [
+                    "androidx.wear.compose.material3.TimeText"
                 ],
                 "refusedReason": null,
                 "requiredOptIns": [],
