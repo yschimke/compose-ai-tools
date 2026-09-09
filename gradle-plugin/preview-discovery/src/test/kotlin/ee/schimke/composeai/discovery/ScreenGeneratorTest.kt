@@ -1401,4 +1401,65 @@ class ScreenGeneratorTest {
         "`LazyColumn`.`content` names `it.em`, which cannot be written as a Kotlin identifier"
       )
   }
+
+  /**
+   * A run of identical siblings is one `repeat`.
+   *
+   * A builder's document has no loop in it, so a twelve-cell contribution row arrives as twelve
+   * nodes and generated twelve identical `Text(…)` calls — faithful, and a screen nobody reads.
+   */
+  @Test
+  fun `identical siblings are generated as one repeat`() {
+    val source = emitted(cells(12), catalog(card, text)).source
+
+    assertThat(source).contains("repeat(12) {")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(1)
+  }
+
+  @Test
+  fun `two identical siblings are still written out, because two calls read fine`() {
+    val source = emitted(cells(2), catalog(card, text)).source
+
+    assertThat(source).doesNotContain("repeat(")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
+  }
+
+  @Test
+  fun `a sibling that differs breaks the run at itself and neither side is lost`() {
+    val cells =
+      (0 until 8).map { index -> textNode(if (index == 3) "odd" else "cell") }.toTypedArray()
+    val source = emitted(column(*cells), catalog(card, text)).source
+
+    assertThat(source).contains("repeat(3) {")
+    assertThat(source).contains("repeat(4) {")
+    assertThat(source).contains("Text(text = \"odd\")")
+  }
+
+  @Test
+  fun `the folded body is the call it replaced, at one further indent`() {
+    val source = emitted(cells(4), catalog(card, text)).source
+
+    assertThat(source).contains("        repeat(4) {\n            Text(text = \"cell\")\n        }")
+  }
+
+  @Test
+  fun `a DSL slot is not folded, because item identity is not visible in the text`() {
+    val cells = (0 until 5).map { textNode("cell") }.toTypedArray()
+    val source = emitted(list(SlotItem("item", lazyListScope), *cells), catalog(lazyColumn, text))
+
+    assertThat(source.source).doesNotContain("repeat(")
+    assertThat(occurrences(source.source, "item {")).isEqualTo(5)
+  }
+
+  private fun occurrences(source: String, text: String) =
+    Regex(Regex.escape(text)).findAll(source).count()
+
+  private fun cells(count: Int) = column(*(0 until count).map { textNode("cell") }.toTypedArray())
+
+  private fun column(vararg children: ScreenNode) =
+    ScreenDocument(
+      name = "HomeScreen",
+      root =
+        ScreenNode(componentId = card.canonicalId, slots = mapOf("content" to children.toList())),
+    )
 }

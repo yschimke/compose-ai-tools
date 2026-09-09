@@ -175,6 +175,9 @@ object ScreenGenerator {
 
   private const val INDENT = "    "
 
+  /** How many identical siblings it takes before a `repeat` reads better than the calls. */
+  private const val MINIMUM_FOLDED_RUN = 3
+
   fun generate(
     document: ScreenDocument,
     components: ComponentRecordFile,
@@ -740,7 +743,7 @@ object ScreenGenerator {
             val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
-                if (wrapper == null) children.joinToString("\n") { node(it, depth + 1) }
+                if (wrapper == null) foldRepeats(children.map { node(it, depth + 1) }, inner)
                 else
                   children.joinToString("\n") { child ->
                     "$inner$wrapper {\n${node(child, depth + 2)}\n$inner}"
@@ -1386,6 +1389,54 @@ object ScreenGenerator {
       }
       return quote(value)
     }
+  }
+
+  /**
+   * A slot's already-generated children, with runs of identical siblings written as one `repeat`.
+   *
+   * A builder's document has no loop in it, so a twelve-cell contribution row is twelve nodes —
+   * that is the only thing such a document can say, and the canvas draws exactly what is there.
+   * Emitting it back as twelve identical `Surface(…)` calls is faithful and unreadable, and a
+   * screen nobody can read is a poor answer for a generator whose output is meant to be handed to a
+   * person and kept.
+   *
+   * The fold is how the same composition is *spelled*, never what it is. It joins children that
+   * generated **byte-identical text**, so the run emits the calls it replaced, in the same order,
+   * in the same scope, with the same arguments; `repeat` is `inline`, so the body is composed in
+   * the caller's scope exactly as the separate calls were. Comparing the generated text rather than
+   * the [ScreenNode]s is what makes that true regardless of anything [node] does on the way —
+   * whatever two children print the same is interchangeable by construction.
+   *
+   * Not applied to a slot filled through a [SlotItem]. `item { … }` is where child identity has
+   * consequences a reader cannot see from the text, and the trade there is not obviously worth it.
+   *
+   * [MINIMUM_FOLDED_RUN] is where the pattern starts being the point: two of anything is a pair a
+   * reader takes in at a glance, and folding it costs two lines to save one.
+   */
+  private fun foldRepeats(children: List<String>, indent: String): String {
+    val out = StringBuilder()
+    var index = 0
+    while (index < children.size) {
+      var end = index + 1
+      while (end < children.size && children[end] == children[index]) end++
+      if (out.isNotEmpty()) out.append("\n")
+      val run = end - index
+      if (run < MINIMUM_FOLDED_RUN) {
+        out.append(children.subList(index, end).joinToString("\n"))
+      } else {
+        out
+          .append(indent)
+          .append("repeat(")
+          .append(run)
+          .append(") {\n")
+          .append(children[index].prependIndent(INDENT))
+          .append("\n")
+          .append(indent)
+          .append("}")
+      }
+      index = end
+    }
+    return out.toString()
   }
 
   /**
