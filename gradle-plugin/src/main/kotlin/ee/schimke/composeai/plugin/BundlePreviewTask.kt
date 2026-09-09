@@ -379,46 +379,6 @@ abstract class BundlePreviewTask : DefaultTask() {
    */
   @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
 
-  /**
-   * The template designs a policy names, resolved to real files.
-   *
-   * Paths a policy cannot supply a file for are simply absent from the map; the caller reports them
-   * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
-   * somebody about and not a reason to publish no catalog.
-   */
-  /** The one directory a `templates` path may live under, and the tree declared as an input. */
-  private val UI_BUILDER_DIR = "ui-builder"
-
-  private fun templateFiles(paths: List<String>, moduleOwnsPolicy: Boolean): Map<String, File> {
-    if (paths.isEmpty()) return emptyMap()
-    // Precedence follows the location `authoredPair()` chose, not always the module.
-    //
-    // A nested module with neither authored file falls back to the repository root's policy — and
-    // that policy's `templates` name designs authored beside IT. Searching the module first would
-    // let a module-local `ui-builder/designs/…`, kept for some other catalog, shadow the design the
-    // selected policy actually owns, so discovery and bundling would publish bytes that policy
-    // never named. The pair is resolved together for this reason; the templates have to follow it.
-    val roots =
-      uiBuilderTemplateRoots.files
-        .filter { it.isDirectory }
-        .let { if (moduleOwnsPolicy) it else it.reversed() }
-    return paths
-      .distinct()
-      // Only under `ui-builder/`, which is exactly the tree declared as this task's input. A
-      // path outside it resolves to a real file Gradle is not watching, so editing that file
-      // would invalidate nothing and an up-to-date or cached build would keep publishing stale
-      // bytes — the input declaration and the lookup have to describe the same set or neither
-      // means anything. Anything else is reported by the caller as unresolvable rather than read
-      // from somewhere untracked.
-      .filter { it == UI_BUILDER_DIR || it.startsWith("$UI_BUILDER_DIR/") }
-      .mapNotNull { path ->
-        roots
-          .firstNotNullOfOrNull { root -> File(root, path).takeIf { it.isFile } }
-          ?.let { path to it }
-      }
-      .toMap()
-  }
-
   @get:OutputFile abstract val output: RegularFileProperty
 
   @TaskAction
@@ -1959,7 +1919,12 @@ abstract class BundlePreviewTask : DefaultTask() {
         runCatching { JSON.decodeFromString<UiBuilderCatalogFile>(it) }.getOrNull()
       } ?: return emptyMap()
     val declared = catalog.statusSemantics.templates
-    val found = templateFiles(declared, moduleOwnsPolicy = authoredPair()?.moduleOwns ?: true)
+    val found =
+      UiBuilderTemplateLookup.resolve(
+        uiBuilderTemplateRoots.files,
+        declared,
+        moduleOwnsPolicy = authoredPair()?.moduleOwns ?: true,
+      )
     (declared - found.keys).sorted().forEach {
       logger.warn(
         "composePreview: the builder catalog names template design '$it', which is not under " +

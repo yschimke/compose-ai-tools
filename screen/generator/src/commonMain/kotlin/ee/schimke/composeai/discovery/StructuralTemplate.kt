@@ -291,10 +291,68 @@ object StructuralTemplate {
     return overrides
   }
 
+  /**
+   * The spans of [text] that are GENERIC ARGUMENT LISTS, so their commas are not separators.
+   *
+   * `${'$'}{call(items = emptyMap<String, Int>())}` was rejected as malformed: the splitter tracked
+   * `()`, `[]` and `{}` and nothing else, so the comma between `String` and `Int` sat at depth zero
+   * and cut one named argument into two. An override's value is documented as arbitrary Kotlin, so
+   * rejecting valid Kotlin is a defect in the reader, not in the template.
+   *
+   * Angle brackets cannot simply be counted like the other three. `a < b` is a comparison, `->`
+   * ends in a `>` that closes nothing, and `List<Pair<String, Int>>` nests. So this is a pre-scan
+   * that PROVES a span before the splitter trusts it: a `<` is a generic opener only when it
+   * follows an identifier character directly, and only when a matching `>` is found while skipping
+   * `->` and refusing anything a type argument cannot contain. A `<` that fails any of those is
+   * left to the splitter as an ordinary character, which is exactly the old behaviour — so a
+   * comparison expression is no worse off than before, and this can only ever un-split.
+   */
+  private fun genericSpans(text: String): List<IntRange> {
+    val spans = mutableListOf<IntRange>()
+    var index = 0
+    while (index < text.length) {
+      if (text[index] != '<' || index == 0 || !isTypeChar(text[index - 1])) {
+        index++
+        continue
+      }
+      var depth = 0
+      var scan = index
+      var end = -1
+      while (scan < text.length) {
+        val ch = text[scan]
+        // Everything a type argument list may hold, and nothing else. A `(`, a quote or any other
+        // character means the `<` was a comparison, and the attempt is abandoned rather than
+        // guessed at.
+        if (!isTypeChar(ch) && ch !in "<>,?* -") break
+        when {
+          // `->` inside a function type argument: its `>` closes nothing.
+          ch == '-' && scan + 1 < text.length && text[scan + 1] == '>' -> scan++
+          ch == '<' -> depth++
+          ch == '>' -> {
+            depth--
+            if (depth == 0) end = scan
+          }
+        }
+        if (end >= 0) break
+        scan++
+      }
+      if (end > index) {
+        spans += index..end
+        index = end + 1
+      } else {
+        index++
+      }
+    }
+    return spans
+  }
+
+  private fun isTypeChar(ch: Char): Boolean = ch.isLetterOrDigit() || ch == '_' || ch == '.'
+
   /** Split on commas that are not inside parentheses, brackets, braces or a string literal. */
   private fun splitTopLevel(text: String): List<String> {
     val parts = mutableListOf<String>()
     val current = StringBuilder()
+    val generics = genericSpans(text)
     var depth = 0
     var inString = false
     // Kotlin CHARACTER literals, tracked alongside strings. An override's value is arbitrary Kotlin
@@ -344,7 +402,7 @@ object StructuralTemplate {
           depth--
           current.append(ch)
         }
-        ch == ',' && depth == 0 -> {
+        ch == ',' && depth == 0 && generics.none { index in it } -> {
           parts += current.toString()
           current.clear()
         }

@@ -215,3 +215,23 @@ test("counts default to zero rather than throwing on a minimal catalog", () => {
   const parsed = parseUiBuilderCatalog(bytes(JSON.stringify(minimal)));
   assert.equal(parsed.catalog.id, "m3-catalog");
 });
+
+test("an array where an object belongs is refused", () => {
+  // `typeof [] === "object"`, so the structural checks admitted one. The root already refused an
+  // array for exactly that reason and the two nested checks did not, which let a hand-made bundle
+  // carrying `statusSemantics: []` be written to the branch and stamped on `catalog.json` as a
+  // usable catalog — a file every reader would then fail to make sense of.
+  const arrayed = {
+    schema: "compose-ui-builder-catalog/v1",
+    catalog: { id: "m3-catalog" },
+    statusSemantics: [],
+  };
+  assert.equal(parseUiBuilderCatalog(bytes(JSON.stringify(arrayed))), null);
+
+  const arrayedCatalog = {
+    schema: "compose-ui-builder-catalog/v1",
+    catalog: [],
+    statusSemantics: { platform: "mobile" },
+  };
+  assert.equal(parseUiBuilderCatalog(bytes(JSON.stringify(arrayedCatalog))), null);
+});

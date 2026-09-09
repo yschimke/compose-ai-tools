@@ -197,46 +197,6 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   @get:OutputDirectory abstract val uiBuilderTemplateDir: DirectoryProperty
 
-  /** The one directory a `templates` path may live under, and the tree declared as an input. */
-  private val UI_BUILDER_DIR = "ui-builder"
-
-  /**
-   * The template designs a policy names, resolved to real files.
-   *
-   * Paths a policy cannot supply a file for are simply absent from the map; the caller reports them
-   * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
-   * somebody about and not a reason to publish no catalog.
-   */
-  private fun templateFiles(paths: List<String>, moduleOwnsPolicy: Boolean): Map<String, File> {
-    if (paths.isEmpty()) return emptyMap()
-    // Precedence follows the location `authoredPair()` chose, not always the module.
-    //
-    // A nested module with neither authored file falls back to the repository root's policy — and
-    // that policy's `templates` name designs authored beside IT. Searching the module first would
-    // let a module-local `ui-builder/designs/…`, kept for some other catalog, shadow the design the
-    // selected policy actually owns, so discovery and bundling would publish bytes that policy
-    // never named. The pair is resolved together for this reason; the templates have to follow it.
-    val roots =
-      uiBuilderTemplateRoots.files
-        .filter { it.isDirectory }
-        .let { if (moduleOwnsPolicy) it else it.reversed() }
-    return paths
-      .distinct()
-      // Only under `ui-builder/`, which is exactly the tree declared as this task's input. A
-      // path outside it resolves to a real file Gradle is not watching, so editing that file
-      // would invalidate nothing and an up-to-date or cached build would keep publishing stale
-      // bytes — the input declaration and the lookup have to describe the same set or neither
-      // means anything. Anything else is reported by the caller as unresolvable rather than read
-      // from somewhere untracked.
-      .filter { it == UI_BUILDER_DIR || it.startsWith("$UI_BUILDER_DIR/") }
-      .mapNotNull { path ->
-        roots
-          .firstNotNullOfOrNull { root -> File(root, path).takeIf { it.isFile } }
-          ?.let { path to it }
-      }
-      .toMap()
-  }
-
   /**
    * `ui-builder.json` — the builder catalog this module publishes, or nothing when it authors no
    * policy.
@@ -445,7 +405,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // No authored pair — this module publishes no builder catalog. Removing the policy has to
     // remove the catalog it produced: a stale file would keep being published and would describe a
     // catalog nobody authors any more.
-    val authored = authoredPair() ?: return run { if (out.exists()) out.delete() }
+    val authored =
+      authoredPair()
+        ?: return run { UiBuilderTemplateLookup.withdraw(out, uiBuilderTemplateDir.get().asFile) }
     val (policyFile, specFile) = authored.policy to authored.spec
     val policy = runCatching {
       lenientJson.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
@@ -455,7 +417,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
           "composePreview: ${policyFile.path} could not be read " +
             "(${failure.message ?: failure::class.simpleName}); no ui-builder.json written."
         )
-        if (out.exists()) out.delete()
+        UiBuilderTemplateLookup.withdraw(out, uiBuilderTemplateDir.get().asFile)
         return
       }
     val spec = specFile?.let {
@@ -482,7 +444,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // is a chooser entry that fails when somebody opens it — the same failure the bundle-side check
     // was added for, in the lane that has no second chance. Validating one and not the other was
     // half a fix.
-    val resolved = templateFiles(declared, moduleOwnsPolicy = authored.moduleOwns)
+    val resolved =
+      UiBuilderTemplateLookup.resolve(
+        uiBuilderTemplateRoots.files,
+        declared,
+        moduleOwnsPolicy = authored.moduleOwns,
+      )
     val (usable, unreadable) =
       resolved.entries.partition { (_, file) ->
         runCatching { json.parseToJsonElement(file.readText()) }.isSuccess

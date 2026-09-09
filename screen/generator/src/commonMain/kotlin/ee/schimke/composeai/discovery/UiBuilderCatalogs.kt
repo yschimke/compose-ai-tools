@@ -281,14 +281,21 @@ object UiBuilderCatalogs {
         )
     }
     for (component in record.components) {
-      val builder = component.builder ?: continue
+      val builder = component.builder ?: BuilderPolicy()
       val builderId = builderIdFor(idPrefix, component, builder)
-      val existing = components[builderId]
-      // Reported by the sweep above, which sees the unannotated components too. Still skipped here
-      // so the first claimant keeps the entry.
-      if (existing != null) continue
+      // The owner the SWEEP established, not "the first annotated component to reach this loop".
+      // Keying off `components` alone consulted a map only annotated components ever enter, so an
+      // unannotated first claimant left it empty and the later annotated component published its
+      // policy under the contested id — while the diagnostic said the first won and the menu, which
+      // reads `idOwners`, agreed with the diagnostic. Three loops, two answers. They read one now.
+      if (idOwners[builderId] != component.canonicalId) continue
+      // Every admitted component, not only the annotated ones. `component.canvas.unclaimed` says in
+      // its own message that it exists "so a shelf drawn entirely in placeholders is visible rather
+      // than mysterious" — and a shelf drawn entirely in placeholders is the all-unannotated
+      // catalog, which never reached this loop. The one diagnostic written for that case was the
+      // one case it could not fire in.
       diagnose(component, builder, builderId, diagnostics)
-      components[builderId] = policyFor(component, builder)
+      if (component.builder != null) components[builderId] = policyFor(component, builder)
     }
 
     // The shelf covers EVERY admitted component, so the menu has to as well.
@@ -305,8 +312,17 @@ object UiBuilderCatalogs {
     for (component in record.components) {
       val builderId = builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
       if (idOwners[builderId] != component.canonicalId) continue
+      // The DECLARING sticker's group, matching the id and `catalogId` derived from the same
+      // sticker. One callable is routinely published under several — `Button/Filled` and
+      // `Button/Tonal` — and taking the first binding's group shelved a component whose id says
+      // `…/tonal` under Filled's group, so the entry disagreed with its own identity. Falls back to
+      // the first binding that names one, which is what an unannotated component has.
+      val declaring = component.builder?.declaredForCatalogId
       val group =
         component.builder?.group?.takeIf { it.isNotBlank() }
+          ?: component.bindings
+            .firstOrNull { it.componentId == declaring && !it.group.isNullOrBlank() }
+            ?.group
           ?: component.bindings.firstNotNullOfOrNull { it.group?.takeIf(String::isNotBlank) }
           ?: continue
       menuEntries[builderId] = UiBuilderMenuEntry(group)
@@ -407,6 +423,54 @@ object UiBuilderCatalogs {
       }
     }
     return out.toString().trim('-')
+  }
+
+  /**
+   * The bare classifier of a rendered type: `kotlin.Boolean?` → `Boolean`.
+   *
+   * Both halves matter. Nullability is not a different classifier — `Boolean?` is still a boolean
+   * state — and a package qualifier is not either, while [STATE_TYPE_CLASSIFIERS] is keyed on the
+   * simple name a person writes.
+   */
+  internal fun classifierOf(type: String): String =
+    type.trim().removeSuffix("?").substringAfterLast('.')
+
+  /**
+   * The single argument of a rendered `(X) -> R`, or null for every other shape.
+   *
+   * DELIBERATELY narrow. A rendered type is not a parse tree, and the shapes that would need one —
+   * a receiver (`Foo.(Bar) -> Unit`), a nested function type, a typealias standing for one, more
+   * than one argument — are returned as null rather than guessed at, because a wrong guess here
+   * reports a mismatch against a component that is correct, and a diagnostic that cries wolf is
+   * worse for the reader than the silence it replaced. What it does catch is the common form every
+   * `on…Change` in a Material catalog is written in.
+   */
+  internal fun soleFunctionInput(type: String): String? {
+    val trimmed = type.trim()
+    if (!trimmed.startsWith("(")) return null
+    var depth = 0
+    var close = -1
+    for ((index, ch) in trimmed.withIndex()) {
+      when (ch) {
+        '(' -> depth++
+        ')' -> {
+          depth--
+          if (depth == 0) {
+            close = index
+            break
+          }
+        }
+      }
+    }
+    if (close < 0) return null
+    if (!trimmed.substring(close + 1).trimStart().startsWith("->")) return null
+    val argument = trimmed.substring(1, close).trim()
+    // One argument only. A `(Boolean, Int) -> Unit` is a shape this cannot reason about, and a
+    // zero-argument callback is a different mistake with a different message.
+    if (argument.isEmpty() || argument.contains(',')) return null
+    // A nested function type or a generic argument is past what a rendering can settle.
+    if (argument.contains("->") || argument.contains('<')) return null
+    return argument
   }
 
   private fun policyFor(component: ComponentRecord, builder: BuilderPolicy) =
@@ -575,9 +639,15 @@ object UiBuilderCatalogs {
       // a String state and thread it into a Boolean, which does not compile.
       val declaredType = pair.value.substringAfter(':', "").trim()
       val stateParam = parametersByName[state]
-      val classifier = stateParam?.type?.removeSuffix("?")
+      // The SIMPLE name, because a record holds `kotlin.Boolean` and this table is keyed on
+      // `Boolean`. Comparing the qualified string against it meant the check could only ever fail,
+      // so a correct `checked:boolean` over a `kotlin.Boolean` was reported as a mismatch — a
+      // diagnostic that fires on every catalog it was written to protect. The one test that
+      // covered the matching case wrote the type unqualified, which is not what a record holds.
+      val classifier = stateParam?.type?.let(::classifierOf)
       val expected = STATE_TYPE_CLASSIFIERS[declaredType]
-      if (classifier != null && expected != null && classifier !in expected) {
+      val declaredTypeWrong = classifier != null && expected != null && classifier !in expected
+      if (declaredTypeWrong) {
         into +=
           UiBuilderDiagnostic(
             code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
@@ -587,6 +657,36 @@ object UiBuilderCatalogs {
                 "as '${stateParam.type}'. The export would initialise a $declaredType and thread " +
                 "it into a ${stateParam.type}, which does not compile. " +
                 "'$declaredType' means ${expected.sorted().joinToString(" or ")}.",
+          )
+      }
+      // And the CALLBACK's own input, which is the last half of this that nothing compared.
+      //
+      // I declined this one round ago, arguing that pulling a parameter type out of a rendered
+      // function type is parsing a display rendering. That argument was already spent: the
+      // function-typed check two branches up reads `"->" in target.type`, which is the same
+      // rendering. The real limit is not that it is a rendering, it is that only SOME renderings
+      // can be read confidently — so this reads exactly one shape, `(X) -> R` with a single
+      // argument and no receiver, and says nothing about any other. `checked: Boolean` with
+      // `onCheckedChange: (String) -> Unit` is the case: every check above passes and the export
+      // threads a Boolean into a String-taking lambda.
+      val callbackInput = target?.type?.let(::soleFunctionInput)?.let(::classifierOf)
+      // Not when the branch above already fired: one entry, one disagreement, one diagnostic. Two
+      // messages under the same code about the same three names read as two separate defects.
+      if (
+        !declaredTypeWrong &&
+          callbackInput != null &&
+          classifier != null &&
+          callbackInput != classifier
+      ) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
+            subject = "$builderId.${pair.key}",
+            message =
+              "state '$state' is a ${stateParam?.type}, but '${pair.key}' takes " +
+                "'${target.type}'. The export hoists the state and passes it to the callback, so " +
+                "the two have to agree; one of the component's two parameters is not the one this " +
+                "entry means.",
           )
       }
       if (state.isNotEmpty() && state !in parameterNames) {

@@ -55,7 +55,12 @@ export function parseUiBuilderCatalog(bytes) {
     typeof parsed.catalog.id !== "string" ||
     parsed.catalog.id.length === 0 ||
     !parsed.statusSemantics ||
-    typeof parsed.statusSemantics !== "object"
+    typeof parsed.statusSemantics !== "object" ||
+    // `typeof [] === "object"`, so the checks above admit an array. The root already refuses one
+    // for that reason and these two did not, which let a hand-made bundle carrying
+    // `statusSemantics: []` be published and stamped on `catalog.json` as a usable catalog.
+    Array.isArray(parsed.statusSemantics) ||
+    Array.isArray(parsed.catalog)
   ) {
     return null;
   }

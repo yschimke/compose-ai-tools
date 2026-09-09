@@ -45,6 +45,9 @@ class UiBuilderCatalogsTest {
     // A callable published under several catalog identities — `Buttons/Filled` and `Buttons/Tonal`
     // over one `Button`. Sorted, the way the record stores the union across every preview.
     catalogIds: List<String>? = null,
+    // One callable, several stickers, each with its own group — `Buttons/Filled` and
+    // `Buttons/Tonal` over one `Button`. The default is the single binding above.
+    bindings: List<ComponentBinding>? = null,
   ) =
     ComponentRecord(
       canonicalId = ":catalog/androidx.wear.compose.material3.${name}Kt.$name",
@@ -63,9 +66,10 @@ class UiBuilderCatalogsTest {
       // One binding carrying the catalog's own resolved group, which is what a real record holds
       // and what the menu is built from for a component that annotates nothing.
       bindings =
-        listOf(
-          ComponentBinding(previewId = "${name}Preview", componentId = catalogId, group = group)
-        ),
+        bindings
+          ?: listOf(
+            ComponentBinding(previewId = "${name}Preview", componentId = catalogId, group = group)
+          ),
     )
 
   @Test
@@ -637,8 +641,12 @@ class UiBuilderCatalogsTest {
             "CheckboxButton",
             parameters =
               listOf(
-                // Nullable is the same classifier: `Boolean?` is still a boolean state.
-                parameter("checked", type = "Boolean?"),
+                // Nullable is the same classifier, and so is a package qualifier: a record holds
+                // `kotlin.Boolean`, not `Boolean`, and comparing the qualified string against a
+                // table keyed on simple names made this check fire on every correct policy. Written
+                // the way a record actually holds it, so the table and the record cannot drift
+                // apart again behind a test that agrees with neither.
+                parameter("checked", type = "kotlin.Boolean?"),
                 parameter("onCheckedChange", type = "(Boolean) -> Unit"),
               ),
             builder =
@@ -950,6 +958,179 @@ class UiBuilderCatalogsTest {
         UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN,
         UiBuilderCatalogs.Diagnostics.BUILTIN_SHADOWS_RECORD,
       )
+  }
+
+  @Test
+  fun `an unannotated first claimant keeps the id it won`() {
+    // The sweep says the first claimant wins and the menu follows it. The policy map consulted only
+    // itself — a map no unannotated component ever enters — so the later annotated component
+    // published its policy under the contested id while the diagnostic said it had lost.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Button", catalogId = "Buttons/Button", group = "Actions"),
+          component(
+            "Other",
+            builder = BuilderPolicy(id = "wear-m3/button", canvas = "frame/round-screen"),
+          ),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(
+        generated.diagnostics
+          .single { it.code == UiBuilderCatalogs.Diagnostics.ID_COLLISION }
+          .subject
+      )
+      .isEqualTo("wear-m3/button")
+    // The loser publishes nothing under the id it lost, and the winner keeps the shelf entry.
+    assertThat(generated.statusSemantics.components).doesNotContainKey("wear-m3/button")
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
+      .isEqualTo("Actions")
+  }
+
+  @Test
+  fun `a shelf of unannotated components reports every unclaimed canvas`() {
+    // The diagnostic's own message says it exists so a shelf drawn entirely in placeholders is
+    // visible rather than mysterious — and that shelf is the all-unannotated catalog, which was the
+    // one case it could not fire in, because only annotated components were diagnosed at all.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Card", catalogId = "Containment/Card", group = "Containment"),
+          component("Chip", catalogId = "Actions/Chip", group = "Actions"),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(
+        generated.diagnostics
+          .filter { it.code == UiBuilderCatalogs.Diagnostics.CANVAS_UNCLAIMED }
+          .map { it.subject }
+      )
+      .containsExactly("wear-m3/card", "wear-m3/chip")
+    // Still no policy entry: the diagnostics are about the component, the map is about the policy.
+    assertThat(generated.statusSemantics.components).isEmpty()
+  }
+
+  @Test
+  fun `the menu group comes from the sticker that declared the policy`() {
+    // The id and `catalogId` already came from the declaring sticker. Taking the group from the
+    // first binding shelved a component keyed `…/tonal` under Filled's group, so the entry
+    // disagreed with its own identity.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Button",
+            catalogIds = listOf("Buttons/Filled", "Buttons/Tonal"),
+            builder = BuilderPolicy(declaredForCatalogId = "Buttons/Tonal", canvas = "p"),
+            bindings =
+              listOf(
+                ComponentBinding(
+                  previewId = "FilledPreview",
+                  componentId = "Buttons/Filled",
+                  group = "Actions",
+                ),
+                ComponentBinding(
+                  previewId = "TonalPreview",
+                  componentId = "Buttons/Tonal",
+                  group = "Selection",
+                ),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/tonal"]?.group)
+      .isEqualTo("Selection")
+  }
+
+  @Test
+  fun `a callback taking a different type than the state it hoists is reported`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+              ),
+            parameters =
+              listOf(
+                parameter("checked", type = "kotlin.Boolean"),
+                parameter("onCheckedChange", type = "(kotlin.String) -> kotlin.Unit"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val mismatch =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH
+      }
+    assertThat(mismatch.message).contains("kotlin.String")
+    assertThat(mismatch.message).contains("kotlin.Boolean")
+  }
+
+  @Test
+  fun `a callback agreeing with its state is not reported, and one this cannot read is not guessed`() {
+    // The second half matters as much as the first: a rendering this reader cannot settle — two
+    // arguments, a receiver, a nested function type — must stay silent rather than report a
+    // mismatch against a component that is correct.
+    val agreeing =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Switch",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+              ),
+            parameters =
+              listOf(
+                parameter("checked", type = "kotlin.Boolean"),
+                parameter("onCheckedChange", type = "(kotlin.Boolean) -> kotlin.Unit"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+    assertThat(agreeing.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH)
+
+    val unreadable =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Slider",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks = listOf(BuilderPair("onValueChange", "value:number")),
+              ),
+            parameters =
+              listOf(
+                parameter("value", type = "kotlin.Float"),
+                parameter("onValueChange", type = "(kotlin.Float, kotlin.Int) -> kotlin.Unit"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+    assertThat(unreadable.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH)
   }
 
   private fun parameter(name: String, type: String = "kotlin.Boolean") =

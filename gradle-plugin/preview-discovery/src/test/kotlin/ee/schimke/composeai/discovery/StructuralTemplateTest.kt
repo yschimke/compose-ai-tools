@@ -185,6 +185,40 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a generic argument list is not a list of arguments`() {
+    // An override's value is documented as arbitrary Kotlin, and the splitter tracked only
+    // `()`, `[]` and `{}` — so the comma in `emptyMap<String, Int>()` sat at depth zero and cut one
+    // named argument into two, rejecting a valid template as malformed.
+    val single =
+      StructuralTemplate.holes("\${call(items = emptyMap<String, Int>())}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(single.value)
+      .containsExactly(StructuralTemplate.Hole.Call(mapOf("items" to "emptyMap<String, Int>()")))
+
+    // Nested, and beside a genuine second argument that must still split.
+    val nested =
+      StructuralTemplate.holes("\${call(rows = listOf<Pair<String, Int>>(), n = 1)}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(nested.value)
+      .containsExactly(
+        StructuralTemplate.Hole.Call(mapOf("rows" to "listOf<Pair<String, Int>>()", "n" to "1"))
+      )
+  }
+
+  @Test
+  fun `a less-than that is not a generic list is left alone`() {
+    // The pre-scan may only ever un-split, so a comparison expression has to behave exactly as it
+    // did before it existed — otherwise closing one false rejection would open another.
+    val compared =
+      StructuralTemplate.holes("\${call(a = if (x < y) 1 else 2, b = 3)}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(compared.value)
+      .containsExactly(
+        StructuralTemplate.Hole.Call(mapOf("a" to "if (x < y) 1 else 2", "b" to "3"))
+      )
+  }
+
+  @Test
   fun `holes can be read without rendering, for validating a policy when it is published`() {
     // A policy naming a hole the builder will never resolve is a message for the person editing the
     // policy, not for the person who later drew a screen through it.
