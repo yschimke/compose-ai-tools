@@ -206,6 +206,19 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a function type is an ordinary generic argument`() {
+    // `emptyMap<String, (Int, Int) -> Unit>()` is valid Kotlin. Excluding `(` from the scan made it
+    // give up there, record no span, and let the comma after `String` split one override into two.
+    val functionType =
+      StructuralTemplate.holes("\${call(factory = emptyMap<String, (Int, Int) -> Unit>())}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(functionType.value)
+      .containsExactly(
+        StructuralTemplate.Hole.Call(mapOf("factory" to "emptyMap<String, (Int, Int) -> Unit>()"))
+      )
+  }
+
+  @Test
   fun `a less-than that is not a generic list is left alone`() {
     // The pre-scan may only ever un-split, so a comparison expression has to behave exactly as it
     // did before it existed — otherwise closing one false rejection would open another.
@@ -216,6 +229,13 @@ class StructuralTemplateTest {
       .containsExactly(
         StructuralTemplate.Hole.Call(mapOf("a" to "if (x < y) 1 else 2", "b" to "3"))
       )
+
+    // And the shape admitting parentheses could have broken: `n<m(1)` is arithmetic, not a generic
+    // list, and its comma must still separate arguments.
+    val arithmetic =
+      StructuralTemplate.holes("\${call(a = n<m(1), b = 2)}") as StructuralTemplate.Result2.Ok
+    assertThat(arithmetic.value)
+      .containsExactly(StructuralTemplate.Hole.Call(mapOf("a" to "n<m(1)", "b" to "2")))
   }
 
   @Test

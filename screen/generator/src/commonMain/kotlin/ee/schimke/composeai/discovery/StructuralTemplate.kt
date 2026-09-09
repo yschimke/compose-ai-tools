@@ -357,19 +357,32 @@ object StructuralTemplate {
         continue
       }
       var depth = 0
+      var parens = 0
       var scan = index
       var end = -1
       while (scan < text.length) {
         val ch = text[scan]
-        // Everything a type argument list may hold, and nothing else. A `(`, a quote or any other
+        // Everything a type argument list may hold, and nothing else. A quote or any other
         // character means the `<` was a comparison, and the attempt is abandoned rather than
         // guessed at.
-        if (!isTypeChar(ch) && ch !in "<>,?* -") break
+        //
+        // Parentheses are IN the set because a function type is an ordinary type argument —
+        // `emptyMap<String, (Int, Int) -> Unit>()` is valid Kotlin, and excluding `(` made the scan
+        // give up there, record no span, and let the comma after `String` split one override into
+        // two. Their depth is tracked so a `>` only closes the list at paren depth zero, which is
+        // what keeps `(Int, Int) -> Unit` from ending it early.
+        if (!isTypeChar(ch) && ch !in "<>,?* -()") break
         when {
           // `->` inside a function type argument: its `>` closes nothing.
           ch == '-' && scan + 1 < text.length && text[scan + 1] == '>' -> scan++
-          ch == '<' -> depth++
-          ch == '>' -> {
+          ch == '(' -> parens++
+          ch == ')' -> {
+            parens--
+            // More `)` than `(` means the `<` was never an opener: `n<m(1)` is arithmetic.
+            if (parens < 0) break
+          }
+          ch == '<' && parens == 0 -> depth++
+          ch == '>' && parens == 0 -> {
             depth--
             if (depth == 0) end = scan
           }

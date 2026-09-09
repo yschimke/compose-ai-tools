@@ -1229,6 +1229,44 @@ class UiBuilderCatalogsTest {
       .containsAtLeast("wear-m3/checkbox-button.onChange", "wear-m3/checkbox-button.label")
   }
 
+  @Test
+  fun `a componentIdPrefix missing its slash is reported`() {
+    // The schema and the JS pre-flight both require the trailing slash; this generator did not, and
+    // it is the one every consumer runs — a local `compose-preview-server ui` and a direct
+    // `bundle pack` never see the workflow's pre-flight. `m3` derives ids like `m3button`, which is
+    // the string every saved design stores.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+        cover,
+        policy().copy(componentIdPrefix = "m3"),
+      )!!
+
+    val reported =
+      generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.ID_PREFIX_MALFORMED }
+    assertThat(reported.message).contains("m3button")
+    // Reported, not corrected: the prefix is the identity, so the ids stay as the author wrote
+    // them.
+    assertThat(generated.statusSemantics.components.keys).containsExactly("m3button")
+  }
+
+  @Test
+  fun `a well-formed prefix and a derived one are not reported`() {
+    // The derived fallback is `<catalogId>/`, whose shape follows from the cover sheet rather than
+    // from anything anybody wrote — pointing a diagnostic at a field the author never set would
+    // send them looking for something that is not in their policy.
+    for (policyFile in listOf(policy().copy(componentIdPrefix = "m3/"), policy())) {
+      val generated =
+        UiBuilderCatalogs.generate(
+          record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+          cover,
+          policyFile,
+        )!!
+      assertThat(generated.diagnostics.map { it.code })
+        .doesNotContain(UiBuilderCatalogs.Diagnostics.ID_PREFIX_MALFORMED)
+    }
+  }
+
   private fun parameter(name: String, type: String = "kotlin.Boolean") =
     TargetParameter(name = name, type = type, hasDefault = true)
 }

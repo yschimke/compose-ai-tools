@@ -1886,6 +1886,16 @@ jobs:
           # so checking only `$(to_dir "$MODULE")` looked at `/ui-builder.policy.json` and every
           # module-local policy skipped the pre-flight it is documented as getting.
           policy_candidates=("$(dirname "$SPEC")/ui-builder.policy.json")
+          # In IMPORT mode the spec is the caller's and the build is somebody else's: Gradle runs
+          # under `upstream/`, and its policy candidates are that project's module and root. A file
+          # beside the caller's spec is still worth checking — a malformed one is worth knowing
+          # about wherever it lives — but a VALID one produces no `ui-builder.json`, because nothing
+          # carries it across the two checkouts. Said out loud rather than left as a pre-flight that
+          # passes and a build that publishes nothing, which is the silence this step exists to end.
+          # Import mode cannot publish at all, so this is a note rather than a failure.
+          if [ -n "${SOURCE_ROOT:-}" ] && [ -f "$(dirname "$SPEC")/ui-builder.policy.json" ]; then
+            echo "::notice title=Builder policy beside an imported spec::$(dirname "$SPEC")/ui-builder.policy.json is checked but not carried into the ${SOURCE_ROOT}/ build, so no ui-builder.json will be generated for it."
+          fi
           if [ -n "$MODULE" ]; then
             policy_candidates+=("$(to_dir "$MODULE")/ui-builder.policy.json")
           fi
@@ -3159,6 +3169,16 @@ jobs:
           # so checking only `$(to_dir "$MODULE")` looked at `/ui-builder.policy.json` and every
           # module-local policy skipped the pre-flight it is documented as getting.
           policy_candidates=("$(dirname "$SPEC")/ui-builder.policy.json")
+          # In IMPORT mode the spec is the caller's and the build is somebody else's: Gradle runs
+          # under `upstream/`, and its policy candidates are that project's module and root. A file
+          # beside the caller's spec is still worth checking — a malformed one is worth knowing
+          # about wherever it lives — but a VALID one produces no `ui-builder.json`, because nothing
+          # carries it across the two checkouts. Said out loud rather than left as a pre-flight that
+          # passes and a build that publishes nothing, which is the silence this step exists to end.
+          # Import mode cannot publish at all, so this is a note rather than a failure.
+          if [ -n "${SOURCE_ROOT:-}" ] && [ -f "$(dirname "$SPEC")/ui-builder.policy.json" ]; then
+            echo "::notice title=Builder policy beside an imported spec::$(dirname "$SPEC")/ui-builder.policy.json is checked but not carried into the ${SOURCE_ROOT}/ build, so no ui-builder.json will be generated for it."
+          fi
           if [ -n "$MODULE" ]; then
             policy_candidates+=("$(to_dir "$MODULE")/ui-builder.policy.json")
           fi

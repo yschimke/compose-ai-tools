@@ -199,6 +199,7 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_NOT_A_FUNCTION = "component.stateCallback.notAFunction"
     const val STATE_CALLBACK_TYPE_MISMATCH = "component.stateCallback.typeMismatch"
     const val ID_COLLISION = "component.id.collision"
+    const val ID_PREFIX_MALFORMED = "policy.componentIdPrefix.malformed"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
 
@@ -236,6 +237,29 @@ object UiBuilderCatalogs {
     }
     val catalogId = policy.catalogId?.takeIf { it.isNotBlank() } ?: cover.system
     val idPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() } ?: "$catalogId/"
+    // The same shape the schema and the pre-flight require, checked HERE because this is the
+    // authoritative generator and the other two do not run for every consumer. A local
+    // `compose-preview-server ui` and a direct `bundle pack` never see the workflow's pre-flight,
+    // so `componentIdPrefix: "m3"` was accepted and every derived id came out as `m3button` — a
+    // string every saved design then stores, from a catalog that carried no diagnostic about it.
+    // Reported rather than corrected: the prefix is the identity, and inventing the author's
+    // missing slash would publish an id they did not write.
+    //
+    // The AUTHORED field only. The fallback is `<catalogId>/`, whose shape follows from the cover
+    // sheet rather than from anything anybody wrote here, and pointing a diagnostic at a field the
+    // author never set would send them looking for something that is not in their policy.
+    val authoredPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() }
+    if (authoredPrefix != null && !ID_PREFIX.matches(authoredPrefix)) {
+      diagnostics +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.ID_PREFIX_MALFORMED,
+          subject = idPrefix,
+          message =
+            "'$idPrefix' prefixes every derived builder id and has to end in '/' " +
+              "(lower-case letters, digits and hyphens, e.g. 'm3/'). As written it derives ids " +
+              "like '${idPrefix}button', which is the string every saved design stores.",
+        )
+    }
     val platformLabel =
       policy.platformLabel?.takeIf { it.isNotBlank() } ?: titleCase(policy.platform)
 
@@ -374,6 +398,9 @@ object UiBuilderCatalogs {
    * published design stores this string: a component renamed in the catalog can keep the id designs
    * already reference.
    */
+  /** The shape a `componentIdPrefix` has to have, mirroring `ui-builder.policy.schema.json`. */
+  private val ID_PREFIX = Regex("^[a-z0-9][a-z0-9-]*/$")
+
   internal fun builderIdFor(
     prefix: String,
     component: ComponentRecord,
