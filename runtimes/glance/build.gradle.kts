@@ -42,7 +42,7 @@ dependencies {
   // offers it into the per-render channel so `LauncherWidgetDataProductRegistry` can surface the
   // declared supported sizes / resize-axes on the payload. Without this dep the helper still
   // renders the widget; the payload just doesn't carry the size-mode constraints.
-  implementation(project(":data-launcher-widget-connector"))
+  implementation(libs.composeai.data.launcher.widget.connector)
 }
 
 composeAiMavenPublishing {

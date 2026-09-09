@@ -16,7 +16,8 @@ the five repositories
 
 ```
 0  compose-preview-contracts        shape, never behaviour
-1  compose-ai-tools                 offline behaviour: renders, daemons, bundles, history
+1a compose-preview-daemon           the renderers, the render daemons, the data extractors
+1  compose-ai-tools                 offline behaviour: the plugin, bundles, history, the CLI
 2  compose-preview-server           HTTP, web surfaces, the UI builder
 3  compose-preview-vscode           leaves: editors and platform hosts
    compose-preview-xr
@@ -112,9 +113,18 @@ process boundary, over a contract in layer 0 — it does not link a Gradle drive
 [compose-preview-server#9](https://github.com/yschimke/compose-preview-server/issues/9) for the
 options that were considered and rejected.
 
-**A fourth repository is not the answer to a misplaced module.** `compose-preview-runtime` and
-`compose-preview-daemon` have both been proposed; each buys another release train for the same
-graph while leaving the placement question unanswered. Move the module to the layer the rule names.
+**A fourth repository is not the answer to a misplaced module.** `compose-preview-runtime` was
+proposed for exactly that and rejected: it bought another release train for the same graph while
+leaving the placement question unanswered. Move the module to the layer the rule names.
+
+`compose-preview-daemon` is not that case. It holds a *closed* sub-graph of layer 1 — the two
+daemon hosts, the three renderers, the daemon client and the 58 extractor modules, computed from
+the project graph with no edge back to anything that stayed — so it sits between layers 0 and 1
+as **1a** and the rule above applies unchanged: it depends on contracts and on nothing here, and
+this repository depends on it at one pin (`composeai-preview-daemon`). The reasons it was worth a
+release train of its own — a daemon change that cannot wait for a plugin release, and a plugin
+release that need not republish 70 modules — are in that repository's
+`docs/design/DAEMON_SPLIT.md`; the switch-over here was compose-ai-tools#5336.
 
 **`rc-players` is placed by this rule too.** compose-ai-tools consumes `rc-player-*` and rc-players
 consumes `data-fonts-google` and `data-layoutinspector-connector` back. Both are layer 1: at module

@@ -46,26 +46,9 @@ SERVER = "yschimke/compose-preview-server"
 # that consumer has to do once this change is released. Keep the follow-ups
 # concrete — a notice that only says "something changed" gets ignored.
 SURFACES: list[dict] = [
-    {
-        "name": "Daemon protocol fixtures",
-        "patterns": ["docs/daemon/protocol-fixtures/*"],
-        "why": (
-            "The cross-language wire goldens. Both consumers vendor a copy and parse it "
-            "in their own suites; that shared parse is the drift check."
-        ),
-        "consumers": {
-            EXT: (
-                "vendors these at `protocol-fixtures/`. Its `Protocol Fixtures` workflow "
-                "diffs that copy against the release its `plugin-version.json` pins, so it "
-                "goes red on the pin bump unless the same commit runs "
-                "`scripts/sync-protocol-fixtures.sh`."
-            ),
-            CONTRACTS: (
-                "vendors these at `docs/daemon/protocol-fixtures/`, where `MessagesTest` and "
-                "`daemonFraming` round-trip them. Re-sync when adopting the release."
-            ),
-        },
-    },
+    # "Daemon protocol fixtures" (`docs/daemon/protocol-fixtures/*`) was the first surface here,
+    # until the daemon moved to compose-preview-daemon (#5336) and took the goldens with it. The
+    # notice for them is that repository's to send.
     {
         "name": "Device catalog",
         # `daemon/devices/**` was here too, until that module moved to

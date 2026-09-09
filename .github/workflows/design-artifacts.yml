@@ -193,13 +193,6 @@ jobs:
     needs: changes
     if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.compose-m3 == 'true' }}
     runs-on: ubuntu-latest
-    env:
-      # Published previews are always built against RELEASED preview-runtimes: substitute the
-      # catalog's `:data-preview-overrides-runtime` / `:slot-preview-runtime` project deps for their
-      # released Maven coordinates (at `composeaiReleasedRuntimeVersion` in gradle.properties) so
-      # `bundle pack` records small coordinates instead of inlining the jars. Only
-      # :samples:design-catalog-m3 acts on it; the CLI build + other rows/modules ignore it.
-      ORG_GRADLE_PROJECT_composeaiUseReleasedRuntimes: 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -237,103 +230,12 @@ jobs:
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      # Published previews pin their preview-runtimes to a RELEASED version
-      # (`composeaiReleasedRuntimeVersion`, bumped by release-please on each release). Sonatype →
-      # Maven Central propagation lags a release, so a regen kicked right after a release (or by the
-      # release chain) could reference a version that isn't resolvable yet. Wait for it to appear on
-      # Central before rendering — that's what lets "release, then regenerate the artifacts once the
-      # release makes Central" work reliably. Only the CMP tier substitutes released runtimes, so
-      # only it needs the gate; a bounded poll fails loudly rather than rendering an unpinned
-      # (inlined) bundle.
-      #
-      # AHEAD OF `install-cli`, not just ahead of the render. `:cli:installDist` configures the
-      # whole build, and the wasm sample's `wasmJsCompileClasspath` resolves the SAME pinned
-      # runtimes, so a regen kicked before Central caught up died in the CLI build with
-      # "Could not find ee.schimke.composeai:slot-preview-runtime:<version>" long before this gate
-      # ran (run 34108903408, v2.1.1). The step also exports the resolved versions through
-      # $GITHUB_ENV, so every Gradle invocation after it — the CLI build included — pins to the
-      # lines the readiness marker actually names.
-      - name: Wait for released preview-runtimes on Maven Central
-        if: ${{ matrix.wasmModule != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          version="$(grep -oP '(?<=^composeaiReleasedRuntimeVersion=).*' gradle.properties || true)"
-          if [ -z "$version" ]; then
-            echo "::error title=Released runtime version missing::gradle.properties has no composeaiReleasedRuntimeVersion, so the catalog cannot resolve its published preview runtimes." >&2
-            exit 1
-          fi
-          data_version="$version"
-
-          # `composeaiReleasedRuntimeVersion` is bumped by release-please when the release PR is
-          # CUT — before `maven-publish-guard` decides whether that version publishes at all. On a
-          # release where a Maven line did not change, the guard skips its publish and the runtimes
-          # on that line stay at their previous version, so this property names something that will
-          # never appear on Central and the poll below would burn 60 minutes and then fail.
-          #
-          # The release records what it actually did, per line, in the readiness marker it attaches
-          # once Central has resolved. Prefer that over the property. Probing Central directly is
-          # NOT an alternative: a 404 cannot distinguish "this line was skipped" from "not
-          # propagated yet", which is the same race that made the marker the right answer for the
-          # plugin version. See docs/design/RELEASE_TRAINS.md § 7.
-          #
-          # Falls through to the property when there is no marker — an older release, or a regen
-          # running before readiness finished — which is exactly the previous behaviour.
-          # `release_version` is fixed before the lines are resolved: it names the marker's file
-          # and the tag it hangs off, and both `version` and `data_version` are reassigned below.
-          release_version="$version"
-          marker_name="compose-preview-maven-ready-${release_version}.json"
-          marker_dir="$RUNNER_TEMP/maven-ready"
-          mkdir -p "$marker_dir"
-          # `--dir` only, no `-O`: the two are mutually exclusive in `gh release download`.
-          if gh release download "v${release_version}" --dir "$marker_dir" \
-               --pattern "$marker_name" 2>/dev/null && [ -s "$marker_dir/$marker_name" ]; then
-            m_core="$(sed -n 's/.*"pluginVersion":"\([^"]*\)".*/\1/p' "$marker_dir/$marker_name" | head -1)"
-            m_data="$(sed -n 's/.*"dataVersion":"\([^"]*\)".*/\1/p' "$marker_dir/$marker_name" | head -1)"
-            # Each field is taken only when present. A marker written before `dataVersion` existed
-            # still pins the core line correctly and leaves data on the property.
-            [ -n "$m_core" ] && version="$m_core"
-            [ -n "$m_data" ] && data_version="$m_data"
-            echo "Readiness marker for v${release_version}: core=${m_core:-<absent>} data=${m_data:-<absent>}."
-          else
-            echo "No readiness marker for v${release_version} — using composeaiReleasedRuntimeVersion for both lines."
-          fi
-
-          # Hand the resolved lines to the render. The catalog samples substitute the two runtimes
-          # at these properties, and they are separate because the runtimes are on separate lines.
-          {
-            echo "ORG_GRADLE_PROJECT_composeaiReleasedRuntimeVersion=${version}"
-            echo "ORG_GRADLE_PROJECT_composeaiReleasedDataRuntimeVersion=${data_version}"
-          } >> "$GITHUB_ENV"
-
-          base="https://repo1.maven.org/maven2/ee/schimke/composeai"
-          echo "Waiting for preview-runtimes core=$version data=$data_version on Maven Central (up to 60 minutes)…"
-          last_status=""
-          for i in $(seq 1 60); do
-            ok=1
-            statuses=()
-            for entry in "data-preview-overrides-runtime:$data_version" "slot-preview-runtime:$version"; do
-              a="${entry%%:*}"; v="${entry##*:}"
-              code="$(curl -s -o /dev/null -w '%{http_code}' \
-                "$base/$a/$v/$a-$v.pom" || true)"
-              statuses+=("$a@$v=HTTP ${code:-000}")
-              [ "$code" = "200" ] || ok=0
-            done
-            last_status=$(IFS=,; echo "${statuses[*]}")
-            if [ "$ok" = 1 ]; then
-              echo "✓ preview-runtimes core=$version data=$data_version available (attempt $i)."
-              exit 0
-            fi
-            if [ "$i" -eq 1 ] || [ $((i % 5)) -eq 0 ]; then
-              echo "Still waiting (attempt $i/60): $last_status"
-            fi
-            sleep 60
-          done
-          echo "::error title=Preview runtimes unavailable::core=$version data=$data_version did not fully appear on Maven Central after 60 minutes. Last response: $last_status" >&2
-          exit 1
-
+      # The catalog's preview runtimes (`data-preview-overrides-runtime`, `slot-preview-runtime`)
+      # are ordinary catalog dependencies on the compose-preview-daemon line (#5336), resolved from
+      # Central by every CI build — so `bundle pack` records small Maven coordinates rather than
+      # inlining the jars, and nothing here has to wait for a release to propagate. The
+      # `composeaiUseReleasedRuntimes` gate and the readiness-marker wait that used to sit here
+      # went with the runtimes' move.
       - uses: ./.github/actions/install-cli
 
       # `compose-m3` is now a Compose Multiplatform (desktop) catalog, so its
@@ -450,10 +352,6 @@ jobs:
           # display (matches ci.yml's desktop-render jobs); harmless for the
           # Robolectric rows, which don't touch it.
           #
-          # The job pins the catalog's preview-runtime deps to their RELEASED coordinates via the
-          # `composeaiUseReleasedRuntimes` gate (job env) + `composeaiReleasedRuntimeVersion`
-          # (gradle.properties, release-please-managed); the "Wait for released preview-runtimes"
-          # step above guarantees that version is resolvable on Central before we render.
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           xvfb-run -a -s "-screen 0 2000x1400x24" \

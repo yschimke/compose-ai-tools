@@ -67,6 +67,6 @@ dependencies {
   implementation(libs.activity.compose)
   // `@AnimatedPreview` and `@FocusedPreview` live here — source-retained
   // metadata read by `DiscoverPreviewsTask` at FQN.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
   debugImplementation("androidx.compose.ui:ui-tooling")
 }

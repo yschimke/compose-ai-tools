@@ -18,6 +18,10 @@
 # `compose-preview mcp serve` fetches it from there. Requiring it here would hold every release
 # as a draft waiting for an asset this repository no longer builds.
 #
+# `compose-preview-android-daemon-${V}.zip` left at #5336: the Android daemon publishes from
+# yschimke/compose-preview-daemon, whose release attaches that archive (and the desktop one), and
+# the CLI fetches them from there on first use.
+#
 # Usage: required-release-assets.sh <version without the leading v>   # one asset name per line
 set -euo pipefail
 
@@ -25,5 +29,4 @@ V="${1:?version required, e.g. 1.79.0}"
 
 printf '%s\n' \
   "compose-preview-${V}.tar.gz" \
-  "compose-preview-${V}.zip" \
-  "compose-preview-android-daemon-${V}.zip"
+  "compose-preview-${V}.zip"

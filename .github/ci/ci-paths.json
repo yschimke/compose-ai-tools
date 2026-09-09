@@ -25,14 +25,7 @@
   ],
   "groups": {
     "plugin_tests": [
-      "gradle-plugin/**",
-      "api/preview-annotations/**",
-      "api/preview-data-api/**"
-    ],
-    "renderer_android_tests": [
-      "renderers/android/**",
-      "data/layoutinspector/**",
-      "data/render/**"
+      "gradle-plugin/**"
     ],
     "rc_player_tests": [
       "scripts/design-artifacts/rc-compare*",
@@ -48,27 +41,17 @@
       "bundle/**",
       "cli/**",
       "common/**",
-      "daemon/**",
-      "data/**",
       "gradle-plugin/**",
       "render-session/**",
-      "renderers/**",
       "runtimes/**"
     ],
     "functional_tests": [
-      "gradle-plugin/**",
-      "api/preview-annotations/**",
-      "api/preview-data-api/**",
-      "renderers/**"
+      "gradle-plugin/**"
     ],
     "build_samples": [
       "samples/**",
       "gradle-plugin/**",
-      "api/preview-annotations/**",
-      "api/preview-data-api/**",
-      "renderers/**",
-      "runtimes/**",
-      "data/**"
+      "runtimes/**"
     ],
     "build_cli": [
       "cli/**",
@@ -76,17 +59,8 @@
       "bundle/**",
       "common/**",
       "api/**",
-      "data/**",
       "render-session/**",
       "trust/**"
-    ],
-    "spatial_scene": [
-      "schema/spatial-scene.schema.json",
-      "schema/xr-render-service.schema.json",
-      "api/preview-data-api/src/**",
-      "scripts/codegen/gen-spatial-scene.mjs",
-      "scripts/codegen/gen-xr-render-service.mjs",
-      "renderers/xr-client/src/**"
     ],
     "actions_tests": [
       ".github/actions/**",

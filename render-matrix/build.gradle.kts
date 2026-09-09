@@ -43,7 +43,7 @@ tasks.named("check") { dependsOn("checkKotlinAbi") }
 dependencies {
   // `PreviewOverrides` and `UiMode` are on `MatrixCell`'s public surface (`toOverrides()`), so
   // `api` rather than `implementation`: a consumer resolving from POM metadata must see them.
-  api(project(":daemon:core"))
+  api(libs.composeai.daemon.core)
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)

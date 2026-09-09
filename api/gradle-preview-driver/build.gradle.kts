@@ -24,7 +24,7 @@ dependencies {
   // Published wire-format DTOs — the driver returns `List<PreviewResult>` keyed by
   // `PreviewManifest`. `api` so downstream consumers (CLI, contrib scripting) see the
   // DTOs transitively.
-  api(project(":preview-data-api"))
+  api(libs.composeai.preview.data.api)
 
   // Okio-based file IO for the manifest read + PNG sha256 (see `PreviewResultBuilder` /
   // `PreviewSha256`). `implementation` — consumers don't need Okio on their compile classpath

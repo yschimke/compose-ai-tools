@@ -128,6 +128,22 @@ internal const val XR_COMPOSITE_REPO = "yschimke/compose-preview-xr"
 internal const val PREVIEW_SERVER_REPO = "yschimke/compose-preview-server"
 
 /**
+ * Release of compose-preview-daemon whose sidecar archives the CLI fetches — the desktop renderer
+ * and daemon (`lib-renderer/`, `lib-daemon-desktop/`) and the Android daemon
+ * (`lib-daemon-android/`). See [DaemonSidecarProvision].
+ *
+ * The `composeai-preview-daemon` pin from `gradle/libs.versions.toml`, baked in at build time for
+ * the same reason [SERVE_VERSION] is. Deliberately NOT [BUNDLE_VERSION]: those modules left this
+ * repository in #5336 and release on their own line from [PREVIEW_DAEMON_REPO], so the CLI's own
+ * version names no daemon at all. The Gradle plugin bakes the same pin as `PreviewDaemonVersion`,
+ * so the daemon a plugin-driven render resolves and the one the CLI fetches are one release.
+ */
+internal val PREVIEW_DAEMON_VERSION: String by lazy { cliVersionProperty("previewDaemonVersion") }
+
+/** GitHub repo slug the render daemons and renderers are released from. */
+internal const val PREVIEW_DAEMON_REPO = "yschimke/compose-preview-daemon"
+
+/**
  * Compare two version strings componentwise (`major.minor.patch[-suffix]`), returning -1/0/1.
  * `-SNAPSHOT` and other suffixes sort *before* the same numeric base (so `0.8.11-SNAPSHOT` is older
  * than `0.8.11`) — the convention the rest of the build follows. Anything we can't parse falls back

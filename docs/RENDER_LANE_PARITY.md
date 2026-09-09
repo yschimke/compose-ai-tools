@@ -10,12 +10,11 @@ the desktop live daemon, the Android (Robolectric) live daemon, and a locally bu
 tier all attached:
 
 ```bash
-./gradlew :cli:installDist :cli:packageAndroidDaemon \
-          :samples:cmp-wasm-catalog:wasmCatalogDist
-unzip cli/build/distributions/compose-preview-android-daemon-*.zip -d /tmp/ad
+./gradlew :cli:installDist :samples:cmp-wasm-catalog:wasmCatalogDist
 
+# The desktop and Android daemons are fetched from the compose-preview-daemon release on first
+# use (`DaemonSidecarProvision`), so nothing has to be unpacked or pointed at by hand.
 ANDROID_HOME=/opt/android-sdk \
-JAVA_OPTS=-Dcomposeai.cli.libDaemonAndroidDir=/tmp/ad/lib-daemon-android \
 cli/build/install/compose-preview/bin/compose-preview serve \
   --catalogs compose-m3,wear-m3 --allow-render-trusted --live-seats 4 \
   --wasm-dir compose-m3=samples/cmp-wasm-catalog/build/wasmDist \

@@ -1,4 +1,5 @@
-// Latency baseline harness for the preview daemon work — see docs/daemon/DESIGN.md § 13.
+// Latency baseline harness for the preview daemon work — see compose-preview-daemon's
+// docs/daemon/DESIGN.md § 13.
 //
 // This module is deliberately small (5 trivial @Preview functions, no
 // animations / scrolls / Wear / @PreviewParameter) so its `composePreviewRender`
@@ -9,7 +10,7 @@
 //
 // `benchPreviewLatency` shells out to `./gradlew` repeatedly under different
 // scenarios (cold / warm-no-edit / warm-after-1-line-edit) and writes a CSV
-// to docs/daemon/baseline-latency.csv. See README.md in this module for the
+// to build/daemon-bench/baseline-latency.csv. See README.md in this module for the
 // scenario definitions.
 @file:Suppress("UnstableApiUsage")
 
@@ -61,7 +62,7 @@ dependencies {
 
 // --- Bench task ---------------------------------------------------------
 
-// One row per (phase, scenario, run). Captured to docs/daemon/baseline-latency.csv.
+// One row per (phase, scenario, run). Captured to build/daemon-bench/baseline-latency.csv.
 // Phases mirror the headings in DESIGN.md § 13's latency table:
 //   config       — `:bench:composePreviewRender --dry-run` wall time (config + up-to-date checks).
 //   compile      — `compileDebugKotlin` wall time (isolated).
@@ -98,7 +99,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
   val outputCsv: org.gradle.api.file.RegularFileProperty =
     project.objects
       .fileProperty()
-      .convention(project.layout.settingsDirectory.file("docs/daemon/baseline-latency.csv"))
+      .convention(project.layout.settingsDirectory.file("build/daemon-bench/baseline-latency.csv"))
 
   @get:Input
   val runsPerScenario: org.gradle.api.provider.Property<Int> =
@@ -329,8 +330,10 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
     sb.appendLine(
       "# baseline-latency.csv — captured by :samples:android-daemon-bench:benchPreviewLatency"
     )
-    sb.appendLine("# See docs/daemon/DESIGN.md § 13. Hardware/JDK/etc captured")
-    sb.appendLine("# in docs/daemon/baseline-latency.md sidecar.")
+    sb.appendLine(
+      "# See compose-preview-daemon's docs/daemon/DESIGN.md § 13. Hardware/JDK/etc captured"
+    )
+    sb.appendLine("# in compose-preview-daemon's docs/daemon/baseline-latency.md sidecar.")
     sb.appendLine("phase,scenario,run,milliseconds,notes")
     for (r in rows) {
       sb.appendLine("${r.phase},${r.scenario},${r.run},${r.ms},${r.notes.replace(",", ";")}")
@@ -353,7 +356,7 @@ tasks.register<BenchPreviewLatencyTask>("benchPreviewLatency") {
   group = "verification"
   description =
     "Times the existing composePreviewRender path under cold / warm-no-edit / " +
-      "warm-after-1-line-edit scenarios; writes docs/daemon/baseline-latency.csv."
+      "warm-after-1-line-edit scenarios; writes build/daemon-bench/baseline-latency.csv."
   // No inputs/outputs declared — bench is always-stale by design (forces a
   // re-run when invoked explicitly).
   notCompatibleWithConfigurationCache(
@@ -413,7 +416,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
   val outputCsv: org.gradle.api.file.RegularFileProperty =
     project.objects
       .fileProperty()
-      .convention(project.layout.settingsDirectory.file("docs/daemon/baseline-latency.csv"))
+      .convention(project.layout.settingsDirectory.file("build/daemon-bench/baseline-latency.csv"))
 
   @get:Internal
   val daemonLaunchJson: org.gradle.api.file.RegularFileProperty =
@@ -742,7 +745,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
         "# baseline-latency.csv — captured by the daemon-bench :benchPreviewLatency and"
       )
       sb.appendLine(
-        "# :benchCompileStages tasks. See docs/daemon/baseline-latency.md for methodology."
+        "# :benchCompileStages tasks. See compose-preview-daemon's docs/daemon/baseline-latency.md for methodology."
       )
       sb.appendLine(newHeader)
     } else {
@@ -791,13 +794,13 @@ configurations.create("daemonBench") {
   isCanBeConsumed = false
 }
 
-dependencies { add("daemonBench", project(":daemon:core")) }
+dependencies { add("daemonBench", libs.composeai.daemon.core) }
 
 tasks.register<BenchCompileStagesTask>("benchCompileStages") {
   group = "verification"
   description =
     "Drives the stage-1 (gradle --continuous) and stage-2 (in-process BTA) compile legs, appends " +
-      "their rows to docs/daemon/baseline-latency.csv, and writes a stage-2 graduation verdict."
+      "their rows to build/daemon-bench/baseline-latency.csv, and writes a stage-2 graduation verdict."
   daemonCoreClasspath.from(configurations.named("daemonBench"))
   dependsOn("composePreviewDaemonStart")
   notCompatibleWithConfigurationCache(

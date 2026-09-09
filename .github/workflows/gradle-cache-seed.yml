@@ -87,8 +87,8 @@ jobs:
       - name: Seed plugin + CLI compilation
         run: ./gradlew :cli:installDist :gradle-plugin:publishToMavenLocal
 
-      - name: Seed plugin and Android renderer test tasks
-        run: ./gradlew :gradle-plugin:test :renderer-android:testDebugUnitTest
+      - name: Seed plugin test tasks
+        run: ./gradlew :gradle-plugin:test
 
       # The render path the extension's e2e shards used to spend most of their
       # wall time on. `missingRenders=warn` mirrors ci.yml's bundle job: one

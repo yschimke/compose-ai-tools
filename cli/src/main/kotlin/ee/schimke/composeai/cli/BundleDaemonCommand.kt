@@ -251,12 +251,15 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   )
 
   private fun desktopDaemonLaunch(): DaemonLaunch {
+    // Both directories arrive in one archive from the compose-preview-daemon release, fetched on
+    // first use; an explicit `-D…Dir` or a directory inside the install wins over the fetch.
+    DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
     val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
     if (daemonJars.isEmpty()) {
       System.err.println(
         "bundle daemon: no daemon jars found. Looked in `${bundleSidecarSearchDescription("lib-daemon-desktop")}`; " +
-          "either build the CLI via `./gradlew :cli:installDist` or set " +
-          "`-Dcomposeai.cli.libDaemonDesktopDir=<install-root/lib-daemon-desktop>`."
+          "it is fetched from the compose-preview-daemon release on first use, or set " +
+          "`-Dcomposeai.cli.libDaemonDesktopDir=<dir>/lib-daemon-desktop`."
       )
       exitProcess(1)
     }
@@ -264,8 +267,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     if (rendererJars.isEmpty()) {
       System.err.println(
         "bundle daemon: no renderer jars found. Looked in `${bundleSidecarSearchDescription("lib-renderer")}`; " +
-          "either build the CLI via `./gradlew :cli:installDist` or set " +
-          "`-Dcomposeai.cli.libRendererDir=<install-root/lib-renderer>`."
+          "it is fetched from the compose-preview-daemon release on first use, or set " +
+          "`-Dcomposeai.cli.libRendererDir=<dir>/lib-renderer`."
       )
       exitProcess(1)
     }
@@ -322,21 +325,22 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * synthesized `robolectric.properties` apply to the one-shot `bundle render` path only, not the
    * daemon.
    *
-   * The `:daemon:android` runtime is ~150-200 MB (Robolectric + the full Compose-Android stack), so
-   * it is NOT bundled in the main CLI tarball — that ballooned it to ~382 MB. It ships separately
-   * as `compose-preview-android-daemon-<version>.zip` (built by `packageAndroidDaemon`), which
-   * `compose-preview bundle daemon` fetches on demand and caches the first time it renders an
-   * `backend="android"` bundle. Until that auto-download lands, point at an unpacked archive via
-   * `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android` (the CI e2e does this). E2E
-   * coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
+   * The Android daemon runtime is ~150-200 MB (Robolectric + the full Compose-Android stack), so it
+   * is NOT bundled in the CLI tarball — that ballooned it to ~382 MB. It is the
+   * `compose-preview-android-daemon-<version>.zip` asset of the compose-preview-daemon release,
+   * which [DaemonSidecarProvision] fetches and caches the first time an `backend="android"` bundle
+   * renders; `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android` points at an unpacked
+   * copy instead. E2E coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
    */
   private fun androidDaemonLaunch(): DaemonLaunch {
+    DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
     val daemonJars = locateBundleSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
       System.err.println(
         "bundle daemon: backend=android needs the Android daemon sidecar (`lib-daemon-android/`), " +
-          "which ships separately as `compose-preview-android-daemon-<version>.zip` (it's too large " +
-          "to bundle in the CLI tarball). Download + unpack it and point at it via " +
+          "fetched from the compose-preview-daemon release on first use (it's too large to bundle " +
+          "in the CLI tarball). Fetch `compose-preview-android-daemon-<version>.zip` while online, " +
+          "or point at an unpacked copy via " +
           "`-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`. Looked in " +
           "`${bundleSidecarSearchDescription("lib-daemon-android")}`."
       )

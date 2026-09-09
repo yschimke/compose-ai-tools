@@ -33,8 +33,8 @@ dependencies {
   // render-session library drag an MCP server onto the classpath — the last leak the preview-server
   // contract probe recorded. #3824 item 3 lifted the transport into `:daemon-client`; nothing here
   // needed the MCP server, only the wire client.
-  implementation(project(":daemon-client"))
-  implementation(project(":daemon:core"))
+  implementation(libs.composeai.daemon.client)
+  implementation(libs.composeai.daemon.core)
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)

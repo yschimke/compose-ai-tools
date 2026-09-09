@@ -100,7 +100,7 @@ dependencies {
   implementation(libs.roborazzi.annotations)
   // Our `@ScrollingPreview` lives here — same role as above, read by FQN
   // at discovery time; no runtime behaviour.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
   // `NotificationContent` composable helper for the `@Preview` + stacked multi-preview
   // notification authoring path. Pairs with `@NotificationPreview` (in `:preview-annotations`)
   // for the FQN-discovered NOTIFICATION strategy.
@@ -114,7 +114,7 @@ dependencies {
   // Soft-keyboard data extension — `SoftKeyboardAnimatedPreview` uses only ordinary Compose text
   // input, focus, and `LocalSoftwareKeyboardController.show()`. Its committed recording script
   // drives text and per-cap press highlights through the daemon's public `input.keyboard` path.
-  implementation(project(":data-keyboard-connector"))
+  implementation(libs.composeai.data.keyboard.connector)
   // `TypographySpecimen` / `FontFamilySpecimen` / `FallbackCoverageSpecimen` helpers — Material 3
   // type-role audit sheet, font-family weight ladder, and a fixed script-coverage check set,
   // each wrapped in a normal `@Preview`. Sister to `:notification-preview-runtime`.

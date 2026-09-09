@@ -383,7 +383,7 @@ that is all a visitor gets. A size axis rendered as a text field reading `s`: co
 for finding out that `xs` / `m` / `l` / `xl` are the alternatives — you had to read the source, or
 guess the spelling and watch the render refuse to move.
 
-[`previewOverrideChoice`](../data/preview-overrides/runtime/src/main/kotlin/ee/schimke/composeai/overrides/PreviewOverrideHost.kt)
+[`previewOverrideChoice`](https://github.com/yschimke/compose-preview-daemon/blob/main/data/preview-overrides/runtime/src/main/kotlin/ee/schimke/composeai/overrides/PreviewOverrideHost.kt)
 declares the set alongside the value. Each entry may carry a label, so the picker can read
 "Extra small" while the wire value stays the `xs` the composable reads — seeding and
 `@OverrideVariant` are untouched:

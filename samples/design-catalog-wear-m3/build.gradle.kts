@@ -92,14 +92,14 @@ dependencies {
   // @ScrollingPreview(END) — full-screen Wear components (EdgeButton, scaling
   // lists) reveal their bottom-anchored chrome only after the scroll settles, so
   // the catalog captures them scrolled to the end rather than at the resting top.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
   // `previewOverride*` — each sticker's editable labels/values become override knobs the daemon can
   // seed and the `compose/overrides` producer can enumerate. JVM artifact; the Android compose on
   // this classpath supplies the matching `androidx.compose.*` symbols it compiles against.
-  implementation(project(":data-preview-overrides-runtime"))
+  implementation(libs.composeai.data.preview.overrides.runtime)
   // `PreviewSlot` / `LocalSlotMode` — the Figma slot placeholders for the fillable regions of the
   // Wear cards, list rows, and scaffold templates.
-  implementation(project(":slot-preview-runtime"))
+  implementation(libs.composeai.slot.preview.runtime)
   // `TlcScalingHost` — hosts a component in a real single-item TransformingLazyColumn so
   // `CardScalingPreview` shows genuine TLC item scaling (see `CardScalingPreview.kt`).
   implementation(project(":wear-preview-runtime"))

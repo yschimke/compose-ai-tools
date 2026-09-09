@@ -77,7 +77,7 @@ kotlin {
       // The compose-preview annotations, consumed from `commonMain` — the KMP scenario the
       // multiplatform `preview-annotations` artifact exists for (mirrors meshcore's
       // `:meshcore-components`, whose tokens live in shared code). Exercised by `SharedTokens.kt`.
-      implementation(project(":preview-annotations"))
+      implementation(libs.composeai.preview.annotations)
     }
   }
 }

@@ -35,9 +35,6 @@ plugins {
   id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val useReleasedRuntimes =
-  providers.gradleProperty("composeaiUseReleasedRuntimes").orNull.toBoolean()
-
 kotlin {
   // JVM target so `commonMain` compiles against the Desktop flavor of
   // compose-runtime — that's what the desktop renderer / daemon
@@ -61,14 +58,11 @@ kotlin {
 
   sourceSets {
     commonMain {
-      // Slot constraints are new on HEAD and intentionally absent from the released runtime that
-      // published preview bundles compile against. Select the matching adapter at configuration
-      // time so the release guard keeps catching accidental direct use of unreleased APIs while
-      // normal builds still exercise the richer contract.
-      kotlin.srcDir(
-        if (useReleasedRuntimes) "src/releasedRuntimeMain/kotlin"
-        else "src/currentRuntimeMain/kotlin"
-      )
+      // The slot-constraint adapter. There used to be a second, reduced copy under
+      // `src/releasedRuntimeMain/` for the published-bundle build, which compiled against the last
+      // RELEASED slot runtime while normal builds used the workspace one; the runtime is a released
+      // coordinate on every build now (compose-preview-daemon, #5336), so one adapter is enough.
+      kotlin.srcDir("src/currentRuntimeMain/kotlin")
       dependencies {
         // String-typed `compose.*` accessors are deprecated in CMP 1.10 in favour
         // of explicit coords, but the renamed coords aren't reliably published to
@@ -89,7 +83,7 @@ kotlin {
         // sticker
         // sheet (`:samples:design-catalog-m3`) can provide `LocalSlotMode` for its slot-mode
         // sticker.
-        api(project(":slot-preview-runtime"))
+        api(libs.composeai.slot.preview.runtime)
         // The composition document a builder assembles (`Screen` / `ScreenNode`) and the component
         // spec table this catalog supplies to its codegen. `api` so the wasm app can hold a
         // `Screen` in its own state without re-declaring the model. No Compose dependency of its
@@ -104,7 +98,7 @@ kotlin {
     // that's exactly where the knobs resolve against real daemon seeds.
     val desktopMain =
       getByName("desktopMain") {
-        dependencies { implementation(project(":data-preview-overrides-runtime")) }
+        dependencies { implementation(libs.composeai.data.preview.overrides.runtime) }
       }
 
     // JVM-runnable unit tests for the pure-Kotlin theme-choice logic (the `theme.colors` serialized
@@ -131,43 +125,4 @@ kotlin {
 compose.resources {
   publicResClass = true
   packageOfResClass = "com.example.designcatalogm3.shared.generated.resources"
-}
-
-// Published-preview runtime pinning — the SHARED half of the note in
-// `:samples:design-catalog-m3`'s build. Most `catalogOverride*` / `PreviewSlot` usage lives in THIS
-// module's commonMain/desktopMain, so the released-runtime guard + coordinate substitution must
-// apply here too. Without it, this module compiles its runtime usage against the HEAD
-// `project(...)`
-// deps while the consumer links the released jars — an unreleased runtime API would then slip
-// through the guard and only surface later as a linkage / render error, not a compile failure. Same
-// gate + release-please-managed version as the consumer (kept in lockstep by hand — a shared
-// convention over both modules is the DRY follow-up).
-if (useReleasedRuntimes) {
-  val version =
-    providers.gradleProperty("composeaiReleasedRuntimeVersion").orNull
-      ?: error(
-        "composeaiUseReleasedRuntimes is set but composeaiReleasedRuntimeVersion is missing from " +
-          "gradle.properties"
-      )
-  // The two runtimes below are on DIFFERENT Maven version lines: `slot-preview-runtime` lives
-  // under `runtimes/` (the core line) and `data-preview-overrides-runtime` under `data/` (the data
-  // line). `maven-publish-guard` publishes those lines independently, so a release that changed
-  // only core leaves the data runtime at an earlier version and one substitution version cannot
-  // name both. Defaults to the core version, which is what they are equal to on every release that
-  // publishes both trains — so nothing changes for a local build or an ordinary release.
-  // docs/design/RELEASE_TRAINS.md § 5.
-  val dataVersion =
-    providers.gradleProperty("composeaiReleasedDataRuntimeVersion").orNull?.takeIf {
-      it.isNotBlank()
-    } ?: version
-  configurations.all {
-    resolutionStrategy.dependencySubstitution {
-      substitute(project(":data-preview-overrides-runtime"))
-        .using(module("ee.schimke.composeai:data-preview-overrides-runtime:$dataVersion"))
-        .because("published previews reference released preview-runtimes (see :design-catalog-m3)")
-      substitute(project(":slot-preview-runtime"))
-        .using(module("ee.schimke.composeai:slot-preview-runtime:$version"))
-        .because("published previews reference released preview-runtimes (see :design-catalog-m3)")
-    }
-  }
 }

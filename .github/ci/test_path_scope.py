@@ -100,18 +100,7 @@ class RepositoryConfigsTest(unittest.TestCase):
         )
         self.assertTrue(result["build_cli"])
         self.assertTrue(result["module_unit_tests"])
-        self.assertFalse(result["renderer_android_tests"])
         self.assertFalse(result["build_samples"])
-
-    def test_android_baseline_runs_only_android_harness(self):
-        result = mod.decide(
-            ["daemon/harness/baselines/android/s1/red-square.png"],
-            self.load("daemon-job-paths.json"),
-        )
-        self.assertEqual(
-            result,
-            {"desktop_fake": False, "desktop_real": False, "android_real": True},
-        )
 
 
 

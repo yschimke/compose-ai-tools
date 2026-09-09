@@ -38,11 +38,12 @@
 # a blanket shared input — only its build-toolchain half is checked separately. See
 # `toolchain_fingerprint`.
 #
-# `gradle.properties` is watched with ONE exclusion: the `x-release-please-start-version` block.
-# Release-please rewrites `composeaiReleasedRuntimeVersion` there on every single release (see
-# release-please-config.json's extra-files), so a naive watch on that file would report "changed"
-# for every release forever and the guard would never once say no. The rest of the file — JVM
-# args, compiler flags, the duplicate-classpath gate — is watched normally.
+# `gradle.properties` is watched with ONE exclusion: an `x-release-please-start-version` block.
+# Release-please used to rewrite `composeaiReleasedRuntimeVersion` there on every single release,
+# so a naive watch on that file reported "changed" for every release forever and the guard could
+# never once say no. The property left with the preview runtimes (#5336); the exclusion stays so a
+# future release-please-managed value cannot reintroduce that. The rest of the file — JVM args,
+# compiler flags, the duplicate-classpath gate — is watched normally.
 #
 # Usage:
 #   maven-publish-needed.sh --baseline <ref> [--head <ref>] [--github-output] [--explain]
@@ -61,15 +62,9 @@ HEAD_REF="HEAD"
 GITHUB_OUTPUT_MODE=0
 EXPLAIN=0
 PRINT_PATHS=0
-# Which train to answer for. `all` is every published module — the single-train question this
-# script has always answered, and still the default. `data` and `core` split the same set in two,
-# for the two version lines docs/design/RELEASE_TRAINS.md § 5 costs at -50.7%.
-#
-# The split is `data/*` against everything else, and it is that lopsided on purpose: 58 of the 94
-# modules live under `data/` and they move on a third of the releases, so separating them alone
-# buys 29.6 of the 40 percentage points any split has to offer. Costing for the three- and
-# five-way alternatives is in § 5; `scripts/release-train-costing.sh` reproduces it.
-TRAIN=all
+# One version line. `--train core|data|all` used to split the published modules in two, so a
+# release touching only `data/*` republished only that half; the data modules publish from
+# compose-preview-daemon since #5336 and the split went with them.
 # The repository to inspect. Defaults to this checkout; the self-test points it at a fixture so
 # the logic can be exercised against histories this repository does not have.
 REPO="${SCRIPT_DIR}/../.."
@@ -81,13 +76,6 @@ while [ $# -gt 0 ]; do
     --github-output) GITHUB_OUTPUT_MODE=1; shift ;;
     --explain) EXPLAIN=1; shift ;;
     --print-paths) PRINT_PATHS=1; shift ;;
-    --train)
-      TRAIN="${2:?--train needs core|data|all}"
-      case "${TRAIN}" in
-        core|data|all) ;;
-        *) echo "unknown train: ${TRAIN} (expected core, data or all)" >&2; exit 2 ;;
-      esac
-      shift 2 ;;
     --repo) REPO="${2:?--repo needs a directory}"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -186,19 +174,7 @@ publishing_module_paths() {
     # did not show it, because `watch_paths` sorts the shared inputs and the modules together and
     # `build.gradle.kts` is in both — the duplicate collapsed and the count never moved.
     grep -v '^build\.gradle\.kts$' |
-    sort -u |
-    train_filter
-}
-
-# Restrict the enumeration to one train. Note what this does NOT touch: `shared_paths` is applied
-# to every train, because a change to `build-logic/` or the wrapper can move the bytes of every
-# module regardless of which line it versions on. Splitting the trains does not split that rule.
-train_filter() {
-  case "${TRAIN}" in
-    all) cat ;;
-    data) grep '^data/' || true ;;
-    core) grep -v '^data/' || true ;;
-  esac
+    sort -u
 }
 
 watch_paths() {

@@ -64,10 +64,10 @@ runs; pre-seed `cacheDir` with `<artId>/port_<resource>.png` files for fully off
 
 ## How it works
 
-- [`DeviceArtCatalog`](../data/deviceframe/core/src/main/kotlin/ee/schimke/composeai/data/deviceframe/DeviceArtCatalog.kt)
+- [`DeviceArtCatalog`](https://github.com/yschimke/compose-preview-daemon/blob/main/data/deviceframe/core/src/main/kotlin/ee/schimke/composeai/data/deviceframe/DeviceArtCatalog.kt)
   — frame geometry (screen rectangle, corner radius, layers, notch) transcribed from Google's
   `device-art-generator.js`.
-- [`DeviceFrameCompositor`](../data/deviceframe/core/src/main/kotlin/ee/schimke/composeai/data/deviceframe/DeviceFrameCompositor.kt)
+- [`DeviceFrameCompositor`](https://github.com/yschimke/compose-preview-daemon/blob/main/data/deviceframe/core/src/main/kotlin/ee/schimke/composeai/data/deviceframe/DeviceFrameCompositor.kt)
   — pure `java.awt` (BufferedImage/Graphics2D) compositor reproducing the generator's layering
   (shadow → back → screen, anti-aliased rounded-rect/circle clip → notch redraw → glare). Runs
   unchanged on the Robolectric host JVM and the Desktop renderer.
@@ -78,10 +78,10 @@ runs; pre-seed `cacheDir` with `<artId>/port_<resource>.png` files for fully off
   `kotlinx-coroutines` (`runBlockingK$default NoSuchMethodError` — see
   [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md)). OkHttp (not Ktor) because Ktor 3.x needs
   coroutines ≥ 1.10 while the Gradle daemon ships an older one.
-- [`CachedDeviceArtSource`](../data/deviceframe/connector/src/main/kotlin/ee/schimke/composeai/daemon/DeviceArtSource.kt)
+- [`CachedDeviceArtSource`](https://github.com/yschimke/compose-preview-daemon/blob/main/data/deviceframe/connector/src/main/kotlin/ee/schimke/composeai/daemon/DeviceArtSource.kt)
   — the renderer-side layer source. Reads the prefetched cache only (no HTTP libs on the render
   classpath); a cache miss degrades to "no frame".
-- [`DeviceFrameDataProducer`](../data/deviceframe/connector/src/main/kotlin/ee/schimke/composeai/daemon/DeviceFrameDataProducer.kt)
+- [`DeviceFrameDataProducer`](https://github.com/yschimke/compose-preview-daemon/blob/main/data/deviceframe/connector/src/main/kotlin/ee/schimke/composeai/daemon/DeviceFrameDataProducer.kt)
   — resolves the frame, fetches layers, composites, writes the artifacts. Called from the
   post-capture block in `RobolectricRenderTest` (Android) and `DesktopRendererMain` (Desktop),
   mirroring the display-filter step.

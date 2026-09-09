@@ -37,7 +37,7 @@ dependencies {
   // `previews.json` — the packer writes the published `PreviewManifest` DTO into the bundle, and
   // reading a bundle's per-preview labels means parsing it. `api`, as `:cli` does, so the DTOs stay
   // on the consumer's compile classpath exactly as they were before the split.
-  api(project(":preview-data-api"))
+  api(libs.composeai.preview.data.api)
 
   implementation(libs.kotlinx.serialization.json)
 

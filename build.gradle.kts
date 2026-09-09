@@ -277,7 +277,7 @@ tasks.register("functionalTestWithBundleRender") {
 tasks.register("functionalTestWithAndroidBundleDaemon") {
   group = "verification"
   description =
-    "Builds the compose-preview CLI install dist (now shipping `lib-daemon-android/`) plus the " +
+    "Builds the compose-preview CLI install dist plus the " +
       "Android sample bundles (`:samples:wear` Wear-tile/Compose, `:samples:remotecompose` Remote " +
       "Compose), then runs gradle-plugin's functionalTest with `bundle.daemon.android.e2e=true` so " +
       "`AndroidBundleDaemonRenderFunctionalTest` drives `compose-preview bundle daemon` against " +
@@ -287,12 +287,11 @@ tasks.register("functionalTestWithAndroidBundleDaemon") {
   // tests that resolve the plugin (and renderer-desktop transitives) from mavenLocal.
   bundleRenderFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
   dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
-  // The CLI install dist provides the `compose-preview` binary; #1685 moved the Android daemon
-  // runtime OUT of it into a standalone archive, so those jars now come from the staged dir
-  // produced by `:cli:stageDaemonAndroidLibs`. The test points the CLI at that dir via
-  // `-Dcomposeai.cli.libDaemonAndroidDir`.
+  // The CLI install dist provides the `compose-preview` binary. The Android daemon runtime is not
+  // in it: the CLI fetches `compose-preview-android-daemon-<v>.zip` from the compose-preview-daemon
+  // release on first use, which is the path the e2e exercises (`-Pbundle.daemon.android.libDir`
+  // points it at an unpacked copy instead).
   dependsOn(":cli:installDist")
-  dependsOn(":cli:stageDaemonAndroidLibs")
   // The Android sample bundles the test renders. Each `composePreviewBundle` runs the plugin's
   // render (Robolectric) + pack against the real sample, emitting an `backend="android"` bundle
   // with non-empty `intermediateRepresentations` (Wear tile + Remote Compose IR) alongside classic
@@ -343,46 +342,33 @@ tasks.register("functionalTestWithAndroidBundleDaemon") {
 // exactly the artefact that goes stale silently, and going stale here means either publishing a
 // module twice or dropping one out of a release.
 //
-// So Gradle prints the mapping it actually has. `mavenTrain()` in the publishing convention plugin
-// is the single definition of which train a module is on, shared with the version it publishes at,
-// so the task list and the version can never disagree about a module.
+// So Gradle prints the mapping it actually has.
 //
-// Deliberately NOT wired into the release yet: this prints, and nothing consumes it.
+// It used to print a train column too: `data/…` published on a line of its own, to skip the 58
+// extractor modules on releases that did not touch them. They publish from compose-preview-daemon
+// since #5336, which took the second train with them; one line is left, and the release publishes
+// it whole. docs/design/RELEASE_TRAINS.md.
 val printPublishTasks by
   tasks.registering {
     group = "publishing"
-    description =
-      "Print the publish task path for each module on a Maven train (-Ptrain=core|data|all)."
+    description = "Print the publish task path for each module this build publishes."
     notCompatibleWithConfigurationCache("Inspects the project tree at execution time")
-    val requested = (project.findProperty("train") as String? ?: "all")
     val rootDirPath = rootDir
     val rows =
       subprojects
         .filter { it.plugins.hasPlugin("composeai.maven-publishing") }
         .map { p ->
           val dir = p.projectDir.relativeTo(rootDirPath).invariantSeparatorsPath
-          Triple(
-            if (dir.startsWith("data/")) "data" else "core",
-            "${p.path}:publishAndReleaseToMavenCentral",
-            dir,
-          )
+          "${p.path}:publishAndReleaseToMavenCentral" to dir
         }
     doLast {
-      require(requested in setOf("core", "data", "all")) {
-        "unknown train '$requested' (expected core, data or all)"
-      }
       // `gradle-plugin` is an includeBuild, so its four publishing modules are not `subprojects`
       // of this build and the enumeration above cannot see them. They are addressed through the
       // included build's own root task, which is what the release has always done — and they are
       // all on the `core` train, being the plugin itself and its helpers. Emitted here rather
       // than left for the caller to remember: a task list that silently omits the Gradle plugin
       // is a release that publishes everything except the artifact consumers actually apply.
-      val all =
-        rows +
-          Triple("core", ":gradle-plugin:publishAndReleaseToMavenCentral", "gradle-plugin")
-      all
-        .filter { (train, _, _) -> requested == "all" || train == requested }
-        .sortedBy { (_, task, _) -> task }
-        .forEach { (train, task, dir) -> println("$train\t$task\t$dir") }
+      val all = rows + (":gradle-plugin:publishAndReleaseToMavenCentral" to "gradle-plugin")
+      all.sortedBy { (task, _) -> task }.forEach { (task, dir) -> println("$task\t$dir") }
     }
   }

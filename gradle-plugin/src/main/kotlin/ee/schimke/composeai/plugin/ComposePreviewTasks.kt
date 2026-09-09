@@ -80,13 +80,13 @@ internal object ComposePreviewTasks {
           )
           project.dependencies.add(
             configName,
-            "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
+            "ee.schimke.composeai:renderer-desktop:${PreviewDaemonVersion.value}",
           )
         }
       } else {
         project.dependencies.add(
           configName,
-          "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
+          "ee.schimke.composeai:renderer-desktop:${PreviewDaemonVersion.value}",
         )
       }
     }
@@ -883,7 +883,7 @@ internal object ComposePreviewTasks {
       // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
       project.dependencies.add(
         daemonRendererConfig.name,
-        "ee.schimke.composeai:daemon-desktop:${PluginVersion.value}",
+        "ee.schimke.composeai:daemon-desktop:${PreviewDaemonVersion.value}",
       )
     }
 

@@ -58,7 +58,7 @@ dependencies {
   // `AmbientStatusBody` reads from. Static `@Preview` rendering doesn't run the
   // daemon-side extension chain, so previews fall back to `AmbientMode.Interactive`;
   // daemon-driven renders with `overrides.ambient` see `Ambient(...)` end-to-end.
-  implementation(project(":data-ambient-connector"))
+  implementation(libs.composeai.data.ambient.connector)
 
   // Wear Tiles — for the `@androidx.wear.tiles.tooling.preview.Preview` sample
   // rendered via TilePreviewRenderer in renderer-android. `wear.tiles.renderer`
@@ -72,7 +72,7 @@ dependencies {
   implementation(libs.wear.protolayout.material3)
   implementation(libs.wear.tooling.preview)
   // `@ScrollingPreview` — read by FQN at discovery time; no runtime cost.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
 
   // `:data-preview-overrides-runtime` — the opt-in override seam. `PlaceholderPreviews.kt` reads
   // `placeholderActive()` from exactly one place: the preview-only `PlaceholderCardOverrideDriven`
@@ -80,7 +80,7 @@ dependencies {
   // render can drive the state from `renderNow.overrides.placeholderActive` (issue #2646). The
   // reusable card itself takes `loading` explicitly and carries no compose-ai-tools import — the
   // static loaded/loading previews just pass the boolean (issue #3675).
-  implementation(project(":data-preview-overrides-runtime"))
+  implementation(libs.composeai.data.preview.overrides.runtime)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

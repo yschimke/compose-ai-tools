@@ -82,8 +82,7 @@ TAG_REF="repos/yschimke/compose-ai-tools/git/ref/tags/v1.78.0"
 DISPATCHES="repos/yschimke/compose-ai-tools/actions/workflows/release.yml/runs?event=workflow_dispatch&per_page=1"
 SHA="0123456789abcdef0123456789abcdef01234567"
 
-ALL_ASSETS='[{"name":"compose-preview-1.78.0.tar.gz"},{"name":"compose-preview-1.78.0.zip"},
-             {"name":"compose-preview-android-daemon-1.78.0.zip"}]'
+ALL_ASSETS='[{"name":"compose-preview-1.78.0.tar.gz"},{"name":"compose-preview-1.78.0.zip"}]'
 
 # `draft <age-in-minutes> [target]` — the one stranded v1.78.0 draft, cut <age> minutes ago.
 draft() {

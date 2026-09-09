@@ -1507,6 +1507,7 @@ private fun renderBundleWithOverrides(
   val backend = readBundleBackendForRender(bundleFile) ?: return false
   if (backend == "desktop") {
     try {
+      DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
       SkikoNativeProvision.prepareInstalledDesktopSidecars()
     } catch (e: IllegalStateException) {
       System.err.println("bundle render: ${e.message}")

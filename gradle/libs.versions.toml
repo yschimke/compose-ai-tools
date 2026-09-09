@@ -358,6 +358,15 @@ coil3 = "3.5.0"
 # A point pin, deliberately: a range would let a contract change arrive without a pull request.
 composeai-contracts = "2.13.0"
 
+# The render daemons, the three renderers, the preview annotations and data API, and the data
+# extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
+# repository's #5336; the boundary is that repository's docs/design/DAEMON_SPLIT.md). Layer 1a,
+# between the contracts and this repository: it never depends back on anything here. A point pin,
+# for the same reason as the contracts above. The Gradle plugin bakes this value in as
+# `PreviewDaemonVersion` and resolves `renderer-*` / `daemon-*` for external consumers at it, and
+# the CLI fetches that release's sidecar archives (`DaemonSidecarProvision`) at it.
+composeai-preview-daemon = "3.0.0"
+
 # The preview server, published from yschimke/compose-preview-server since its 2.0.0 — the
 # extraction #4732 planned. This repository no longer owns `cli/serve`: `compose-preview serve`,
 # `bundle render` and `history manifest` consume the published library, so a server change reaches
@@ -464,6 +473,27 @@ composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref =
 # `ServeHost.parityIssues()` — the shape a catalog publishes for component-parity issues. Contracts
 # (layer 0) owns the wire shape; `:render-host` owns validation and storage over it.
 composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol", version.ref = "composeai-contracts" }
+
+# The daemon line, consumed from compose-preview-daemon (see `composeai-preview-daemon`).
+composeai-daemon-core = { module = "ee.schimke.composeai:daemon-core", version.ref = "composeai-preview-daemon" }
+composeai-daemon-client = { module = "ee.schimke.composeai:daemon-client", version.ref = "composeai-preview-daemon" }
+composeai-daemon-android = { module = "ee.schimke.composeai:daemon-android", version.ref = "composeai-preview-daemon" }
+composeai-daemon-desktop = { module = "ee.schimke.composeai:daemon-desktop", version.ref = "composeai-preview-daemon" }
+composeai-renderer-desktop = { module = "ee.schimke.composeai:renderer-desktop", version.ref = "composeai-preview-daemon" }
+composeai-preview-data-api = { module = "ee.schimke.composeai:preview-data-api", version.ref = "composeai-preview-daemon" }
+composeai-preview-annotations = { module = "ee.schimke.composeai:preview-annotations", version.ref = "composeai-preview-daemon" }
+composeai-data-fonts-core = { module = "ee.schimke.composeai:data-fonts-core", version.ref = "composeai-preview-daemon" }
+composeai-data-pseudolocale-core = { module = "ee.schimke.composeai:data-pseudolocale-core", version.ref = "composeai-preview-daemon" }
+composeai-data-remotecompose-core = { module = "ee.schimke.composeai:data-remotecompose-core", version.ref = "composeai-preview-daemon" }
+composeai-data-remotecompose-connector = { module = "ee.schimke.composeai:data-remotecompose-connector", version.ref = "composeai-preview-daemon" }
+composeai-data-keyboard-connector = { module = "ee.schimke.composeai:data-keyboard-connector", version.ref = "composeai-preview-daemon" }
+composeai-data-ambient-connector = { module = "ee.schimke.composeai:data-ambient-connector", version.ref = "composeai-preview-daemon" }
+composeai-data-glimmer-environment-connector = { module = "ee.schimke.composeai:data-glimmer-environment-connector", version.ref = "composeai-preview-daemon" }
+composeai-data-launcher-widget-connector = { module = "ee.schimke.composeai:data-launcher-widget-connector", version.ref = "composeai-preview-daemon" }
+composeai-data-preview-overrides-runtime = { module = "ee.schimke.composeai:data-preview-overrides-runtime", version.ref = "composeai-preview-daemon" }
+composeai-slot-preview-runtime = { module = "ee.schimke.composeai:slot-preview-runtime", version.ref = "composeai-preview-daemon" }
+composeai-lottie-preview-runtime = { module = "ee.schimke.composeai:lottie-preview-runtime", version.ref = "composeai-preview-daemon" }
+composeai-svg-preview-runtime = { module = "ee.schimke.composeai:svg-preview-runtime", version.ref = "composeai-preview-daemon" }
 
 # The preview server (see `composeai-preview-serve`). `-test-fixtures` rides the same coordinates
 # as a Gradle feature variant, so `testFixtures(libs.composeai.preview.serve)` picks it up without

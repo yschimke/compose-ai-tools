@@ -14,7 +14,7 @@ The server side lives in `:cli`:
 (frames), [`ServeUrls`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeUrls.kt)
 (link shapes), and
 [`ServeMdnsAdvertiser`](../../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeMdnsAdvertiser.kt)
-(discovery). See [daemon/STREAMING.md](../daemon/STREAMING.md) for the native
+(discovery). See [daemon/STREAMING.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/STREAMING.md) for the native
 daemon streaming protocol this serve lane mirrors.
 
 ## Versioning
@@ -83,7 +83,7 @@ A client sends this when its tab is backgrounded (`document.visibilitychange`)
 or when the element showing the stream leaves the viewport, and again when either
 comes back. On the live lane it becomes the daemon's `stream/visibility`, which
 throttles **both** what the stream emits and what the daemon renders for it —
-see [STREAMING.md](../daemon/STREAMING.md#streamvisibility-notification). The
+see [STREAMING.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/STREAMING.md#streamvisibility-notification). The
 held session stays warm, so returning repaints immediately from the keyframe the
 daemon flags on resume; nothing is torn down and nothing reconnects.
 

@@ -21,7 +21,7 @@ dependencies {
   // `WireModule` converts to and from the former, and `WireModuleManifest` carries the latter
   // as-is. Reusing them rather than redeclaring them is the reason this module is here and not in
   // contracts — see the design doc.
-  api(project(":preview-data-api"))
+  api(libs.composeai.preview.data.api)
   api(libs.kotlinx.serialization.json)
 
   testImplementation(kotlin("test"))

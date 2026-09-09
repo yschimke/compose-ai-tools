@@ -2,7 +2,7 @@
 
 Stable, versioned JSON Schemas for the **main reports** the renderer and
 daemon produce — the wire/on-disk contract that consumers (VS Code, MCP,
-the CLI, `design-parity`, and the [reporting branch](../docs/daemon/REPORTING-BRANCH.md))
+the CLI, `design-parity`, and the [reporting branch](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/REPORTING-BRANCH.md))
 parse. The Kotlin `@Serializable` types named in each schema's
 `x-composeai.kotlinType` remain the source of truth; these schemas are the
 **published mirror** of those types, validated against representative
@@ -59,7 +59,7 @@ flags** — a repository you cannot see calls them.
 
 Each schema declares `x-composeai.schemaVersion`, mirroring the
 `schemaVersion` integer the kind owns on the wire (see
-[`docs/daemon/DATA-PRODUCTS.md`](../docs/daemon/DATA-PRODUCTS.md) § The primitive).
+[`docs/daemon/DATA-PRODUCTS.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DATA-PRODUCTS.md) § The primitive).
 
 - **Additive change** (a new optional field) → **no bump**. Consumers ignore
   unknown fields. For this reason the payload object schemas here do **not**

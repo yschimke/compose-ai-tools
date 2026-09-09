@@ -43,11 +43,11 @@ dependencies {
   // subprocess module is currently the canonical home for the delegate; consumers stay light
   // because they pull in its single transport-shared file plus the API jar, not its factory.
   implementation(project(":render-session-subprocess"))
-  implementation(project(":daemon:desktop"))
-  implementation(project(":daemon:core"))
+  implementation(libs.composeai.daemon.desktop)
+  implementation(libs.composeai.daemon.core)
   // Only ever needed `DaemonClient` from here — this was `:mcp` until #3824 item 3 lifted the
   // transport into its own module, so an embedded render session no longer resolves an MCP server.
-  implementation(project(":daemon-client"))
+  implementation(libs.composeai.daemon.client)
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)

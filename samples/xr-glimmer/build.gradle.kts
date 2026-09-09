@@ -80,11 +80,11 @@ dependencies {
   // so the renderer's focus-walking path (`moveFocus(Enter)` + `moveFocus(Next)` per step,
   // GIF stitching when `gif = true`) sees it without any runtime classpath cost. Used by
   // `GlimmerXrMenuNavigation` to drive focus through the menu items.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   // Contrast calibration reads the connector-owned environment resources; application code has no
   // dependency on the connector and therefore cannot accidentally ship preview scenery.
-  testImplementation(project(":data-glimmer-environment-connector"))
+  testImplementation(libs.composeai.data.glimmer.environment.connector)
 }
