@@ -1,10 +1,13 @@
 name: Prune Design Evidence
 
-# `docs/design/evidence/` is per-PR capture: images embedded in one pull request body, commit-pinned
-# as AGENTS.md requires. Once that PR merges the directory has done its job — the pinned URLs keep
-# resolving at the commit they name — but nothing removes it, so the tree only grows. It reached 105
-# directories and 30 MB before anyone counted, in a family of repositories on a hard per-checkout
-# size budget.
+# `docs/design/evidence/`, `docs/evidence/` and `renders/` are all per-PR capture: images embedded in
+# one pull request body, commit-pinned as AGENTS.md requires. Once that PR merges the directory has
+# done its job — the pinned URLs keep resolving at the commit they name — but nothing removes it, so
+# the trees only grow. `docs/design/evidence/` alone reached 105 directories and 30 MB before anyone
+# counted, in a family of repositories on a hard per-checkout size budget.
+#
+# Three trees because the same thing was added three times under three names. The script walks all of
+# them; `--roots` overrides the list.
 #
 # This opens a PR rather than pushing: a deletion of somebody's captures is a thing to look at, and
 # the diff is the whole review. `scripts/prune-design-evidence.py` decides what is spent — see its

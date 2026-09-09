@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remove `docs/design/evidence/` directories that nothing references any more.
+"""Remove evidence directories that nothing references any more.
 
 Evidence is captured for one pull request and embedded in its body. Once that PR merges the
 directory has done its job: the images stay reachable at the commit they were pinned to, which is
@@ -29,7 +29,13 @@ import sys
 import time
 from pathlib import Path
 
-EVIDENCE = Path("docs/design/evidence")
+# Every tree that holds per-PR capture. They were added at different times under different names
+# and are the same thing: one directory per pull request, images embedded in that PR's body.
+DEFAULT_ROOTS = (
+    Path("docs/design/evidence"),
+    Path("docs/evidence"),
+    Path("renders"),
+)
 DEFAULT_MIN_AGE_DAYS = 90
 
 
@@ -50,11 +56,15 @@ def last_commit_epoch(repo: Path, path: Path) -> int | None:
     return int(out) if out else None
 
 
-def referenced_names(repo: Path) -> str:
-    """Every tracked file outside the evidence tree, concatenated, for substring matching."""
+def referenced_names(repo: Path, roots: tuple[Path, ...]) -> str:
+    """Every tracked file outside the evidence trees, concatenated, for substring matching.
+
+    Outside *all* of them, not just the one being walked: two spent directories in different trees
+    citing each other would otherwise keep each other alive.
+    """
     chunks = []
     for rel in tracked_files(repo):
-        if rel.parts[:3] == EVIDENCE.parts:
+        if any(rel.parts[: len(r.parts)] == r.parts for r in roots):
             continue
         try:
             chunks.append((repo / rel).read_bytes().decode("utf-8", "ignore"))
@@ -64,31 +74,39 @@ def referenced_names(repo: Path) -> str:
 
 
 def classify(
-    repo: Path, min_age_days: int, now: float | None = None
+    repo: Path,
+    min_age_days: int,
+    now: float | None = None,
+    roots: tuple[Path, ...] = DEFAULT_ROOTS,
 ) -> tuple[list[str], dict[str, str]]:
-    """`(prunable, kept)` — kept maps a directory name to the reason it survives."""
-    root = repo / EVIDENCE
-    if not root.is_dir():
-        return [], {}
+    """`(prunable, kept)` — both keyed by the directory's repo-relative path.
+
+    Keyed by path rather than by name because the trees can hold the same name twice; the reference
+    check still matches on the bare name, which is how a link, an embed or a comment spells it.
+    """
     now = time.time() if now is None else now
     floor = now - min_age_days * 86400
-    haystack = referenced_names(repo)
+    present = tuple(r for r in roots if (repo / r).is_dir())
+    if not present:
+        return [], {}
+    haystack = referenced_names(repo, roots)
 
     prunable: list[str] = []
     kept: dict[str, str] = {}
-    for entry in sorted(p for p in root.iterdir() if p.is_dir()):
-        name = entry.name
-        if (entry / "KEEP").is_file():
-            kept[name] = "KEEP file"
-        elif name in haystack:
-            kept[name] = "referenced"
-        else:
-            touched = last_commit_epoch(repo, EVIDENCE / name)
-            if touched is not None and touched > floor:
-                age = int((now - touched) / 86400)
-                kept[name] = f"only {age}d old (floor {min_age_days}d)"
+    for root in present:
+        for entry in sorted(p for p in (repo / root).iterdir() if p.is_dir()):
+            rel = str(root / entry.name)
+            if (entry / "KEEP").is_file():
+                kept[rel] = "KEEP file"
+            elif entry.name in haystack:
+                kept[rel] = "referenced"
             else:
-                prunable.append(name)
+                touched = last_commit_epoch(repo, root / entry.name)
+                if touched is not None and touched > floor:
+                    age = int((now - touched) / 86400)
+                    kept[rel] = f"only {age}d old (floor {min_age_days}d)"
+                else:
+                    prunable.append(rel)
     return prunable, kept
 
 
@@ -101,21 +119,27 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MIN_AGE_DAYS,
         help="never prune a directory touched more recently than this (default: %(default)s)",
     )
+    ap.add_argument(
+        "--roots",
+        default=",".join(str(r) for r in DEFAULT_ROOTS),
+        help="comma-separated evidence trees to walk (default: %(default)s)",
+    )
     ap.add_argument("--prune", action="store_true", help="delete them; otherwise only report")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
 
     repo = args.repo.resolve()
-    prunable, kept = classify(repo, args.min_age_days)
+    roots = tuple(Path(r.strip()) for r in args.roots.split(",") if r.strip())
+    prunable, kept = classify(repo, args.min_age_days, roots=roots)
 
     if not args.quiet:
         print(f"{len(kept)} kept, {len(prunable)} prunable")
-        for name in prunable:
-            print(f"  prune {name}")
+        for rel in prunable:
+            print(f"  prune {rel}")
 
     if args.prune:
-        for name in prunable:
-            shutil.rmtree(repo / EVIDENCE / name)
+        for rel in prunable:
+            shutil.rmtree(repo / rel)
         if not args.quiet and prunable:
             print(f"removed {len(prunable)} directories")
         return 0
