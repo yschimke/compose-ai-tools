@@ -233,19 +233,19 @@ internal object DaemonSidecarProvision {
    */
   fun unpackZip(zip: File, destDir: File) {
     destDir.mkdirs()
-    val root = destDir.canonicalFile
+    val root = destDir.toPath().toAbsolutePath().normalize()
     ZipFile(zip).use { archive ->
       for (entry in archive.entries()) {
-        val target = File(root, entry.name).canonicalFile
-        require(target.path.startsWith(root.path + File.separator) || target == root) {
-          "zip entry escapes the destination: ${entry.name}"
-        }
+        // Normalise before the containment check so a `..` segment cannot climb out of the
+        // destination (Zip Slip); the check is on the normalised path, never on the raw name.
+        val target = root.resolve(entry.name).normalize()
+        require(target.startsWith(root)) { "zip entry escapes the destination: ${entry.name}" }
         if (entry.isDirectory) {
-          target.mkdirs()
+          Files.createDirectories(target)
         } else {
-          target.parentFile.mkdirs()
+          Files.createDirectories(target.parent)
           archive.getInputStream(entry).use { input ->
-            target.outputStream().use { output -> input.copyTo(output) }
+            Files.newOutputStream(target).use { output -> input.copyTo(output) }
           }
         }
       }
