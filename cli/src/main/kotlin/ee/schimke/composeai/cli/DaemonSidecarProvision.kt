@@ -237,9 +237,13 @@ internal object DaemonSidecarProvision {
     ZipFile(zip).use { archive ->
       for (entry in archive.entries()) {
         // Normalise before the containment check so a `..` segment cannot climb out of the
-        // destination (Zip Slip); the check is on the normalised path, never on the raw name.
+        // destination (Zip Slip); the check is on the normalised path, never on the raw name. An
+        // explicit `if` rather than `require`: the inline stdlib call is invisible to CodeQL's
+        // guard detection, and this is the sanitizer form it recognises.
         val target = root.resolve(entry.name).normalize()
-        require(target.startsWith(root)) { "zip entry escapes the destination: ${entry.name}" }
+        if (!target.startsWith(root)) {
+          throw IllegalArgumentException("zip entry escapes the destination: ${entry.name}")
+        }
         if (entry.isDirectory) {
           Files.createDirectories(target)
         } else {
