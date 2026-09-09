@@ -128,7 +128,7 @@ pre-pool path.
 
 `composeai.daemon.backgroundSandboxBoot` (launch descriptors default it **on**,
 the raw sysprop defaults **off** — see [CONFIG.md](CONFIG.md)) makes `start()`
-block only until slot 0 is up; the workers boot sequentially on a background
+block only until slot 0 is up; the workers boot one at a time on a background
 daemon thread. Dispatch routes across the ready prefix meanwhile, so a render
 never queues on a still-booting worker.
 
@@ -139,6 +139,12 @@ never queues on a still-booting worker.
   `DaemonWarmupPreview` once before it is published for dispatch (disable with
   `-Dcomposeai.daemon.warmRenderOnBoot=false`), so a live render never queues
   behind a cold warm-up. Slot 0 is left to serve's own `prewarm()`.
+- **The warm render overlaps the next worker's boot.** A worker's sandbox boot
+  and its warm render cost about the same (~6 s and ~6-8 s on an idle 4-core
+  box — [STARTUP.md](STARTUP.md) has the profile), so worker `i+1` is launched
+  the moment worker `i` has booted and boots underneath `i`'s warm render. The
+  pool still boots one worker at a time; only the warm render is overlapped,
+  and a slot is still published only after its own warm render.
 - **A worker that dies mid-request is dropped from the pool**, logged with its
   pid; the remaining slots keep serving.
 

@@ -49,6 +49,8 @@ import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.FutureTask
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -533,10 +535,11 @@ open class RobolectricHost(
 
     // SANDBOX-POOL.md — slot 0 is the in-process sandbox and always boots eagerly: [start]'s
     // contract is that the host can serve a render when it returns. Slots 1..N-1 are worker JVMs,
-    // booted sequentially (either here or on the background thread below). Sequential because the
-    // cost is CPU- and memory-bound — N concurrent Robolectric bootstraps thrash a build machine
-    // far worse than they save wall-clock — and because a serial boot keeps failure diagnosis to
-    // one worker's stderr at a time.
+    // booted one at a time (either here or on the background thread below), each boot overlapping
+    // only the previous slot's warm render — see [bootRemainingSlots]. One boot at a time because
+    // the cost is CPU- and memory-bound — N concurrent Robolectric bootstraps thrash a build
+    // machine far worse than they save wall-clock — and because a serial boot keeps failure
+    // diagnosis to one worker's stderr at a time.
     try {
       bootSlotWithRetries(0, timeoutMs)
       readySlotCount.set(1)
@@ -591,14 +594,43 @@ open class RobolectricHost(
    * so its first affinity-routed real render doesn't pay the per-sandbox first-render init (Compose
    * runtime, HardwareRenderer native pipeline, font + text stack, PNG encode). Publishing first
    * would let a live render hash onto the just-advertised slot and queue behind the cold warm-up.
+   *
+   * **The warm render overlaps the next worker's boot.** Measured on the deployed preview server's
+   * shape (`sandboxCount=3`, warm `android-all` cache, idle 4-core box; STARTUP.md § "Where the
+   * time goes"), a worker's sandbox boot is ~6 s and its warm render another ~6-8 s — the warm
+   * render is the sandbox's cold first render (Compose runtime, `HardwareRenderer`, the font stack,
+   * ~12,000 classes) and costs as much as the boot it follows. Running them strictly in series
+   * charged the pool `N × (boot + warm)`; booting worker `i+1` while worker `i` warm-renders
+   * charges `N × boot + warm` instead, which took the 3-sandbox pool from ~32 s to ~25 s on that
+   * box. Still one *boot* at a time: two concurrent Robolectric bootstraps thrash a build machine
+   * and would interleave two workers' stderr, whereas a warm render is one JVM rendering one frame.
+   * A slot is published into [readySlotCount] only after its own warm render, exactly as before, so
+   * the overlap never lets a live render land on a cold slot.
+   *
+   * The helper thread that boots the next worker is a daemon thread and is never joined on an early
+   * return (shutdown mid-pool-boot): joining could block for the whole boot budget on a worker that
+   * has connected but is still bootstrapping. A worker that finishes booting after the pool was
+   * shut down is registered into a closed pool and simply exits with this JVM — it watches the
+   * parent process (see `SandboxWorkerMain`), so nothing leaks past the daemon's own lifetime.
    */
   private fun bootRemainingSlots(timeoutMs: Long, background: Boolean) {
     val pool = processPool ?: return
+    fun bootAsync(slot: Int): FutureTask<Unit> =
+      FutureTask<Unit> { pool.bootWorker(slot - 1) }
+        .also { task ->
+          Thread(task, "compose-ai-daemon-worker-boot-$slot").apply {
+            isDaemon = true
+            start()
+          }
+        }
+    if (DaemonHostBridge.shutdown.get()) return
+    var booting: FutureTask<Unit>? = bootAsync(1)
     for (i in 1 until sandboxCount) {
-      if (DaemonHostBridge.shutdown.get()) return
+      val boot = booting ?: return
       try {
-        pool.bootWorker(i - 1)
-      } catch (t: Throwable) {
+        boot.get()
+      } catch (e: ExecutionException) {
+        val t = e.cause ?: e
         if (!background) throw t
         System.err.println(
           "RobolectricHost: background boot of sandbox worker $i failed permanently " +
@@ -608,6 +640,9 @@ open class RobolectricHost(
         return
       }
       if (DaemonHostBridge.shutdown.get()) return
+      // Launch the next worker now, so its JVM start + Robolectric bootstrap runs underneath this
+      // slot's warm render instead of after it.
+      booting = if (i + 1 < sandboxCount) bootAsync(i + 1) else null
       warmSlotRender(i)
       readySlotCount.set(i + 1)
       StartupTimings.mark(
