@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.5.0](https://github.com/yschimke/compose-ai-tools/compare/v2.4.1...v2.5.0) (2026-09-09)
+
+
+### Features
+
+* fold identical sibling runs into one repeat in generated screens ([#5337](https://github.com/yschimke/compose-ai-tools/issues/5337)) ([5844b3f](https://github.com/yschimke/compose-ai-tools/commit/5844b3fca445a79adf8f0b31fc1379ac5ddbf497))
+* fold siblings differing in one literal into the list of their values ([#5343](https://github.com/yschimke/compose-ai-tools/issues/5343)) ([2d30f01](https://github.com/yschimke/compose-ai-tools/commit/2d30f01f67166acf440fa0c52fa3e6af3ba80b16))
+* **ui-builder:** let a catalog state a component's vocabulary in its policy file ([#5351](https://github.com/yschimke/compose-ai-tools/issues/5351)) ([56d533d](https://github.com/yschimke/compose-ai-tools/commit/56d533d6affd643d21b809a2d75a7eaa7ab4ec91))
+
+
+### Bug Fixes
+
+* **deps:** update compose-ai-tools to v2.13.0 ([#5339](https://github.com/yschimke/compose-ai-tools/issues/5339)) ([4279c67](https://github.com/yschimke/compose-ai-tools/commit/4279c678165057d62faff7bc840fd9b9ce9f67a4))
+* **deps:** update compose-preview-contracts to v2.13.0 ([#5340](https://github.com/yschimke/compose-ai-tools/issues/5340)) ([25a3870](https://github.com/yschimke/compose-ai-tools/commit/25a3870a84753a0c614ed535b51c8a2635d2e39b))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.20.0 ([#5341](https://github.com/yschimke/compose-ai-tools/issues/5341)) ([1c678d7](https://github.com/yschimke/compose-ai-tools/commit/1c678d7dcfbe19bf2b0baf606bbdff5f6684311c))
+* **deps:** update rc-players to v1.60.1 ([#5342](https://github.com/yschimke/compose-ai-tools/issues/5342)) ([7ad4544](https://github.com/yschimke/compose-ai-tools/commit/7ad45448643ad2549f023fa1d502a7a196b37a73))
+* **discovery:** follow the project's own composables to the component a preview renders ([#5350](https://github.com/yschimke/compose-ai-tools/issues/5350)) ([8d72084](https://github.com/yschimke/compose-ai-tools/commit/8d7208450023d9e5a202ebfc2269afa4233a4285))
+* **serve:** stop the theme cache file-name memo growing on unpersistable keys ([#5327](https://github.com/yschimke/compose-ai-tools/issues/5327)) ([dc9a4a3](https://github.com/yschimke/compose-ai-tools/commit/dc9a4a32a53a78139545597492f0d0f192d11c35))
+
+
+### Performance Improvements
+
+* **daemon:** overlap sandbox worker boots and archive catalog daemon classes ([#5335](https://github.com/yschimke/compose-ai-tools/issues/5335)) ([d282737](https://github.com/yschimke/compose-ai-tools/commit/d28273785e19cfa3cf6736ec71e9bd92cee33752))
+
 ## [2.4.1](https://github.com/yschimke/compose-ai-tools/compare/v2.4.0...v2.4.1) (2026-09-09)
 
 
