@@ -315,6 +315,9 @@ object ScreenGenerator {
     // next one, which is the worst place for this to surface.
     val qualifiedRoots = buildSet {
       add("androidx")
+      // `kotlin`, because a folded run of identical siblings is written `kotlin.repeat(n)` — see
+      // [foldRepeats] for why it is qualified there rather than trusted to resolve.
+      add("kotlin")
       // Every component, not only the ones that cannot claim a simple name: which of the two a
       // node gets is decided per record, and a state name may not shadow the root of either.
       components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
@@ -337,18 +340,6 @@ object ScreenGenerator {
         document.name,
         expressionPackages,
         document.state.associateBy(ScreenState::name),
-        // Whether a `repeat` written into the body would still mean `kotlin.repeat`, and whether
-        // its implicit `it` would shadow anything a folded child reads. Both are decided here,
-        // once, from the two things that can capture a name in the generated function: a state
-        // declaration, which is a local in the body, and a component imported by simple name. A
-        // document declaring `it` or `repeat` is rare and perfectly legal — `isUsableIdentifier`
-        // admits both — so it gets its siblings written out one by one rather than a refusal or a
-        // fold that changes what its reads resolve to.
-        foldsRepeatedSiblings =
-          document.state.none { it.name == "it" || it.name == "repeat" } &&
-            components.components.none {
-              it.canonicalId in simplyImportable && it.symbol.name == "repeat"
-            },
       )
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
@@ -583,8 +574,6 @@ object ScreenGenerator {
     val expressionPackages: Set<String>,
     /** Declared state by name, so a read can be checked against something rather than trusted. */
     val state: Map<String, ScreenState> = emptyMap(),
-    /** Whether [foldRepeats] may fold at all here — see the call that computes it. */
-    val foldsRepeatedSiblings: Boolean = true,
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -757,11 +746,8 @@ object ScreenGenerator {
             val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
-                if (wrapper == null) {
-                  val rendered = children.map { node(it, depth + 1) }
-                  if (foldsRepeatedSiblings) foldRepeats(rendered, inner)
-                  else rendered.joinToString("\n")
-                } else
+                if (wrapper == null) foldRepeats(children.map { node(it, depth + 1) }, inner)
+                else
                   children.joinToString("\n") { child ->
                     "$inner$wrapper {\n${node(child, depth + 2)}\n$inner}"
                   }
@@ -1427,11 +1413,17 @@ object ScreenGenerator {
    * Not applied to a slot filled through a [SlotItem]. `item { … }` is where child identity has
    * consequences a reader cannot see from the text, and the trade there is not obviously worth it.
    *
-   * `repeat` is a name like any other, and so is the `it` it binds: a document may legally declare
-   * state called either, and then the fold would change what a child's reads resolve to — the
-   * lambda's implicit `Int` shadowing a state named `it`, a local `val repeat` capturing the call.
-   * Whether that can happen is decided once per document, before any of this runs, and a document
-   * where it can gets no folds at all.
+   * Written `kotlin.repeat(n) { _ -> … }`, and both halves of that are the point: `repeat` is a
+   * name like any other and so is the `it` it would bind. A document may legally declare state
+   * called either, a catalog may export a component simply imported under either name, and a
+   * value's `Reference`, `Construct` or `Chain` may import one while this very slot is being
+   * rendered. Any of those would silently change what a folded child's calls and reads resolve to —
+   * a local `val repeat` capturing the call, the lambda's implicit `Int` shadowing an `it`.
+   *
+   * A precomputed guard cannot see the last of those, because imports accumulate as nodes are
+   * emitted. So the fold does not ask what is in scope: it writes a form nothing in the body can
+   * capture. The one name left to protect is the `kotlin` root, which joins `androidx` in the
+   * shadowing check every state declaration already passes.
    *
    * [MINIMUM_FOLDED_RUN] is where the pattern starts being the point: two of anything is a pair a
    * reader takes in at a glance, and folding it costs two lines to save one.
@@ -1449,9 +1441,9 @@ object ScreenGenerator {
       } else {
         out
           .append(indent)
-          .append("repeat(")
+          .append("kotlin.repeat(")
           .append(run)
-          .append(") {\n")
+          .append(") { _ ->\n")
           .append(children[index].prependIndent(INDENT))
           .append("\n")
           .append(indent)

@@ -1412,7 +1412,7 @@ class ScreenGeneratorTest {
   fun `identical siblings are generated as one repeat`() {
     val source = emitted(cells(12), catalog(card, text)).source
 
-    assertThat(source).contains("repeat(12) {")
+    assertThat(source).contains("kotlin.repeat(12) { _ ->")
     assertThat(occurrences(source, "Text(text = ")).isEqualTo(1)
   }
 
@@ -1430,8 +1430,8 @@ class ScreenGeneratorTest {
       (0 until 8).map { index -> textNode(if (index == 3) "odd" else "cell") }.toTypedArray()
     val source = emitted(column(*cells), catalog(card, text)).source
 
-    assertThat(source).contains("repeat(3) {")
-    assertThat(source).contains("repeat(4) {")
+    assertThat(source).contains("kotlin.repeat(3) { _ ->")
+    assertThat(source).contains("kotlin.repeat(4) { _ ->")
     assertThat(source).contains("Text(text = \"odd\")")
   }
 
@@ -1439,7 +1439,8 @@ class ScreenGeneratorTest {
   fun `the folded body is the call it replaced, at one further indent`() {
     val source = emitted(cells(4), catalog(card, text)).source
 
-    assertThat(source).contains("        repeat(4) {\n            Text(text = \"cell\")\n        }")
+    assertThat(source)
+      .contains("        kotlin.repeat(4) { _ ->\n            Text(text = \"cell\")\n        }")
   }
 
   @Test
@@ -1452,15 +1453,15 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * `repeat` and the `it` it binds are names like any other.
+   * `repeat` and the `it` it binds are names like any other, and the emitted form owns that.
    *
-   * A document may legally declare state called either — `isUsableIdentifier` admits both — and
-   * inside a folded run a state named `it` is shadowed by the lambda's implicit `Int` while a local
-   * `val repeat` captures the call itself. Neither is a refusal: the siblings are written out one
-   * by one, which is what the generator did before the fold existed.
+   * A document may legally declare state called either — `isUsableIdentifier` admits both — so an
+   * unqualified `repeat(n) { … }` would resolve to a local `val repeat`, and its implicit `Int`
+   * would shadow a state named `it`. `kotlin.repeat(n) { _ -> … }` can be captured by neither, so
+   * the fold still happens and the child still reads what it read.
    */
   @Test
-  fun `state named it or repeat turns the fold off rather than changing what a child reads`() {
+  fun `state named it or repeat does not capture the folded call or its parameter`() {
     listOf("it", "repeat").forEach { name ->
       val source =
         emitted(
@@ -1470,9 +1471,28 @@ class ScreenGeneratorTest {
           )
           .source
 
-      assertThat(source).doesNotContain("repeat(6)")
-      assertThat(occurrences(source, "Text(text = ")).isEqualTo(6)
+      assertThat(source).contains("kotlin.repeat(6) { _ ->")
+      assertThat(occurrences(source, "Text(text = ")).isEqualTo(1)
     }
+  }
+
+  /**
+   * A state named `kotlin` is refused, exactly as one named `androidx` is.
+   *
+   * The fold qualifies through that root, so it is one more thing a local may not shadow — and the
+   * check that already protects every other written-out root protects it.
+   */
+  @Test
+  fun `state named kotlin is refused, because a folded run qualifies through that root`() {
+    assertThat(
+        refusal(
+          cells(3).copy(state = listOf(ScreenState("kotlin", "app.Thing", ScreenValue.Text("x")))),
+          catalog(card, text),
+        )
+      )
+      .contains(
+        "state `kotlin` is the root of a package this screen writes in full, and would shadow it"
+      )
   }
 
   private fun occurrences(source: String, text: String) =
