@@ -3022,6 +3022,25 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ActivitySummaryWidgetRoundPreview_Round_Preview-55cf0f7d.a11y.png",
+      "cleanBasename": "ActivitySummaryWidgetRoundPreview_Round_Preview-55cf0f7d.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,454,336",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ActivitySummaryWidgetRoundPreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetRoundPreview_Round Preview",
+      "rendersDir": "wear-widget",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12.a11y.png",
       "cleanBasename": "ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12.png",
       "findings": [
