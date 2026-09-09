@@ -1,11 +1,123 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T07:17:57.072Z",
+  "generatedAt": "2026-09-09T21:22:25.461Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "77c1c6c3ec6f165400e8cb10b75e4159a6cf8a0d",
+        "subject": "refactor: consume the renderers, data extractors and daemon from compose-preview-daemon (#5346)",
+        "at": "2026-09-09T22:11:46+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6fab72e0949ba6ef7867ea81be8bfac9fd60777a",
+        "subject": "test(samples): score a UI-builder design against the captured app daily (#5347)",
+        "at": "2026-09-09T21:49:21+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1fc3f1b12f0310b347324befe7ec2d47c9873dea",
+        "subject": "docs(capture): specify device capture in two tiers (#5344)",
+        "at": "2026-09-09T19:55:53+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2d30f01f67166acf440fa0c52fa3e6af3ba80b16",
+        "subject": "feat: fold siblings differing in one literal into the list of their values (#5343)",
+        "at": "2026-09-09T17:59:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4279c678165057d62faff7bc840fd9b9ce9f67a4",
+        "subject": "fix(deps): update compose-ai-tools to v2.13.0 (#5339)",
+        "at": "2026-09-09T13:01:16Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "25a3870a84753a0c614ed535b51c8a2635d2e39b",
+        "subject": "fix(deps): update compose-preview-contracts to v2.13.0 (#5340)",
+        "at": "2026-09-09T13:00:17Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1c678d7dcfbe19bf2b0baf606bbdff5f6684311c",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.20.0 (#5341)",
+        "at": "2026-09-09T12:59:05Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5844b3fca445a79adf8f0b31fc1379ac5ddbf497",
+        "subject": "feat: fold identical sibling runs into one repeat in generated screens (#5337)",
+        "at": "2026-09-09T13:37:19+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d28273785e19cfa3cf6736ec71e9bd92cee33752",
+        "subject": "perf(daemon): overlap sandbox worker boots and archive catalog daemon classes (#5335)",
+        "at": "2026-09-09T09:30:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "89ec0b2a611966aae00d32b7ac4edc2a10c546f8",
+        "subject": "docs: correct three stale claims about the CLI/server seam, and trim the runbook (#5333)",
+        "at": "2026-09-09T08:40:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d54b36186950bf711463a868d472c3f2830df2ed",
+        "subject": "docs: widen the evidence pruner, retire two spent specs, surface two lost ones (#5332)",
+        "at": "2026-09-09T08:35:23+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "b416451cc6eafbda6ab5c48b92f419e286ce4b83",
+        "subject": "chore: prune spent design evidence, and keep it pruned (#5331)",
+        "at": "2026-09-09T08:24:37+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "9f749eab34c06ea84e21e1ee19491f27baa959b8",
+        "subject": "docs: correct the gate's scope and the launcher split's state (#5330)",
+        "at": "2026-09-09T08:18:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "dffec1882e1dd043d505155db4b2e6cf8df001d2",
+        "subject": "docs: retire the extraction-prep record and split out the live gate (#5329)",
+        "at": "2026-09-09T08:12:15+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "12d5e4e4277ec926c5a937e0ca508b4d26d0869c",
         "subject": "chore(ci): update the design-artifacts export driver to v2.4.1 (#5326)",
@@ -371,118 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v2.2.1 (#5275)",
         "at": "2026-09-07T18:50:41Z",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c358d35ce1ec01de30a4453134a595c703b5dc3a",
-        "subject": "chore(main): release 2.2.1 (#5274)",
-        "at": "2026-09-07T19:38:27+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "89fcbbf2f95a953bb2be4d97a493779601a01a8e",
-        "subject": "chore(deps): bump the actions-minor group with 5 updates (#5271)",
-        "at": "2026-09-07T19:38:03+01:00",
-        "author": "dependabot[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a46d0b3d34a6f9dbd545c370b03d7678787ff2d0",
-        "subject": "fix: report the file an Android file-backed face was built from (#5273)",
-        "at": "2026-09-07T19:37:18+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ec07b7088240ebd25f75bce2ebce965f056c501b",
-        "subject": "ci: wait for released runtimes before building the CLI, and retry the snapshot publish (#5270)",
-        "at": "2026-09-07T11:50:22+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b58f31f0341099bf9be8a590ea32a6f6fd775313",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.2.0 (#5269)",
-        "at": "2026-09-07T10:49:27Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "377341df5800dcb89555a79a2a67a0a14ce2c732",
-        "subject": "chore(main): release 2.2.0 (#5260)",
-        "at": "2026-09-07T11:37:56+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1a76d42e945064707f19e357b5c58ee58e485d07",
-        "subject": "feat(remotecompose): make the render-time player configurable, CMP by default (#5263)",
-        "at": "2026-09-07T11:26:12+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d3d236261728eae1a45a82bcad739c9d70d740c8",
-        "subject": "fix(deps): update rc-players to 1.59.3 (#5267)",
-        "at": "2026-09-07T11:05:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c5f8141e173f3fac335a0f4571e4d30ea0098156",
-        "subject": "chore(deps): update dependency yschimke/rc-players to v1.59.3 (#5268)",
-        "at": "2026-09-07T09:57:49Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d1a9f22d419bde9d4b3be72ba185109e39b8c7da",
-        "subject": "fix(deps): update compose-ai-tools to v2.11.0 (#5264)",
-        "at": "2026-09-07T09:36:40Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "be6769fd8e8682b015b3295b8a1db48662b71a88",
-        "subject": "fix(deps): update compose-preview-contracts to v2.11.0 (#5265)",
-        "at": "2026-09-07T09:36:07Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "04cb044a0da7d1c1d83204a0f7e31172133cea08",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.13.0 (#5266)",
-        "at": "2026-09-07T09:34:07Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "210f6cc5f5f188428de56fc7dd54d34297c4741c",
-        "subject": "chore(deps): update dependency yschimke/rc-players to v1.59.2 (#5262)",
-        "at": "2026-09-07T09:39:26+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c885e549e03565b3a497c224b1a910a6c4bcb465",
-        "subject": "feat(cli): compose-preview design, a launcher for the server's design command (#5261)",
-        "at": "2026-09-07T09:27:38+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
