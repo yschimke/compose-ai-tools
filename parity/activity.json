@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T05:32:52.097Z",
+  "generatedAt": "2026-09-09T06:16:08.085Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e4e59660078556adbf51db2b62de1e8116cc0a22",
+        "subject": "fix(ci): keep the root builder policy in all-module pre-flight validation (#5320)",
+        "at": "2026-09-09T07:07:34+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7285ad689a62f37e8ff882d037c936a1da928f55",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.4.0 (#5317)",
+        "at": "2026-09-09T06:53:57+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "461d1881cea160394872a63beecb05ca7d04a7d5",
+        "subject": "docs: check a commit exists before reporting it for attribution (#5319)",
+        "at": "2026-09-09T06:53:37+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8a3ff97cae244d98a1b9559b6074f98a336ba05f",
+        "subject": "test(wear-widget): regenerate the fixture with its round preview (#5318)",
+        "at": "2026-09-09T06:43:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3fa2244446c67a9262706129fec4608718b988ab",
         "subject": "chore(main): release 2.4.0 (#5309)",
@@ -450,38 +482,6 @@
         "sha": "04852ade1c86573269b472b6d46fd13f659e531d",
         "subject": "fix: pin published preview-runtimes to the line that actually published (#5253)",
         "at": "2026-09-06T20:58:12+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bc094abeb060f4182e677b33b26b9119a1c3e511",
-        "subject": "fix: merge the duplicate env block that broke the v2.1.0 release (#5252)",
-        "at": "2026-09-06T19:04:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "57ae39ea939b7eaab695d2588c9f82ed83d170d1",
-        "subject": "chore(main): release 2.1.0 (#5238)",
-        "at": "2026-09-06T18:56:01+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6bd41ce31dd53332fb756f0db674a377bba92f69",
-        "subject": "feat: gate the Maven publish per version line (#5251)",
-        "at": "2026-09-06T18:50:59+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "dc988f9c485e412d89f2f04bb86d40d7bc1edddd",
-        "subject": "fix: stop the root build file being enumerated as a published module (#5250)",
-        "at": "2026-09-06T18:42:05+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
