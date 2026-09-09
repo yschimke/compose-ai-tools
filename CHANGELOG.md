@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.4.0](https://github.com/yschimke/compose-ai-tools/compare/v2.3.0...v2.4.0) (2026-09-09)
+
+
+### Features
+
+* **discovery:** publish a catalog's ui-builder.json from @BuilderComponent and a policy file ([#5312](https://github.com/yschimke/compose-ai-tools/issues/5312)) ([b12ee69](https://github.com/yschimke/compose-ai-tools/commit/b12ee694379086f1cb752360875088c7378f5a5b))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.18.0 ([#5307](https://github.com/yschimke/compose-ai-tools/issues/5307)) ([8e4da81](https://github.com/yschimke/compose-ai-tools/commit/8e4da81a5a4bbd43b78681471196c91bcff04dd6))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.195 ([#5304](https://github.com/yschimke/compose-ai-tools/issues/5304)) ([31c13de](https://github.com/yschimke/compose-ai-tools/commit/31c13de0e891b06376b90cf4f34bafb709e144a1))
+* **deps:** update roborazzi to v1.74.0 ([#5308](https://github.com/yschimke/compose-ai-tools/issues/5308)) ([bbb5916](https://github.com/yschimke/compose-ai-tools/commit/bbb591658a0f1052a9cda1ae28da1f20a88c5e43))
+* **ui-builder:** apply four fixes to the places they were left out of ([#5314](https://github.com/yschimke/compose-ai-tools/issues/5314)) ([57811aa](https://github.com/yschimke/compose-ai-tools/commit/57811aa75b865b7128894e98f1aedc64fdc87349))
+
 ## [2.3.0](https://github.com/yschimke/compose-ai-tools/compare/v2.2.4...v2.3.0) (2026-09-08)
 
 
