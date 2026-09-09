@@ -76,21 +76,43 @@ A new Android library, `:data-devicecapture-android`, taken as `debugImplementat
 app, plus a `compose-preview capture` host command that drives it over `adb`.
 
 ```
+compose-preview capture
+      │  1. trigger ── adb shell am broadcast -p <package> …CAPTURE  (or an instrumentation run)
+      ↓
 app (debug) ── :data-devicecapture-android
                  │  finds RootForTest views in the resumed Activity
-                 │  reads LocalInspectionTables for CompositionData
+                 │  reads the provided inspection tables for CompositionData
                  │  calls the existing extractors
-                 └─ writes data/<captureId>/<kind>.json + <captureId>.png
+                 └─ writes data/<captureId>/<kind>.json + <captureId>.png, then a done marker
                              │
-      adb exec-out run-as ──┘
+      2. adb exec-out run-as ┘
                              ↓
-              compose-preview capture → the same on-disk layout the render lane writes
+              3. promote into the durable store (see "a durable home" below)
 ```
+
+**The trigger is part of the design, not an afterthought.** A first draft of this section described
+only the transfer, which cannot make a capture happen — the files it pulls have to already exist.
+The library needs an inbound edge, and the honest options are a `<receiver>` in the debug manifest
+driven by `am broadcast -p <package>`, or an instrumentation entry point driven by `am instrument`.
+Either way the protocol needs three things the transfer does not supply: a request carrying the
+capture id and options, a **completion signal** so the host does not pull a half-written directory,
+and an **error channel** for "no resumed activity", "no Compose root", "inspection tables absent".
+A marker file the host polls for is the cheapest completion signal and needs no second channel.
 
 The transfer is `adb exec-out run-as <package>`, not a plain `adb pull`: the capture lands in the
 app's private files directory, which the shell user cannot traverse even for a debuggable app, and
 writing a real screen's pixels and text to shared storage instead would give away the privacy
 property below. The host command therefore has to know the package, not just a path.
+
+**A capture id is a path segment before it is an identity, and must be validated as one.** The
+reused producers build their output directory with `rootDir.resolve(previewId)`
+(`ComposeSemanticsDataProduct.kt:196,1215`), so an id containing `..`, a separator, or an absolute
+path escapes the capture directory or overwrites another product — on the device, during transfer,
+and again during promotion. A preview id is a Kotlin FQN and safe by construction; a capture id is
+whatever the caller passes, and is attacker-influenced as soon as anything but a person types it.
+Fix the encoding rule (an opaque generated id, or a charset restriction plus a rejection on any
+non-final path segment) before the URI question below, and validate on both sides rather than
+trusting the device.
 
 The capture id takes the preview id's place in the on-disk layout, so anything reading those files
 by path works unchanged. **Discovery does not**: `resources/list` enumerates discovered `@Preview`s,
@@ -104,7 +126,7 @@ command, because it decides whether a capture id is free-form or has to be deriv
 
 | Input | Where it comes from |
 | --- | --- |
-| `SemanticsNode` root | `(view as RootForTest).semanticsOwner.rootSemanticsNode` / `unmergedRootSemanticsNode`, over the resumed activity's view tree. Both trees are worth capturing; `uia/hierarchy` already records which one it walked in its `merged` flag. |
+| `SemanticsNode` root | `(view as RootForTest).semanticsOwner.rootSemanticsNode` / `unmergedRootSemanticsNode`, over the resumed activity's view tree. Both trees are worth capturing — but they cannot share an output: there is one `data/<captureId>/<kind>.json` per kind, an extractor emits one tree per payload, and `uia/hierarchy`'s `merged` marker is per *node*, so an empty node list cannot even say which tree produced it. Give them distinct product names (`uia/hierarchy` and an unmerged sibling), or a wrapper schema holding both; capturing the second over the first is silent data loss. |
 | `List<CompositionData>` | `androidx.compose.runtime.tooling.LocalInspectionTables` — **and this is the one input the library cannot obtain on its own.** The composition local has to be *provided* around the content before composition, exactly as both render lanes do it today (`CompositionLocalProvider(LocalInspectionTables provides store)`, `daemon/desktop/…/RenderEngine.kt:3199`); a library handed an already-composed tree cannot retrofit it. And providing the local is not on its own enough: the render lane's own integration (`daemon/desktop/…/RenderEngine.kt:3190-3199`) calls `currentComposer.collectParameterInformation()` and adds `currentComposer.compositionData` to the store *before* installing the provider, under `@OptIn(InternalComposeApi::class)`. Without the first call there are no parameters and so no source refs; without the second the store can stay empty. So Tier 2 costs the app a three-line composable wrapper against an internal Compose API, or a reflective read of the composition of the sort the Studio inspector does. Take the wrapper: it is honest, it is what this repository already does twice, and "an app you control" is the tier's premise — but budget it as an internal-API dependency to re-check on Compose upgrades, not as a one-liner. Without it, `layout/inspector` degrades to bounds without source refs rather than failing — which is still better than `uia/hierarchy` alone, so the capture should proceed and say so. |
 | `density`, `fontScale` | `LocalDensity` / resources configuration. |
 | pixels | `PixelCopy` over the window — but see below: it does **not** by itself put the pixels and the trees on the same frame. |
@@ -126,8 +148,11 @@ command, because it decides whether a capture id is free-form or has to be deriv
   `:data-layoutinspector-connector`. That module publishes (as a JAR, and an Android library can
   depend on a JVM jar transparently), so it is *reachable* — but it also drags FontBox/PDFBox and
   the whole Figma-SVG font-subsetting path, which is not weight to put in an app even in a debug
-  variant. The producer should be lifted into a core module, or a slim
-  `:data-layoutinspector-producer` split out beneath it.
+  variant. **Both** producers need lifting, not one: `LayoutInspectorDataProducer` and
+  `ComposeSemanticsDataProducer` are separate objects in that same module
+  (`ComposeSemanticsDataProduct.kt:179,1119`), so moving only the first leaves `compose/semantics` —
+  the other kind in this bullet's own heading — reachable only through the heavy connector. Lift
+  both into a core module, or split a slim `:data-layoutinspector-producer` out beneath it.
 
 Note also that [`docs/daemon/DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md) § "Module split" says
 connectors are "Not published — internal to the daemon process", while every `data/*/connector`
@@ -147,13 +172,21 @@ renderer. The capture needs an explicit protocol: quiesce the frame clock, or ta
 buffer inside one coordinated snapshot and record which frame each came from. Asserting one-frame
 consistency without one, as a first draft of this document did, is wrong.
 
-**One coordinate space.** `UiAutomatorHierarchyNode.boundsInScreen` is populated from
-`node.boundsInRoot` (`UiAutomatorHierarchyExtension.kt:104`) — the field name is a lie the render
-lane never notices, because there the Compose root *is* the window. On a device a `ComposeView`
-offset inside a real window makes every bound wrong against a full-window `PixelCopy`.
-`ComposeSemanticsNode` names its field `boundsInRoot` and is honest about it. Either add the root
-view's window offset when capturing, or crop the pixels to the root — and say which, per product,
-since the two kinds disagree about what their field means.
+**One coordinate space.** There are **three** in play, and the render lane collapses them all
+because there the Compose root, the window and the screen coincide. On a device they do not:
+
+| Product | What its bounds actually are |
+| --- | --- |
+| `compose/semantics` | `boundsInRoot`, and honestly named |
+| `uia/hierarchy` | `boundsInRoot`, in a field *named* `boundsInScreen` (`UiAutomatorHierarchyExtension.kt:104`) |
+| `a11y/hierarchy` | ATF's `v.boundsInScreen` — genuinely absolute screen coordinates (`AccessibilityChecker.kt:91,150`) |
+| the PNG | whatever window `PixelCopy` was given |
+
+So a fix that only offsets the Compose-side products still leaves the a11y payload shifted on any
+dialog, freeform or otherwise screen-offset window — and an a11y overlay is exactly where a shifted
+box is most visible. The capture needs one declared target space (the window origin is the natural
+choice, since that is what the pixels are), every product transformed into it, and the space
+recorded in the output so a later consumer cannot guess wrong.
 
 **One root.** A hybrid screen has several `ComposeView`s, so the library will find several
 `RootForTest` views, while every producer takes one root and writes one file per kind per capture.
