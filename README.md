@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 290 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 291 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -236,6 +236,12 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | WARNING | TextSizeCheck | com.android.internal.widget.ImageFloatingTextView #text | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `HomeScreenDesignPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/HomeScreenDesignPreview_Design-d74858f0.a11y.png" width="400" />
+
+_No findings._
 
 ### `ImeAwareListHiddenPreview`
 

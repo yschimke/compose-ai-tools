@@ -679,6 +679,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "HomeScreenDesignPreview_Design-d74858f0.a11y.png",
+      "cleanBasename": "HomeScreenDesignPreview_Design-d74858f0.png",
+      "findings": [],
+      "functionName": "HomeScreenDesignPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.HomeScreenDesignPreviewKt.HomeScreenDesignPreview_Design",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/HomeScreenDesignPreview.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden-5d399422.a11y.png",
       "cleanBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden-5d399422.png",
       "findings": [],
