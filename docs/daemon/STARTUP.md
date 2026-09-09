@@ -215,6 +215,9 @@ Two changes shipped:
 
 ## Future options
 
+The ranked medium-term plan, including what a Robolectric fork would change,
+is [BOOT-ROADMAP.md](BOOT-ROADMAP.md). The list below predates it.
+
 Menu of follow-ups, by leverage:
 
 - ~~**Reconsider the eager warm-spare pool on the launch-descriptor

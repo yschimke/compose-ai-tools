@@ -54,6 +54,8 @@ the CI-canonical render path.
   bytecode instrumentation, shadows).
 - **[SANDBOX-POOL.md](SANDBOX-POOL.md)** — in-JVM sandbox pool.
 - **[STARTUP.md](STARTUP.md)** — daemon startup latency analysis.
+- **[BOOT-ROADMAP.md](BOOT-ROADMAP.md)** — the ranked plan for a 2-3 s sandbox boot: adoptable
+  warmed workers, and what a Robolectric fork would change.
 - **[HISTORY.md](HISTORY.md)** — preview history archive: on-disk
   schema, JSON-RPC API, MCP mappings, `HistorySource` backends.
 - **[INTERACTIVE.md](INTERACTIVE.md)** — focus-mode live stream and
