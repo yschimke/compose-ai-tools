@@ -1005,9 +1005,30 @@ public class ThemeCacheStore(
         writes = generationWrites.get(),
       )
 
+    /**
+     * `cacheKey` -> the name its render is stored under, because [fileName] sits on the membership
+     * path and the digest is a pure function of the key.
+     *
+     * [contains] is called once per themed render by `CatalogThemeCache.snapshot()`, so the work it
+     * does scales with the size of the thing this cache exists to grow. On `preview.coo.ee` that is
+     * ~48,400 themed renders across 16 catalogs, and every one of them was a fresh
+     * `MessageDigest.getInstance` provider lookup — one snapshot pass, per `/status` load, with no
+     * cache between them (yschimke/compose-ai-tools#5322).
+     *
+     * Bounded the same way [present], [dirtyNames] and [adopted] are: one entry per cache key this
+     * generation is asked about, which is one per themed render in one catalog. Nothing reaches
+     * this with unbounded keys — every caller walks a catalog's own renders.
+     */
+    private val fileNames = ConcurrentHashMap<String, String>()
+
     private fun fileName(cacheKey: String): String =
-      MessageDigest.getInstance("SHA-256").digest(cacheKey.toByteArray()).joinToString("") {
-        "%02x".format(it)
+      fileNames.computeIfAbsent(cacheKey) { key ->
+        // `HexFormat` rather than `"%02x".format(byte)`: the latter parsed a two-character format
+        // string through `java.util.Formatter` once per digest byte, which is 32 parses per name
+        // and was where the profiler's samples actually landed. Byte-for-byte the same string —
+        // `Formatter` renders a negative `Byte` under `%x` as the value plus 2^8, which is the
+        // unsigned hex `formatHex` writes — so names already on disk still resolve.
+        HEX.formatHex(MessageDigest.getInstance("SHA-256").digest(key.toByteArray()))
       }
   }
 
@@ -1059,6 +1080,9 @@ public class ThemeCacheStore(
      * a separator is a directory traversal waiting for the day one of them is. Rejected rather than
      * sanitised: a silently rewritten name would let two catalogs share a generation.
      */
+    /** Lowercase, no separators — the shape `"%02x".format(byte)` produced, and stateless. */
+    private val HEX: java.util.HexFormat = java.util.HexFormat.of()
+
     private val SAFE_NAME = Regex("[A-Za-z0-9._-]{1,128}")
 
     private fun String.safeName(): String? = takeIf {
