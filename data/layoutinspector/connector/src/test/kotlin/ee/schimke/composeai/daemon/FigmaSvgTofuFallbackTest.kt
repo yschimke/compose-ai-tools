@@ -123,6 +123,29 @@ class FigmaSvgTofuFallbackTest {
   }
 
   @Test
+  fun `an export that draws no text does not degrade`() {
+    // The render drew a face the recorder tracks, but this preview emits no glyphs at all — the
+    // shape `ScreenEdgeButton` exports (yschimke/wear-m3-catalog#401). There is no visible text to
+    // put in the wrong typeface, so there is nothing to warn about and nothing to box: degrading
+    // here fails `bundle pack` over a picture that contains no text.
+    FigmaSvgRenderedFonts.record("Roboto Flex")
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "textless",
+      layout = layout(),
+      semantics =
+        ComposeSemanticsPayload(
+          ComposeSemanticsNode(nodeId = "root", boundsInRoot = "0,0,200,100")
+        ),
+    )
+
+    val svg = dir.resolve("textless").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertFalse("a textless export has nothing to box", svg.contains(TofuFont.FAMILY))
+    assertFalse("and nothing to warn about", warnings("textless").exists())
+  }
+
+  @Test
   fun `a preview that legitimately uses the platform default stays quiet`() {
     // Nothing branded was drawn, so an absent captured family is the truth, not a defect.
     val svg = writeSvg("stock-material")

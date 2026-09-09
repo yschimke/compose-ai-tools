@@ -182,7 +182,22 @@ object ComposeFigmaSvgDataProducer {
       fonts?.familyOverrides?.values?.forEach { add(it) }
       addAll(capturedFamilies(model.root))
     }
-    val unnamed = FigmaSvgRenderedFonts.unnamedIn(named)
+    // An export that draws NO TEXT cannot misattribute a face, so it never degrades.
+    //
+    // The branch below exists to stop a wrong face reaching *visible text*. When the SVG carries no
+    // glyphs there is no visible text to get wrong, and degrading anyway produces a tofu face built
+    // from an empty code-point set, a warning sidecar about a face nothing rendered, and a
+    // `bundle pack` that fails over a picture containing no text at all.
+    //
+    // `ScreenEdgeButton` is the case that found this: its layered SVG carries zero `<text>` nodes,
+    // so the render's recorded family had nothing to attach to, `named` came back empty, and every
+    // one of its ~70 variants failed the pack the moment the catalog started drawing a face the
+    // recorder tracks — a vendored variable Roboto Flex (yschimke/wear-m3-catalog#401). Before
+    // that the same export declared a harmless `sans-serif` and passed, so the check was firing on
+    // the font's presence rather than on anything being lost.
+    val emittedCodePoints = codePoints(model.root)
+    val unnamed =
+      if (emittedCodePoints.isEmpty()) emptyList() else FigmaSvgRenderedFonts.unnamedIn(named)
     val svg =
       when {
         // The render drew with a face this export can't name. Emitting the default here is what
@@ -194,8 +209,7 @@ object ComposeFigmaSvgDataProducer {
               family = TofuFont.FAMILY,
               weight = 400,
               italic = false,
-              dataBase64 =
-                Base64.getEncoder().encodeToString(TofuFont.build(codePoints(model.root))),
+              dataBase64 = Base64.getEncoder().encodeToString(TofuFont.build(emittedCodePoints)),
               format = "truetype",
             )
           System.err.println(
