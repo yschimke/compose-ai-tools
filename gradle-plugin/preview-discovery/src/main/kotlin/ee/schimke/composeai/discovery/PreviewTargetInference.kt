@@ -41,6 +41,7 @@ object PreviewTargetInference {
       "androidx.compose.ui.",
       "androidx.compose.animation.",
       "androidx.wear.compose.material.",
+      "androidx.wear.compose.remote.material3.",
       "androidx.wear.compose.material3.",
       "androidx.wear.compose.foundation.",
       "org.jetbrains.compose.",
@@ -77,6 +78,7 @@ object PreviewTargetInference {
       "androidx.compose.material.",
       "androidx.wear.compose.material3.",
       "androidx.wear.compose.material.",
+      "androidx.wear.compose.remote.material3.",
     )
 
   // Theme entry points inside the component libraries. They pass every other test here — real
@@ -97,6 +99,10 @@ object PreviewTargetInference {
       "androidx.compose.material.MaterialThemeKt.MaterialTheme",
       "androidx.wear.compose.material3.MaterialThemeKt.MaterialTheme",
       "androidx.wear.compose.material.MaterialThemeKt.MaterialTheme",
+      // Remote Compose's own theme entry point. Same role, different spelling — and it earns its
+      // line the same way the four above did: 60 of remote-catalog's previews reported
+      // `RemoteMaterialTheme` as their component before it was listed.
+      "androidx.wear.compose.remote.material3.RemoteMaterialThemeKt.RemoteMaterialTheme",
     )
 
   // Stdlib / JVM / Kotlin-runtime owners. Filtered explicitly so we never attempt to look

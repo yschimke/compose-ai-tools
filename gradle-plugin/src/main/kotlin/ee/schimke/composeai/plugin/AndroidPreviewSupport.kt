@@ -1257,6 +1257,22 @@ internal object AndroidPreviewSupport {
                 .artifactView { attributes.attribute(artifactType, "android-classes") }
                 .files
             )
+            // Coordinates for the same two views, for the reason given where the main consumer
+            // classpath is wired in [ComposePreviewTasks]: on Android the jar's path names the
+            // module but not its group, so the scan-classpath filter needs the coordinate.
+            for (attributeValue in listOf("jar", "android-classes")) {
+              dependencyJarCoordinates.putAll(
+                stConfig.incoming
+                  .artifactView { attributes.attribute(artifactType, attributeValue) }
+                  .artifacts
+                  .resolvedArtifacts
+                  .map { artifacts ->
+                    artifacts.associate {
+                      it.file.absolutePath to it.id.componentIdentifier.displayName
+                    }
+                  }
+              )
+            }
           }
         }
       }
