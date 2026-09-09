@@ -53,6 +53,33 @@ class ThemeCacheStoreFileNameTest {
   }
 
   @Test
+  fun `a key that never lands on disk is not remembered`(@TempDir root: File) {
+    // The read path takes whatever key a request produces. `CatalogThemeCache.get` asks about
+    // ad-hoc
+    // override renders — widths, locales, knob values — that `CatalogThemeCache.put` deliberately
+    // refuses to persist because a visitor can mint them without limit. Memoizing those would move
+    // the unbounded growth the disk budget refuses into the heap instead, so the memo only keeps
+    // names this generation actually holds.
+    val generation = generation(root)
+    generation.put(CACHE_KEY, PNG)
+    // The one persisted key is remembered: that is the case #5322 is about.
+    generation.contains(CACHE_KEY)
+    assertEquals(1, memoSize(generation))
+
+    repeat(500) { i ->
+      generation.contains("$CACHE_KEY|width=$i")
+      generation.get("$CACHE_KEY|width=$i")
+      generation.wasAdopted("$CACHE_KEY|width=$i")
+    }
+
+    assertEquals(
+      1,
+      memoSize(generation),
+      "500 unpersistable keys must not be retained for the generation's lifetime",
+    )
+  }
+
+  @Test
   fun `a reopened generation finds what the previous one wrote`(@TempDir root: File) {
     // The memo is per generation, so the second one recomputes — and has to land on the same name,
     // which is the whole point of the digest being the contract.
@@ -79,6 +106,14 @@ class ThemeCacheStoreFileNameTest {
           ),
         )
     )
+
+  private fun memoSize(generation: ThemeCacheStore.Generation): Int =
+    (ThemeCacheStore.Generation::class
+        .java
+        .getDeclaredField("fileNames")
+        .apply { isAccessible = true }
+        .get(generation) as Map<*, *>)
+      .size
 
   private fun sha256Hex(value: String): String =
     MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") {

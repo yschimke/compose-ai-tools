@@ -1015,21 +1015,35 @@ public class ThemeCacheStore(
      * `MessageDigest.getInstance` provider lookup — one snapshot pass, per `/status` load, with no
      * cache between them (yschimke/compose-ai-tools#5322).
      *
-     * Bounded the same way [present], [dirtyNames] and [adopted] are: one entry per cache key this
-     * generation is asked about, which is one per themed render in one catalog. Nothing reaches
-     * this with unbounded keys — every caller walks a catalog's own renders.
+     * **Only names this generation actually holds are remembered**, which is what bounds the map.
+     * The read path forwards WHATEVER key a request produces: `CatalogThemeCache.get` asks
+     * [wasAdopted] and [get] about ad-hoc override renders — widths, locales, devices, knob values
+     * — that `CatalogThemeCache.put` then declines to persist precisely because a visitor can mint
+     * them indefinitely. Memoizing on the way in would have grown the heap on exactly the keys the
+     * disk budget refuses, so the insert is gated on membership instead: an unpersistable key never
+     * matches [present] or [adopted], pays its digest, and is forgotten. What is left is a subset
+     * of the names on disk, bounded by `--theme-cache-max-bytes` like [present], [dirtyNames] and
+     * [adopted].
+     *
+     * The gate costs a re-hash per lookup for a configured target not yet written. That set drains
+     * to nothing as the optimizer completes, and the steady state #5322 is about — a full
+     * generation being walked per `/status` — is entirely names in [present].
      */
     private val fileNames = ConcurrentHashMap<String, String>()
 
-    private fun fileName(cacheKey: String): String =
-      fileNames.computeIfAbsent(cacheKey) { key ->
-        // `HexFormat` rather than `"%02x".format(byte)`: the latter parsed a two-character format
-        // string through `java.util.Formatter` once per digest byte, which is 32 parses per name
-        // and was where the profiler's samples actually landed. Byte-for-byte the same string —
-        // `Formatter` renders a negative `Byte` under `%x` as the value plus 2^8, which is the
-        // unsigned hex `formatHex` writes — so names already on disk still resolve.
-        HEX.formatHex(MessageDigest.getInstance("SHA-256").digest(key.toByteArray()))
+    private fun fileName(cacheKey: String): String {
+      fileNames[cacheKey]?.let {
+        return it
       }
+      // `HexFormat` rather than `"%02x".format(byte)`: the latter parsed a two-character format
+      // string through `java.util.Formatter` once per digest byte, which is 32 parses per name and
+      // was where the profiler's samples actually landed. Byte-for-byte the same string —
+      // `Formatter` renders a negative `Byte` under `%x` as the value plus 2^8, which is the
+      // unsigned hex `formatHex` writes — so names already on disk still resolve.
+      val name = HEX.formatHex(MessageDigest.getInstance("SHA-256").digest(cacheKey.toByteArray()))
+      if (name in present || name in adopted) fileNames[cacheKey] = name
+      return name
+    }
   }
 
   /** A generation's coordinates, for [sweep]'s live set. */
