@@ -25,7 +25,7 @@ Four kinds already describe exactly what a captured screen would carry:
 
 | Kind | Carries | Core module |
 | --- | --- | --- |
-| `compose/semantics` | per-`SemanticsNode` `testTag`, `role`, `mergeMode`, `boundsInScreen` | `:data-layoutinspector-core` (contracts) |
+| `compose/semantics` | per-`SemanticsNode` `testTag`, `role`, `mergeMode`, `boundsInRoot` | `:data-layoutinspector-core` (contracts) |
 | `layout/inspector` | parent/child, `measuredSize`, `constraints`, resolved modifiers with values, `sourceRef` | `:data-layoutinspector-core` (contracts) |
 | `a11y/hierarchy` | `label`, `role`, `states`, `merged`, bounds | `:data-a11y-core` |
 | `uia/hierarchy` | selector inputs and supported `uia.*` actions per actionable node | `:data-uiautomator-core` |
@@ -97,7 +97,22 @@ driven by `am broadcast -p <package>`, or an instrumentation entry point driven 
 Either way the protocol needs three things the transfer does not supply: a request carrying the
 capture id and options, a **completion signal** so the host does not pull a half-written directory,
 and an **error channel** for "no resumed activity", "no Compose root", "inspection tables absent".
-A marker file the host polls for is the cheapest completion signal and needs no second channel.
+
+A marker file the host polls for is the cheapest completion signal and needs no second channel —
+**provided it is bound to the request**. A bare `done` marker left by an earlier capture under the
+same id is already present when the new request starts rewriting that directory, so the host polls,
+sees the stale marker immediately, and pulls a mixture of old and half-written products. Either
+delete the marker before triggering and publish the finished directory atomically (write to a temp
+directory, then rename), or carry a per-request nonce in the marker and wait for that generation.
+The atomic-rename version is preferable: it removes the half-written window rather than just
+detecting it.
+
+**"The resumed Activity" is not a unique thing.** Android multi-resume means split-screen and
+multi-display can leave several activities of one package resumed at once, so a library that takes
+whichever it finds captures a screen chosen by lifecycle callback ordering. The request has to carry
+a selector — an activity component name, a task id, a display id or a window token — and the library
+has to **fail explicitly** when several candidates match and none was named, rather than picking. A
+capture of the wrong screen is worse than no capture, because nothing downstream can tell.
 
 The transfer is `adb exec-out run-as <package>`, not a plain `adb pull`: the capture lands in the
 app's private files directory, which the shell user cannot traverse even for a debuggable app, and
@@ -153,6 +168,13 @@ command, because it decides whether a capture id is free-form or has to be deriv
   (`ComposeSemanticsDataProduct.kt:179,1119`), so moving only the first leaves `compose/semantics` —
   the other kind in this bullet's own heading — reachable only through the heavy connector. Lift
   both into a core module, or split a slim `:data-layoutinspector-producer` out beneath it.
+
+A second documentation drift, found the same way and worth fixing wherever it is owned:
+[`site/reference/layout-inspector.md:71`](../../site/reference/layout-inspector.md) shows
+`compose/semantics` carrying `boundsInScreen`, while `schema/compose-semantics.schema.json` and
+`ComposeSemanticsDataProduct.kt:255` both say `boundsInRoot`. A first draft of the table above
+copied the reference page and inherited the error. It is the same failure as `uia/hierarchy`'s field
+name: on a render the root and the screen coincide, so nothing catches it.
 
 Note also that [`docs/daemon/DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md) § "Module split" says
 connectors are "Not published — internal to the daemon process", while every `data/*/connector`
