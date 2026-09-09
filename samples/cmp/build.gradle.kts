@@ -20,16 +20,16 @@ dependencies {
   // gradle plugin's discovery picks up the annotation by FQN even without it on the consumer's
   // compile classpath, but the sample composable references the annotation directly so the
   // dependency is needed for compilation.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
   // `LottiePreview(...)` — renders a Lottie `.json` asset (from src/main/resources) at a fixed
   // progress through the desktop renderer. Brings Compottie transitively.
-  implementation(project(":lottie-preview-runtime"))
+  implementation(libs.composeai.lottie.preview.runtime)
   // `SvgPreview(...)` — draws an SVG `.svg` asset (from src/main/resources), optionally tinted,
   // through the desktop renderer (Skia's loadSvgPainter).
-  implementation(project(":svg-preview-runtime"))
+  implementation(libs.composeai.svg.preview.runtime)
   // `previewOverride*` — opt-in editable knobs (label / list length / per-item indexed values) the
   // daemon can seed and a served bundle can present as editable controls.
-  implementation(project(":data-preview-overrides-runtime"))
+  implementation(libs.composeai.data.preview.overrides.runtime)
 
   // `PreviewModeMatrixTest` reads the PNGs under `build/compose-previews/renders/`.
   testImplementation(libs.junit)

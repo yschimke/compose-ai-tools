@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 #
-# Run the preview daemon — see docs/daemon/DESIGN.md.
+# Run the preview daemon for a consumer module.
 #
-# Two modes:
+# The daemon itself lives in compose-preview-daemon (consumed here at the
+# `composeai-preview-daemon` catalog pin); the renderer-agnostic protocol smoke
+# launcher went with it. This script covers the per-module path only.
 #
-# 1. Top-level / smoke (no module argument):
-#      scripts/run-daemon.sh
-#    Runs `:daemon:desktop:runDaemonMain` — a renderer-agnostic JVM with a
-#    DesktopHost and JsonRpcServer listening on stdio. Useful for protocol
-#    smoke tests; has no consumer-module classes on its classpath.
-#
-# 2. Per-module (Gradle path or filesystem path):
+# Usage (Gradle path or filesystem path):
 #      scripts/run-daemon.sh :samples:android
 #      scripts/run-daemon.sh samples/android-daemon-bench
 #    Runs `<module>:composePreviewDaemonStart` to materialize
@@ -55,8 +51,8 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$MODULE" ]; then
-    echo "[run-daemon] top-level smoke mode -> :daemon:desktop:runDaemonMain" >&2
-    exec ./gradlew :daemon:desktop:runDaemonMain --console=plain
+    echo "[run-daemon] a module argument is required; the bare protocol smoke daemon now lives in compose-preview-daemon" >&2
+    usage 2
 fi
 
 # Accept either Gradle path (`:samples:android`) or filesystem path

@@ -57,6 +57,6 @@ dependencies {
   // under Keyboard input mode, not by forging a `FocusInteraction.Focus` onto a held interaction
   // source (issue #3672). Robolectric-only, which is why this Android supplement can use it and the
   // CMP catalog it folds into cannot.
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
   debugImplementation("androidx.compose.ui:ui-tooling")
 }

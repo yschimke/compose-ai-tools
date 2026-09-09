@@ -454,9 +454,11 @@ class RealTree(unittest.TestCase):
                 by_package,
             )
         )
+        # A file in an unrelated package: `cli`, not `daemonlaunch`. (This used to name the desktop
+        # daemon's `DaemonMain.kt`, which moved to compose-preview-daemon in #5336.)
         self.assertFalse(
             mod.resolves_to_registered(
-                "daemon/desktop/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
+                "cli/src/main/kotlin/ee/schimke/composeai/cli/McpCommand.kt",
                 "DAEMON_DESCRIPTOR_SCHEMA_VERSION",
                 by_package,
             )

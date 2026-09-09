@@ -4,7 +4,7 @@
 Shared by workflows that gate expensive jobs on PRs but have no natural
 `paths:` trigger filter (a required check hidden behind `paths:` would hang on
 "Expected — Waiting for status"): the Integration external-repo matrix
-(integration.yml) and the Daemon Harness renderer legs (daemon-harness.yml).
+(integration.yml).
 
 Reads the PR's changed files and a workflow-specific committed ignore list
 (`SCOPE_CONFIG`, with the integration config as a fallback) and prints a single

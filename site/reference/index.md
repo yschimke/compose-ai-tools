@@ -70,4 +70,4 @@ Two ways to consume a product:
 
 For the full wire-protocol contract — error codes, transports,
 re-render semantics, extension activation — see
-[`docs/daemon/DATA-PRODUCTS.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/DATA-PRODUCTS.md).
+[`docs/daemon/DATA-PRODUCTS.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DATA-PRODUCTS.md).

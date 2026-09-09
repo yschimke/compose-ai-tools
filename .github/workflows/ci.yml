@@ -71,13 +71,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plugin_tests: ${{ steps.scope.outputs.plugin_tests }}
-      renderer_android_tests: ${{ steps.scope.outputs.renderer_android_tests }}
       rc_player_tests: ${{ steps.scope.outputs.rc_player_tests }}
       module_unit_tests: ${{ steps.scope.outputs.module_unit_tests }}
       functional_tests: ${{ steps.scope.outputs.functional_tests }}
       build_samples: ${{ steps.scope.outputs.build_samples }}
       build_cli: ${{ steps.scope.outputs.build_cli }}
-      spatial_scene: ${{ steps.scope.outputs.spatial_scene }}
       actions_tests: ${{ steps.scope.outputs.actions_tests }}
       design_artifacts: ${{ steps.scope.outputs.design_artifacts }}
     steps:
@@ -133,45 +131,10 @@ jobs:
           name: unit-test-results
           path: gradle-plugin/build/reports/tests/
 
-  renderer-android-tests:
-    # `:renderer-android:test` is documented in docs/AGENT_GUIDE.md but had no CI leg, so its suite —
-    # including `WearScrollSvgGrowthTest`'s drift guard over the committed
-    # `serve-wear-scroll-long-capsule.html` page fixture — could only fail on someone's laptop.
-    # That guard is what stops `serve-preview-diff` screenshotting a stale capsule after a
-    # figma-svg export change, so it has to run on PRs, where the export changes land.
-    name: Renderer Android Unit Tests
-    needs: changes
-    # `pull_request` only. `:renderer-android` is in the root build (settings.gradle.kts),
-    # so `module-unit-tests`' `full` branch — the one every non-PR event takes — already runs
-    # `:renderer-android:test`, which for an Android library depends on `testDebugUnitTest`.
-    # On push this job was a 3.7-min re-run of work happening in parallel two jobs over.
-    # It stays on PRs, where `module-unit-tests` is scoped to affected modules and may not
-    # reach `:renderer-android` at all.
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.renderer_android_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/buildfetch-cache
-        with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
-          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Run unit tests
-        run: ./gradlew :renderer-android:testDebugUnitTest
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: renderer-android-unit-test-results
-          path: |
-            renderers/android/build/reports/tests/
-
   # Every affected module's unit tests on PRs; the full fan-out on main/nightly.
   #
   # The named jobs around this one cover a handful of modules by task path
-  # (`:renderer-android`, `:gradle-plugin`, `:cli` via its `build`, …). That left **66 modules
+  # (`:gradle-plugin`, `:cli` via its `build`, …). That left **66 modules
   # with `src/test/kotlin` whose tests no workflow ever invoked** — including
   # `data/layoutinspector/{core,connector}`, which is where the `compose/figma-svg` export model
   # and every one of its regression tests live, and both daemon backends, which is where the
@@ -656,42 +619,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
-      # Exercise the JVM client (:renderer-xr-client) against the real native server: unit tests
-      # plus the XR_COMPOSITE_BIN-gated XrRenderServerIntegrationTest, which spawns the dist binary
-      # and asserts a per-frame panel update changes the image. Mirrors the python smoke from Kotlin.
-      - name: Integration-test the JVM client against the native server
-        shell: bash
-        env:
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          GALLIUM_DRIVER: llvmpipe
-          XR_COMPOSITE_BIN: ${{ github.workspace }}/dist/xr-composite
-          XR_COMPOSITE_MATERIALS: ${{ github.workspace }}/dist/materials
-        run: |
-          xvfb-run -a -s "-screen 0 2000x1400x24" \
-            ./gradlew --no-daemon :renderer-xr-client:test --stacktrace
-  spatial-scene-codegen:
-    name: SpatialScene codegen up to date
-    needs: changes
-    if: ${{ needs.changes.outputs.spatial_scene == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-      # Two wire contracts, each single-sourced into language mirrors that must not drift:
-      #   * SpatialScene (the data)      — schema/spatial-scene.schema.json      -> Kotlin, C++
-      #   * XR render service (the RPC)  — schema/xr-render-service.schema.json  -> Kotlin, C++,
-      #                                                                            Python
-      # The job id and display name still say "SpatialScene" because they may be a required check;
-      # renaming one is a deliberate change, not a side effect of adding the second schema.
-      - name: Check generated SpatialScene mirrors match the schema
-        run: node scripts/codegen/gen-spatial-scene.mjs --check
-      - name: Check generated XR render service mirrors match the schema
-        run: node scripts/codegen/gen-xr-render-service.mjs --check
-
   bundle-render:
     name: Bundle Render E2E
     # Heavy E2E (~7 min, cold-starts Compose Desktop per preview). Drift
@@ -772,9 +699,9 @@ jobs:
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
       # each and render protolayout / remotecompose / classic previews to PNG via the Robolectric
-      # daemon. Guards (1) the Android daemon runtime being staged by `:cli:stageDaemonAndroidLibs`
-      # (post-#1685 it ships as a standalone archive, not inside the CLI dist; the test points the
-      # CLI at the staged dir via `-Dcomposeai.cli.libDaemonAndroidDir`) and (2)
+      # daemon. Guards (1) the CLI fetching the Android daemon runtime from the
+      # compose-preview-daemon release on first use (`DaemonSidecarProvision` — it is not inside
+      # the CLI dist) and (2)
       # `BundleDaemonCommand.composeDaemonClasspath` putting the carried IR-replay libs on the
       # daemon `-cp` (else replay dies with NoClassDefFoundError). The ubuntu-latest image ships an
       # Android SDK (ANDROID_HOME/ANDROID_SDK_ROOT) which the daemon launch resolves android.jar
@@ -806,7 +733,6 @@ jobs:
       - name: Pre-build CLI install + sample bundles + publish plugin
         run: >-
           ./gradlew :cli:installDist
-          :cli:stageDaemonAndroidLibs
           :samples:wear:composePreviewBundle
           :samples:remotecompose:composePreviewBundle
           :gradle-plugin:publishToMavenLocal --stacktrace

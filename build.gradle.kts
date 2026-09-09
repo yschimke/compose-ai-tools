@@ -153,41 +153,17 @@ tasks.register<Sync>("stageVendoredRcPlayerJs") {
 // direction); the included `gradle-plugin` build expresses the test's own data (the synthetic
 // project's source files) inline.
 //
-// The publish set is the closure of renderer-android's compile/runtime project deps:
-//   :renderer-android
-//     api :data-a11y-core
-//       api :data-render-core
-//     implementation :data-render-core
-//     implementation :data-motion-core
-//     implementation :data-scroll-core
-//       api :data-render-core
-//       api :data-render-compose
-//         api :data-render-core
-//     implementation :data-scroll-android
-//       api :data-scroll-core
-val androidFunctionalTestPublishTargets =
-  listOf(
-    ":renderer-android",
-    ":data-a11y-core",
-    ":data-render-compose",
-    // The `@InteractionPreview` script expansion + APNG encoder, shared with the desktop renderer.
-    ":data-motion-core",
-    ":data-scroll-core",
-    ":data-scroll-android",
-    // Downloadable-font resolution, an `api` dep of `:renderer-android` — so it is in the published
-    // metadata the synthetic consumer resolves, and the development version exists nowhere but
-    // mavenLocal.
-    ":data-fonts-google",
-  )
-
+// The renderers and their transitive modules used to be published to mavenLocal here so the
+// synthetic consumer projects could resolve `ee.schimke.composeai:renderer-<backend>:<v>` at the
+// plugin's own version. They publish from compose-preview-daemon since #5336 and the plugin
+// resolves them at `PreviewDaemonVersion` from Maven Central, so only the plugin itself still has
+// to reach mavenLocal.
 tasks.register("functionalTestWithAndroid") {
   group = "verification"
   description =
-    "Publishes renderer-android (+ transitive internal modules) and the gradle plugin itself " +
-      "to mavenLocal, builds the compose-preview CLI binary via `:cli:installDist`, then runs " +
+    "Publishes the gradle plugin to mavenLocal, builds the compose-preview CLI binary via `:cli:installDist`, then runs " +
       "gradle-plugin's functionalTest with the opt-in `cli.a11y.e2e=true` flag set so " +
       "`CliA11yEndToEndFunctionalTest` actually fires."
-  androidFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
   // The synthetic Android-library project resolves our plugin through its own
   // `plugins { id("ee.schimke.composeai.preview") version "<v>" }` block (so AGP and our plugin
   // share one classloader hierarchy). That requires the plugin to be in mavenLocal before the
@@ -198,73 +174,12 @@ tasks.register("functionalTestWithAndroid") {
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
 
-// Mirrors `androidFunctionalTestPublishTargets` for the desktop renderer path. After #1472 the
-// plugin auto-adds `composePreviewRenderer("ee.schimke.composeai:renderer-desktop:<v>")` for
-// out-of-tree consumers (no more stub fallback), so the synthetic Compose Desktop project the
-// bundle-render e2e drives needs the artifact + its publishable transitive project-deps in
-// `~/.m2` to resolve. The list is the closure of `:renderer-desktop`'s `implementation`/`api`
-// project deps:
-//   :renderer-desktop
-//     implementation :data-motion-core
-//     implementation :data-scroll-core
-//       api :data-render-core
-//       api :data-render-compose
-//     implementation :data-pseudolocale-core
-//     implementation :data-displayfilter-connector
-//       api :data-displayfilter-core
-//       api :daemon:core
-//         api :renderer-xr-client (daemon-core fronts the native XR render server)
-//         api :data-layoutinspector-core (semantics models + differ for `history/diff mode=semantics`, #1785)
-//         api :data-theme-core (theme-token models + differ for `history/diff mode=data`, #1873)
-//         api :data-preview-overrides-core (named-knob override models daemon-core applies)
-//     implementation :data-preview-overrides-runtime (applies preview overrides at render time)
-//       api :data-preview-overrides-core
-//     implementation :data-deviceframe-connector (device-art bezel compositing — post-capture)
-//       api :data-deviceframe-core
-//     implementation :data-focus-connector-desktop (drives @FocusedPreview focus/press on desktop)
-//       api :data-focus-core
-//     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
-//     implementation :svg-preview-runtime (Skia loadSvgPainter kind=SVG render path)
-//   plus :common-io (the Okio file-IO foundation those modules read/write through).
-//
-// Keep this in sync with the real graph — a missing entry does not fail at configuration time, it
-// fails inside the e2e as `Could not find ee.schimke.composeai:<artifact>` while Gradle resolves
-// the synthetic project's renderer classpath out of `~/.m2`. To re-derive the closure:
-//   ./gradlew :renderer-desktop:dependencies --configuration runtimeClasspath \
-//     | grep -oE "project '?:[A-Za-z0-9:._-]+'?" | sort -u
-// (Gradle 9.7 quotes the path — `project ':data-focus-core'`. The quotes are optional in the
-// pattern so this keeps working if a future Gradle drops them; note the pipeline exits 0 on no
-// match, so an empty result means the format moved, not that the list is complete.)
-// Every project it prints belongs below. Both e2e jobs here are push-to-main/nightly only (skipped
-// on PRs), so drift lands on `main` before anything notices.
-val bundleRenderFunctionalTestPublishTargets =
-  listOf(
-    ":renderer-desktop",
-    ":data-render-compose",
-    ":data-motion-core",
-    ":data-scroll-core",
-    ":data-pseudolocale-core",
-    ":data-displayfilter-connector",
-    ":data-displayfilter-core",
-    ":data-deviceframe-connector",
-    ":data-deviceframe-core",
-    ":data-focus-connector-desktop",
-    ":data-focus-core",
-    ":daemon:core",
-    ":renderer-xr-client",
-    ":data-preview-overrides-runtime",
-    ":lottie-preview-runtime",
-    ":svg-preview-runtime",
-  )
-
 tasks.register("functionalTestWithBundleRender") {
   group = "verification"
   description =
-    "Publishes renderer-desktop (+ transitive internal modules) and the gradle plugin itself " +
-      "to mavenLocal, builds the compose-preview CLI binary via `:cli:installDist`, then runs " +
+    "Publishes the gradle plugin to mavenLocal, builds the compose-preview CLI binary via `:cli:installDist`, then runs " +
       "gradle-plugin's functionalTest with the opt-in `bundle.render.e2e=true` flag set so " +
       "`BundleRenderEndToEndFunctionalTest` actually fires."
-  bundleRenderFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
   // Synthetic Compose Desktop project resolves the plugin from mavenLocal via the same
   // `id(...) version "<v>"` block the a11y e2e uses; pre-publish or `BUILD FAILED`.
   dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
@@ -277,22 +192,18 @@ tasks.register("functionalTestWithBundleRender") {
 tasks.register("functionalTestWithAndroidBundleDaemon") {
   group = "verification"
   description =
-    "Builds the compose-preview CLI install dist (now shipping `lib-daemon-android/`) plus the " +
+    "Builds the compose-preview CLI install dist plus the " +
       "Android sample bundles (`:samples:wear` Wear-tile/Compose, `:samples:remotecompose` Remote " +
       "Compose), then runs gradle-plugin's functionalTest with `bundle.daemon.android.e2e=true` so " +
       "`AndroidBundleDaemonRenderFunctionalTest` drives `compose-preview bundle daemon` against " +
       "each bundle and renders protolayout / remotecompose / classic previews to PNG. Needs a " +
       "local Android SDK (ANDROID_HOME / ANDROID_SDK_ROOT) for android.jar + the Robolectric build."
-  // Same publish targets as the desktop e2e — running the full `functionalTest` also exercises
-  // tests that resolve the plugin (and renderer-desktop transitives) from mavenLocal.
-  bundleRenderFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
   dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
-  // The CLI install dist provides the `compose-preview` binary; #1685 moved the Android daemon
-  // runtime OUT of it into a standalone archive, so those jars now come from the staged dir
-  // produced by `:cli:stageDaemonAndroidLibs`. The test points the CLI at that dir via
-  // `-Dcomposeai.cli.libDaemonAndroidDir`.
+  // The CLI install dist provides the `compose-preview` binary. The Android daemon runtime is not
+  // in it: the CLI fetches `compose-preview-android-daemon-<v>.zip` from the compose-preview-daemon
+  // release on first use, which is the path the e2e exercises (`-Pbundle.daemon.android.libDir`
+  // points it at an unpacked copy instead).
   dependsOn(":cli:installDist")
-  dependsOn(":cli:stageDaemonAndroidLibs")
   // The Android sample bundles the test renders. Each `composePreviewBundle` runs the plugin's
   // render (Robolectric) + pack against the real sample, emitting an `backend="android"` bundle
   // with non-empty `intermediateRepresentations` (Wear tile + Remote Compose IR) alongside classic
@@ -343,46 +254,33 @@ tasks.register("functionalTestWithAndroidBundleDaemon") {
 // exactly the artefact that goes stale silently, and going stale here means either publishing a
 // module twice or dropping one out of a release.
 //
-// So Gradle prints the mapping it actually has. `mavenTrain()` in the publishing convention plugin
-// is the single definition of which train a module is on, shared with the version it publishes at,
-// so the task list and the version can never disagree about a module.
+// So Gradle prints the mapping it actually has.
 //
-// Deliberately NOT wired into the release yet: this prints, and nothing consumes it.
+// It used to print a train column too: `data/…` published on a line of its own, to skip the 58
+// extractor modules on releases that did not touch them. They publish from compose-preview-daemon
+// since #5336, which took the second train with them; one line is left, and the release publishes
+// it whole. docs/design/RELEASE_TRAINS.md.
 val printPublishTasks by
   tasks.registering {
     group = "publishing"
-    description =
-      "Print the publish task path for each module on a Maven train (-Ptrain=core|data|all)."
+    description = "Print the publish task path for each module this build publishes."
     notCompatibleWithConfigurationCache("Inspects the project tree at execution time")
-    val requested = (project.findProperty("train") as String? ?: "all")
     val rootDirPath = rootDir
     val rows =
       subprojects
         .filter { it.plugins.hasPlugin("composeai.maven-publishing") }
         .map { p ->
           val dir = p.projectDir.relativeTo(rootDirPath).invariantSeparatorsPath
-          Triple(
-            if (dir.startsWith("data/")) "data" else "core",
-            "${p.path}:publishAndReleaseToMavenCentral",
-            dir,
-          )
+          "${p.path}:publishAndReleaseToMavenCentral" to dir
         }
     doLast {
-      require(requested in setOf("core", "data", "all")) {
-        "unknown train '$requested' (expected core, data or all)"
-      }
       // `gradle-plugin` is an includeBuild, so its four publishing modules are not `subprojects`
       // of this build and the enumeration above cannot see them. They are addressed through the
       // included build's own root task, which is what the release has always done — and they are
       // all on the `core` train, being the plugin itself and its helpers. Emitted here rather
       // than left for the caller to remember: a task list that silently omits the Gradle plugin
       // is a release that publishes everything except the artifact consumers actually apply.
-      val all =
-        rows +
-          Triple("core", ":gradle-plugin:publishAndReleaseToMavenCentral", "gradle-plugin")
-      all
-        .filter { (train, _, _) -> requested == "all" || train == requested }
-        .sortedBy { (_, task, _) -> task }
-        .forEach { (train, task, dir) -> println("$train\t$task\t$dir") }
+      val all = rows + (":gradle-plugin:publishAndReleaseToMavenCentral" to "gradle-plugin")
+      all.sortedBy { (task, _) -> task }.forEach { (task, dir) -> println("$task\t$dir") }
     }
   }

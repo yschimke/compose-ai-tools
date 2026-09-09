@@ -1,8 +1,12 @@
 # Release trains
 
-**Status: measurement + proposal.** The guard in § 4 is implemented and running in reporting mode.
-The dependency lock state in § 6 is implemented and the guard now reads it. The train split in
-§ 5 is not built, and § 6's graph-based measurement supersedes its grouping. Issue
+**Status: measurement + history.** The guard in § 4 is implemented and gates the publish. The
+dependency lock state in § 6 is implemented and the guard reads it. The two-train split in § 5 was
+built and then retired: the `data/*` modules it separated publish from
+[compose-preview-daemon](https://github.com/yschimke/compose-preview-daemon) since its 3.0.0
+(compose-ai-tools#5336), which took the second line — and the 58 modules — out of this repository
+altogether. One line remains, published whole when the guard says it changed. The `dataVersion`
+field of the readiness marker and the `--train` option of the guard script went with it. Issue
 [#4772](https://github.com/yschimke/compose-ai-tools/issues/4772).
 
 This repository publishes 94 Maven Central artifacts on a version line that cuts a release

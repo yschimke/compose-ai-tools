@@ -57,13 +57,13 @@ dependencies {
   implementation(libs.compose.remote.creation)
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
-  implementation(project(":preview-annotations"))
+  implementation(libs.composeai.preview.annotations)
   implementation(libs.activity.compose)
   // `RemoteOverridablePreview` bridges connector-side named-value overrides into the running
   // Remote Compose player. Sample uses it in place of upstream `RemotePreview` so the panel
   // editor's `renderNow.overrides.remoteCompose.namedValues` flips `rememberNamedRemoteString`
   // bindings without rebuilding the document.
-  implementation(project(":data-remotecompose-connector"))
+  implementation(libs.composeai.data.remotecompose.connector)
   // The embedded player, on the *runtime* classpath. The connector declares it `compileOnly` (same
   // as its alpha `compose-remote` deps), so a consumer that wants the embedded replay lane has to
   // supply it — otherwise `RemoteComposeIrReplay`'s classloader gate never finds it and a

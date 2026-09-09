@@ -140,13 +140,13 @@ val functionalTestTask =
       "composeai.functionalTest.androidBundleDaemon",
       androidBundleDaemonE2E.toString(),
     )
-    // #1685 moved the Android daemon runtime out of the CLI install dist into a standalone archive,
-    // so the e2e points the CLI at the staged jars dir (`:cli:stageDaemonAndroidLibs` output) via
-    // `-Dcomposeai.cli.libDaemonAndroidDir`. Passed unconditionally (config-cache-safe, same
-    // rationale as `cliBinary` below); the test asserts it exists past the opt-in gate.
+    // The Android daemon runtime is not staged by this build any more: the CLI fetches it from the
+    // compose-preview-daemon release on first use (`DaemonSidecarProvision`), which is exactly the
+    // path the e2e exercises. `-Dcomposeai.cli.libDaemonAndroidDir` still points it at an unpacked
+    // copy when one is given.
     systemProperty(
       "composeai.functionalTest.libDaemonAndroidDir",
-      rootDir.parentFile?.resolve("cli/build/staged-daemon-android-libs")?.absolutePath ?: "",
+      providers.gradleProperty("bundle.daemon.android.libDir").orNull ?: "",
     )
     // Paths to the Android sample bundles the test renders. Built by the root build's
     // `:samples:wear:composePreviewBundle` / `:samples:remotecompose:composePreviewBundle`. Passed
@@ -230,7 +230,12 @@ val generatePluginVersionResource =
     // cache directory the CLI writes (`XrCompositeProvision`). Both sides bake the one catalog
     // value; addressing it by each side's own version is what used to force a rebuild per release.
     val xrComposite = libs.versions.xr.composite.get()
+    // The compose-preview-daemon release the renderers and daemon hosts resolve at for external
+    // consumers (`PreviewDaemonVersion`). Those modules left this build in #5336 and publish on
+    // their own line, so the plugin's version no longer names one they exist at.
+    val previewDaemon = libs.versions.composeai.preview.daemon.get()
     inputs.property("version", pluginVersion)
+    inputs.property("previewDaemon", previewDaemon)
     inputs.property("xrCompose", xrCompose)
     inputs.property("xrRuntimeTesting", xrRuntimeTesting)
     inputs.property("xrScenecoreTesting", xrScenecoreTesting)
@@ -242,7 +247,7 @@ val generatePluginVersionResource =
       val base =
         outputDir.get().file("ee/schimke/composeai/plugin/plugin-version.properties").asFile
       base.parentFile.mkdirs()
-      base.writeText("version=$pluginVersion\n")
+      base.writeText("version=$pluginVersion\npreviewDaemon=$previewDaemon\n")
       val xr =
         outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile
       xr.writeText(

@@ -83,6 +83,9 @@ internal object ServerDistributionProvision {
     }
   }
 
+  /** The default HTTP fetch, shared with [DaemonSidecarProvision] so the two cannot differ. */
+  internal fun fetch(url: String, dest: File) = defaultFetcher.fetchTo(url, dest)
+
   /** The release this CLI fetches: the environment override, else the pin it was built against. */
   fun version(env: (String) -> String? = System::getenv): String =
     env(VERSION_ENV)?.trim()?.takeIf { it.isNotBlank() } ?: SERVE_VERSION

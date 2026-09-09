@@ -32,10 +32,6 @@
         {
           "type": "generic",
           "path": ".github/actions/notification-previews/action.yml"
-        },
-        {
-          "type": "generic",
-          "path": "gradle.properties"
         }
       ]
     }

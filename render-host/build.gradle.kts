@@ -56,13 +56,13 @@ dependencies {
   // beside, instead of against whichever compose-ai-tools release the server happened to pin. The
   // skew that made #180 worth filing — the render host built against 1.62.0 while running against
   // main — cannot recur from this side.
-  api(project(":preview-data-api"))
+  api(libs.composeai.preview.data.api)
   api(project(":bundle-format"))
   api(project(":bundle-coordinates"))
-  api(project(":daemon:core"))
+  api(libs.composeai.daemon.core)
   api(project(":render-session-api"))
   api(project(":render-session-subprocess"))
-  api(project(":data-remotecompose-core"))
+  api(libs.composeai.data.remotecompose.core)
 
   // Layer 0. These stay published coordinates in both repositories: contracts is shape-only and
   // below us, which is exactly the dependency direction the layer rule allows.

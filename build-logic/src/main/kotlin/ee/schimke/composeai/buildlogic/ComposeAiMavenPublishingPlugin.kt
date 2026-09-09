@@ -125,53 +125,28 @@ private fun Project.configureAndroidLibraryPublication() {
 }
 
 /**
- * Which of the two Maven version lines this module publishes on.
- *
- * Everything under `data/` versions separately from everything else. That split is lopsided on purpose: 58 of the
- * 94 published modules live under `data/` and they change on roughly a third of releases, so
- * giving them their own line stops the largest and slowest-moving block of artifacts being
- * republished byte-identical on every release. Costed at −50.7% of module-publications in
- * `docs/design/RELEASE_TRAINS.md` § 5, against −61.6% for a five-way split that needs three more
- * version lines to get there.
- *
- * Derived from the module's directory rather than a list, for the same reason the guard enumerates
- * modules from the build files: a list is a thing that goes stale silently, and here going stale
- * means publishing a POM that names a sibling version which does not exist.
- */
-internal fun Project.mavenTrain(): String =
-  if (projectDir.relativeTo(rootDir).invariantSeparatorsPath.startsWith("data/")) "data" else "core"
-
-/**
  * The version this module publishes at.
  *
- * Each train takes **its own line's** version — `CORE_LINE_VERSION` / `DATA_LINE_VERSION` — which
- * is the release tag when that train publishes and the last version it actually reached Central at
- * when it does not. On a release where both trains change the three values are equal and this is a
- * no-op; on a split release they are not, and a module must carry the version its own line
- * publishes at rather than the tag's.
+ * `CORE_LINE_VERSION` when the release sets it — the release tag when this release publishes, and
+ * the last version the modules actually reached Central at when the guard skipped the publish —
+ * else `PLUGIN_VERSION`. Kept apart from the tag so a skipped release never stamps a never-uploaded
+ * version onto a POM: v2.2.1 shipped `data-remotecompose-connector:2.2.1` requiring
+ * `daemon-core:2.2.1` with the core line held at 2.2.0, which resolved for nobody
+ * (yschimke/wear-m3-catalog#350).
  *
- * Cross-train POMs then come out right in **both** directions, because a module depending on
- * `project(":…")` across the trains gets that project's `version`: `renderer-desktop:2.9.0` names
- * `data-focus-core:2.7.0`, and `data-remotecompose-connector:2.9.0` names `daemon-core:2.7.0`.
+ * That failure came from the two-train split, where `data/…` versioned on a line of its own and
+ * each module took its train's version. The data modules publish from compose-preview-daemon since
+ * #5336 and the split went with them; one line is left, and the variable keeps its name.
  *
- * Only the first direction used to hold. `core` took `PLUGIN_VERSION` — the raw tag — whether or
- * not the core train published, so on a data-only release every core module carried a version that
- * was never uploaded, and the data POMs naming those coordinates pinned it. That shipped in v2.2.1:
- * `data-remotecompose-connector:2.2.1` requires `daemon-core:2.2.1`, core having stayed at 2.2.0,
- * so the data line resolved for nobody and consumers bumping to it went red at dependency
- * resolution (yschimke/wear-m3-catalog#350). A skipped train has to stop stamping its tag onto the
- * one that shipped.
- *
- * **Both line versions are ignored unless `PLUGIN_VERSION` is set.** Outside a release all three
- * are absent and everything falls to the snapshot version; a stray `CORE_LINE_VERSION` in a
- * developer shell must not silently version half the build differently from the other half.
+ * **The line version is ignored unless `PLUGIN_VERSION` is set.** Outside a release both are
+ * absent and everything falls to the snapshot version; a stray `CORE_LINE_VERSION` in a developer
+ * shell must not silently version the build.
  */
 private fun Project.publishedVersion(): String {
   val pluginVersion =
     providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
       ?: return nextPatchSnapshotVersion()
-  val lineVariable = if (mavenTrain() == "data") "DATA_LINE_VERSION" else "CORE_LINE_VERSION"
-  return providers.environmentVariable(lineVariable).orNull?.takeIf { it.isNotBlank() }
+  return providers.environmentVariable("CORE_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
     ?: pluginVersion
 }
 

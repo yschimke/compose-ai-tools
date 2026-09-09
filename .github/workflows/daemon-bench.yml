@@ -12,7 +12,8 @@ name: Daemon Latency Bench
 # experimental?" decision (promote when warm save→pixel stays < 1 s on desktop /
 # < 2 s on Android and the advantage over stage 1 holds above 200 ms); it
 # does not change any default. Numbers from a shared CI runner are noisier than the
-# reference machine in docs/daemon/baseline-latency.md — treat them as trend, not gospel.
+# reference machine in compose-preview-daemon's docs/daemon/baseline-latency.md — treat them as
+# trend, not gospel. The committed history lives there too (#5336); here the CSV is a build output.
 #
 # Each job runs `benchPreviewLatency` first (stage 0 + the render baseline the verdict
 # reuses) then `benchCompileStages` (stage 1 + stage 2 + verdict).
@@ -41,11 +42,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       # Start from an empty CSV so this run's artifact + verdict reflect only this
-      # run. The committed CSV holds reference-machine history (kept in git); the
-      # desktop benchPreviewLatency APPENDS, so without this it would mix CI rows
-      # with the checked-in rows and skew the render-baseline median the verdict reads.
+      # run: the desktop benchPreviewLatency APPENDS, so a stale file from a previous
+      # run would skew the render-baseline median the verdict reads.
       - name: Reset baseline CSV (CI runs start clean)
-        run: rm -f docs/daemon/baseline-latency.csv
+        run: rm -f build/daemon-bench/baseline-latency.csv
       - name: Run desktop latency bench (stage 0 + render baseline)
         run: ./gradlew :samples:desktop-daemon-bench:benchPreviewLatency
       - name: Run desktop compile-stage bench (stage 1 + stage 2 + verdict)
@@ -56,8 +56,8 @@ jobs:
         with:
           name: daemon-bench-desktop
           path: |
-            docs/daemon/baseline-latency.csv
-            docs/daemon/stage-2-verdict-desktop.md
+            build/daemon-bench/baseline-latency.csv
+            build/daemon-bench/stage-2-verdict-desktop.md
 
   android-bench:
     name: Daemon Bench (android)
@@ -71,7 +71,7 @@ jobs:
       # Start from an empty CSV so this run's artifact + verdict reflect only this
       # run (see the desktop job for the rationale).
       - name: Reset baseline CSV (CI runs start clean)
-        run: rm -f docs/daemon/baseline-latency.csv
+        run: rm -f build/daemon-bench/baseline-latency.csv
       - name: Run android latency bench (stage 0 + render baseline)
         run: ./gradlew :samples:android-daemon-bench:benchPreviewLatency
       - name: Run android compile-stage bench (stage 1 + stage 2 + verdict)
@@ -82,5 +82,5 @@ jobs:
         with:
           name: daemon-bench-android
           path: |
-            docs/daemon/baseline-latency.csv
-            docs/daemon/stage-2-verdict-android.md
+            build/daemon-bench/baseline-latency.csv
+            build/daemon-bench/stage-2-verdict-android.md

@@ -71,6 +71,6 @@ dependencies {
   implementation(libs.compose.foundation)
   implementation(libs.compose.ui.tooling.preview)
   // `previewOverrideString` — the declared-knob runtime the serve lane flips via `?knob.label=`.
-  implementation(project(":data-preview-overrides-runtime"))
+  implementation(libs.composeai.data.preview.overrides.runtime)
   debugImplementation("androidx.compose.ui:ui-tooling")
 }

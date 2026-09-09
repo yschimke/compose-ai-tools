@@ -32,7 +32,7 @@ Four kinds already describe exactly what a captured screen would carry:
 
 And the primitive they ride is transport-neutral by construction: a data product is
 `(kind, schemaVersion, payload)` with an inline / `path` / `bytes` transport
-([`docs/daemon/DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md)), written on disk as
+([`docs/daemon/DATA-PRODUCTS.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DATA-PRODUCTS.md)), written on disk as
 `data/<id>/<kind-with-slashes-as-dashes>.json`. Nothing in that shape says the `<id>` has to be a
 preview id.
 
@@ -132,7 +132,7 @@ trusting the device.
 The capture id takes the preview id's place in the on-disk layout, so anything reading those files
 by path works unchanged. **Discovery does not**: `resources/list` enumerates discovered `@Preview`s,
 and MCP validates a URI against "a known workspace ID + module path + preview FQN"
-([`docs/daemon/MCP.md`](../daemon/MCP.md) § Security & trust model). A capture matches none of those,
+([`docs/daemon/MCP.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md) § Security & trust model). A capture matches none of those,
 so reaching one over MCP needs either a `compose-capture://` scheme beside the two that exist or a
 registration path that makes a capture a first-class resource. Pick one before building the host
 command, because it decides whether a capture id is free-form or has to be derivable.
@@ -176,7 +176,7 @@ A second documentation drift, found the same way and worth fixing wherever it is
 copied the reference page and inherited the error. It is the same failure as `uia/hierarchy`'s field
 name: on a render the root and the screen coincide, so nothing catches it.
 
-Note also that [`docs/daemon/DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md) § "Module split" says
+Note also that [`docs/daemon/DATA-PRODUCTS.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DATA-PRODUCTS.md) § "Module split" says
 connectors are "Not published — internal to the daemon process", while every `data/*/connector`
 build file applies `composeai.maven-publishing`. The doc is stale; whichever way that is resolved,
 Tier 2 should not be the thing that depends on the answer.
@@ -217,7 +217,7 @@ Needs a root-selection rule or a forest format, and it is a separate question fr
 one below because both roots are in the *same* window.
 
 **A durable home.** `build/compose-previews/data/<id>/` is documented as ephemeral and rewritten per
-render ([`DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md)), and a `gradle clean` takes the tree with
+render ([`DATA-PRODUCTS.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DATA-PRODUCTS.md)), and a `gradle clean` takes the tree with
 it. That is right for a render and wrong for a capture, whose whole purpose is to outlive the
 session as a reference. The host command needs a promotion step into a durable store with its own
 manifest; the build directory is a landing zone, not the destination.

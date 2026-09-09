@@ -66,7 +66,7 @@ long-running calls. Data products are read via `list_data_products`,
 `subscribe_preview_data`, and `get_preview_data`.
 
 For the full tool surface, URI scheme, and wire protocol see
-[`docs/daemon/MCP.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/MCP.md).
+[`docs/daemon/MCP.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md).
 
 ### Connect a remote UI-builder session
 

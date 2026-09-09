@@ -1948,7 +1948,7 @@ internal object AndroidPreviewSupport {
       addRenderGraphDependency(
         project,
         rendererConfig.name,
-        "ee.schimke.composeai:renderer-android:${PluginVersion.value}",
+        "ee.schimke.composeai:renderer-android:${PreviewDaemonVersion.value}",
       )
     }
 
@@ -2000,7 +2000,7 @@ internal object AndroidPreviewSupport {
         addRenderGraphDependency(
           project,
           rendererConfig.name,
-          "ee.schimke.composeai:data-layoutinspector-connector:${PluginVersion.value}",
+          "ee.schimke.composeai:data-layoutinspector-connector:${PreviewDaemonVersion.value}",
         )
       }
       addRenderGraphDependency(
@@ -2091,7 +2091,7 @@ internal object AndroidPreviewSupport {
       addRenderGraphDependency(
         project,
         daemonRendererConfig.name,
-        "ee.schimke.composeai:daemon-android:${PluginVersion.value}",
+        "ee.schimke.composeai:daemon-android:${PreviewDaemonVersion.value}",
       )
     }
 

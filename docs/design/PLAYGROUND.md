@@ -547,7 +547,7 @@ Each phase is independently shippable and useful on its own.
 ### 7.1 Latency note
 
 Do **not** size expectations from the stage-0 numbers in
-[`docs/daemon/baseline-latency.md`](../daemon/baseline-latency.md) (≈9 s desktop
+[`docs/daemon/baseline-latency.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/baseline-latency.md) (≈9 s desktop
 `render` cold) — those are per-process Gradle forks, not the daemon path. The
 resident daemon renders at p50 ≈ 1.9 s warm (`/status.json` `renderStats`), and
 the stage-2 in-process BTA compile targets < 1 s warm on desktop. The playground

@@ -221,6 +221,13 @@ jobs:
           # androidx.xr.compose upgrade) so the integration matrix can apply them to
           # the checked-out external repo before Gradle configures it.
           cp .github/ci/patches/*.patch bundle/ci/
+          # The compose-preview-daemon pin this checkout builds against. The
+          # render_xr cell adds `preview-annotations` at this version to the
+          # consumer's compile classpath; that artifact is published by the daemon
+          # repository, so it is never in the mavenLocal tree shipped above.
+          sed -n 's/^composeai-preview-daemon *= *"\([^"]*\)".*/\1/p' gradle/libs.versions.toml \
+            | head -1 > bundle/ci/preview-daemon-version
+          test -s bundle/ci/preview-daemon-version
           tar -czf compose-ai-bundle.tar.gz -C bundle .
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1010,14 +1017,14 @@ jobs:
           MATRIX_MODULE: ${{ matrix.module }}
         run: |
           set -euo pipefail
-          # preview-annotations publishes at the repo's release-please version
-          # (changes every release), so read it from the mavenLocal snapshot the
-          # "Install plugin and CLI" step seeded rather than hardcoding a version
-          # that rots.
-          ann_dir="$HOME/.m2/repository/ee/schimke/composeai/preview-annotations"
-          version=$(ls -1 "$ann_dir" 2>/dev/null | grep -E '^[0-9]' | sort -V | tail -1 || true)
+          # preview-annotations is published by compose-preview-daemon, not this
+          # repository, so it is never in the mavenLocal snapshot the build-plugin
+          # job seeds. The bundle carries the pin this checkout builds against
+          # (there is no checkout of this repo here); the consumer resolves the
+          # artifact from Maven Central like any other daemon-line dependency.
+          version=$(cat "$GITHUB_WORKSPACE/bundle/ci/preview-daemon-version" 2>/dev/null || true)
           if [ -z "$version" ]; then
-            echo "::error::preview-annotations not found in mavenLocal ($ann_dir) — the build-plugin job must publish it."
+            echo "::error::bundle/ci/preview-daemon-version is missing — the build-plugin bundle step must write it."
             exit 1
           fi
           echo "Using ee.schimke.composeai:preview-annotations:$version"

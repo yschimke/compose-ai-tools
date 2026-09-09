@@ -35,7 +35,7 @@ dependencies {
   // Height`, `targetCellWidth/Height`, `resizeMode` into the per-render channel so the
   // launcher-widget data product surfaces the constraints on its payload. Without this dep the
   // helper still inflates the widget; the payload just doesn't carry the discovered metadata.
-  implementation(project(":data-launcher-widget-connector"))
+  implementation(libs.composeai.data.launcher.widget.connector)
 
   // `translate(...)` reads `AppWidgetProviderInfo` fields + `Context.resources.displayMetrics`
   // — both real Android types, so the unit tests run under Robolectric to get a working

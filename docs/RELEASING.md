@@ -227,17 +227,16 @@ republishing the release.
    mistakes are: publishing needlessly costs quota, while *not* publishing when we should have
    cannot be repaired, since Central refuses a version twice.
 
-   A release where `data/` did not change therefore republishes 36 modules rather than 94, and
-   one where neither line changed republishes none. The job summary names both lines' verdicts,
-   baselines and versions.
+   A release where no published module changed republishes none. (The `data/*` modules used to
+   version on a second line so a release could republish one line and not the other; they publish
+   from compose-preview-daemon since #5336, and the split went with them.) The job summary names
+   the verdict, the baseline and the version.
 
    **A release that skips a publish is still fully usable.** The CLI it ships is baked to resolve
    the plugin at the last version of the **core** line that *is* on Central rather than at its own
    (`MAVEN_LINE_VERSION`; see
    [`Version.kt`](../cli/src/main/kotlin/ee/schimke/composeai/cli/Version.kt)). Auto-inject,
-   `compose-preview init-script` and `doctor`'s recommendations all follow it. The data line needs
-   no CLI-side pin: consumers reach it as a POM transitive of core, and the release exports
-   `DATA_LINE_VERSION` so those POMs name a version that exists. The job summary on
+   `compose-preview init-script` and `doctor`'s recommendations all follow it. The job summary on
    every release run names the verdict, the baseline it diffed against and the Maven line the CLI
    was built with.
 

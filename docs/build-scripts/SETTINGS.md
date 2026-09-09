@@ -228,7 +228,7 @@ in `settings.gradle.kts` and the `composeai.remoteCache` line in
 
 Each `data/<product>/` directory carries a `core` (generic Android / Compose /
 AndroidX-test code, published) and a `connector` (daemon glue, unpublished)
-module — see [daemon/DATA-PRODUCTS.md](../daemon/DATA-PRODUCTS.md) § "Module split
+module — see [daemon/DATA-PRODUCTS.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DATA-PRODUCTS.md) § "Module split
 (D2.2)".
 
 The project paths are flat (`:data-a11y-core`) rather than nested

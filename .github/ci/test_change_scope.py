@@ -6,7 +6,7 @@ Pure stdlib (unittest). Run: python3 .github/ci/test_change_scope.py -v
 The `decide` cases use real changed-file sets from recent PRs so the config
 and the classifier are pinned to actual project history: docs / samples /
 vscode / scripts-only PRs must skip; anything touching the plugin / CLI /
-renderers / daemon / data / build wiring must run.
+build wiring must run.
 """
 
 import importlib.util
@@ -25,9 +25,7 @@ mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
 INTEGRATION_CONFIG = json.loads((_HERE / "integration-safe-paths.json").read_text())
-DAEMON_CONFIG = json.loads((_HERE / "daemon-job-paths.json").read_text())
 INTEGRATION_IGNORE = [mod.glob_to_regex(p) for p in INTEGRATION_CONFIG["ignorePaths"]]
-DAEMON_IGNORE = [mod.glob_to_regex(p) for p in DAEMON_CONFIG["ignorePaths"]]
 IGNORE = INTEGRATION_IGNORE
 
 
@@ -72,29 +70,17 @@ class DecideRun(unittest.TestCase):
     def test_gradle_plugin(self):
         self.assertEqual(decide(["gradle-plugin/src/main/kotlin/Plugin.kt"]), "true")
 
-    def test_renderer(self):
-        self.assertEqual(decide(["renderers/android/src/main/kotlin/R.kt"]), "true")
-
-    def test_daemon(self):
-        self.assertEqual(decide(["daemon/core/src/main/kotlin/D.kt"]), "true")
-
-    def test_data_figma_svg(self):
-        # data/** is deliberately NOT ignored (conservative: it's published).
-        self.assertEqual(decide(["data/figma-svg/src/main/kotlin/Svg.kt"]), "true")
+    # `test_renderer`, `test_daemon` and `test_data_figma_svg` were here: the renderers, the
+    # daemons and the data extractors live in compose-preview-daemon now (#5336), so those paths
+    # cannot occur in this repository and the assertions could only pass vacuously.
 
     def test_cli(self):
         # The CLI materialises the init script every integration job uses.
         self.assertEqual(decide(["cli/src/main/kotlin/InitScript.kt"]), "true")
 
-    # `test_common_io` was here: `common-io/**` was a direct dep of :daemon:harness, so a change
-    # to it had to run the harness. That module now lives in compose-preview-contracts and the
-    # path cannot occur in this repository, so the assertion could only ever pass vacuously.
-    # Not repointed at :daemon:core — `test_daemon` above already covers exactly that.
-
-    def test_daemon_harness_baselines(self):
-        # The harness's committed pixel baselines live under daemon/** (not the
-        # top-level renders/**), so a baseline change must re-run the harness.
-        self.assertEqual(decide(["daemon/harness/baselines/desktop/scene.png"]), "true")
+    # `test_common_io` and `test_daemon_harness_baselines` were here, for the same reason as the
+    # three above: `common-io/**` moved to compose-preview-contracts and the harness baselines to
+    # compose-preview-daemon.
 
     def test_build_wiring(self):
         self.assertEqual(decide(["settings.gradle.kts"]), "true")
@@ -115,15 +101,9 @@ class DecideRun(unittest.TestCase):
 
 
 class WorkflowSpecificConfigs(unittest.TestCase):
-    def test_cli_runs_integration_but_not_daemon_harness(self):
+    def test_cli_runs_integration(self):
         files = ["cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"]
         self.assertEqual(mod.decide(files, INTEGRATION_IGNORE), "true")
-        self.assertEqual(mod.decide(files, DAEMON_IGNORE), "false")
-
-    def test_daemon_change_runs_both(self):
-        files = ["daemon/core/src/main/kotlin/Daemon.kt"]
-        self.assertEqual(mod.decide(files, INTEGRATION_IGNORE), "true")
-        self.assertEqual(mod.decide(files, DAEMON_IGNORE), "true")
 
 
 if __name__ == "__main__":

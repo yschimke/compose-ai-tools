@@ -141,11 +141,15 @@ class BundleRenderer(
     manifest: BundleReader.Manifest,
     previews: PreviewManifest,
   ): Result {
+    // The renderer is fetched from the compose-preview-daemon release on first use; an explicit
+    // `-Dcomposeai.cli.libRendererDir` or a `lib-renderer/` inside the install wins over that.
+    DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP, log = logSink)
     val rendererJars = locateBundleSidecarJars("lib-renderer")
     if (rendererJars.isEmpty()) {
       throw IllegalStateException(
         "bundle render: no renderer jars found. Looked in `${bundleSidecarSearchDescription("lib-renderer")}`; " +
-          "either build the CLI via `./gradlew :cli:installDist` or set `-Dcomposeai.cli.appHome=<install-root>`."
+          "it is fetched from the compose-preview-daemon release on first use, or set " +
+          "`-Dcomposeai.cli.libRendererDir=<dir>/lib-renderer`."
       )
     }
     val skikoNative = SkikoNativeProvision.prepare(rendererJars)

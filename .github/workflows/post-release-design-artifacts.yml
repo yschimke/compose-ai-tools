@@ -1,10 +1,10 @@
 name: Post-release design artifacts
 
-# Regenerate the `design-artifacts/<system>` delivery branches for the runtime a
-# release just published. Every sticker bundle pins the RELEASED preview-runtime
-# coordinates (`composeaiReleasedRuntimeVersion` in gradle.properties, which the
-# merged release PR bumps), so the published bundles go stale the instant a
-# release cuts — this rebuilds them instead of waiting for the Monday cron.
+# Regenerate the `design-artifacts/<system>` delivery branches for the CLI a
+# release just published. The bundles are rendered by the released CLI, so they
+# go stale the instant a release cuts — this rebuilds them instead of waiting
+# for the Monday cron. (They used to pin this repository's released preview
+# runtimes too; those publish from compose-preview-daemon since #5336.)
 #
 # This used to be a `regenerate-design-artifacts` job inside release-please.yml.
 # It was moved out because an all-systems regeneration takes 31–38 minutes (see
@@ -108,18 +108,16 @@ jobs:
             echo "tag=${tag}"
           } >> "$GITHUB_OUTPUT"
 
-  # Same call the release chain used to make: every bundle pins the released
-  # runtime, so a release republishes all of them, not just the catalogs whose
-  # sources happened to change. `force-all` is passed explicitly rather than left
+  # Same call the release chain used to make: every bundle is rendered by the
+  # released CLI, so a release republishes all of them, not just the catalogs
+  # whose sources happened to change. `force-all` is passed explicitly rather than left
   # to the input default — a called workflow inherits THIS workflow's event, and
   # design-artifacts' change-scoping only special-cases `push`.
   #
   # Unlike the in-chain job this renders the head of the default branch rather
   # than the release commit itself (a workflow_run run checks out the default
-  # branch), exactly as the Monday cron does. The coordinate the bundles pin comes
-  # from `composeaiReleasedRuntimeVersion`, which the release PR already bumped on
-  # main, so the published bundles still name the just-released runtime; a catalog
-  # that landed in the minutes after the release is simply included early.
+  # branch), exactly as the Monday cron does; a catalog that landed in the minutes
+  # after the release is simply included early.
   regenerate:
     needs: gate
     if: ${{ needs.gate.outputs.released == 'true' }}

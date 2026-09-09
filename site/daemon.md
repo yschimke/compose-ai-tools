@@ -36,10 +36,10 @@ server bring it up as needed.
 ## Going deeper
 
 The full design docs live in
-[`docs/daemon/`](https://github.com/yschimke/compose-ai-tools/tree/main/docs/daemon):
+[`docs/daemon/`](https://github.com/yschimke/compose-preview-daemon/tree/main/docs/daemon):
 
-- [`DESIGN.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/DESIGN.md) — architecture, lifecycle, leak defense, decisions log.
-- [`PROTOCOL.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/PROTOCOL.md) — the v1 client ↔ daemon wire format.
-- [`CONFIG.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/CONFIG.md) — the `composePreview.daemon { … }` DSL.
-- [`MCP.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/MCP.md) — daemon ↔ MCP mapping and tool surface.
+- [`DESIGN.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/DESIGN.md) — architecture, lifecycle, leak defense, decisions log.
+- [`PROTOCOL.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/PROTOCOL.md) — the v1 client ↔ daemon wire format.
+- [`CONFIG.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/CONFIG.md) — the `composePreview.daemon { … }` DSL.
+- [`MCP.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md) — daemon ↔ MCP mapping and tool surface.
 </content>

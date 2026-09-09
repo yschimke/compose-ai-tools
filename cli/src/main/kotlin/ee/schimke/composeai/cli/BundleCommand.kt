@@ -1505,13 +1505,19 @@ private fun renderBundleWithOverrides(
 ): Boolean {
   val log: (String) -> Unit = { if (verbose) System.err.println("[bundle render] $it") }
   val backend = readBundleBackendForRender(bundleFile) ?: return false
-  if (backend == "desktop") {
-    try {
-      SkikoNativeProvision.prepareInstalledDesktopSidecars()
-    } catch (e: IllegalStateException) {
-      System.err.println("bundle render: ${e.message}")
-      return false
+  // Both sidecars come from the compose-preview-daemon release on first use; the Android one is
+  // too large to ship in the CLI tarball, so a clean install has neither until this runs.
+  try {
+    when (backend) {
+      "desktop" -> {
+        DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
+        SkikoNativeProvision.prepareInstalledDesktopSidecars()
+      }
+      "android" -> DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
     }
+  } catch (e: IllegalStateException) {
+    System.err.println("bundle render: ${e.message}")
+    return false
   }
   // Materialize the daemon workspace in a private temp dir — NOT under outDir. `materialize`
   // extracts the bundle's classes/libs/manifests here, which are implementation artifacts; the

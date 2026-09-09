@@ -3,17 +3,13 @@ import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
-import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.ConfigurableFileCollection
-import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.ClasspathNormalizer
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -64,32 +60,13 @@ tasks.named<Tar>("distTar") {
   compression = Compression.GZIP
 }
 
-// Sidecar configuration carrying the desktop renderer + its Compose Multiplatform runtime. Lives
-// OUTSIDE `runtimeClasspath` so [CheckCliDaemonLibraryBoundary] keeps holding: the CLI's own JVM
-// never loads renderer classes (no version-skew risk against consumer Compose), and the renderer
-// only runs in the subprocess spawned by `compose-preview bundle render`.
-//
-// Resolved files are copied into `cli/build/install/compose-preview/lib-renderer/` by the
-// distribution wiring below, and located at runtime via `APP_HOME/lib-renderer/` (the same env
-// var the generated `bin/compose-preview` script exports for its own classpath).
-val composePreviewRenderer =
-  configurations.create("composePreviewRenderer") {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-  }
-
-// Sidecar configuration carrying the desktop daemon module (`:daemon:desktop`) plus its
-// Compose Multiplatform runtime. Same isolation story as `composePreviewRenderer` above —
-// never on the CLI's own classpath; only loaded by the subprocess JVM that
-// `compose-preview bundle daemon` spawns.
-//
-// Resolved into `cli/build/install/compose-preview/lib-daemon-desktop/` and located at
-// runtime via `APP_HOME/lib-daemon-desktop/`.
-val composePreviewDaemonDesktop =
-  configurations.create("composePreviewDaemonDesktop") {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-  }
+// The desktop renderer (`lib-renderer/`), the desktop daemon (`lib-daemon-desktop/`) and the
+// Android daemon (`lib-daemon-android/`) are NOT staged into this distribution any more. They
+// publish from yschimke/compose-preview-daemon (#5336), whose release attaches them as
+// `compose-preview-desktop-daemon-<v>.tar.gz` and `compose-preview-android-daemon-<v>.zip`, and
+// `DaemonSidecarProvision` fetches the pinned release's archives on first use — the same first-use
+// provisioning the CLI already does for the preview server and the XR compositor. The pin is
+// `composeai-preview-daemon` in the catalog, baked in below as `previewDaemonVersion`.
 
 // Sidecar configuration carrying the desktop/JVM embedded Remote Compose player
 // (`:third-party-rc-embedded-player-jvm`). `compose-preview serve` spawns its `RcJvmRenderMain` as
@@ -103,34 +80,6 @@ val composePreviewRcJvm =
   configurations.create("composePreviewRcJvm") {
     isCanBeResolved = true
     isCanBeConsumed = false
-  }
-
-// Sidecar configuration carrying the Android (Robolectric) daemon module (`:daemon:android`).
-// Same subprocess-only isolation as the desktop daemon above — never on the CLI's own classpath,
-// only loaded by the JVM that `compose-preview bundle daemon` spawns for an `backend="android"`
-// bundle, joined at launch time with the consumer's SDK `android.jar` (resolved from ANDROID_HOME).
-//
-// Unlike the desktop daemon, `:daemon:android` is an AGP `com.android.library`: a plain-JVM
-// consumer like `:cli` can't natively resolve its runtime (AGP exposes it as an AAR with
-// AAR-shaped transitive deps + AGP-generated R.jars). So we mirror `:daemon:harness`'s proven
-// approach instead of staging resolved artifacts directly: `:daemon:android` exposes a
-// `daemonHarnessClasspathFile` consumable configuration whose single artifact is a text file
-// listing the absolute paths of every JAR on its debug-unit-test runtime classpath. We consume
-// that descriptor here (matching attribute, zero AGP variants on the consumer side) and
-// [StageDaemonAndroidLibs] copies the listed jars into `lib-daemon-android/`.
-//
-// Resolved into `cli/build/install/compose-preview/lib-daemon-android/` and located at runtime via
-// `APP_HOME/lib-daemon-android/` (or `-Dcomposeai.cli.libDaemonAndroidDir`).
-val composePreviewDaemonAndroid =
-  configurations.create("composePreviewDaemonAndroid") {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-    attributes {
-      attribute(
-        Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
-        "android",
-      )
-    }
   }
 
 // BTA (Kotlin Build Tools API) *implementation* classpath for the `serve --playground` in-process
@@ -161,34 +110,6 @@ val composePreviewUsagePsi =
     isCanBeResolved = true
     isCanBeConsumed = false
   }
-
-// Gradle resolves a published `ee.schimke.composeai:<x>` coordinate to the workspace project that
-// publishes it — but it matches on the project's *Gradle* identity (`group:name`), not on the
-// `artifactId` its publication declares. Eight of the nine coordinates the published server pulls
-// back into this build are top-level includes whose project name already equals their artifactId
-// (`:bundle-format` -> `bundle-format`, and so on), so they substitute on their own.
-//
-// `daemon-core` is the one that does not: it is `include(":daemon:core")`, so its Gradle name is
-// `core` and Gradle sees `ee.schimke.composeai:core`, which matches nothing in the server's POM.
-// The
-// result without this rule is both copies on the compile classpath — `project(":daemon:core")` from
-// this file and `ee.schimke.composeai:daemon-core:1.53.0` dragged in by the server — which is a
-// duplicate-class classpath (`composePreview.classpathDuplicates=fail` in gradle.properties exists
-// for exactly this shape) and, worse, silently compiles half the CLI against a released copy of a
-// module the workspace is actively changing.
-//
-// Substituting rather than excluding: an `exclude` would drop the coordinate for `:cli` but leave
-// the server's own resolution unaware that a workspace project should stand in for it. Renaming the
-// project to `daemon-core` in `settings.gradle.kts` would fix it structurally and is the better
-// long-term answer; it moves a path every module and CI path filter names, so it is not part of
-// this swap.
-configurations.configureEach {
-  resolutionStrategy.dependencySubstitution {
-    substitute(module("ee.schimke.composeai:daemon-core"))
-      .using(project(":daemon:core"))
-      .because("published server POM names the artifactId; the project is `:daemon:core` (#4732)")
-  }
-}
 
 dependencies {
   // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
@@ -226,7 +147,7 @@ dependencies {
   // CLI tests) keep resolving without an explicit `import` change — same source-compat pattern
   // `:data-a11y-core` used for the D2.2 extraction. External consumers (contrib scripting,
   // third-party tooling) pull `:preview-data-api` directly, not transitively through `:cli`.
-  api(project(":preview-data-api"))
+  api(libs.composeai.preview.data.api)
 
   // The wire contract `compose-preview build-host` serves. `api` because `BuildHostCommand`'s
   // testable seam takes and returns protocol types, and the CLI's own tests drive it by them.
@@ -340,12 +261,12 @@ dependencies {
   implementation(libs.composeai.data.theme.core)
 
   // `fonts/used` sidecar file name for `bundle pack --with-semantics` font carriage.
-  implementation(project(":data-fonts-core"))
+  implementation(libs.composeai.data.fonts.core)
 
   // The renderer's own locale-direction rule, so `serve` resolves a published capture gutter's
   // leading/trailing edges onto left/right exactly as the render that produced the pixels did
   // (pseudolocale first, then the real language table) rather than keeping a second copy of it.
-  implementation(project(":data-pseudolocale-core"))
+  implementation(libs.composeai.data.pseudolocale.core)
 
   // Ktor client (OkHttp engine) for downloading a bundle when the open arg is a URL. The explicit
   // okhttp dep pins the engine to OkHttp 5.x — ktor-client-okhttp 3.0.3 only declares a transitive
@@ -393,10 +314,10 @@ dependencies {
   // Used directly by `DaemonSmokeCheck` (the spawn port + subprocess factory). It used to arrive
   // transitively through `:mcp` as well; since that module left, this line is the only way it is
   // here — which is the point of having declared it.
-  implementation(project(":daemon-client"))
+  implementation(libs.composeai.daemon.client)
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
   // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.
-  implementation(project(":daemon:core"))
+  implementation(libs.composeai.daemon.core)
   // ClassGraph for the `serve --playground` preview scan: a scoped `@Preview` enumeration of a
   // just-compiled snippet's classes dir (mirrors `:daemon:core`'s IncrementalDiscovery, which keeps
   // classgraph as its own `implementation` and so doesn't leak it here).
@@ -411,7 +332,7 @@ dependencies {
   // bundle's `previews/<id>.remotecompose.json` sidecar to advertise editable controls. Pure JVM
   // (payload schema only; the alpha `androidx.compose.remote.*` deps live in the connector, not
   // here), so it stays off the renderer/daemon boundary the CLI guards.
-  implementation(project(":data-remotecompose-core"))
+  implementation(libs.composeai.data.remotecompose.core)
   // `PreviewBackdrop` / `PreviewBackground` — the one chain that decides which ground a preview is
   // presented on, shared with both renderers and both daemons so the served pages cannot disagree
   // with the pixels. Pure JVM ARGB math, no Compose types, so it stays off the renderer/daemon
@@ -424,27 +345,11 @@ dependencies {
   implementation(project(":render-session-api"))
   implementation(project(":render-session-subprocess"))
 
-  // `compose-preview bundle render` ships the desktop renderer + its full Compose Multiplatform
-  // runtime in `lib-renderer/`. Subprocess only; never on the CLI's own classpath.
-  add("composePreviewRenderer", project(":renderer-desktop"))
-
-  // `compose-preview bundle daemon` ships the desktop daemon in `lib-daemon-desktop/`. Same
-  // subprocess-only isolation. The Compose Multiplatform runtime (incl. Skiko) is *not*
-  // bundled here — the subprocess classpath joins `lib-daemon-desktop/*` + `lib-renderer/*`
-  // at launch time, and the renderer sidecar already carries the per-OS Compose stack.
-  add("composePreviewDaemonDesktop", project(":daemon:desktop"))
-
   // `compose-preview serve` ships the desktop/JVM embedded Remote Compose player in `lib-rcjvm/`
   // for the cmp-jvm chip's one-shot render subprocess. Subprocess-only isolation; the Compose +
   // Skiko runtime is not bundled here (the subprocess joins `lib-rcjvm/*` +
-  // `lib-daemon-desktop/*`).
+  // `lib-daemon-desktop/*`, the latter provisioned from the compose-preview-daemon release).
   add("composePreviewRcJvm", libs.rcplayer.embedded.jvm)
-
-  // `compose-preview bundle daemon` ships the Android (Robolectric) daemon in
-  // `lib-daemon-android/`. This resolves `:daemon:android`'s `daemonHarnessClasspathFile`
-  // descriptor (a text file of runtime jar paths) — see the configuration KDoc above — never the
-  // AAR itself, so no AGP variant resolution leaks onto a plain-JVM consumer.
-  add("composePreviewDaemonAndroid", project(":daemon:android"))
 
   // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
   // *strictly* requires `slf4j-api:2.0.17`. Ktor 3.5.0 (and friends) pull `slf4j-api:2.0.18`
@@ -495,65 +400,11 @@ dependencies {
   testImplementation(gradleTestKit())
 }
 
-// Multiple JetBrains Compose Multiplatform `components-*-desktop` artifacts ship as
-// `library-desktop-<version>.jar` (e.g. `components-resources-desktop` and
-// `components-ui-tooling-preview-desktop`), so a flat copy into `lib-daemon-desktop/` collides on
-// filename. Stage the resolved artifacts to a build directory first, disambiguating colliding
-// filenames by Maven `module-version.jar`, so both end up on the daemon's classpath at runtime.
-// The six Skiko native runtimes remain in daemon-desktop's published POM for Maven consumers, but
-// are excluded from CLI staging: [SkikoNativeProvision] downloads only the current host's jar.
-val stageDaemonDesktopLibs =
-  tasks.register<Sync>("stageDaemonDesktopLibs") {
-    description = "Stages :daemon:desktop runtime artifacts, renaming filename collisions."
-    destinationDir = layout.buildDirectory.dir("staged-daemon-desktop-libs").get().asFile
-    val artifactsProvider = composePreviewDaemonDesktop.incoming.artifacts.resolvedArtifacts
-    from(
-      artifactsProvider.map { resolved ->
-        resolved
-          .filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
-          .map(ResolvedArtifactResult::getFile)
-      }
-    )
-    val nameByPath = artifactsProvider.map { resolved ->
-      val staged = resolved.filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
-      val counts = staged.groupingBy { it.file.name }.eachCount()
-      staged.associate { artifact ->
-        val original = artifact.file.name
-        val mapped =
-          if (counts.getValue(original) > 1) {
-            val id = artifact.id.componentIdentifier
-            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
-          } else original
-        artifact.file.absolutePath to mapped
-      }
-    }
-    inputs.property("nameByPath", nameByPath)
-    eachFile {
-      val mapped = nameByPath.get()[file.absolutePath]
-      if (mapped != null) name = mapped
-    }
-  }
-
-// The renderer configuration currently resolves the build host's Skiko native. Stage it through a
-// filter as well, otherwise a macOS-built release would still embed a macOS native in the portable
-// archive even after the daemon's six-platform closure was cleaned up.
-val stageRendererLibs =
-  tasks.register<Sync>("stageRendererLibs") {
-    description = "Stages the desktop renderer runtime without host-specific Skiko natives."
-    destinationDir = layout.buildDirectory.dir("staged-renderer-libs").get().asFile
-    val artifactsProvider = composePreviewRenderer.incoming.artifacts.resolvedArtifacts
-    from(
-      artifactsProvider.map { resolved ->
-        resolved
-          .filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
-          .map(ResolvedArtifactResult::getFile)
-      }
-    )
-  }
-
 // Stage the JVM embedded player's runtime artifacts for `lib-rcjvm/`, disambiguating any colliding
-// `library-desktop-<version>.jar` filenames by Maven `module-version.jar` — same reasoning as
-// [stageDaemonDesktopLibs].
+// `library-desktop-<version>.jar` filenames by Maven `module-version.jar`: multiple JetBrains
+// Compose Multiplatform `components-*-desktop` artifacts ship as `library-desktop-<version>.jar`.
+// Host-specific Skiko natives are filtered out so a macOS-built release does not embed a macOS
+// native in the portable archive; [SkikoNativeProvision] fetches the current host's at run time.
 val stageRcJvmLibs =
   tasks.register<Sync>("stageRcJvmLibs") {
     description = "Stages the vendored JVM player's runtime artifacts for lib-rcjvm/."
@@ -584,47 +435,6 @@ val stageRcJvmLibs =
       val mapped = nameByPath.get()[file.absolutePath]
       if (mapped != null) name = mapped
     }
-  }
-
-// Stage the Android daemon's runtime jars from `:daemon:android`'s `daemonHarnessClasspathFile`
-// descriptor (a newline-separated text file of absolute jar paths, ordered module-jar →
-// testFixtures → R.jar → full test runtime → android.jar; see that module's
-// `writeDaemonClasspath`).
-// We copy each listed jar into a build dir so the distribution wiring can fold it into
-// `lib-daemon-android/`. Two deliberate transforms:
-//   - `android.jar` is dropped: it's the SDK platform jar (redistribution-sensitive, and
-//     `BundleDaemonCommand.androidDaemonLaunch` re-adds it from the consumer's ANDROID_HOME at
-//     launch), so it must not ride along in the shipped tarball.
-//   - filenames are index-prefixed (`%04d-<name>`) to (a) keep the descriptor's classpath
-//     precedence intact under the `lib-daemon-android/*` glob the daemon launcher expands and
-//     (b) dodge basename collisions on AAR `classes.jar` / AGP-generated `R.jar`.
-abstract class StageDaemonAndroidLibs : DefaultTask() {
-  @get:InputFiles abstract val classpathDescriptor: ConfigurableFileCollection
-
-  @get:OutputDirectory abstract val destinationDir: DirectoryProperty
-
-  @TaskAction
-  fun stage() {
-    val descriptor = classpathDescriptor.singleFile
-    val dest = destinationDir.get().asFile
-    dest.deleteRecursively()
-    dest.mkdirs()
-    descriptor
-      .readLines()
-      .map { it.trim() }
-      .filter { it.isNotEmpty() }
-      .map { File(it) }
-      .filter { it.isFile && it.name.endsWith(".jar") && it.name != "android.jar" }
-      .forEachIndexed { index, jar -> jar.copyTo(File(dest, "%04d-%s".format(index, jar.name))) }
-  }
-}
-
-val stageDaemonAndroidLibs =
-  tasks.register<StageDaemonAndroidLibs>("stageDaemonAndroidLibs") {
-    description =
-      "Stages :daemon:android runtime jars (from its classpath descriptor) into lib-daemon-android."
-    classpathDescriptor.from(composePreviewDaemonAndroid)
-    destinationDir.set(layout.buildDirectory.dir("staged-daemon-android-libs"))
   }
 
 // Stage the BTA impl + Compose-plugin jars into `lib-bta/`, disambiguating any colliding filenames
@@ -684,8 +494,6 @@ val previewUiWasmDist =
 distributions {
   named("main") {
     contents {
-      into("lib-renderer") { from(stageRendererLibs) }
-      into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
       into("lib-usage-psi") { from(composePreviewUsagePsi) }
@@ -710,9 +518,9 @@ abstract class CheckCliSkikoNativePackaging : DefaultTask() {
     check(nativeJars.isEmpty()) {
       "Portable CLI contains host-specific Skiko natives: ${nativeJars.joinToString { it.name }}"
     }
-    check(jars.any { it.name.matches(Regex("skiko-awt-[^-].*\\.jar")) }) {
-      "Portable CLI lost the skiko-awt API jar needed to derive the native version"
-    }
+    // The `skiko-awt` API jar the native version is derived from rides in `lib-daemon-desktop/`,
+    // which is provisioned from the compose-preview-daemon release rather than staged here — that
+    // repository's `checkSkikoNativePackaging` holds the matching invariant over the archive.
   }
 }
 
@@ -720,26 +528,11 @@ val checkCliSkikoNativePackaging =
   tasks.register<CheckCliSkikoNativePackaging>("checkCliSkikoNativePackaging") {
     description = "Checks that the portable CLI stages no host-specific Skiko native jars."
     group = "verification"
-    dependsOn(stageRendererLibs, stageDaemonDesktopLibs, stageRcJvmLibs)
-    stagedJars.from(stageRendererLibs, stageDaemonDesktopLibs, stageRcJvmLibs)
+    dependsOn(stageRcJvmLibs)
+    stagedJars.from(stageRcJvmLibs)
   }
 
 tasks.named("check") { dependsOn(checkCliSkikoNativePackaging) }
-
-// The Android (Robolectric) daemon runtime is ~150-200 MB (Robolectric + the full Compose-Android /
-// AndroidX / Wear-Tiles / Remote-Compose stack). Bundling it into the main CLI tarball ballooned it
-// to ~382 MB, so it ships as a SEPARATE archive (`compose-preview-android-daemon-<version>.zip`)
-// that `compose-preview bundle daemon` fetches on demand and caches the first time it renders an
-// `backend="android"` bundle. A standalone `Zip` (NOT a second `distributions {}` entry) so the
-// distribution plugin doesn't wire it into `assemble` — that would drag `:daemon:android` (and its
-// Android SDK requirement) back into a plain `:cli:build`. Built explicitly by the release job.
-tasks.register<Zip>("packageAndroidDaemon") {
-  description =
-    "Packages the Android daemon runtime as a standalone archive for on-demand download."
-  archiveFileName.set("compose-preview-android-daemon-${project.version}.zip")
-  destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-  into("lib-daemon-android") { from(stageDaemonAndroidLibs) }
-}
 
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
@@ -790,37 +583,45 @@ tasks.withType<Test>().configureEach {
 }
 
 abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {
-  @get:Classpath abstract val runtimeClasspath: ConfigurableFileCollection
+  /** `group:module` of every resolved module artifact on the CLI's runtime classpath. */
+  @get:Input abstract val resolvedModules: ListProperty<String>
 
-  @get:Input abstract val forbiddenProjectDirs: ListProperty<String>
+  @get:Input abstract val forbiddenModules: ListProperty<String>
 
   @TaskAction
   fun checkBoundary() {
-    val forbiddenDirs = forbiddenProjectDirs.get()
-    val forbidden =
-      runtimeClasspath.files
-        .filter { file ->
-          val path = file.invariantSeparatorsPath
-          forbiddenDirs.any { forbiddenDir -> path.startsWith("$forbiddenDir/") }
-        }
-        .map { it.path }
-        .sorted()
+    val forbidden = forbiddenModules.get().toSet()
+    val leaked = resolvedModules.get().filter { it in forbidden }.sorted()
 
-    check(forbidden.isEmpty()) {
-      "CLI may depend on renderer-agnostic :daemon:core only; forbidden renderer artifacts on " +
-        "runtimeClasspath: ${forbidden.joinToString(", ")}"
+    check(leaked.isEmpty()) {
+      "CLI may depend on the renderer-agnostic daemon-core only; forbidden renderer artifacts on " +
+        "runtimeClasspath: ${leaked.joinToString(", ")}"
     }
   }
 }
 
+// The renderers and daemon hosts are published coordinates since compose-ai-tools#5336, so the
+// check reads resolved module identities rather than project directories — the same shape as
+// build-logic's `checkLayerBoundary`, and the only one that sees a coordinate arriving
+// transitively through a daemon-line POM.
 tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
   description = "Fails if renderer implementations leak onto the CLI runtime classpath."
   group = "verification"
 
-  runtimeClasspath.from(configurations.named("runtimeClasspath"))
-  forbiddenProjectDirs.set(
-    listOf(":daemon:android", ":daemon:desktop", ":renderer-android", ":renderer-desktop").map {
-      project(it).projectDir.invariantSeparatorsPath
+  resolvedModules.set(
+    configurations.named("runtimeClasspath").flatMap { configuration ->
+      configuration.incoming.artifacts.resolvedArtifacts.map { artifacts ->
+        artifacts.mapNotNull { artifact ->
+          (artifact.id.componentIdentifier as? ModuleComponentIdentifier)?.let {
+            "${it.group}:${it.module}"
+          }
+        }
+      }
+    }
+  )
+  forbiddenModules.set(
+    listOf("daemon-android", "daemon-desktop", "renderer-android", "renderer-desktop").map {
+      "ee.schimke.composeai:$it"
     }
   )
 }
@@ -991,24 +792,16 @@ val generateCliVersionResource =
     val mavenLineVersion =
       project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
         ?: cliVersion
-    // The data train's version, recorded for the RELEASE CHAIN rather than for the CLI runtime:
-    // nothing in the CLI resolves a `data-*` coordinate directly (they arrive as POM transitives of
-    // core), so there is no `DATA_LINE_VERSION` constant in Version.kt to match this.
-    //
-    // It is here because this properties file is the one artifact that durably records what a
-    // release decided about each Maven line, and `maven-readiness.yml` already reads it out of the
-    // shipped tarball. `design-artifacts.yml` needs the data line to pin `data-preview-overrides-
-    // runtime`, and deriving it by probing Central cannot distinguish "this release skipped the
-    // data train" from "Central has not propagated yet" — the same race that made reading this
-    // file the right answer for the plugin version. See docs/design/RELEASE_TRAINS.md § 7.
-    val dataLineVersion =
-      project.providers.environmentVariable("DATA_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
-        ?: cliVersion
+    // The compose-preview-daemon release whose sidecar archives `DaemonSidecarProvision` fetches
+    // — the desktop renderer + daemon and the Android daemon, which left this build in #5336. The
+    // catalog pin, NOT this CLI's version, for the same reason as `serveVersion`: that repository
+    // releases on its own line, and an installed CLI cannot read the catalog.
+    val previewDaemonVersion = libs.versions.composeai.preview.daemon.get()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
     inputs.property("serveVersion", serveVersion)
     inputs.property("mavenLineVersion", mavenLineVersion)
-    inputs.property("dataLineVersion", dataLineVersion)
+    inputs.property("previewDaemonVersion", previewDaemonVersion)
     outputs.dir(outputDir)
     doLast {
       val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
@@ -1018,7 +811,7 @@ val generateCliVersionResource =
           "xrCompositeVersion=$xrCompositeVersion\n" +
           "serveVersion=$serveVersion\n" +
           "mavenLineVersion=$mavenLineVersion\n" +
-          "dataLineVersion=$dataLineVersion\n"
+          "previewDaemonVersion=$previewDaemonVersion\n"
       )
     }
   }

@@ -179,10 +179,6 @@ project(":build-host-protocol").projectDir = file("api/build-host-protocol")
 // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
 // Lives outside `:cli` so external consumers can pull just the data shapes without dragging in
 // `:cli`'s Gradle Tooling API + scripting closure.
-include(":preview-data-api")
-
-project(":preview-data-api").projectDir = file("api/preview-data-api")
-
 // Content-crop geometry shared by the preview server (catalog thumbnails) and the CLI
 // (`bundle split`). Extracted from `:cli:serve`'s `ServeThumbCrop.kt` so a CLI command does not
 // depend on the server for arithmetic — #3824 preparation.
@@ -208,10 +204,6 @@ project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 include(":bundle-viewer")
 
-include(":preview-annotations")
-
-project(":preview-annotations").projectDir = file("api/preview-annotations")
-
 include(":notification-preview-runtime")
 
 project(":notification-preview-runtime").projectDir = file("runtimes/notification")
@@ -235,18 +227,6 @@ project(":color-preview-runtime").projectDir = file("runtimes/color")
 include(":splash-preview-runtime")
 
 project(":splash-preview-runtime").projectDir = file("runtimes/splash")
-
-include(":lottie-preview-runtime")
-
-project(":lottie-preview-runtime").projectDir = file("runtimes/lottie")
-
-include(":svg-preview-runtime")
-
-project(":svg-preview-runtime").projectDir = file("runtimes/svg")
-
-include(":slot-preview-runtime")
-
-project(":slot-preview-runtime").projectDir = file("runtimes/slots")
 
 // The composition document a UI builder assembles (a tree of component ids + per-instance knob
 // values) and the Compose source it generates. Pure data + codegen, no Compose dependency, jvm +
@@ -333,297 +313,23 @@ include(":samples:desktop-daemon-bench")
 
 include(":samples:remotecompose")
 
-include(":renderer-desktop")
-
-project(":renderer-desktop").projectDir = file("renderers/desktop")
-
-include(":renderer-android")
-
-project(":renderer-android").projectDir = file("renderers/android")
-
-// JVM client for the native `xr-composite --serve` render server that the daemon fronts. The
-// daemon's future XR RenderSession backend wraps this.
-include(":renderer-xr-client")
-
-project(":renderer-xr-client").projectDir = file("renderers/xr-client")
-
-include(":daemon:core")
-
-
-
-// Per-product data-product modules — each `data/<product>/` carries a `core` (published) and a
-// `connector` (daemon glue, unpublished) module. See docs/daemon/DATA-PRODUCTS.md § "Module split
-// (D2.2)". Project paths must stay FLAT (`:data-a11y-core`, not `:data:a11y:core`): a nested leaf
-// named `core` collides with `:daemon:core` under Gradle's `<group>:<projectName>` resolution.
-// docs/build-scripts/SETTINGS.md#flat-data-paths
-include(":data-a11y-core")
-
-project(":data-a11y-core").projectDir = file("data/a11y/core")
-
-include(":data-a11y-hierarchy-android")
-
-project(":data-a11y-hierarchy-android").projectDir = file("data/a11y/hierarchy-android")
-
-include(":data-a11y-connector")
-
-project(":data-a11y-connector").projectDir = file("data/a11y/connector")
-
-include(":data-fonts-core")
-
-project(":data-fonts-core").projectDir = file("data/fonts/core")
-
-include(":data-fonts-connector")
-
-project(":data-fonts-connector").projectDir = file("data/fonts/connector")
-
-include(":data-navigation-core")
-
-project(":data-navigation-core").projectDir = file("data/navigation/core")
-
-include(":data-navigation-connector")
-
-project(":data-navigation-connector").projectDir = file("data/navigation/connector")
-
-// Google Fonts resolution + machine-local TTF cache. Shared by the Robolectric downloadable-font
-// shadow and the Remote Compose typeface resolver so both lanes resolve a family to the same file.
-include(":data-fonts-google")
-
-project(":data-fonts-google").projectDir = file("data/fonts/google")
-
-include(":data-render-compose")
-
-project(":data-render-compose").projectDir = file("data/render/compose")
-
-include(":data-render-connector")
-
-project(":data-render-connector").projectDir = file("data/render/connector")
-
-include(":data-motion-core")
-
-project(":data-motion-core").projectDir = file("data/motion/core")
-
-include(":data-scroll-core")
-
-project(":data-scroll-core").projectDir = file("data/scroll/core")
-
-include(":data-scroll-android")
-
-project(":data-scroll-android").projectDir = file("data/scroll/android")
-
-include(":data-scroll-connector")
-
-project(":data-scroll-connector").projectDir = file("data/scroll/connector")
-
-include(":data-history-core")
-
-project(":data-history-core").projectDir = file("data/history/core")
-
-include(":data-history-connector")
-
-project(":data-history-connector").projectDir = file("data/history/connector")
-
-include(":data-layoutinspector-connector")
-
-project(":data-layoutinspector-connector").projectDir = file("data/layoutinspector/connector")
-
-include(":data-resources-connector")
-
-project(":data-resources-connector").projectDir = file("data/resources/connector")
-
-include(":data-resources-core")
-
-project(":data-resources-core").projectDir = file("data/resources/core")
-
-include(":data-strings-connector")
-
-project(":data-strings-connector").projectDir = file("data/strings/connector")
-
-include(":data-strings-core")
-
-project(":data-strings-core").projectDir = file("data/strings/core")
-
-include(":data-theme-connector")
-
-project(":data-theme-connector").projectDir = file("data/theme/connector")
-
-include(":data-wallpaper-core")
-
-project(":data-wallpaper-core").projectDir = file("data/wallpaper/core")
-
-include(":data-wallpaper-connector")
-
-project(":data-wallpaper-connector").projectDir = file("data/wallpaper/connector")
-
-include(":data-ambient-core")
-
-project(":data-ambient-core").projectDir = file("data/ambient/core")
-
-include(":data-ambient-connector")
-
-project(":data-ambient-connector").projectDir = file("data/ambient/connector")
-
-include(":data-glimmer-environment-connector")
-
-project(":data-glimmer-environment-connector").projectDir =
-  file("data/glimmer-environment/connector")
-
-include(":data-gestures-core")
-
-project(":data-gestures-core").projectDir = file("data/gestures/core")
-
-include(":data-gestures-connector")
-
-project(":data-gestures-connector").projectDir = file("data/gestures/connector")
-
-include(":data-gestures-robolectric-stubs")
-
-project(":data-gestures-robolectric-stubs").projectDir = file("data/gestures/robolectric-stubs")
-
+// The one `data/…` module that stayed when the extractors moved to compose-preview-daemon: the
+// shared-element transition model is consumed by the render matrix here, not by a daemon. Flat
+// path for the same reason the moved ones were. docs/build-scripts/SETTINGS.md#flat-data-paths
 include(":data-shared-element-core")
 
 project(":data-shared-element-core").projectDir = file("data/shared-element/core")
 
-include(":data-focus-core")
-
-project(":data-focus-core").projectDir = file("data/focus/core")
-
-include(":data-focus-connector")
-
-project(":data-focus-connector").projectDir = file("data/focus/connector")
-
-include(":data-focus-connector-desktop")
-
-project(":data-focus-connector-desktop").projectDir = file("data/focus/connector-desktop")
-
-include(":data-keyboard-core")
-
-project(":data-keyboard-core").projectDir = file("data/keyboard/core")
-
-include(":data-keyboard-band")
-
-project(":data-keyboard-band").projectDir = file("data/keyboard/band")
-
-include(":data-keyboard-connector")
-
-project(":data-keyboard-connector").projectDir = file("data/keyboard/connector")
-
-include(":data-keyboard-connector-desktop")
-
-project(":data-keyboard-connector-desktop").projectDir = file("data/keyboard/connector-desktop")
-
-include(":data-touch-overlay-connector")
-
-project(":data-touch-overlay-connector").projectDir = file("data/touch-overlay/connector")
-
-include(":data-launcher-widget-connector")
-
-project(":data-launcher-widget-connector").projectDir = file("data/launcher-widget/connector")
-
-include(":data-pseudolocale-core")
-
-project(":data-pseudolocale-core").projectDir = file("data/pseudolocale/core")
-
-include(":data-pseudolocale-connector")
-
-project(":data-pseudolocale-connector").projectDir = file("data/pseudolocale/connector")
-
-include(":data-pseudolocale-connector-desktop")
-
-project(":data-pseudolocale-connector-desktop").projectDir =
-  file("data/pseudolocale/connector-desktop")
-
-include(":data-recomposition-core")
-
-project(":data-recomposition-core").projectDir = file("data/recomposition/core")
-
-include(":data-recomposition-connector")
-
-project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
-
-include(":data-displayfilter-core")
-
-project(":data-displayfilter-core").projectDir = file("data/displayfilter/core")
-
-include(":data-displayfilter-connector")
-
-project(":data-displayfilter-connector").projectDir = file("data/displayfilter/connector")
-
-include(":data-deviceframe-core")
-
-project(":data-deviceframe-core").projectDir = file("data/deviceframe/core")
-
-include(":data-deviceframe-connector")
-
-project(":data-deviceframe-connector").projectDir = file("data/deviceframe/connector")
-
-include(":data-permissions-core")
-
-project(":data-permissions-core").projectDir = file("data/permissions/core")
-
-include(":data-permissions-connector")
-
-project(":data-permissions-connector").projectDir = file("data/permissions/connector")
-
-// Remote Compose connector — exposes the daemon's named-value store, host-action capture queue,
-// and active profile to user code rendering a `RemotePreview { ... }` block. Android-only:
-// `androidx.compose.remote.*` is an Android artifact requiring compileSdk 37 (see
-// `:samples:remotecompose`); the connector ships its alpha-API deps as `compileOnly` so daemon
-// modules at compileSdk 36 can still consume the AAR. The Compose API surface (composition local,
-// data product, override planner) registers on `:daemon:android` only.
-include(":data-remotecompose-core")
-
-project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")
-
-include(":data-remotecompose-connector")
-
-project(":data-remotecompose-connector").projectDir = file("data/remotecompose/connector")
-
-include(":data-preview-overrides-runtime")
-
-project(":data-preview-overrides-runtime").projectDir = file("data/preview-overrides/runtime")
-
-include(":data-preview-overrides-connector")
-
-project(":data-preview-overrides-connector").projectDir = file("data/preview-overrides/connector")
-
-// UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
-// the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for
-// `record_preview`'s `uia.*` script events.
-include(":data-uiautomator-core")
-
-project(":data-uiautomator-core").projectDir = file("data/uiautomator/core")
-
-include(":data-uiautomator-connector")
-
-project(":data-uiautomator-connector").projectDir = file("data/uiautomator/connector")
-
-include(":data-uiautomator-hierarchy-android")
-
-project(":data-uiautomator-hierarchy-android").projectDir =
-  file("data/uiautomator/hierarchy-android")
-
-include(":daemon:android")
-
-include(":daemon:desktop")
-
-include(":daemon:harness")
-
 // Standalone Kotlin Build Tools API parity/soak harness (#1332). Nothing in production depends on
-// it — in-process compile shipped in `:daemon:core`'s `bta/` package — and it is retained only for
-// its BTA-impl parity, IC and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`).
+// it — the in-process compile ships in compose-preview-daemon's `daemon-core` `bta/` package — and
+// it is retained only for its BTA-impl parity, IC and classloader-leak soak tests
+// (`./gradlew :daemon:bta-host:test`).
 include(":daemon:bta-host")
 
 // Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
 // standard `compileKotlin`, so the BTA parity test has a reference artefact to diff against.
 // Same lifecycle as `:daemon:bta-host`; remove together with it.
 include(":daemon:bta-host-fixture")
-
-// JSON-RPC client for the preview daemon, published so the render-session library can drive a
-// daemon without dragging the MCP server onto the classpath. Lifted out of `:mcp` for exactly that
-// reason — #3824 preparation item 3, the last leak the contract probe recorded.
-include(":daemon-client")
-
-project(":daemon-client").projectDir = file("daemon/client")
 
 // Render-matrix axes (`MatrixAxes`/`MatrixCell`) and the contact-sheet stitcher, shared by the
 // CLI's offline `render-matrix` command and the MCP server's `render_matrix` tool. It was lifted
@@ -668,6 +374,46 @@ project(":render-cli").projectDir = file("render-session/cli")
 // subtree on 21. docs/build-scripts/SETTINGS.md#jdk21-samples
 if (JavaVersion.current() >= JavaVersion.VERSION_21) {
   include(":samples:sdk21:android-metro-viewmodel")
+}
+
+// Local iteration against a compose-preview-daemon checkout. The renderers, the daemon hosts, the
+// preview annotations and data API and the data extractors are consumed at the published
+// `composeai-preview-daemon` pin (#5336); `-Pcomposeai.previewDaemonDir=../compose-preview-daemon`
+// substitutes every coordinate this build resolves from that line for the sibling checkout's
+// project, so a daemon change can be tried here before it is released. The three daemon hosts need
+// an explicit mapping because their project names (`:daemon:core`) are not their artifactIds; the
+// flat modules substitute by `group:name` on their own, and are listed anyway so the set is stated.
+providers.gradleProperty("composeai.previewDaemonDir").orNull?.let { dir ->
+  includeBuild(dir) {
+    dependencySubstitution {
+      mapOf(
+          "daemon-core" to ":daemon:core",
+          "daemon-android" to ":daemon:android",
+          "daemon-desktop" to ":daemon:desktop",
+          "daemon-client" to ":daemon-client",
+          "renderer-desktop" to ":renderer-desktop",
+          "renderer-android" to ":renderer-android",
+          "preview-data-api" to ":preview-data-api",
+          "preview-annotations" to ":preview-annotations",
+          "data-fonts-core" to ":data-fonts-core",
+          "data-pseudolocale-core" to ":data-pseudolocale-core",
+          "data-remotecompose-core" to ":data-remotecompose-core",
+          "data-remotecompose-connector" to ":data-remotecompose-connector",
+          "data-keyboard-connector" to ":data-keyboard-connector",
+          "data-ambient-connector" to ":data-ambient-connector",
+          "data-glimmer-environment-connector" to ":data-glimmer-environment-connector",
+          "data-launcher-widget-connector" to ":data-launcher-widget-connector",
+          "data-layoutinspector-connector" to ":data-layoutinspector-connector",
+          "data-preview-overrides-runtime" to ":data-preview-overrides-runtime",
+          "slot-preview-runtime" to ":slot-preview-runtime",
+          "lottie-preview-runtime" to ":lottie-preview-runtime",
+          "svg-preview-runtime" to ":svg-preview-runtime",
+        )
+        .forEach { (artifact, path) ->
+          substitute(module("ee.schimke.composeai:$artifact")).using(project(path))
+        }
+    }
+  }
 }
 
 // Project paths carrying ktfmt, handed to the root build's `ktfmtCheckAll` / `ktfmtFormatAll`

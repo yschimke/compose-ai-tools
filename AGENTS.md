@@ -17,7 +17,10 @@ its way here, and what that costs, is measured in
 A Gradle plugin (`ee.schimke.composeai.preview`) plus supporting tools that
 discover `@Preview` composables in compiled Kotlin classes and render them to PNG
 outside Android Studio — Jetpack Compose (Android, via Robolectric) and Compose
-Multiplatform Desktop (via `ImageComposeScene`). Architecture, commands, state
+Multiplatform Desktop (via `ImageComposeScene`). The renderers, the render daemons and
+the data extractors themselves live in
+[`yschimke/compose-preview-daemon`](https://github.com/yschimke/compose-preview-daemon)
+and are consumed here at the `composeai-preview-daemon` pin. Architecture, commands, state
 seams and the load-bearing constraints: [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md).
 
 ## The CI-enforced invariants

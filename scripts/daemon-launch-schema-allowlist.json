@@ -60,7 +60,9 @@
     "contract rather than a formatting preference.",
     "",
     "wireFingerprint.history maps schema version -> shape digest, and entries are immutable. Changing",
-    "the shape means adding a version, never editing the digest recorded for an existing one."
+    "the shape means adding a version, never editing the digest recorded for an existing one.",
+    "",
+    "mirroredConstants and constantRegistries are empty since compose-ai-tools#5336: the one mirror registered here (`SANDBOX_COUNT_PROP`, re-declared by the Android daemon's `DaemonMain.kt` and `SandboxProcessPool.kt`) and the `DaemonProperties.Names` registry it read moved to yschimke/compose-preview-daemon with the daemon. That repository's copy of this gate is where they are checked now; a mirror that reappears in THIS tree is registered here again."
   ],
   "schemaVersionSites": [
     {
@@ -108,19 +110,8 @@
       "why": "The daemon JVM does read this config, but through flattened `composeai.daemon.bta*` system properties (DefaultBtaCompileService.fromSysprops()), not through the descriptor's nested block \u2014 so DaemonLaunchDescriptor has no reason to declare it. The VS Code extension reads the block directly to decide whether calling `compileSources` is worth a round-trip. Survivable only because the JVM reader ignores unknown keys."
     }
   },
-  "constantRegistries": {
-    "DaemonProperties.Names": "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/config/DaemonProperties.kt"
-  },
-  "mirroredConstants": {
-    "SANDBOX_COUNT_PROP": {
-      "declaredBy": "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
-      "mirroredBy": [
-        "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/DaemonMain.kt",
-        "daemon/android/src/main/kotlin/ee/schimke/composeai/daemon/pool/SandboxProcessPool.kt"
-      ],
-      "why": "The descriptor merges this sysprop in via `withSandboxCount()` and the daemon reads it at boot; its own KDoc says 'both sides MUST agree'. Disagreement silently gives every daemon a pool of one. The production image also passes the key as a JAVA_TOOL_OPTIONS literal, but that image is yschimke/compose-preview-server's and is checked THERE, against the daemon-protocol artifact that repository resolves \u2014 the version pairing that actually ships. Checking it from here would compare two default branches instead."
-    }
-  },
+  "constantRegistries": {},
+  "mirroredConstants": {},
   "versionStampAliases": {
     "schemaVersion": {
       "file": "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt",

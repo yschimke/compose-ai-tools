@@ -58,11 +58,12 @@ class AndroidBundleDaemonRenderFunctionalTest {
   private val remoteComposeBundle: String =
     System.getProperty("composeai.functionalTest.remoteComposeBundle", "")
 
-  // #1685 moved the Android (Robolectric) daemon runtime OUT of the CLI install dist (it ballooned
-  // the tarball to ~382 MB) into a standalone `packageAndroidDaemon` archive. The runtime now comes
-  // from `:cli:stageDaemonAndroidLibs`'s staged jars dir, which this e2e points the CLI at via the
-  // documented `-Dcomposeai.cli.libDaemonAndroidDir` override (set as JAVA_OPTS on the daemon
-  // subprocess below) — the same shape the eventual on-demand download unpacks to.
+  // The Android (Robolectric) daemon runtime is not in the CLI install (it ballooned the tarball
+  // to ~382 MB): the CLI fetches `compose-preview-android-daemon-<v>.zip` from the
+  // compose-preview-daemon release on first use and caches it. Left empty, this e2e exercises that
+  // path; `-Pbundle.daemon.android.libDir=<dir>/lib-daemon-android` points the CLI at an unpacked
+  // copy instead via the documented `-Dcomposeai.cli.libDaemonAndroidDir` override (set as
+  // JAVA_OPTS on the daemon subprocess below).
   private val libDaemonAndroidDir: String =
     System.getProperty("composeai.functionalTest.libDaemonAndroidDir", "")
 
@@ -124,12 +125,14 @@ class AndroidBundleDaemonRenderFunctionalTest {
       ProcessBuilder(cli.absolutePath, "bundle", "daemon", bundle.absolutePath, "--verbose")
         .directory(tempDir.root)
         .redirectError(ProcessBuilder.Redirect.to(stderrFile))
-    // #1685 ships the Android daemon runtime as a standalone archive rather than inside the CLI
-    // install, so point the CLI at the staged jars dir via the documented override. The Gradle
+    // With an unpacked copy given, point the CLI at it via the documented override. The Gradle
     // application start script forwards `JAVA_OPTS` to the CLI JVM, where `locateSidecarJars` reads
-    // `composeai.cli.libDaemonAndroidDir` to assemble the Android daemon `-cp`.
-    processBuilder.environment()["JAVA_OPTS"] =
-      "-Dcomposeai.cli.libDaemonAndroidDir=$libDaemonAndroidDir"
+    // `composeai.cli.libDaemonAndroidDir` to assemble the Android daemon `-cp`. Without one the
+    // CLI fetches the release archive itself.
+    if (libDaemonAndroidDir.isNotEmpty()) {
+      processBuilder.environment()["JAVA_OPTS"] =
+        "-Dcomposeai.cli.libDaemonAndroidDir=$libDaemonAndroidDir"
+    }
     val proc = processBuilder.start()
     val stdin: OutputStream = proc.outputStream
     val stdout: InputStream = BufferedInputStream(proc.inputStream)
@@ -304,25 +307,17 @@ class AndroidBundleDaemonRenderFunctionalTest {
       )
       .that(cli.isFile)
       .isTrue()
-    // Post-#1685 the Android daemon runtime lives in the staged jars dir
-    // (`:cli:stageDaemonAndroidLibs` output), not under `$installRoot/lib-daemon-android`. The CLI
-    // is pointed at it via `-Dcomposeai.cli.libDaemonAndroidDir` (JAVA_OPTS, set in renderBundle).
-    assertWithMessage(
-        "lib-daemon-android jars dir not surfaced via system property — did " +
-          "`:cli:stageDaemonAndroidLibs` run? Use `./gradlew functionalTestWithAndroidBundleDaemon`"
-      )
-      .that(libDaemonAndroidDir)
-      .isNotEmpty()
-    val libDaemonAndroid = File(libDaemonAndroidDir)
-    assertWithMessage(
-        "lib-daemon-android jars dir missing at ${libDaemonAndroid.path} — the cli build didn't " +
-          "stage the `composePreviewDaemonAndroid` configuration (`:cli:stageDaemonAndroidLibs`)."
-      )
-      .that(libDaemonAndroid.isDirectory)
-      .isTrue()
-    assertWithMessage("lib-daemon-android is empty — :daemon:android runtime jars not staged")
-      .that(libDaemonAndroid.listFiles { f -> f.name.endsWith(".jar") }.orEmpty().asList())
-      .isNotEmpty()
+    // An unpacked copy, when one is given, has to be a real one; without one the CLI fetches the
+    // Android daemon from the compose-preview-daemon release (`DaemonSidecarProvision`).
+    if (libDaemonAndroidDir.isNotEmpty()) {
+      val libDaemonAndroid = File(libDaemonAndroidDir)
+      assertWithMessage("lib-daemon-android jars dir missing at ${libDaemonAndroid.path}")
+        .that(libDaemonAndroid.isDirectory)
+        .isTrue()
+      assertWithMessage("lib-daemon-android is empty at ${libDaemonAndroid.path}")
+        .that(libDaemonAndroid.listFiles { f -> f.name.endsWith(".jar") }.orEmpty().asList())
+        .isNotEmpty()
+    }
     return cli
   }
 

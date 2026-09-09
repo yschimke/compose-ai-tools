@@ -81,7 +81,7 @@ more than a PNG.
   observe semantics instead of pixels, diff renders, turn recordings into
   tests. The aria-snapshot story for Compose. The same native MCP process can
   optionally connect agents to a concurrent preview-server UI-builder session;
-  see the [MCP design reference](docs/daemon/MCP.md#remote-ui-builder-tools).
+  see the [MCP design reference](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md#remote-ui-builder-tools).
 - **[Daemon](https://yschimke.github.io/compose-ai-tools/daemon/)** — an
   optional long-lived renderer that keeps Robolectric / Compose-Desktop warm
   so re-renders are fast.
