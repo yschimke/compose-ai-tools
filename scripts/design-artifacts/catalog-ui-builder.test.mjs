@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -132,6 +132,43 @@ test("a template path escaping the output directory is refused, not written", as
     await assert.rejects(() => stat(join(out, "..", "..", "escaped.json")));
     // The catalog itself still publishes; a refused path is reported, not fatal.
     assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), escaping);
+  });
+});
+
+test("a template naming an in-tree artifact is refused, not written over it", async () => {
+  await withOutDir(async (out) => {
+    // Escaping the output directory was only half of it: `catalog.json` stays comfortably inside
+    // the publication root and lands on the manifest `generate-design-catalog.mjs` just produced.
+    // A bundle is not a trusted document, and the designs live in one directory — nothing else in
+    // this tree is a design.
+    const inTree = JSON.stringify({
+      ...JSON.parse(catalog),
+      statusSemantics: {
+        ...JSON.parse(catalog).statusSemantics,
+        templates: ["catalog.json", "components.json", UI_BUILDER_FILE, "ui-builder"],
+      },
+    });
+    await writeFile(join(out, "catalog.json"), '{"kept":true}');
+
+    const published = await publishUiBuilderCatalog(
+      {
+        [UI_BUILDER_FILE]: bytes(inTree),
+        "catalog.json": bytes('{"overwritten":true}'),
+        "components.json": bytes("{}"),
+        "ui-builder": bytes("{}"),
+      },
+      out,
+    );
+
+    assert.deepEqual(published.unsafeTemplates, [
+      "catalog.json",
+      "components.json",
+      UI_BUILDER_FILE,
+      "ui-builder",
+    ]);
+    assert.equal(await readFile(join(out, "catalog.json"), "utf8"), '{"kept":true}');
+    // And the catalog it published is its own, not a template that claimed its name.
+    assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), inTree);
   });
 });
 

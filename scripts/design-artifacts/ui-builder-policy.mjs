@@ -107,7 +107,7 @@ export function validatePolicy(policy) {
           errors.push(`"templates" contains ${JSON.stringify(entry)}, which is not a path`);
         } else if (entry.startsWith("/") || entry.includes("..")) {
           errors.push(`"templates" entry ${JSON.stringify(entry)} is not branch-relative`);
-        } else if (entry !== TEMPLATE_DIR && !entry.startsWith(`${TEMPLATE_DIR}/`)) {
+        } else if (!entry.startsWith(`${TEMPLATE_DIR}/`) || entry === `${TEMPLATE_DIR}/`) {
           // The same prefix `UiBuilderTemplateLookup` enforces at publish time, stated here so the
           // two agree. It drops a path outside `ui-builder/` silently — that tree is what the tasks
           // declare as an input, so a design anywhere else would be read from somewhere Gradle is
@@ -115,8 +115,12 @@ export function validatePolicy(policy) {
           // the twenty-minute render ran, and the published catalog named a template neither
           // discovery nor bundling carries. A pre-flight whose rules are a subset of the runtime's
           // reports "fine" about exactly the cases it exists to catch.
+          // The bare directory was exempted here and can never resolve: the lookup requires a
+          // FILE, so `"ui-builder"` passed the pre-flight and then named a template neither
+          // discovery nor bundling could carry — the exact failure this rule was added to catch,
+          // let through by the rule's own exception.
           errors.push(
-            `"templates" entry ${JSON.stringify(entry)} is not under ${TEMPLATE_DIR}/, so nothing will carry it`,
+            `"templates" entry ${JSON.stringify(entry)} is not a file under ${TEMPLATE_DIR}/, so nothing will carry it`,
           );
         }
       }

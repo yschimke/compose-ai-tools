@@ -90,6 +90,25 @@ class UiBuilderTemplateLookupTest {
   }
 
   @Test
+  fun `the ui-builder directory is not itself a design`() {
+    // A bare `ui-builder` could never resolve — the lookup requires a file — so accepting it
+    // upstream only produced a catalog naming a template nothing carries. The pre-flight exempted
+    // it for the same reason nobody thought about: the rule was written about paths, and a
+    // directory is a path.
+    val root = root()
+    write(root, "ui-builder/designs/blank.json")
+
+    assertThat(
+        UiBuilderTemplateLookup.resolve(
+          listOf(root),
+          listOf("ui-builder", "ui-builder/"),
+          moduleOwnsPolicy = true,
+        )
+      )
+      .isEmpty()
+  }
+
+  @Test
   fun `precedence follows the policy the caller chose`() {
     // A module-local design kept for some other catalog must not shadow the design the selected
     // policy owns when that policy came from the repository root.

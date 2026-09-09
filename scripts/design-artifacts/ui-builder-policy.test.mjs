@@ -184,11 +184,20 @@ test("a templates path outside ui-builder is an error, not a shrug", async () =>
   outside.templates = ["designs/wear-list.json"];
   const errors = validatePolicy(outside).errors;
   assert.equal(errors.length, 1);
-  assert.match(errors[0], /is not under ui-builder\//);
+  assert.match(errors[0], /is not a file under ui-builder\//);
 
   const inside = wellFormed();
   inside.templates = [`${TEMPLATE_DIR}/designs/wear-list.json`];
   assert.deepEqual(validatePolicy(inside).errors, []);
+
+  // The directory itself is not a design. The lookup requires a FILE, so a bare `ui-builder` can
+  // never resolve — exempting it here let the pre-flight pass a catalog naming a template nothing
+  // could carry, which is the failure the rule exists to catch let through by its own exception.
+  for (const bare of [TEMPLATE_DIR, `${TEMPLATE_DIR}/`]) {
+    const directory = wellFormed();
+    directory.templates = [bare];
+    assert.equal(validatePolicy(directory).errors.length, 1, bare);
+  }
 
   // The rules the runtime enforces and the rules this states have to be the same set, so the
   // constant is read from the Kotlin rather than written twice.

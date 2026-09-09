@@ -230,6 +230,43 @@ object StructuralTemplate {
    * one, or `\"\"\"` reads as an empty string followed by a stray quote and every state after it
    * inverts.
    */
+  /**
+   * Where a Kotlin comment starting at [index] ends, or -1 when none starts there.
+   *
+   * The same "one place, three scanners" argument as [quoteAt], and the same bug: [closingBrace],
+   * [splitTopLevel] and [topLevelEquals] each tracked quotes and none tracked comments, so
+   * `${'$'}{call(content = { /* } */ Text("x") })}` read the commented brace as syntax, took the
+   * lambda's closing brace for the end of the hole, and rejected valid Kotlin. An override's value
+   * is documented as arbitrary Kotlin source, so a comment in it is ordinary rather than exotic.
+   *
+   * Block comments NEST in Kotlin, unlike C — `/* /* */ */` is one comment — so this counts rather
+   * than searching for the first `*` + `/`. An unterminated comment runs to the end of the text,
+   * which is what a compiler would say about it too.
+   */
+  private fun commentEnd(text: String, index: Int): Int {
+    if (index + 1 >= text.length || text[index] != '/') return -1
+    if (text[index + 1] == '/') {
+      val newline = text.indexOf('\n', index + 2)
+      return if (newline < 0) text.length else newline
+    }
+    if (text[index + 1] != '*') return -1
+    var depth = 0
+    var scan = index
+    while (scan + 1 < text.length) {
+      if (text[scan] == '/' && text[scan + 1] == '*') {
+        depth++
+        scan += 2
+      } else if (text[scan] == '*' && text[scan + 1] == '/') {
+        depth--
+        scan += 2
+        if (depth == 0) return scan
+      } else {
+        scan++
+      }
+    }
+    return text.length
+  }
+
   private fun quoteAt(text: String, index: Int): Int =
     if (text.startsWith("\"\"\"", index)) 3 else if (text[index] == '"') 1 else 0
 
@@ -257,6 +294,10 @@ object StructuralTemplate {
         quote == 1 && !inChar -> inString = !inString
         ch == '\'' && !inString -> inChar = !inChar
         inString || inChar -> Unit
+        commentEnd(template, index) >= 0 -> {
+          index = commentEnd(template, index)
+          continue
+        }
         ch == '{' -> depth++
         ch == '}' -> {
           depth--
@@ -394,6 +435,15 @@ object StructuralTemplate {
           current.append(ch)
         }
         inString || inChar -> current.append(ch)
+        // Kept verbatim, like everything else in an override's value: the text is Kotlin source and
+        // a comment is part of it. Skipped only as SYNTAX, so a brace or a comma inside one stops
+        // being read as structure.
+        commentEnd(text, index) >= 0 -> {
+          val end = commentEnd(text, index)
+          current.append(text, index, end)
+          index = end
+          continue
+        }
         ch == '(' || ch == '[' || ch == '{' -> {
           depth++
           current.append(ch)
@@ -441,6 +491,10 @@ object StructuralTemplate {
         quote == 1 && !inChar -> inString = !inString
         ch == '\'' && !inString -> inChar = !inChar
         inString || inChar -> Unit
+        commentEnd(part, index) >= 0 -> {
+          index = commentEnd(part, index)
+          continue
+        }
         ch == '=' -> {
           val next = part.getOrNull(index + 1)
           val previous = part.getOrNull(index - 1)

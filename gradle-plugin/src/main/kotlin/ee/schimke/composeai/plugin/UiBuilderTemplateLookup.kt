@@ -47,7 +47,10 @@ internal object UiBuilderTemplateLookup {
       // the input declaration and the lookup have to describe the same set or neither means
       // anything. Anything else is reported by the caller as unresolvable rather than read from
       // somewhere untracked.
-      .filter { it == UI_BUILDER_DIR || it.startsWith("$UI_BUILDER_DIR/") }
+      // Strictly beneath, and the directory itself is not a design: `ui-builder` as a path could
+      // never resolve here anyway (the check below requires a file), so accepting it upstream only
+      // produced a catalog naming a template nothing carries.
+      .filter { it.startsWith("$UI_BUILDER_DIR/") && it != "$UI_BUILDER_DIR/" }
       .mapNotNull { path ->
         ordered.firstNotNullOfOrNull { root -> inside(root, path) }?.let { path to it }
       }
@@ -86,7 +89,7 @@ internal object UiBuilderTemplateLookup {
   private fun inside(root: File, path: String): File? {
     val base = File(root, UI_BUILDER_DIR).canonicalFile
     val target = File(root, path).canonicalFile
-    val contained = target == base || target.path.startsWith(base.path + File.separator)
+    val contained = target.path.startsWith(base.path + File.separator)
     return target.takeIf { contained && it.isFile }
   }
 }

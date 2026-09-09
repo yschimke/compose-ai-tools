@@ -219,6 +219,34 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a comment is not syntax, in all three scanners`() {
+    // An override's value is documented as arbitrary Kotlin, and a brace, comma or `=` inside a
+    // comment is not structure. All three scanners tracked quotes and none tracked comments, so a
+    // commented brace ended the hole early and the template was rejected as malformed.
+    val braceInComment =
+      StructuralTemplate.holes("\${call(content = { /* } */ Text(\"x\") })}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(braceInComment.value)
+      .containsExactly(StructuralTemplate.Hole.Call(mapOf("content" to "{ /* } */ Text(\"x\") }")))
+
+    // A comma in a comment is not an argument separator, and an `=` in one is not the name/value
+    // split — the other two scanners, taught at the same time rather than one round later.
+    val commaInComment =
+      StructuralTemplate.holes("\${call(a = 1 /* , b = 2 */, c = 3)}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(commaInComment.value)
+      .containsExactly(StructuralTemplate.Hole.Call(mapOf("a" to "1 /* , b = 2 */", "c" to "3")))
+
+    // Block comments NEST in Kotlin, unlike C: `/* /* */ */` is one comment, and reading the first
+    // `*/` as the end would put the rest of the value back into syntax.
+    val nested =
+      StructuralTemplate.holes("\${call(a = 1 /* /* , */ */, b = 2)}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(nested.value)
+      .containsExactly(StructuralTemplate.Hole.Call(mapOf("a" to "1 /* /* , */ */", "b" to "2")))
+  }
+
+  @Test
   fun `holes can be read without rendering, for validating a policy when it is published`() {
     // A policy naming a hole the builder will never resolve is a message for the person editing the
     // policy, not for the person who later drew a screen through it.

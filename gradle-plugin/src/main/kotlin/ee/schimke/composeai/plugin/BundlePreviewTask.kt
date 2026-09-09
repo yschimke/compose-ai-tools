@@ -692,8 +692,31 @@ abstract class BundlePreviewTask : DefaultTask() {
         manifest.copy(previews = bundlePreviews)
       }
     // Generated before the zip so the designs it advertises can be looked up and carried with it.
-    val uiBuilderJson =
-      uiBuilderJsonFor(ComponentRecords.from(manifest), ComponentRecords.from(filteredManifest))
+    val fullRecord = ComponentRecords.from(manifest)
+    // ONE carried record, used by both artifacts.
+    //
+    // The argument below — policy is a component-wide fact declared by whichever preview happens to
+    // carry the annotation, so selecting a different preview must not revert the component to
+    // defaults — was applied to `ui-builder.json` and not to `components.json`, which was built
+    // from the filtered manifest alone. So a bundle could carry a component's policy in one file
+    // and a null `builder` for the same component in the other, and a consumer reading policy from
+    // the record silently got defaults: the exact failure the argument was written about, in the
+    // artifact it was not applied to.
+    //
+    // Only `builder` is merged. Everything else about the carried record is deliberately the
+    // FILTERED view — its bindings name previews this bundle actually contains — and widening that
+    // would put preview ids in `components.json` that its own `previews.json` does not have.
+    val carriedRecord =
+      ComponentRecords.from(filteredManifest).let { carried ->
+        val policyByComponent = fullRecord.components.associate { it.canonicalId to it.builder }
+        carried.copy(
+          components =
+            carried.components.map {
+              it.copy(builder = policyByComponent[it.canonicalId] ?: it.builder)
+            }
+        )
+      }
+    val uiBuilderJson = uiBuilderJsonFor(fullRecord, carriedRecord)
     val zipBytes =
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
@@ -701,11 +724,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         // Derived from the FILTERED manifest, not the producer's full one: that filters the records
         // to the selected previews and makes every binding's previewId one the bundled manifest
         // actually carries, by construction rather than by a parallel rewrite that could drift.
-        componentsJson =
-          JSON.encodeToString(
-            ComponentRecordFile.serializer(),
-            ComponentRecords.from(filteredManifest),
-          ),
+        componentsJson = JSON.encodeToString(ComponentRecordFile.serializer(), carriedRecord),
         // Generated here rather than copied out of `build/compose-previews/`, and derived from
         // BOTH records: policy is a component-wide fact declared by whichever preview happens to
         // carry the annotation, so `bundle pack --id …` selecting a different preview of the same

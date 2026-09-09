@@ -25,6 +25,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
+import { TEMPLATE_DIR } from "./ui-builder-policy.mjs";
+
 /** The bundle entry and the published branch path — one name, by construction. */
 export const UI_BUILDER_FILE = "ui-builder.json";
 
@@ -103,10 +105,22 @@ export async function publishUiBuilderCatalog(entries, outPath) {
   // anything outside `ui-builder/`, but this publisher also reads bundles built before that and
   // bundles handed to it directly, so the containment has to be checked where the write happens
   // rather than trusted from upstream.
-  const root = resolve(outPath);
+  // `<outPath>/ui-builder`, not `<outPath>`. The comment above already said a template must not
+  // land "over another generated artifact" and then the check only kept it inside the publication
+  // root — so a bundle naming `catalog.json` as a template wrote straight over the manifest
+  // `generate-design-catalog.mjs` had just produced, with `components.json` and `ui-builder.json`
+  // exposed the same way. Half the sentence was implemented. The designs live in one directory and
+  // nothing else in this tree is a design.
+  //
+  // `TEMPLATE_DIR` is imported rather than spelt again: this rule now exists in three places — the
+  // pre-flight, the Gradle lookup and here — and every place that restates it is a place it can
+  // drift.
+  const root = resolve(outPath, TEMPLATE_DIR);
   for (const path of templates) {
     const templateTarget = resolve(outPath, path);
-    if (templateTarget !== root && !templateTarget.startsWith(root + sep)) {
+    // Strictly BENEATH. The directory itself is not a design, so an entry naming it resolves to
+    // something no publisher can write and no builder can open.
+    if (!templateTarget.startsWith(root + sep)) {
       unsafeTemplates.push(path);
       continue;
     }
