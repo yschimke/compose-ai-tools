@@ -144,10 +144,10 @@ the originating host purely so the callback knows where to send the visitor back
 target, never a credential, and one checked against the configured site list before it is used.
 
 Without a cookie domain the cookies stay host-only, the sign-in started on a site host cannot come
-back to it, and the affordance is **withheld** there rather than advertising a button that 401s —
-live and playground stay snapshot-only, which is what every site host used to do. The same applies
-to a site on a domain the cookie domain doesn't cover. A box with no pinned callback derives it from
-the request and never needed any of this.
+back to it, and the affordance is **withheld** there rather than advertising a button that 401s — so
+live and playground stay snapshot-only. The same applies to a site on a domain the cookie domain
+doesn't cover. A box with no pinned callback derives it from the request and never needed any of
+this.
 
 **…and the control that starts it is on the site's own header**, because a site host's `/` is a
 catalog landing, not the front-door index — there is no page above it to carry a sign-in. Until
@@ -241,10 +241,10 @@ catalog's **authored order**, so the tree reads Themes → Components → Screen
 alphabetically (the served preview list is otherwise id-sorted). Empty sections are omitted and the
 set is open-ended — tag a group with any section name to grow a new branch.
 
-This used to be a row of tabs, which published only the top level of a structure that is two deep:
-a section's groups existed solely as headings, so the only way to learn what a section *contained*
-was to open it and scroll. The tree publishes both levels at once, and a group row is a destination
-— it selects the section and scrolls to that group's cards.
+A tree rather than a row of tabs, because the structure is two deep: tabs publish only the top level,
+so a section's groups exist solely as headings and the only way to learn what a section *contains* is
+to open it and scroll. The tree publishes both levels at once, and a group row is a destination — it
+selects the section and scrolls to that group's cards.
 
 The tree leads with an **All** row, and that is what a catalog opens on. A sectioned catalog used
 to land on its first section with the rest of itself hidden — nine previews in the header, two on
@@ -283,10 +283,10 @@ one, and so is a component. Otherwise a catalog of eighty components would put a
 their variants, in the sidebar at once — the wall the grid already is.
 
 A catalog that declares **no section at all** — the shape most published design systems are in,
-where the inventory comes from `@CatalogComponent(group = …)` and nothing names a section — now gets
-an **outline** tree, whose top level is those groups. It used to get no tree whatever: the landing
-fell back to a flat grid and the structure the catalog did have stayed invisible. There are no
-panels to switch there, so every row is purely a jump.
+where the inventory comes from `@CatalogComponent(group = …)` and nothing names a section — gets an
+**outline** tree whose top level is those groups, rather than falling back to a flat grid that leaves
+whatever structure the catalog does have invisible. There are no panels to switch there, so every row
+is purely a jump.
 
 The tree carries the keyboard pattern its role names — Down/Up walk the visible rows, Right opens a
 collapsed row or steps into an open one, Left closes it or climbs to the parent — and marks the
@@ -777,14 +777,13 @@ would be publishing a different default rendering of the same document. What mak
 the published-raster lane [below](#a-player-selection-is-published-not-rendered): the default browse
 is answered from the parity run's staging, so the commonest page view costs a map lookup and a file
 read. It is **not** free in every case — a preview the run staged nothing for, or a knob or theme
-selected on top of the player, still reaches the daemon, which a Catalog page previously never did.
+selected on top of the player, still reaches the daemon.
 
-The whole facet used to come off together, and the cost was a broken link: with no canvas, no chips
-and no switcher, no control on the page owned the `rcPlayer` parameter, so `url-state.js` cleared it
-from the address bar and a shared `?rcPlayer=js` link quietly became an ordinary baked snapshot. One
-consequence worth knowing: a Remote Compose preview in Catalog mode now opens on the browser player
-rather than the baked PNG — the same shape Dev mode already had, where the landing lane is a player
-too.
+**The facet comes off in pieces rather than all at once**, because with no canvas, no chips and no
+switcher, no control on the page owns the `rcPlayer` parameter — `url-state.js` then clears it from
+the address bar and a shared `?rcPlayer=js` link quietly becomes an ordinary baked snapshot. One
+consequence worth knowing: a Remote Compose preview in Catalog mode opens on the browser player
+rather than the baked PNG, the same shape Dev mode has.
 
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
@@ -801,7 +800,7 @@ landing, the exact render on a viewer). Utility and error pages advertise no ima
 text-only card.
 
 Five things beyond the meta tags decide whether the card actually appears — and whether what appears
-is worth looking at. All five used to be missing:
+is worth looking at:
 
 - **HEAD answers GET, everywhere.** An unfurler probes a URL and its `og:image` with `HEAD` before
   committing to a download. Every route here is registered with Ktor's `get`, so before
@@ -844,7 +843,7 @@ is worth looking at. All five used to be missing:
 
 ### `/robots.txt` and `/sitemap.xml`
 
-Both are served for real (they used to fall through to the styled HTML 404) and are generated by
+Both are served for real rather than falling through to the styled HTML 404, and are generated by
 [`ServeSiteIndex`](../cli/serve/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeSiteIndex.kt).
 
 `robots.txt` splits on **cheap published bytes vs. work**. Catalog landings, preview viewers and
@@ -999,36 +998,34 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
 - **It never runs while catalogs are loading.** A box brings its catalogs up one at a time, and each
   load fetches a branch, resolves a live bundle's classpath and starts a render daemon. The idle
   clock counts *request* traffic, so a freshly-rolled server with no visitors yet looks perfectly
-  idle — and the first catalog's optimizer used to start hundreds of renders while the remaining
-  catalogs were still loading, each loaded catalog adding another optimizer. The later a catalog sat
-  in the list, the longer its daemon start waited, and a slow enough start is recorded as
-  `livebundle-unavailable` — degrading that catalog to baked PNGs for the life of the process. The
-  whole startup pass (and any later refresh or admin registration) now reads as *busy*, so the
-  optimizers stay parked until the catalogs are up.
+  idle — and the first catalog's optimizer would start hundreds of renders while the remaining
+  catalogs were still loading, each loaded catalog adding another optimizer, until a slow enough
+  daemon start is recorded as `livebundle-unavailable` and that catalog is degraded to baked PNGs for
+  the life of the process. The whole startup pass (and any later refresh or admin registration)
+  therefore reads as *busy*, so the optimizers stay parked until the catalogs are up.
 - **Only one catalog optimizes at a time, server-wide.** Once loading ends every catalog's optimizer
   becomes runnable at the same instant; the background lane holds a single render permit, so they
   take turns instead of occupying every live seat, and a visitor's render is never queued behind
   more than one background one. The permit is taken per render, so a catalog that parks for traffic
   hands it straight to the next one.
 - **Background slices leave a cold catalog primary cold.** Theme batches prefer the shared pool's
-  disposable replicas, whose one-minute idle sweep closes their subprocesses and returns their
-  memory between slices. The primary joins a batch only after foreground traffic has already
-  warmed it, or when no background seat exists to open the first replica. Previously the fair
-  scheduler eventually warmed one non-reapable primary per catalog: the public box reached 17
-  resident daemons with no traffic, and that idle RAM kept the pressure gate closed against the
-  optimizer that created it.
+  disposable replicas, whose one-minute idle sweep closes their subprocesses and returns their memory
+  between slices. The primary joins a batch only after foreground traffic has already warmed it, or
+  when no background seat exists to open the first replica. A fair scheduler that eventually warms
+  one non-reapable primary per catalog reached 17 resident daemons on the public box with no traffic,
+  and that idle RAM kept the pressure gate closed against the optimizer that created it.
 - **A catalog is resident for its lane, not for its backlog.** The pass worker does not end while a
   catalog has targets left — it loops through the quiet gate, takes a slice, re-queues — and the
   registry refuses to suspend a host whose `backgroundWorkActive` is set. Setting that flag for the
-  worker's whole life therefore made "this catalog is not fully optimized" mean "this catalog's
-  daemon can never be released": the public box carried nine such residents at zero active streams,
-  `MemAvailable` pinned at 14-21%, and the pressure gate consequently holding — so the only progress
-  left was the starvation cap's five-minute concessions (50 of them across a 40-hour uptime,
-  1,502 of 18,604 entries, i.e. roughly a **ten-day** finish). The optimizer's own residency was
-  what stopped the optimizer running. The flag now covers only the slice a pass actually holds a
-  lane for. A parked catalog is suspendable, loses its daemon on the ordinary idle sweep, and its
-  progress is unaffected — the rendered PNGs live in `ServeSessionState.catalogThemeCache`, which
-  is retained across suspend/resume precisely so they survive it.
+  worker's whole life therefore makes "this catalog is not fully optimized" mean "this catalog's
+  daemon can never be released": measured, nine such residents at zero active streams,
+  `MemAvailable` pinned at 14-21%, the pressure gate consequently holding, and the only progress left
+  coming from the starvation cap's five-minute concessions — roughly a **ten-day** finish. The
+  optimizer's own residency was what stopped the optimizer running. The flag covers only the slice a
+  pass actually holds a lane for. A parked catalog is suspendable, loses its daemon on the ordinary
+  idle sweep, and its progress is unaffected — the rendered PNGs live in
+  `ServeSessionState.catalogThemeCache`, which is retained across suspend/resume precisely so they
+  survive it.
 - **Parked catalogs are resumed by the reaper, not by a visitor.** Re-entering a pass rides on
   `keepLiveWarm()`, which a presence heartbeat drives, so suspending an unfinished catalog on a box
   nobody is browsing would simply stop it. `ServeSessionRegistry.resumeIdleOptimizers()` runs after
@@ -1039,19 +1036,18 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
 - **That budget is the free lanes plus one challenger, and the rotation depends on the plus one.**
   Bounding resumption at the *free* lanes alone starves every catalog that is not already resident:
   a pass returns its lane on a slice boundary and re-queues immediately, so every later sweep reads
-  zero free lanes and the parked catalogs wait for an incumbent to **finish** — hours, for the
-  10,440-target `m3-catalog`, and possibly never. Admission's fairness orders catalogs *at the
-  door* by who has gone longest without a lane, which only helps a catalog that is standing there,
-  so one challenger is kept queued: it wins the next lane release ahead of the incumbent that just
-  ran, and that incumbent is then suspended in its turn. The rotation period becomes the idle
-  window rather than a catalog's whole backlog, at the cost of one extra resident daemon.
-  Candidates are ordered by **when they were suspended**, not by `lastAccess` — a catalog parked by
-  the very sweep that then resumes has the oldest `lastAccess` of all, so ordering on that would
-  resurrect whatever had just been parked and leave the long-parked ones where they were. `themeOptimizer.hostSuspensions` / `hostResumes` on `/status.json` report the
-  two sides: suspensions stuck at 0 with more unfinished catalogs than `lanes` means the residency
-  rule is not firing, and resumes far outrunning `admissions` means catalogs are paying cold starts
-  to queue rather than to render.
-
+  zero free lanes and the parked catalogs wait for an incumbent to **finish** — hours for a
+  10,440-target catalog, possibly never. Admission's fairness orders catalogs *at the door* by who
+  has gone longest without a lane, which only helps a catalog standing there, so one challenger is
+  kept queued: it wins the next lane release ahead of the incumbent that just ran, and that incumbent
+  is suspended in its turn. The rotation period becomes the idle window rather than a catalog's whole
+  backlog, at the cost of one extra resident daemon. Candidates are ordered by **when they were
+  suspended**, not by `lastAccess` — a catalog parked by the very sweep that then resumes has the
+  oldest `lastAccess` of all, so ordering on that would resurrect whatever had just been parked.
+  `themeOptimizer.hostSuspensions` / `hostResumes` on `/status.json` report the two sides:
+  suspensions stuck at 0 with more unfinished catalogs than `lanes` means the residency rule is not
+  firing, and resumes far outrunning `admissions` means catalogs are paying cold starts to queue
+  rather than to render.
 **When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
 before it starts: the whole server has to have been untouched for
 `-Dcomposeai.serve.themeOptimizationIdleMillis` (60s by default). That gate reads
@@ -1059,10 +1055,9 @@ before it starts: the whole server has to have been untouched for
 open lease **and its holder is still doing something**.
 
 That last qualifier is the fix for #4312. A viewer WebSocket holds a lease for the socket's whole
-life, and the clock used to read any held lease as busy, so a single browser tab left open on a
-catalog pinned it at *busy* indefinitely whether or not anyone was looking — measured on the public
-box, eight consecutive minutes with a lease held, one active stream and zero renders. Leases now
-come in two kinds:
+life, and reading any held lease as busy lets a single browser tab left open on a catalog pin it at
+*busy* indefinitely whether or not anyone is looking — measured on the public box, eight consecutive
+minutes with a lease held, one active stream and zero renders. Leases therefore come in two kinds:
 
 - A **connection** lease (the viewer WebSocket) keeps its session resident unconditionally — the
   reaper must never close a live socket's host mid-connection — but stops suppressing the idle clock
@@ -1079,10 +1074,9 @@ come in two kinds:
 `--exit-when-idle` deliberately keeps the strict rule (`connectionIdleMillis()`): standing a
 background pass down under an idle tab costs that tab one render, while shutting the process down
 under it drops a live connection. A *leaked* lease therefore still holds the watchdog open and keeps
-its session resident, even though it no longer stands the optimizer down for the life of the
-process. The per-catalog `themeOptimization` rows cannot
-show this: they say `paused` whether the box is being politely quiet or the gate will never open
-again. Read `themeOptimizer` on `/status.json` instead:
+its session resident, even though it does not stand the optimizer down for the life of the process.
+The per-catalog `themeOptimization` rows cannot show this: they say `paused` whether the box is being
+politely quiet or the gate will never open again. Read `themeOptimizer` on `/status.json` instead:
 
 - `serverIdleMillis` — the gate's input, or `null` for busy — against `idleThresholdMillis`, the
   quiet it must reach. The `/status` page prints the same comparison as **Theme optimiser gate**.
@@ -1181,13 +1175,13 @@ fallback token.
 
 ### A Light / Dark chip is a taster of the theme it selects
 
-The two baked chips used to be identical outlined pills that differed only in the word on them, so
-"what does Dark actually look like here?" cost a click and a wait. Each now pins its **own**
-`color-scheme`, which re-resolves every `light-dark()` pair in the token layer — including the
-served catalog's own palette — in that chip's mode. On `/wear-m3/` the Dark chip is painted in
-wear-m3's near-black and cyan and the Light chip in its light projection, whichever way round the
-page itself is, so the pair reads as two swatches of one system rather than two labels. It costs
-nothing: no extra data, no render, one property per chip.
+Each baked chip pins its **own** `color-scheme`, which re-resolves every `light-dark()` pair in the
+token layer — including the served catalog's own palette — in that chip's mode. On `/wear-m3/` the
+Dark chip is painted in wear-m3's near-black and cyan and the Light chip in its light projection,
+whichever way round the page itself is, so the pair reads as two swatches of one system rather than
+two labels. Two identical pills differing only in their word would cost a click and a wait to answer
+"what does Dark actually look like here?"; this costs nothing — no extra data, no render, one
+property per chip.
 
 ![Before and after: two identical pills, then each chip painted in the theme it selects, in both page modes](images/serve-theme-chip-taster.png)
 
@@ -1275,11 +1269,10 @@ card, the component drawer) became *filled cards* separated from the page by ton
 | ![A catalog page on a dark surface, before](images/serve-material3-catalog-dark-before.png) | ![The same page in Material 3's dark scheme](images/serve-material3-catalog-dark-after.png) |
 
 The dark scheme is the M3 baseline's own dark half. Because the aliases are `var()` references, it
-re-declares only the **roles** — the long list of per-rule dark overrides the sheet used to carry
-(re-pointing a border, a surface, a muted text colour at its dark twin) is gone with them. What
-survives is what a token layer genuinely cannot express: the **semantic** colour pairs (trust
-badges, good/warn/bad scores, the code/design parity lanes, the live-lane green), which are literal
-by design because they must mean the same thing in every design system — they keep M3's
+re-declares only the **roles** rather than a long list of per-rule dark overrides. What survives is
+what a token layer genuinely cannot express: the **semantic** colour pairs (trust badges,
+good/warn/bad scores, the code/design parity lanes, the live-lane green), which are literal by design
+because they must mean the same thing in every design system — they keep M3's
 *container / on-container* relationship but not its palette.
 
 The next section is why the role family matters as much as the alias family.

@@ -176,7 +176,7 @@ Two consequences of consuming a published artifact are wired into `cli/build.gra
 
 What the swap removed and could not replace: the `daemon-launch.json` writer in `ServeBundleDaemon`, the serve-web scorer `tuning.ts`, `ServeRcFonts.FACES` and the `parity-locators` fixture are all now **cross-repo** mirrors. The checks that policed them either skip with a stated reason when no `compose-preview-server` sibling checkout is present (set `COMPOSE_PREVIEW_SERVER_ROOT`), or no longer exist. That is residual item 1 on [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732) — a real cross-repo contract-drift gate — and it is now the load-bearing gap, not a nice-to-have.
 
-The historical record, preserved in the tense it was written in: [docs/design/PREVIEW_SERVER_SPLIT.md](design/PREVIEW_SERVER_SPLIT.md).
+What was decided, what is still open, and the two corrections finishing the job earned: [docs/design/PREVIEW_SERVER_SPLIT.md](design/PREVIEW_SERVER_SPLIT.md). The one check from that work that survives — it was never about the split — is [docs/design/DAEMON_LAUNCH_SCHEMA.md](design/DAEMON_LAUNCH_SCHEMA.md).
 
 ## State seams
 
