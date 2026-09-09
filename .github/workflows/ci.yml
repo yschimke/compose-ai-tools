@@ -965,6 +965,12 @@ jobs:
             echo "::error::cross-repo schema tests SKIPPED — COMPOSE_PREVIEW_CONTRACTS_ROOT did not resolve"
             exit 1
           fi
+      # The evidence pruner deletes directories, so its keep-rules are what stand between a
+      # scheduled job and somebody's baseline. The age floor especially: it is the only thing
+      # keeping an open PR's evidence, and it cannot be checked by reading the tree.
+      - name: Run design-evidence pruner tests
+        run: python3 scripts/test_prune_design_evidence.py -v
+
       # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
       # against ITS compose. A version skew there fails only on main (the XR step is skipped on
       # PRs) and only at runtime, with a message that points nowhere near the cause.

@@ -1,0 +1,99 @@
+name: Prune Design Evidence
+
+# `docs/design/evidence/` is per-PR capture: images embedded in one pull request body, commit-pinned
+# as AGENTS.md requires. Once that PR merges the directory has done its job — the pinned URLs keep
+# resolving at the commit they name — but nothing removes it, so the tree only grows. It reached 105
+# directories and 30 MB before anyone counted, in a family of repositories on a hard per-checkout
+# size budget.
+#
+# This opens a PR rather than pushing: a deletion of somebody's captures is a thing to look at, and
+# the diff is the whole review. `scripts/prune-design-evidence.py` decides what is spent — see its
+# docstring for the three ways a directory survives, the load-bearing one being an age floor that
+# keeps evidence for a PR that is still open.
+
+on:
+  schedule:
+    # Monthly. The floor is 90 days, so a faster cadence would only re-open the same empty PR.
+    - cron: "0 5 1 * *"
+  workflow_dispatch:
+    inputs:
+      min-age-days:
+        description: "Never prune a directory touched more recently than this"
+        required: false
+        default: "90"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prune-design-evidence
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the age floor reads the last commit that touched each directory, and a
+      # shallow clone reports every path as having been written at the clone's single commit —
+      # which would make every directory look brand new and prune nothing. Silently.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Prune spent evidence
+        id: prune
+        run: |
+          set -euo pipefail
+          age="${{ github.event.inputs.min-age-days || '90' }}"
+          python3 scripts/prune-design-evidence.py --min-age-days "$age" --prune | tee prune.log
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "count=$(git status --porcelain | grep -c '^ D' || true)"
+              echo "age=$age"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a pull request
+        if: steps.prune.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # agent/ is the house branch prefix, and it is CI-enforced — see AGENTS.md.
+          branch="agent/prune-design-evidence-$(date -u +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -q -m "chore: prune design evidence that nothing references
+
+          Removed by scripts/prune-design-evidence.py: directories under
+          docs/design/evidence/ that no tracked file outside that tree
+          references, that carry no KEEP file, and that nothing has touched
+          for ${{ steps.prune.outputs.age }} days.
+
+          The images stay reachable at the commits their pull requests pinned."
+          git push -u origin "$branch"
+          gh pr create \
+            --title "chore: prune design evidence that nothing references" \
+            --body "$(cat <<'EOF'
+          Scheduled cleanup by [`scripts/prune-design-evidence.py`](../blob/main/scripts/prune-design-evidence.py).
+
+          Every directory removed here satisfies all three:
+
+          - **nothing references it** — no tracked file outside `docs/design/evidence/` contains its name;
+          - **it carries no `KEEP` file** — the opt-out for evidence worth keeping that nothing links to;
+          - **nothing has touched it inside the age floor** — so evidence for a pull request that is still open is never taken.
+
+          The images remain reachable at the commits their pull request bodies pinned, which is the form `AGENTS.md` requires an embed to cite, so no merged PR loses its evidence.
+
+          To keep one of these, add a `KEEP` file to it with the reason and this job will leave it alone from now on.
+          EOF
+          )" \
+            --base main \
+            --head "$branch"
