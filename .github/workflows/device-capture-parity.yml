@@ -1,0 +1,94 @@
+name: Device Capture Parity
+
+# Daily, NON-BLOCKING: does the UI-builder design still look like the app it was authored against?
+#
+# The reference is the real app. `kind=ACTIVITY` previews launch `MainActivity` for real — full
+# lifecycle, its own setContent, its theme — and capture the resumed screen (docs/APP_TOURS.md).
+# The candidate is `HomeScreenDesignPreview`, the design in
+# samples/android/design/home-screen.uibuilder.json rendered through the ordinary preview lane.
+# `DeviceCaptureParityTest` scores one against the other.
+#
+# WHY DAILY RATHER THAN PER-PR: the interesting signal is drift over time between a screen and a
+# design nobody remembered to re-author, which a per-PR run cannot see and which would put a slow
+# render on the critical path for changes that cannot affect it.
+#
+# WHY REPORT-ONLY: no threshold has been earned yet. This job exists to produce the measurement a
+# threshold could later be chosen from — the test writes report.json and never fails on a
+# difference. Turning it into a gate is a deliberate follow-up once there is history to pick a
+# number from; see docs/design/DEVICE_CAPTURE.md.
+#
+# WHAT IT IS NOT: a real device. The capture runs under Robolectric, so it exercises a real
+# Activity and the real semantics tree but none of the on-device concerns DEVICE_CAPTURE.md's
+# Tier 2 names — window offsets, multi-resume, PixelCopy frame timing. Swapping in an emulator
+# capture is a change of this job's producer, not of the design or the comparison.
+
+on:
+  schedule:
+    # 05:40 UTC daily — after ci.yml's nightly (04:23) so a broken main is already visible.
+    - cron: "40 5 * * *"
+  workflow_dispatch:
+  # Run on changes to either half, so a PR that moves the app or the design sees its own effect
+  # rather than finding out the next morning.
+  pull_request:
+    paths:
+      - "samples/android/design/**"
+      - "samples/android/src/main/kotlin/com/example/sampleandroid/MainActivity.kt"
+      - "samples/android/src/main/kotlin/com/example/sampleandroid/HomeScreenDesignPreview.kt"
+      - "samples/android/src/test/kotlin/com/example/sampleandroid/DeviceCaptureParityTest.kt"
+      - ".github/workflows/device-capture-parity.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: Design vs captured app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # Renders every preview in the module, which is both halves of the comparison: the synthetic
+      # `activity__MainActivity` capture and `HomeScreenDesignPreview`. The sample sets
+      # `renderBeforeUnitTests`, so `test` would render anyway — running it explicitly keeps the
+      # two failure modes (render broke / comparison broke) in separate steps.
+      - name: Render the app capture and the design
+        run: ./gradlew :samples:android:composePreviewRenderAll
+
+      - name: Score the design against the captured app
+        run: ./gradlew :samples:android:test --tests '*DeviceCaptureParityTest*'
+
+      - name: Summarise
+        if: always()
+        run: |
+          report=samples/android/build/device-capture-parity/report.json
+          if [ -f "$report" ]; then
+            {
+              echo "## Device capture parity"
+              echo
+              echo '```json'
+              cat "$report"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report produced — see the test step above." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The images are the point: a score says how far apart they are, the PNGs say how.
+      - name: Upload report and both renders
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: device-capture-parity
+          path: |
+            samples/android/build/device-capture-parity/report.json
+            samples/android/build/compose-previews/renders/activity__MainActivity*.png
+            samples/android/build/compose-previews/renders/HomeScreenDesignPreview*.png
+          if-no-files-found: warn

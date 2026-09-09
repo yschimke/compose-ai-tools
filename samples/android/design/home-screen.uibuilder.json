@@ -1,0 +1,281 @@
+{
+  "$comment": [
+    "A UI-builder design authored to match `HomeScreen` in",
+    "samples/android/src/main/kotlin/com/example/sampleandroid/MainActivity.kt.",
+    "",
+    "It is the 'design' half of the device-capture parity lane: the daily job captures the real",
+    "Activity and renders this design, then reports how far apart they are. See",
+    "docs/design/DEVICE_CAPTURE.md and samples/android/design/README.md.",
+    "",
+    "Every componentId, property name and allowed value here is from m3-catalog's builder",
+    "capability catalog. Nothing in this file is invented: if a property is not in that catalog,",
+    "the design would be refused at commit rather than rendered differently."
+  ],
+  "schema": "compose-ui-builder-operations/v1-candidate",
+  "documentSchema": "compose-ui-builder-document/v1-candidate",
+  "designId": "sample-android-home-screen",
+  "operations": [
+    {
+      "operationId": "create",
+      "type": "createDesign",
+      "title": "Sample Android — Home screen",
+      "catalogPin": {
+        "systemId": "m3-catalog",
+        "catalogRevision": "candidate",
+        "capabilityDigest": "candidate",
+        "nativeRuntimeId": "candidate"
+      },
+      "environment": {
+        "widthDp": 400,
+        "heightDp": 800,
+        "density": 2.625,
+        "theme": "light",
+        "dynamicColor": false,
+        "locale": "en-US",
+        "fontScale": 1,
+        "layoutDirection": "ltr",
+        "windowPosture": "flat",
+        "fixedTime": "2024-05-16T12:00:00Z",
+        "animations": "settled",
+        "networkAccess": false
+      },
+      "stateVariables": {}
+    },
+    {
+      "operationId": "insert-root",
+      "type": "insertNode",
+      "parent": null,
+      "node": {
+        "id": "root",
+        "componentId": "m3/surface",
+        "properties": {},
+        "modifiers": [
+          {
+            "type": "fillMaxSize"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "insert-screen-column",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "root",
+        "slot": "content"
+      },
+      "node": {
+        "id": "screen-column",
+        "componentId": "layout/column",
+        "properties": {
+          "verticalSpacingDp": {
+            "type": "float",
+            "value": 16
+          }
+        },
+        "modifiers": [
+          {
+            "type": "fillMaxSize"
+          },
+          {
+            "type": "padding",
+            "startDp": 24,
+            "topDp": 24,
+            "endDp": 24,
+            "bottomDp": 24
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "insert-title",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "screen-column",
+        "slot": "children"
+      },
+      "node": {
+        "id": "title",
+        "componentId": "m3/text",
+        "properties": {
+          "text": {
+            "type": "string",
+            "value": "Sample Android"
+          },
+          "style": {
+            "type": "enum",
+            "value": "headlineMedium"
+          }
+        },
+        "modifiers": []
+      }
+    },
+    {
+      "operationId": "insert-blurb",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "screen-column",
+        "slot": "children"
+      },
+      "node": {
+        "id": "blurb",
+        "componentId": "m3/text",
+        "properties": {
+          "text": {
+            "type": "string",
+            "value": "A tiny two-screen app used to exercise app-level previews and tours."
+          },
+          "style": {
+            "type": "enum",
+            "value": "bodyMedium"
+          }
+        },
+        "modifiers": []
+      }
+    },
+    {
+      "operationId": "insert-card",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "screen-column",
+        "slot": "children"
+      },
+      "node": {
+        "id": "card",
+        "componentId": "m3/card",
+        "properties": {
+          "variant": {
+            "type": "enum",
+            "value": "filled"
+          }
+        },
+        "modifiers": [
+          {
+            "type": "fillMaxWidth"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "insert-card-column",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "card",
+        "slot": "content"
+      },
+      "node": {
+        "id": "card-column",
+        "componentId": "layout/column",
+        "properties": {
+          "verticalSpacingDp": {
+            "type": "float",
+            "value": 8
+          }
+        },
+        "modifiers": [
+          {
+            "type": "fillMaxWidth"
+          },
+          {
+            "type": "padding",
+            "startDp": 16,
+            "topDp": 16,
+            "endDp": 16,
+            "bottomDp": 16
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "insert-card-heading",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "card-column",
+        "slot": "children"
+      },
+      "node": {
+        "id": "card-heading",
+        "componentId": "m3/text",
+        "properties": {
+          "text": {
+            "type": "string",
+            "value": "Continue listening"
+          },
+          "style": {
+            "type": "enum",
+            "value": "titleMedium"
+          }
+        },
+        "modifiers": []
+      }
+    },
+    {
+      "operationId": "insert-card-track",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "card-column",
+        "slot": "children"
+      },
+      "node": {
+        "id": "card-track",
+        "componentId": "m3/text",
+        "properties": {
+          "text": {
+            "type": "string",
+            "value": "Midnight City — M83"
+          },
+          "style": {
+            "type": "enum",
+            "value": "bodyMedium"
+          },
+          "color": {
+            "type": "colorToken",
+            "value": "onSurfaceVariant"
+          }
+        },
+        "modifiers": []
+      }
+    },
+    {
+      "operationId": "insert-button",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "card-column",
+        "slot": "children"
+      },
+      "node": {
+        "id": "open-now-playing",
+        "componentId": "m3/button",
+        "properties": {
+          "style": {
+            "type": "enum",
+            "value": "filled"
+          }
+        },
+        "modifiers": []
+      }
+    },
+    {
+      "operationId": "insert-button-label",
+      "type": "insertNode",
+      "parent": {
+        "nodeId": "open-now-playing",
+        "slot": "content"
+      },
+      "node": {
+        "id": "open-now-playing-label",
+        "componentId": "m3/text",
+        "properties": {
+          "text": {
+            "type": "string",
+            "value": "Open Now Playing"
+          },
+          "style": {
+            "type": "enum",
+            "value": "labelLarge"
+          }
+        },
+        "modifiers": []
+      }
+    }
+  ]
+}
