@@ -1477,34 +1477,16 @@ class ScreenGeneratorTest {
   }
 
   /**
-   * A state named `kotlin` is refused, exactly as one named `androidx` is.
-   *
-   * The fold qualifies through that root, so it is one more thing a local may not shadow — and the
-   * check that already protects every other written-out root protects it.
-   */
-  @Test
-  fun `state named kotlin is refused, because a folded run qualifies through that root`() {
-    assertThat(
-        refusal(
-          cells(3).copy(state = listOf(ScreenState("kotlin", "app.Thing", ScreenValue.Text("x")))),
-          catalog(card, text),
-        )
-      )
-      .contains(
-        "state `kotlin` is the root of a package this screen writes in full, and would shadow it"
-      )
-  }
-
-  /**
-   * The qualifier a folded run writes is a name the file spends, so nothing else may claim it.
+   * The qualifier a folded run writes is a name the file spends, so nothing is imported under it.
    *
    * `kotlin.repeat(n)` is capture-proof against a local — that is why it is qualified — but an
    * import of a declaration whose simple name is `kotlin` would take the *qualifier* and leave
-   * `repeat` unresolved. A simple name enters this file three ways, and `kotlin` is refused at all
-   * of them: reserved for a component, and refused with a located reason for a value or a chain.
+   * `repeat` unresolved. A value naming one is written qualified instead, which is what this
+   * function replaced for every value and what a component in the same position already gets. It is
+   * not a refusal: the document is legal and generated before folding existed.
    */
   @Test
-  fun `a value importing the name kotlin is refused, because a folded run qualifies through it`() {
+  fun `a value named kotlin is written qualified rather than imported`() {
     val screen =
       column(
         ScreenNode(
@@ -1514,18 +1496,49 @@ class ScreenGeneratorTest {
         )
       )
 
-    val refusals =
+    val source =
       (ScreenGenerator.generate(
           screen,
           catalog(card, text),
           expressionPackages = setOf("app.theme"),
-        ) as ScreenGenerator.Result.Refused)
-        .reasons
+        ) as ScreenGenerator.Result.Emitted)
+        .source
 
-    assertThat(refusals)
-      .contains(
-        "`Text`.`text` imports `kotlin`, which the generated file spends on its own scaffolding"
-      )
+    assertThat(source).contains("Text(text = app.theme.kotlin)")
+    assertThat(source).doesNotContain("import app.theme.kotlin")
+  }
+
+  /**
+   * A state named `kotlin` turns the fold off rather than being refused.
+   *
+   * It is a local in the body, so it captures the qualifier — and unlike an import there is nowhere
+   * else to put it. State names are known before emission, so the fold is what gives way.
+   */
+  @Test
+  fun `state named kotlin turns the fold off rather than refusing the document`() {
+    // Typed outside the `kotlin` package on purpose: a declaration typed `kotlin.String` already
+    // puts that root in the shadowing set every state name is checked against, so the residual case
+    // this guard exists for is a document that names `kotlin` and never writes the package.
+    val source =
+      (ScreenGenerator.generate(
+          cells(6)
+            .copy(
+              state =
+                listOf(
+                  ScreenState(
+                    "kotlin",
+                    "app.theme.Thing",
+                    ScreenValue.Construct("app.theme.Thing", typeFqn = "app.theme.Thing"),
+                  )
+                )
+            ),
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).doesNotContain("kotlin.repeat(")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(6)
   }
 
   /**

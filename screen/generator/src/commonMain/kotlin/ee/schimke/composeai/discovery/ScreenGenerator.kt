@@ -315,9 +315,6 @@ object ScreenGenerator {
     // next one, which is the worst place for this to surface.
     val qualifiedRoots = buildSet {
       add("androidx")
-      // `kotlin`, because a folded run of identical siblings is written `kotlin.repeat(n)` — see
-      // [foldRepeats] for why it is qualified there rather than trusted to resolve.
-      add("kotlin")
       // Every component, not only the ones that cannot claim a simple name: which of the two a
       // node gets is decided per record, and a state name may not shadow the root of either.
       components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
@@ -340,6 +337,12 @@ object ScreenGenerator {
         document.name,
         expressionPackages,
         document.state.associateBy(ScreenState::name),
+        // A state declaration is a local in the body, and a local named `kotlin` captures the
+        // qualifier a folded run writes. State names are the one shadowing surface known before
+        // emission, and they are spent on the fold rather than on a refusal: such a document is
+        // generated with its siblings written out, exactly as before folding existed. Every other
+        // way the name could enter the file is closed by never importing it — see [importedName].
+        foldsRepeatedSiblings = document.state.none { it.name == "kotlin" },
       )
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
@@ -574,6 +577,8 @@ object ScreenGenerator {
     val expressionPackages: Set<String>,
     /** Declared state by name, so a read can be checked against something rather than trusted. */
     val state: Map<String, ScreenState> = emptyMap(),
+    /** Whether [foldRepeats] may fold here — see the call that computes it. */
+    val foldsRepeatedSiblings: Boolean = true,
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -746,8 +751,11 @@ object ScreenGenerator {
             val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
-                if (wrapper == null) foldRepeats(children.map { node(it, depth + 1) }, inner)
-                else
+                if (wrapper == null) {
+                  val rendered = children.map { node(it, depth + 1) }
+                  if (foldsRepeatedSiblings) foldRepeats(rendered, inner)
+                  else rendered.joinToString("\n")
+                } else
                   children.joinToString("\n") { child ->
                     "$inner$wrapper {\n${node(child, depth + 2)}\n$inner}"
                   }
@@ -1342,13 +1350,12 @@ object ScreenGenerator {
       val imported = if (memberOfClassifier) owner else fqn
       val simple = imported.substringAfterLast('.')
       if (simple in RESERVED_BY_THE_WRAPPER) {
-        // Not written qualified and carried on, the way a component in this position is: a value's
-        // qualified form is what `importedName` was introduced to stop writing, and a `kotlin` here
-        // is a name nobody has. Refusing says which import and why, which is the generator's
-        // promise — source that compiles, or a located reason.
-        reasons +=
-          "$where imports `$simple`, which the generated file spends on its own scaffolding"
-        return null
+        // Written qualified instead, which is the answer a component in this position already gets
+        // and the one this function replaced for every value. Not a refusal: a document that names
+        // `kotlin` is legal and generated fine before folding existed, and refusing it here would
+        // turn a spelling choice inside one `repeat` into a document the generator will not write.
+        // Nothing is imported, so the qualifier a folded run writes still means the package.
+        return qualifiedName(fqn, where)
       }
       if (simple == screenName) {
         // The generated function shadows an import of its own name, so the expression would name
@@ -1618,11 +1625,13 @@ object ScreenGenerator {
    *
    * `kotlin` is spent by [foldRepeats], which writes `kotlin.repeat(n)` precisely so that no
    * declaration in the body can capture the call. A declaration imported under that simple name
-   * would capture the *qualifier* instead and leave `repeat` unresolved, so it is reserved here for
-   * a component and refused for a value's reference or construct, for a chain link, and for the
-   * type a constructed placeholder imports — the four ways a simple name enters this file. The
-   * matching state name is refused by the root-shadowing check, which already carries `androidx`
-   * for the same reason.
+   * would capture the *qualifier* instead and leave `repeat` unresolved, so nothing is imported
+   * under it: a component and a value's reference or construct are written qualified instead, while
+   * a chain link and a constructed placeholder — neither of which can be called without its import
+   * — are refused by name. Those are the four ways a simple name enters this file. A state
+   * declaration is the fifth shadowing surface and is not an import, so it turns the fold off
+   * rather than being answered here. The matching state name is refused by the root-shadowing
+   * check, which already carries `androidx` for the same reason.
    */
   private val RESERVED_BY_THE_WRAPPER = setOf("Composable", "kotlin")
 
