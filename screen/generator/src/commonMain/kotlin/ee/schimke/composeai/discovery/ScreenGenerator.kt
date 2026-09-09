@@ -337,6 +337,18 @@ object ScreenGenerator {
         document.name,
         expressionPackages,
         document.state.associateBy(ScreenState::name),
+        // Whether a `repeat` written into the body would still mean `kotlin.repeat`, and whether
+        // its implicit `it` would shadow anything a folded child reads. Both are decided here,
+        // once, from the two things that can capture a name in the generated function: a state
+        // declaration, which is a local in the body, and a component imported by simple name. A
+        // document declaring `it` or `repeat` is rare and perfectly legal — `isUsableIdentifier`
+        // admits both — so it gets its siblings written out one by one rather than a refusal or a
+        // fold that changes what its reads resolve to.
+        foldsRepeatedSiblings =
+          document.state.none { it.name == "it" || it.name == "repeat" } &&
+            components.components.none {
+              it.canonicalId in simplyImportable && it.symbol.name == "repeat"
+            },
       )
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
@@ -571,6 +583,8 @@ object ScreenGenerator {
     val expressionPackages: Set<String>,
     /** Declared state by name, so a read can be checked against something rather than trusted. */
     val state: Map<String, ScreenState> = emptyMap(),
+    /** Whether [foldRepeats] may fold at all here — see the call that computes it. */
+    val foldsRepeatedSiblings: Boolean = true,
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -743,8 +757,11 @@ object ScreenGenerator {
             val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
-                if (wrapper == null) foldRepeats(children.map { node(it, depth + 1) }, inner)
-                else
+                if (wrapper == null) {
+                  val rendered = children.map { node(it, depth + 1) }
+                  if (foldsRepeatedSiblings) foldRepeats(rendered, inner)
+                  else rendered.joinToString("\n")
+                } else
                   children.joinToString("\n") { child ->
                     "$inner$wrapper {\n${node(child, depth + 2)}\n$inner}"
                   }
@@ -1409,6 +1426,12 @@ object ScreenGenerator {
    *
    * Not applied to a slot filled through a [SlotItem]. `item { … }` is where child identity has
    * consequences a reader cannot see from the text, and the trade there is not obviously worth it.
+   *
+   * `repeat` is a name like any other, and so is the `it` it binds: a document may legally declare
+   * state called either, and then the fold would change what a child's reads resolve to — the
+   * lambda's implicit `Int` shadowing a state named `it`, a local `val repeat` capturing the call.
+   * Whether that can happen is decided once per document, before any of this runs, and a document
+   * where it can gets no folds at all.
    *
    * [MINIMUM_FOLDED_RUN] is where the pattern starts being the point: two of anything is a pair a
    * reader takes in at a glance, and folding it costs two lines to save one.

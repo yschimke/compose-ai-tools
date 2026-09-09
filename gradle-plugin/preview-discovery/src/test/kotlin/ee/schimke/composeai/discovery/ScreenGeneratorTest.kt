@@ -1451,6 +1451,30 @@ class ScreenGeneratorTest {
     assertThat(occurrences(source.source, "item {")).isEqualTo(5)
   }
 
+  /**
+   * `repeat` and the `it` it binds are names like any other.
+   *
+   * A document may legally declare state called either — `isUsableIdentifier` admits both — and
+   * inside a folded run a state named `it` is shadowed by the lambda's implicit `Int` while a local
+   * `val repeat` captures the call itself. Neither is a refusal: the siblings are written out one
+   * by one, which is what the generator did before the fold existed.
+   */
+  @Test
+  fun `state named it or repeat turns the fold off rather than changing what a child reads`() {
+    listOf("it", "repeat").forEach { name ->
+      val source =
+        emitted(
+            cells(6)
+              .copy(state = listOf(ScreenState(name, "kotlin.String", ScreenValue.Text("x")))),
+            catalog(card, text),
+          )
+          .source
+
+      assertThat(source).doesNotContain("repeat(6)")
+      assertThat(occurrences(source, "Text(text = ")).isEqualTo(6)
+    }
+  }
+
   private fun occurrences(source: String, text: String) =
     Regex(Regex.escape(text)).findAll(source).count()
 
