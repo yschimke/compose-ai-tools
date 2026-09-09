@@ -57,8 +57,11 @@ daemon through `ViewRootForTest` (`daemon/android/…/RenderEngine.kt:1137`), De
 `Activity` has the same handle: walk the view tree, find the views implementing `RootForTest`, take
 `semanticsOwner.rootSemanticsNode` (or `unmergedRootSemanticsNode`).
 
-So Tier 2 is not "write a capture pipeline". It is "obtain those four values in a real process, and
-call the code that already exists".
+So the *extraction* is largely done. What is not done, and what a first draft of this document
+wrongly waved away, is everything around it: a capture is not a render, and four of the assumptions
+the render lane gets for free do not hold on a device. Those are collected in
+[What a capture costs beyond the producers](#what-a-capture-costs-beyond-the-producers) rather than
+scattered, because together they are most of the actual work.
 
 ---
 
@@ -79,42 +82,90 @@ app (debug) ── :data-devicecapture-android
                  │  calls the existing extractors
                  └─ writes data/<captureId>/<kind>.json + <captureId>.png
                              │
-                 adb pull ───┘
+      adb exec-out run-as ──┘
                              ↓
               compose-preview capture → the same on-disk layout the render lane writes
 ```
 
-The capture id replaces the preview id and nothing else changes: every downstream consumer — MCP's
-`get_preview_data`, the parity compare page, the reference store — reads the same files it already
-reads.
+The transfer is `adb exec-out run-as <package>`, not a plain `adb pull`: the capture lands in the
+app's private files directory, which the shell user cannot traverse even for a debuggable app, and
+writing a real screen's pixels and text to shared storage instead would give away the privacy
+property below. The host command therefore has to know the package, not just a path.
+
+The capture id takes the preview id's place in the on-disk layout, so anything reading those files
+by path works unchanged. **Discovery does not**: `resources/list` enumerates discovered `@Preview`s,
+and MCP validates a URI against "a known workspace ID + module path + preview FQN"
+([`docs/daemon/MCP.md`](../daemon/MCP.md) § Security & trust model). A capture matches none of those,
+so reaching one over MCP needs either a `compose-capture://` scheme beside the two that exist or a
+registration path that makes a capture a first-class resource. Pick one before building the host
+command, because it decides whether a capture id is free-form or has to be derivable.
 
 ### The four inputs, in a live process
 
 | Input | Where it comes from |
 | --- | --- |
 | `SemanticsNode` root | `(view as RootForTest).semanticsOwner.rootSemanticsNode` / `unmergedRootSemanticsNode`, over the resumed activity's view tree. Both trees are worth capturing; `uia/hierarchy` already records which one it walked in its `merged` flag. |
-| `List<CompositionData>` | `androidx.compose.runtime.tooling.LocalInspectionTables` — **and this is the one input the library cannot obtain on its own.** The composition local has to be *provided* around the content before composition, exactly as both render lanes do it today (`CompositionLocalProvider(LocalInspectionTables provides store)`, `daemon/desktop/…/RenderEngine.kt:3199`); a library handed an already-composed tree cannot retrofit it. So Tier 2 costs the app a one-line integration at its root content in the debug variant, or a reflective read of the composition of the sort the Studio inspector does. Take the one-line version: it is honest, it is stable, and "an app you control" is the tier's premise. Without it, `layout/inspector` degrades to bounds without source refs rather than failing — which is still better than `uia/hierarchy` alone, so the capture should proceed and say so. |
+| `List<CompositionData>` | `androidx.compose.runtime.tooling.LocalInspectionTables` — **and this is the one input the library cannot obtain on its own.** The composition local has to be *provided* around the content before composition, exactly as both render lanes do it today (`CompositionLocalProvider(LocalInspectionTables provides store)`, `daemon/desktop/…/RenderEngine.kt:3199`); a library handed an already-composed tree cannot retrofit it. And providing the local is not on its own enough: the render lane's own integration (`daemon/desktop/…/RenderEngine.kt:3190-3199`) calls `currentComposer.collectParameterInformation()` and adds `currentComposer.compositionData` to the store *before* installing the provider, under `@OptIn(InternalComposeApi::class)`. Without the first call there are no parameters and so no source refs; without the second the store can stay empty. So Tier 2 costs the app a three-line composable wrapper against an internal Compose API, or a reflective read of the composition of the sort the Studio inspector does. Take the wrapper: it is honest, it is what this repository already does twice, and "an app you control" is the tier's premise — but budget it as an internal-API dependency to re-check on Compose upgrades, not as a one-liner. Without it, `layout/inspector` degrades to bounds without source refs rather than failing — which is still better than `uia/hierarchy` alone, so the capture should proceed and say so. |
 | `density`, `fontScale` | `LocalDensity` / resources configuration. |
-| pixels | `PixelCopy` over the window, so the capture and the tree come from one frame. |
+| pixels | `PixelCopy` over the window — but see below: it does **not** by itself put the pixels and the trees on the same frame. |
 
 ### What to reuse, and the one thing that needs moving
 
 - **`uia/hierarchy`** — `:data-uiautomator-hierarchy-android` is published, is an `android.library`,
   and its extractor takes a `SemanticsNode`. Reusable as-is.
-- **`a11y/hierarchy`** — `:data-a11y-hierarchy-android`, same story. `a11y/atf` additionally needs
-  the ATF walk over a `View`, which a live app has more readily than a render does.
+- **`a11y/hierarchy`** — *not* the same story, and this is the second piece of module surgery.
+  `AccessibilityHierarchyExtractor.extract(previewId, root: View)` takes a `View` and delegates to
+  `AccessibilityChecker.analyze`, which runs the full ATF pass and returns hierarchy and findings
+  together. The `View` signature is not the problem — a live app has a realer one than a render
+  does. The dependency is: `:data-a11y-core` declares `implementation(libs.robolectric)`, because
+  `AccessibilityChecker.analyze` swaps the `ShadowBuild` fingerprint to sidestep ATF's
+  `Build.FINGERPRINT == "robolectric"` bail-out. Shipping that into a real app, even a debug
+  variant, is not acceptable. Tier 2 needs the fingerprint workaround made conditional and the
+  Robolectric dependency moved off the path an app compiles against.
 - **`layout/inspector` / `compose/semantics`** — `LayoutInspectorDataProducer` lives in
   `:data-layoutinspector-connector`. That module publishes (as a JAR, and an Android library can
   depend on a JVM jar transparently), so it is *reachable* — but it also drags FontBox/PDFBox and
   the whole Figma-SVG font-subsetting path, which is not weight to put in an app even in a debug
   variant. The producer should be lifted into a core module, or a slim
-  `:data-layoutinspector-producer` split out beneath it. This is the only module surgery Tier 2
-  needs.
+  `:data-layoutinspector-producer` split out beneath it.
 
 Note also that [`docs/daemon/DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md) § "Module split" says
 connectors are "Not published — internal to the daemon process", while every `data/*/connector`
 build file applies `composeai.maven-publishing`. The doc is stale; whichever way that is resolved,
 Tier 2 should not be the thing that depends on the answer.
+
+### What a capture costs beyond the producers
+
+Four assumptions the render lane gets for free, each of which fails on a device and none of which
+the extractors solve.
+
+**One frame.** `PixelCopy` asynchronously copies a queued window buffer while the composition is
+free to advance on either side of it, so pixels and a separately-walked semantics tree can belong to
+different frames. On an animated or streaming screen that pairs one frame's bounds with another
+frame's pixels — silent, and exactly the kind of error a parity comparison would then attribute to a
+renderer. The capture needs an explicit protocol: quiesce the frame clock, or take the tree and the
+buffer inside one coordinated snapshot and record which frame each came from. Asserting one-frame
+consistency without one, as a first draft of this document did, is wrong.
+
+**One coordinate space.** `UiAutomatorHierarchyNode.boundsInScreen` is populated from
+`node.boundsInRoot` (`UiAutomatorHierarchyExtension.kt:104`) — the field name is a lie the render
+lane never notices, because there the Compose root *is* the window. On a device a `ComposeView`
+offset inside a real window makes every bound wrong against a full-window `PixelCopy`.
+`ComposeSemanticsNode` names its field `boundsInRoot` and is honest about it. Either add the root
+view's window offset when capturing, or crop the pixels to the root — and say which, per product,
+since the two kinds disagree about what their field means.
+
+**One root.** A hybrid screen has several `ComposeView`s, so the library will find several
+`RootForTest` views, while every producer takes one root and writes one file per kind per capture.
+Taking the first root silently drops the rest of the screen; looping leaves only the last tree.
+Needs a root-selection rule or a forest format, and it is a separate question from the multi-window
+one below because both roots are in the *same* window.
+
+**A durable home.** `build/compose-previews/data/<id>/` is documented as ephemeral and rewritten per
+render ([`DATA-PRODUCTS.md`](../daemon/DATA-PRODUCTS.md)), and a `gradle clean` takes the tree with
+it. That is right for a render and wrong for a capture, whose whole purpose is to outlive the
+session as a reference. The host command needs a promotion step into a durable store with its own
+manifest; the build directory is a landing zone, not the destination.
 
 ### `testTagsAsResourceId`
 
@@ -189,8 +240,12 @@ So the honest scope is:
 
 - **A capture becomes a reference layer** — pixels plus bounds, to build against. Available the day
   either tier lands.
-- **A capture becomes a parity reference** — registered like any other `compose-preview-references/v1`
-  entry, so a shipped screen and a catalog render can be compared with the machinery that exists.
+- **A capture becomes a parity reference** — registered as a `compose-preview-references/v1` entry.
+  The comparison machinery then works unchanged, but the registration is not free: a reference
+  manifest maps its own id onto an **exact existing `previewId`**, and a capture has no preview to
+  name. So a capture-backed reference needs an explicit capture → target-preview mapping, authored
+  by whoever wants the comparison. That is the right place for it to live — "which preview is this
+  screen supposed to match" is a judgement, not a derivation — but it has to exist.
 - **A capture does *not* become a builder document.** Turning `layout/inspector` nodes into catalog
   component ids is a separate mapping problem with its own failure modes, and Tier 2's richer tree
   makes it *tractable* rather than solved. Specifying it is out of scope here.
@@ -213,9 +268,11 @@ contracts.
 
 1. **One capture id or many?** A scrollable screen is several frames; the on-disk layout assumes one
    id per capture. Probably fine — a scroll capture is already its own kind.
-2. **Multi-window.** Dialogs, popups and the IME are separate windows with separate roots. The
+2. **How a capture is addressed over MCP** — a `compose-capture://` scheme beside the two that
+   exist, or registration into the resource list. Decides whether a capture id can be free-form.
+3. **Multi-window.** Dialogs, popups and the IME are separate windows with separate roots. The
    preview lane has `shownDialogWindow()` for the Robolectric case; a device has the real thing, and
    the capture should say which window each tree came from.
-3. **Where the consent prompt lives** — host command, on-device, or both.
-4. **Whether `.li` import is worth its maintenance** once Tier 2 exists. Revisit after Tier 2 has
+4. **Where the consent prompt lives** — host command, on-device, or both.
+5. **Whether `.li` import is worth its maintenance** once Tier 2 exists. Revisit after Tier 2 has
    been used in anger; the answer may be to delete it.
