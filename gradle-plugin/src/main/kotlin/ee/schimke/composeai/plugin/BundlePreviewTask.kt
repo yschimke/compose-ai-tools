@@ -706,9 +706,23 @@ abstract class BundlePreviewTask : DefaultTask() {
     // Only `builder` is merged. Everything else about the carried record is deliberately the
     // FILTERED view — its bindings name previews this bundle actually contains — and widening that
     // would put preview ids in `components.json` that its own `previews.json` does not have.
+    //
+    // The merged policy's own preview ids are remapped, for the same invariant. `declaredBy` and
+    // `conflicting` name PREVIEWS, and they come from the full record, so they are raw ids while
+    // everything else in this bundle has been through `bundleIds` — an `@Preview(name = "A B")` is
+    // `a_b` inside the bundle, and a collision makes it `a_b_1`. Carrying them unmapped put ids in
+    // `components.json` that its own `previews.json` does not have, which is precisely what the
+    // paragraph above says must not happen; a raw id is also not reconstructable from the outside
+    // once a suffix is involved. A preview the bundle did not select is dropped rather than guessed
+    // at: naming a preview that is not here is what made this wrong. (`ambiguousWith` is component
+    // ids and `traits` / `malformed` are not ids at all, so those five lists are the whole set and
+    // these two are the only ones to map.)
     val carriedRecord =
       ComponentRecords.from(filteredManifest).let { carried ->
-        val policyByComponent = fullRecord.components.associate { it.canonicalId to it.builder }
+        val policyByComponent =
+          fullRecord.components.associate {
+            it.canonicalId to remapPolicyPreviewIds(it.builder, bundleIds)
+          }
         carried.copy(
           components =
             carried.components.map {
@@ -2111,6 +2125,31 @@ private val SPATIAL_IMAGE_SUFFIXES = listOf(".png", ".jpg", ".jpeg", ".webp")
  * name and manifest so all id materialisations agree. A repeated raw id (same preview requested
  * twice) maps to the one bundle id, not a fresh disambiguated one.
  */
+/**
+ * A policy's own preview ids, rewritten into the bundle's namespace.
+ *
+ * [BuilderPolicy.declaredBy] and [BuilderPolicy.conflicting] name PREVIEWS, and the policy is
+ * merged in from the FULL record while everything else in the bundle has been through
+ * [assignBundleEntryIds]. Carried unmapped they are raw ids — an `@Preview(name = "A B")` is `a_b`
+ * inside the bundle, and a collision makes it `a_b_1` — so `components.json` named previews its own
+ * `previews.json` does not have, and a suffixed id cannot be reconstructed from the outside anyway.
+ *
+ * A preview this bundle did not select is DROPPED rather than guessed at, because naming a preview
+ * that is not here is the thing that was wrong. `ambiguousWith` holds component ids and `traits` /
+ * `malformed` are not ids, so of the policy's five lists these two are the whole set to map.
+ *
+ * Extracted rather than left inline so it can be tested: the bug was invisible because the merge
+ * sat in the middle of a task method nothing could call.
+ */
+internal fun remapPolicyPreviewIds(
+  policy: BuilderPolicy?,
+  bundleIds: Map<String, String>,
+): BuilderPolicy? =
+  policy?.copy(
+    declaredBy = policy.declaredBy.mapNotNull(bundleIds::get),
+    conflicting = policy.conflicting.mapNotNull(bundleIds::get),
+  )
+
 internal fun assignBundleEntryIds(rawIds: List<String>): Map<String, String> {
   val used = HashSet<String>()
   val result = LinkedHashMap<String, String>()

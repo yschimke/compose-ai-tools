@@ -206,6 +206,7 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_ARITY = "component.stateCallback.arity"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
     const val BUILTIN_SLOT_ROLE_UNKNOWN = "policy.builtin.slot.role.unknown"
+    const val STRATEGY_UNKNOWN = "policy.code.strategy.unknown"
   }
 
   /**
@@ -923,6 +924,23 @@ object UiBuilderCatalogs {
           }
         }
       }
+    }
+    // The two checks below compare the strategy with the templates, and they AGREE with each other
+    // about a misspelled one: `templtes` with no templates satisfies neither, so a strategy no
+    // exporter implements was published with nothing said. The schema admits exactly two words, and
+    // that is a fact about the strategy itself rather than about its agreement with anything, so it
+    // is asserted before either comparison — and here, where every consumer reaches it, not only in
+    // the pre-flight the two workflow render lanes run.
+    if (code.strategy !in UI_BUILDER_CODE_STRATEGIES) {
+      into +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.STRATEGY_UNKNOWN,
+          subject = "code.strategy",
+          message =
+            "code.strategy is '${code.strategy}', which no exporter implements. It is " +
+              UI_BUILDER_CODE_STRATEGIES.sorted().joinToString(" or ") { "'$it'" } +
+              ".",
+        )
     }
     if (code.strategy == "templates" && code.templates.isEmpty()) {
       into +=

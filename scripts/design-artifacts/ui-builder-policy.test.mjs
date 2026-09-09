@@ -279,3 +279,27 @@ test("every field the reader types is checked, not one per round", async () => {
   ordered.catalogId = "wear-m3";
   assert.deepEqual(validatePolicy(ordered).errors, []);
 });
+
+test("the sweep covers non-string typed fields too", async () => {
+  // The sweep above shipped enumerating STRING fields and handling `menu` beside them, which left
+  // `builtins.<id>.properties` — a `List<JsonElement>` — unchecked. A sweep that claims to cover
+  // every typed field and covers one kind of type is the thing it was written to replace, so this
+  // case is derived from the model's declarations rather than from the fields anyone remembered.
+  const scalar = wellFormed();
+  scalar.builtins = { "wear-m3/screen": { role: STRUCTURAL_ROLES[0], properties: "size" } };
+  const errors = validatePolicy(scalar).errors;
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /"properties"/);
+
+  const object = wellFormed();
+  object.builtins = { "wear-m3/screen": { role: STRUCTURAL_ROLES[0], properties: { size: 1 } } };
+  assert.equal(validatePolicy(object).errors.length, 1);
+
+  const listed = wellFormed();
+  listed.builtins = { "wear-m3/screen": { role: STRUCTURAL_ROLES[0], properties: [{ name: "size" }] } };
+  assert.deepEqual(validatePolicy(listed).errors, []);
+
+  const absent = wellFormed();
+  absent.builtins = { "wear-m3/screen": { role: STRUCTURAL_ROLES[0] } };
+  assert.deepEqual(validatePolicy(absent).errors, []);
+});

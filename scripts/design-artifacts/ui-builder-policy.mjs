@@ -175,6 +175,16 @@ function validateTypedShapes(policy, errors) {
           );
         }
       }
+      // Not a string, and that is the point: the first cut of this sweep enumerated the string
+      // fields and left `properties` — a `List<JsonElement>` — out, which is the same "covers most
+      // of them" the sweep exists to replace. The list is derived from the model's declarations
+      // now, not from the fields that came to mind. The ELEMENTS stay unchecked: a property's shape
+      // is the preview server's, and only the array-ness is what the reader needs to deserialize.
+      if (builtin.properties !== undefined && !Array.isArray(builtin.properties)) {
+        errors.push(
+          `builtin ${JSON.stringify(id)} has a "properties" of ${JSON.stringify(builtin.properties)}; the reader decodes it as a list`,
+        );
+      }
     }
   }
   validateMenu(policy.menu, errors);
