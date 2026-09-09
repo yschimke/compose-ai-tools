@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T06:28:06.098Z",
+  "generatedAt": "2026-09-09T07:17:57.072Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "12d5e4e4277ec926c5a937e0ca508b4d26d0869c",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.4.1 (#5326)",
+        "at": "2026-09-09T07:50:23+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "dc9a4a32a53a78139545597492f0d0f192d11c35",
+        "subject": "fix(serve): stop the theme cache file-name memo growing on unpersistable keys (#5327)",
+        "at": "2026-09-09T07:50:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a0f6ded825a7a3da77e8b3a533275ec95624c453",
+        "subject": "chore(main): release 2.4.1 (#5321)",
+        "at": "2026-09-09T07:45:56+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c85da11f76e8a633a76f5767fd013159d47524ec",
+        "subject": "perf(serve): stop re-hashing and re-formatting a theme cache file name (#5324)",
+        "at": "2026-09-09T07:45:26+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2160ecaf10efab386b51d4708c25455a5ae0251f",
+        "subject": "fix(plugin): keep build outputs out of the ui-builder template tree (#5325)",
+        "at": "2026-09-09T07:45:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "85280a3b2a8a06c6201f02131eded1babac307d8",
         "subject": "fix(ci): decide root-policy reachability from the modules being rendered (#5323)",
@@ -443,46 +483,6 @@
         "subject": "feat(cli): compose-preview design, a launcher for the server's design command (#5261)",
         "at": "2026-09-07T09:27:38+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fe34afcd3714cc081ca3f857d96e47c487be752f",
-        "subject": "fix(samples): regenerate the Wear widget fixture from the current generator (#5258)",
-        "at": "2026-09-07T07:53:02+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "47989f23d52d7c2a0451a8a4160bfc553933fa70",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.1.1 (#5257)",
-        "at": "2026-09-07T02:01:11Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c9a4582e85f88006b66b3e278fca7ce13d1359f4",
-        "subject": "chore(main): release 2.1.1 (#5256)",
-        "at": "2026-09-06T21:19:10+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "318975e5c9f84f10b1d31b01beaa3426a49a5ce2",
-        "subject": "fix: let Create Release Tag use a token that can create a ref (#5255)",
-        "at": "2026-09-06T21:07:53+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a0026342c2b900a630842b0970123177e46614d6",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.1.0 (#5254)",
-        "at": "2026-09-06T21:01:10+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
