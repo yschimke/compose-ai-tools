@@ -331,12 +331,12 @@ so the gathered list holds subprojects only, and the two edges do not duplicate.
 
 <a id="extractions"></a>
 
-Settings used to carry a paragraph for each of these. They are recorded here
-instead; nothing in this build depends on any of them as source.
+Recorded here rather than as a paragraph each in `settings.gradle.kts`; nothing in
+this build depends on any of them as source.
 
 | What left | Where it went | Why |
 | --- | --- | --- |
-| The preview server, and `cli/serve-web` (the Lit/Vue frontend whose bundle was committed into the server's resources) | [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server) | The extraction [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732) planned, finished. `:cli` consumes it as `ee.schimke.composeai:compose-preview-serve` (`composeai-preview-serve` in the version catalog). |
+| The preview server, and `cli/serve-web` (the Lit/Vue frontend whose bundle was committed into the server's resources) | [yschimke/compose-preview-server](https://github.com/yschimke/compose-preview-server) | The extraction [#4732](https://github.com/yschimke/compose-ai-tools/issues/4732) planned, finished. `serve` and `browse` are launchers that exec the published `compose-preview-server` binary, so it is on neither the compile nor the runtime classpath here — see [AGENT_GUIDE.md](../AGENT_GUIDE.md). |
 | The mobile + Wear "session viewer" client apps (`:clients:*`) | [yschimke/compose-preview-client](https://github.com/yschimke/compose-preview-client) | [#2533](https://github.com/yschimke/compose-ai-tools/issues/2533). They consumed `compose-preview serve` purely through the wire contract ([serve/SESSION-VIEWER-PROTOCOL.md](../serve/SESSION-VIEWER-PROTOCOL.md)), never a code dependency, so the lift was clean. |
 | `:cli-scripting`, the Kotlin-scripting host for `compose-preview script <path>`, and the intermediate `:examples-scripting` reference | [yschimke/compose-ai-contrib](https://github.com/yschimke/compose-ai-contrib) | Step C of the clean-API carve-out ([#1084](https://github.com/yschimke/compose-ai-tools/issues/1084)). Scripting is now a standalone consumer of `:preview-data-api` + `:gradle-preview-driver`; its absence from this repo is the proof the published API is expressive enough to build features *against*, not just inside. |
 | The Remote Compose players — both the Kotlin Multiplatform one written here and the vendored AndroidX embedded player it is compared against — plus the Wasm browser bundle, the iOS XCFramework and the lane-comparison recipes | [yschimke/rc-players](https://github.com/yschimke/rc-players) | Consumed as coordinates (`libs.rcplayer.*`). The dependency runs both ways and neither direction is a build-time cycle: that repository takes `data-fonts-google` and `data-layoutinspector-connector` back from this one, at released coordinates. |
