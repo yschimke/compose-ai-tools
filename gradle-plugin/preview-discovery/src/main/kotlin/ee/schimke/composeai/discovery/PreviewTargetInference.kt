@@ -61,6 +61,16 @@ object PreviewTargetInference {
   // Deliberately NOT the whole of `WRAPPER_FQN_PREFIXES`: `foundation.layout.Column`,
   // `runtime.remember` and `ui.Modifier` stay scaffolding under either question, and admitting them
   // would bury the one call a reader cares about under the frame that positions it.
+  /**
+   * How far a component may sit behind the project's own composables and still be the preview's.
+   *
+   * Three covers the shapes that motivated it — `Sticker { Frame { Component() } }` is two — with
+   * one to spare for a catalog that wraps its frame. Deeper than that and "the preview renders it"
+   * stops being a claim worth publishing: a screen four levels of project code above a `Text` is
+   * not a `Text` sticker.
+   */
+  private const val PROJECT_COMPOSABLE_MAX_DEPTH = 3
+
   private val COMPONENT_LIBRARY_FQN_PREFIXES =
     listOf(
       "androidx.compose.material3.",
@@ -204,8 +214,11 @@ object PreviewTargetInference {
       } catch (_: Throwable) {
         return emptyList()
       }
+    val lambdaCalls = extractComposeSingletonLambdaCalls(directCalls, scanResult, projectClassFqns)
     val calls =
-      directCalls + extractComposeSingletonLambdaCalls(directCalls, scanResult, projectClassFqns)
+      directCalls +
+        lambdaCalls +
+        extractProjectComposableCalls(directCalls + lambdaCalls, scanResult, projectClassFqns)
     val candidates =
       calls
         .asSequence()
@@ -518,6 +531,74 @@ object PreviewTargetInference {
    *   the body's own nested `$lambda$n$…` methods — the callbacks it declares — since a call made
    *   from one of those is still a call the lambda makes.
    */
+  /**
+   * The library components a preview reaches THROUGH its own composables.
+   *
+   * The walk above sees the preview's body plus one hop through Compose singleton lambdas, then
+   * keeps only calls whose owner is a component library. A sticker that factors its frame drops out
+   * of that entirely: `Sticker { TimePickerDialogFrame(…) }` lands on a project composable, which
+   * is neither a library call nor followed, so the `TimePicker` two hops further in is invisible.
+   * The cost is not one missing entry — m3-catalog's record carries `DateRangePicker` and neither
+   * picker, and wear-m3-catalog's `:remote-catalog` collapses 49 catalog entries into the two
+   * sticker composables that wrap them, because every component it publishes is behind a frame.
+   *
+   * So a call into the PROJECT's own code is followed, and the library calls inside it are the
+   * preview's too. Bounded by [PROJECT_COMPOSABLE_MAX_DEPTH] and a visited set: a frame that calls
+   * a frame is ordinary, a cycle is possible, and an unbounded walk over a large project's call
+   * graph would make discovery's cost a function of how deeply the project factors its UI.
+   *
+   * Deliberately NOT tagged `viaLambda`. That flag exists so `infer`'s project-local answer can
+   * discount lambda contents; this list feeds `inferComponents` only, where a component reached
+   * through a frame is exactly as much the sticker's subject as one called directly.
+   */
+  /**
+   * Compose's generated lambda holder, which [extractComposeSingletonLambdaCalls] already owns.
+   *
+   * Following one here would walk the `getLambda$N` getter rather than the lambda body, finding
+   * nothing, and then re-enter through the singleton path anyway.
+   */
+  private fun Invocation.isComposeSingleton(): Boolean = ".ComposableSingletons$" in ownerFqn
+
+  private fun extractProjectComposableCalls(
+    seed: List<Invocation>,
+    scanResult: ScanResult,
+    projectClassFqns: Set<String>,
+  ): List<Invocation> {
+    val found = mutableListOf<Invocation>()
+    val visited = mutableSetOf<Triple<String, String, String>>()
+    var frontier = seed.filter { it.ownerFqn in projectClassFqns && !it.isComposeSingleton() }
+    repeat(PROJECT_COMPOSABLE_MAX_DEPTH) {
+      val next = mutableListOf<Invocation>()
+      for (call in frontier) {
+        if (!visited.add(Triple(call.ownerFqn, call.methodName, call.descriptor))) continue
+        val resource = scanResult.getClassInfo(call.ownerFqn)?.resource ?: continue
+        val inner =
+          try {
+            extractCalls(
+              resource = resource,
+              ownerFqn = call.ownerFqn,
+              isRoot = { key -> key.name == call.methodName && key.descriptor == call.descriptor },
+              // The nested-method walk inside one class is already how a captured lambda's body is
+              // reached; keeping it means a frame whose content lambda captures still resolves.
+              shouldFollow = { key -> key.name.contains('$') },
+            )
+          } catch (_: Throwable) {
+            continue
+          }
+        found += inner
+        next += inner.filter { it.ownerFqn in projectClassFqns && !it.isComposeSingleton() }
+        // A project composable can hand its content to a singleton lambda too, so the same hop the
+        // preview body gets applies at every level rather than only the first.
+        val throughLambdas = extractComposeSingletonLambdaCalls(inner, scanResult, projectClassFqns)
+        found += throughLambdas
+        next += throughLambdas.filter { it.ownerFqn in projectClassFqns }
+      }
+      frontier = next
+      if (frontier.isEmpty()) return found
+    }
+    return found
+  }
+
   private fun extractComposeSingletonLambdaCalls(
     directCalls: List<Invocation>,
     scanResult: ScanResult,
