@@ -206,6 +206,17 @@ object ScreenGenerator {
   private const val FOLD_SHRINK_ATTEMPTS = 3
 
   /**
+   * The longest run one fold may cover, and so the bound on the growth scan.
+   *
+   * Growth restarts at each sibling a fold did not consume, and generated calls of *different*
+   * components still share their indentation and their closing `)` — so without a cap a slot that
+   * folds nowhere costs a scan per child, and sibling lists have no bound. A run longer than this
+   * is folded in windows of this size rather than in one: two lists for a five-hundred-cell year is
+   * a fair price for a scan that cannot run away.
+   */
+  private const val FOLD_MAXIMUM_WINDOW = 256
+
+  /**
    * Names the loop parameter may take, in preference order.
    *
    * The first one the body does not already contain is used, so the parameter cannot shadow
@@ -1596,7 +1607,8 @@ object ScreenGenerator {
     // From the *second* child: the first shares all of itself with itself, which would leave the
     // suffix nothing to be.
     var end = start + 1
-    while (end < children.size) {
+    val limit = minOf(children.size, start + FOLD_MAXIMUM_WINDOW)
+    while (end < limit) {
       val text = children[end]
       // Each as a running minimum against the first child, and independent of the other: a child
       // *identical* to the first shares all of it in both directions, and limiting the suffix by
@@ -1691,11 +1703,20 @@ object ScreenGenerator {
    */
   private fun foldableNumberKind(value: String): String? {
     FOLD_HEX_NUMBER.matchEntire(value)?.let {
-      return "hex:${it.groupValues[2]}"
+      // A hex literal's own type depends on its magnitude — `0xFF` is an `Int` and `0xFFEBEDF0` a
+      // `Long` — so it is foldable only when it says which it is.
+      return if (it.groupValues[2].isEmpty()) null else "hex:${it.groupValues[2]}"
     }
     val decimal = FOLD_DECIMAL_NUMBER.matchEntire(value) ?: return null
     val fractional = decimal.groupValues[2].isNotEmpty()
-    return "${if (fractional) "fractional" else "whole"}:${decimal.groupValues[3]}"
+    val suffix = decimal.groupValues[3]
+    // A whole number without a suffix is an `Int` *here* and need not have been one there: it was
+    // written into a call that may take a `Long`, and Kotlin widens neither implicitly. Lifting it
+    // into a list gives the loop variable the literal's own type, so only a literal carrying its
+    // type — `1000L`, `1.0f` — survives being moved. A bare decimal fraction is a `Double`
+    // wherever it stands, so it needs no suffix to keep its type.
+    if (!fractional && suffix.isEmpty()) return null
+    return "${if (fractional) "fractional" else "whole"}:$suffix"
   }
 
   /** One run of siblings differing in a single literal — see [varyingRun]. */

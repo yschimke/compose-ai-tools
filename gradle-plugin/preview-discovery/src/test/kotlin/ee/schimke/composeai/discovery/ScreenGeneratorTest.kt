@@ -1703,6 +1703,47 @@ class ScreenGeneratorTest {
     assertThat(occurrences(source, "Text(text = label(")).isEqualTo(3)
   }
 
+  /**
+   * A literal that does not carry its type is left where it was written.
+   *
+   * `label(100)` compiles against a `Long` parameter because the literal takes its type from the
+   * call. Lifted into `kotlin.collections.listOf(100, 200, 300)` it is an `Int`, and `label(value)`
+   * then does not compile — Kotlin widens neither implicitly. So a whole number folds only when it
+   * says which type it is.
+   */
+  @Test
+  fun `whole numbers without a suffix are not folded, because the call gave them their type`() {
+    val cells =
+      listOf(100L, 200L, 300L)
+        .map { argument ->
+          ScreenNode(
+            text.canonicalId,
+            arguments =
+              mapOf(
+                "text" to
+                  ScreenValue.Construct(
+                    "app.theme.label",
+                    positional = listOf(ScreenValue.Whole(argument)),
+                    typeFqn = "kotlin.String",
+                  )
+              ),
+          )
+        }
+        .toTypedArray()
+
+    val source =
+      (ScreenGenerator.generate(
+          column(*cells),
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).contains("label(100)")
+    assertThat(source).doesNotContain("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Text(text = label(")).isEqualTo(3)
+  }
+
   private fun occurrences(source: String, text: String) =
     Regex(Regex.escape(text)).findAll(source).count()
 
