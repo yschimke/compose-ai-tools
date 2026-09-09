@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T04:39:15.356Z",
+  "generatedAt": "2026-09-09T04:51:47.710Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "57811aa75b865b7128894e98f1aedc64fdc87349",
+        "subject": "fix(ui-builder): apply four fixes to the places they were left out of (#5314)",
+        "at": "2026-09-09T05:43:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "b12ee694379086f1cb752360875088c7378f5a5b",
         "subject": "feat(discovery): publish a catalog's ui-builder.json from @BuilderComponent and a policy file (#5312)",
@@ -474,14 +482,6 @@
         "sha": "a808a4145a80b0cc282c7794d1e50aa2b01c1fc7",
         "subject": "docs: cost the train split, and land on two lines rather than five (#5247)",
         "at": "2026-09-06T18:19:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "cae5f9371e50d03076fbeb5f74b1d74fe3cb3c1a",
-        "subject": "feat: publish to Maven Central only when a published module changed (#5246)",
-        "at": "2026-09-06T18:09:43+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
