@@ -19,6 +19,7 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -158,6 +159,50 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val catalogSpecCandidates: ConfigurableFileCollection
+
+  /**
+   * The `ui-builder/designs/` trees a policy's `templates` paths resolve against — module first,
+   * repository root second, matching how the policy and cover sheet are found.
+   *
+   * Declared as an input so a changed template design re-runs this task, and so the files can be
+   * carried with the catalog that advertises them. A `templates` entry is a branch-relative path,
+   * and the publish flow snapshots only what is written out — so a template that is not carried is
+   * a 404 in the New design chooser, advertised by the catalog and absent from the branch.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderTemplateCandidates: ConfigurableFileCollection
+
+  /**
+   * The directories a `templates` path resolves against — the module's, then the repository root's.
+   *
+   * `@Internal` on purpose: these are the *project* directories, and snapshotting them would make
+   * every file in the project an input to this task. Change detection is carried by
+   * [uiBuilderTemplateCandidates], which snapshots only the `ui-builder/` tree; this property
+   * exists so execution can resolve a branch-relative path without reaching for `project`, which is
+   * not available under the configuration cache.
+   */
+  @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
+
+  /**
+   * The template designs a policy names, resolved to real files.
+   *
+   * Paths a policy cannot supply a file for are simply absent from the map; the caller reports them
+   * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
+   * somebody about and not a reason to publish no catalog.
+   */
+  private fun templateFiles(paths: List<String>): Map<String, File> {
+    if (paths.isEmpty()) return emptyMap()
+    val roots = uiBuilderTemplateRoots.files.filter { it.isDirectory }
+    return paths
+      .distinct()
+      .mapNotNull { path ->
+        roots
+          .firstNotNullOfOrNull { root -> File(root, path).takeIf { it.isFile } }
+          ?.let { path to it }
+      }
+      .toMap()
+  }
 
   /**
    * `ui-builder.json` — the builder catalog this module publishes, or nothing when it authors no
@@ -384,6 +429,23 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return
     out.parentFile.mkdirs()
     out.writeText(json.encodeToString(catalog))
+    // The designs this catalog advertises, copied beside it. `compose-preview-server ui` reads this
+    // directory and has no delivery branch to fall back on, so a template that is not here is a
+    // template the local builder cannot open — the same 404 the branch lane would have, arriving
+    // for the consumer this contract most wanted to serve.
+    val declared = catalog.statusSemantics.templates
+    val found = templateFiles(declared)
+    found.forEach { (path, file) ->
+      val target = File(out.parentFile, path)
+      target.parentFile.mkdirs()
+      file.copyTo(target, overwrite = true)
+    }
+    (declared - found.keys).sorted().forEach {
+      logger.warn(
+        "composePreview: the builder catalog names template design '$it', which is not under " +
+          "ui-builder/ in this module or the repository root; the local builder cannot open it."
+      )
+    }
     val unresolved = catalog.diagnostics.size
     logger.lifecycle(
       "composePreview: wrote ${out.name} for ${catalog.catalog.id} " +

@@ -387,6 +387,73 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `two unannotated components deriving one id are reported`() {
+    // The consumer shelves an unannotated component by deriving its id from `componentIdPrefix`,
+    // exactly as this does — so a collision between two of them is two records claiming one
+    // saved-design identity. Excluding them from the check made it blind to most of the shelf.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Card", catalogId = "Containment/Card"),
+          component("Card2", catalogId = "Layout/Card"),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val collision =
+      generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.ID_COLLISION }
+    assertThat(collision.subject).isEqualTo("wear-m3/card")
+    // Neither is annotated, so neither has a policy entry — and the collision is still reported.
+    assertThat(generated.statusSemantics.components).isEmpty()
+  }
+
+  @Test
+  fun `an unannotated component colliding with an explicit id is reported`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Card"),
+          component("Tile", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p")),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.ID_COLLISION)
+  }
+
+  @Test
+  fun `a variant property naming nothing the component takes is reported`() {
+    // The variant switches in the panel and the generated call never changes, which reads as a
+    // builder bug rather than as a typo in the catalog.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Button",
+            parameters = listOf(parameter("style")),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                variantProperty = "styel",
+                variants = listOf(BuilderPair("Filled", "ButtonStyle.Filled")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.VARIANT_PROPERTY_UNKNOWN
+      }
+    assertThat(reported.subject).endsWith("styel")
+  }
+
+  @Test
   fun `a state callback without a usable type is reported`() {
     // `onCheckedChange=checked` parses to a valid state name and no type at all, and `checked:bool`
     // to a type nothing knows. Both passed while only the part before the colon was looked at, and
@@ -405,6 +472,10 @@ class UiBuilderCatalogsTest {
                   listOf(
                     BuilderPair("onCheckedChange", "checked"),
                     BuilderPair("onCheckedChange2", "checked:bool"),
+                    // A colon and a supported type, and no state at all: it passed the malformed
+                    // check because the colon was there, and the unknown-state check because the
+                    // empty name was skipped as "nothing declared".
+                    BuilderPair("onCheckedChange3", ":boolean"),
                   ),
               ),
           )
@@ -417,11 +488,12 @@ class UiBuilderCatalogsTest {
       generated.diagnostics.filter {
         it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_MALFORMED
       }
-    assertThat(reported).hasSize(2)
+    assertThat(reported).hasSize(3)
     assertThat(reported.map { it.subject })
       .containsExactly(
         "wear-m3/checkbox-button.onCheckedChange",
         "wear-m3/checkbox-button.onCheckedChange2",
+        "wear-m3/checkbox-button.onCheckedChange3",
       )
     // The message names the vocabulary, because "malformed" without it is not actionable.
     reported.forEach { assertThat(it.message).contains("boolean") }

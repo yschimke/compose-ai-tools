@@ -211,17 +211,28 @@ object StructuralTemplate {
     }
   }
 
-  /** Index of the `}` closing the `{` at [open], respecting nesting and string literals. */
+  /**
+   * Index of the `}` closing the `{` at [open], respecting nesting, string literals AND character
+   * literals.
+   *
+   * The third scanner in this file that has to know what a quote is, and the one that runs FIRST —
+   * so `${'$'}{call(separator = '}')}` ended here, at the brace inside the char literal, and was
+   * rejected as malformed before the argument splitter's own handling could ever see it. Fixing the
+   * two later scanners without this one left the feature exactly as broken for the input that
+   * motivated the fix.
+   */
   private fun closingBrace(template: String, open: Int): Int {
     var depth = 0
     var index = open
     var inString = false
+    var inChar = false
     while (index < template.length) {
       val ch = template[index]
       when {
-        inString && ch == '\\' -> index++
-        ch == '"' -> inString = !inString
-        inString -> Unit
+        (inString || inChar) && ch == '\\' -> index++
+        ch == '"' && !inChar -> inString = !inString
+        ch == '\'' && !inString -> inChar = !inChar
+        inString || inChar -> Unit
         ch == '{' -> depth++
         ch == '}' -> {
           depth--

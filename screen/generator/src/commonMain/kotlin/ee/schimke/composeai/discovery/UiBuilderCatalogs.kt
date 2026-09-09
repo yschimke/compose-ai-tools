@@ -194,6 +194,7 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_NOT_A_PARAMETER = "component.stateCallback.notAParameter"
     const val STATE_CALLBACK_MALFORMED = "component.stateCallback.malformed"
     const val STARTER_UNKNOWN_PARAMETER = "component.starter.unknownParameter"
+    const val VARIANT_PROPERTY_UNKNOWN = "component.variantProperty.unknownParameter"
     const val ID_COLLISION = "component.id.collision"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
@@ -252,22 +253,37 @@ object UiBuilderCatalogs {
 
     val components = linkedMapOf<String, UiBuilderComponentPolicy>()
     val menuEntries = linkedMapOf<String, UiBuilderMenuEntry>()
+    // Which record each derived id belongs to, over EVERY admitted component rather than only the
+    // annotated ones. An unannotated component is still shelved by the consumer, which derives its
+    // id from `componentIdPrefix` exactly as this does — so two of them colliding, or one colliding
+    // with an annotated component's explicit id, is two records claiming one saved-design identity.
+    // Skipping the unannotated ones here made the check blind to the majority of the shelf, which
+    // is the same mistake the builtin check had and was fixed for one commit earlier.
+    val idOwners = linkedMapOf<String, String>()
+    for (component in record.components) {
+      val builderId = builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
+      val owner = idOwners[builderId]
+      if (owner == null) {
+        idOwners[builderId] = component.canonicalId
+        continue
+      }
+      diagnostics +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.ID_COLLISION,
+          subject = builderId,
+          message =
+            "'$builderId' is claimed by both $owner and ${component.canonicalId}. The first wins; " +
+              "give one of them an explicit @BuilderComponent(id = …), because a saved design " +
+              "stores this string and cannot be told which component it meant.",
+        )
+    }
     for (component in record.components) {
       val builder = component.builder ?: continue
       val builderId = builderIdFor(idPrefix, component, builder)
       val existing = components[builderId]
-      if (existing != null) {
-        diagnostics +=
-          UiBuilderDiagnostic(
-            code = Diagnostics.ID_COLLISION,
-            subject = builderId,
-            message =
-              "'$builderId' is claimed by both ${existing.record} and ${component.canonicalId}. " +
-                "The first wins; give one of them an explicit @BuilderComponent(id = …), because a " +
-                "saved design stores this string and cannot be told which component it meant.",
-          )
-        continue
-      }
+      // Reported by the sweep above, which sees the unannotated components too. Still skipped here
+      // so the first claimant keeps the entry.
+      if (existing != null) continue
       diagnose(component, builder, builderId, diagnostics)
       components[builderId] = policyFor(component, builder)
       val group = builder.group ?: continue
@@ -484,13 +500,13 @@ object UiBuilderCatalogs {
       // `remember` value from, so without it the component publishes a hoist nothing can complete.
       val rawState = pair.value.substringBefore(':').trim()
       val rawType = pair.value.substringAfter(':', "").trim()
-      if (!pair.value.contains(':') || rawType !in STATE_TYPES) {
+      if (rawState.isEmpty() || !pair.value.contains(':') || rawType !in STATE_TYPES) {
         into +=
           UiBuilderDiagnostic(
             code = Diagnostics.STATE_CALLBACK_MALFORMED,
             subject = "$builderId.${pair.key}",
             message =
-              "'${pair.value}' is not '<state>:<type>' with a type from " +
+              "'${pair.value}' is not a non-empty '<state>:<type>' with a type from " +
                 "${STATE_TYPES.sorted().joinToString()}. The export prints the hoisted state's " +
                 "initial value from that type, so it cannot complete the hoist without one.",
           )
@@ -524,6 +540,20 @@ object UiBuilderCatalogs {
                 "argument that does not compile.",
           )
       }
+    }
+    // The promoted parameter a variant control writes to. A `styel` typo publishes a control the
+    // builder renders and the export cannot honour — the variant switches in the panel and the
+    // generated call never changes, which is the kind of wrong that looks like a builder bug.
+    val variantProperty = builder.variantProperty?.takeIf { it.isNotBlank() }
+    if (variantProperty != null && variantProperty !in parameterNames) {
+      into +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.VARIANT_PROPERTY_UNKNOWN,
+          subject = "$builderId.$variantProperty",
+          message =
+            "variantProperty is '$variantProperty', which is not a parameter of " +
+              "${component.canonicalId}, so every variant it offers writes to nothing.",
+        )
     }
     val slotNames = component.slots.map { it.name }.toSet()
     for (pair in builder.slots) {

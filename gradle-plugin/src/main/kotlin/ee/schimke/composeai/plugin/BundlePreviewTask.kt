@@ -355,6 +355,50 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val catalogSpecCandidates: ConfigurableFileCollection
 
+  /**
+   * The `ui-builder/designs/` trees a policy's `templates` paths resolve against — module first,
+   * repository root second.
+   *
+   * The bundle has to CARRY the designs it advertises. `catalog-ui-builder.mjs` publishes out of
+   * bundle entries and nothing else, so a template named in `statusSemantics.templates` but absent
+   * from the zip cannot reach the delivery branch at all — the catalog would advertise a document
+   * that is a 404 for whoever clicks it, which is worse than not offering the template.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderTemplateCandidates: ConfigurableFileCollection
+
+  /**
+   * The directories a `templates` path resolves against — the module's, then the repository root's.
+   *
+   * `@Internal` on purpose: these are the *project* directories, and snapshotting them would make
+   * every file in the project an input to this task. Change detection is carried by
+   * [uiBuilderTemplateCandidates], which snapshots only the `ui-builder/` tree; this property
+   * exists so execution can resolve a branch-relative path without reaching for `project`, which is
+   * not available under the configuration cache.
+   */
+  @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
+
+  /**
+   * The template designs a policy names, resolved to real files.
+   *
+   * Paths a policy cannot supply a file for are simply absent from the map; the caller reports them
+   * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
+   * somebody about and not a reason to publish no catalog.
+   */
+  private fun templateFiles(paths: List<String>): Map<String, File> {
+    if (paths.isEmpty()) return emptyMap()
+    val roots = uiBuilderTemplateRoots.files.filter { it.isDirectory }
+    return paths
+      .distinct()
+      .mapNotNull { path ->
+        roots
+          .firstNotNullOfOrNull { root -> File(root, path).takeIf { it.isFile } }
+          ?.let { path to it }
+      }
+      .toMap()
+  }
+
   @get:OutputFile abstract val output: RegularFileProperty
 
   @TaskAction
@@ -667,6 +711,9 @@ abstract class BundlePreviewTask : DefaultTask() {
       } else {
         manifest.copy(previews = bundlePreviews)
       }
+    // Generated before the zip so the designs it advertises can be looked up and carried with it.
+    val uiBuilderJson =
+      uiBuilderJsonFor(ComponentRecords.from(manifest), ComponentRecords.from(filteredManifest))
     val zipBytes =
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
@@ -684,11 +731,8 @@ abstract class BundlePreviewTask : DefaultTask() {
         // carry the annotation, so `bundle pack --id …` selecting a different preview of the same
         // component must not silently revert that component to defaults. The full record supplies
         // the declarations; the filtered one decides which components the bundle actually carries.
-        uiBuilderJson =
-          uiBuilderJsonFor(
-            ComponentRecords.from(manifest),
-            ComponentRecords.from(filteredManifest),
-          ),
+        uiBuilderJson = uiBuilderJson,
+        uiBuilderTemplates = uiBuilderTemplatesFor(uiBuilderJson),
         appJar = appJarBytes,
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
@@ -1577,6 +1621,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     previewsJson: String,
     componentsJson: String,
     uiBuilderJson: String?,
+    uiBuilderTemplates: Map<String, ByteArray>,
     appJar: ByteArray,
     inlinedProjectJars: Map<String, File>,
     report: String,
@@ -1601,6 +1646,11 @@ abstract class BundlePreviewTask : DefaultTask() {
       // a consumer is told there is no builder catalog, rather than by an empty one it has to
       // recognise.
       uiBuilderJson?.let { zip.writeFile("ui-builder.json", it.toByteArray(Charsets.UTF_8)) }
+      // The template designs that catalog advertises, at the same branch-relative paths it names
+      // them by. `catalog-ui-builder.mjs` publishes out of bundle entries and nothing else, so a
+      // design that is not in here cannot reach the delivery branch — the catalog would offer a
+      // document that 404s for whoever picks it.
+      uiBuilderTemplates.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // Renderer-named APNG/GIF siblings consumed by catalog motion publishing and bundle readers.
@@ -1867,6 +1917,30 @@ abstract class BundlePreviewTask : DefaultTask() {
    * [carried] is what the bundle actually contains, so a published entry never names a component
    * that is not in it.
    */
+  /**
+   * The template designs the generated catalog advertises, as bundle entries keyed by the path it
+   * names them by.
+   *
+   * Read back out of the generated JSON rather than off the policy, so what is carried is exactly
+   * what the published file points at — the two cannot drift, because there is only one list.
+   */
+  private fun uiBuilderTemplatesFor(uiBuilderJson: String?): Map<String, ByteArray> {
+    val catalog =
+      uiBuilderJson?.let {
+        runCatching { JSON.decodeFromString<UiBuilderCatalogFile>(it) }.getOrNull()
+      } ?: return emptyMap()
+    val declared = catalog.statusSemantics.templates
+    val found = templateFiles(declared)
+    (declared - found.keys).sorted().forEach {
+      logger.warn(
+        "composePreview: the builder catalog names template design '$it', which is not under " +
+          "ui-builder/ in this module or the repository root; it will be missing from the bundle " +
+          "and from the delivery branch."
+      )
+    }
+    return found.mapValues { (_, file) -> file.readBytes() }
+  }
+
   private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {
     val carriedIds = carried.components.map { it.canonicalId }.toSet()
     val record = full.copy(components = full.components.filter { it.canonicalId in carriedIds })

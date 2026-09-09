@@ -1875,6 +1875,19 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
             --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
             --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
+          # The builder policy, in the same build-free pre-flight and for the same reason. What a
+          # malformed `ui-builder.policy.json` costs today is SILENCE: discovery omits
+          # `ui-builder.json`, the render proceeds, and the catalog publishes with no builder
+          # catalog — indistinguishable from a catalog that never authored one. Checked beside the
+          # cover sheet and in the module, skipped where neither exists, which is almost every
+          # catalog.
+          for candidate in "$(dirname "$SPEC")/ui-builder.policy.json" \
+                           "$(to_dir "$MODULE")/ui-builder.policy.json"; do
+            if [ -f "$candidate" ]; then
+              node compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs \
+                --policy "$candidate"
+            fi
+          done
           echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
           echo "deferred-modes=$(cat "$GITHUB_WORKSPACE/deferred-modes.txt")" >> "$GITHUB_OUTPUT"
 
@@ -3109,6 +3122,19 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
             --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
             --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
+          # The builder policy, in the same build-free pre-flight and for the same reason. What a
+          # malformed `ui-builder.policy.json` costs today is SILENCE: discovery omits
+          # `ui-builder.json`, the render proceeds, and the catalog publishes with no builder
+          # catalog — indistinguishable from a catalog that never authored one. Checked beside the
+          # cover sheet and in the module, skipped where neither exists, which is almost every
+          # catalog.
+          for candidate in "$(dirname "$SPEC")/ui-builder.policy.json" \
+                           "$(to_dir "$MODULE")/ui-builder.policy.json"; do
+            if [ -f "$candidate" ]; then
+              node compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs \
+                --policy "$candidate"
+            fi
+          done
           # The `--preview` patterns that render just the required entries. EMPTY for every
           # spec that defers no entry — i.e. all of them today — in which case the render
           # step below sees an empty property and renders everything, exactly as before.

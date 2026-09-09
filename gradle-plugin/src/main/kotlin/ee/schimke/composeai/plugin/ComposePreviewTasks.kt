@@ -740,6 +740,17 @@ internal object ComposePreviewTasks {
         project.layout.projectDirectory.file("catalog.spec.json"),
         project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
       )
+      // The template designs a policy may name, from the conventional directory rather than the
+      // whole project: `templates` entries are branch-relative paths like
+      // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
+      uiBuilderTemplateCandidates.from(
+        project.layout.projectDirectory.dir("ui-builder"),
+        project.rootProject.layout.projectDirectory.dir("ui-builder"),
+      )
+      uiBuilderTemplateRoots.from(
+        project.layout.projectDirectory,
+        project.rootProject.layout.projectDirectory,
+      )
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
       // (v9) Where this module's coordinates actually resolve from, for a player that has to
@@ -1833,6 +1844,17 @@ internal object ComposePreviewTasks {
       catalogSpecCandidates.from(
         project.layout.projectDirectory.file("catalog.spec.json"),
         project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
+      )
+      // The template designs a policy may name, from the conventional directory rather than the
+      // whole project: `templates` entries are branch-relative paths like
+      // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
+      uiBuilderTemplateCandidates.from(
+        project.layout.projectDirectory.dir("ui-builder"),
+        project.rootProject.layout.projectDirectory.dir("ui-builder"),
+      )
+      uiBuilderTemplateRoots.from(
+        project.layout.projectDirectory,
+        project.rootProject.layout.projectDirectory,
       )
       group = "compose preview"
       description = "Discover @Preview annotations in compiled classes"

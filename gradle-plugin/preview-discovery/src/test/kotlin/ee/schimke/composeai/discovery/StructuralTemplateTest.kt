@@ -126,6 +126,15 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a brace inside a character literal does not end the hole`() {
+    // The THIRD scanner that has to know what a quote is, and the one that runs first: this ended
+    // the hole at the `}` inside the char literal, so the argument splitter's own handling was
+    // never reached and the template was refused as malformed.
+    assertThat(emitted(render("\${call(separator = '}')}"))).isEqualTo("Call(separator='}')")
+    assertThat(emitted(render("\${call(open = '{', n = 1)}"))).isEqualTo("Call(open='{', n=1)")
+  }
+
+  @Test
   fun `a call with no overrides is the ordinary case`() {
     assertThat(emitted(render("\${call()}"))).isEqualTo("Call()")
   }
