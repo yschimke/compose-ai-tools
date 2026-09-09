@@ -178,6 +178,53 @@ object ScreenGenerator {
   /** How many identical siblings it takes before a `repeat` reads better than the calls. */
   private const val MINIMUM_FOLDED_RUN = 3
 
+  /**
+   * Where a spliced value may begin and end — see [varyingRun].
+   *
+   * A common prefix ends wherever two children happen to diverge, which is often inside a token.
+   * These say what "inside a token" means for the two directions: a value can only follow one of
+   * these characters, and can only be followed by one of the others.
+   */
+  private val FOLD_OPENING_DELIMITERS = setOf('(', ',', '=', '[', ' ')
+
+  private val FOLD_CLOSING_DELIMITERS = setOf(')', ',', ']', ' ')
+
+  /** A string literal with nothing in it this generator would have to reason about. */
+  private val FOLD_STRING = Regex("""^"([^"\\$\n]|\\[\\"nrt$])*"$""")
+
+  /** A number a `listOf` can hold without the elements disagreeing about their type. */
+  private val FOLD_HEX_NUMBER = Regex("""^-?(0[xX][0-9a-fA-F]+)([Ll]?)$""")
+
+  private val FOLD_DECIMAL_NUMBER = Regex("""^-?(\d+)(\.\d+)?([fFdDLl]?)$""")
+
+  /**
+   * How many shorter windows are tried after the grown one fails — see [varyingRun].
+   *
+   * A maximal window usually fails because of its last child, so one or two steps back is where the
+   * fold is. Searching further is the quadratic scan this bound exists to refuse.
+   */
+  private const val FOLD_SHRINK_ATTEMPTS = 3
+
+  /**
+   * The longest run one fold may cover, and so the bound on the growth scan.
+   *
+   * Growth restarts at each sibling a fold did not consume, and generated calls of *different*
+   * components still share their indentation and their closing `)` — so without a cap a slot that
+   * folds nowhere costs a scan per child, and sibling lists have no bound. A run longer than this
+   * is folded in windows of this size rather than in one: two lists for a five-hundred-cell year is
+   * a fair price for a scan that cannot run away.
+   */
+  private const val FOLD_MAXIMUM_WINDOW = 256
+
+  /**
+   * Names the loop parameter may take, in preference order.
+   *
+   * The first one the body does not already contain is used, so the parameter cannot shadow
+   * anything the body reads. A body containing all of them takes no fold, which is the honest
+   * answer rather than a name picked by counting.
+   */
+  private val FOLD_PARAMETER_NAMES = listOf("value", "entry", "element", "each", "item")
+
   fun generate(
     document: ScreenDocument,
     components: ComponentRecordFile,
@@ -1469,10 +1516,13 @@ object ScreenGenerator {
       var end = index + 1
       while (end < children.size && children[end] == children[index]) end++
       if (out.isNotEmpty()) out.append("\n")
-      val run = end - index
-      if (run < MINIMUM_FOLDED_RUN) {
-        out.append(children.subList(index, end).joinToString("\n"))
-      } else {
+      // Whichever fold covers more siblings, and the `repeat` on a tie. A run of identical children
+      // followed by one that differs in a literal is *both* — three `repeat`s and a call, or one
+      // list of eight — and the list is the better reading of it as well as the shorter: the values
+      // are what differ, so the values are what a reader should see.
+      val varying = varyingRun(children, index)?.takeIf { it.end > end }
+      if (varying == null && end - index >= MINIMUM_FOLDED_RUN) {
+        val run = end - index
         out
           .append(indent)
           .append("kotlin.repeat(")
@@ -1482,11 +1532,201 @@ object ScreenGenerator {
           .append("\n")
           .append(indent)
           .append("}")
+      } else {
+        if (varying == null) {
+          out.append(children[index])
+          end = index + 1
+        } else {
+          out
+            .append(indent)
+            .append("for (")
+            .append(varying.parameter)
+            .append(" in kotlin.collections.listOf(")
+            .append(varying.values.joinToString(", "))
+            .append(")) {\n")
+            .append((varying.prefix + varying.parameter + varying.suffix).prependIndent(INDENT))
+            .append("\n")
+            .append(indent)
+            .append("}")
+          end = varying.end
+        }
       }
       index = end
     }
     return out.toString()
   }
+
+  /**
+   * A run of siblings that generated the same text but for one literal, or null for anything else.
+   *
+   * The sibling case above it is a contribution graph whose cells are the same colour. A real one
+   * has cells of *different* colours, and its twelve nodes then generate twelve calls that differ
+   * in eight hex digits — which is the shape a reader most wants written as a list, and the shape
+   * the identical-run fold cannot touch. So the varying literal becomes the list and everything
+   * around it becomes the body:
+   * ```
+   * kotlin.collections.listOf(0xFFEBEDF0, 0xFF9BE9A8, 0xFF40C463).forEach { value ->
+   *     Surface(color = Color(value), …)
+   * }
+   * ```
+   *
+   * What makes that sound is the same thing that makes the identical fold sound — the generated
+   * text — but read one level finer. The children share a prefix and a suffix character for
+   * character, the piece between them is a **whole literal** in each of them, and substituting the
+   * loop's parameter for that piece rebuilds each child exactly. Everything else is refused rather
+   * than reasoned about:
+   *
+   * - the varying piece must sit between delimiters, so the prefix is trimmed back to the last of
+   *   `(`, `,`, `=`, `[` or a space and the suffix must begin at one of `)`, `,`, `]` or a space. A
+   *   common prefix that ends inside a token — `Text(text = "a` for `"a1"` and `"a2"` — is not a
+   *   place a value can be spliced into, and trimming to the delimiter turns it into one;
+   * - every piece must be a literal of one kind: all string literals, all booleans, or all numbers
+   *   of the same textual length. The length rule is about *type*, not neatness: `listOf(1, 2)` is
+   *   a `List<Int>` and `listOf(0xFFEBEDF0, 2)` a `List<Any>`, and a body written for the first
+   *   would not compile against the second. Same length, same spelling, same inferred type;
+   * - the pieces must differ. All-identical is the run above, folded better as a `repeat`.
+   *
+   * The parameter is named from what the body does not already say: a candidate that appears
+   * nowhere in the text cannot shadow anything the body reads, which is the same question
+   * `kotlin.repeat`'s `_` answers by binding nothing at all.
+   */
+  private fun varyingRun(children: List<String>, start: Int): VaryingRun? {
+    // Grown once, then shrunk a little — never searched. The window extends while the children
+    // still share *some* prefix and suffix with the first of them, which is a running minimum and
+    // so costs each child one comparison walk rather than one per candidate window. Only the
+    // window that growth ended at is validated, and only [FOLD_SHRINK_ATTEMPTS] shorter ones after
+    // it, because the reason a maximal window fails is nearly always its last child: the sibling
+    // that ended the run.
+    //
+    // The alternative — asking the full question of every window — is quadratic per starting
+    // child and cubic over a slot, and sibling lists have no bound. A pasted screen is exactly
+    // where a fold is most wanted and least affordable.
+    val first = children[start]
+    var prefix = first.length
+    var suffix = first.length
+    // From the *second* child: the first shares all of itself with itself, which would leave the
+    // suffix nothing to be.
+    var end = start + 1
+    val limit = minOf(children.size, start + FOLD_MAXIMUM_WINDOW)
+    while (end < limit) {
+      val text = children[end]
+      // Each as a running minimum against the first child, and independent of the other: a child
+      // *identical* to the first shares all of it in both directions, and limiting the suffix by
+      // the prefix would read that as no room and end the window at the very children a run of
+      // identical siblings followed by a different one is made of. The overlap is settled once, on
+      // the window growth ends at, by [varyingFold].
+      prefix = commonPrefixLength(first, text, prefix)
+      suffix = commonSuffixLength(first, text, suffix)
+      if (prefix == 0 || suffix == 0) break
+      end++
+    }
+    var attempts = FOLD_SHRINK_ATTEMPTS
+    while (end - start >= MINIMUM_FOLDED_RUN && attempts-- > 0) {
+      varyingFold(children.subList(start, end), end)?.let {
+        return it
+      }
+      end--
+    }
+    return null
+  }
+
+  /** [varyingRun]'s question asked of one window, or null when this window cannot be folded. */
+  private fun varyingFold(texts: List<String>, end: Int): VaryingRun? {
+    val first = texts.first()
+    var prefix =
+      texts.fold(first.length) { length, text -> commonPrefixLength(first, text, length) }
+    var suffix =
+      texts.fold(first.length) { length, text ->
+        commonSuffixLength(first, text, minOf(length, text.length - prefix))
+      }
+    if (prefix + suffix >= first.length) return null
+    while (prefix > 0 && first[prefix - 1] !in FOLD_OPENING_DELIMITERS) prefix--
+    if (prefix == 0) return null
+    while (suffix > 0 && first[first.length - suffix] !in FOLD_CLOSING_DELIMITERS) suffix--
+    if (suffix == 0) return null
+
+    val values = texts.map { it.substring(prefix, it.length - suffix) }
+    if (values.distinct().size < 2) return null
+    if (values.any { it.isEmpty() || '\n' in it }) return null
+    if (!values.all(::isFoldableStringLiteral) && !values.all(::isFoldableBooleanLiteral)) {
+      // Same kind *and* same length. Length alone lets `1000` and `1.0f` into one list — an `Int`
+      // and a `Float`, four characters each — which `listOf` reconciles to a supertype the call
+      // they were lifted out of may not accept. The kind says hex, whole or fractional and which
+      // suffix; the length keeps two whole numbers from landing either side of `Int.MAX_VALUE`.
+      val kinds = values.map(::foldableNumberKind)
+      if (kinds.any { it == null } || kinds.distinct().size != 1) return null
+      if (values.any { it.length != values.first().length }) return null
+    }
+
+    val body = first.substring(0, prefix) + first.substring(first.length - suffix)
+    val parameter =
+      FOLD_PARAMETER_NAMES.firstOrNull { candidate ->
+        !Regex("\\b${Regex.escape(candidate)}\\b").containsMatchIn(body) &&
+          values.none { Regex("\\b${Regex.escape(candidate)}\\b").containsMatchIn(it) }
+      } ?: return null
+    return VaryingRun(
+      end = end,
+      values = values,
+      prefix = first.substring(0, prefix),
+      suffix = first.substring(first.length - suffix),
+      parameter = parameter,
+    )
+  }
+
+  private fun commonPrefixLength(first: String, other: String, limit: Int): Int {
+    var length = minOf(limit, other.length)
+    var index = 0
+    while (index < length && first[index] == other[index]) index++
+    return index
+  }
+
+  private fun commonSuffixLength(first: String, other: String, limit: Int): Int {
+    val bound = minOf(limit, other.length)
+    var index = 0
+    while (index < bound && first[first.length - 1 - index] == other[other.length - 1 - index]) {
+      index++
+    }
+    return index
+  }
+
+  private fun isFoldableStringLiteral(value: String): Boolean =
+    value.length >= 2 && value.startsWith('"') && value.endsWith('"') && FOLD_STRING.matches(value)
+
+  private fun isFoldableBooleanLiteral(value: String): Boolean = value == "true" || value == "false"
+
+  /**
+   * Which sort of number [value] is, or null for what is not one.
+   *
+   * Two numbers belong in one list when they are written the same way, not merely when they are
+   * both numbers: the kind carries the radix, whether there is a fractional part, and the suffix,
+   * which together are what decides the type Kotlin infers for the list.
+   */
+  private fun foldableNumberKind(value: String): String? {
+    FOLD_HEX_NUMBER.matchEntire(value)?.let {
+      // A hex literal's own type depends on its magnitude — `0xFF` is an `Int` and `0xFFEBEDF0` a
+      // `Long` — so it is foldable only when it says which it is.
+      return if (it.groupValues[2].isEmpty()) null else "hex:${it.groupValues[2]}"
+    }
+    val decimal = FOLD_DECIMAL_NUMBER.matchEntire(value) ?: return null
+    val fractional = decimal.groupValues[2].isNotEmpty()
+    val suffix = decimal.groupValues[3]
+    // A whole number without a suffix is an `Int` *here* and need not have been one there: it was
+    // written into a call that may take a `Long`, and Kotlin widens neither implicitly. Lifting it
+    // into a list gives the loop variable the literal's own type, so only a literal carrying its
+    // type — `1000L`, `1.0f` — survives being moved. A bare decimal fraction is a `Double`
+    // wherever it stands, so it needs no suffix to keep its type.
+    if (!fractional && suffix.isEmpty()) return null
+    return "${if (fractional) "fractional" else "whole"}:$suffix"
+  }
+
+  /** One run of siblings differing in a single literal — see [varyingRun]. */
+  private data class VaryingRun(
+    val end: Int,
+    val values: List<String>,
+    val prefix: String,
+    val suffix: String,
+    val parameter: String,
+  )
 
   /**
    * A `Long` literal.

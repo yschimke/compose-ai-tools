@@ -1424,15 +1424,102 @@ class ScreenGeneratorTest {
     assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
   }
 
+  /**
+   * Eight cells, one of them different, read as their eight values.
+   *
+   * Both folds can claim this run — three identical, then one, then four — and the longer one wins,
+   * which is also the better reading: what differs between the children is a value, so the values
+   * are what the generated screen shows.
+   */
   @Test
-  fun `a sibling that differs breaks the run at itself and neither side is lost`() {
+  fun `a sibling differing in one literal folds the whole run into its values`() {
     val cells =
       (0 until 8).map { index -> textNode(if (index == 3) "odd" else "cell") }.toTypedArray()
     val source = emitted(column(*cells), catalog(card, text)).source
 
+    assertThat(source)
+      .contains(
+        "for (value in kotlin.collections.listOf(\"cell\", \"cell\", \"cell\", \"odd\", " +
+          "\"cell\", \"cell\", \"cell\", \"cell\")) {"
+      )
+    assertThat(occurrences(source, "Text(text = value)")).isEqualTo(1)
+    assertThat(source).doesNotContain("kotlin.repeat(")
+  }
+
+  /**
+   * A sibling that differs in more than a literal breaks the run at itself.
+   *
+   * The values fold needs one varying piece between two fixed ones. A child of another component
+   * shares no such shape, so the run is what it always was: three, the odd one, four.
+   */
+  @Test
+  fun `a sibling of another component breaks the run at itself and neither side is lost`() {
+    val cells =
+      (0 until 8)
+        .map { index ->
+          if (index == 3) ScreenNode(card.canonicalId, slots = mapOf("content" to emptyList()))
+          else textNode("cell")
+        }
+        .toTypedArray()
+    val source = emitted(column(*cells), catalog(card, text)).source
+
     assertThat(source).contains("kotlin.repeat(3) { _ ->")
     assertThat(source).contains("kotlin.repeat(4) { _ ->")
-    assertThat(source).contains("Text(text = \"odd\")")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
+  }
+
+  /**
+   * The shape this fold exists for: a contribution graph whose cells carry different colours.
+   *
+   * Cells generating calls that differ only in the colour they carry is what the identical-run fold
+   * cannot touch and what a reader most wants written as a list.
+   */
+  @Test
+  fun `cells differing only in one number become the list of those numbers`() {
+    val swatch =
+      component(
+        "Swatch",
+        "androidx.compose.material3.Swatch",
+        listOf(TargetParameter("color", "Long", typeFqn = "kotlin.Long")),
+      )
+    val shades = listOf(0xFFEBEDF0L, 0xFF9BE9A8L, 0xFF40C463L, 0xFF30A14EL)
+    val cells =
+      shades
+        .map { shade ->
+          ScreenNode(swatch.canonicalId, arguments = mapOf("color" to ScreenValue.Whole(shade)))
+        }
+        .toTypedArray()
+    val source = emitted(column(*cells), catalog(card, swatch)).source
+
+    assertThat(source).contains("for (value in kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Swatch(color = value)")).isEqualTo(1)
+  }
+
+  /**
+   * Numbers of different textual length are left alone, because their types can differ.
+   *
+   * `listOf(1, 2)` is a `List<Int>` and `listOf(0xFFEBEDF0, 2)` a `List<Any>`, and a body written
+   * for the first would not compile against the second. Same spelling, same inferred type — so the
+   * rule is textual and conservative rather than a type inference this generator cannot do.
+   */
+  @Test
+  fun `numbers of unequal length are not folded into one list`() {
+    val swatch =
+      component(
+        "Swatch",
+        "androidx.compose.material3.Swatch",
+        listOf(TargetParameter("color", "Long", typeFqn = "kotlin.Long")),
+      )
+    val cells =
+      listOf(1L, 22L, 333L)
+        .map { value ->
+          ScreenNode(swatch.canonicalId, arguments = mapOf("color" to ScreenValue.Whole(value)))
+        }
+        .toTypedArray()
+    val source = emitted(column(*cells), catalog(card, swatch)).source
+
+    assertThat(source).doesNotContain("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Swatch(color = ")).isEqualTo(3)
   }
 
   @Test
@@ -1574,6 +1661,87 @@ class ScreenGeneratorTest {
       .contains(
         "`Holder`.`state` imports `kotlin`, which the generated file spends on its own scaffolding"
       )
+  }
+
+  /**
+   * Same length is not the same type.
+   *
+   * `1000L` and `10.0f` are five characters each and a `Long` and a `Float`, so a list of both is a
+   * list of their supertype — which the call they were lifted out of need not accept. A factory's
+   * own arguments are where two kinds can meet, since the parameter check that keeps them apart
+   * elsewhere is about the *component's* parameter rather than the factory's.
+   */
+  @Test
+  fun `numbers of one length but different kinds are not folded into one list`() {
+    val cells =
+      listOf(ScreenValue.Whole(1000L), ScreenValue.Fractional32(10.0f), ScreenValue.Whole(2000L))
+        .map { argument ->
+          ScreenNode(
+            text.canonicalId,
+            arguments =
+              mapOf(
+                "text" to
+                  ScreenValue.Construct(
+                    "app.theme.label",
+                    positional = listOf(argument),
+                    typeFqn = "kotlin.String",
+                  )
+              ),
+          )
+        }
+        .toTypedArray()
+
+    val source =
+      (ScreenGenerator.generate(
+          column(*cells),
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).doesNotContain("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Text(text = label(")).isEqualTo(3)
+  }
+
+  /**
+   * A literal that does not carry its type is left where it was written.
+   *
+   * `label(100)` compiles against a `Long` parameter because the literal takes its type from the
+   * call. Lifted into `kotlin.collections.listOf(100, 200, 300)` it is an `Int`, and `label(value)`
+   * then does not compile — Kotlin widens neither implicitly. So a whole number folds only when it
+   * says which type it is.
+   */
+  @Test
+  fun `whole numbers without a suffix are not folded, because the call gave them their type`() {
+    val cells =
+      listOf(100L, 200L, 300L)
+        .map { argument ->
+          ScreenNode(
+            text.canonicalId,
+            arguments =
+              mapOf(
+                "text" to
+                  ScreenValue.Construct(
+                    "app.theme.label",
+                    positional = listOf(ScreenValue.Whole(argument)),
+                    typeFqn = "kotlin.String",
+                  )
+              ),
+          )
+        }
+        .toTypedArray()
+
+    val source =
+      (ScreenGenerator.generate(
+          column(*cells),
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).contains("label(100)")
+    assertThat(source).doesNotContain("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Text(text = label(")).isEqualTo(3)
   }
 
   private fun occurrences(source: String, text: String) =
