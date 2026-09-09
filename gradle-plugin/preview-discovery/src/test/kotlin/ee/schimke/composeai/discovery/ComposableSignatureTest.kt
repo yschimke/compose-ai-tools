@@ -311,8 +311,7 @@ class ComposableSignatureTest {
     val content = parametersOf("scopeDslComponent").single()
 
     assertThat(content.composableSlot).isFalse()
-    assertThat(content.scopeDslReceiver)
-      .isEqualTo("ee.schimke.composeai.discovery.TestListScope")
+    assertThat(content.scopeDslReceiver).isEqualTo("ee.schimke.composeai.discovery.TestListScope")
   }
 
   @Test

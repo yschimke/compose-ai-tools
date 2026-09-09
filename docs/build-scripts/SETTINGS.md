@@ -304,6 +304,29 @@ Two exclusions:
   because a build-logic plugin on the root classpath leaks to every subproject and
   collides with their versioned plugin aliases.
 
+### The `gradle-plugin` included build does the same, for itself
+
+`gradle-plugin` is a build of its own, so neither Gradle's task-name matching nor
+the list above reaches into it. `gradle.includedBuild("gradle-plugin")
+.task(":ktfmtCheck")` addresses **only that build's root project** — for a long
+time that was the whole gate for the included build, and its three subprojects
+(`:preview-discovery`, `:daemon-launch-builder`, `:gradle-plugin-config`) each
+carry their own ktfmt while nothing invoked it. Unformatted files under
+`gradle-plugin/preview-discovery/src/**` reached `main` that way.
+
+So `gradle-plugin/settings.gradle.kts` gathers its own project paths the same
+closure-free way, into `composeai.gradlePluginKtfmtProjectPaths`, and the
+aggregates add one `includedBuild("gradle-plugin").task(":<path>:ktfmtCheck")`
+edge per path. A task reference by path is an ordinary lazy task-graph edge and
+never touches the sibling `Project` at configuration time, so it stays IP-clean;
+the property is read back through the same configuration-cache-tracked
+`providers.systemProperty(...)`.
+
+The differences from the outer build's list are both about the root project:
+that build's root **does** carry ktfmt (it is a real plugin module, not a
+container), and the outer build already depends on its `:ktfmtCheck` explicitly —
+so the gathered list holds subprojects only, and the two edges do not duplicate.
+
 ## Modules that used to be here
 
 <a id="extractions"></a>

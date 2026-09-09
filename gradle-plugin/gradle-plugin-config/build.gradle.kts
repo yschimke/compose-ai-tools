@@ -63,18 +63,19 @@ dependencies {
 // which the runtime plugin owns — both jars can share a buildscript classpath, so the resource
 // paths
 // must not collide). Read back by `ConfigPluginVersion`.
-val generateConfigPluginVersionResource = tasks.register("generateConfigPluginVersionResource") {
-  val outputDir = layout.buildDirectory.dir("generated/config-plugin-version-resource")
-  val pluginVersion = project.version.toString()
-  inputs.property("version", pluginVersion)
-  outputs.dir(outputDir)
-  doLast {
-    val file =
-      outputDir.get().file("ee/schimke/composeai/plugin/config-plugin-version.properties").asFile
-    file.parentFile.mkdirs()
-    file.writeText("version=$pluginVersion\n")
+val generateConfigPluginVersionResource =
+  tasks.register("generateConfigPluginVersionResource") {
+    val outputDir = layout.buildDirectory.dir("generated/config-plugin-version-resource")
+    val pluginVersion = project.version.toString()
+    inputs.property("version", pluginVersion)
+    outputs.dir(outputDir)
+    doLast {
+      val file =
+        outputDir.get().file("ee/schimke/composeai/plugin/config-plugin-version.properties").asFile
+      file.parentFile.mkdirs()
+      file.writeText("version=$pluginVersion\n")
+    }
   }
-}
 
 sourceSets.main.get().resources.srcDir(generateConfigPluginVersionResource)
 

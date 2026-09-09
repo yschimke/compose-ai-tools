@@ -40,17 +40,34 @@ plugins {
 val ktfmtProjectPaths =
   providers.systemProperty("composeai.ktfmtProjectPaths").get().split(",")
 
+// The `gradle-plugin` included build is a multi-project build of its own, and Gradle's task-name
+// matching does not reach into it either — `includedBuild(...).task(":ktfmtCheck")` addresses that
+// build's ROOT project alone. Its subprojects (`:preview-discovery`, `:daemon-launch-builder`,
+// `:gradle-plugin-config`) each carry their own ktfmt, so they travel the same closure-free
+// system-property channel, gathered in `gradle-plugin/settings.gradle.kts`. The root is depended on
+// explicitly below; this list holds only the subprojects, so `:$path:task` is always well-formed.
+val gradlePluginKtfmtProjectPaths =
+  providers
+    .systemProperty("composeai.gradlePluginKtfmtProjectPaths")
+    .get()
+    .split(",")
+    .filter { it.isNotEmpty() }
+
 tasks.register("ktfmtCheckAll") {
   group = "verification"
   description = "Runs ktfmtCheck across this build and the gradle-plugin included build."
-  dependsOn(gradle.includedBuild("gradle-plugin").task(":ktfmtCheck"))
+  val gradlePlugin = gradle.includedBuild("gradle-plugin")
+  dependsOn(gradlePlugin.task(":ktfmtCheck"))
+  gradlePluginKtfmtProjectPaths.forEach { dependsOn(gradlePlugin.task("$it:ktfmtCheck")) }
   ktfmtProjectPaths.forEach { dependsOn("$it:ktfmtCheck") }
 }
 
 tasks.register("ktfmtFormatAll") {
   group = "formatting"
   description = "Runs ktfmtFormat across this build and the gradle-plugin included build."
-  dependsOn(gradle.includedBuild("gradle-plugin").task(":ktfmtFormat"))
+  val gradlePlugin = gradle.includedBuild("gradle-plugin")
+  dependsOn(gradlePlugin.task(":ktfmtFormat"))
+  gradlePluginKtfmtProjectPaths.forEach { dependsOn(gradlePlugin.task("$it:ktfmtFormat")) }
   ktfmtProjectPaths.forEach { dependsOn("$it:ktfmtFormat") }
 }
 
