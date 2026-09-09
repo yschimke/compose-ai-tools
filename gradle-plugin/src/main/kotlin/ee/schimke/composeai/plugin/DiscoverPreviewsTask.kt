@@ -197,6 +197,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   @get:OutputDirectory abstract val uiBuilderTemplateDir: DirectoryProperty
 
+  /** The one directory a `templates` path may live under, and the tree declared as an input. */
+  private val UI_BUILDER_DIR = "ui-builder"
+
   /**
    * The template designs a policy names, resolved to real files.
    *
@@ -204,9 +207,6 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
    * somebody about and not a reason to publish no catalog.
    */
-  /** The one directory a `templates` path may live under, and the tree declared as an input. */
-  private val UI_BUILDER_DIR = "ui-builder"
-
   private fun templateFiles(paths: List<String>, moduleOwnsPolicy: Boolean): Map<String, File> {
     if (paths.isEmpty()) return emptyMap()
     // Precedence follows the location `authoredPair()` chose, not always the module.
