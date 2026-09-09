@@ -1,9 +1,16 @@
 # The daemon-launch descriptor schema gate
 
 `<module>/build/compose-previews/daemon-launch.json` is written by the Gradle plugin and read by the
-daemon JVM, `compose-preview doctor`, and the VS Code extension — four representations of one file,
-in two languages, across three separate Gradle builds, with nothing in the build knowing they
-describe the same thing. `./gradlew :cli:checkDaemonLaunchSchema` is what knows.
+daemon JVM, `compose-preview doctor`, and the VS Code extension — several representations of one
+file, spread across separate Gradle builds, with nothing in the build knowing they describe the same
+thing. `./gradlew :cli:checkDaemonLaunchSchema` is what knows.
+
+**Its scope is Kotlin.** The task's inputs are `**/*.kt` and `walk_sources()` reads nothing else, so
+what it covers is this repository's Kotlin representations plus the ones in a
+`compose-preview-contracts` checkout when `COMPOSE_PREVIEW_CONTRACTS_ROOT` resolves one. The VS Code
+extension's reader lives in [`yschimke/compose-preview-vscode`](https://github.com/yschimke/compose-preview-vscode)
+and is **not** covered — it owns its own check. Treat a green run here as saying the Kotlin copies
+agree, never that the extension does.
 
 The schema version is the sharp edge. It was declared four times, as a literal `2` each time, and
 two of those copies carried a comment asking a human to remember:
@@ -35,9 +42,10 @@ links against, so that is not a same-commit mistake but cross-repo version skew 
   `…DESCRIPTOR_SCHEMA_VERSION`, and stamps real descriptors with it, so a fifth mirror sat outside
   a check whose entire claim was that every mirror is registered;
 - **structural agreement** — every field a reader requires is one the writer emits, shared fields
-  carry corresponding types across Kotlin and TypeScript, and a reader-only field is optional;
-- **`BtaCompileConfig` field-for-field** across the two languages, which its KDoc claimed and
-  nothing enforced;
+  carry corresponding types across the registered Kotlin copies, and a reader-only field is
+  optional;
+- **`BtaCompileConfig` field-for-field** across the copies that declare it, which its KDoc claimed
+  and nothing enforced;
 - **unknown-key tolerance** — the JVM reader keeps `ignoreUnknownKeys = true`, the single line that
   makes the writer's `btaCompile` (which that reader does not declare) safe rather than fatal;
 - **mirrored constants** — sysprop keys the descriptor carries that other modules re-declare
@@ -86,19 +94,17 @@ Every rule was falsified — each made to fail on purpose, then restored — and
 unit-tested by `scripts/test_check_daemon_launch_schema.py`.
 
 Two reachability notes, both of which made earlier versions of this weaker than they looked. The
-Gradle task declares **every** Kotlin/TypeScript source as its input, not just the representations:
+Gradle task declares **every** Kotlin source as its input, not just the representations:
 the repo-wide rule reads files nobody listed, so a narrower input set let Gradle call the task
 up-to-date on precisely the change that added a new mirror. And because CI runs `test` tasks rather
 than `check`, the enforcement that actually runs on a PR is `test_check_daemon_launch_schema.py` in
 the `Actions Script Tests` job — which is why `ci-paths.json` scopes that job to `**/*.kt`. A
 repo-wide claim is only worth as much as the trigger that runs it.
 
-The TypeScript side is scoped to [`src/daemon/**`](https://github.com/yschimke/compose-preview-vscode/blob/main/src/daemon/**) rather than `**/*.ts`, and that
-is a deliberate limitation rather than an oversight: `test_path_scope.py` pins the rule that a
-VS Code-only change skips every Gradle CI group, and a blanket `**/*.ts` broke it. A new mirror in
-some other TypeScript file would therefore be caught on `main` rather than on the PR. Widening the
-trigger means relaxing that rule, which is a CI-cost decision worth making on its own terms rather
-than smuggling in here.
+The extension's TypeScript reader is outside all of this, and that is a boundary rather than a gap:
+it ships from its own repository on its own cadence, so a mirror added there is its check to catch.
+The cost is real and worth stating — `daemonProcess.ts` is the only reader that verifies the schema
+version, and nothing in this repository can tell you when it stops agreeing.
 
 The representations agreed when the gate landed. That is the point: it was written while the
 answer was still "no drift", so the first time it fails will be the first real drift.
