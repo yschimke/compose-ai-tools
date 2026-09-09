@@ -2,6 +2,8 @@ package ee.schimke.composeai.discovery
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /** The `schema` a generated `ui-builder.json` carries. */
 const val UI_BUILDER_CATALOG_SCHEMA: String = "compose-ui-builder-catalog/v1"
@@ -203,6 +205,7 @@ object UiBuilderCatalogs {
     const val PLATFORM_MALFORMED = "policy.platform.malformed"
     const val STATE_CALLBACK_ARITY = "component.stateCallback.arity"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
+    const val BUILTIN_SLOT_ROLE_UNKNOWN = "policy.builtin.slot.role.unknown"
   }
 
   /**
@@ -969,6 +972,30 @@ object UiBuilderCatalogs {
               "role '${builtin.role}' is not one the template engine knows. Known roles: " +
                 UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
           )
+      }
+      // A slot's role selects a template exactly as the builtin's own role does, and it was checked
+      // in the JavaScript pre-flight and nowhere else. That pre-flight runs in the two workflow
+      // lanes; local discovery and a direct `bundle pack` never see it, and those are the paths
+      // this contract exists to make first-class. So a misspelled nested role was published without
+      // a diagnostic, selecting no template, on exactly the consumers that have no other check.
+      //
+      // Slots are held as raw `JsonElement` because their shape is the loader's business, not this
+      // generator's. Reading one field out of that is deliberate: an unreadable slot is left to the
+      // loader rather than diagnosed here, so this cannot start rejecting shapes it does not own.
+      for ((slot, spec) in builtin.slots) {
+        val role = ((spec as? JsonObject)?.get("role") as? JsonPrimitive)?.takeIf { it.isString }
+        val name = role?.content ?: continue
+        if (name !in UI_BUILDER_STRUCTURAL_ROLES) {
+          into +=
+            UiBuilderDiagnostic(
+              code = Diagnostics.BUILTIN_SLOT_ROLE_UNKNOWN,
+              subject = "$id/$slot",
+              message =
+                "slot role '$name' is not one the template engine knows, so the slot selects no " +
+                  "template. Known roles: " +
+                  UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
+            )
+        }
       }
       if (id in recordIds) {
         into +=

@@ -371,7 +371,13 @@ object StructuralTemplate {
         // give up there, record no span, and let the comma after `String` split one override into
         // two. Their depth is tracked so a `>` only closes the list at paren depth zero, which is
         // what keeps `(Int, Int) -> Unit` from ending it early.
-        if (!isTypeChar(ch) && ch !in "<>,?* -()") break
+        //
+        // `@` is in for the same reason, one shape further on: a type-use annotation is part of the
+        // type, and `@Composable () -> Unit` is the function type this codebase actually writes, so
+        // excluding `@` failed the identical way for the commoner input. It needs no depth of its
+        // own — an annotation is a prefix, not a bracket — and admitting the character cannot widen
+        // what the scan accepts as a list, because a `>` still has to close it at paren depth zero.
+        if (!isTypeChar(ch) && ch !in "<>,?* -()@") break
         when {
           // `->` inside a function type argument: its `>` closes nothing.
           ch == '-' && scan + 1 < text.length && text[scan + 1] == '>' -> scan++

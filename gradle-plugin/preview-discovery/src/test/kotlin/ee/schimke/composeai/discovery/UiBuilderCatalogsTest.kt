@@ -270,6 +270,49 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `a builtin slot names a structural role too`() {
+    // The slot's role selects a template exactly as the builtin's own role does. It was checked in
+    // the JavaScript pre-flight and nowhere else — and that pre-flight runs only in the two
+    // workflow
+    // lanes, so local discovery and a direct `bundle pack`, the consumers this contract exists to
+    // make first-class, published a misspelled role with nothing said about it.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "wear-m3/screen-scaffold" to
+                UiBuilderBuiltin(
+                  role = "screen-root",
+                  slots =
+                    mapOf(
+                      "content" to Json.parseToJsonElement("{\"role\": \"lisst\"}"),
+                      "footer" to Json.parseToJsonElement("{\"role\": \"list\"}"),
+                      // Not a role at all, and not this generator's to diagnose: the slot's shape
+                      // belongs to the loader, so an unreadable one is left alone rather than
+                      // turned into a second opinion about somebody else's contract.
+                      "header" to Json.parseToJsonElement("\"just a string\""),
+                    ),
+                )
+            )
+        ),
+      )!!
+
+    val codes = generated.diagnostics.map { it.code to it.subject }
+    assertThat(codes)
+      .contains(
+        UiBuilderCatalogs.Diagnostics.BUILTIN_SLOT_ROLE_UNKNOWN to "wear-m3/screen-scaffold/content"
+      )
+    assertThat(codes)
+      .containsNoneOf(
+        UiBuilderCatalogs.Diagnostics.BUILTIN_SLOT_ROLE_UNKNOWN to "wear-m3/screen-scaffold/footer",
+        UiBuilderCatalogs.Diagnostics.BUILTIN_SLOT_ROLE_UNKNOWN to "wear-m3/screen-scaffold/header",
+      )
+  }
+
+  @Test
   fun `templates and the strategy have to agree`() {
     val declaredButUnused =
       UiBuilderCatalogs.generate(

@@ -226,3 +226,56 @@ test("a scalar code.imports is an error, not a shrug", async () => {
   listed.code = { strategy: "record", imports: ["androidx.compose.foundation.layout.Column"] };
   assert.deepEqual(validatePolicy(listed).errors, []);
 });
+
+test("every field the reader types is checked, not one per round", async () => {
+  // The test above this one is the same finding for `code.imports`; `menu.groupOrder` was the next.
+  // Both are the same failure — a shape the Kotlin reader cannot deserialize takes the whole policy
+  // down after the render — so the fields are swept together rather than ruled one at a time. This
+  // case is the sweep's inventory: if a typed field is added to `UiBuilderPolicyFile` and not
+  // registered, this is what should have caught it.
+  const scalarOrder = wellFormed();
+  scalarOrder.menu = { groupOrder: "Components" };
+  const errors = validatePolicy(scalarOrder).errors;
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /"menu.groupOrder" is "Components"; it is a list of group names/);
+
+  const notAMenu = wellFormed();
+  notAMenu.menu = ["Components"];
+  assert.equal(validatePolicy(notAMenu).errors.length, 1);
+
+  const badEntry = wellFormed();
+  badEntry.menu = { groupOrder: ["Components", 7] };
+  assert.equal(validatePolicy(badEntry).errors.length, 1);
+
+  // Every remaining typed field, each on its own, so a missing registration fails here by name
+  // rather than by a count that another rule could happen to satisfy.
+  for (const [field, value] of [
+    ["catalogId", 7],
+    ["platformLabel", ["Wear"]],
+    ["$comment", 3],
+  ]) {
+    const policy = wellFormed();
+    policy[field] = value;
+    const only = validatePolicy(policy).errors;
+    assert.equal(only.length, 1, `${field} is unchecked`);
+    assert.match(only[0], new RegExp(`the reader decodes it as a string`));
+  }
+
+  const language = wellFormed();
+  language.code = { strategy: "record", language: 7 };
+  assert.equal(validatePolicy(language).errors.length, 1, "code.language is unchecked");
+
+  for (const field of ["displayName", "group", "canvas"]) {
+    const policy = wellFormed();
+    policy.builtins = { "wear-m3/screen": { role: STRUCTURAL_ROLES[0], [field]: 7 } };
+    const only = validatePolicy(policy).errors;
+    assert.equal(only.length, 1, `builtin ${field} is unchecked`);
+    assert.match(only[0], new RegExp(`has a "${field}"`));
+  }
+
+  // And the well-formed shapes still pass, so the sweep did not start rejecting what it types.
+  const ordered = wellFormed();
+  ordered.menu = { groupOrder: ["Components", "Layout"] };
+  ordered.catalogId = "wear-m3";
+  assert.deepEqual(validatePolicy(ordered).errors, []);
+});

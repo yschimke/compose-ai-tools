@@ -219,6 +219,23 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a type-use annotation is an ordinary generic argument`() {
+    // The third shape of the same scan: `@Composable () -> Unit` is the function type Compose
+    // actually writes, and `@` was not in the allowed set, so the scan broke at it, recorded no
+    // span, and let the comma after `String` split one override into two — the same failure the
+    // paren case above was fixed for, reached by a character rather than a bracket.
+    val annotated =
+      StructuralTemplate.holes("\${call(factory = emptyMap<String, @Composable () -> Unit>())}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(annotated.value)
+      .containsExactly(
+        StructuralTemplate.Hole.Call(
+          mapOf("factory" to "emptyMap<String, @Composable () -> Unit>()")
+        )
+      )
+  }
+
+  @Test
   fun `a less-than that is not a generic list is left alone`() {
     // The pre-scan may only ever un-split, so a comparison expression has to behave exactly as it
     // did before it existed — otherwise closing one false rejection would open another.

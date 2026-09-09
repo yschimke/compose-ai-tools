@@ -93,6 +93,7 @@ export function validatePolicy(policy) {
     );
   }
 
+  validateTypedShapes(policy, errors);
   validateSurfaces(policy.previewSurfaces, errors);
   validateBuiltins(policy.builtins, errors, warnings);
   validateCode(policy.code, errors, warnings);
@@ -128,6 +129,78 @@ export function validatePolicy(policy) {
   }
 
   return { errors, warnings };
+}
+
+/**
+ * Every field the Kotlin reader decodes into a TYPE, checked to be that type.
+ *
+ * These are the expensive failures, and the reason they get a sweep of their own rather than a rule
+ * each. A field held as `JsonElement` — `previewSurfaces`, `frame`, `colorTokens`, `assetRegistry` —
+ * belongs to the preview server, so a wrong shape there is somebody else's diagnostic and this file
+ * only ever checks it structurally. A field with a Kotlin type is different: a wrong shape is a
+ * *deserialization* failure, which takes the whole policy file down, so discovery omits
+ * `ui-builder.json` entirely — and it does that AFTER the twenty-minute render, having said nothing
+ * beforehand. This pre-flight exists to be the cheap half of that.
+ *
+ * `menu` was the field that showed it: a `"groupOrder": "Components"` reached the Kotlin reader,
+ * which decodes `List<String>`, and nothing here said a word. Adding a rule for `menu` alone would
+ * have left `catalogId`, `platformLabel`, `code.language` and a builtin's `displayName` / `group` /
+ * `canvas` to be found one at a time, each after a render, each its own round. They are declared
+ * together instead, so a new typed field in `UiBuilderPolicyFile` has one obvious place to be
+ * registered rather than four scattered ones to be forgotten in.
+ */
+function validateTypedShapes(policy, errors) {
+  const strings = [
+    // The Kotlin property is `jsonSchema`, but `@SerialName` means the JSON key is `$schema` — the
+    // key is what a policy author writes, so the key is what is read here.
+    ["$schema", policy["$schema"]],
+    ["$comment", policy["$comment"]],
+    ["catalogId", policy.catalogId],
+    ["platformLabel", policy.platformLabel],
+    ["code.language", isObject(policy.code) ? policy.code.language : undefined],
+  ];
+  for (const [path, value] of strings) {
+    if (value !== undefined && typeof value !== "string") {
+      errors.push(`"${path}" is ${JSON.stringify(value)}; the reader decodes it as a string`);
+    }
+  }
+  if (isObject(policy.builtins)) {
+    for (const [id, builtin] of Object.entries(policy.builtins)) {
+      if (!isObject(builtin)) continue;
+      for (const field of ["displayName", "group", "canvas"]) {
+        const value = builtin[field];
+        if (value !== undefined && typeof value !== "string") {
+          errors.push(
+            `builtin ${JSON.stringify(id)} has a "${field}" of ${JSON.stringify(value)}; the reader decodes it as a string`,
+          );
+        }
+      }
+    }
+  }
+  validateMenu(policy.menu, errors);
+}
+
+function validateMenu(menu, errors) {
+  if (menu === undefined) return;
+  if (!isObject(menu)) {
+    errors.push('"menu" is an object; the only thing authored in it is "groupOrder"');
+    return;
+  }
+  const order = menu.groupOrder;
+  if (order === undefined) return;
+  if (!Array.isArray(order)) {
+    // The shape that motivated the sweep. A bare string is the natural mistake, because one group
+    // order reads like one value, and the reader decodes `List<String>`.
+    errors.push(
+      `"menu.groupOrder" is ${JSON.stringify(order)}; it is a list of group names, in the order the shelves appear`,
+    );
+    return;
+  }
+  for (const entry of order) {
+    if (typeof entry !== "string") {
+      errors.push(`"menu.groupOrder" contains ${JSON.stringify(entry)}, which is not a group name`);
+    }
+  }
 }
 
 function validateSurfaces(surfaces, errors) {
