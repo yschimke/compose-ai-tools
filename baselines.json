@@ -3519,6 +3519,14 @@
     "sha256": "f296d3054785848e609eb0253de40d8c1609c413ff8ba7a960e29d81fc330a2b",
     "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt"
   },
+  "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetRectangularPreview_Rectangular Preview": {
+    "captureLabel": "",
+    "functionName": "ActivitySummaryWidgetRectangularPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ActivitySummaryWidgetRectangularPreview_Rectangular_Preview-860a1011.png",
+    "sha256": "91a224e3cdcdeea97ebfad0993facab1b44065daa5c412137bed6316c3666546",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/ActivitySummaryWidget.kt"
+  },
   "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetSquirclePreview_Squircle Preview": {
     "captureLabel": "",
     "functionName": "ActivitySummaryWidgetSquirclePreview",

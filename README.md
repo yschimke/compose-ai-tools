@@ -579,6 +579,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `ActivitySummaryWidgetRectangularPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ActivitySummaryWidgetRectangularPreview_Rectangular_Preview-860a1011.png" width="150" /> |
 | `ActivitySummaryWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ActivitySummaryWidgetSquirclePreview_Squircle_Preview-a0071b12.png" width="150" /> |
 | `ImageWidgetDeviceSpecPreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_0.png" width="150" /> |
 | `ImageWidgetDeviceSpecPreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetDeviceSpecPreview_Image_Widget_Device_Spec-f47b26ee_PARAM_1.png" width="150" /> |
