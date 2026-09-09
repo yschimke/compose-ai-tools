@@ -61,7 +61,9 @@ The long-lived renderer. See **[daemon/README.md](daemon/README.md)** for its
 own index; the load-bearing specs are
 [daemon/DESIGN.md](daemon/DESIGN.md), [daemon/PROTOCOL.md](daemon/PROTOCOL.md)
 (wire format), [daemon/DATA-PRODUCTS.md](daemon/DATA-PRODUCTS.md), and
-[daemon/MCP.md](daemon/MCP.md). The in-process / continuous-compile save loops
+[daemon/MCP.md](daemon/MCP.md). Scripted recordings can carry assertions that turn a
+recording into a check — [daemon/RECORDING-ASSERTIONS.md](daemon/RECORDING-ASSERTIONS.md).
+The in-process / continuous-compile save loops
 (`composePreview.daemon.compileInProcess` and `composePreview.daemon.continuousCompile`)
 are experimental features whose behaviour is documented in the code that implements
 them — `:daemon:core`'s `bta/` package and the VS Code extension's daemon client.
@@ -90,6 +92,7 @@ specs the code actually depends on:
 - [design/RC_PLAYER_TYPEFACES.md](design/RC_PLAYER_TYPEFACES.md) — **audit**: how each of the five Remote Compose player lanes (`js`, `cmp-wasm`, `java`, `cmp-android`, `cmp-jvm`) resolves built-in, named, downloadable, and document-embedded typefaces, and where two chips in the same viewer disagree about one document.
 - [design/COMPONENT_PARITY_WORKFLOW.md](design/COMPONENT_PARITY_WORKFLOW.md) — **Phase 1 shipped, rest proposal**: turning parity reporting into an iterative loop — a stable component/preview/reference locator, a published GitHub issue index (`parity/issues.json`), and issue-linked *scoped* acceptance of one known difference that still detects everything else. The locator, the index and its four display surfaces are live and carrying real issues; scoped acceptance, element selection and resolution automation are still a phased plan ([#3680](https://github.com/yschimke/compose-ai-tools/issues/3680)).
 - [design/RC_TEXT_METRICS.md](design/RC_TEXT_METRICS.md) — **harness**: Remote Compose documents that measure their own text with `TextMeasure` and draw the answers as guide lines, so each player lane renders *its own* metrics and a text divergence gets a name instead of a pixel percentage. Companion to the typefaces audit — that one covers *which face*, this one covers *how it is laid out once chosen*.
+- [design/KIT_VARIANT_CELLS.md](design/KIT_VARIANT_CELLS.md) — **proposal**: what a kit *cell* is when the catalog does not want a component for it. Measures the red on a design page (`75 of 303` on the Buttons sheet) and finds it is almost entirely cells of sets already implemented, then settles how those are covered, coloured and compared. The `@PreviewAxis` half has since shipped; the page-colouring and bake-then-score halves are still a delivery order.
 - [design/CATALOG_CONTENT_CACHE.md](design/CATALOG_CONTENT_CACHE.md) — **proposal**: a durable, commit-addressed home for fetched catalog content, so a redeployed `serve` adopts the catalogs it already had, converges to the branch tip in the background, and re-fetches only what moved. Companion to the theme cache — that one persists derived pixels, this one persists published bytes. Phased plan; no code yet.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font
