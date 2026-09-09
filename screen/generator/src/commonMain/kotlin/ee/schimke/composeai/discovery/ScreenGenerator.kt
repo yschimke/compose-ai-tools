@@ -1213,6 +1213,13 @@ object ScreenGenerator {
                     "cannot be imported"
                 return null
               }
+              if (simple in RESERVED_BY_THE_WRAPPER) {
+                // The third door a simple name comes in by, refused for the reason the other two
+                // are: a `kotlin` here captures the qualifier `foldRepeats` writes.
+                reasons +=
+                  "$where imports `$simple`, which the generated file spends on its own scaffolding"
+                return null
+              }
               if (!link.property && simple == screenName) {
                 // An extension imported under the screen's own name is shadowed by the function
                 // being generated, so the chain would call the screen — or fail to resolve.
@@ -1323,6 +1330,15 @@ object ScreenGenerator {
       val memberOfClassifier = owner.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
       val imported = if (memberOfClassifier) owner else fqn
       val simple = imported.substringAfterLast('.')
+      if (simple in RESERVED_BY_THE_WRAPPER) {
+        // Not written qualified and carried on, the way a component in this position is: a value's
+        // qualified form is what `importedName` was introduced to stop writing, and a `kotlin` here
+        // is a name nobody has. Refusing says which import and why, which is the generator's
+        // promise — source that compiles, or a located reason.
+        reasons +=
+          "$where imports `$simple`, which the generated file spends on its own scaffolding"
+        return null
+      }
       if (simple == screenName) {
         // The generated function shadows an import of its own name, so the expression would name
         // the screen rather than the declaration. The chain-link path refuses this already.
@@ -1588,8 +1604,15 @@ object ScreenGenerator {
    * happens to be called `Composable` would be imported alongside it and `Composable()` would be
    * ambiguous between the two. Such a component is called fully qualified instead — the same answer
    * the screen's own name and a two-package collision already get.
+   *
+   * `kotlin` is spent by [foldRepeats], which writes `kotlin.repeat(n)` precisely so that no
+   * declaration in the body can capture the call. A declaration imported under that simple name
+   * would capture the *qualifier* instead and leave `repeat` unresolved, so it is reserved here for
+   * a component and refused in [Emission.importedName] for a value — the two ways a simple name
+   * enters this file. The matching state name is refused by the root-shadowing check, which already
+   * carries `androidx` for the same reason.
    */
-  private val RESERVED_BY_THE_WRAPPER = setOf("Composable")
+  private val RESERVED_BY_THE_WRAPPER = setOf("Composable", "kotlin")
 
   /** The tooling annotation a [Preview] emits, imported only when one is asked for. */
   private const val PREVIEW_ANNOTATION = "androidx.compose.ui.tooling.preview.Preview"

@@ -1495,6 +1495,39 @@ class ScreenGeneratorTest {
       )
   }
 
+  /**
+   * The qualifier a folded run writes is a name the file spends, so nothing else may claim it.
+   *
+   * `kotlin.repeat(n)` is capture-proof against a local — that is why it is qualified — but an
+   * import of a declaration whose simple name is `kotlin` would take the *qualifier* and leave
+   * `repeat` unresolved. A simple name enters this file three ways, and `kotlin` is refused at all
+   * of them: reserved for a component, and refused with a located reason for a value or a chain.
+   */
+  @Test
+  fun `a value importing the name kotlin is refused, because a folded run qualifies through it`() {
+    val screen =
+      column(
+        ScreenNode(
+          text.canonicalId,
+          arguments =
+            mapOf("text" to ScreenValue.Reference("app.theme.kotlin", typeFqn = "kotlin.String")),
+        )
+      )
+
+    val refusals =
+      (ScreenGenerator.generate(
+          screen,
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Refused)
+        .reasons
+
+    assertThat(refusals)
+      .contains(
+        "`Text`.`text` imports `kotlin`, which the generated file spends on its own scaffolding"
+      )
+  }
+
   private fun occurrences(source: String, text: String) =
     Regex(Regex.escape(text)).findAll(source).count()
 
