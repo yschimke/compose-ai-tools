@@ -207,3 +207,22 @@ test("a templates path outside ui-builder is an error, not a shrug", async () =>
   );
   assert.match(lookup, new RegExp(`UI_BUILDER_DIR: String = "${TEMPLATE_DIR}"`));
 });
+
+test("a scalar code.imports is an error, not a shrug", async () => {
+  // Gradle decodes `UiBuilderCode.imports` as a `List<String>`, so the scalar form throws and
+  // discovery drops the WHOLE policy — after the render. A build-free check that misses the shapes
+  // the build refuses is a check for the shapes nobody gets wrong.
+  const scalar = wellFormed();
+  scalar.code = { strategy: "record", imports: "androidx.compose.foundation.layout.Column" };
+  const errors = validatePolicy(scalar).errors;
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /"code.imports" is a list/);
+
+  const nonString = wellFormed();
+  nonString.code = { strategy: "record", imports: ["ok", 7] };
+  assert.equal(validatePolicy(nonString).errors.length, 1);
+
+  const listed = wellFormed();
+  listed.code = { strategy: "record", imports: ["androidx.compose.foundation.layout.Column"] };
+  assert.deepEqual(validatePolicy(listed).errors, []);
+});

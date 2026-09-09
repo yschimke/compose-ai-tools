@@ -1899,6 +1899,14 @@ jobs:
           if [ -n "$MODULE" ]; then
             policy_candidates+=("$(to_dir "$MODULE")/ui-builder.policy.json")
           fi
+          # The RENDERED checkout's root policy, which is the one `authoredPair()` falls back to
+          # when a module has neither authored file — and in import mode that root is `upstream/`,
+          # not the caller's. Checking only the spec-adjacent and module paths meant the policy
+          # Gradle actually consumes could skip the pre-flight entirely and be dropped by discovery
+          # after the render, which is the cost this step exists to avoid.
+          if [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
+            policy_candidates+=("${RENDER_DIR:-.}/ui-builder.policy.json")
+          fi
           # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
           # runs in both; under `set -u` a bare reference would fail the step in the other one.
           if [ "${ALL_MODULES:-false}" = "true" ] && [ -f "$GITHUB_WORKSPACE/preview-module-sources.txt" ]; then
@@ -3181,6 +3189,14 @@ jobs:
           fi
           if [ -n "$MODULE" ]; then
             policy_candidates+=("$(to_dir "$MODULE")/ui-builder.policy.json")
+          fi
+          # The RENDERED checkout's root policy, which is the one `authoredPair()` falls back to
+          # when a module has neither authored file — and in import mode that root is `upstream/`,
+          # not the caller's. Checking only the spec-adjacent and module paths meant the policy
+          # Gradle actually consumes could skip the pre-flight entirely and be dropped by discovery
+          # after the render, which is the cost this step exists to avoid.
+          if [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
+            policy_candidates+=("${RENDER_DIR:-.}/ui-builder.policy.json")
           fi
           # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
           # runs in both; under `set -u` a bare reference would fail the step in the other one.

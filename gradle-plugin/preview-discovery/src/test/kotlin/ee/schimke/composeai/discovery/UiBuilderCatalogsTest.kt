@@ -1304,6 +1304,89 @@ class UiBuilderCatalogsTest {
       .isEqualTo("Actions")
   }
 
+  @Test
+  fun `a platform that is a label rather than a word is reported`() {
+    // Equality IS compatibility, so `Wear` joins no consumer expecting `wear`. The schema and the
+    // pre-flight both say so, and the pre-flight does not run for a local `ui` or a direct
+    // `bundle pack` — the same gap the componentIdPrefix check was added for.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+        cover,
+        policy().copy(platform = "Wear"),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.PLATFORM_MALFORMED)
+    // A lower-case word stays silent, including a hyphenated one.
+    for (word in listOf("wear", "remote-compose")) {
+      val fine =
+        UiBuilderCatalogs.generate(
+          record(component("Button", builder = BuilderPolicy(canvas = "p"))),
+          cover,
+          policy().copy(platform = word),
+        )!!
+      assertThat(fine.diagnostics.map { it.code })
+        .doesNotContain(UiBuilderCatalogs.Diagnostics.PLATFORM_MALFORMED)
+    }
+  }
+
+  @Test
+  fun `a callback that cannot carry the new value is reported`() {
+    // The export writes `{ checked = it }`, which needs exactly one argument. Zero and two were
+    // both folded into "this rendering is unreadable, say nothing" — an argument for writing a
+    // different message, not for staying quiet.
+    for (type in listOf("() -> kotlin.Unit", "(kotlin.Boolean, kotlin.Int) -> kotlin.Unit")) {
+      val generated =
+        UiBuilderCatalogs.generate(
+          record(
+            component(
+              "CheckboxButton",
+              builder =
+                BuilderPolicy(
+                  canvas = "p",
+                  stateCallbacks = listOf(BuilderPair("onClick", "checked:boolean")),
+                ),
+              parameters =
+                listOf(
+                  parameter("checked", type = "kotlin.Boolean"),
+                  parameter("onClick", type = type),
+                ),
+            )
+          ),
+          cover,
+          policy(),
+        )!!
+
+      assertThat(generated.diagnostics.map { it.code })
+        .contains(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_ARITY)
+    }
+
+    // And the one-argument shape stays silent, which is the half that keeps this honest.
+    val correct =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            builder =
+              BuilderPolicy(
+                canvas = "p",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+              ),
+            parameters =
+              listOf(
+                parameter("checked", type = "kotlin.Boolean"),
+                parameter("onCheckedChange", type = "(kotlin.Boolean) -> kotlin.Unit"),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+    assertThat(correct.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_ARITY)
+  }
+
   private fun parameter(name: String, type: String = "kotlin.Boolean") =
     TargetParameter(name = name, type = type, hasDefault = true)
 }

@@ -59,8 +59,12 @@ import {
   motionPreviewFor,
 } from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
-import { publishComponentRecord } from "./catalog-component-record.mjs";
-import { publishUiBuilderCatalog } from "./catalog-ui-builder.mjs";
+import {
+  COMPONENT_RECORD_FILE,
+  parseComponentRecord,
+  publishComponentRecord,
+} from "./catalog-component-record.mjs";
+import { UI_BUILDER_FILE, publishUiBuilderCatalog } from "./catalog-ui-builder.mjs";
 import { checkMotionCarried } from "./motion-carried.mjs";
 import {
   unclaimedMotionPreviews,
@@ -1702,10 +1706,26 @@ if (componentRecord) {
 // builder catalog — stamping the root `catalog.json` with that module's identity and platform while
 // `components.json` still came from the primary. The two files are read as a pair, so that is not a
 // degraded catalog, it is an unreadable one. No policy on the primary means no builder catalog.
-const uiBuilderCatalog = await publishUiBuilderCatalog(
-  combinedBundleEntries([bundle]),
-  outPath,
-);
+// And only when the RECORD it joins against came from that same bundle.
+//
+// The comment above says the two files are read as a pair, and I applied that to one side of the
+// pair: the record is published from `combinedBundleEntries(allBundles)`, which backfills a missing
+// entry from a later bundle, so a primary whose own `components.json` is missing or unreadable
+// publishes a builder catalog describing its components beside a record describing another
+// module's. Every component policy joins through that record, so the mismatch is not a degraded
+// catalog either — it is two files that disagree about what the catalog contains.
+const primaryBundleEntries = combinedBundleEntries([bundle]);
+const primaryBundleRecord = parseComponentRecord(primaryBundleEntries[COMPONENT_RECORD_FILE]);
+const uiBuilderCatalog = primaryBundleRecord
+  ? await publishUiBuilderCatalog(primaryBundleEntries, outPath)
+  : null;
+if (!primaryBundleRecord && primaryBundleEntries[UI_BUILDER_FILE]) {
+  console.warn(
+    `[${spec.system}] the primary bundle carries a builder catalog but no readable component ` +
+      `record, so it was NOT published: every component policy joins through that record, and a ` +
+      `record backfilled from another module would describe different components`,
+  );
+}
 if (uiBuilderCatalog) {
   console.log(
     `[${spec.system}] published builder catalog → ${uiBuilderCatalog.path} ` +

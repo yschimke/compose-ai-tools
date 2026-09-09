@@ -200,6 +200,8 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_TYPE_MISMATCH = "component.stateCallback.typeMismatch"
     const val ID_COLLISION = "component.id.collision"
     const val ID_PREFIX_MALFORMED = "policy.componentIdPrefix.malformed"
+    const val PLATFORM_MALFORMED = "policy.platform.malformed"
+    const val STATE_CALLBACK_ARITY = "component.stateCallback.arity"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
 
@@ -248,6 +250,21 @@ object UiBuilderCatalogs {
     // The AUTHORED field only. The fallback is `<catalogId>/`, whose shape follows from the cover
     // sheet rather than from anything anybody wrote here, and pointing a diagnostic at a field the
     // author never set would send them looking for something that is not in their policy.
+    // The platform word, checked here for the reason the prefix beside it is: equality IS
+    // compatibility, so `Wear` never joins a consumer expecting `wear`, and the workflow pre-flight
+    // that would have caught it does not run for a local `compose-preview-server ui` or a direct
+    // `bundle pack`. Same rule as the schema's, stated where every consumer passes.
+    if (!PLATFORM_WORD.matches(policy.platform)) {
+      diagnostics +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.PLATFORM_MALFORMED,
+          subject = policy.platform,
+          message =
+            "'${policy.platform}' is the word catalogs are grouped by and equality is " +
+              "compatibility, so it is a lower-case word (mobile, wear, remote-compose) rather " +
+              "than a label. As written it joins no consumer expecting the lower-case form.",
+        )
+    }
     val authoredPrefix = policy.componentIdPrefix?.takeIf { it.isNotBlank() }
     if (authoredPrefix != null && !ID_PREFIX.matches(authoredPrefix)) {
       diagnostics +=
@@ -407,6 +424,9 @@ object UiBuilderCatalogs {
   /** The shape a `componentIdPrefix` has to have, mirroring `ui-builder.policy.schema.json`. */
   private val ID_PREFIX = Regex("^[a-z0-9][a-z0-9-]*/$")
 
+  /** And the platform word's, from the same schema. */
+  private val PLATFORM_WORD = Regex("^[a-z0-9][a-z0-9-]*$")
+
   internal fun builderIdFor(
     prefix: String,
     component: ComponentRecord,
@@ -478,7 +498,7 @@ object UiBuilderCatalogs {
    * worse for the reader than the silence it replaced. What it does catch is the common form every
    * `on…Change` in a Material catalog is written in.
    */
-  internal fun soleFunctionInput(type: String): String? {
+  internal fun functionInputs(type: String): List<String>? {
     val trimmed = type.trim()
     if (!trimmed.startsWith("(")) return null
     var depth = 0
@@ -497,14 +517,17 @@ object UiBuilderCatalogs {
     }
     if (close < 0) return null
     if (!trimmed.substring(close + 1).trimStart().startsWith("->")) return null
-    val argument = trimmed.substring(1, close).trim()
-    // One argument only. A `(Boolean, Int) -> Unit` is a shape this cannot reason about, and a
-    // zero-argument callback is a different mistake with a different message.
-    if (argument.isEmpty() || argument.contains(',')) return null
-    // A nested function type or a generic argument is past what a rendering can settle.
-    if (argument.contains("->") || argument.contains('<')) return null
-    return argument
+    val inside = trimmed.substring(1, close).trim()
+    if (inside.isEmpty()) return emptyList()
+    val arguments = inside.split(',').map { it.trim() }
+    // A nested function type or a generic argument is past what a rendering can settle, and a
+    // generic's own comma would have been split by the line above.
+    if (arguments.any { it.isEmpty() || it.contains("->") || it.contains('<') }) return null
+    return arguments
   }
+
+  /** The single argument of a rendered `(X) -> R`, or null for every other shape. */
+  internal fun soleFunctionInput(type: String): String? = functionInputs(type)?.singleOrNull()
 
   private fun policyFor(component: ComponentRecord, builder: BuilderPolicy) =
     UiBuilderComponentPolicy(
@@ -735,6 +758,26 @@ object UiBuilderCatalogs {
       // threads a Boolean into a String-taking lambda.
       val callbackInputType = target?.type?.let(::soleFunctionInput)
       val callbackInput = callbackInputType?.let(::classifierOf)
+      // Arity, which is a different mistake from a type mismatch and was folded into silence.
+      //
+      // `soleFunctionInput` returns null for a zero- or two-argument callback, and null meant "do
+      // not diagnose" — so `onClick=checked:boolean` over an `onClick: () -> Unit` passed every
+      // check. The export writes `onCheckedChange = { checked = it }`, which needs exactly one
+      // argument, so both shapes produce source that does not compile. I declined this one round
+      // ago on the grounds that it wanted its own message; that was an argument for writing the
+      // message, not for staying quiet.
+      val callbackInputs = target?.type?.let(::functionInputs)
+      if (callbackInputs != null && callbackInputs.size != 1) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STATE_CALLBACK_ARITY,
+            subject = "$builderId.${pair.key}",
+            message =
+              "'${pair.key}' takes ${callbackInputs.size} argument(s) ('${target.type}'), and the " +
+                "export writes it as `{ $state = it }`, which needs exactly one. A callback that " +
+                "fires without carrying the new value cannot update '$state'.",
+          )
+      }
       // Nullability, in the direction the export actually assigns. The generated lambda writes the
       // callback's argument back into the hoisted state — `onCheckedChange = { checked = it }` — so
       // a `(Boolean?) -> Unit` over a `Boolean` state assigns a nullable into a non-null var and

@@ -218,6 +218,23 @@ function validateCode(code, errors, warnings) {
   if (strategy !== "record" && strategy !== "templates") {
     errors.push(`"code.strategy" is ${JSON.stringify(strategy)}; it is "record" or "templates"`);
   }
+  // `imports` is decoded by Gradle as a `List<String>`, and a scalar is the easy thing to write —
+  // `"imports": "androidx.foo.Bar"`. The decode throws, discovery drops the WHOLE policy and writes
+  // no `ui-builder.json`, and this pre-flight reported the policy valid on the way past. A
+  // build-free check that misses the shapes the build refuses is a check for the shapes nobody
+  // gets wrong.
+  const imports = code.imports;
+  if (imports !== undefined) {
+    if (!Array.isArray(imports)) {
+      errors.push('"code.imports" is a list of import lines, not a single string');
+    } else {
+      for (const line of imports) {
+        if (typeof line !== "string") {
+          errors.push(`"code.imports" contains ${JSON.stringify(line)}, which is not an import`);
+        }
+      }
+    }
+  }
   const templates = code.templates;
   if (templates !== undefined && !isObject(templates)) {
     errors.push('"code.templates" is an object keyed by role');
