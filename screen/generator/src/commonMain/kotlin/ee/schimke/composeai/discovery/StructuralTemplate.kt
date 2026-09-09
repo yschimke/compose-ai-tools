@@ -262,21 +262,30 @@ object StructuralTemplate {
     val current = StringBuilder()
     var depth = 0
     var inString = false
+    // Kotlin CHARACTER literals, tracked alongside strings. An override's value is arbitrary Kotlin
+    // kept verbatim, and `separator = ','` is an ordinary thing to write — with only double quotes
+    // recognised, the comma inside it read as a top-level argument separator and split one argument
+    // into two, so a valid template was rejected as malformed.
+    var inChar = false
     var index = 0
     while (index < text.length) {
       val ch = text[index]
       when {
-        inString && ch == '\\' -> {
+        (inString || inChar) && ch == '\\' -> {
           current.append(ch)
           if (index + 1 < text.length) current.append(text[index + 1])
           index += 2
           continue
         }
-        ch == '"' -> {
+        ch == '"' && !inChar -> {
           inString = !inString
           current.append(ch)
         }
-        inString -> current.append(ch)
+        ch == '\'' && !inString -> {
+          inChar = !inChar
+          current.append(ch)
+        }
+        inString || inChar -> current.append(ch)
         ch == '(' || ch == '[' || ch == '{' -> {
           depth++
           current.append(ch)
@@ -297,16 +306,22 @@ object StructuralTemplate {
     return parts.map { it.trim() }.filter { it.isNotEmpty() }
   }
 
-  /** Index of the `=` separating name from value, ignoring `==`, `>=` and anything in a string. */
+  /**
+   * Index of the `=` separating name from value, ignoring `==`, `>=` and anything in a string or a
+   * character literal — `'='` is a legal value, and reading the `=` inside it as the separator
+   * would split the argument in the wrong place.
+   */
   private fun topLevelEquals(part: String): Int {
     var inString = false
+    var inChar = false
     var index = 0
     while (index < part.length) {
       val ch = part[index]
       when {
-        inString && ch == '\\' -> index++
-        ch == '"' -> inString = !inString
-        inString -> Unit
+        (inString || inChar) && ch == '\\' -> index++
+        ch == '"' && !inChar -> inString = !inString
+        ch == '\'' && !inString -> inChar = !inChar
+        inString || inChar -> Unit
         ch == '=' -> {
           val next = part.getOrNull(index + 1)
           val previous = part.getOrNull(index - 1)

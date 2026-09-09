@@ -519,6 +519,47 @@ class ComponentRecordsTest {
   }
 
   @Test
+  fun `an ambiguous simple name binds nothing and is reported, while the FQN settles it`() {
+    // Two callables named `Text` from different packages is an ordinary shape. Picking the first
+    // would attach the canvas, callbacks and saved-design identity to whichever the scan reached
+    // first — silently, because naming a subject suppresses the `ambiguousWith` that would
+    // otherwise record the alternatives.
+    val wearText = target("androidx.wear.compose.material3.TextKt", "Text")
+    val foundationText = target("androidx.compose.foundation.text.TextKt", "Text")
+
+    val ambiguous =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(wearText, foundationText),
+            builder = BuilderPolicy(component = "Text", canvas = "p"),
+          )
+        )
+      )
+    assertThat(ambiguous.components.filter { it.builder != null }).isEmpty()
+    val orphan = ambiguous.builderOrphans.single()
+    assertThat(orphan.component).isEqualTo("Text")
+    assertThat(orphan.candidates).hasSize(2)
+
+    // The documented way out, and it still works: an FQN is unique by construction.
+    val byFqn =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p2",
+            componentTargets = listOf(wearText, foundationText),
+            builder =
+              BuilderPolicy(component = "androidx.wear.compose.material3.Text", canvas = "p"),
+          )
+        )
+      )
+    val subject = byFqn.components.single { it.builder != null }
+    assertThat(subject.canonicalId).isEqualTo("app/androidx.wear.compose.material3.TextKt.Text")
+    assertThat(byFqn.builderOrphans).isEmpty()
+  }
+
+  @Test
   fun `a component no preview declared a policy for carries none`() {
     val file =
       ComponentRecords.from(

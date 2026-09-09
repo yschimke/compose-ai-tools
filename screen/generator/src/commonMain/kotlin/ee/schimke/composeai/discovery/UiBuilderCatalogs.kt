@@ -95,6 +95,16 @@ data class UiBuilderRecordRef(
 data class UiBuilderStatusSemantics(
   val platform: String,
   val platformLabel: String,
+  /**
+   * The resolved prefix every derived builder id carries — `componentIdPrefix`, or `<catalogId>/`.
+   *
+   * Published because it is the only way a consumer can name a component this file says nothing
+   * about. An unannotated record component is deliberately absent from [components] and still
+   * belongs on the shelf, so its id has to be DERIVABLE: without this a consumer holding
+   * m3-catalog's record has to guess between `m3/card` and `m3-catalog/card`, and guessing wrong
+   * changes the identity every saved design stores for most of the default shelf.
+   */
+  val componentIdPrefix: String,
   val previewSurfaces: JsonElement? = null,
   val componentMenu: UiBuilderComponentMenu,
   val frame: JsonElement? = null,
@@ -182,6 +192,8 @@ object UiBuilderCatalogs {
     const val POLICY_MALFORMED_ENTRY = "component.policy.malformedEntry"
     const val POLICY_ORPHANED = "component.policy.orphaned"
     const val STATE_CALLBACK_NOT_A_PARAMETER = "component.stateCallback.notAParameter"
+    const val STATE_CALLBACK_MALFORMED = "component.stateCallback.malformed"
+    const val STARTER_UNKNOWN_PARAMETER = "component.starter.unknownParameter"
     const val ID_COLLISION = "component.id.collision"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
@@ -281,6 +293,7 @@ object UiBuilderCatalogs {
         UiBuilderStatusSemantics(
           platform = policy.platform,
           platformLabel = platformLabel,
+          componentIdPrefix = idPrefix,
           previewSurfaces = policy.previewSurfaces,
           componentMenu =
             UiBuilderComponentMenu(
@@ -361,7 +374,11 @@ object UiBuilderCatalogs {
   private fun policyFor(component: ComponentRecord, builder: BuilderPolicy) =
     UiBuilderComponentPolicy(
       record = component.canonicalId,
-      catalogId = component.componentIds.firstOrNull(),
+      // The DECLARING sticker's alias, matching the builder id derived from it. Publishing the
+      // sorted record's first alias instead would have this entry contradict its own id — keyed
+      // `…/tonal` while linking a consumer to `Buttons/Filled` — and a consumer following it lands
+      // on a different sticker than the one whose author wrote this policy.
+      catalogId = builder.declaredForCatalogId ?: component.componentIds.firstOrNull(),
       displayName = builder.displayName,
       canvas = builder.canvas,
       nativeOnly = builder.nativeOnly,
@@ -461,7 +478,24 @@ object UiBuilderCatalogs {
                 "against it and the component exports as a picture of itself.",
           )
       }
-      val state = pair.value.substringBefore(':').trim()
+      // `<state>:<type>`, both halves. `onCheckedChange=checked` parses to a valid state name and
+      // no type at all, and `checked:bool` to a type nothing knows — both passed, because only the
+      // part before the colon was ever looked at. The type is what the export prints the initial
+      // `remember` value from, so without it the component publishes a hoist nothing can complete.
+      val rawState = pair.value.substringBefore(':').trim()
+      val rawType = pair.value.substringAfter(':', "").trim()
+      if (!pair.value.contains(':') || rawType !in STATE_TYPES) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STATE_CALLBACK_MALFORMED,
+            subject = "$builderId.${pair.key}",
+            message =
+              "'${pair.value}' is not '<state>:<type>' with a type from " +
+                "${STATE_TYPES.sorted().joinToString()}. The export prints the hoisted state's " +
+                "initial value from that type, so it cannot complete the hoist without one.",
+          )
+      }
+      val state = rawState
       if (state.isNotEmpty() && state !in parameterNames) {
         into +=
           UiBuilderDiagnostic(
@@ -471,6 +505,23 @@ object UiBuilderCatalogs {
               "declares state '$state', which is not a parameter of ${component.canonicalId}. The " +
                 "export cannot thread a state the component does not take, so this entry does " +
                 "nothing.",
+          )
+      }
+    }
+    // A starter value is printed as a NAMED ARGUMENT at the call site, so a misspelled key is
+    // either dropped by a lenient consumer or compiled into a call to a parameter that does not
+    // exist. Same check as the callbacks above, for the same reason: the catalog said something
+    // about this component that the component cannot honour, and only the record knows that.
+    for (pair in builder.starter) {
+      if (pair.key !in parameterNames) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STARTER_UNKNOWN_PARAMETER,
+            subject = "$builderId.${pair.key}",
+            message =
+              "starter names '${pair.key}', which is not a parameter of " +
+                "${component.canonicalId}, so the value is either dropped or printed as a named " +
+                "argument that does not compile.",
           )
       }
     }

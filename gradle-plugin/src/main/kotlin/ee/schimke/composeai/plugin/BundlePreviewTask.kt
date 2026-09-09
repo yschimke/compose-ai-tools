@@ -1883,12 +1883,14 @@ abstract class BundlePreviewTask : DefaultTask() {
         )
         return null
       }
-    val spec =
-      catalogSpecCandidates.files
-        .firstOrNull { it.isFile }
-        ?.let {
-          runCatching { lenient.decodeFromString<BundleCoverSheet>(it.readText()) }.getOrNull()
-        }
+    // The cover sheet from the SAME location as the policy, which is the whole point of resolving
+    // them as a pair. Re-deriving it here independently would undo that: a module with its own
+    // policy and deliberately no local cover sheet would take the repository root's system and
+    // title, and the bundled ui-builder.json would then disagree with the one the discovery task
+    // wrote for the same module.
+    val spec = specFile?.let {
+      runCatching { lenient.decodeFromString<BundleCoverSheet>(it.readText()) }.getOrNull()
+    }
     val cover =
       UiBuilderCatalogs.CoverSheet(
         system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),

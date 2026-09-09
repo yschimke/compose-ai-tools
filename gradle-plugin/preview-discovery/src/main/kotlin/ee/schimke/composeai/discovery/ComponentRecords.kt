@@ -185,8 +185,18 @@ object ComponentRecords {
 
     val named = policy.component?.takeIf { it.isNotBlank() }
     if (named != null) {
-      val match = candidates.firstOrNull { (_, target) ->
-        callableFqn(target) == named || target.functionName == named
+      // An FQN is unique by construction, so it wins outright. A SIMPLE name is only accepted when
+      // it matches one target: two callables named `Text` from different packages is an ordinary
+      // shape, and picking the first would attach the canvas, callbacks and saved-design identity
+      // to whichever the scan happened to reach first — silently, because naming a subject
+      // suppresses the `ambiguousWith` that would otherwise record the alternatives. Reported as an
+      // orphan instead, listing the candidates, so the fix (write the FQN) is in the message.
+      val exact = candidates.filter { (_, target) -> callableFqn(target) == named }
+      val bySimpleName = candidates.filter { (_, target) -> target.functionName == named }
+      val match = exact.firstOrNull() ?: bySimpleName.singleOrNull()
+      if (match == null && bySimpleName.size > 1) {
+        orphans += BuilderOrphan(preview.id, named, bySimpleName.map { it.first })
+        return null
       }
       if (match == null) {
         // Reported rather than dropped. A subject naming nothing the preview renders is a rename

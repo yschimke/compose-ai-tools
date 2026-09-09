@@ -113,6 +113,19 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a character literal keeps its comma and its equals sign`() {
+    // An override's value is arbitrary Kotlin kept verbatim, and `separator = ','` is an ordinary
+    // thing to write. With only double quotes tracked, the comma inside the char literal read as a
+    // top-level argument separator and split one argument into two, so a valid template was refused
+    // as malformed — and `'='` would have been split in the wrong place by the name/value finder.
+    assertThat(emitted(render("\${call(separator = ',', n = 1)}")))
+      .isEqualTo("Call(separator=',', n=1)")
+    assertThat(emitted(render("\${call(pad = '=')}"))).isEqualTo("Call(pad='=')")
+    // An escaped quote inside a char literal does not end it.
+    assertThat(emitted(render("\${call(q = '\\'', n = 1)}"))).isEqualTo("Call(q='\\'', n=1)")
+  }
+
+  @Test
   fun `a call with no overrides is the ordinary case`() {
     assertThat(emitted(render("\${call()}"))).isEqualTo("Call()")
   }

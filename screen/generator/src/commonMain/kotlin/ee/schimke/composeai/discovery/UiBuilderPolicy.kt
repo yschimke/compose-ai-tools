@@ -15,6 +15,14 @@ const val UI_BUILDER_POLICY_SCHEMA: String = "compose-ui-builder-policy/v1"
  * can *validate* what a catalog asks for. A catalog that needs a seventh role means the engine
  * grows one, once, with a test; the test that a new role is general is that two catalogs use it.
  */
+/**
+ * The JSON types a `@BuilderComponent.stateCallbacks` entry may give its state.
+ *
+ * The export prints the hoisted `remember`'s initial value from this, so an entry without one — or
+ * with `bool` for `boolean` — publishes a hoist nothing downstream can complete.
+ */
+val STATE_TYPES: Set<String> = setOf("boolean", "string", "number")
+
 val UI_BUILDER_STRUCTURAL_ROLES: Set<String> =
   setOf("screen-root", "list", "list-item", "overlay", "controlled", "decoration")
 

@@ -77,6 +77,32 @@ export async function publishUiBuilderCatalog(entries, outPath) {
   const target = join(outPath, UI_BUILDER_FILE);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, Buffer.from(entries[UI_BUILDER_FILE]));
+
+  // The template DESIGNS the catalog advertises, carried out with the file that names them.
+  //
+  // `statusSemantics.templates` holds branch-relative paths like `ui-builder/designs/wear-list.json`
+  // and the publish flow snapshots `out/` wholesale, so a path that is not written here is a 404 in
+  // the New design chooser — advertised by the catalog, missing from the branch, discovered by
+  // whoever clicks it. Copied when the bundle carries the file; reported when it does not, because
+  // a catalog naming a template it does not ship is a mistake somebody has to be told about rather
+  // than a reason to refuse the whole catalog.
+  const templates = Array.isArray(catalog.statusSemantics.templates)
+    ? catalog.statusSemantics.templates.filter((path) => typeof path === "string" && path.length > 0)
+    : [];
+  const publishedTemplates = [];
+  const missingTemplates = [];
+  for (const path of templates) {
+    const bytes = entries?.[path];
+    if (!bytes) {
+      missingTemplates.push(path);
+      continue;
+    }
+    const templateTarget = join(outPath, path);
+    await mkdir(dirname(templateTarget), { recursive: true });
+    await writeFile(templateTarget, Buffer.from(bytes));
+    publishedTemplates.push(path);
+  }
+
   return {
     path: UI_BUILDER_FILE,
     schema: catalog.schema,
@@ -85,5 +111,7 @@ export async function publishUiBuilderCatalog(entries, outPath) {
     components: Object.keys(catalog.statusSemantics.components ?? {}).length,
     builtins: Object.keys(catalog.statusSemantics.builtins ?? {}).length,
     diagnostics: Array.isArray(catalog.diagnostics) ? catalog.diagnostics.length : 0,
+    templates: publishedTemplates,
+    missingTemplates,
   };
 }

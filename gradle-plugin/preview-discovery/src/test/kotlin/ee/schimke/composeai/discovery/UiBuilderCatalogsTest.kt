@@ -41,10 +41,13 @@ class UiBuilderCatalogsTest {
     builder: BuilderPolicy? = null,
     parameters: List<TargetParameter> = emptyList(),
     signatureKnown: Boolean = true,
+    // A callable published under several catalog identities — `Buttons/Filled` and `Buttons/Tonal`
+    // over one `Button`. Sorted, the way the record stores the union across every preview.
+    catalogIds: List<String>? = null,
   ) =
     ComponentRecord(
       canonicalId = ":catalog/androidx.wear.compose.material3.${name}Kt.$name",
-      componentIds = listOfNotNull(catalogId),
+      componentIds = catalogIds ?: listOfNotNull(catalogId),
       symbol =
         ComponentSymbol(
           jvmOwner = "androidx.wear.compose.material3.${name}Kt",
@@ -381,6 +384,113 @@ class UiBuilderCatalogsTest {
         it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER
       }
     assertThat(reported.subject).endsWith("onChekedChange")
+  }
+
+  @Test
+  fun `a state callback without a usable type is reported`() {
+    // `onCheckedChange=checked` parses to a valid state name and no type at all, and `checked:bool`
+    // to a type nothing knows. Both passed while only the part before the colon was looked at, and
+    // the export prints the hoisted remember's initial value FROM that type — so the component
+    // published a hoist nothing could complete.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters = listOf(parameter("checked"), parameter("onCheckedChange")),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks =
+                  listOf(
+                    BuilderPair("onCheckedChange", "checked"),
+                    BuilderPair("onCheckedChange2", "checked:bool"),
+                  ),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.filter {
+        it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_MALFORMED
+      }
+    assertThat(reported).hasSize(2)
+    assertThat(reported.map { it.subject })
+      .containsExactly(
+        "wear-m3/checkbox-button.onCheckedChange",
+        "wear-m3/checkbox-button.onCheckedChange2",
+      )
+    // The message names the vocabulary, because "malformed" without it is not actionable.
+    reported.forEach { assertThat(it.message).contains("boolean") }
+  }
+
+  @Test
+  fun `a starter naming something that is not a parameter is reported`() {
+    // A starter value is printed as a NAMED ARGUMENT, so a `lable=` typo is either dropped by a
+    // lenient consumer or compiled into a call to a parameter that does not exist.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters = listOf(parameter("label")),
+            builder =
+              BuilderPolicy(canvas = "placeholder", starter = listOf(BuilderPair("lable", "Hi"))),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.STARTER_UNKNOWN_PARAMETER
+      }
+    assertThat(reported.subject).endsWith("lable")
+  }
+
+  @Test
+  fun `the resolved component id prefix is published`() {
+    // The only way a consumer can name a component this file says nothing about. An unannotated
+    // record component is deliberately absent from `components` and still belongs on the shelf, so
+    // without the prefix a consumer holding m3-catalog's record has to guess between `m3/card` and
+    // `m3-catalog/card` — and guessing wrong changes the identity every saved design stores.
+    val prefixed =
+      UiBuilderCatalogs.generate(
+        record(component("Card")),
+        cover,
+        policy().copy(componentIdPrefix = "m3/"),
+      )!!
+    assertThat(prefixed.statusSemantics.componentIdPrefix).isEqualTo("m3/")
+
+    // Defaulted from the catalog id when the policy declares none, so the field is always usable.
+    val defaulted = UiBuilderCatalogs.generate(record(component("Card")), cover, policy())!!
+    assertThat(defaulted.statusSemantics.componentIdPrefix).isEqualTo("wear-m3/")
+  }
+
+  @Test
+  fun `a published entry names the catalog alias of the sticker that declared it`() {
+    // The entry must not contradict its own builder id: keyed `…/tonal` while linking a consumer to
+    // `Buttons/Filled` would land them on a different sticker than the one whose author wrote this.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Button",
+            catalogIds = listOf("Buttons/Filled", "Buttons/Tonal"),
+            builder = BuilderPolicy(canvas = "placeholder", declaredForCatalogId = "Buttons/Tonal"),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val entry = generated.statusSemantics.components.values.single()
+    assertThat(entry.catalogId).isEqualTo("Buttons/Tonal")
+    assertThat(generated.statusSemantics.components.keys.single()).endsWith("/tonal")
   }
 
   @Test

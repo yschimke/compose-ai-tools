@@ -63,9 +63,68 @@ test("the bundle's builder catalog is copied to the branch root and described fo
       components: 1,
       builtins: 1,
       diagnostics: 1,
+      templates: [],
+      missingTemplates: [],
     });
     // Byte-for-byte, not re-serialised: the generator produced it and the pipeline is a courier.
     assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), catalog);
+  });
+});
+
+test("template designs the catalog names are carried out with it", async () => {
+  await withOutDir(async (out) => {
+    // A path in `templates` is branch-relative and the publish flow snapshots `out/` wholesale, so
+    // a design that is not written here is a 404 in the New design chooser — advertised by the
+    // catalog and absent from the branch.
+    const design = '{"schema":"compose-ui-builder-design/v1","nodes":[]}';
+    const withTemplate = JSON.stringify({
+      ...JSON.parse(catalog),
+      statusSemantics: {
+        ...JSON.parse(catalog).statusSemantics,
+        templates: ["ui-builder/designs/wear-list.json"],
+      },
+    });
+
+    const published = await publishUiBuilderCatalog(
+      {
+        [UI_BUILDER_FILE]: bytes(withTemplate),
+        "ui-builder/designs/wear-list.json": bytes(design),
+      },
+      out,
+    );
+
+    assert.deepEqual(published.templates, ["ui-builder/designs/wear-list.json"]);
+    assert.deepEqual(published.missingTemplates, []);
+    assert.equal(
+      await readFile(join(out, "ui-builder/designs/wear-list.json"), "utf8"),
+      design,
+    );
+  });
+});
+
+test("a template the bundle does not carry is reported rather than silently advertised", async () => {
+  await withOutDir(async (out) => {
+    // Still published: the catalog is readable and every other template still opens. But the one
+    // that is missing is named, because the alternative is somebody clicking it and getting a 404
+    // with nothing anywhere saying why.
+    const withTemplate = JSON.stringify({
+      ...JSON.parse(catalog),
+      statusSemantics: {
+        ...JSON.parse(catalog).statusSemantics,
+        templates: ["ui-builder/designs/absent.json"],
+      },
+    });
+
+    const published = await publishUiBuilderCatalog(
+      { [UI_BUILDER_FILE]: bytes(withTemplate) },
+      out,
+    );
+
+    assert.deepEqual(published.missingTemplates, ["ui-builder/designs/absent.json"]);
+    assert.deepEqual(published.templates, []);
+    await assert.rejects(() => stat(join(out, "ui-builder/designs/absent.json")));
+    // The catalog itself is still there — a missing template is not a reason to publish nothing.
+    assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), withTemplate);
   });
 });
 

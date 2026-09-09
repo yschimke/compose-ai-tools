@@ -1696,8 +1696,14 @@ if (componentRecord) {
 // own `ui-builder.policy.json`, out of the primary bundle and onto the branch root. A catalog that
 // authors no policy has none, publishes nothing here, and says nothing on the manifest — which is
 // what makes this contract cost zero for the catalogs that have not adopted it.
+// The PRIMARY bundle only, which is what the comment above has always said and what the code did
+// not do. `combinedBundleEntries(allBundles)` backfills a missing entry from a later bundle, so a
+// multi-module export whose primary module authors no policy would have taken a secondary module's
+// builder catalog — stamping the root `catalog.json` with that module's identity and platform while
+// `components.json` still came from the primary. The two files are read as a pair, so that is not a
+// degraded catalog, it is an unreadable one. No policy on the primary means no builder catalog.
 const uiBuilderCatalog = await publishUiBuilderCatalog(
-  combinedBundleEntries(allBundles),
+  combinedBundleEntries([bundle]),
   outPath,
 );
 if (uiBuilderCatalog) {
@@ -1707,6 +1713,21 @@ if (uiBuilderCatalog) {
       `${uiBuilderCatalog.components} component polic(ies), ` +
       `${uiBuilderCatalog.builtins} builtin(s))`,
   );
+  if (uiBuilderCatalog.templates?.length) {
+    console.log(
+      `[${spec.system}] published ${uiBuilderCatalog.templates.length} template design(s) the ` +
+        `builder catalog names`,
+    );
+  }
+  if (uiBuilderCatalog.missingTemplates?.length) {
+    // Not a failure — the catalog is still readable and every other template still opens. But this
+    // one is advertised and absent, which the person who clicks it would otherwise discover as a
+    // 404 with nothing naming the cause.
+    console.warn(
+      `[${spec.system}] the builder catalog names template design(s) the bundle does not carry, ` +
+        `so they will 404 on the branch: ${uiBuilderCatalog.missingTemplates.join(", ")}`,
+    );
+  }
   if (uiBuilderCatalog.diagnostics > 0) {
     // Not a failure. The diagnostics travel INSIDE the published file, where somebody who was not
     // watching this run can read them; this line is only so somebody who was knows to look.
