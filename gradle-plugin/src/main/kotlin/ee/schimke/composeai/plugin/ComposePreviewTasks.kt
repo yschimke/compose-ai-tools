@@ -744,8 +744,8 @@ internal object ComposePreviewTasks {
       // whole project: `templates` entries are branch-relative paths like
       // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
       uiBuilderTemplateCandidates.from(
-        project.layout.projectDirectory.dir("ui-builder"),
-        project.rootProject.layout.projectDirectory.dir("ui-builder"),
+        uiBuilderTemplateTree(project.layout.projectDirectory.dir("ui-builder")),
+        uiBuilderTemplateTree(project.rootProject.layout.projectDirectory.dir("ui-builder")),
       )
       uiBuilderTemplateRoots.from(
         project.layout.projectDirectory,
@@ -1851,8 +1851,8 @@ internal object ComposePreviewTasks {
       // whole project: `templates` entries are branch-relative paths like
       // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
       uiBuilderTemplateCandidates.from(
-        project.layout.projectDirectory.dir("ui-builder"),
-        project.rootProject.layout.projectDirectory.dir("ui-builder"),
+        uiBuilderTemplateTree(project.layout.projectDirectory.dir("ui-builder")),
+        uiBuilderTemplateTree(project.rootProject.layout.projectDirectory.dir("ui-builder")),
       )
       uiBuilderTemplateRoots.from(
         project.layout.projectDirectory,
@@ -2597,4 +2597,28 @@ internal object ComposePreviewTasks {
       return dir == relDir && leaf.startsWith(prefix) && leaf.endsWith(ext)
     }
   }
+
+  /**
+   * The authored designs under a `ui-builder/` directory, and nothing a build wrote.
+   *
+   * `ui-builder` is a *conventional* directory name, and in a repository that also has a Gradle
+   * module called `ui-builder` — compose-preview-server does — the two are the same path. Handing
+   * the whole directory to an `@InputFiles` property then snapshots that module's `build/` output
+   * as well, and Gradle refuses the build outright: `composePreviewDiscover` and
+   * `composePreviewBundle` are consuming `build/wasmDist` and `build/tmp/…/package.json` from tasks
+   * they do not depend on, which is an *"uses this output of task … without declaring an explicit
+   * or implicit dependency"* validation failure rather than a warning.
+   *
+   * A template is an authored JSON design, so restricting the tree to JSON files loses none of
+   * them, and excluding `build` directories removes every generated file that made the directory
+   * ambiguous. (Spelled as a glob in the code below rather than here: a `json` glob contains the
+   * two characters that end a KDoc block.) The roots stay the project directories
+   * ([DiscoverPreviewsTask.uiBuilderTemplateRoots]), so a branch-relative `templates` path still
+   * resolves exactly as it did.
+   */
+  private fun uiBuilderTemplateTree(dir: Directory) =
+    dir.asFileTree.matching {
+      include("**/*.json")
+      exclude("**/build/**")
+    }
 }
