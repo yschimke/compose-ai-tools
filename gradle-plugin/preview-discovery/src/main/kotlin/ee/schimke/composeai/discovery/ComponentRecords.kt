@@ -177,9 +177,17 @@ object ComponentRecords {
     val declared =
       policy.copy(declaredForCatalogId = preview.catalog?.componentId?.takeIf { it.isNotBlank() })
     if (candidates.isEmpty()) {
-      if (policy.component?.isNotBlank() == true) {
-        orphans += BuilderOrphan(preview.id, policy.component, emptyList())
-      }
+      // Reported whether or not the annotation named a subject. A policy that bound to nothing is
+      // an annotation somebody wrote whose every field does nothing, and that is true of an
+      // ordinary `@BuilderComponent(canvas = "…")` on a preview whose targets could not be inferred
+      // exactly as it is true of a misspelled `component = "…"`. Recording only the named case left
+      // the commoner one silent — the author sees no canvas, no starter and no diagnostic.
+      orphans +=
+        BuilderOrphan(
+          previewId = preview.id,
+          component = policy.component?.takeIf { it.isNotBlank() } ?: "(no subject named)",
+          candidates = emptyList(),
+        )
       return null
     }
 

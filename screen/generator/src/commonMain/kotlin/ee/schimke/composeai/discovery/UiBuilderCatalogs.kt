@@ -195,6 +195,8 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_MALFORMED = "component.stateCallback.malformed"
     const val STARTER_UNKNOWN_PARAMETER = "component.starter.unknownParameter"
     const val VARIANT_PROPERTY_UNKNOWN = "component.variantProperty.unknownParameter"
+    const val VARIANTS_WITHOUT_PROPERTY = "component.variants.withoutProperty"
+    const val STATE_CALLBACK_NOT_A_FUNCTION = "component.stateCallback.notAFunction"
     const val ID_COLLISION = "component.id.collision"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
@@ -476,10 +478,45 @@ object UiBuilderCatalogs {
               "visible rather than mysterious.",
         )
     }
-    // The two claims the record can check. Only worth checking against a signature that was
-    // actually read: an unrecovered one reports "no parameters", and every entry would look wrong.
+    // A callback entry's own SYNTAX needs no signature at all — `<state>:<type>` is wrong on its
+    // face whatever the component turns out to take — so it is checked before the guard below.
+    // Putting it behind `signatureKnown` meant a component whose metadata was not recovered
+    // published `checked:bool` unremarked, which is the case with the least other information
+    // available to whoever reads the catalog.
+    for (pair in builder.stateCallbacks) {
+      val rawState = pair.value.substringBefore(':').trim()
+      val rawType = pair.value.substringAfter(':', "").trim()
+      if (rawState.isEmpty() || !pair.value.contains(':') || rawType !in STATE_TYPES) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STATE_CALLBACK_MALFORMED,
+            subject = "$builderId.${pair.key}",
+            message =
+              "'${pair.value}' is not a non-empty '<state>:<type>' with a type from " +
+                "${STATE_TYPES.sorted().joinToString()}. The export prints the hoisted state's " +
+                "initial value from that type, so it cannot complete the hoist without one.",
+          )
+      }
+    }
+    // Variants with nothing to write to. The builder renders the choices and the export has no
+    // parameter to put the selected value in, so the control moves and the generated call does not
+    // — indistinguishable from a broken builder unless the catalog says so.
+    if (builder.variants.isNotEmpty() && builder.variantProperty?.isNotBlank() != true) {
+      into +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.VARIANTS_WITHOUT_PROPERTY,
+          subject = builderId,
+          message =
+            "declares ${builder.variants.size} variant(s) but no variantProperty, so nothing " +
+              "receives the selected value and every variant is inert.",
+        )
+    }
+
+    // The claims that need the record. Only worth checking against a signature that was actually
+    // read: an unrecovered one reports "no parameters", and every entry would look wrong.
     if (!component.signatureKnown) return
     val parameterNames = component.parameters.map { it.name }.toSet()
+    val parametersByName = component.parameters.associateBy { it.name }
     for (pair in builder.stateCallbacks) {
       // The CALLBACK has to be a parameter as well as the state. A `onChekedChange` typo passes a
       // state-only check, publishes the misspelled key, and the export then has nothing to hoist
@@ -494,24 +531,24 @@ object UiBuilderCatalogs {
                 "against it and the component exports as a picture of itself.",
           )
       }
-      // `<state>:<type>`, both halves. `onCheckedChange=checked` parses to a valid state name and
-      // no type at all, and `checked:bool` to a type nothing knows — both passed, because only the
-      // part before the colon was ever looked at. The type is what the export prints the initial
-      // `remember` value from, so without it the component publishes a hoist nothing can complete.
-      val rawState = pair.value.substringBefore(':').trim()
-      val rawType = pair.value.substringAfter(':', "").trim()
-      if (rawState.isEmpty() || !pair.value.contains(':') || rawType !in STATE_TYPES) {
+      // The callback must be FUNCTION-typed, not merely a parameter that exists. `label=…` names a
+      // real parameter of most components, and the export would then emit a lambda where the
+      // component wants a String — source that does not compile, from a catalog that looked valid.
+      val target = parametersByName[pair.key]
+      if (target != null && "->" !in target.type) {
         into +=
           UiBuilderDiagnostic(
-            code = Diagnostics.STATE_CALLBACK_MALFORMED,
+            code = Diagnostics.STATE_CALLBACK_NOT_A_FUNCTION,
             subject = "$builderId.${pair.key}",
             message =
-              "'${pair.value}' is not a non-empty '<state>:<type>' with a type from " +
-                "${STATE_TYPES.sorted().joinToString()}. The export prints the hoisted state's " +
-                "initial value from that type, so it cannot complete the hoist without one.",
+              "'${pair.key}' is a parameter of ${component.canonicalId} but its type is " +
+                "'${target.type}', which is not function-typed, so the export would emit a lambda " +
+                "where the component wants a value. (A typealias for a function type renders " +
+                "under its own name and will report here too; the type above is what the record " +
+                "holds.)",
           )
       }
-      val state = rawState
+      val state = pair.value.substringBefore(':').trim()
       if (state.isNotEmpty() && state !in parameterNames) {
         into +=
           UiBuilderDiagnostic(

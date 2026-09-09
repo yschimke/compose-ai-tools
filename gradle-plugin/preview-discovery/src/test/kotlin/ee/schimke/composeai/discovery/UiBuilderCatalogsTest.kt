@@ -500,6 +500,95 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `variants with no property to write to are reported`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Button",
+            parameters = listOf(parameter("style")),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                variants = listOf(BuilderPair("Filled", "ButtonStyle.Filled")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.VARIANTS_WITHOUT_PROPERTY)
+  }
+
+  @Test
+  fun `a state callback naming a non-function parameter is reported`() {
+    // `label=checked:boolean` names a real parameter, so every membership check passes — and the
+    // export would emit a lambda where the component wants a String.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters =
+              listOf(
+                parameter("label"),
+                parameter("checked"),
+                parameter("onCheckedChange", type = "(Boolean) -> Unit"),
+              ),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks =
+                  listOf(
+                    BuilderPair("label", "checked:boolean"),
+                    // The correct shape, which must NOT be reported.
+                    BuilderPair("onCheckedChange", "checked:boolean"),
+                  ),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_NOT_A_FUNCTION
+      }
+    assertThat(reported.subject).endsWith("label")
+  }
+
+  @Test
+  fun `a malformed callback is reported even when the signature was never read`() {
+    // `bool` is never a supported type, whatever the component turns out to take — so the entry's
+    // own syntax is checked before the signature guard, which previously swallowed it.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Unknown",
+            signatureKnown = false,
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:bool")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .contains(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_MALFORMED)
+    // …and the signature-dependent checks stay silent, because there is no signature to check.
+    assertThat(generated.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER)
+  }
+
+  @Test
   fun `a starter naming something that is not a parameter is reported`() {
     // A starter value is printed as a NAMED ARGUMENT, so a `lable=` typo is either dropped by a
     // lenient consumer or compiled into a call to a parameter that does not exist.
@@ -768,6 +857,6 @@ class UiBuilderCatalogsTest {
       )
   }
 
-  private fun parameter(name: String) =
-    TargetParameter(name = name, type = "kotlin.Boolean", hasDefault = true)
+  private fun parameter(name: String, type: String = "kotlin.Boolean") =
+    TargetParameter(name = name, type = type, hasDefault = true)
 }

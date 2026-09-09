@@ -11,6 +11,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.Directory
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFile
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
@@ -21,6 +22,7 @@ import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -185,17 +187,38 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
 
   /**
+   * Where the copied template designs land, declared so Gradle owns them.
+   *
+   * Without this the task's declared outputs were `previews.json`, `components.json` and
+   * `ui-builder.json`, so a cache hit in a clean checkout restored the catalog and none of the
+   * designs it advertises — the local New design chooser would then list templates that are not
+   * there. Declaring the directory also lets Gradle remove designs a policy has stopped naming,
+   * which a copy loop alone never does.
+   */
+  @get:OutputDirectory abstract val uiBuilderTemplateDir: DirectoryProperty
+
+  /**
    * The template designs a policy names, resolved to real files.
    *
    * Paths a policy cannot supply a file for are simply absent from the map; the caller reports them
    * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
    * somebody about and not a reason to publish no catalog.
    */
+  /** The one directory a `templates` path may live under, and the tree declared as an input. */
+  private val UI_BUILDER_DIR = "ui-builder"
+
   private fun templateFiles(paths: List<String>): Map<String, File> {
     if (paths.isEmpty()) return emptyMap()
     val roots = uiBuilderTemplateRoots.files.filter { it.isDirectory }
     return paths
       .distinct()
+      // Only under `ui-builder/`, which is exactly the tree declared as this task's input. A
+      // path outside it resolves to a real file Gradle is not watching, so editing that file
+      // would invalidate nothing and an up-to-date or cached build would keep publishing stale
+      // bytes — the input declaration and the lookup have to describe the same set or neither
+      // means anything. Anything else is reported by the caller as unresolvable rather than read
+      // from somewhere untracked.
+      .filter { it == UI_BUILDER_DIR || it.startsWith("$UI_BUILDER_DIR/") }
       .mapNotNull { path ->
         roots
           .firstNotNullOfOrNull { root -> File(root, path).takeIf { it.isFile } }
@@ -435,11 +458,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // for the consumer this contract most wanted to serve.
     val declared = catalog.statusSemantics.templates
     val found = templateFiles(declared)
+    // Emptied first: a design a policy has stopped naming must stop being published, and a stale
+    // one left behind is advertised by nothing and opened by accident.
+    val templateDir = uiBuilderTemplateDir.get().asFile
+    if (templateDir.exists()) templateDir.deleteRecursively()
     found.forEach { (path, file) ->
       val target = File(out.parentFile, path)
       target.parentFile.mkdirs()
       file.copyTo(target, overwrite = true)
     }
+    templateDir.mkdirs()
     (declared - found.keys).sorted().forEach {
       logger.warn(
         "composePreview: the builder catalog names template design '$it', which is not under " +

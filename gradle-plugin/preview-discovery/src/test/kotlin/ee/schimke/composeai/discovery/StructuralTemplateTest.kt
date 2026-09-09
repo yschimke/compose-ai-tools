@@ -135,6 +135,19 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a raw string keeps its braces, quotes and commas`() {
+    // The scanners are told what a quote is in one place now, because they had twice been taught
+    // separately and twice disagreed. A triple-quoted Kotlin string carrying JSON is the case that
+    // breaks all three at once: the inner `"` would flip string state, and the `}` inside it would
+    // end the hole before the argument splitter ever ran.
+    val payload = "\${call(payload = \"\"\"{\"end\":\"}\"}\"\"\", n = 1)}"
+    assertThat(emitted(render(payload))).isEqualTo("Call(payload=\"\"\"{\"end\":\"}\"}\"\"\", n=1)")
+    // A comma and an `=` inside a raw string are not separators either.
+    assertThat(emitted(render("\${call(q = \"\"\"a, b = c\"\"\")}")))
+      .isEqualTo("Call(q=\"\"\"a, b = c\"\"\")")
+  }
+
+  @Test
   fun `a call with no overrides is the ordinary case`() {
     assertThat(emitted(render("\${call()}"))).isEqualTo("Call()")
   }

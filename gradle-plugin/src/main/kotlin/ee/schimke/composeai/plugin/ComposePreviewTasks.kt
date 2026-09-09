@@ -1833,6 +1833,8 @@ internal object ComposePreviewTasks {
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       componentsFile.set(previewOutputDir.map { it.file("components.json") })
       uiBuilderFile.set(previewOutputDir.map { it.file("ui-builder.json") })
+      // The tree the copied template designs land in, beside the catalog that names them.
+      uiBuilderTemplateDir.set(previewOutputDir.map { it.dir("ui-builder") })
       // Most specific first: the module's own authored files, then the repository root's. Both
       // shapes exist — wear-m3-catalog keeps one cover sheet at its root for `:catalog` and another
       // inside `remote-catalog/` for the module publishing a different system — and a file

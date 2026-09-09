@@ -386,11 +386,21 @@ abstract class BundlePreviewTask : DefaultTask() {
    * rather than failing, because a catalog naming a template it does not ship is a mistake to tell
    * somebody about and not a reason to publish no catalog.
    */
+  /** The one directory a `templates` path may live under, and the tree declared as an input. */
+  private val UI_BUILDER_DIR = "ui-builder"
+
   private fun templateFiles(paths: List<String>): Map<String, File> {
     if (paths.isEmpty()) return emptyMap()
     val roots = uiBuilderTemplateRoots.files.filter { it.isDirectory }
     return paths
       .distinct()
+      // Only under `ui-builder/`, which is exactly the tree declared as this task's input. A
+      // path outside it resolves to a real file Gradle is not watching, so editing that file
+      // would invalidate nothing and an up-to-date or cached build would keep publishing stale
+      // bytes — the input declaration and the lookup have to describe the same set or neither
+      // means anything. Anything else is reported by the caller as unresolvable rather than read
+      // from somewhere untracked.
+      .filter { it == UI_BUILDER_DIR || it.startsWith("$UI_BUILDER_DIR/") }
       .mapNotNull { path ->
         roots
           .firstNotNullOfOrNull { root -> File(root, path).takeIf { it.isFile } }
@@ -1938,7 +1948,21 @@ abstract class BundlePreviewTask : DefaultTask() {
           "and from the delivery branch."
       )
     }
-    return found.mapValues { (_, file) -> file.readBytes() }
+    // Parsed before it is carried. A truncated or malformed design would otherwise be counted as
+    // published, advertised on the branch, and fail only when somebody picks it out of the New
+    // design chooser — the same "reported successfully, broken later" shape the diagnostics in this
+    // file exist to prevent. A design that will not parse is not carried and is named instead.
+    val (usable, unreadable) =
+      found.entries.partition { (_, file) ->
+        runCatching { JSON.parseToJsonElement(file.readText()) }.isSuccess
+      }
+    unreadable.forEach { (path, file) ->
+      logger.warn(
+        "composePreview: template design '$path' (${file.path}) is not readable JSON, so it is " +
+          "not carried in the bundle; the builder catalog names it and it will be missing."
+      )
+    }
+    return usable.associate { (path, file) -> path to file.readBytes() }
   }
 
   private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {

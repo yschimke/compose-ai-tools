@@ -1881,8 +1881,23 @@ jobs:
           # catalog — indistinguishable from a catalog that never authored one. Checked beside the
           # cover sheet and in the module, skipped where neither exists, which is almost every
           # catalog.
-          for candidate in "$(dirname "$SPEC")/ui-builder.policy.json" \
-                           "$(to_dir "$MODULE")/ui-builder.policy.json"; do
+          # Candidates: beside the cover sheet, in the named module, and — when this publish covers
+          # ALL modules — in every module discovery actually found. `MODULE` is empty in that mode,
+          # so checking only `$(to_dir "$MODULE")` looked at `/ui-builder.policy.json` and every
+          # module-local policy skipped the pre-flight it is documented as getting.
+          policy_candidates=("$(dirname "$SPEC")/ui-builder.policy.json")
+          if [ -n "$MODULE" ]; then
+            policy_candidates+=("$(to_dir "$MODULE")/ui-builder.policy.json")
+          fi
+          # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
+          # runs in both; under `set -u` a bare reference would fail the step in the other one.
+          if [ "${ALL_MODULES:-false}" = "true" ] && [ -f "$GITHUB_WORKSPACE/preview-module-sources.txt" ]; then
+            while IFS= read -r discovered_source; do
+              [ -n "$discovered_source" ] &&
+                policy_candidates+=("${discovered_source%/}/ui-builder.policy.json")
+            done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
+          fi
+          for candidate in "${policy_candidates[@]}"; do
             if [ -f "$candidate" ]; then
               node compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs \
                 --policy "$candidate"
@@ -3128,8 +3143,23 @@ jobs:
           # catalog — indistinguishable from a catalog that never authored one. Checked beside the
           # cover sheet and in the module, skipped where neither exists, which is almost every
           # catalog.
-          for candidate in "$(dirname "$SPEC")/ui-builder.policy.json" \
-                           "$(to_dir "$MODULE")/ui-builder.policy.json"; do
+          # Candidates: beside the cover sheet, in the named module, and — when this publish covers
+          # ALL modules — in every module discovery actually found. `MODULE` is empty in that mode,
+          # so checking only `$(to_dir "$MODULE")` looked at `/ui-builder.policy.json` and every
+          # module-local policy skipped the pre-flight it is documented as getting.
+          policy_candidates=("$(dirname "$SPEC")/ui-builder.policy.json")
+          if [ -n "$MODULE" ]; then
+            policy_candidates+=("$(to_dir "$MODULE")/ui-builder.policy.json")
+          fi
+          # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
+          # runs in both; under `set -u` a bare reference would fail the step in the other one.
+          if [ "${ALL_MODULES:-false}" = "true" ] && [ -f "$GITHUB_WORKSPACE/preview-module-sources.txt" ]; then
+            while IFS= read -r discovered_source; do
+              [ -n "$discovered_source" ] &&
+                policy_candidates+=("${discovered_source%/}/ui-builder.policy.json")
+            done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
+          fi
+          for candidate in "${policy_candidates[@]}"; do
             if [ -f "$candidate" ]; then
               node compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs \
                 --policy "$candidate"

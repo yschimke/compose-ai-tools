@@ -221,16 +221,40 @@ object StructuralTemplate {
    * two later scanners without this one left the feature exactly as broken for the input that
    * motivated the fix.
    */
+  /**
+   * How many characters of quoting start at [index]: 3 for `\"\"\"`, 1 for `"`, 0 otherwise.
+   *
+   * One place, because there are THREE scanners in this file that have to agree about what a quote
+   * is — [closingBrace], [splitTopLevel] and [topLevelEquals] — and they have twice been found
+   * disagreeing, each having been taught separately. A triple quote must be tested before a single
+   * one, or `\"\"\"` reads as an empty string followed by a stray quote and every state after it
+   * inverts.
+   */
+  private fun quoteAt(text: String, index: Int): Int =
+    if (text.startsWith("\"\"\"", index)) 3 else if (text[index] == '"') 1 else 0
+
   private fun closingBrace(template: String, open: Int): Int {
     var depth = 0
     var index = open
     var inString = false
+    var inRaw = false
     var inChar = false
     while (index < template.length) {
       val ch = template[index]
+      val quote = if (inChar) 0 else quoteAt(template, index)
       when {
+        // A raw string has no escapes at all, so a backslash inside one is an ordinary character.
         (inString || inChar) && ch == '\\' -> index++
-        ch == '"' && !inChar -> inString = !inString
+        inRaw && quote == 3 -> {
+          inRaw = false
+          index += 2
+        }
+        inRaw -> Unit
+        quote == 3 && !inString -> {
+          inRaw = true
+          index += 2
+        }
+        quote == 1 && !inChar -> inString = !inString
         ch == '\'' && !inString -> inChar = !inChar
         inString || inChar -> Unit
         ch == '{' -> depth++
@@ -278,9 +302,11 @@ object StructuralTemplate {
     // recognised, the comma inside it read as a top-level argument separator and split one argument
     // into two, so a valid template was rejected as malformed.
     var inChar = false
+    var inRaw = false
     var index = 0
     while (index < text.length) {
       val ch = text[index]
+      val quote = if (inChar) 0 else quoteAt(text, index)
       when {
         (inString || inChar) && ch == '\\' -> {
           current.append(ch)
@@ -288,7 +314,20 @@ object StructuralTemplate {
           index += 2
           continue
         }
-        ch == '"' && !inChar -> {
+        inRaw && quote == 3 -> {
+          inRaw = false
+          current.append("\"\"\"")
+          index += 3
+          continue
+        }
+        inRaw -> current.append(ch)
+        quote == 3 && !inString -> {
+          inRaw = true
+          current.append("\"\"\"")
+          index += 3
+          continue
+        }
+        quote == 1 && !inChar -> {
           inString = !inString
           current.append(ch)
         }
@@ -325,12 +364,23 @@ object StructuralTemplate {
   private fun topLevelEquals(part: String): Int {
     var inString = false
     var inChar = false
+    var inRaw = false
     var index = 0
     while (index < part.length) {
       val ch = part[index]
+      val quote = if (inChar) 0 else quoteAt(part, index)
       when {
         (inString || inChar) && ch == '\\' -> index++
-        ch == '"' && !inChar -> inString = !inString
+        inRaw && quote == 3 -> {
+          inRaw = false
+          index += 2
+        }
+        inRaw -> Unit
+        quote == 3 && !inString -> {
+          inRaw = true
+          index += 2
+        }
+        quote == 1 && !inChar -> inString = !inString
         ch == '\'' && !inString -> inChar = !inChar
         inString || inChar -> Unit
         ch == '=' -> {
