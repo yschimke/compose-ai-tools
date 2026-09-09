@@ -175,6 +175,9 @@ object ScreenGenerator {
 
   private const val INDENT = "    "
 
+  /** How many identical siblings it takes before a `repeat` reads better than the calls. */
+  private const val MINIMUM_FOLDED_RUN = 3
+
   fun generate(
     document: ScreenDocument,
     components: ComponentRecordFile,
@@ -334,6 +337,12 @@ object ScreenGenerator {
         document.name,
         expressionPackages,
         document.state.associateBy(ScreenState::name),
+        // A state declaration is a local in the body, and a local named `kotlin` captures the
+        // qualifier a folded run writes. State names are the one shadowing surface known before
+        // emission, and they are spent on the fold rather than on a refusal: such a document is
+        // generated with its siblings written out, exactly as before folding existed. Every other
+        // way the name could enter the file is closed by never importing it — see [importedName].
+        foldsRepeatedSiblings = document.state.none { it.name == "kotlin" },
       )
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
@@ -568,6 +577,8 @@ object ScreenGenerator {
     val expressionPackages: Set<String>,
     /** Declared state by name, so a read can be checked against something rather than trusted. */
     val state: Map<String, ScreenState> = emptyMap(),
+    /** Whether [foldRepeats] may fold here — see the call that computes it. */
+    val foldsRepeatedSiblings: Boolean = true,
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -740,8 +751,11 @@ object ScreenGenerator {
             val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
-                if (wrapper == null) children.joinToString("\n") { node(it, depth + 1) }
-                else
+                if (wrapper == null) {
+                  val rendered = children.map { node(it, depth + 1) }
+                  if (foldsRepeatedSiblings) foldRepeats(rendered, inner)
+                  else rendered.joinToString("\n")
+                } else
                   children.joinToString("\n") { child ->
                     "$inner$wrapper {\n${node(child, depth + 2)}\n$inner}"
                   }
@@ -764,8 +778,19 @@ object ScreenGenerator {
               // writes that does not resolve on its own, so its import travels with it — through
               // the same conflict check every other import here goes through, which is what keeps
               // two same-named types from silently producing a file Kotlin refuses.
+              // The fourth door a simple name comes in by, and the only one the document does not
+              // choose: this import is the *record's* parameter type. It is reserved on the same
+              // terms as the other three — a type whose simple name is `kotlin` would capture the
+              // qualifier a folded run writes.
               ComponentSnippets.constructedTypeOf(parameter)?.let {
-                imports += ComponentSnippets.escapeCallableIfKeyword(it)
+                val simple = it.substringAfterLast('.')
+                if (simple in RESERVED_BY_THE_WRAPPER) {
+                  reasons +=
+                    "`${record.symbol.name}`.`${parameter.name}` imports `$simple`, which the " +
+                      "generated file spends on its own scaffolding"
+                } else {
+                  imports += ComponentSnippets.escapeCallableIfKeyword(it)
+                }
               }
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $placeholder"
             }
@@ -1207,6 +1232,13 @@ object ScreenGenerator {
                     "cannot be imported"
                 return null
               }
+              if (simple in RESERVED_BY_THE_WRAPPER) {
+                // The third door a simple name comes in by, refused for the reason the other two
+                // are: a `kotlin` here captures the qualifier `foldRepeats` writes.
+                reasons +=
+                  "$where imports `$simple`, which the generated file spends on its own scaffolding"
+                return null
+              }
               if (!link.property && simple == screenName) {
                 // An extension imported under the screen's own name is shadowed by the function
                 // being generated, so the chain would call the screen — or fail to resolve.
@@ -1317,6 +1349,14 @@ object ScreenGenerator {
       val memberOfClassifier = owner.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
       val imported = if (memberOfClassifier) owner else fqn
       val simple = imported.substringAfterLast('.')
+      if (simple in RESERVED_BY_THE_WRAPPER) {
+        // Written qualified instead, which is the answer a component in this position already gets
+        // and the one this function replaced for every value. Not a refusal: a document that names
+        // `kotlin` is legal and generated fine before folding existed, and refusing it here would
+        // turn a spelling choice inside one `repeat` into a document the generator will not write.
+        // Nothing is imported, so the qualifier a folded run writes still means the package.
+        return qualifiedName(fqn, where)
+      }
       if (simple == screenName) {
         // The generated function shadows an import of its own name, so the expression would name
         // the screen rather than the declaration. The chain-link path refuses this already.
@@ -1386,6 +1426,66 @@ object ScreenGenerator {
       }
       return quote(value)
     }
+  }
+
+  /**
+   * A slot's already-generated children, with runs of identical siblings written as one `repeat`.
+   *
+   * A builder's document has no loop in it, so a twelve-cell contribution row is twelve nodes —
+   * that is the only thing such a document can say, and the canvas draws exactly what is there.
+   * Emitting it back as twelve identical `Surface(…)` calls is faithful and unreadable, and a
+   * screen nobody can read is a poor answer for a generator whose output is meant to be handed to a
+   * person and kept.
+   *
+   * The fold is how the same composition is *spelled*, never what it is. It joins children that
+   * generated **byte-identical text**, so the run emits the calls it replaced, in the same order,
+   * in the same scope, with the same arguments; `repeat` is `inline`, so the body is composed in
+   * the caller's scope exactly as the separate calls were. Comparing the generated text rather than
+   * the [ScreenNode]s is what makes that true regardless of anything [node] does on the way —
+   * whatever two children print the same is interchangeable by construction.
+   *
+   * Not applied to a slot filled through a [SlotItem]. `item { … }` is where child identity has
+   * consequences a reader cannot see from the text, and the trade there is not obviously worth it.
+   *
+   * Written `kotlin.repeat(n) { _ -> … }`, and both halves of that are the point: `repeat` is a
+   * name like any other and so is the `it` it would bind. A document may legally declare state
+   * called either, a catalog may export a component simply imported under either name, and a
+   * value's `Reference`, `Construct` or `Chain` may import one while this very slot is being
+   * rendered. Any of those would silently change what a folded child's calls and reads resolve to —
+   * a local `val repeat` capturing the call, the lambda's implicit `Int` shadowing an `it`.
+   *
+   * A precomputed guard cannot see the last of those, because imports accumulate as nodes are
+   * emitted. So the fold does not ask what is in scope: it writes a form nothing in the body can
+   * capture. The one name left to protect is the `kotlin` root, which joins `androidx` in the
+   * shadowing check every state declaration already passes.
+   *
+   * [MINIMUM_FOLDED_RUN] is where the pattern starts being the point: two of anything is a pair a
+   * reader takes in at a glance, and folding it costs two lines to save one.
+   */
+  private fun foldRepeats(children: List<String>, indent: String): String {
+    val out = StringBuilder()
+    var index = 0
+    while (index < children.size) {
+      var end = index + 1
+      while (end < children.size && children[end] == children[index]) end++
+      if (out.isNotEmpty()) out.append("\n")
+      val run = end - index
+      if (run < MINIMUM_FOLDED_RUN) {
+        out.append(children.subList(index, end).joinToString("\n"))
+      } else {
+        out
+          .append(indent)
+          .append("kotlin.repeat(")
+          .append(run)
+          .append(") { _ ->\n")
+          .append(children[index].prependIndent(INDENT))
+          .append("\n")
+          .append(indent)
+          .append("}")
+      }
+      index = end
+    }
+    return out.toString()
   }
 
   /**
@@ -1522,8 +1622,18 @@ object ScreenGenerator {
    * happens to be called `Composable` would be imported alongside it and `Composable()` would be
    * ambiguous between the two. Such a component is called fully qualified instead — the same answer
    * the screen's own name and a two-package collision already get.
+   *
+   * `kotlin` is spent by [foldRepeats], which writes `kotlin.repeat(n)` precisely so that no
+   * declaration in the body can capture the call. A declaration imported under that simple name
+   * would capture the *qualifier* instead and leave `repeat` unresolved, so nothing is imported
+   * under it: a component and a value's reference or construct are written qualified instead, while
+   * a chain link and a constructed placeholder — neither of which can be called without its import
+   * — are refused by name. Those are the four ways a simple name enters this file. A state
+   * declaration is the fifth shadowing surface and is not an import, so it turns the fold off
+   * rather than being answered here. The matching state name is refused by the root-shadowing
+   * check, which already carries `androidx` for the same reason.
    */
-  private val RESERVED_BY_THE_WRAPPER = setOf("Composable")
+  private val RESERVED_BY_THE_WRAPPER = setOf("Composable", "kotlin")
 
   /** The tooling annotation a [Preview] emits, imported only when one is asked for. */
   private const val PREVIEW_ANNOTATION = "androidx.compose.ui.tooling.preview.Preview"

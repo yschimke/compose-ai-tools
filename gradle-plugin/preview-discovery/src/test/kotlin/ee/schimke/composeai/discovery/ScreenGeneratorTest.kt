@@ -1401,4 +1401,190 @@ class ScreenGeneratorTest {
         "`LazyColumn`.`content` names `it.em`, which cannot be written as a Kotlin identifier"
       )
   }
+
+  /**
+   * A run of identical siblings is one `repeat`.
+   *
+   * A builder's document has no loop in it, so a twelve-cell contribution row arrives as twelve
+   * nodes and generated twelve identical `Text(…)` calls — faithful, and a screen nobody reads.
+   */
+  @Test
+  fun `identical siblings are generated as one repeat`() {
+    val source = emitted(cells(12), catalog(card, text)).source
+
+    assertThat(source).contains("kotlin.repeat(12) { _ ->")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(1)
+  }
+
+  @Test
+  fun `two identical siblings are still written out, because two calls read fine`() {
+    val source = emitted(cells(2), catalog(card, text)).source
+
+    assertThat(source).doesNotContain("repeat(")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
+  }
+
+  @Test
+  fun `a sibling that differs breaks the run at itself and neither side is lost`() {
+    val cells =
+      (0 until 8).map { index -> textNode(if (index == 3) "odd" else "cell") }.toTypedArray()
+    val source = emitted(column(*cells), catalog(card, text)).source
+
+    assertThat(source).contains("kotlin.repeat(3) { _ ->")
+    assertThat(source).contains("kotlin.repeat(4) { _ ->")
+    assertThat(source).contains("Text(text = \"odd\")")
+  }
+
+  @Test
+  fun `the folded body is the call it replaced, at one further indent`() {
+    val source = emitted(cells(4), catalog(card, text)).source
+
+    assertThat(source)
+      .contains("        kotlin.repeat(4) { _ ->\n            Text(text = \"cell\")\n        }")
+  }
+
+  @Test
+  fun `a DSL slot is not folded, because item identity is not visible in the text`() {
+    val cells = (0 until 5).map { textNode("cell") }.toTypedArray()
+    val source = emitted(list(SlotItem("item", lazyListScope), *cells), catalog(lazyColumn, text))
+
+    assertThat(source.source).doesNotContain("repeat(")
+    assertThat(occurrences(source.source, "item {")).isEqualTo(5)
+  }
+
+  /**
+   * `repeat` and the `it` it binds are names like any other, and the emitted form owns that.
+   *
+   * A document may legally declare state called either — `isUsableIdentifier` admits both — so an
+   * unqualified `repeat(n) { … }` would resolve to a local `val repeat`, and its implicit `Int`
+   * would shadow a state named `it`. `kotlin.repeat(n) { _ -> … }` can be captured by neither, so
+   * the fold still happens and the child still reads what it read.
+   */
+  @Test
+  fun `state named it or repeat does not capture the folded call or its parameter`() {
+    listOf("it", "repeat").forEach { name ->
+      val source =
+        emitted(
+            cells(6)
+              .copy(state = listOf(ScreenState(name, "kotlin.String", ScreenValue.Text("x")))),
+            catalog(card, text),
+          )
+          .source
+
+      assertThat(source).contains("kotlin.repeat(6) { _ ->")
+      assertThat(occurrences(source, "Text(text = ")).isEqualTo(1)
+    }
+  }
+
+  /**
+   * The qualifier a folded run writes is a name the file spends, so nothing is imported under it.
+   *
+   * `kotlin.repeat(n)` is capture-proof against a local — that is why it is qualified — but an
+   * import of a declaration whose simple name is `kotlin` would take the *qualifier* and leave
+   * `repeat` unresolved. A value naming one is written qualified instead, which is what this
+   * function replaced for every value and what a component in the same position already gets. It is
+   * not a refusal: the document is legal and generated before folding existed.
+   */
+  @Test
+  fun `a value named kotlin is written qualified rather than imported`() {
+    val screen =
+      column(
+        ScreenNode(
+          text.canonicalId,
+          arguments =
+            mapOf("text" to ScreenValue.Reference("app.theme.kotlin", typeFqn = "kotlin.String")),
+        )
+      )
+
+    val source =
+      (ScreenGenerator.generate(
+          screen,
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).contains("Text(text = app.theme.kotlin)")
+    assertThat(source).doesNotContain("import app.theme.kotlin")
+  }
+
+  /**
+   * A state named `kotlin` turns the fold off rather than being refused.
+   *
+   * It is a local in the body, so it captures the qualifier — and unlike an import there is nowhere
+   * else to put it. State names are known before emission, so the fold is what gives way.
+   */
+  @Test
+  fun `state named kotlin turns the fold off rather than refusing the document`() {
+    // Typed outside the `kotlin` package on purpose: a declaration typed `kotlin.String` already
+    // puts that root in the shadowing set every state name is checked against, so the residual case
+    // this guard exists for is a document that names `kotlin` and never writes the package.
+    val source =
+      (ScreenGenerator.generate(
+          cells(6)
+            .copy(
+              state =
+                listOf(
+                  ScreenState(
+                    "kotlin",
+                    "app.theme.Thing",
+                    ScreenValue.Construct("app.theme.Thing", typeFqn = "app.theme.Thing"),
+                  )
+                )
+            ),
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).doesNotContain("kotlin.repeat(")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(6)
+  }
+
+  /**
+   * The one import the document does not choose is reserved on the same terms.
+   *
+   * A constructed placeholder imports the *record's* parameter type, so a catalog whose parameter
+   * is typed `app.kotlin` would put that import in the file without any document asking for it —
+   * and it would capture the qualifier a folded run writes.
+   */
+  @Test
+  fun `a constructed placeholder typed kotlin is refused, like every other import of that name`() {
+    val holder =
+      component(
+        "Holder",
+        "androidx.compose.material3.Holder",
+        listOf(
+          TargetParameter(
+            "state",
+            "kotlin",
+            typeFqn = "app.kotlin",
+            noArgConstructible = true,
+            hasDefault = false,
+          )
+        ),
+      )
+
+    assertThat(
+        refusal(
+          ScreenDocument(name = "HomeScreen", root = ScreenNode(holder.canonicalId)),
+          catalog(holder),
+        )
+      )
+      .contains(
+        "`Holder`.`state` imports `kotlin`, which the generated file spends on its own scaffolding"
+      )
+  }
+
+  private fun occurrences(source: String, text: String) =
+    Regex(Regex.escape(text)).findAll(source).count()
+
+  private fun cells(count: Int) = column(*(0 until count).map { textNode("cell") }.toTypedArray())
+
+  private fun column(vararg children: ScreenNode) =
+    ScreenDocument(
+      name = "HomeScreen",
+      root =
+        ScreenNode(componentId = card.canonicalId, slots = mapOf("content" to children.toList())),
+    )
 }
