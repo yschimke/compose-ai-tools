@@ -34,19 +34,27 @@ class Matching(unittest.TestCase):
         self.assertFalse(mod.matches("schema/other.schema.json", "schema/spatial-scene.schema.json"))
 
     def test_single_star_is_one_segment(self):
-        self.assertTrue(mod.matches("docs/daemon/protocol-fixtures/a.json", "docs/daemon/protocol-fixtures/*"))
+        self.assertTrue(mod.matches("docs/serve/a.json", "docs/serve/*"))
 
 
 class Reporting(unittest.TestCase):
     def test_unrelated_change_reports_the_sentinel(self):
         self.assertEqual(mod.affected(["README.md", "cli/src/Main.kt"]), [])
 
-    def test_fixture_change_names_both_consumers(self):
-        hits = mod.affected(["docs/daemon/protocol-fixtures/client-initialize.json"])
+    def test_launch_builder_change_names_the_extension(self):
+        hits = mod.affected([
+            "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/launch/Builder.kt",
+        ])
         self.assertEqual(len(hits), 1)
         body = mod.report(hits)
         self.assertIn("compose-preview-vscode", body)
-        self.assertIn("compose-preview-contracts", body)
+
+    def test_device_catalog_change_names_contracts(self):
+        hits = mod.affected([
+            "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt",
+        ])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("compose-preview-contracts", mod.report(hits))
 
     def test_report_carries_the_sticky_marker_first(self):
         body = mod.report(mod.affected(["schema/spatial-scene.schema.json"]))
@@ -60,13 +68,13 @@ class Reporting(unittest.TestCase):
 
     def test_one_change_can_hit_several_surfaces(self):
         hits = mod.affected([
-            "docs/daemon/protocol-fixtures/client-initialize.json",
+            "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/launch/Builder.kt",
             "schema/spatial-scene.schema.json",
         ])
         self.assertEqual(len(hits), 2)
 
     def test_long_path_lists_are_truncated(self):
-        many = [f"docs/daemon/protocol-fixtures/f{i}.json" for i in range(25)]
+        many = [f"gradle-plugin/daemon-launch-builder/src/main/kotlin/F{i}.kt" for i in range(25)]
         body = mod.report(mod.affected(many))
         self.assertIn("…and 15 more", body)
 
