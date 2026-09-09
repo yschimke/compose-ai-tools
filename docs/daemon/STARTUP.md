@@ -112,6 +112,32 @@ plus `-XX:-BytecodeVerificationRemote`
 per classpath: serve puts a catalog's own Compose/AndroidX overlay jars
 *ahead* of the sidecar, so one image-wide archive would never validate.
 
+### The pool, before and after
+
+Same box, `sandboxCount=3`, time from the daemon JVM's start to the last
+slot published (`sandbox 2 ready`), and the resident memory of the daemon
+plus its two workers once the pool is up (`Rss` from `smaps_rollup`):
+
+| daemon | pool complete | daemon + worker + worker RSS |
+|---|---|---|
+| released 2.4.0 | 21.7-23.4 s | 375 + 582 + 592 MB |
+| + warm render overlapped with the next boot | 19.9 s | same |
+| + archive, first boot of this classpath (records + writes it) | 27.4 s | +0-100 MB |
+| + archive, every later boot | 14.5-15.2 s | metaspace 52→13 / 98→24 MB, RSS about the same |
+| + serial collector, archive present | 14.9-15.2 s | 307 + 459 + 451 MB |
+
+The archive moves ~40 MB (daemon) and ~75 MB (worker) of metaspace into a
+mapped file; RSS does not fall by that much because the mapping is
+relocated on load and its touched pages are private.
+`-XX:ArchiveRelocationMode=0` would keep them shared, but on JDK 21 it
+silently disabled the archive here (mapping at the requested address
+failed), so it is not used. The serial collector is where the memory goes:
+~20-25 % per JVM, no boot cost, and on a box running dozens of three-JVM
+daemons that is the difference between sitting at its limit and not. Every
+JVM in the container otherwise inherits `-XX:MaxRAMPercentage=70` of the
+*container*, i.e. a 28 GB heap ceiling each on a 40 GB box, which is the
+first thing to look at for the memory climb the same issue reports.
+
 ### What it means for the target
 
 A single-sandbox boot floors at ~3 s on an idle box with every JVM lever

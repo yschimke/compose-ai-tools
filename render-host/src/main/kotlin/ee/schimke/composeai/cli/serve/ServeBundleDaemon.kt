@@ -1039,15 +1039,23 @@ public object ServeBundleDaemon {
    *   [bundleDaemonClasspaths] puts the bundle's own Compose/AndroidX overlay jars ahead of the
    *   sidecar — so one baked image-wide archive could never validate. It lives under the shared
    *   `composeai` cache dir, which the deploy image keeps on a volume, so it survives a container
-   *   restart. The first boot of a catalog is unchanged (the archive is written at exit); the
-   *   second and later ones skip parsing and verifying the ~3,500 sidecar and JDK classes the
-   *   sandbox boot touches. Robolectric's own sandbox classes are defined by a custom loader and
-   *   stay out of any archive — that is the part only a pre-booted sandbox can remove.
+   *   restart. The first boot of a classpath is *slower* — recording dump info and writing the
+   *   archive at exit cost it 40-75 % in the profile — and every later one is ~35 % faster to a
+   *   full pool: it skips parsing and verifying the ~3,500 sidecar and JDK classes the sandbox boot
+   *   touches, and the workers' archives carry the warm render's classes too. Robolectric's own
+   *   sandbox classes are defined by a custom loader and stay out of any archive — that is the part
+   *   only a pre-booted sandbox can remove.
    * - **No remote bytecode verification** (`composeai.serve.androidDaemonBytecodeVerification`,
    *   default off). Verification is a linear pass over every class the sandbox defines, worth ~0.25
    *   s per JVM on an idle box, and a catalog daemon already runs the catalog's producers' code
    *   with no further trust boundary. The playground lane, which compiles a stranger's Kotlin, does
    *   not get this flag — see the descriptor site.
+   *
+   * - **The serial collector** (`composeai.serve.androidDaemonSerialGc`, default on). A sandbox
+   *   renders one frame at a time on a ~100 MB live heap; G1's regions, remembered sets and its
+   *   eight parallel GC threads per JVM buy it nothing, and cost it ~20-25 % of resident memory —
+   *   measured 375/582/592 MB → 313/461/475 MB for a daemon and its two workers, with the same boot
+   *   time. On a box running dozens of three-JVM daemons that is gigabytes.
    *
    * Two things the archive flag drags in, both load-bearing:
    *
@@ -1062,9 +1070,16 @@ public object ServeBundleDaemon {
    *   carry the dynamic-archive magic, and the JVM refuses to auto-create over a file it cannot
    *   read as an archive, which would leave that catalog without CDS until someone deleted the file
    *   by hand. [validateArchive] checks the four magic bytes and unlinks anything else.
+   * - **The directory is bounded.** Each sandbox worker gets its own archive beside the daemon's
+   *   (`SandboxProcessPool.workerJvmArgs` — one writer per file), so a classpath costs about 50 MB
+   *   for the daemon plus ~100 MB per worker, and the deployed box serves dozens of catalogs whose
+   *   overlay jars are content-addressed, so catalogs on one Compose BOM share a classpath and an
+   *   archive. [pruneArchives] evicts the least recently written archives past
+   *   `composeai.serve.androidDaemonCdsMaxBytes` (default 2 GiB), never the ones this launch is
+   *   about to use.
    *
-   * Pure apart from the directory and that unlink; [javaFeatureVersion] and [cdsDir] are seams for
-   * the unit test.
+   * Pure apart from the directory, that unlink and that eviction; [javaFeatureVersion] and [cdsDir]
+   * are seams for the unit test.
    */
   internal fun androidDaemonStartupJvmArgs(
     daemonClasspath: List<String>,
@@ -1072,12 +1087,18 @@ public object ServeBundleDaemon {
     cdsDir: File = composeAiCacheDir("cds"),
     cdsEnabled: Boolean = System.getProperty(ANDROID_DAEMON_CDS_PROP)?.toBoolean() ?: true,
     verifyBytecode: Boolean = System.getProperty(ANDROID_DAEMON_VERIFY_PROP)?.toBoolean() ?: false,
+    cdsMaxBytes: Long =
+      System.getProperty(ANDROID_DAEMON_CDS_MAX_BYTES_PROP)?.toLongOrNull()
+        ?: DEFAULT_ANDROID_DAEMON_CDS_MAX_BYTES,
+    serialGc: Boolean = System.getProperty(ANDROID_DAEMON_SERIAL_GC_PROP)?.toBoolean() ?: true,
   ): List<String> = buildList {
+    if (serialGc) add("-XX:+UseSerialGC")
     if (cdsEnabled && javaFeatureVersion >= 19) {
       val key = classpathArchiveKey(daemonClasspath)
       val archive = File(cdsDir, "android-daemon-$key.jsa")
       runCatching { cdsDir.mkdirs() }
       validateArchive(archive)
+      pruneArchives(cdsDir, keepStem = "android-daemon-$key", maxBytes = cdsMaxBytes)
       add("-XX:+AutoCreateSharedArchive")
       add("-XX:SharedArchiveFile=${archive.absolutePath}")
       add("-Xlog:disable")
@@ -1112,6 +1133,38 @@ public object ServeBundleDaemon {
 
   /** HotSpot `CDS_DYNAMIC_ARCHIVE_MAGIC` (src/hotspot/share/cds/filemap.hpp). */
   private const val CDS_DYNAMIC_ARCHIVE_MAGIC: Int = 0xf00baba8.toInt()
+
+  /**
+   * Keeps the `.jsa` files under [cdsDir] within [maxBytes] by deleting the least recently modified
+   * ones first. Files whose name starts with [keepStem] — the archive this launch will use and its
+   * per-worker siblings — are never candidates. Returns the deleted files, for the test.
+   * Best-effort: an unreadable directory prunes nothing.
+   */
+  internal fun pruneArchives(cdsDir: File, keepStem: String, maxBytes: Long): List<File> {
+    val archives =
+      cdsDir.listFiles { f -> f.isFile && f.name.endsWith(".jsa") } ?: return emptyList()
+    var total = archives.sumOf { it.length() }
+    if (total <= maxBytes) return emptyList()
+    val deleted = mutableListOf<File>()
+    for (candidate in
+      archives.filterNot { it.name.startsWith(keepStem) }.sortedBy { it.lastModified() }) {
+      if (total <= maxBytes) break
+      val size = candidate.length()
+      if (candidate.delete()) {
+        total -= size
+        deleted += candidate
+      }
+    }
+    return deleted
+  }
+
+  /** `-Dcomposeai.serve.androidDaemonSerialGc=false` keeps the JVM's default collector. */
+  internal const val ANDROID_DAEMON_SERIAL_GC_PROP = "composeai.serve.androidDaemonSerialGc"
+
+  /** `-Dcomposeai.serve.androidDaemonCdsMaxBytes=<bytes>` bounds the archive directory. */
+  internal const val ANDROID_DAEMON_CDS_MAX_BYTES_PROP = "composeai.serve.androidDaemonCdsMaxBytes"
+
+  private const val DEFAULT_ANDROID_DAEMON_CDS_MAX_BYTES: Long = 2L * 1024 * 1024 * 1024
 
   /**
    * Stable name for the archive of one daemon classpath: the SHA-256 of the entries in order. The

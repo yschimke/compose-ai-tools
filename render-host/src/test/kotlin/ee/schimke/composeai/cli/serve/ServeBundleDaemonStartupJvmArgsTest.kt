@@ -47,6 +47,7 @@ class ServeBundleDaemonStartupJvmArgsTest {
     assertTrue("-XX:+DisplayVMOutputToStderr" in args, args.toString())
     assertTrue("-XX:+UnlockDiagnosticVMOptions" in args, args.toString())
     assertTrue("-XX:-BytecodeVerificationRemote" in args, args.toString())
+    assertEquals("-XX:+UseSerialGC", args.first(), "the collector flag leads, so a later -XX wins")
   }
 
   @Test
@@ -120,7 +121,65 @@ class ServeBundleDaemonStartupJvmArgsTest {
       )
     assertFalse(args.any { it.contains("BytecodeVerification") }, args.toString())
     assertFalse("-XX:+UnlockDiagnosticVMOptions" in args, args.toString())
-    assertEquals(6, args.size, args.toString())
+    assertEquals(7, args.size, args.toString())
+  }
+
+  @Test
+  fun `the archive directory is pruned oldest-first, sparing this launch's archives`() {
+    val dir = cdsDir()
+    fun put(name: String, bytes: Int, ageMinutes: Long): File =
+      File(dir, name).apply {
+        writeBytes(ByteArray(bytes))
+        setLastModified(System.currentTimeMillis() - ageMinutes * 60_000)
+      }
+    val oldest = put("android-daemon-aaaa.jsa", 100, 30)
+    val oldestWorker = put("android-daemon-aaaa-worker0.jsa", 100, 29)
+    val middle = put("android-daemon-bbbb.jsa", 100, 20)
+    val current = put("android-daemon-cccc.jsa", 100, 40)
+    val currentWorker = put("android-daemon-cccc-worker1.jsa", 100, 39)
+    val notAnArchive = put("notes.txt", 100, 60)
+
+    val deleted =
+      ServeBundleDaemon.pruneArchives(dir, keepStem = "android-daemon-cccc", maxBytes = 350)
+
+    assertEquals(listOf(oldest, oldestWorker), deleted)
+    assertTrue(middle.exists(), "under budget once the two oldest are gone")
+    assertTrue(current.exists() && currentWorker.exists(), "this launch's archives are spared")
+    assertTrue(notAnArchive.exists(), "only .jsa files are ever candidates")
+    assertEquals(emptyList(), ServeBundleDaemon.pruneArchives(dir, "android-daemon-cccc", 350))
+  }
+
+  @Test
+  fun `pruning cannot evict below the budget when only this launch's archives remain`() {
+    val dir = cdsDir()
+    File(dir, "android-daemon-cccc.jsa").writeBytes(ByteArray(500))
+    File(dir, "android-daemon-cccc-worker0.jsa").writeBytes(ByteArray(500))
+    assertEquals(emptyList(), ServeBundleDaemon.pruneArchives(dir, "android-daemon-cccc", 100))
+    assertEquals(2, dir.listFiles()!!.size)
+  }
+
+  @Test
+  fun `the serial collector has its own opt-out`() {
+    val off =
+      ServeBundleDaemon.androidDaemonStartupJvmArgs(
+        listOf("/x/one.jar"),
+        21,
+        cdsDir(),
+        cdsEnabled = false,
+        verifyBytecode = true,
+        serialGc = false,
+      )
+    assertEquals(emptyList(), off)
+    val on =
+      ServeBundleDaemon.androidDaemonStartupJvmArgs(
+        listOf("/x/one.jar"),
+        21,
+        cdsDir(),
+        cdsEnabled = false,
+        verifyBytecode = true,
+        serialGc = true,
+      )
+    assertEquals(listOf("-XX:+UseSerialGC"), on)
   }
 
   @Test
@@ -132,6 +191,7 @@ class ServeBundleDaemonStartupJvmArgsTest {
         cdsDir(),
         cdsEnabled = false,
         verifyBytecode = true,
+        serialGc = false,
       )
     assertEquals(emptyList(), args)
   }
