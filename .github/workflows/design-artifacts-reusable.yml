@@ -1897,10 +1897,21 @@ jobs:
                 policy_candidates+=("${discovered_source%/}/ui-builder.policy.json")
             done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
           fi
-          for candidate in "${policy_candidates[@]}"; do
+          # The validator lives in the DRIVER checkout, which an external caller pins to a release
+          # (.github/design-artifacts-driver-pin.txt). This script is new, so every pinned driver
+          # predates it until a release advances the pin — and under `set -e` node's
+          # module-not-found would fail the step and take the whole render with it, for every
+          # external caller, immediately. Guarded and degraded the way the `--spec` probe below
+          # does it: the pre-flight is a convenience, and a driver too old to run it must cost a
+          # notice rather than the build.
+          policy_validator=compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs
+          if [ ! -f "$policy_validator" ]; then
+            echo "::notice title=Driver predates the builder-policy pre-flight::the pinned driver-ref has no validate-ui-builder-policy.mjs; ui-builder.policy.json is not checked before rendering."
+            policy_candidates=()
+          fi
+          for candidate in "${policy_candidates[@]+"${policy_candidates[@]}"}"; do
             if [ -f "$candidate" ]; then
-              node compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs \
-                --policy "$candidate"
+              node "$policy_validator" --policy "$candidate"
             fi
           done
           echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
@@ -3159,10 +3170,21 @@ jobs:
                 policy_candidates+=("${discovered_source%/}/ui-builder.policy.json")
             done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
           fi
-          for candidate in "${policy_candidates[@]}"; do
+          # The validator lives in the DRIVER checkout, which an external caller pins to a release
+          # (.github/design-artifacts-driver-pin.txt). This script is new, so every pinned driver
+          # predates it until a release advances the pin — and under `set -e` node's
+          # module-not-found would fail the step and take the whole render with it, for every
+          # external caller, immediately. Guarded and degraded the way the `--spec` probe below
+          # does it: the pre-flight is a convenience, and a driver too old to run it must cost a
+          # notice rather than the build.
+          policy_validator=compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs
+          if [ ! -f "$policy_validator" ]; then
+            echo "::notice title=Driver predates the builder-policy pre-flight::the pinned driver-ref has no validate-ui-builder-policy.mjs; ui-builder.policy.json is not checked before rendering."
+            policy_candidates=()
+          fi
+          for candidate in "${policy_candidates[@]+"${policy_candidates[@]}"}"; do
             if [ -f "$candidate" ]; then
-              node compose-ai-tools/scripts/design-artifacts/validate-ui-builder-policy.mjs \
-                --policy "$candidate"
+              node "$policy_validator" --policy "$candidate"
             fi
           done
           # The `--preview` patterns that render just the required entries. EMPTY for every

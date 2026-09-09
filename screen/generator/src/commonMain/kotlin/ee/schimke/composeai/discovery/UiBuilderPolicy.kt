@@ -23,6 +23,22 @@ const val UI_BUILDER_POLICY_SCHEMA: String = "compose-ui-builder-policy/v1"
  */
 val STATE_TYPES: Set<String> = setOf("boolean", "string", "number")
 
+/**
+ * The Kotlin classifiers each [STATE_TYPES] word may stand for, as the record renders them.
+ *
+ * A supported word is not enough on its own: `checked:string` names a real type and a real
+ * parameter, and produces an export that initialises a `String` state and threads it into a
+ * `Boolean` parameter — source that does not compile, from a policy where every other check passed.
+ * Simple names because that is what `TargetParameter.type` holds; a nullable `Boolean?` is the same
+ * classifier and is compared with the `?` stripped.
+ */
+val STATE_TYPE_CLASSIFIERS: Map<String, Set<String>> =
+  mapOf(
+    "boolean" to setOf("Boolean"),
+    "string" to setOf("String", "CharSequence"),
+    "number" to setOf("Int", "Long", "Short", "Byte", "Float", "Double", "Number"),
+  )
+
 val UI_BUILDER_STRUCTURAL_ROLES: Set<String> =
   setOf("screen-root", "list", "list-item", "overlay", "controlled", "decoration")
 

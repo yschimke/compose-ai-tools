@@ -127,6 +127,10 @@ object ComponentRecords {
         ComponentBinding(
           previewId = preview.id,
           componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
+          // Already resolved by discovery: the per-component override, else the file's
+          // `@CatalogGroup`, else `Components`. Carried so the builder's shelf can be built for
+          // components that annotate nothing.
+          group = preview.catalog?.group?.takeIf { it.isNotBlank() },
         )
       // Builder policy travels with the preview that declared it — but onto ONE component, not
       // every component the preview renders. A sticker is routinely `Button { Text(label) }`, and

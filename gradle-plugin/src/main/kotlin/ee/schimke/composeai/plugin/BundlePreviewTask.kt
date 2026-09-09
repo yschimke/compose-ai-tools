@@ -389,9 +389,19 @@ abstract class BundlePreviewTask : DefaultTask() {
   /** The one directory a `templates` path may live under, and the tree declared as an input. */
   private val UI_BUILDER_DIR = "ui-builder"
 
-  private fun templateFiles(paths: List<String>): Map<String, File> {
+  private fun templateFiles(paths: List<String>, moduleOwnsPolicy: Boolean): Map<String, File> {
     if (paths.isEmpty()) return emptyMap()
-    val roots = uiBuilderTemplateRoots.files.filter { it.isDirectory }
+    // Precedence follows the location `authoredPair()` chose, not always the module.
+    //
+    // A nested module with neither authored file falls back to the repository root's policy — and
+    // that policy's `templates` name designs authored beside IT. Searching the module first would
+    // let a module-local `ui-builder/designs/…`, kept for some other catalog, shadow the design the
+    // selected policy actually owns, so discovery and bundling would publish bytes that policy
+    // never named. The pair is resolved together for this reason; the templates have to follow it.
+    val roots =
+      uiBuilderTemplateRoots.files
+        .filter { it.isDirectory }
+        .let { if (moduleOwnsPolicy) it else it.reversed() }
     return paths
       .distinct()
       // Only under `ui-builder/`, which is exactly the tree declared as this task's input. A
@@ -1905,16 +1915,25 @@ abstract class BundlePreviewTask : DefaultTask() {
    * there means this module publishes no builder catalog. Only a module with neither falls back to
    * the root.
    */
-  private fun authoredPair(): Pair<File, File?>? {
+  private fun authoredPair(): AuthoredPair? {
     val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
     val moduleSpec = catalogSpecCandidates.files.firstOrNull()?.takeIf { it.isFile }
     if (modulePolicy != null || moduleSpec != null) {
-      return modulePolicy?.let { it to moduleSpec }
+      return modulePolicy?.let { AuthoredPair(it, moduleSpec, moduleOwns = true) }
     }
     val rootPolicy = uiBuilderPolicyCandidates.files.drop(1).firstOrNull { it.isFile }
     val rootSpec = catalogSpecCandidates.files.drop(1).firstOrNull { it.isFile }
-    return rootPolicy?.let { it to rootSpec }
+    return rootPolicy?.let { AuthoredPair(it, rootSpec, moduleOwns = false) }
   }
+
+  /**
+   * The authored files and WHERE they came from.
+   *
+   * [moduleOwns] is not decoration: a policy resolved from the repository root names its templates
+   * relative to the root, so the template lookup has to search that side first or a module-local
+   * design shadows the one the selected policy owns.
+   */
+  private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
 
   /**
    * The module's builder catalog as JSON, or null when it authors no `ui-builder.policy.json`.
@@ -1940,7 +1959,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         runCatching { JSON.decodeFromString<UiBuilderCatalogFile>(it) }.getOrNull()
       } ?: return emptyMap()
     val declared = catalog.statusSemantics.templates
-    val found = templateFiles(declared)
+    val found = templateFiles(declared, moduleOwnsPolicy = authoredPair()?.moduleOwns ?: true)
     (declared - found.keys).sorted().forEach {
       logger.warn(
         "composePreview: the builder catalog names template design '$it', which is not under " +
@@ -1968,7 +1987,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {
     val carriedIds = carried.components.map { it.canonicalId }.toSet()
     val record = full.copy(components = full.components.filter { it.canonicalId in carriedIds })
-    val (policyFile, specFile) = authoredPair() ?: return null
+    val authored = authoredPair() ?: return null
+    val (policyFile, specFile) = authored.policy to authored.spec
     val lenient = Json { ignoreUnknownKeys = true }
     val policy = runCatching {
       lenient.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())

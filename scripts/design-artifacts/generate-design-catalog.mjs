@@ -1719,6 +1719,14 @@ if (uiBuilderCatalog) {
         `builder catalog names`,
     );
   }
+  if (uiBuilderCatalog.unsafeTemplates?.length) {
+    // Refused rather than written. A path that escapes the output directory is not a template with
+    // a typo, it is a bundle asking to write somewhere it does not own.
+    console.warn(
+      `[${spec.system}] the builder catalog names template path(s) that resolve outside the ` +
+        `catalog output and were NOT written: ${uiBuilderCatalog.unsafeTemplates.join(", ")}`,
+    );
+  }
   if (uiBuilderCatalog.missingTemplates?.length) {
     // Not a failure — the catalog is still readable and every other template still opens. But this
     // one is advertised and absent, which the person who clicks it would otherwise discover as a

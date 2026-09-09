@@ -207,9 +207,19 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   /** The one directory a `templates` path may live under, and the tree declared as an input. */
   private val UI_BUILDER_DIR = "ui-builder"
 
-  private fun templateFiles(paths: List<String>): Map<String, File> {
+  private fun templateFiles(paths: List<String>, moduleOwnsPolicy: Boolean): Map<String, File> {
     if (paths.isEmpty()) return emptyMap()
-    val roots = uiBuilderTemplateRoots.files.filter { it.isDirectory }
+    // Precedence follows the location `authoredPair()` chose, not always the module.
+    //
+    // A nested module with neither authored file falls back to the repository root's policy — and
+    // that policy's `templates` name designs authored beside IT. Searching the module first would
+    // let a module-local `ui-builder/designs/…`, kept for some other catalog, shadow the design the
+    // selected policy actually owns, so discovery and bundling would publish bytes that policy
+    // never named. The pair is resolved together for this reason; the templates have to follow it.
+    val roots =
+      uiBuilderTemplateRoots.files
+        .filter { it.isDirectory }
+        .let { if (moduleOwnsPolicy) it else it.reversed() }
     return paths
       .distinct()
       // Only under `ui-builder/`, which is exactly the tree declared as this task's input. A
@@ -396,16 +406,25 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    * there means this module publishes no builder catalog. Only a module with neither falls back to
    * the root.
    */
-  private fun authoredPair(): Pair<File, File?>? {
+  private fun authoredPair(): AuthoredPair? {
     val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
     val moduleSpec = catalogSpecCandidates.files.firstOrNull()?.takeIf { it.isFile }
     if (modulePolicy != null || moduleSpec != null) {
-      return modulePolicy?.let { it to moduleSpec }
+      return modulePolicy?.let { AuthoredPair(it, moduleSpec, moduleOwns = true) }
     }
     val rootPolicy = uiBuilderPolicyCandidates.files.drop(1).firstOrNull { it.isFile }
     val rootSpec = catalogSpecCandidates.files.drop(1).firstOrNull { it.isFile }
-    return rootPolicy?.let { it to rootSpec }
+    return rootPolicy?.let { AuthoredPair(it, rootSpec, moduleOwns = false) }
   }
+
+  /**
+   * The authored files and WHERE they came from.
+   *
+   * [moduleOwns] is not decoration: a policy resolved from the repository root names its templates
+   * relative to the root, so the template lookup has to search that side first or a module-local
+   * design shadows the one the selected policy owns.
+   */
+  private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
 
   /**
    * Write `ui-builder.json` beside the record, or remove a stale one.
@@ -426,7 +445,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // No authored pair — this module publishes no builder catalog. Removing the policy has to
     // remove the catalog it produced: a stale file would keep being published and would describe a
     // catalog nobody authors any more.
-    val (policyFile, specFile) = authoredPair() ?: return run { if (out.exists()) out.delete() }
+    val authored = authoredPair() ?: return run { if (out.exists()) out.delete() }
+    val (policyFile, specFile) = authored.policy to authored.spec
     val policy = runCatching {
       lenientJson.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
     }
@@ -457,7 +477,23 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // template the local builder cannot open — the same 404 the branch lane would have, arriving
     // for the consumer this contract most wanted to serve.
     val declared = catalog.statusSemantics.templates
-    val found = templateFiles(declared)
+    // Parsed before it is copied, exactly as the bundle lane does. `compose-preview-server ui`
+    // reads this directory and has no delivery branch to fall back on, so a truncated design here
+    // is a chooser entry that fails when somebody opens it — the same failure the bundle-side check
+    // was added for, in the lane that has no second chance. Validating one and not the other was
+    // half a fix.
+    val resolved = templateFiles(declared, moduleOwnsPolicy = authored.moduleOwns)
+    val (usable, unreadable) =
+      resolved.entries.partition { (_, file) ->
+        runCatching { json.parseToJsonElement(file.readText()) }.isSuccess
+      }
+    unreadable.forEach { (path, file) ->
+      logger.warn(
+        "composePreview: template design '$path' (${file.path}) is not readable JSON, so it is " +
+          "not copied; the builder catalog names it and the local chooser cannot open it."
+      )
+    }
+    val found = usable.associate { (path, file) -> path to file }
     // Emptied first: a design a policy has stopped naming must stop being published, and a stale
     // one left behind is advertised by nothing and opened by accident.
     val templateDir = uiBuilderTemplateDir.get().asFile

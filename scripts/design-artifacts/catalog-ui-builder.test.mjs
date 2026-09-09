@@ -65,6 +65,7 @@ test("the bundle's builder catalog is copied to the branch root and described fo
       diagnostics: 1,
       templates: [],
       missingTemplates: [],
+      unsafeTemplates: [],
     });
     // Byte-for-byte, not re-serialised: the generator produced it and the pipeline is a courier.
     assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), catalog);
@@ -99,6 +100,38 @@ test("template designs the catalog names are carried out with it", async () => {
       await readFile(join(out, "ui-builder/designs/wear-list.json"), "utf8"),
       design,
     );
+  });
+});
+
+test("a template path escaping the output directory is refused, not written", async () => {
+  await withOutDir(async (out) => {
+    // A bundle is not a trusted document. `ui-builder/../../catalog.json` joined to the output
+    // directory writes outside it, or over another generated artifact.
+    const escaping = JSON.stringify({
+      ...JSON.parse(catalog),
+      statusSemantics: {
+        ...JSON.parse(catalog).statusSemantics,
+        templates: ["ui-builder/../../escaped.json", "/etc/passwd"],
+      },
+    });
+
+    const published = await publishUiBuilderCatalog(
+      {
+        [UI_BUILDER_FILE]: bytes(escaping),
+        "ui-builder/../../escaped.json": bytes("{}"),
+        "/etc/passwd": bytes("{}"),
+      },
+      out,
+    );
+
+    assert.deepEqual(published.unsafeTemplates, [
+      "ui-builder/../../escaped.json",
+      "/etc/passwd",
+    ]);
+    assert.deepEqual(published.templates, []);
+    await assert.rejects(() => stat(join(out, "..", "..", "escaped.json")));
+    // The catalog itself still publishes; a refused path is reported, not fatal.
+    assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), escaping);
   });
 });
 

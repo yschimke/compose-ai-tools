@@ -197,6 +197,7 @@ object UiBuilderCatalogs {
     const val VARIANT_PROPERTY_UNKNOWN = "component.variantProperty.unknownParameter"
     const val VARIANTS_WITHOUT_PROPERTY = "component.variants.withoutProperty"
     const val STATE_CALLBACK_NOT_A_FUNCTION = "component.stateCallback.notAFunction"
+    const val STATE_CALLBACK_TYPE_MISMATCH = "component.stateCallback.typeMismatch"
     const val ID_COLLISION = "component.id.collision"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
   }
@@ -288,7 +289,26 @@ object UiBuilderCatalogs {
       if (existing != null) continue
       diagnose(component, builder, builderId, diagnostics)
       components[builderId] = policyFor(component, builder)
-      val group = builder.group ?: continue
+    }
+
+    // The shelf covers EVERY admitted component, so the menu has to as well.
+    //
+    // `builder.group` was the only source, which meant a menu entry existed solely for a component
+    // whose annotation overrode its group — and unannotated components never reached this loop at
+    // all. Every other component landed on the shelf with no group a consumer could recover, since
+    // the record's binding did not carry one either. That is most of the default shelf for a
+    // catalog that has adopted nothing yet, which is the case the contract is most careful to keep
+    // working: "a catalog that annotates nothing still publishes every component, grouped by its
+    // @CatalogGroup" was a claim with nothing behind it.
+    //
+    // The annotation is an override, which is what it was always documented as.
+    for (component in record.components) {
+      val builderId = builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
+      if (idOwners[builderId] != component.canonicalId) continue
+      val group =
+        component.builder?.group?.takeIf { it.isNotBlank() }
+          ?: component.bindings.firstNotNullOfOrNull { it.group?.takeIf(String::isNotBlank) }
+          ?: continue
       menuEntries[builderId] = UiBuilderMenuEntry(group)
     }
 
@@ -549,6 +569,26 @@ object UiBuilderCatalogs {
           )
       }
       val state = pair.value.substringBefore(':').trim()
+      // The declared JSON type has to MATCH the state parameter, not merely be a word this
+      // vocabulary knows. `checked:string` over a `Boolean` passes every other check — supported
+      // type, both parameters present, callback function-typed — and tells the export to initialise
+      // a String state and thread it into a Boolean, which does not compile.
+      val declaredType = pair.value.substringAfter(':', "").trim()
+      val stateParam = parametersByName[state]
+      val classifier = stateParam?.type?.removeSuffix("?")
+      val expected = STATE_TYPE_CLASSIFIERS[declaredType]
+      if (classifier != null && expected != null && classifier !in expected) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.STATE_CALLBACK_TYPE_MISMATCH,
+            subject = "$builderId.${pair.key}",
+            message =
+              "declares state '$state' as '$declaredType', but ${component.canonicalId} takes it " +
+                "as '${stateParam.type}'. The export would initialise a $declaredType and thread " +
+                "it into a ${stateParam.type}, which does not compile. " +
+                "'$declaredType' means ${expected.sorted().joinToString(" or ")}.",
+          )
+      }
       if (state.isNotEmpty() && state !in parameterNames) {
         into +=
           UiBuilderDiagnostic(

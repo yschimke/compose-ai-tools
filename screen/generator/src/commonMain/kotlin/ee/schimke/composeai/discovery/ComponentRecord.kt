@@ -302,4 +302,19 @@ data class ComponentCode(
  *   preview: the same `Card` can be one catalog's `Containment/Card` and another preview's
  *   incidental container.
  */
-@Serializable data class ComponentBinding(val previewId: String, val componentId: String? = null)
+/**
+ * One preview's claim on a component: which preview, under which catalog id, in which group.
+ *
+ * [group] is the catalog's own resolved grouping — the per-component `@CatalogComponent(group = …)`
+ * override, else the file's `@CatalogGroup`, else `Components`. It is carried because the builder
+ * shelves EVERY admitted component, annotated or not, and `componentMenu` is where a consumer
+ * learns which shelf each one belongs on. Dropping it meant an unannotated component reached the
+ * shelf with no group a consumer could recover, which is most of the default shelf for a catalog
+ * that has adopted nothing yet — the case the contract is most careful to keep working.
+ */
+@Serializable
+data class ComponentBinding(
+  val previewId: String,
+  val componentId: String? = null,
+  val group: String? = null,
+)

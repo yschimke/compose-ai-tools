@@ -23,7 +23,7 @@
  * their own, and the primary's is the one the catalog's previews were discovered from.
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 /** The bundle entry and the published branch path — one name, by construction. */
 export const UI_BUILDER_FILE = "ui-builder.json";
@@ -91,13 +91,25 @@ export async function publishUiBuilderCatalog(entries, outPath) {
     : [];
   const publishedTemplates = [];
   const missingTemplates = [];
+  const unsafeTemplates = [];
+  // Where the bytes are allowed to land. A `templates` entry is a path out of a bundle, and a
+  // bundle is not a trusted document — `ui-builder/../../catalog.json` joined to `outPath` writes
+  // outside the catalog output, or over another generated artifact. The Gradle side now refuses
+  // anything outside `ui-builder/`, but this publisher also reads bundles built before that and
+  // bundles handed to it directly, so the containment has to be checked where the write happens
+  // rather than trusted from upstream.
+  const root = resolve(outPath);
   for (const path of templates) {
+    const templateTarget = resolve(outPath, path);
+    if (templateTarget !== root && !templateTarget.startsWith(root + sep)) {
+      unsafeTemplates.push(path);
+      continue;
+    }
     const bytes = entries?.[path];
     if (!bytes) {
       missingTemplates.push(path);
       continue;
     }
-    const templateTarget = join(outPath, path);
     await mkdir(dirname(templateTarget), { recursive: true });
     await writeFile(templateTarget, Buffer.from(bytes));
     publishedTemplates.push(path);
@@ -113,5 +125,6 @@ export async function publishUiBuilderCatalog(entries, outPath) {
     diagnostics: Array.isArray(catalog.diagnostics) ? catalog.diagnostics.length : 0,
     templates: publishedTemplates,
     missingTemplates,
+    unsafeTemplates,
   };
 }

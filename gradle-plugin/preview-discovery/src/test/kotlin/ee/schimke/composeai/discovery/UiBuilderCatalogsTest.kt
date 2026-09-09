@@ -38,6 +38,7 @@ class UiBuilderCatalogsTest {
   private fun component(
     name: String,
     catalogId: String? = null,
+    group: String? = null,
     builder: BuilderPolicy? = null,
     parameters: List<TargetParameter> = emptyList(),
     signatureKnown: Boolean = true,
@@ -59,6 +60,12 @@ class UiBuilderCatalogsTest {
       slots = ComponentRecords.slotsOf(parameters),
       signatureKnown = signatureKnown,
       builder = builder,
+      // One binding carrying the catalog's own resolved group, which is what a real record holds
+      // and what the menu is built from for a component that annotates nothing.
+      bindings =
+        listOf(
+          ComponentBinding(previewId = "${name}Preview", componentId = catalogId, group = group)
+        ),
     )
 
   @Test
@@ -586,6 +593,94 @@ class UiBuilderCatalogsTest {
     // …and the signature-dependent checks stay silent, because there is no signature to check.
     assertThat(generated.diagnostics.map { it.code })
       .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_NOT_A_PARAMETER)
+  }
+
+  @Test
+  fun `a declared state type that the component does not take is reported`() {
+    // `checked:string` names a supported type and a real parameter, and the callback is
+    // function-typed — every other check passes. The export would initialise a String and thread it
+    // into a Boolean.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters =
+              listOf(
+                parameter("checked", type = "Boolean"),
+                parameter("onCheckedChange", type = "(Boolean) -> Unit"),
+              ),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:string")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val reported =
+      generated.diagnostics.single {
+        it.code == UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH
+      }
+    assertThat(reported.message).contains("Boolean")
+  }
+
+  @Test
+  fun `the matching declared type is not reported`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "CheckboxButton",
+            parameters =
+              listOf(
+                // Nullable is the same classifier: `Boolean?` is still a boolean state.
+                parameter("checked", type = "Boolean?"),
+                parameter("onCheckedChange", type = "(Boolean) -> Unit"),
+              ),
+            builder =
+              BuilderPolicy(
+                canvas = "placeholder",
+                stateCallbacks = listOf(BuilderPair("onCheckedChange", "checked:boolean")),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    assertThat(generated.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.STATE_CALLBACK_TYPE_MISMATCH)
+  }
+
+  @Test
+  fun `an unannotated component keeps its catalog group on the shelf`() {
+    // "A catalog that annotates nothing still publishes every component, grouped by its
+    // @CatalogGroup" was a claim with nothing behind it: only an explicit @BuilderComponent(group)
+    // produced a menu entry, so most of the default shelf had no group a consumer could recover.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Card", catalogId = "Containment/Card", group = "Containment"),
+          component(
+            "Button",
+            catalogId = "Actions/Button",
+            group = "Actions",
+            builder = BuilderPolicy(canvas = "p", group = "Overridden"),
+          ),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val menu = generated.statusSemantics.componentMenu.components
+    // The unannotated component keeps the catalog's own grouping…
+    assertThat(menu["wear-m3/card"]?.group).isEqualTo("Containment")
+    // …and the annotation is an override, which is what it was always documented as.
+    assertThat(menu["wear-m3/button"]?.group).isEqualTo("Overridden")
   }
 
   @Test
