@@ -1439,8 +1439,8 @@ class ScreenGeneratorTest {
 
     assertThat(source)
       .contains(
-        "kotlin.collections.listOf(\"cell\", \"cell\", \"cell\", \"odd\", \"cell\", " +
-          "\"cell\", \"cell\", \"cell\").forEach { value ->"
+        "for (value in kotlin.collections.listOf(\"cell\", \"cell\", \"cell\", \"odd\", " +
+          "\"cell\", \"cell\", \"cell\", \"cell\")) {"
       )
     assertThat(occurrences(source, "Text(text = value)")).isEqualTo(1)
     assertThat(source).doesNotContain("kotlin.repeat(")
@@ -1471,11 +1471,11 @@ class ScreenGeneratorTest {
   /**
    * The shape this fold exists for: a contribution graph whose cells carry different colours.
    *
-   * Twelve nodes generating twelve calls that differ in eight hex digits is what the identical-run
-   * fold cannot touch and what a reader most wants written as a list.
+   * Cells generating calls that differ only in the colour they carry is what the identical-run fold
+   * cannot touch and what a reader most wants written as a list.
    */
   @Test
-  fun `cells differing only in a hex literal become the list of those literals`() {
+  fun `cells differing only in one number become the list of those numbers`() {
     val swatch =
       component(
         "Swatch",
@@ -1491,7 +1491,7 @@ class ScreenGeneratorTest {
         .toTypedArray()
     val source = emitted(column(*cells), catalog(card, swatch)).source
 
-    assertThat(source).contains("kotlin.collections.listOf(")
+    assertThat(source).contains("for (value in kotlin.collections.listOf(")
     assertThat(occurrences(source, "Swatch(color = value)")).isEqualTo(1)
   }
 
@@ -1661,6 +1661,46 @@ class ScreenGeneratorTest {
       .contains(
         "`Holder`.`state` imports `kotlin`, which the generated file spends on its own scaffolding"
       )
+  }
+
+  /**
+   * Same length is not the same type.
+   *
+   * `1000L` and `10.0f` are five characters each and a `Long` and a `Float`, so a list of both is a
+   * list of their supertype — which the call they were lifted out of need not accept. A factory's
+   * own arguments are where two kinds can meet, since the parameter check that keeps them apart
+   * elsewhere is about the *component's* parameter rather than the factory's.
+   */
+  @Test
+  fun `numbers of one length but different kinds are not folded into one list`() {
+    val cells =
+      listOf(ScreenValue.Whole(1000L), ScreenValue.Fractional32(10.0f), ScreenValue.Whole(2000L))
+        .map { argument ->
+          ScreenNode(
+            text.canonicalId,
+            arguments =
+              mapOf(
+                "text" to
+                  ScreenValue.Construct(
+                    "app.theme.label",
+                    positional = listOf(argument),
+                    typeFqn = "kotlin.String",
+                  )
+              ),
+          )
+        }
+        .toTypedArray()
+
+    val source =
+      (ScreenGenerator.generate(
+          column(*cells),
+          catalog(card, text),
+          expressionPackages = setOf("app.theme"),
+        ) as ScreenGenerator.Result.Emitted)
+        .source
+
+    assertThat(source).doesNotContain("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Text(text = label(")).isEqualTo(3)
   }
 
   private fun occurrences(source: String, text: String) =

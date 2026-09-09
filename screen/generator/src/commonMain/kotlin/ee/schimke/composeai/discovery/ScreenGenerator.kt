@@ -193,7 +193,17 @@ object ScreenGenerator {
   private val FOLD_STRING = Regex("""^"([^"\\$\n]|\\[\\"nrt$])*"$""")
 
   /** A number a `listOf` can hold without the elements disagreeing about their type. */
-  private val FOLD_NUMBER = Regex("""^-?(0[xX][0-9a-fA-F]+|\d+(\.\d+)?)[fFdDLl]?$""")
+  private val FOLD_HEX_NUMBER = Regex("""^-?(0[xX][0-9a-fA-F]+)([Ll]?)$""")
+
+  private val FOLD_DECIMAL_NUMBER = Regex("""^-?(\d+)(\.\d+)?([fFdDLl]?)$""")
+
+  /**
+   * How many shorter windows are tried after the grown one fails — see [varyingRun].
+   *
+   * A maximal window usually fails because of its last child, so one or two steps back is where the
+   * fold is. Searching further is the quadratic scan this bound exists to refuse.
+   */
+  private const val FOLD_SHRINK_ATTEMPTS = 3
 
   /**
    * Names the loop parameter may take, in preference order.
@@ -1518,11 +1528,11 @@ object ScreenGenerator {
         } else {
           out
             .append(indent)
-            .append("kotlin.collections.listOf(")
-            .append(varying.values.joinToString(", "))
-            .append(").forEach { ")
+            .append("for (")
             .append(varying.parameter)
-            .append(" ->\n")
+            .append(" in kotlin.collections.listOf(")
+            .append(varying.values.joinToString(", "))
+            .append(")) {\n")
             .append((varying.prefix + varying.parameter + varying.suffix).prependIndent(INDENT))
             .append("\n")
             .append(indent)
@@ -1570,13 +1580,36 @@ object ScreenGenerator {
    * `kotlin.repeat`'s `_` answers by binding nothing at all.
    */
   private fun varyingRun(children: List<String>, start: Int): VaryingRun? {
-    // Longest first, and the first success wins. Validity is not monotonic in either direction —
-    // the first three children of a run may be identical, which this refuses and the `repeat` above
-    // folds better, while the same window plus a fourth that differs is exactly what belongs in a
-    // list. So the question is asked of the longest window and then of shorter ones, rather than
-    // grown from the shortest until it breaks.
-    var end = children.size
-    while (end - start >= MINIMUM_FOLDED_RUN) {
+    // Grown once, then shrunk a little — never searched. The window extends while the children
+    // still share *some* prefix and suffix with the first of them, which is a running minimum and
+    // so costs each child one comparison walk rather than one per candidate window. Only the
+    // window that growth ended at is validated, and only [FOLD_SHRINK_ATTEMPTS] shorter ones after
+    // it, because the reason a maximal window fails is nearly always its last child: the sibling
+    // that ended the run.
+    //
+    // The alternative — asking the full question of every window — is quadratic per starting
+    // child and cubic over a slot, and sibling lists have no bound. A pasted screen is exactly
+    // where a fold is most wanted and least affordable.
+    val first = children[start]
+    var prefix = first.length
+    var suffix = first.length
+    // From the *second* child: the first shares all of itself with itself, which would leave the
+    // suffix nothing to be.
+    var end = start + 1
+    while (end < children.size) {
+      val text = children[end]
+      // Each as a running minimum against the first child, and independent of the other: a child
+      // *identical* to the first shares all of it in both directions, and limiting the suffix by
+      // the prefix would read that as no room and end the window at the very children a run of
+      // identical siblings followed by a different one is made of. The overlap is settled once, on
+      // the window growth ends at, by [varyingFold].
+      prefix = commonPrefixLength(first, text, prefix)
+      suffix = commonSuffixLength(first, text, suffix)
+      if (prefix == 0 || suffix == 0) break
+      end++
+    }
+    var attempts = FOLD_SHRINK_ATTEMPTS
+    while (end - start >= MINIMUM_FOLDED_RUN && attempts-- > 0) {
       varyingFold(children.subList(start, end), end)?.let {
         return it
       }
@@ -1603,13 +1636,14 @@ object ScreenGenerator {
     val values = texts.map { it.substring(prefix, it.length - suffix) }
     if (values.distinct().size < 2) return null
     if (values.any { it.isEmpty() || '\n' in it }) return null
-    if (
-      !values.all(::isFoldableStringLiteral) &&
-        !values.all(::isFoldableBooleanLiteral) &&
-        !(values.all(::isFoldableNumberLiteral) &&
-          values.all { it.length == values.first().length })
-    ) {
-      return null
+    if (!values.all(::isFoldableStringLiteral) && !values.all(::isFoldableBooleanLiteral)) {
+      // Same kind *and* same length. Length alone lets `1000` and `1.0f` into one list — an `Int`
+      // and a `Float`, four characters each — which `listOf` reconciles to a supertype the call
+      // they were lifted out of may not accept. The kind says hex, whole or fractional and which
+      // suffix; the length keeps two whole numbers from landing either side of `Int.MAX_VALUE`.
+      val kinds = values.map(::foldableNumberKind)
+      if (kinds.any { it == null } || kinds.distinct().size != 1) return null
+      if (values.any { it.length != values.first().length }) return null
     }
 
     val body = first.substring(0, prefix) + first.substring(first.length - suffix)
@@ -1648,7 +1682,21 @@ object ScreenGenerator {
 
   private fun isFoldableBooleanLiteral(value: String): Boolean = value == "true" || value == "false"
 
-  private fun isFoldableNumberLiteral(value: String): Boolean = FOLD_NUMBER.matches(value)
+  /**
+   * Which sort of number [value] is, or null for what is not one.
+   *
+   * Two numbers belong in one list when they are written the same way, not merely when they are
+   * both numbers: the kind carries the radix, whether there is a fractional part, and the suffix,
+   * which together are what decides the type Kotlin infers for the list.
+   */
+  private fun foldableNumberKind(value: String): String? {
+    FOLD_HEX_NUMBER.matchEntire(value)?.let {
+      return "hex:${it.groupValues[2]}"
+    }
+    val decimal = FOLD_DECIMAL_NUMBER.matchEntire(value) ?: return null
+    val fractional = decimal.groupValues[2].isNotEmpty()
+    return "${if (fractional) "fractional" else "whole"}:${decimal.groupValues[3]}"
+  }
 
   /** One run of siblings differing in a single literal — see [varyingRun]. */
   private data class VaryingRun(
