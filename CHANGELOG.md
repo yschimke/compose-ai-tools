@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.4.1](https://github.com/yschimke/compose-ai-tools/compare/v2.4.0...v2.4.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **ci:** decide root-policy reachability from the modules being rendered ([#5323](https://github.com/yschimke/compose-ai-tools/issues/5323)) ([85280a3](https://github.com/yschimke/compose-ai-tools/commit/85280a3b2a8a06c6201f02131eded1babac307d8))
+* **ci:** keep the root builder policy in all-module pre-flight validation ([#5320](https://github.com/yschimke/compose-ai-tools/issues/5320)) ([e4e5966](https://github.com/yschimke/compose-ai-tools/commit/e4e59660078556adbf51db2b62de1e8116cc0a22))
+* **plugin:** keep build outputs out of the ui-builder template tree ([#5325](https://github.com/yschimke/compose-ai-tools/issues/5325)) ([2160eca](https://github.com/yschimke/compose-ai-tools/commit/2160ecaf10efab386b51d4708c25455a5ae0251f))
+
+
+### Performance Improvements
+
+* **serve:** stop re-hashing and re-formatting a theme cache file name ([#5324](https://github.com/yschimke/compose-ai-tools/issues/5324)) ([c85da11](https://github.com/yschimke/compose-ai-tools/commit/c85da11f76e8a633a76f5767fd013159d47524ec))
+
 ## [2.4.0](https://github.com/yschimke/compose-ai-tools/compare/v2.3.0...v2.4.0) (2026-09-09)
 
 
