@@ -341,11 +341,17 @@ object UiBuilderCatalogs {
       // `Button/Tonal` — and taking the first binding's group shelved a component whose id says
       // `…/tonal` under Filled's group, so the entry disagreed with its own identity. Falls back to
       // the first binding that names one, which is what an unannotated component has.
-      val declaring = component.builder?.declaredForCatalogId
+      // The alias the ID WAS DERIVED FROM, computed the same way `builderIdFor` computes it — the
+      // declaring sticker when there is one, the first of the sorted `componentIds` when there is
+      // not. I fixed this for the annotated branch and left the fallback taking the first BINDING's
+      // group, which is preview-id order: an unannotated `Button` published as `Buttons/Filled` and
+      // `Buttons/Tonal`, whose previews sort the other way round, was keyed `…/filled` and shelved
+      // under Tonal's group. Same defect as the one above, in the branch I did not change.
+      val idAlias = component.builder?.declaredForCatalogId ?: component.componentIds.firstOrNull()
       val group =
         component.builder?.group?.takeIf { it.isNotBlank() }
           ?: component.bindings
-            .firstOrNull { it.componentId == declaring && !it.group.isNullOrBlank() }
+            .firstOrNull { it.componentId == idAlias && !it.group.isNullOrBlank() }
             ?.group
           ?: component.bindings.firstNotNullOfOrNull { it.group?.takeIf(String::isNotBlank) }
           ?: continue

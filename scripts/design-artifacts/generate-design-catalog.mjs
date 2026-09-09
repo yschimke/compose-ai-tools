@@ -1736,6 +1736,15 @@ if (uiBuilderCatalog) {
         `so they will 404 on the branch: ${uiBuilderCatalog.missingTemplates.join(", ")}`,
     );
   }
+  if (uiBuilderCatalog.unreadableTemplates?.length) {
+    // Carried by the bundle and not parseable. Same consequence as an absent one and a different
+    // cause, so it gets its own line: "the bundle does not have it" sends somebody to the bundler,
+    // "the bundle has it and it is not JSON" sends them to the design.
+    console.warn(
+      `[${spec.system}] the builder catalog names template design(s) the bundle carries but ` +
+        `cannot be parsed, so they were NOT written: ${uiBuilderCatalog.unreadableTemplates.join(", ")}`,
+    );
+  }
   if (uiBuilderCatalog.diagnostics > 0) {
     // Not a failure. The diagnostics travel INSIDE the published file, where somebody who was not
     // watching this run can read them; this line is only so somebody who was knows to look.

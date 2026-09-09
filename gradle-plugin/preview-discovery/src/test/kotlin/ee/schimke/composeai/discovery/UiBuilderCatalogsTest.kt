@@ -1267,6 +1267,43 @@ class UiBuilderCatalogsTest {
     }
   }
 
+  @Test
+  fun `an unannotated component is shelved under the alias its id came from`() {
+    // `builderIdFor` derives an unannotated component's id from the first of the SORTED
+    // `componentIds`; the group fallback took the first BINDING's, which is preview-id order. When
+    // the two orders differ — as here, `ZFilledPreview` sorting after `ATonalPreview` — the entry
+    // was keyed `…/filled` and shelved under Tonal's group. The annotated branch was fixed for this
+    // one round earlier; this is the same defect in the branch beside it.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "Button",
+            catalogIds = listOf("Buttons/Filled", "Buttons/Tonal"),
+            bindings =
+              listOf(
+                ComponentBinding(
+                  previewId = "ATonalPreview",
+                  componentId = "Buttons/Tonal",
+                  group = "Selection",
+                ),
+                ComponentBinding(
+                  previewId = "ZFilledPreview",
+                  componentId = "Buttons/Filled",
+                  group = "Actions",
+                ),
+              ),
+          )
+        ),
+        cover,
+        policy(),
+      )!!
+
+    // The id comes from `Buttons/Filled`, so the shelf has to be Filled's.
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/filled"]?.group)
+      .isEqualTo("Actions")
+  }
+
   private fun parameter(name: String, type: String = "kotlin.Boolean") =
     TargetParameter(name = name, type = type, hasDefault = true)
 }

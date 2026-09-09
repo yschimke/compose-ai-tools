@@ -66,6 +66,7 @@ test("the bundle's builder catalog is copied to the branch root and described fo
       templates: [],
       missingTemplates: [],
       unsafeTemplates: [],
+    unreadableTemplates: [],
     });
     // Byte-for-byte, not re-serialised: the generator produced it and the pipeline is a courier.
     assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), catalog);
@@ -169,6 +170,35 @@ test("a template naming an in-tree artifact is refused, not written over it", as
     assert.equal(await readFile(join(out, "catalog.json"), "utf8"), '{"kept":true}');
     // And the catalog it published is its own, not a template that claimed its name.
     assert.equal(await readFile(join(out, UI_BUILDER_FILE), "utf8"), inTree);
+  });
+});
+
+test("a template the bundle carries but cannot parse is not published", async () => {
+  await withOutDir(async (out) => {
+    // The Gradle bundler filters these now, and this publisher exists partly to read bundles built
+    // BEFORE it did — so writing the bytes unconditionally puts a truncated design on the delivery
+    // branch and counts it as available, and the chooser is the first thing to find out.
+    const withTemplates = JSON.stringify({
+      ...JSON.parse(catalog),
+      statusSemantics: {
+        ...JSON.parse(catalog).statusSemantics,
+        templates: ["ui-builder/designs/blank.json", "ui-builder/designs/truncated.json"],
+      },
+    });
+
+    const published = await publishUiBuilderCatalog(
+      {
+        [UI_BUILDER_FILE]: bytes(withTemplates),
+        "ui-builder/designs/blank.json": bytes('{"nodes":[]}'),
+        "ui-builder/designs/truncated.json": bytes('{"nodes":['),
+      },
+      out,
+    );
+
+    assert.deepEqual(published.unreadableTemplates, ["ui-builder/designs/truncated.json"]);
+    // The readable one still publishes: one bad design is not a reason to carry none.
+    assert.deepEqual(published.templates, ["ui-builder/designs/blank.json"]);
+    await assert.rejects(() => stat(join(out, "ui-builder/designs/truncated.json")));
   });
 });
 

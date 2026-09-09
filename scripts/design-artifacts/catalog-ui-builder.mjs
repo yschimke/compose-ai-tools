@@ -99,6 +99,7 @@ export async function publishUiBuilderCatalog(entries, outPath) {
   const publishedTemplates = [];
   const missingTemplates = [];
   const unsafeTemplates = [];
+  const unreadableTemplates = [];
   // Where the bytes are allowed to land. A `templates` entry is a path out of a bundle, and a
   // bundle is not a trusted document — `ui-builder/../../catalog.json` joined to `outPath` writes
   // outside the catalog output, or over another generated artifact. The Gradle side now refuses
@@ -129,6 +130,18 @@ export async function publishUiBuilderCatalog(entries, outPath) {
       missingTemplates.push(path);
       continue;
     }
+    // Parsed before it is written, as both Gradle lanes now do. The bundler filters unreadable
+    // designs, and this publisher exists partly to read bundles built BEFORE it did — so an
+    // unconditional write puts a truncated design on the delivery branch and counts it as
+    // available, and the chooser is the first thing to discover it is not. Reported as unreadable
+    // rather than published: a design that cannot be parsed is not carried, whichever lane built
+    // the bundle.
+    try {
+      JSON.parse(Buffer.from(bytes).toString("utf8"));
+    } catch {
+      unreadableTemplates.push(path);
+      continue;
+    }
     await mkdir(dirname(templateTarget), { recursive: true });
     await writeFile(templateTarget, Buffer.from(bytes));
     publishedTemplates.push(path);
@@ -145,5 +158,6 @@ export async function publishUiBuilderCatalog(entries, outPath) {
     templates: publishedTemplates,
     missingTemplates,
     unsafeTemplates,
+    unreadableTemplates,
   };
 }
