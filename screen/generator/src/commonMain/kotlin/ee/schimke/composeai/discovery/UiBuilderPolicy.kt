@@ -43,6 +43,13 @@ val UI_BUILDER_STRUCTURAL_ROLES: Set<String> =
   setOf("screen-root", "list", "list-item", "overlay", "controlled", "decoration")
 
 /**
+ * How a catalog's designs are written as source. Closed, and stated here beside the role set for
+ * the same reason: a word outside it selects no exporter, and the failure surfaces at export rather
+ * than where somebody typed it.
+ */
+val UI_BUILDER_CODE_STRATEGIES: Set<String> = setOf("record", "templates")
+
+/**
  * The named holes each template role may use, and the whole reason a template can be checked when
  * the catalog is published rather than when somebody exports through it.
  *

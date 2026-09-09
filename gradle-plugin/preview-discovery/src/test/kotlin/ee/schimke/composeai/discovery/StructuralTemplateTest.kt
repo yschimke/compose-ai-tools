@@ -236,6 +236,23 @@ class StructuralTemplateTest {
   }
 
   @Test
+  fun `a comment inside a generic argument list is skipped`() {
+    // The fourth shape of this scan, and the one that shows the fix pattern was wrong: `commentEnd`
+    // exists precisely so a scanner does not read a comment as source, and three scanners consult
+    // it. `genericSpans` was written afterwards and never did, so a comment broke the scan at `/`
+    // exactly as `(` and `@` did before it.
+    val commented =
+      StructuralTemplate.holes("\${call(factory = emptyMap<String, /* result type */ Int>())}")
+        as StructuralTemplate.Result2.Ok
+    assertThat(commented.value)
+      .containsExactly(
+        StructuralTemplate.Hole.Call(
+          mapOf("factory" to "emptyMap<String, /* result type */ Int>()")
+        )
+      )
+  }
+
+  @Test
   fun `a less-than that is not a generic list is left alone`() {
     // The pre-scan may only ever un-split, so a comparison expression has to behave exactly as it
     // did before it existed — otherwise closing one false rejection would open another.

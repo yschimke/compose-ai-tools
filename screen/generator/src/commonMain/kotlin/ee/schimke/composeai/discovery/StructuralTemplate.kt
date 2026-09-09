@@ -352,6 +352,15 @@ object StructuralTemplate {
     val spans = mutableListOf<IntRange>()
     var index = 0
     while (index < text.length) {
+      // A comment is not source, here as everywhere else. `commentEnd` exists for exactly this and
+      // three other scanners consult it; this one was written afterwards and did not, so `/` ended
+      // the scan the way `(` and `@` did — the same bug a third time, from not applying the shared
+      // helper to a scanner added after it.
+      val skipped = commentEnd(text, index)
+      if (skipped >= 0) {
+        index = skipped
+        continue
+      }
       if (text[index] != '<' || index == 0 || !isTypeChar(text[index - 1])) {
         index++
         continue
@@ -361,7 +370,6 @@ object StructuralTemplate {
       var scan = index
       var end = -1
       while (scan < text.length) {
-        val ch = text[scan]
         // Everything a type argument list may hold, and nothing else. A quote or any other
         // character means the `<` was a comparison, and the attempt is abandoned rather than
         // guessed at.
@@ -377,6 +385,12 @@ object StructuralTemplate {
         // excluding `@` failed the identical way for the commoner input. It needs no depth of its
         // own — an annotation is a prefix, not a bracket — and admitting the character cannot widen
         // what the scan accepts as a list, because a `>` still has to close it at paren depth zero.
+        val commented = commentEnd(text, scan)
+        if (commented >= 0) {
+          scan = commented
+          continue
+        }
+        val ch = text[scan]
         if (!isTypeChar(ch) && ch !in "<>,?* -()@") break
         when {
           // `->` inside a function type argument: its `>` closes nothing.

@@ -1904,7 +1904,23 @@ jobs:
           # not the caller's. Checking only the spec-adjacent and module paths meant the policy
           # Gradle actually consumes could skip the pre-flight entirely and be dropped by discovery
           # after the render, which is the cost this step exists to avoid.
-          if [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
+          #
+          # Added only when this render can actually reach it, which is the OTHER half of
+          # `authoredPair()`: a module holding either authored file is describing itself and never
+          # falls back, so validating the root for it turned a policy belonging to a different
+          # catalog into a failure of a render that would never have read it. Checking the fallback
+          # was the fix; checking it unconditionally was the same fix left half-applied — the Gradle
+          # side learned ownership and this pre-flight did not.
+          #
+          # With no named module every discovered module is rendered, and one of them may have
+          # neither file, so the root stays reachable and is checked.
+          module_owns_itself=false
+          if [ -n "$MODULE" ] &&
+            { [ -f "$(to_dir "$MODULE")/ui-builder.policy.json" ] ||
+              [ -f "$(to_dir "$MODULE")/catalog.spec.json" ]; }; then
+            module_owns_itself=true
+          fi
+          if [ "$module_owns_itself" = "false" ] && [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
             policy_candidates+=("${RENDER_DIR:-.}/ui-builder.policy.json")
           fi
           # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
@@ -3195,7 +3211,23 @@ jobs:
           # not the caller's. Checking only the spec-adjacent and module paths meant the policy
           # Gradle actually consumes could skip the pre-flight entirely and be dropped by discovery
           # after the render, which is the cost this step exists to avoid.
-          if [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
+          #
+          # Added only when this render can actually reach it, which is the OTHER half of
+          # `authoredPair()`: a module holding either authored file is describing itself and never
+          # falls back, so validating the root for it turned a policy belonging to a different
+          # catalog into a failure of a render that would never have read it. Checking the fallback
+          # was the fix; checking it unconditionally was the same fix left half-applied — the Gradle
+          # side learned ownership and this pre-flight did not.
+          #
+          # With no named module every discovered module is rendered, and one of them may have
+          # neither file, so the root stays reachable and is checked.
+          module_owns_itself=false
+          if [ -n "$MODULE" ] &&
+            { [ -f "$(to_dir "$MODULE")/ui-builder.policy.json" ] ||
+              [ -f "$(to_dir "$MODULE")/catalog.spec.json" ]; }; then
+            module_owns_itself=true
+          fi
+          if [ "$module_owns_itself" = "false" ] && [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
             policy_candidates+=("${RENDER_DIR:-.}/ui-builder.policy.json")
           fi
           # `:-false` because only the all-modules render path defines ALL_MODULES, and this block

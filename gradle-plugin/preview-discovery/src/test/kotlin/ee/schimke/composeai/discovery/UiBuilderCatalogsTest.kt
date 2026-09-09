@@ -313,6 +313,47 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `code strategy is an enum on the authoritative path too`() {
+    // The two checks beside this one compare the strategy with the templates and agree with each
+    // other about a MISSPELLED strategy: `templtes` with no templates satisfies neither, so the
+    // policy published a strategy no exporter implements with nothing said. The JavaScript
+    // pre-flight caught it and runs only in the two workflow render lanes — the same asymmetry as
+    // the builtin slot role, in the same file, found one round later.
+    val misspelled =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+        cover,
+        policy(code = UiBuilderCode(strategy = "templtes")),
+      )!!
+
+    val codes = misspelled.diagnostics.map { it.code to it.subject }
+    assertThat(codes).contains(UiBuilderCatalogs.Diagnostics.STRATEGY_UNKNOWN to "code.strategy")
+    // Not reported as the agreement failures, which are about a strategy the engine DOES know.
+    assertThat(codes.map { it.first })
+      .containsNoneOf(
+        UiBuilderCatalogs.Diagnostics.STRATEGY_WITHOUT_TEMPLATES,
+        UiBuilderCatalogs.Diagnostics.TEMPLATES_WITHOUT_STRATEGY,
+      )
+
+    for (known in listOf("record", "templates")) {
+      val fine =
+        UiBuilderCatalogs.generate(
+          record(component("Card", builder = BuilderPolicy(id = "wear-m3/card", canvas = "p"))),
+          cover,
+          policy(
+            code =
+              UiBuilderCode(
+                strategy = known,
+                templates = if (known == "templates") mapOf("screen-root" to "Box {}") else mapOf(),
+              )
+          ),
+        )!!
+      assertThat(fine.diagnostics.map { it.code })
+        .doesNotContain(UiBuilderCatalogs.Diagnostics.STRATEGY_UNKNOWN)
+    }
+  }
+
+  @Test
   fun `templates and the strategy have to agree`() {
     val declaredButUnused =
       UiBuilderCatalogs.generate(
