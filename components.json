@@ -181,11 +181,13 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Dark",
-                    "componentId": "Template/AppScaffold"
+                    "componentId": "Template/AppScaffold",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Light",
-                    "componentId": "Template/AppScaffold"
+                    "componentId": "Template/AppScaffold",
+                    "group": "Scaffold templates"
                 }
             ],
             "code": {
@@ -202,6 +204,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -251,195 +254,243 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Dark",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Dark_VARIANT_disabled",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Light",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Light_VARIANT_disabled",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": "Buttons"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.BadgeSticker_Dark",
-                    "componentId": "Badge"
+                    "componentId": "Badge",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.BadgeSticker_Light",
-                    "componentId": "Badge"
+                    "componentId": "Badge",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Dark",
-                    "componentId": "Progress/Linear"
+                    "componentId": "Progress/Linear",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Light",
-                    "componentId": "Progress/Linear"
+                    "componentId": "Progress/Linear",
+                    "group": "Communication"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Dark",
-                    "componentId": "Card/Slots"
+                    "componentId": "Card/Slots",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Light",
-                    "componentId": "Card/Slots"
+                    "componentId": "Card/Slots",
+                    "group": "Containment"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.FilledButtonLargeFont_Dark",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.FilledButtonLargeFont_Light",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Dark",
-                    "componentId": "Card/Slots"
+                    "componentId": "Card/Slots",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Light",
-                    "componentId": "Card/Slots"
+                    "componentId": "Card/Slots",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Dark",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Light",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnPseudo_Dark",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnPseudo_Light",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnRtl_Dark",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnRtl_Light",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark",
-                    "componentId": "Checkbox/Checked"
+                    "componentId": "Checkbox/Checked",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark_VARIANT_unchecked",
-                    "componentId": "Checkbox/Checked"
+                    "componentId": "Checkbox/Checked",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Light",
-                    "componentId": "Checkbox/Checked"
+                    "componentId": "Checkbox/Checked",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Light_VARIANT_unchecked",
-                    "componentId": "Checkbox/Checked"
+                    "componentId": "Checkbox/Checked",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SliderMid_Dark",
-                    "componentId": "Slider"
+                    "componentId": "Slider",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SliderMid_Light",
-                    "componentId": "Slider"
+                    "componentId": "Slider",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark_VARIANT_off",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light_VARIANT_off",
-                    "componentId": "Switch/On"
+                    "componentId": "Switch/On",
+                    "group": "Selection"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Dark",
-                    "componentId": "Shape/Morph"
+                    "componentId": "Shape/Morph",
+                    "group": "Shape"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Light",
-                    "componentId": "Shape/Morph"
+                    "componentId": "Shape/Morph",
+                    "group": "Shape"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Dark",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Light",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Dark",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Light",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Dark",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Light",
-                    "componentId": "Button/Filled"
+                    "componentId": "Button/Filled",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.TextFieldSticker_Dark",
-                    "componentId": "TextField/Filled"
+                    "componentId": "TextField/Filled",
+                    "group": "Text fields"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.TextFieldSticker_Light",
-                    "componentId": "TextField/Filled"
+                    "componentId": "TextField/Filled",
+                    "group": "Text fields"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Dark",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Light",
-                    "componentId": null
+                    "componentId": null,
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMaxLinesTruncated_Dark",
-                    "componentId": "Text/MaxLines-Truncated"
+                    "componentId": "Text/MaxLines-Truncated",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMaxLinesTruncated_Light",
-                    "componentId": "Text/MaxLines-Truncated"
+                    "componentId": "Text/MaxLines-Truncated",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMonospaceSpecimen_Dark",
-                    "componentId": "Text/Monospace"
+                    "componentId": "Text/Monospace",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMonospaceSpecimen_Light",
-                    "componentId": "Text/Monospace"
+                    "componentId": "Text/Monospace",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextSerifSpecimen_Dark",
-                    "componentId": "Text/Serif"
+                    "componentId": "Text/Serif",
+                    "group": "Text options"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTextKt.TextSerifSpecimen_Light",
-                    "componentId": "Text/Serif"
+                    "componentId": "Text/Serif",
+                    "group": "Text options"
                 }
             ],
             "code": {
@@ -456,6 +507,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -500,11 +552,13 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Dark",
-                    "componentId": "Card/Slots"
+                    "componentId": "Card/Slots",
+                    "group": null
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Light",
-                    "componentId": "Card/Slots"
+                    "componentId": "Card/Slots",
+                    "group": null
                 }
             ],
             "code": {
@@ -521,6 +575,7 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         },
@@ -565,11 +620,13 @@
             "bindings": [
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Dark",
-                    "componentId": "Template/AppScaffold"
+                    "componentId": "Template/AppScaffold",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Light",
-                    "componentId": "Template/AppScaffold"
+                    "componentId": "Template/AppScaffold",
+                    "group": "Scaffold templates"
                 }
             ],
             "code": {
@@ -586,8 +643,10 @@
             "hasTypeParameters": false,
             "hasContextReceivers": false,
             "overloadsCollided": false,
+            "builder": null,
             "requiredOptIns": [],
             "androidxOptIns": []
         }
-    ]
+    ],
+    "builderOrphans": []
 }
