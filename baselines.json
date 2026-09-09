@@ -559,6 +559,14 @@
     "sha256": "ff5facc1d296c487d6ff42e5664ffb435277e01595198fb80617b2cf794db585",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt"
   },
+  "samples:android/com.example.sampleandroid.HomeScreenDesignPreviewKt.HomeScreenDesignPreview_Design": {
+    "captureLabel": "",
+    "functionName": "HomeScreenDesignPreview",
+    "module": "samples:android",
+    "renderBasename": "HomeScreenDesignPreview_Design-d74858f0.png",
+    "sha256": "fcc412d98fa7768fa8b00b74c9ea629717a42633fa597c7e0e25721766863572",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/HomeScreenDesignPreview.kt"
+  },
   "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxFramePreview_Inbox Frame": {
     "captureLabel": "",
     "functionName": "ScaffoldedInboxFramePreview",
