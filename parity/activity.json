@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T06:16:08.085Z",
+  "generatedAt": "2026-09-09T06:28:06.098Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "85280a3b2a8a06c6201f02131eded1babac307d8",
+        "subject": "fix(ci): decide root-policy reachability from the modules being rendered (#5323)",
+        "at": "2026-09-09T07:19:07+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "e4e59660078556adbf51db2b62de1e8116cc0a22",
         "subject": "fix(ci): keep the root builder policy in all-module pre-flight validation (#5320)",
@@ -475,14 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v2.1.0 (#5254)",
         "at": "2026-09-06T21:01:10+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "04852ade1c86573269b472b6d46fd13f659e531d",
-        "subject": "fix: pin published preview-runtimes to the line that actually published (#5253)",
-        "at": "2026-09-06T20:58:12+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
