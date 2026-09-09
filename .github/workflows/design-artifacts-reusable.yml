@@ -1914,8 +1914,16 @@ jobs:
           #
           # With no named module every discovered module is rendered, and one of them may have
           # neither file, so the root stays reachable and is checked.
+          #
+          # `ALL_MODULES` is the same question asked properly. It is true for `module: ''` AND for
+          # `modules: all`, and the second of those can carry a named module — so reading emptiness
+          # alone, a caller passing both got ownership decided by the one module it named while the
+          # job went on to render every discovered one. Any sibling with neither authored file falls
+          # back to the root, so a malformed root policy skipped this pre-flight entirely and was
+          # dropped after the render: the catalog published with no builder data, which is the exact
+          # silence this step exists to end.
           module_owns_itself=false
-          if [ -n "$MODULE" ] &&
+          if [ "${ALL_MODULES:-false}" = "false" ] && [ -n "$MODULE" ] &&
             { [ -f "$(to_dir "$MODULE")/ui-builder.policy.json" ] ||
               [ -f "$(to_dir "$MODULE")/catalog.spec.json" ]; }; then
             module_owns_itself=true
@@ -3221,8 +3229,16 @@ jobs:
           #
           # With no named module every discovered module is rendered, and one of them may have
           # neither file, so the root stays reachable and is checked.
+          #
+          # `ALL_MODULES` is the same question asked properly. It is true for `module: ''` AND for
+          # `modules: all`, and the second of those can carry a named module — so reading emptiness
+          # alone, a caller passing both got ownership decided by the one module it named while the
+          # job went on to render every discovered one. Any sibling with neither authored file falls
+          # back to the root, so a malformed root policy skipped this pre-flight entirely and was
+          # dropped after the render: the catalog published with no builder data, which is the exact
+          # silence this step exists to end.
           module_owns_itself=false
-          if [ -n "$MODULE" ] &&
+          if [ "${ALL_MODULES:-false}" = "false" ] && [ -n "$MODULE" ] &&
             { [ -f "$(to_dir "$MODULE")/ui-builder.policy.json" ] ||
               [ -f "$(to_dir "$MODULE")/catalog.spec.json" ]; }; then
             module_owns_itself=true

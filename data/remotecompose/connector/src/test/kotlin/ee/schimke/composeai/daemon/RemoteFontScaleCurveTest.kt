@@ -4,6 +4,8 @@ import androidx.compose.remote.creation.compose.capture.RemoteDensity
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rsp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -77,6 +79,35 @@ class RemoteFontScaleCurveTest {
       val atOne = toPx(size, FONT_SCALE_2X, density = 1f)
       val atTwo = toPx(size, FONT_SCALE_2X, density = 2f)
       assertEquals("${size}sp at density 2", atOne * 2f, atTwo, TOLERANCE)
+    }
+  }
+
+  /**
+   * The `Host` branch defers rather than folding — which is the branch `rcDensity=host` rides on.
+   *
+   * Every other case here supplies two literals, so `RemoteTextUnit.toPx` takes the
+   * constant-folding path and the assertions above never reach the variable one. That is the branch
+   * this file's header calls load-bearing: a regression that quietly folded `RemoteDensity.Host` to
+   * a literal would bake the capture host's own font scale into the document and ship it to every
+   * player, and every test above would still pass.
+   *
+   * What is checked is the difference in kind — the fixed branch answers a constant and the host
+   * branch answers an expression with no constant value, on the same sizes the curve knots at.
+   * Evaluating that expression needs a `RemoteContext` with the player's `FONT_SIZE` bound, which
+   * is a player's job rather than a capture's; `rc-players`' `RcFontScaleRenderTest` is where the
+   * resolved pixels are pinned, and the header says so.
+   */
+  @Test
+  fun theHostBranchEmitsAnExpressionInsteadOfFoldingTheCurve() {
+    for (size in EXPECTED.keys) {
+      assertNull(
+        "${size}sp against RemoteDensity.Host should stay an expression",
+        size.rsp.toPx(RemoteDensity.Host).constantValueOrNull,
+      )
+      assertNotNull(
+        "${size}sp against fixed inputs should fold",
+        size.rsp.toPx(RemoteDensity(1f.rf, 1f.rf)).constantValueOrNull,
+      )
     }
   }
 
