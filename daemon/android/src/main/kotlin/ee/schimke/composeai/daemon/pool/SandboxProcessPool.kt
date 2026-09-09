@@ -252,7 +252,7 @@ class SandboxProcessPool(
     val java = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
     val command = buildList {
       add(java)
-      addAll(inheritedJvmArgs())
+      addAll(workerJvmArgs(inheritedJvmArgs(), index))
       addAll(workerSysprops(index, port).map { (k, v) -> "-D$k=$v" })
       add("-cp")
       add(System.getProperty("java.class.path") ?: "")
@@ -333,6 +333,33 @@ class SandboxProcessPool(
 
   companion object {
     const val WORKER_PORT_PROP: String = DaemonProperties.Names.SANDBOX_WORKER_PORT
+
+    /**
+     * The inherited JVM args, with the class-data-sharing archive re-pointed at a **per-slot**
+     * file: `-XX:SharedArchiveFile=<name>.jsa` becomes `<name>-worker<index>.jsa`.
+     *
+     * Serve hands a catalog daemon `-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=…` so the
+     * JVM writes an archive of its loaded classes when it exits and maps it on the next launch of
+     * the same classpath. Both halves of that reach the workers through the inherited `-XX` flags,
+     * and both are wanted: the worker's archive is the one that carries the warm render's classes
+     * (Compose, the font stack, the PNG encoder), which the daemon JVM's slot 0 never loads. What
+     * must not be shared is the *file*. The dump runs from `before_exit`, so a worker that halts
+     * because its parent died dumps at the same moment the parent does, and two JVMs writing one
+     * archive path is a torn file. One file per JVM removes the race: a slot has at most one live
+     * worker, and a replacement is spawned only after the failed one is gone.
+     *
+     * Pure; `index` is the pool slot. Args without a `SharedArchiveFile` pass through unchanged.
+     */
+    internal fun workerJvmArgs(inherited: List<String>, index: Int): List<String> =
+      inherited.map { arg ->
+        if (!arg.startsWith(SHARED_ARCHIVE_FLAG)) return@map arg
+        val path = arg.removePrefix(SHARED_ARCHIVE_FLAG)
+        val stem = path.removeSuffix(".jsa")
+        val ext = if (path.endsWith(".jsa")) ".jsa" else ""
+        "$SHARED_ARCHIVE_FLAG$stem-worker$index$ext"
+      }
+
+    private const val SHARED_ARCHIVE_FLAG = "-XX:SharedArchiveFile="
     const val WORKER_SLOT_PROP: String = DaemonProperties.Names.SANDBOX_WORKER_SLOT
 
     private const val SANDBOX_COUNT_PROP = DaemonProperties.Names.SANDBOX_COUNT
