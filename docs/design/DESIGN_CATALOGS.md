@@ -103,9 +103,12 @@ to a **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
 `design-artifacts/wear-m3`, … — that a designer pulls into Figma / Stitch /
 Claude Design. The branch holds only the generated bundle (`catalog.json`,
 `tokens.dtcg.json`, `figma-variables.json`, `components.json` — the discovered
-component record, declared as `componentsFile` — `images/` PNGs, and `figma/` — the
-per-sticker layered **`compose/figma-svg`** vectors), regenerated from the code
-on each catalog change so it never drifts. Each component ships both the raster PNG (in
+component record, declared as `componentsFile` — `ui-builder.json`, the generated
+**builder catalog**, declared as `uiBuilderFile` and present only for a catalog
+that authors a `ui-builder.policy.json`
+([`UI_BUILDER_CATALOG_POLICY.md`](UI_BUILDER_CATALOG_POLICY.md)) — `images/` PNGs,
+and `figma/` — the per-sticker layered **`compose/figma-svg`** vectors),
+regenerated from the code on each catalog change so it never drifts. Each component ships both the raster PNG (in
 `images/`) and its editable vector (`figma/<slug>.svg`): import the PNG for a
 pixel reference or the SVG for a real editable component — fills, strokes, corner
 radii, and text are live layers, not a flattened screenshot. The SVG is the same

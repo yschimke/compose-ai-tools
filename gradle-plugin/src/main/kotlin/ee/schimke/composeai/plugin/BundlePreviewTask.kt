@@ -10,6 +10,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -339,6 +340,45 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val dataExtensionFiles: ConfigurableFileCollection
 
   /** Output `.png` polyglot file. */
+  /**
+   * `ui-builder.policy.json` candidates, most specific first: the module's own, then the repository
+   * root's. A file collection rather than an optional `@InputFile` for the reason
+   * `DiscoverPreviewsTask` uses one — "no policy" is the ordinary case, and an `@InputFile` that
+   * does not exist fails the build.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderPolicyCandidates: ConfigurableFileCollection
+
+  /** `catalog.spec.json` candidates, in the same order and for the same reason. */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val catalogSpecCandidates: ConfigurableFileCollection
+
+  /**
+   * The `ui-builder/designs/` trees a policy's `templates` paths resolve against — module first,
+   * repository root second.
+   *
+   * The bundle has to CARRY the designs it advertises. `catalog-ui-builder.mjs` publishes out of
+   * bundle entries and nothing else, so a template named in `statusSemantics.templates` but absent
+   * from the zip cannot reach the delivery branch at all — the catalog would advertise a document
+   * that is a 404 for whoever clicks it, which is worse than not offering the template.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val uiBuilderTemplateCandidates: ConfigurableFileCollection
+
+  /**
+   * The directories a `templates` path resolves against — the module's, then the repository root's.
+   *
+   * `@Internal` on purpose: these are the *project* directories, and snapshotting them would make
+   * every file in the project an input to this task. Change detection is carried by
+   * [uiBuilderTemplateCandidates], which snapshots only the `ui-builder/` tree; this property
+   * exists so execution can resolve a branch-relative path without reaching for `project`, which is
+   * not available under the configuration cache.
+   */
+  @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
+
   @get:OutputFile abstract val output: RegularFileProperty
 
   @TaskAction
@@ -651,6 +691,32 @@ abstract class BundlePreviewTask : DefaultTask() {
       } else {
         manifest.copy(previews = bundlePreviews)
       }
+    // Generated before the zip so the designs it advertises can be looked up and carried with it.
+    val fullRecord = ComponentRecords.from(manifest)
+    // ONE carried record, used by both artifacts.
+    //
+    // The argument below — policy is a component-wide fact declared by whichever preview happens to
+    // carry the annotation, so selecting a different preview must not revert the component to
+    // defaults — was applied to `ui-builder.json` and not to `components.json`, which was built
+    // from the filtered manifest alone. So a bundle could carry a component's policy in one file
+    // and a null `builder` for the same component in the other, and a consumer reading policy from
+    // the record silently got defaults: the exact failure the argument was written about, in the
+    // artifact it was not applied to.
+    //
+    // Only `builder` is merged. Everything else about the carried record is deliberately the
+    // FILTERED view — its bindings name previews this bundle actually contains — and widening that
+    // would put preview ids in `components.json` that its own `previews.json` does not have.
+    val carriedRecord =
+      ComponentRecords.from(filteredManifest).let { carried ->
+        val policyByComponent = fullRecord.components.associate { it.canonicalId to it.builder }
+        carried.copy(
+          components =
+            carried.components.map {
+              it.copy(builder = policyByComponent[it.canonicalId] ?: it.builder)
+            }
+        )
+      }
+    val uiBuilderJson = uiBuilderJsonFor(fullRecord, carriedRecord)
     val zipBytes =
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
@@ -658,11 +724,14 @@ abstract class BundlePreviewTask : DefaultTask() {
         // Derived from the FILTERED manifest, not the producer's full one: that filters the records
         // to the selected previews and makes every binding's previewId one the bundled manifest
         // actually carries, by construction rather than by a parallel rewrite that could drift.
-        componentsJson =
-          JSON.encodeToString(
-            ComponentRecordFile.serializer(),
-            ComponentRecords.from(filteredManifest),
-          ),
+        componentsJson = JSON.encodeToString(ComponentRecordFile.serializer(), carriedRecord),
+        // Generated here rather than copied out of `build/compose-previews/`, and derived from
+        // BOTH records: policy is a component-wide fact declared by whichever preview happens to
+        // carry the annotation, so `bundle pack --id …` selecting a different preview of the same
+        // component must not silently revert that component to defaults. The full record supplies
+        // the declarations; the filtered one decides which components the bundle actually carries.
+        uiBuilderJson = uiBuilderJson,
+        uiBuilderTemplates = uiBuilderTemplatesFor(uiBuilderJson),
         appJar = appJarBytes,
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
@@ -1550,6 +1619,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     bundleJson: String,
     previewsJson: String,
     componentsJson: String,
+    uiBuilderJson: String?,
+    uiBuilderTemplates: Map<String, ByteArray>,
     appJar: ByteArray,
     inlinedProjectJars: Map<String, File>,
     report: String,
@@ -1569,6 +1640,16 @@ abstract class BundlePreviewTask : DefaultTask() {
       // existed in the producer's build directory would be unreachable to exactly the readers the
       // wire contract names.
       zip.writeFile("components.json", componentsJson.toByteArray(Charsets.UTF_8))
+      // `ui-builder.json` beside it, when this module authors a builder policy. Absent for every
+      // module that does not, which is almost all of them: a bundle entry that is not there is how
+      // a consumer is told there is no builder catalog, rather than by an empty one it has to
+      // recognise.
+      uiBuilderJson?.let { zip.writeFile("ui-builder.json", it.toByteArray(Charsets.UTF_8)) }
+      // The template designs that catalog advertises, at the same branch-relative paths it names
+      // them by. `catalog-ui-builder.mjs` publishes out of bundle entries and nothing else, so a
+      // design that is not in here cannot reach the delivery branch — the catalog would offer a
+      // document that 404s for whoever picks it.
+      uiBuilderTemplates.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // Renderer-named APNG/GIF siblings consumed by catalog motion publishing and bundle readers.
@@ -1798,6 +1879,142 @@ abstract class BundlePreviewTask : DefaultTask() {
       baos.toByteArray()
     }
   }
+
+  /**
+   * The authored pair — policy and cover sheet — resolved from ONE location.
+   *
+   * Both are looked for in the module directory first and the repository root second, but they are
+   * chosen *together*: a multi-catalog repository routinely has a root policy for its main catalog
+   * and a nested module with its own `catalog.spec.json` and deliberately no policy of its own.
+   * Picking each file independently would hand that module the root's platform, frame, builtins and
+   * templates under its own cover sheet's identity — a hybrid catalog describing a module nobody
+   * wrote a policy for, which is worse than the nothing it should publish.
+   *
+   * So: if the module has either file, the module's location wins outright and a missing policy
+   * there means this module publishes no builder catalog. Only a module with neither falls back to
+   * the root.
+   */
+  private fun authoredPair(): AuthoredPair? {
+    val modulePolicy = uiBuilderPolicyCandidates.files.firstOrNull()?.takeIf { it.isFile }
+    val moduleSpec = catalogSpecCandidates.files.firstOrNull()?.takeIf { it.isFile }
+    if (modulePolicy != null || moduleSpec != null) {
+      return modulePolicy?.let { AuthoredPair(it, moduleSpec, moduleOwns = true) }
+    }
+    val rootPolicy = uiBuilderPolicyCandidates.files.drop(1).firstOrNull { it.isFile }
+    val rootSpec = catalogSpecCandidates.files.drop(1).firstOrNull { it.isFile }
+    return rootPolicy?.let { AuthoredPair(it, rootSpec, moduleOwns = false) }
+  }
+
+  /**
+   * The authored files and WHERE they came from.
+   *
+   * [moduleOwns] is not decoration: a policy resolved from the repository root names its templates
+   * relative to the root, so the template lookup has to search that side first or a module-local
+   * design shadows the one the selected policy owns.
+   */
+  private data class AuthoredPair(val policy: File, val spec: File?, val moduleOwns: Boolean)
+
+  /**
+   * The module's builder catalog as JSON, or null when it authors no `ui-builder.policy.json`.
+   *
+   * Two records, and the distinction is the whole point. [full] is every preview in the module, so
+   * a `@BuilderComponent` declared on one preview of a component still reaches that component when
+   * `bundle pack --id …` selected a different one — policy is a fact about the COMPONENT, not about
+   * the preview that happened to declare it, and a single-preview bundle silently reverting a
+   * component's canvas, starter and callbacks to defaults is a mismatch a consumer cannot notice.
+   * [carried] is what the bundle actually contains, so a published entry never names a component
+   * that is not in it.
+   */
+  /**
+   * The template designs the generated catalog advertises, as bundle entries keyed by the path it
+   * names them by.
+   *
+   * Read back out of the generated JSON rather than off the policy, so what is carried is exactly
+   * what the published file points at — the two cannot drift, because there is only one list.
+   */
+  private fun uiBuilderTemplatesFor(uiBuilderJson: String?): Map<String, ByteArray> {
+    val catalog =
+      uiBuilderJson?.let {
+        runCatching { JSON.decodeFromString<UiBuilderCatalogFile>(it) }.getOrNull()
+      } ?: return emptyMap()
+    val declared = catalog.statusSemantics.templates
+    val found =
+      UiBuilderTemplateLookup.resolve(
+        uiBuilderTemplateRoots.files,
+        declared,
+        moduleOwnsPolicy = authoredPair()?.moduleOwns ?: true,
+      )
+    (declared - found.keys).sorted().forEach {
+      logger.warn(
+        "composePreview: the builder catalog names template design '$it', which is not under " +
+          "ui-builder/ in this module or the repository root; it will be missing from the bundle " +
+          "and from the delivery branch."
+      )
+    }
+    // Parsed before it is carried. A truncated or malformed design would otherwise be counted as
+    // published, advertised on the branch, and fail only when somebody picks it out of the New
+    // design chooser — the same "reported successfully, broken later" shape the diagnostics in this
+    // file exist to prevent. A design that will not parse is not carried and is named instead.
+    val (usable, unreadable) =
+      found.entries.partition { (_, file) ->
+        runCatching { JSON.parseToJsonElement(file.readText()) }.isSuccess
+      }
+    unreadable.forEach { (path, file) ->
+      logger.warn(
+        "composePreview: template design '$path' (${file.path}) is not readable JSON, so it is " +
+          "not carried in the bundle; the builder catalog names it and it will be missing."
+      )
+    }
+    return usable.associate { (path, file) -> path to file.readBytes() }
+  }
+
+  private fun uiBuilderJsonFor(full: ComponentRecordFile, carried: ComponentRecordFile): String? {
+    val carriedIds = carried.components.map { it.canonicalId }.toSet()
+    // Components from `full`, orphans from `carried`, and the asymmetry is deliberate. A component
+    // keeps its whole record — every binding, every catalog id — because bundling one of its
+    // previews does not shrink what the component IS. An orphan is a property of a PREVIEW, so an
+    // orphan for a preview this bundle does not carry is a diagnostic about something the bundle's
+    // own previews.json and components.json do not contain. Filtering the components and carrying
+    // every orphan beside them was half the filter: `carried` already holds exactly the orphans of
+    // the previews that were selected, so there is nothing to recompute.
+    val record =
+      full.copy(
+        components = full.components.filter { it.canonicalId in carriedIds },
+        builderOrphans = carried.builderOrphans,
+      )
+    val authored = authoredPair() ?: return null
+    val (policyFile, specFile) = authored.policy to authored.spec
+    val lenient = Json { ignoreUnknownKeys = true }
+    val policy = runCatching {
+      lenient.decodeFromString<UiBuilderPolicyFile>(policyFile.readText())
+    }
+      .getOrElse { failure ->
+        logger.warn(
+          "composePreview: ${policyFile.path} could not be read " +
+            "(${failure.message ?: failure::class.simpleName}); the bundle carries no " +
+            "ui-builder.json."
+        )
+        return null
+      }
+    // The cover sheet from the SAME location as the policy, which is the whole point of resolving
+    // them as a pair. Re-deriving it here independently would undo that: a module with its own
+    // policy and deliberately no local cover sheet would take the repository root's system and
+    // title, and the bundled ui-builder.json would then disagree with the one the discovery task
+    // wrote for the same module.
+    val spec = specFile?.let {
+      runCatching { lenient.decodeFromString<BundleCoverSheet>(it.readText()) }.getOrNull()
+    }
+    val cover =
+      UiBuilderCatalogs.CoverSheet(
+        system = spec?.system ?: policy.catalogId ?: record.module.trimStart(':'),
+        title = spec?.title ?: policy.catalogId ?: record.module,
+      )
+    val catalog = UiBuilderCatalogs.generate(record, cover, policy) ?: return null
+    return JSON.encodeToString(UiBuilderCatalogFile.serializer(), catalog)
+  }
+
+  /** The two `catalog.spec.json` fields a builder catalog wants; the rest is the pipeline's. */
+  @Serializable private data class BundleCoverSheet(val system: String, val title: String)
 }
 
 /**

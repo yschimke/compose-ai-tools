@@ -25,14 +25,24 @@ object ComponentRecords {
    */
   fun from(manifest: PreviewManifest): ComponentRecordFile {
     val byId = linkedMapOf<String, MutableComponent>()
+    val orphans = mutableListOf<BuilderOrphan>()
     for (preview in manifest.previews) {
-      collect(preview, preview.componentTargets, ComponentOrigin.LIBRARY, manifest.module, byId)
-      collect(preview, preview.targets, ComponentOrigin.PROJECT, manifest.module, byId)
+      val subject = builderSubject(preview, manifest.module, orphans)
+      collect(
+        preview,
+        preview.componentTargets,
+        ComponentOrigin.LIBRARY,
+        manifest.module,
+        byId,
+        subject,
+      )
+      collect(preview, preview.targets, ComponentOrigin.PROJECT, manifest.module, byId, subject)
     }
     return ComponentRecordFile(
       module = manifest.module,
       variant = manifest.variant,
       components = byId.values.map { it.toRecord() }.sortedBy { it.canonicalId },
+      builderOrphans = orphans.sortedBy { it.previewId },
     )
   }
 
@@ -42,6 +52,7 @@ object ComponentRecords {
     origin: ComponentOrigin,
     module: String,
     into: MutableMap<String, MutableComponent>,
+    builderSubject: BuilderSubject?,
   ) {
     for (target in targets) {
       val id = canonicalId(module, target)
@@ -116,8 +127,104 @@ object ComponentRecords {
         ComponentBinding(
           previewId = preview.id,
           componentId = preview.catalog?.componentId?.takeIf { it.isNotBlank() },
+          // Already resolved by discovery: the per-component override, else the file's
+          // `@CatalogGroup`, else `Components`. Carried so the builder's shelf can be built for
+          // components that annotate nothing.
+          group = preview.catalog?.group?.takeIf { it.isNotBlank() },
         )
+      // Builder policy travels with the preview that declared it — but onto ONE component, not
+      // every component the preview renders. A sticker is routinely `Button { Text(label) }`, and
+      // both calls are recorded here; writing the button's builder id, canvas adapter and state
+      // callbacks onto `Text` as well would hand a second component an identity that belongs to
+      // the first.
+      if (builderSubject != null && builderSubject.canonicalId == id) {
+        existing.builderDeclarations += preview.id to builderSubject.policy
+      }
     }
+  }
+
+  /** The one component a preview's `@BuilderComponent` is about, and the policy it carries. */
+  private data class BuilderSubject(val canonicalId: String, val policy: BuilderPolicy)
+
+  /**
+   * Which component a preview's builder policy is about, or null when it declares none.
+   *
+   * The candidates are every component the preview renders, library targets first: a catalog
+   * sticker exists to demonstrate the library component it wraps, and its own project composables —
+   * where it has any — are the wrapper rather than the subject.
+   *
+   * Three cases, in order:
+   *
+   * 1. **The annotation names one** (`component = "…CheckboxButton"`, by FQN or simple name). That
+   *    wins, and a name matching nothing the preview renders binds nothing — a policy attached to a
+   *    component that is not there is a rename that got away, and quietly attaching it to whatever
+   *    else was in the list would hide it.
+   * 2. **One candidate.** The ordinary sticker. No ambiguity to record.
+   * 3. **Several, unnamed.** Bound to the first, with the rest recorded in
+   *    [BuilderPolicy.ambiguousWith] for the generator to report by name. The first is discovery's
+   *    inference order — the outermost call, usually, but a guess either way. It is a guess rather
+   *    than a refusal because the alternative is an annotation somebody wrote that silently does
+   *    nothing, and a wrong-but-reported binding is the one a person can see and fix.
+   */
+  private fun builderSubject(
+    preview: PreviewInfo,
+    module: String,
+    orphans: MutableList<BuilderOrphan>,
+  ): BuilderSubject? {
+    val policy = preview.builder ?: return null
+    val candidates =
+      (preview.componentTargets + preview.targets)
+        .map { canonicalId(module, it) to it }
+        .distinctBy { it.first }
+    // The catalog identity of the sticker that declared this, so a derived builder id comes from
+    // THIS sticker rather than from the alphabetically first of a shared callable's aliases.
+    val declared =
+      policy.copy(declaredForCatalogId = preview.catalog?.componentId?.takeIf { it.isNotBlank() })
+    if (candidates.isEmpty()) {
+      // Reported whether or not the annotation named a subject. A policy that bound to nothing is
+      // an annotation somebody wrote whose every field does nothing, and that is true of an
+      // ordinary `@BuilderComponent(canvas = "…")` on a preview whose targets could not be inferred
+      // exactly as it is true of a misspelled `component = "…"`. Recording only the named case left
+      // the commoner one silent — the author sees no canvas, no starter and no diagnostic.
+      orphans +=
+        BuilderOrphan(
+          previewId = preview.id,
+          component = policy.component?.takeIf { it.isNotBlank() } ?: "(no subject named)",
+          candidates = emptyList(),
+        )
+      return null
+    }
+
+    val named = policy.component?.takeIf { it.isNotBlank() }
+    if (named != null) {
+      // An FQN is unique by construction, so it wins outright. A SIMPLE name is only accepted when
+      // it matches one target: two callables named `Text` from different packages is an ordinary
+      // shape, and picking the first would attach the canvas, callbacks and saved-design identity
+      // to whichever the scan happened to reach first — silently, because naming a subject
+      // suppresses the `ambiguousWith` that would otherwise record the alternatives. Reported as an
+      // orphan instead, listing the candidates, so the fix (write the FQN) is in the message.
+      val exact = candidates.filter { (_, target) -> callableFqn(target) == named }
+      val bySimpleName = candidates.filter { (_, target) -> target.functionName == named }
+      val match = exact.firstOrNull() ?: bySimpleName.singleOrNull()
+      if (match == null && bySimpleName.size > 1) {
+        orphans += BuilderOrphan(preview.id, named, bySimpleName.map { it.first })
+        return null
+      }
+      if (match == null) {
+        // Reported rather than dropped. A subject naming nothing the preview renders is a rename
+        // that got away, and the generator reads the record rather than the manifest — so if the
+        // orphan does not travel in the file, it cannot be reported anywhere a person will look.
+        orphans += BuilderOrphan(preview.id, named, candidates.map { it.first })
+        return null
+      }
+      return BuilderSubject(match.first, declared)
+    }
+
+    val (subject, rest) = candidates.first() to candidates.drop(1)
+    return BuilderSubject(
+      subject.first,
+      if (rest.isEmpty()) declared else declared.copy(ambiguousWith = rest.map { it.first }),
+    )
   }
 
   /**
@@ -193,6 +300,39 @@ object ComponentRecords {
 
     var bindings: List<ComponentBinding> = emptyList()
 
+    /**
+     * Every `@BuilderComponent` policy declared for this component, with the preview that declared
+     * it. Reduced by [mergedBuilderPolicy]; kept as a list until then because the reduction needs
+     * to know how many there were and whether they agreed.
+     */
+    var builderDeclarations: List<Pair<String, BuilderPolicy>> = emptyList()
+
+    /**
+     * The one policy this component publishes, or null when no sticker declared one.
+     *
+     * Several previews may render one component and any of them may carry the annotation. Where
+     * they agree — the ordinary case, including one preview declaring it and the rest declaring
+     * nothing — the agreed policy is published and [BuilderPolicy.declaredBy] names every preview
+     * that said it. Where they disagree, the **lowest preview id wins** and the rest are named in
+     * [BuilderPolicy.conflicting].
+     *
+     * Lowest-id rather than first-seen because manifest order is not a fact anybody controls, and a
+     * record that changes which policy it publishes when a preview is renamed is a record nobody
+     * can review. Recorded rather than resolved silently for the same reason the descriptor merge
+     * drops to null: the resolution is arbitrary, and the disagreement is what somebody has to fix.
+     */
+    fun mergedBuilderPolicy(): BuilderPolicy? {
+      if (builderDeclarations.isEmpty()) return null
+      // Deduplicated first: `collect` runs once over a preview's componentTargets and again over
+      // its targets, so a sticker that resolves the same component through both paths declares its
+      // policy twice and `declaredBy` would name the preview twice for saying it once.
+      val ordered = builderDeclarations.distinct().sortedBy { it.first }
+      val winner = ordered.first().second
+      val agreed = ordered.filter { it.second == winner }.map { it.first }
+      val conflicting = ordered.filterNot { it.second == winner }.map { it.first }
+      return winner.copy(declaredBy = agreed, conflicting = conflicting)
+    }
+
     fun toRecord(): ComponentRecord {
       val resolvedBindings = bindings.distinctBy { it.previewId }.sortedBy { it.previewId }
       val record =
@@ -213,6 +353,7 @@ object ComponentRecords {
           hasContextReceivers = hasContextReceivers,
           requiredOptIns = requiredOptIns,
           androidxOptIns = androidxOptIns,
+          builder = mergedBuilderPolicy(),
         )
       // Printed from the finished record, so the snippet is answering the same symbol, parameters
       // and receiver a consumer will read beside it.

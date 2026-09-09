@@ -43,6 +43,26 @@ data class ComponentRecordFile(
   val module: String,
   val variant: String,
   val components: List<ComponentRecord>,
+  /**
+   * `@BuilderComponent` declarations that bound to no component, with the reason.
+   *
+   * A policy naming a subject the preview does not render is a rename that got away, and dropping
+   * it silently leaves the component with a default nobody meant it to have and no symptom at all.
+   * The generator cannot see the annotation — it reads this file, not the manifest — so the orphan
+   * has to travel here or it cannot be reported anywhere a person will look.
+   */
+  val builderOrphans: List<BuilderOrphan> = emptyList(),
+)
+
+/** A `@BuilderComponent` that bound to nothing, and what it was looking for. */
+@Serializable
+data class BuilderOrphan(
+  /** The preview whose annotation this was. */
+  val previewId: String,
+  /** The `component = "…"` it named. */
+  val component: String,
+  /** The components that preview actually renders, so the message can suggest one. */
+  val candidates: List<String> = emptyList(),
 )
 
 /**
@@ -119,6 +139,15 @@ data class ComponentRecord(
    * signature belongs to.
    */
   val overloadsCollided: Boolean = false,
+  /**
+   * UI-builder policy this component's stickers declared with `@BuilderComponent`, or null when
+   * none did — which is the case for every component of a catalog that has no disagreements with
+   * the builder's defaults, and for every ordinary application preview.
+   *
+   * Additive and ignorable: a consumer that does not build UIs reads the record exactly as before.
+   * See [BuilderPolicy] for why it is not defaulted here.
+   */
+  val builder: BuilderPolicy? = null,
   /**
    * Fully-qualified `@RequiresOptIn` markers the declaration carries. Copied onto
    * [ComponentCode.requiredOptIns] for the emitted call; see that field for what a caller does with
@@ -273,4 +302,19 @@ data class ComponentCode(
  *   preview: the same `Card` can be one catalog's `Containment/Card` and another preview's
  *   incidental container.
  */
-@Serializable data class ComponentBinding(val previewId: String, val componentId: String? = null)
+/**
+ * One preview's claim on a component: which preview, under which catalog id, in which group.
+ *
+ * [group] is the catalog's own resolved grouping — the per-component `@CatalogComponent(group = …)`
+ * override, else the file's `@CatalogGroup`, else `Components`. It is carried because the builder
+ * shelves EVERY admitted component, annotated or not, and `componentMenu` is where a consumer
+ * learns which shelf each one belongs on. Dropping it meant an unannotated component reached the
+ * shelf with no group a consumer could recover, which is most of the default shelf for a catalog
+ * that has adopted nothing yet — the case the contract is most careful to keep working.
+ */
+@Serializable
+data class ComponentBinding(
+  val previewId: String,
+  val componentId: String? = null,
+  val group: String? = null,
+)

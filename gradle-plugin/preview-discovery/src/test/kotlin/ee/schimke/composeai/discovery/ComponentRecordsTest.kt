@@ -29,6 +29,7 @@ class ComponentRecordsTest {
     id: String,
     componentTargets: List<PreviewTarget> = emptyList(),
     targets: List<PreviewTarget> = emptyList(),
+    builder: BuilderPolicy? = null,
   ) =
     PreviewInfo(
       id = id,
@@ -36,6 +37,7 @@ class ComponentRecordsTest {
       className = "com.example.PreviewsKt",
       targets = targets,
       componentTargets = componentTargets,
+      builder = builder,
     )
 
   private fun manifest(vararg previews: PreviewInfo) =
@@ -372,5 +374,227 @@ class ComponentRecordsTest {
       )
 
     assertThat(file.components.single().code?.refusedReason).contains("not recovered")
+  }
+
+  @Test
+  fun `builder policy reaches the record and names the preview that declared it`() {
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview("p1", componentTargets = listOf(card)),
+          preview(
+            "p2",
+            componentTargets = listOf(card),
+            builder = BuilderPolicy(canvas = "material3/Card"),
+          ),
+        )
+      )
+
+    val record = file.components.single()
+    assertThat(record.builder?.canvas).isEqualTo("material3/Card")
+    // Which sticker to edit, which is not answerable from the policy alone once several previews
+    // render one component.
+    assertThat(record.builder?.declaredBy).containsExactly("p2")
+    assertThat(record.builder?.conflicting).isEmpty()
+  }
+
+  @Test
+  fun `two previews declaring the same policy agree rather than conflict`() {
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val policy = BuilderPolicy(canvas = "material3/Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview("p2", componentTargets = listOf(card), builder = policy),
+          preview("p1", componentTargets = listOf(card), builder = policy),
+        )
+      )
+
+    val merged = file.components.single().builder!!
+    assertThat(merged.canvas).isEqualTo("material3/Card")
+    assertThat(merged.declaredBy).containsExactly("p1", "p2").inOrder()
+    assertThat(merged.conflicting).isEmpty()
+  }
+
+  @Test
+  fun `disagreeing policies resolve to the lowest preview id and name the rest`() {
+    val card = target("androidx.compose.material3.CardKt", "Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          // Declared in the manifest in the order that would win under first-seen, to pin that the
+          // resolution is by preview id: manifest order is not a fact anybody controls, and a
+          // record that changed which policy it published when a preview was renamed would be
+          // unreviewable.
+          preview("p9", componentTargets = listOf(card), builder = BuilderPolicy(canvas = "b")),
+          preview("p1", componentTargets = listOf(card), builder = BuilderPolicy(canvas = "a")),
+        )
+      )
+
+    val merged = file.components.single().builder!!
+    assertThat(merged.canvas).isEqualTo("a")
+    assertThat(merged.declaredBy).containsExactly("p1")
+    // Recorded rather than resolved in silence: the resolution is arbitrary and the disagreement
+    // is what somebody has to fix.
+    assertThat(merged.conflicting).containsExactly("p9")
+  }
+
+  @Test
+  fun `a preview that resolves one component through both paths declares its policy once`() {
+    val card = target("com.example.CardKt", "Card")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(card),
+            targets = listOf(card),
+            builder = BuilderPolicy(canvas = "material3/Card"),
+          )
+        )
+      )
+
+    assertThat(file.components.single().builder?.declaredBy).containsExactly("p1")
+  }
+
+  @Test
+  fun `a sticker that renders several components binds its policy to one of them`() {
+    // The bug this exists for: a `Button { Text(label) }` sticker records BOTH calls, and writing
+    // the button's builder id, canvas adapter and state callbacks onto `Text` as well hands a
+    // second component an identity that belongs to the first.
+    val button = target("androidx.wear.compose.material3.ButtonKt", "Button")
+    val text = target("androidx.wear.compose.material3.TextKt", "Text")
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(button, text),
+            builder = BuilderPolicy(id = "wear-m3/button", canvas = "placeholder"),
+          )
+        )
+      )
+
+    val withPolicy = file.components.filter { it.builder != null }
+    assertThat(withPolicy.map { it.canonicalId })
+      .containsExactly("app/androidx.wear.compose.material3.ButtonKt.Button")
+    // A guess, and said so: the generator reports it and names the fix.
+    assertThat(withPolicy.single().builder?.ambiguousWith)
+      .containsExactly("app/androidx.wear.compose.material3.TextKt.Text")
+  }
+
+  @Test
+  fun `naming the subject settles it, and naming nothing the preview renders binds nothing`() {
+    val button = target("androidx.wear.compose.material3.ButtonKt", "Button")
+    val text = target("androidx.wear.compose.material3.TextKt", "Text")
+
+    val named =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(button, text),
+            builder = BuilderPolicy(component = "Text", canvas = "material3/Text"),
+          )
+        )
+      )
+    val subject = named.components.single { it.builder != null }
+    assertThat(subject.canonicalId).endsWith("TextKt.Text")
+    assertThat(subject.builder?.ambiguousWith).isEmpty()
+
+    // A policy attached to a component that is not there is a rename that got away. Quietly
+    // attaching it to whatever else was in the list would hide exactly that.
+    val missing =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p2",
+            componentTargets = listOf(button, text),
+            builder = BuilderPolicy(component = "CheckboxButton", canvas = "p"),
+          )
+        )
+      )
+    assertThat(missing.components.filter { it.builder != null }).isEmpty()
+  }
+
+  @Test
+  fun `an ambiguous simple name binds nothing and is reported, while the FQN settles it`() {
+    // Two callables named `Text` from different packages is an ordinary shape. Picking the first
+    // would attach the canvas, callbacks and saved-design identity to whichever the scan reached
+    // first — silently, because naming a subject suppresses the `ambiguousWith` that would
+    // otherwise record the alternatives.
+    val wearText = target("androidx.wear.compose.material3.TextKt", "Text")
+    val foundationText = target("androidx.compose.foundation.text.TextKt", "Text")
+
+    val ambiguous =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(wearText, foundationText),
+            builder = BuilderPolicy(component = "Text", canvas = "p"),
+          )
+        )
+      )
+    assertThat(ambiguous.components.filter { it.builder != null }).isEmpty()
+    val orphan = ambiguous.builderOrphans.single()
+    assertThat(orphan.component).isEqualTo("Text")
+    assertThat(orphan.candidates).hasSize(2)
+
+    // The documented way out, and it still works: an FQN is unique by construction.
+    val byFqn =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p2",
+            componentTargets = listOf(wearText, foundationText),
+            builder =
+              BuilderPolicy(component = "androidx.wear.compose.material3.Text", canvas = "p"),
+          )
+        )
+      )
+    val subject = byFqn.components.single { it.builder != null }
+    assertThat(subject.canonicalId).isEqualTo("app/androidx.wear.compose.material3.TextKt.Text")
+    assertThat(byFqn.builderOrphans).isEmpty()
+  }
+
+  @Test
+  fun `orphans belong to the previews they were read from`() {
+    // The premise `BundlePreviewTask` relies on when it packs a selection: an orphan is a property
+    // of a PREVIEW, so the record built from a filtered manifest carries only the orphans of the
+    // previews that survived the filter. Bundling components from the full record while carrying
+    // every orphan beside them made `bundle pack --id A` report a diagnostic about a preview B that
+    // its own previews.json does not contain.
+    val wearText = target("androidx.wear.compose.material3.TextKt", "Text")
+    val foundationText = target("androidx.compose.foundation.text.TextKt", "Text")
+    val orphaning =
+      preview(
+        "p-orphan",
+        componentTargets = listOf(wearText, foundationText),
+        builder = BuilderPolicy(component = "Text", canvas = "p"),
+      )
+    val plain = preview("p-plain", componentTargets = listOf(wearText))
+
+    assertThat(
+        ComponentRecords.from(manifest(orphaning, plain)).builderOrphans.map { it.previewId }
+      )
+      .containsExactly("p-orphan")
+    assertThat(ComponentRecords.from(manifest(plain)).builderOrphans).isEmpty()
+  }
+
+  @Test
+  fun `a component no preview declared a policy for carries none`() {
+    val file =
+      ComponentRecords.from(
+        manifest(
+          preview(
+            "p1",
+            componentTargets = listOf(target("androidx.compose.material3.CardKt", "Card")),
+          )
+        )
+      )
+
+    assertThat(file.components.single().builder).isNull()
   }
 }

@@ -1370,6 +1370,16 @@ data class PreviewInfo(
    */
   val catalog: CatalogEntry? = null,
   /**
+   * UI-builder policy from the `@BuilderComponent` annotation, when the preview carries it. `null`
+   * for every preview that does not — which is nearly all of them, including every component of a
+   * catalog that has no disagreements with the builder's defaults.
+   *
+   * The same [BuilderPolicy] type `components.json` carries, declared in the shared source this
+   * module compiles from `screen/generator` — one wire shape read by both files, rather than a
+   * manifest type and a record type that mean the same thing and can drift apart.
+   */
+  val builder: BuilderPolicy? = null,
+  /**
    * `@FixedTheme` — this preview's subject **is** a theme, so a preview host must not re-render it
    * under a `themeProvider` override. `serve` already exempts a card whose catalog section is
    * `"Themes"`; this is the per-preview override for a specimen that lives outside such a tab.

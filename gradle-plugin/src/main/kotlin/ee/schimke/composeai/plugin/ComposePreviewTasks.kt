@@ -730,6 +730,27 @@ internal object ComposePreviewTasks {
       // `renderFiles`' tree — track them as their own input so the bundle re-packs when a sidecar
       // appears/changes (see `catalogTokenFiles` on the task).
       catalogTokenFiles.from(previewOutputDir.map { it.dir("data/catalog-tokens") })
+      // The two authored files a builder catalog is generated from, resolved the way
+      // `composePreviewDiscover` resolves them: the module's own first, then the repository root's.
+      uiBuilderPolicyCandidates.from(
+        project.layout.projectDirectory.file("ui-builder.policy.json"),
+        project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
+      )
+      catalogSpecCandidates.from(
+        project.layout.projectDirectory.file("catalog.spec.json"),
+        project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
+      )
+      // The template designs a policy may name, from the conventional directory rather than the
+      // whole project: `templates` entries are branch-relative paths like
+      // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
+      uiBuilderTemplateCandidates.from(
+        project.layout.projectDirectory.dir("ui-builder"),
+        project.rootProject.layout.projectDirectory.dir("ui-builder"),
+      )
+      uiBuilderTemplateRoots.from(
+        project.layout.projectDirectory,
+        project.rootProject.layout.projectDirectory,
+      )
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
       // (v9) Where this module's coordinates actually resolve from, for a player that has to
@@ -1811,6 +1832,32 @@ internal object ComposePreviewTasks {
       // task writes an empty `dataExtensionReports` map.
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       componentsFile.set(previewOutputDir.map { it.file("components.json") })
+      uiBuilderFile.set(previewOutputDir.map { it.file("ui-builder.json") })
+      // The tree the copied template designs land in, beside the catalog that names them.
+      uiBuilderTemplateDir.set(previewOutputDir.map { it.dir("ui-builder") })
+      // Most specific first: the module's own authored files, then the repository root's. Both
+      // shapes exist — wear-m3-catalog keeps one cover sheet at its root for `:catalog` and another
+      // inside `remote-catalog/` for the module publishing a different system — and a file
+      // collection lets a candidate simply not be there, which is the ordinary case.
+      uiBuilderPolicyCandidates.from(
+        project.layout.projectDirectory.file("ui-builder.policy.json"),
+        project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
+      )
+      catalogSpecCandidates.from(
+        project.layout.projectDirectory.file("catalog.spec.json"),
+        project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
+      )
+      // The template designs a policy may name, from the conventional directory rather than the
+      // whole project: `templates` entries are branch-relative paths like
+      // `ui-builder/designs/wear-list.json`, so this is the tree they resolve inside.
+      uiBuilderTemplateCandidates.from(
+        project.layout.projectDirectory.dir("ui-builder"),
+        project.rootProject.layout.projectDirectory.dir("ui-builder"),
+      )
+      uiBuilderTemplateRoots.from(
+        project.layout.projectDirectory,
+        project.rootProject.layout.projectDirectory,
+      )
       group = "compose preview"
       description = "Discover @Preview annotations in compiled classes"
       configureDeps()
