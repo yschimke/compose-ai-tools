@@ -1424,15 +1424,102 @@ class ScreenGeneratorTest {
     assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
   }
 
+  /**
+   * Eight cells, one of them different, read as their eight values.
+   *
+   * Both folds can claim this run — three identical, then one, then four — and the longer one wins,
+   * which is also the better reading: what differs between the children is a value, so the values
+   * are what the generated screen shows.
+   */
   @Test
-  fun `a sibling that differs breaks the run at itself and neither side is lost`() {
+  fun `a sibling differing in one literal folds the whole run into its values`() {
     val cells =
       (0 until 8).map { index -> textNode(if (index == 3) "odd" else "cell") }.toTypedArray()
     val source = emitted(column(*cells), catalog(card, text)).source
 
+    assertThat(source)
+      .contains(
+        "kotlin.collections.listOf(\"cell\", \"cell\", \"cell\", \"odd\", \"cell\", " +
+          "\"cell\", \"cell\", \"cell\").forEach { value ->"
+      )
+    assertThat(occurrences(source, "Text(text = value)")).isEqualTo(1)
+    assertThat(source).doesNotContain("kotlin.repeat(")
+  }
+
+  /**
+   * A sibling that differs in more than a literal breaks the run at itself.
+   *
+   * The values fold needs one varying piece between two fixed ones. A child of another component
+   * shares no such shape, so the run is what it always was: three, the odd one, four.
+   */
+  @Test
+  fun `a sibling of another component breaks the run at itself and neither side is lost`() {
+    val cells =
+      (0 until 8)
+        .map { index ->
+          if (index == 3) ScreenNode(card.canonicalId, slots = mapOf("content" to emptyList()))
+          else textNode("cell")
+        }
+        .toTypedArray()
+    val source = emitted(column(*cells), catalog(card, text)).source
+
     assertThat(source).contains("kotlin.repeat(3) { _ ->")
     assertThat(source).contains("kotlin.repeat(4) { _ ->")
-    assertThat(source).contains("Text(text = \"odd\")")
+    assertThat(occurrences(source, "Text(text = ")).isEqualTo(2)
+  }
+
+  /**
+   * The shape this fold exists for: a contribution graph whose cells carry different colours.
+   *
+   * Twelve nodes generating twelve calls that differ in eight hex digits is what the identical-run
+   * fold cannot touch and what a reader most wants written as a list.
+   */
+  @Test
+  fun `cells differing only in a hex literal become the list of those literals`() {
+    val swatch =
+      component(
+        "Swatch",
+        "androidx.compose.material3.Swatch",
+        listOf(TargetParameter("color", "Long", typeFqn = "kotlin.Long")),
+      )
+    val shades = listOf(0xFFEBEDF0L, 0xFF9BE9A8L, 0xFF40C463L, 0xFF30A14EL)
+    val cells =
+      shades
+        .map { shade ->
+          ScreenNode(swatch.canonicalId, arguments = mapOf("color" to ScreenValue.Whole(shade)))
+        }
+        .toTypedArray()
+    val source = emitted(column(*cells), catalog(card, swatch)).source
+
+    assertThat(source).contains("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Swatch(color = value)")).isEqualTo(1)
+  }
+
+  /**
+   * Numbers of different textual length are left alone, because their types can differ.
+   *
+   * `listOf(1, 2)` is a `List<Int>` and `listOf(0xFFEBEDF0, 2)` a `List<Any>`, and a body written
+   * for the first would not compile against the second. Same spelling, same inferred type — so the
+   * rule is textual and conservative rather than a type inference this generator cannot do.
+   */
+  @Test
+  fun `numbers of unequal length are not folded into one list`() {
+    val swatch =
+      component(
+        "Swatch",
+        "androidx.compose.material3.Swatch",
+        listOf(TargetParameter("color", "Long", typeFqn = "kotlin.Long")),
+      )
+    val cells =
+      listOf(1L, 22L, 333L)
+        .map { value ->
+          ScreenNode(swatch.canonicalId, arguments = mapOf("color" to ScreenValue.Whole(value)))
+        }
+        .toTypedArray()
+    val source = emitted(column(*cells), catalog(card, swatch)).source
+
+    assertThat(source).doesNotContain("kotlin.collections.listOf(")
+    assertThat(occurrences(source, "Swatch(color = ")).isEqualTo(3)
   }
 
   @Test
