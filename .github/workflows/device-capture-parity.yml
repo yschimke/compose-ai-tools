@@ -62,8 +62,10 @@ jobs:
       - name: Render the app capture and the design
         run: ./gradlew :samples:android:composePreviewRenderAll
 
+      # `test` is the aggregate lifecycle task on an Android module and rejects `--tests`; the
+      # variant task is the one that takes a filter.
       - name: Score the design against the captured app
-        run: ./gradlew :samples:android:test --tests '*DeviceCaptureParityTest*'
+        run: ./gradlew :samples:android:testDebugUnitTest --tests '*DeviceCaptureParityTest*'
 
       - name: Summarise
         if: always()
