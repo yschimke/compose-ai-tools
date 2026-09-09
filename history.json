@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "766aa1255ec39df1584342e8970f5451398564cc",
+    "generatedFrom": "e4323b610f99f1761ee95530a85d83493459a8b2",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -7565,6 +7565,21 @@
                     "commit": "766aa1255ec39df1584342e8970f5451398564cc",
                     "date": "2026-09-09T04:37:01Z",
                     "sourceSha": "d7e16757",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear-widget/com.example.wearwidget.ActivitySummaryWidgetKt.ActivitySummaryWidgetRoundPreview_Round Preview": {
+            "path": "renders/samples:wear-widget/ActivitySummaryWidgetRoundPreview_Round_Preview-55cf0f7d.png",
+            "versions": [
+                {
+                    "blob": "09442f951ffa9393ab729c1a6bd9da1b9c394631",
+                    "commit": "e4323b610f99f1761ee95530a85d83493459a8b2",
+                    "date": "2026-09-09T05:59:49Z",
+                    "sourceSha": "8a3ff97c",
                     "commits": 1
                 }
             ],
