@@ -1912,23 +1912,40 @@ jobs:
           # was the fix; checking it unconditionally was the same fix left half-applied — the Gradle
           # side learned ownership and this pre-flight did not.
           #
-          # With no named module every discovered module is rendered, and one of them may have
-          # neither file, so the root stays reachable and is checked.
+          # The question is reachability, and only the set of modules being RENDERED can answer it.
           #
-          # `ALL_MODULES` is the same question asked properly. It is true for `module: ''` AND for
-          # `modules: all`, and the second of those can carry a named module — so reading emptiness
-          # alone, a caller passing both got ownership decided by the one module it named while the
-          # job went on to render every discovered one. Any sibling with neither authored file falls
-          # back to the root, so a malformed root policy skipped this pre-flight entirely and was
-          # dropped after the render: the catalog published with no builder data, which is the exact
-          # silence this step exists to end.
-          module_owns_itself=false
-          if [ "${ALL_MODULES:-false}" = "false" ] && [ -n "$MODULE" ] &&
+          # A single-module render asks it of that module. An all-module render cannot: `ALL_MODULES`
+          # is true for `module: ''` AND for `modules: all`, the second of which may still carry a
+          # named module, so deciding from `$MODULE` there let one module's ownership speak for a job
+          # that renders every discovered one — and a sibling with neither authored file falls back
+          # to a root that then skipped this check. Deciding instead that every all-module run
+          # reaches the root is the same mistake mirrored: where every discovered module owns its
+          # own files, nothing falls back, and validating the root turns another catalog's policy
+          # into a failure of a render that would never have read it.
+          #
+          # So an all-module run walks the discovery list and asks whether ANY module would fall
+          # back. Absent list, absent answer: the root stays checked, because being unable to prove
+          # nothing reads it is not proof that nothing does.
+          root_reachable=true
+          if [ "${ALL_MODULES:-false}" = "true" ]; then
+            if [ -f "$GITHUB_WORKSPACE/preview-module-sources.txt" ]; then
+              root_reachable=false
+              while IFS= read -r discovered_source; do
+                [ -n "$discovered_source" ] || continue
+                discovered_dir="${discovered_source%/}"
+                if [ ! -f "$discovered_dir/ui-builder.policy.json" ] &&
+                  [ ! -f "$discovered_dir/catalog.spec.json" ]; then
+                  root_reachable=true
+                  break
+                fi
+              done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
+            fi
+          elif [ -n "$MODULE" ] &&
             { [ -f "$(to_dir "$MODULE")/ui-builder.policy.json" ] ||
               [ -f "$(to_dir "$MODULE")/catalog.spec.json" ]; }; then
-            module_owns_itself=true
+            root_reachable=false
           fi
-          if [ "$module_owns_itself" = "false" ] && [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
+          if [ "$root_reachable" = "true" ] && [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
             policy_candidates+=("${RENDER_DIR:-.}/ui-builder.policy.json")
           fi
           # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
@@ -3227,23 +3244,40 @@ jobs:
           # was the fix; checking it unconditionally was the same fix left half-applied — the Gradle
           # side learned ownership and this pre-flight did not.
           #
-          # With no named module every discovered module is rendered, and one of them may have
-          # neither file, so the root stays reachable and is checked.
+          # The question is reachability, and only the set of modules being RENDERED can answer it.
           #
-          # `ALL_MODULES` is the same question asked properly. It is true for `module: ''` AND for
-          # `modules: all`, and the second of those can carry a named module — so reading emptiness
-          # alone, a caller passing both got ownership decided by the one module it named while the
-          # job went on to render every discovered one. Any sibling with neither authored file falls
-          # back to the root, so a malformed root policy skipped this pre-flight entirely and was
-          # dropped after the render: the catalog published with no builder data, which is the exact
-          # silence this step exists to end.
-          module_owns_itself=false
-          if [ "${ALL_MODULES:-false}" = "false" ] && [ -n "$MODULE" ] &&
+          # A single-module render asks it of that module. An all-module render cannot: `ALL_MODULES`
+          # is true for `module: ''` AND for `modules: all`, the second of which may still carry a
+          # named module, so deciding from `$MODULE` there let one module's ownership speak for a job
+          # that renders every discovered one — and a sibling with neither authored file falls back
+          # to a root that then skipped this check. Deciding instead that every all-module run
+          # reaches the root is the same mistake mirrored: where every discovered module owns its
+          # own files, nothing falls back, and validating the root turns another catalog's policy
+          # into a failure of a render that would never have read it.
+          #
+          # So an all-module run walks the discovery list and asks whether ANY module would fall
+          # back. Absent list, absent answer: the root stays checked, because being unable to prove
+          # nothing reads it is not proof that nothing does.
+          root_reachable=true
+          if [ "${ALL_MODULES:-false}" = "true" ]; then
+            if [ -f "$GITHUB_WORKSPACE/preview-module-sources.txt" ]; then
+              root_reachable=false
+              while IFS= read -r discovered_source; do
+                [ -n "$discovered_source" ] || continue
+                discovered_dir="${discovered_source%/}"
+                if [ ! -f "$discovered_dir/ui-builder.policy.json" ] &&
+                  [ ! -f "$discovered_dir/catalog.spec.json" ]; then
+                  root_reachable=true
+                  break
+                fi
+              done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
+            fi
+          elif [ -n "$MODULE" ] &&
             { [ -f "$(to_dir "$MODULE")/ui-builder.policy.json" ] ||
               [ -f "$(to_dir "$MODULE")/catalog.spec.json" ]; }; then
-            module_owns_itself=true
+            root_reachable=false
           fi
-          if [ "$module_owns_itself" = "false" ] && [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
+          if [ "$root_reachable" = "true" ] && [ -f "${RENDER_DIR:-.}/ui-builder.policy.json" ]; then
             policy_candidates+=("${RENDER_DIR:-.}/ui-builder.policy.json")
           fi
           # `:-false` because only the all-modules render path defines ALL_MODULES, and this block
