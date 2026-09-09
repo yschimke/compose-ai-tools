@@ -145,6 +145,53 @@ data class UiBuilderPolicyFile(
   val templates: List<String> = emptyList(),
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
+  /**
+   * Per-component policy the catalog states here rather than on a sticker, keyed by builder id.
+   *
+   * `@BuilderComponent` is the right place for what belongs to one sticker — its group, its variant
+   * property, whether to exclude it. It is the wrong place for a component's **vocabulary**: the
+   * properties a design may set, the slots it may fill and the modifiers it accepts are editorial
+   * decisions about the catalog's shelf, they run to dozens of entries per component, and a catalog
+   * can hold them without annotating anything. m3-catalog has 104 record components and **zero**
+   * `@BuilderComponent` annotations, and the vocabulary it needs to publish is the one its frozen
+   * capability document already states.
+   *
+   * Merged onto the annotation-derived entry for the same id, so the two can be used together and
+   * neither has to carry the other's concerns. An entry naming an id no component derives is
+   * reported rather than dropped — see `Diagnostics.POLICY_ORPHANED`'s sibling for the annotation
+   * case, and the same argument: a policy naming nothing is a rename that got away.
+   */
+  val components: Map<String, UiBuilderAuthoredComponent> = emptyMap(),
+)
+
+/**
+ * One component's authored policy.
+ *
+ * The three capability blocks are carried as raw JSON on purpose. Their shape is the UI builder's —
+ * `PropertyCapabilityV1`, `SlotCapabilityV1` — and re-declaring it here would be a second
+ * definition of a contract this repository does not own, which is exactly the drift the published
+ * `ui-builder.json` exists to avoid. The preview server validates them when it composes the shelf
+ * and refuses a catalog whose declarations it cannot serve; this carries them faithfully.
+ *
+ * Every field is nullable so that "not stated" and "stated as empty" stay different questions: a
+ * catalog declaring `modifierCapabilities: []` means the component accepts none, and one omitting
+ * it means the consumer should fall back.
+ */
+@Serializable
+data class UiBuilderAuthoredComponent(
+  /** The record's `canonicalId`, joining this policy to the inventory. */
+  val record: String? = null,
+  /** The shelf this component appears on, as `@BuilderComponent(group = …)` would say it. */
+  val group: String? = null,
+  val displayName: String? = null,
+  val canvas: String? = null,
+  val nativeOnly: Boolean? = null,
+  val traits: List<String>? = null,
+  /** Kept off the shelf, with the stated reason. */
+  val excluded: String? = null,
+  val propertyCapabilities: List<JsonElement>? = null,
+  val slotCapabilities: List<JsonElement>? = null,
+  val modifierCapabilities: List<String>? = null,
 )
 
 /**

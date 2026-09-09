@@ -153,7 +153,42 @@ data class UiBuilderComponentPolicy(
   val variants: Map<String, String> = emptyMap(),
   /** Present only when the component is kept off the shelf; the value is the stated reason. */
   val excluded: String? = null,
+  /**
+   * The vocabulary the catalog states for this component — see `UiBuilderAuthoredComponent`.
+   *
+   * Raw JSON, carried rather than modelled: the shape is the UI builder's and the preview server
+   * validates it. Absent when the catalog states nothing, which is not the same as an empty list.
+   */
+  val propertyCapabilities: List<JsonElement>? = null,
+  val slotCapabilities: List<JsonElement>? = null,
+  val modifierCapabilities: List<String>? = null,
 )
+
+/**
+ * The annotation's policy with the authored one laid over it.
+ *
+ * Field by field rather than wholesale, so the two sources can each say what they are good at: a
+ * sticker states its group and variant property, the policy file states the component's vocabulary,
+ * and neither has to restate the other. A field the policy file leaves null is the annotation's
+ * answer — which is why every field of `UiBuilderAuthoredComponent` is nullable, and why an
+ * authored `modifierCapabilities: []` means "accepts none" rather than "not stated".
+ */
+internal fun UiBuilderComponentPolicy.mergedWith(
+  authored: UiBuilderAuthoredComponent?
+): UiBuilderComponentPolicy {
+  if (authored == null) return this
+  return copy(
+    record = authored.record ?: record,
+    displayName = authored.displayName ?: displayName,
+    canvas = authored.canvas ?: canvas,
+    nativeOnly = authored.nativeOnly ?: nativeOnly,
+    traits = authored.traits ?: traits,
+    excluded = authored.excluded ?: excluded,
+    propertyCapabilities = authored.propertyCapabilities ?: propertyCapabilities,
+    slotCapabilities = authored.slotCapabilities ?: slotCapabilities,
+    modifierCapabilities = authored.modifierCapabilities ?: modifierCapabilities,
+  )
+}
 
 /**
  * Something the generator noticed, addressed to a person reading the published file.
@@ -340,7 +375,34 @@ object UiBuilderCatalogs {
       // catalog, which never reached this loop. The one diagnostic written for that case was the
       // one case it could not fire in.
       diagnose(component, builder, builderId, diagnostics)
-      if (component.builder != null) components[builderId] = policyFor(component, builder)
+      val authored = policy.components[builderId]
+      if (component.builder != null || authored != null) {
+        val fromAnnotation =
+          if (component.builder != null) policyFor(component, builder)
+          else UiBuilderComponentPolicy(record = component.canonicalId)
+        components[builderId] = fromAnnotation.mergedWith(authored)
+      }
+    }
+
+    // An authored entry naming an id no component derives.
+    //
+    // Reported rather than dropped, for the same reason `POLICY_ORPHANED` reports an annotation
+    // that bound to nothing: a policy naming a component that is not there is a rename that got
+    // away, and dropping it leaves the component with a default nobody meant it to have and no
+    // symptom at all. This is the shape a catalog authoring its vocabulary by hand will hit — a
+    // typo in a builder id looks exactly like a component that is deliberately not stated.
+    for ((builderId, _) in policy.components) {
+      if (builderId in idOwners) continue
+      diagnostics +=
+        UiBuilderDiagnostic(
+          code = Diagnostics.POLICY_ORPHANED,
+          subject = builderId,
+          message =
+            "ui-builder.policy.json states a policy for \"$builderId\", which no component in this " +
+              "record derives, so every field in it does nothing. The ids this catalog publishes " +
+              "are derived from componentIdPrefix \"$idPrefix\"; check the spelling against " +
+              "components.json.",
+        )
     }
 
     // The shelf covers EVERY admitted component, so the menu has to as well.
@@ -370,7 +432,11 @@ object UiBuilderCatalogs {
       // under Tonal's group. Same defect as the one above, in the branch I did not change.
       val idAlias = component.builder?.declaredForCatalogId ?: component.componentIds.firstOrNull()
       val group =
-        component.builder?.group?.takeIf { it.isNotBlank() }
+        // The policy file first, then the annotation, then the catalog's own grouping. A catalog
+        // stating its shelf in one reviewable file should not have to annotate a sticker to place
+        // a component — that is the whole reason the authored block exists.
+        policy.components[builderId]?.group?.takeIf { it.isNotBlank() }
+          ?: component.builder?.group?.takeIf { it.isNotBlank() }
           ?: component.bindings
             .firstOrNull { it.componentId == idAlias && !it.group.isNullOrBlank() }
             ?.group

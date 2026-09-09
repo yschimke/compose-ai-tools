@@ -22,6 +22,7 @@ class UiBuilderCatalogsTest {
     builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
     code: UiBuilderCode? = null,
     componentIdPrefix: String? = null,
+    components: Map<String, UiBuilderAuthoredComponent> = emptyMap(),
   ) =
     UiBuilderPolicyFile(
       schema = UI_BUILDER_POLICY_SCHEMA,
@@ -30,6 +31,7 @@ class UiBuilderCatalogsTest {
       builtins = builtins,
       code = code,
       componentIdPrefix = componentIdPrefix,
+      components = components,
     )
 
   private fun record(vararg components: ComponentRecord) =
@@ -71,6 +73,111 @@ class UiBuilderCatalogsTest {
             ComponentBinding(previewId = "${name}Preview", componentId = catalogId, group = group)
           ),
     )
+
+  /**
+   * A catalog states a component's vocabulary in the policy file, without annotating anything.
+   *
+   * This is m3-catalog's shape exactly: 104 record components, zero `@BuilderComponent`
+   * annotations, and a shelf whose properties, slots and modifiers are editorial decisions that
+   * belong in one reviewable file rather than sprayed across stickers.
+   */
+  @Test
+  fun `an authored component publishes its vocabulary, with no annotation`() {
+    val file =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button", group = "Actions")),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf(
+              "wear-m3/button" to
+                UiBuilderAuthoredComponent(
+                  displayName = "Button",
+                  traits = listOf("Action"),
+                  modifierCapabilities = listOf("padding", "size"),
+                  propertyCapabilities =
+                    listOf(Json.parseToJsonElement("""{"name":"style","jsonType":"string"}""")),
+                  slotCapabilities =
+                    listOf(Json.parseToJsonElement("""{"name":"label","ordered":false}""")),
+                )
+            ),
+        ),
+      )
+    val policy = file!!.statusSemantics.components.getValue("wear-m3/button")
+    assertThat(policy.record).isEqualTo(":catalog/androidx.wear.compose.material3.ButtonKt.Button")
+    assertThat(policy.displayName).isEqualTo("Button")
+    assertThat(policy.traits).containsExactly("Action")
+    assertThat(policy.modifierCapabilities).containsExactly("padding", "size").inOrder()
+    assertThat(policy.propertyCapabilities).hasSize(1)
+    assertThat(policy.slotCapabilities).hasSize(1)
+  }
+
+  /**
+   * "Not stated" and "stated as empty" are different questions.
+   *
+   * A catalog declaring `modifierCapabilities: []` means the component accepts none; one omitting
+   * it means the consumer should fall back to whatever it does when a catalog says nothing.
+   * Collapsing the two would make the contract unable to express a component that takes no
+   * modifiers.
+   */
+  @Test
+  fun `an omitted capability block stays absent rather than becoming empty`() {
+    val file =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button", group = "Actions")),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf("wear-m3/button" to UiBuilderAuthoredComponent(displayName = "Button")),
+        ),
+      )
+    val policy = file!!.statusSemantics.components.getValue("wear-m3/button")
+    assertThat(policy.modifierCapabilities).isNull()
+    assertThat(policy.propertyCapabilities).isNull()
+    assertThat(policy.slotCapabilities).isNull()
+  }
+
+  /** The policy file places a component the sticker never annotated. */
+  @Test
+  fun `an authored group shelves a component`() {
+    val file =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button", group = "Actions")),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components = mapOf("wear-m3/button" to UiBuilderAuthoredComponent(group = "Controls")),
+        ),
+      )
+    assertThat(file!!.statusSemantics.componentMenu.components.getValue("wear-m3/button").group)
+      .isEqualTo("Controls")
+  }
+
+  /**
+   * A policy naming a component that is not there is a rename that got away.
+   *
+   * Reported rather than dropped, for the same reason an orphaned `@BuilderComponent` is: silently
+   * ignoring it leaves the component with a default nobody meant it to have and no symptom at all.
+   * A hand-authored vocabulary is exactly where a mistyped id is likely.
+   */
+  @Test
+  fun `an authored policy naming no component is reported`() {
+    val file =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button", group = "Actions")),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components = mapOf("wear-m3/buton" to UiBuilderAuthoredComponent(displayName = "Typo")),
+        ),
+      )
+    val orphan =
+      file!!.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED }
+    assertThat(orphan.subject).isEqualTo("wear-m3/buton")
+    assertThat(orphan.message).contains("no component in this record derives")
+  }
 
   @Test
   fun `a catalog that authors no policy publishes no builder file`() {
