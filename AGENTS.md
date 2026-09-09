@@ -63,12 +63,14 @@ still won't. Why the PR body matters and how a trailer reached `main` anyway:
 **Reviewers: run the detector before reporting an attribution finding.** This is
 the most-reported and least-real finding on this repo — 14 PRs drew a P1 "the
 author and committer are both `Codex`" comment over 2026-08-31/09-01 and not one
-was real. An agent reviewing its own or another agent's PR must not infer the
-commit identity from the fact that an agent wrote the code: the identity is
-whatever `git config user.email` held, and here that is the human. Check it, on
-the real range:
+was real, and the reports since have kept naming commits that are not objects in
+this repository at all. An agent reviewing its own or another agent's PR must not
+infer the commit identity from the fact that an agent wrote the code: the
+identity is whatever `git config user.email` held, and here that is the human.
+Check it, on the real range, starting with whether the commit exists:
 
 ```
+git cat-file -t <sha>          # a commit you are about to name must actually exist
 git log --format='%h %an <%ae> | %cn <%ce>' <base>..<head>
 .github/scripts/agent-attribution-scan.sh --range '<base>..<head>'
 ```
