@@ -770,8 +770,19 @@ object ScreenGenerator {
               // writes that does not resolve on its own, so its import travels with it — through
               // the same conflict check every other import here goes through, which is what keeps
               // two same-named types from silently producing a file Kotlin refuses.
+              // The fourth door a simple name comes in by, and the only one the document does not
+              // choose: this import is the *record's* parameter type. It is reserved on the same
+              // terms as the other three — a type whose simple name is `kotlin` would capture the
+              // qualifier a folded run writes.
               ComponentSnippets.constructedTypeOf(parameter)?.let {
-                imports += ComponentSnippets.escapeCallableIfKeyword(it)
+                val simple = it.substringAfterLast('.')
+                if (simple in RESERVED_BY_THE_WRAPPER) {
+                  reasons +=
+                    "`${record.symbol.name}`.`${parameter.name}` imports `$simple`, which the " +
+                      "generated file spends on its own scaffolding"
+                } else {
+                  imports += ComponentSnippets.escapeCallableIfKeyword(it)
+                }
               }
               arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $placeholder"
             }
@@ -1608,9 +1619,10 @@ object ScreenGenerator {
    * `kotlin` is spent by [foldRepeats], which writes `kotlin.repeat(n)` precisely so that no
    * declaration in the body can capture the call. A declaration imported under that simple name
    * would capture the *qualifier* instead and leave `repeat` unresolved, so it is reserved here for
-   * a component and refused in [Emission.importedName] for a value — the two ways a simple name
-   * enters this file. The matching state name is refused by the root-shadowing check, which already
-   * carries `androidx` for the same reason.
+   * a component and refused for a value's reference or construct, for a chain link, and for the
+   * type a constructed placeholder imports — the four ways a simple name enters this file. The
+   * matching state name is refused by the root-shadowing check, which already carries `androidx`
+   * for the same reason.
    */
   private val RESERVED_BY_THE_WRAPPER = setOf("Composable", "kotlin")
 

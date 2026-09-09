@@ -1528,6 +1528,41 @@ class ScreenGeneratorTest {
       )
   }
 
+  /**
+   * The one import the document does not choose is reserved on the same terms.
+   *
+   * A constructed placeholder imports the *record's* parameter type, so a catalog whose parameter
+   * is typed `app.kotlin` would put that import in the file without any document asking for it —
+   * and it would capture the qualifier a folded run writes.
+   */
+  @Test
+  fun `a constructed placeholder typed kotlin is refused, like every other import of that name`() {
+    val holder =
+      component(
+        "Holder",
+        "androidx.compose.material3.Holder",
+        listOf(
+          TargetParameter(
+            "state",
+            "kotlin",
+            typeFqn = "app.kotlin",
+            noArgConstructible = true,
+            hasDefault = false,
+          )
+        ),
+      )
+
+    assertThat(
+        refusal(
+          ScreenDocument(name = "HomeScreen", root = ScreenNode(holder.canonicalId)),
+          catalog(holder),
+        )
+      )
+      .contains(
+        "`Holder`.`state` imports `kotlin`, which the generated file spends on its own scaffolding"
+      )
+  }
+
   private fun occurrences(source: String, text: String) =
     Regex(Regex.escape(text)).findAll(source).count()
 
