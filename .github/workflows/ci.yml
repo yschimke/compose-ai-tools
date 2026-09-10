@@ -356,6 +356,25 @@ jobs:
         run: ./gradlew :samples:cmp:composePreviewDiscover
       - name: Build Android sample and discover previews
         run: ./gradlew :samples:android:composePreviewDiscover
+      # The KMP-Android Robolectric lane (`composePreview { kmpAndroidRobolectric = true }`).
+      # A full render, not discovery: discovery only reads bytecode off disk and would pass with
+      # every AGP name in `AndroidVariantNaming` wrong. The failures those names cause are silent
+      # — `findByName` returns null, the merged R classes or the resource APK quietly leave the
+      # classpath — and only surface as a `NoClassDefFoundError` inside the Robolectric sandbox at
+      # render time. This sample's preview reads `android.os.Build`, so a render that produces a
+      # PNG at all proves the sandbox came up.
+      #
+      # `composePreviewRenderAll`, NOT `composePreviewRender`: only the aggregate carries the
+      # missing-render gate that compares the manifest against the PNGs on disk (see
+      # `missingRendersProperty`, default `fail`). The bare render task writes a `.error.json`
+      # beside each preview it could not draw and still exits 0 — which is exactly how this lane
+      # failed while I was building it, so a gate that cannot see that is no gate.
+      - name: Render the KMP-Android Robolectric sample
+        run: ./gradlew :samples:cmp-android-robolectric:composePreviewRenderAll
+      # The other side of the same fix: a KMP-Android module WITHOUT the opt-in must still take
+      # the Desktop lane it has taken since #248. `:samples:cmp-shared` is that shape.
+      - name: Discover previews on the default (Desktop) KMP-Android lane
+        run: ./gradlew :samples:cmp-shared:composePreviewDiscover
       # Full render for the screenshot-test sample — the interesting behaviour
       # isn't discovery (which `:samples:android` also exercises) but rendering
       # class-member @Previews co-applied with `com.android.compose.screenshot`.

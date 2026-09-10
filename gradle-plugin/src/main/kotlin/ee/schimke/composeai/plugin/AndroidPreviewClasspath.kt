@@ -63,7 +63,12 @@ internal object AndroidPreviewClasspath {
     sourceClassDirs: FileCollection,
     testConfig: Configuration?,
     screenshotTestRuntimeConfig: Configuration?,
-    unitTestConfigDir: Provider<Directory>,
+    /**
+     * AGP's `test_config.properties` directory, or null on a module with no host-test component —
+     * the `com.android.kotlin.multiplatform.library` default, where `withHostTest { }` is opt-in.
+     * `from(null)` would throw, so it is simply not contributed.
+     */
+    unitTestConfigDir: Provider<Directory>?,
     robolectricPropertiesDir: Provider<Directory>,
     legacyClasspathUnion: Boolean = false,
   ): FileCollection =
@@ -133,7 +138,7 @@ internal object AndroidPreviewClasspath {
           )
         }
       from(sourceClassDirs)
-      from(unitTestConfigDir)
+      unitTestConfigDir?.let { from(it) }
       // SDK stub android.jar on the OUTER classpath so JUnit can introspect
       // the test class (RobolectricRenderTest.kt references android.graphics.Bitmap,
       // android.view.PixelCopy, etc. in method signatures). Without it, JUnit fails

@@ -342,6 +342,43 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val enableXrPreviews: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
+  /**
+   * Render a `com.android.kotlin.multiplatform.library` module through the **Robolectric** renderer
+   * instead of the Compose Multiplatform Desktop one.
+   *
+   * Off by default, and deliberately explicit rather than inferred. Since issue #248 a KMP-Android
+   * module has rendered on Desktop: `commonMain` previews are pure-Compose composables that
+   * `ImageComposeScene` captures on the host JVM, which needs no Android infrastructure at all.
+   * That is the right lane for a `:shared` module whose UI is multiplatform, and it stays the
+   * default so no existing consumer changes behaviour.
+   *
+   * It is the wrong lane for a module whose UI is Android-only — a Wear Compose catalog, say, where
+   * `androidx.wear.compose:compose-material3` publishes for Android and nothing else. Those
+   * previews cannot be rendered off-device by Desktop at all; they need `android.jar`, a merged
+   * manifest and the AAR resource table, which is what Robolectric brings.
+   *
+   * Turning this on requires the consumer to have opted into AGP's host-test pipeline, since the
+   * plugin cannot do it for them — `withHostTest { }` both creates and configures the compilation,
+   * and AGP rejects a second call:
+   * ```
+   * kotlin {
+   *   android {
+   *     withHostTest { isIncludeAndroidResources = true }
+   *   }
+   * }
+   * ```
+   *
+   * Without `withHostTest` there is no Android test classpath to render on and the plugin falls
+   * back to Desktop with a warning. Without `isIncludeAndroidResources` the render still runs, but
+   * AGP generates no `test_config.properties`, so library resources resolve to 0 — the same
+   * degradation a classic module gets when it turns that flag off.
+   *
+   * No effect on any other module type: `com.android.application` and `com.android.library` already
+   * render through Robolectric, and a non-Android module has no lane to switch.
+   */
+  val kmpAndroidRobolectric: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
+
   /** Generic selector for preview extensions that produce data alongside preview PNGs. */
   val previewExtensions: PreviewExtensionsExtension =
     objects.newInstance(PreviewExtensionsExtension::class.java)
