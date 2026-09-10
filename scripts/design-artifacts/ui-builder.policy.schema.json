@@ -136,9 +136,60 @@
         }
       }
     },
+    "components": {
+      "type": "object",
+      "description": "One entry per component the record already carries, joined to it by `record` and keyed by the builder component id the file publishes. This is where a catalog states the shelf decisions a signature cannot: which group the component sits on, what a design may set on it, what its slots accept, and what draws it on the canvas. It is NOT a second inventory \u2014 an entry naming no record component is reported rather than dropped \u2014 and it is not where a component with no call site goes, which is `builtins`.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "record": {
+            "type": "string",
+            "description": "The record component's `canonicalId`. The join between policy and inventory, and the only field here that has to agree with another file: without it the consumer derives an id from the symbol, which is right for an unannotated component and wrong for a renamed one."
+          },
+          "group": {
+            "type": "string",
+            "description": "The shelf this component appears on, as `@BuilderComponent(group = \u2026)` would say it. A group no `menu.groupOrder` entry names is appended after the ordered ones and alphabetised."
+          },
+          "displayName": { "type": "string" },
+          "canvas": {
+            "type": "string",
+            "description": "Canvas adapter id, or `placeholder`. Same negotiation as `frame.adapter`: unknown to this build means placeholder plus a log line, never a refused catalog. Stating NOTHING is not neutral \u2014 the component composes to `platformSupported: false` and draws a named placeholder, which is how a whole shelf goes blank with every other field still correct."
+          },
+          "nativeOnly": {
+            "type": "boolean",
+            "description": "Drawn by the native lane and a placeholder on the canvas, deliberately. The honest way to say a component has no browser adapter, as against omitting `canvas` and leaving it ambiguous."
+          },
+          "traits": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What this component IS, for the slot-acceptance rules \u2014 the same vocabulary a builtin's `traits` uses."
+          },
+          "excluded": {
+            "type": "string",
+            "description": "Kept off the shelf, with the stated reason. The reason is published, so a component missing from a catalog says why rather than looking lost."
+          },
+          "propertyCapabilities": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "`PropertyCapabilityV1` entries, carried as raw JSON: the shape belongs to the UI builder, and re-declaring it here would be the second definition of a contract this repository does not own. The preview server validates them when it composes the shelf and refuses a catalog whose declarations it cannot serve."
+          },
+          "slotCapabilities": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "`SlotCapabilityV1` entries, carried as raw JSON for the reason `propertyCapabilities` is."
+          },
+          "modifierCapabilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Stated as empty means the component accepts no modifier; omitted means the consumer falls back to what the component's structure implies. Two different answers, which is why the field is nullable rather than defaulted."
+          }
+        }
+      }
+    },
     "builtins": {
       "type": "object",
-      "description": "The ONLY components this file may declare, and the reason the restriction exists: a builtin has no call site and therefore cannot be in the record — a screen scaffold the catalog structures around, a shape or an image asset that is not a composable at all. A component that HAS a call site belongs in the record, with `@BuilderComponent` on its sticker for anything the signature cannot say. A builtin must name a structural role, so the template engine knows which template writes it.",
+      "description": "The components this file may declare that are NOT in the record, and the reason the restriction exists: a builtin has no call site and therefore cannot be in the record — a screen scaffold the catalog structures around, a shape or an image asset that is not a composable at all. A component that HAS a call site belongs in the record, with `@BuilderComponent` on its sticker or an entry under `components` for anything the signature cannot say. A builtin must name a structural role, so the template engine knows which template writes it.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
