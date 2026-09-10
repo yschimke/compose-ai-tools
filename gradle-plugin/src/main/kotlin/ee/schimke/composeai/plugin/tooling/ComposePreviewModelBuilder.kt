@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin.tooling
 
 import ee.schimke.composeai.plugin.AndroidPreviewSupport
+import ee.schimke.composeai.plugin.AndroidVariantNaming
 import ee.schimke.composeai.plugin.PluginVersion
 import ee.schimke.composeai.plugin.PreviewExtension
 import java.io.Serializable
@@ -34,8 +35,15 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
       return ComposePreviewModelData(PluginVersion.value, emptyMap())
     }
     val variant = resolveVariant(project)
-    val main = resolveConfiguration(project, "${variant}RuntimeClasspath")
-    val test = resolveConfiguration(project, "${variant}UnitTestRuntimeClasspath")
+    // NOT `"${'$'}{variant}RuntimeClasspath"`: on a `com.android.kotlin.multiplatform.library`
+    // module the variant is `androidMain` while the configurations are `androidRuntimeClasspath`
+    // and `androidHostTestRuntimeClasspath`, so deriving from the variant resolves nothing and
+    // `compose-preview doctor` reports empty dependency maps — silently, since an empty map is
+    // also what a genuine non-Android module returns. See [AndroidVariantNaming].
+    val naming = AndroidVariantNaming.forProject(project, variant)
+    val main = resolveConfiguration(project, naming.runtimeClasspath)
+    val test =
+      naming.unitTestRuntimeClasspath?.let { resolveConfiguration(project, it) } ?: emptyMap()
     val gradleVersion = org.gradle.util.GradleVersion.current().version
     val (toolingDeclared, enforceTooling) = androidPreviewToolingSignals(project, variant)
     val findings: List<ModuleFinding> =
@@ -46,7 +54,9 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         previewToolingDeclared = toolingDeclared,
         enforcePreviewToolingDependency = enforceTooling,
         moduleMinSdk = resolveModuleMinSdk(project),
-        libraryMinSdks = resolveLibraryMinSdks(project, "${variant}UnitTestRuntimeClasspath"),
+        libraryMinSdks =
+          naming.unitTestRuntimeClasspath?.let { resolveLibraryMinSdks(project, it) }
+            ?: emptyList(),
       )
     val info: ModuleInfo =
       ModuleInfoData(
@@ -175,7 +185,10 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     project: Project,
     variant: String,
   ): Pair<Boolean?, Boolean?> {
-    val isAndroid = project.configurations.findByName("${variant}RuntimeClasspath") != null
+    val isAndroid =
+      project.configurations.findByName(
+        AndroidVariantNaming.forProject(project, variant).runtimeClasspath
+      ) != null
     if (!isAndroid) return null to null
     val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return null to null
     val declared =

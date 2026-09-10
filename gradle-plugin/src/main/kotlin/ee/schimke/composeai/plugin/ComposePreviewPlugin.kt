@@ -125,7 +125,15 @@ constructor(
     // vice-versa. Both withPlugin hooks fire when their plugin lands, and
     // the idempotent handlers only run once — whichever fires second is a no-op.
     project.pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
-      if (!androidConfigured && !kmpAndroidRouting) {
+      // `desktopRegistered` is the third condition and it is load-bearing. Plugin apply order is
+      // the consumer's, and a convention plugin can apply `org.jetbrains.compose` BEFORE
+      // `com.android.kotlin.multiplatform.library` — in which case the compose hook has already
+      // committed to the Desktop lane and registered `composePreviewDiscover` /
+      // `composePreviewRender`
+      // by the time this one fires. Taking the Robolectric lane on top of that would try to
+      // register those same names a second time and fail configuration outright. The module keeps
+      // Desktop instead, which is the pre-existing behaviour for every apply order.
+      if (!androidConfigured && !kmpAndroidRouting && !desktopRegistered) {
         kmpAndroidRouting = true
         // `registerDesktop`, not `desktopHandler`: this IS the fallback, and it has to get past
         // the `kmpAndroidRouting` guard it just set.

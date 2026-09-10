@@ -171,4 +171,44 @@ class AndroidVariantNamingTest {
 
     assertThat(extension.kmpAndroidRobolectric.get()).isFalse()
   }
+
+  @Test
+  fun `KMP class dirs and the resource APK follow the target, not the literal android`() {
+    // A renamed target compiles into `classes/kotlin/<target>/…` and packages into
+    // `apk_for_local_test/<hostTest>`. Hardcoding `android` / `${variant}UnitTest` leaves the
+    // render classpath unable to load a class discovery already found, and leaves
+    // `BundlePreviewTask` reading an APK it never declared as an input — a cache hit then keeps
+    // stale resources.
+    val naming =
+      AndroidVariantNaming.kmpAndroid(
+        variantName = "mobileMain",
+        targetName = "mobile",
+        unitTestName = "mobileHostTest",
+      )
+
+    assertThat(naming.extraClassDirs)
+      .containsExactly("classes/kotlin/mobile/mobileMain", "classes/kotlin/mobile/main")
+    assertThat(naming.apkForLocalTest).isEqualTo("intermediates/apk_for_local_test/mobileHostTest")
+  }
+
+  @Test
+  fun `classic AGP contributes no KMP class dirs and keeps its own APK path`() {
+    val naming = AndroidVariantNaming.classic("debug")
+
+    assertThat(naming.extraClassDirs).isEmpty()
+    assertThat(naming.apkForLocalTest).isEqualTo("intermediates/apk_for_local_test/debugUnitTest")
+  }
+
+  @Test
+  fun `forProject falls back to classic naming off a KMP-Android module`() {
+    // The Tooling API model builder has no `Variant` to read `unitTest` off, so it resolves the
+    // mapping from the project. On anything that is not KMP-Android that must be the classic
+    // derivation, unchanged.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+
+    val naming = AndroidVariantNaming.forProject(project, "debug")
+
+    assertThat(naming.runtimeClasspath).isEqualTo("debugRuntimeClasspath")
+    assertThat(naming.unitTestRuntimeClasspath).isEqualTo("debugUnitTestRuntimeClasspath")
+  }
 }
