@@ -455,6 +455,17 @@ object UiBuilderCatalogs {
     for (component in record.components) {
       val builderId = builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
       if (idOwners[builderId] != component.canonicalId) continue
+      // An excluded component gets no shelf entry. The consumer refuses to serve it — that is
+      // what `excluded` means — so a menu naming it offers something no catalog will hand over:
+      // a shelf item that disappears between the palette and the design. m3-catalog excluding
+      // its own `Sticker` and `MaterialExpressiveTheme` published both under "Badges" anyway.
+      //
+      // The reason still ships, in `statusSemantics.components`, so a component missing from the
+      // shelf can say why rather than looking lost. Only the menu drops it.
+      val excluded =
+        policy.components[builderId]?.excluded?.takeIf { it.isNotBlank() }
+          ?: component.builder?.exclude?.takeIf { it.isNotBlank() }
+      if (excluded != null) continue
       // The DECLARING sticker's group, matching the id and `catalogId` derived from the same
       // sticker. One callable is routinely published under several — `Button/Filled` and
       // `Button/Tonal` — and taking the first binding's group shelved a component whose id says
