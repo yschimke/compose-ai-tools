@@ -1,0 +1,96 @@
+package ee.schimke.composeai.remotecompose.json
+
+import androidx.compose.remote.core.CoreDocument
+import androidx.compose.remote.core.operations.Header
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+/**
+ * What a `.rc` declares about itself, before anything measures it.
+ *
+ * Deliberately not [CoreDocument]'s own geometry. `CoreDocument.getWidth()` / `getHeight()` are the
+ * *measured* size and a document that has never been through a layout pass reports `0 x 0` for both
+ * — which is what a dump produced outside a player always is. The numbers here come from the
+ * [Header] operation, so they are the size the document was authored at, which is the only size
+ * available without a player and the one a caller sizing a canvas actually wants.
+ *
+ * Every field is nullable because every header field except the version triple is optional in the
+ * wire format. A `null` here means "the document did not say", not "the document said zero", and
+ * those differ: a sticker with no declared `desiredFPS` is not a sticker asking for 0 fps.
+ */
+@Serializable
+public data class RemoteComposeDocumentHeader(
+  /** Wire-format version the document was written at, as `major.minor.patch`. */
+  public val version: String,
+  public val width: Int?,
+  public val height: Int?,
+  public val contentDescription: String?,
+  /**
+   * Capability profile bitmask — `512` = `ANDROIDX`, `513` = `EXPERIMENTAL`. A player refuses a
+   * document whose profile it does not implement, so this is the first thing to check when a
+   * document that plays in one host is blank in another.
+   */
+  public val profiles: Int?,
+  public val desiredFps: Int?,
+  /**
+   * Screen density at authoring time. Not the playback density — the document is
+   * resolution-independent.
+   */
+  public val densityAtGeneration: Float?,
+  /** Byte length of the document these fields were read from. */
+  public val byteLength: Int,
+) {
+  public fun toJsonObject(): JsonObject = buildJsonObject {
+    put("version", version)
+    width?.let { put("width", it) }
+    height?.let { put("height", it) }
+    contentDescription?.let { put("contentDescription", it) }
+    profiles?.let { put("profiles", it) }
+    desiredFps?.let { put("desiredFPS", it) }
+    densityAtGeneration?.let { put("densityAtGeneration", it) }
+    put("byteLength", byteLength)
+  }
+
+  public companion object {
+    /**
+     * Read the header out of an already-inflated [document].
+     *
+     * The [Header] operation is always the first in the stream — `structure.md` states it as a
+     * well-formedness rule and `RemoteComposeBuffer` cannot inflate anything without it — so this
+     * takes the first one it finds rather than scanning. A document with none is not a document,
+     * and inflation would already have failed.
+     */
+    internal fun of(document: CoreDocument, bytes: ByteArray): RemoteComposeDocumentHeader {
+      val header =
+        document.operations.filterIsInstance<Header>().firstOrNull()
+          ?: throw RemoteComposeJsonException(
+            "RemoteCompose document has no Header operation (${bytes.size} bytes)"
+          )
+      return RemoteComposeDocumentHeader(
+        // The version triple is the only thing `Header` exposes solely through `deepToString`, so
+        // it is parsed from there. `HEADER v1.1.0` is the shape; anything else means upstream
+        // changed the rendering and the version simply goes missing rather than the dump failing.
+        version = VERSION.find(header.deepToString(""))?.groupValues?.get(1) ?: "unknown",
+        width = header.int(Header.DOC_WIDTH),
+        height = header.int(Header.DOC_HEIGHT),
+        contentDescription = header.get(Header.DOC_CONTENT_DESCRIPTION) as? String,
+        profiles = header.int(Header.DOC_PROFILES),
+        desiredFps = header.int(Header.DOC_DESIRED_FPS),
+        densityAtGeneration = (header.get(Header.DOC_DENSITY_AT_GENERATION) as? Number)?.toFloat(),
+        byteLength = bytes.size,
+      )
+    }
+
+    /**
+     * `Header.get` returns the boxed value the writer put in, and the writer's choice of box is not
+     * stable across fields — `DOC_WIDTH` arrives as an `Integer` from one path and a `Float` from
+     * another (a document authored at a fractional density). Reading through [Number] rather than
+     * casting to `Int` is what keeps a `ClassCastException` out of the dump path.
+     */
+    private fun Header.int(tag: Short): Int? = (get(tag) as? Number)?.toInt()
+
+    private val VERSION = Regex("""HEADER v(\d+\.\d+\.\d+)""")
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "header": {
+    "width": 300,
+    "height": 300,
+    "contentDescription": "Remote Compose JSON smoke",
+    "apiLevel": 7
+  },
+  "resources": {
+    "colors": [
+      { "name": "bg", "value": "#FF102030" }
+    ]
+  },
+  "root": [
+    {
+      "column": {
+        "modifiers": [
+          "fillMaxSize",
+          { "background": "@colors.bg" },
+          { "padding": 12.0 }
+        ],
+        "horizontalAlignment": "center",
+        "verticalAlignment": "center",
+        "children": [
+          { "text": { "value": "Hello RC JSON", "fontSize": 24.0, "color": "#FFFFFFFF" } },
+          { "spacer": { "modifiers": [ { "height": 8.0 } ] } },
+          {
+            "canvas": {
+              "modifiers": [ { "size": [ 80.0, 80.0 ] } ],
+              "commands": [
+                { "type": "paint", "ops": [ { "color": "#FFEE4444" }, { "style": "fill" } ] },
+                { "type": "drawCircle", "cx": 40.0, "cy": 40.0, "radius": 32.0 }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
