@@ -2893,6 +2893,7 @@
         {
             "canonicalId": "design-catalog-wear-m3/androidx.wear.compose.material3.IconKt.Icon",
             "componentIds": [
+                "AppCard",
                 "Icon",
                 "IconButton"
             ],
@@ -2963,6 +2964,11 @@
             ],
             "slots": [],
             "bindings": [
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
+                    "componentId": "AppCard",
+                    "group": "Containment"
+                },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
                     "componentId": "IconButton",
@@ -3553,7 +3559,7 @@
                     "composableSlotReceiver": null,
                     "nullable": false,
                     "noArgConstructible": false,
-                    "noArgFactory": null,
+                    "noArgFactory": "androidx.compose.foundation.rememberScrollState",
                     "scopeDslReceiver": null,
                     "lambdaReturnTypeFqn": null
                 },
@@ -3629,9 +3635,12 @@
                 }
             ],
             "code": {
-                "call": null,
-                "imports": [],
-                "refusedReason": "no placeholder can be written for required parameter `state: ScrollState`",
+                "call": "ScrollIndicator(state = rememberScrollState())",
+                "imports": [
+                    "androidx.wear.compose.material3.ScrollIndicator",
+                    "androidx.compose.foundation.rememberScrollState"
+                ],
+                "refusedReason": null,
                 "requiredOptIns": [],
                 "androidxOptIns": []
             },
@@ -3878,8 +3887,12 @@
                 "Card/Outlined",
                 "CompactButton",
                 "EdgeButton",
+                "SwitchButton/On",
+                "Template/PageIndicator",
+                "Template/TimeText",
                 "Text/MaxLines-Truncated",
                 "TitleCard",
+                "TransformingLazyColumn",
                 "Typography"
             ],
             "symbol": {
@@ -4199,9 +4212,64 @@
                     "group": "Containment"
                 },
                 {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Small_Round",
+                    "componentId": "Template/PageIndicator",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Extra_Large_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small_Round",
+                    "componentId": "TransformingLazyColumn",
+                    "group": "Lists"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
+                    "componentId": "SwitchButton/On",
+                    "group": "Selection"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off",
+                    "componentId": "SwitchButton/On",
+                    "group": "Selection"
+                },
+                {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
                     "componentId": "Text/MaxLines-Truncated",
                     "group": "Text options"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra_Large_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
+                },
+                {
+                    "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small_Round",
+                    "componentId": "Template/TimeText",
+                    "group": "Scaffold templates"
                 },
                 {
                     "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",

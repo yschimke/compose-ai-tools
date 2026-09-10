@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-09T23:20:00.679Z",
+  "generatedAt": "2026-09-10T06:09:35.098Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "db6dcdd9ba199b988cdae1002d48b81a839e4dc8",
+        "subject": "fix(ui-builder): name a component by what it is, in the record, in the id, and in the file (#5354)",
+        "at": "2026-09-10T07:02:10+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8e797dde8fbd65618b02238005bdc8adef625a79",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.5.0 (#5353)",
+        "at": "2026-09-09T23:32:46Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "d4b1824b1bfe1fed97eb1156ac2f46b30313d632",
         "subject": "chore(main): release 2.5.0 (#5328)",
@@ -467,22 +483,6 @@
         "subject": "fix: name a family-less text run the family the render recorded (#5283)",
         "at": "2026-09-07T21:42:45+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4c0ddde791d00d399e87feba1284436feea99e9c",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.2.2 (#5280)",
-        "at": "2026-09-07T21:17:38+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "279169d4aacc51bd0c4f7a7003f9d7dc1507c332",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.16.0 (#5281)",
-        "at": "2026-09-07T21:17:27+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
