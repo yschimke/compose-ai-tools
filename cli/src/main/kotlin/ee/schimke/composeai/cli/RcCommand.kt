@@ -84,7 +84,7 @@ internal class RcCommand(
 
   private fun compile(args: List<String>) {
     val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc compile: expected a JSON file")
-    val out = args.flagValue("--output") ?: args.flagValue("-o")
+    val out = args.outputValue("rc compile")
     val bytes = guard { RemoteComposeJson.compile(readTextOrFail(input.toPath(), "rc compile")) }
 
     // A document is binary, and a binary written to a terminal is a wrecked terminal. Refuse
@@ -118,7 +118,7 @@ internal class RcCommand(
     // asked to write — and `rc compile -o out.rc in.json` would compile its own output path.
     val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc dump: expected a .rc file")
     val compact = "--compact" in args
-    val out = args.flagValue("--output") ?: args.flagValue("-o")
+    val out = args.outputValue("rc dump")
     val file = input.toPath()
 
     // A DIRECTORY dumps every `.rc` under it to a `.rc.json` twin beside the original, and that is
@@ -174,6 +174,31 @@ internal class RcCommand(
     } else {
       writing("rc dump", out) { path -> fileSystem.write(path) { writeUtf8(text + "\n") } }
     }
+  }
+
+  /**
+   * `--output` / `-o`'s value, refusing the flag when it has none.
+   *
+   * `flagValue` answers `null` both for "not given" and for "given with nothing after it", and
+   * every branch downstream reads that null as *absent*. So `rc dump doc.rc -o` printed the dump to
+   * stdout and `rc dump renders -o` wrote beside the sources — each doing something the caller
+   * plainly did not ask for, and silently, because the flag is on `rc`'s allowlist and so draws no
+   * "unrecognised option" warning either.
+   *
+   * A value that is itself a flag is refused for the same reason: `rc dump doc.rc -o --compact`
+   * would otherwise write a file named `--compact`. `-` is the exception, since `dump` honours it
+   * as the stdout sentinel.
+   */
+  private fun List<String>.outputValue(what: String): String? {
+    val given = any {
+      it == "--output" || it == "-o" || it.startsWith("--output=") || it.startsWith("-o=")
+    }
+    if (!given) return null
+    val value = flagValue("--output") ?: flagValue("-o")
+    if (value.isNullOrBlank() || (value.startsWith("-") && value != "-")) {
+      fail("$what: --output needs a file after it (got ${value?.let { "'$it'" } ?: "nothing"})")
+    }
+    return value
   }
 
   /**

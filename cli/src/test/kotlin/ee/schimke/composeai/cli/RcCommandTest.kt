@@ -239,6 +239,24 @@ class RcCommandTest {
   }
 
   @Test
+  fun `refuses an output flag with nothing after it`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+
+    // `flagValue` answers null both for "not given" and for "given with nothing after it", and the
+    // branches downstream read that null as absent — so this printed the dump to stdout, and the
+    // directory form wrote beside the sources, each doing something nobody asked for and drawing
+    // no "unrecognised option" warning either, because `-o` is on `rc`'s allowlist.
+    assertEquals(1, runExpectingExit("dump", (dir / "a.rc").toString(), "-o"))
+    assertEquals(1, runExpectingExit("dump", dir.toString(), "-o"))
+    // A value that is itself a flag would have created a file named `--compact`.
+    assertEquals(1, runExpectingExit("dump", (dir / "a.rc").toString(), "-o", "--compact"))
+
+    assertFalse(fs.exists(dir / "a.rc.json"), "wrote nothing: ${fs.list(dir)}")
+    assertTrue(err.all { "--output needs a file after it" in it }, "names it: $err")
+  }
+
+  @Test
   fun `dumps to a different file happily`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }
