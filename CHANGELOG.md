@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.7.0](https://github.com/yschimke/compose-ai-tools/compare/v2.6.0...v2.7.0) (2026-09-10)
+
+
+### Features
+
+* add Remote Compose JSON support (`:remotecompose-json`, `compose-preview rc`) ([#5370](https://github.com/yschimke/compose-ai-tools/issues/5370)) ([c26092b](https://github.com/yschimke/compose-ai-tools/commit/c26092bc6017d38c3735f8673fb78778f87eec2e))
+
+
+### Bug Fixes
+
+* **ui-builder:** let the policy schema describe the block catalogs use ([#5367](https://github.com/yschimke/compose-ai-tools/issues/5367)) ([7272f25](https://github.com/yschimke/compose-ai-tools/commit/7272f259a670aa81063a8bc187ff33a9fa92f30c))
+
 ## [2.6.0](https://github.com/yschimke/compose-ai-tools/compare/v2.5.0...v2.6.0) (2026-09-10)
 
 
