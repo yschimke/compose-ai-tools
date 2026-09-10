@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-10T09:12:02.623Z",
+  "generatedAt": "2026-09-10T09:38:46.989Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "4ba305be56c0a286a20789744efbcf10a7152746",
+        "subject": "docs(ui-builder): stop the policy schema telling authors not to use it (#5369)",
+        "at": "2026-09-10T10:32:02+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "7272f259a670aa81063a8bc187ff33a9fa92f30c",
         "subject": "fix(ui-builder): let the policy schema describe the block catalogs use (#5367)",
@@ -474,14 +482,6 @@
         "sha": "ede31f6127f8298b29a2cfba5ee3d5e974099853",
         "subject": "feat: let a Remote Compose capture defer density to the player (#5296)",
         "at": "2026-09-08T06:51:58+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9037f0c3ffe72e61598e2470d6bc3db3c01db276",
-        "subject": "fix: carry the figma-svg font warning and refuse to publish boxes (#5292)",
-        "at": "2026-09-08T06:50:51+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
