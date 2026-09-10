@@ -274,6 +274,39 @@ class RcCommandTest {
   }
 
   @Test
+  fun `a stale dump goes when the document becomes unreadable, and stays when the write fails`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    run("dump", dir.toString())
+    val good = fs.read(dir / "a.rc.json") { readUtf8() }
+
+    // Read failure: nothing is known about the document any more — same file with changed
+    // permissions, or a different one a render has since written. The dump cannot be checked
+    // against anything and still reads like a current projection, so it goes.
+    val unreadable =
+      object : ForwardingFileSystem(fs) {
+        override fun source(file: Path): Source =
+          if (file.name.endsWith(".rc")) throw OkioIOException("Permission denied")
+          else super.source(file)
+      }
+    assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = unreadable))
+    assertFalse(fs.exists(dir / "a.rc.json"), "gone: ${fs.list(dir)}")
+
+    // Write failure is the opposite case, and the asymmetry is the whole point: the read and the
+    // projection both succeeded, so the existing dump is KNOWN to be sound — all that failed was
+    // replacing a file with what it already says.
+    run("dump", dir.toString())
+    val unwritable =
+      object : ForwardingFileSystem(fs) {
+        override fun sink(file: Path, mustCreate: Boolean): Sink =
+          if (file.name.endsWith(".tmp")) throw OkioIOException("No space left on device")
+          else super.sink(file, mustCreate)
+      }
+    assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = unwritable))
+    assertEquals(good, fs.read(dir / "a.rc.json") { readUtf8() }, "kept")
+  }
+
+  @Test
   fun `names a flag the chosen subcommand does not read`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }

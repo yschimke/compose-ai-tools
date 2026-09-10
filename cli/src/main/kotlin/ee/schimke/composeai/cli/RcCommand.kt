@@ -302,8 +302,24 @@ internal class RcCommand(
           )
           continue
         }
-        val text =
-          RemoteComposeJson.dump(fileSystem.read(document) { readByteArray() }, pretty = !compact)
+        // Read on its own, because a failure HERE means something different from a failure on the
+        // write below, and the difference decides the fate of the previous dump.
+        val bytes =
+          try {
+            fileSystem.read(document) { readByteArray() }
+          } catch (e: OkioIOException) {
+            // Nothing is known about this document any more — it may be the same file with its
+            // permissions changed, or a wholly different one written by a render that has moved
+            // on. The dump beside it still reads like a current projection and cannot be checked
+            // against anything, so it goes, the same as one whose document stopped projecting.
+            // It costs a re-run; keeping it costs a reader believing a file that may describe a
+            // document that no longer exists.
+            failed++
+            stderr("compose-preview: $document: ${e.message}")
+            discardStaleDump(target)
+            continue
+          }
+        val text = RemoteComposeJson.dump(bytes, pretty = !compact)
         replaceAtomically(target, text + "\n")
       } catch (e: RemoteComposeJsonException) {
         // One unreadable document does not stop the batch. A catalog with a single sticker captured
@@ -313,15 +329,14 @@ internal class RcCommand(
         stderr("compose-preview: $document: ${e.message}")
         discardStaleDump(target)
       } catch (e: OkioIOException) {
-        // An unreadable input or an unwritable output is the same shape of problem as an
-        // unprojectable document, and the batch has to survive it for the same reason. Without
-        // this the loop aborts on the first permission error, having neither processed the rest
-        // nor printed the count a caller checks.
+        // Reaching here means the WRITE failed — the read succeeded above and the projection
+        // succeeded after it. So this is the one case where the existing dump is known to be
+        // sound: the document projects, and all that failed was replacing a file with the same
+        // content it would have had. Deleting it would turn "could not update this one" into
+        // "lost this one", and unlike the read case there is nothing unknown to justify that.
         //
-        // Note what is NOT done here: the existing dump is left alone. A filesystem error says
-        // nothing about the document's *content* — the previous dump may still describe it
-        // perfectly, and deleting it would turn "could not update this one" into "lost this one".
-        // Only a document that genuinely no longer projects takes its dump with it, above.
+        // The batch survives it either way. Without this handler the loop aborts on the first
+        // full disk, having neither processed the rest nor printed the count a caller checks.
         failed++
         stderr("compose-preview: $document: ${e.message}")
       }
