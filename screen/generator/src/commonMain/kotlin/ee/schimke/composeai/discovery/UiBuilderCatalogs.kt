@@ -375,13 +375,24 @@ object UiBuilderCatalogs {
       // catalog, which never reached this loop. The one diagnostic written for that case was the
       // one case it could not fire in.
       diagnose(component, builder, builderId, diagnostics)
+      // EVERY admitted component gets an entry, annotated or not — the same argument as the
+      // `diagnose` call above and the menu loop below, both of which already cover all of them.
+      // The shelf was the odd one out, and the omission was not cosmetic: an entry is where the
+      // file states which record an id belongs to, so a component with no entry is a component the
+      // published file does not NAME. A consumer then has to re-derive the id from the record, and
+      // a second implementation of a derivation is a second answer to it.
+      //
+      // That is not hypothetical. `PublishedUiBuilderCatalog` derives the ids it cannot read, by
+      // the rule this generator used before the id became the component's symbol — so a catalog
+      // that annotates and authors nothing handed the server 27 unnamed components and got 7 id
+      // collisions back on a file this generator had just reported zero for. m3-catalog, 108
+      // unnamed, got 49 and was refused outright. Naming them all is what makes the file
+      // self-describing, and it costs a `{record, displayName}` pair per component.
       val authored = policy.components[builderId]
-      if (component.builder != null || authored != null) {
-        val fromAnnotation =
-          if (component.builder != null) policyFor(component, builder)
-          else UiBuilderComponentPolicy(record = component.canonicalId)
-        components[builderId] = fromAnnotation.mergedWith(authored)
-      }
+      val fromAnnotation =
+        if (component.builder != null) policyFor(component, builder)
+        else UiBuilderComponentPolicy(record = component.canonicalId)
+      components[builderId] = fromAnnotation.mergedWith(authored)
     }
 
     // An authored entry naming an id no component derives.

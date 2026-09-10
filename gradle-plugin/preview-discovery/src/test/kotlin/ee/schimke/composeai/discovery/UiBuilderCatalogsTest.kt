@@ -620,8 +620,11 @@ class UiBuilderCatalogsTest {
     val collision =
       generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.ID_COLLISION }
     assertThat(collision.subject).isEqualTo("wear-m3/card")
-    // Neither is annotated, so neither has a policy entry — and the collision is still reported.
-    assertThat(generated.statusSemantics.components).isEmpty()
+    // Exactly one of them owns the id — the first — and the collision is still reported. Both
+    // being named is what makes "which one survives" answerable from the file rather than from
+    // record order.
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
   }
 
   @Test
@@ -1191,8 +1194,11 @@ class UiBuilderCatalogsTest {
           .subject
       )
       .isEqualTo("wear-m3/button")
-    // The loser publishes nothing under the id it lost, and the winner keeps the shelf entry.
-    assertThat(generated.statusSemantics.components).doesNotContainKey("wear-m3/button")
+    // The shelf entry under the contested id belongs to the WINNER, and so does the menu entry.
+    // Stronger than the old "no entry at all": every component is named now, so an id pointing at
+    // the loser's record would be the file itself disagreeing with the diagnostic beside it.
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/button").record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.ButtonKt.Button")
     assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Actions")
   }
@@ -1218,8 +1224,15 @@ class UiBuilderCatalogsTest {
           .map { it.subject }
       )
       .containsExactly("wear-m3/card", "wear-m3/chip")
-    // Still no policy entry: the diagnostics are about the component, the map is about the policy.
-    assertThat(generated.statusSemantics.components).isEmpty()
+    // Both are named, with no policy on either. The map is what says which record an id belongs
+    // to, so an unannotated catalog is exactly the case that must not be missing from it — a
+    // consumer with no entry has to re-derive the id, which is a second answer to one question.
+    assertThat(generated.statusSemantics.components.keys)
+      .containsExactly("wear-m3/card", "wear-m3/chip")
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").propertyCapabilities)
+      .isNull()
   }
 
   @Test
