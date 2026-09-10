@@ -8,6 +8,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import okio.FileSystem
 import okio.IOException as OkioIOException
@@ -110,7 +111,7 @@ internal class RcCommand(
   }
 
   private fun compile(args: List<String>) {
-    val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc compile: expected a JSON file")
+    val input = args.singleInput("rc compile", "a JSON file")
     val out = args.outputValue("rc compile")
     val bytes = guard { RemoteComposeJson.compile(readTextOrFail(input.toPath(), "rc compile")) }
 
@@ -143,7 +144,7 @@ internal class RcCommand(
     // `CliFlags.positionals`, not "the first token without a dash". `rc dump --output out.json
     // input.rc` puts `out.json` first by that reading, so the command would dump the file it was
     // asked to write — and `rc compile -o out.rc in.json` would compile its own output path.
-    val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc dump: expected a .rc file")
+    val input = args.singleInput("rc dump", "a .rc file or a directory")
     val compact = "--compact" in args
     val out = args.outputValue("rc dump")
     val file = input.toPath()
@@ -204,6 +205,27 @@ internal class RcCommand(
   }
 
   /**
+   * The one file this subcommand was pointed at.
+   *
+   * Each documented form takes exactly one operand, and taking the first of several silently
+   * produced output for a different input than the caller named: `rc compile first.json second.json
+   * -o out.rc` reported success having compiled only `first.json`. A typo that reads as a success
+   * is the worst kind, so more than one is refused rather than trimmed.
+   */
+  private fun List<String>.singleInput(what: String, expected: String): String {
+    val positionals = CliFlags.positionals(this)
+    return when (positionals.size) {
+      0 -> fail("$what: expected $expected")
+      1 -> positionals.single()
+      else ->
+        fail(
+          "$what: expected $expected, got ${positionals.size} " +
+            "(${positionals.joinToString(", ")}) — this command takes one at a time"
+        )
+    }
+  }
+
+  /**
    * `--output` / `-o`'s value, refusing the flag when it has none.
    *
    * `flagValue` answers `null` both for "not given" and for "given with nothing after it", and
@@ -217,15 +239,38 @@ internal class RcCommand(
    * as the stdout sentinel.
    */
   private fun List<String>.outputValue(what: String): String? {
-    val given = any {
-      it == "--output" || it == "-o" || it.startsWith("--output=") || it.startsWith("-o=")
+    // Every occurrence, in order, rather than `flagValue("--output") ?: flagValue("-o")`. Asking
+    // the two aliases separately answers the wrong question twice over: `--output first -o second`
+    // takes `first` whatever the order on the line, and `-o report.json --output` reads as
+    // well-formed because the earlier value satisfies the lookup while the trailing flag — the one
+    // the caller got wrong — is never examined.
+    val values = mutableListOf<String?>()
+    var i = 0
+    while (i < size) {
+      val arg = this[i]
+      when {
+        arg == "--output" || arg == "-o" -> {
+          values += getOrNull(i + 1)
+          i++
+        }
+        arg.startsWith("--output=") -> values += arg.substringAfter("=")
+        arg.startsWith("-o=") -> values += arg.substringAfter("=")
+      }
+      i++
     }
-    if (!given) return null
-    val value = flagValue("--output") ?: flagValue("-o")
-    if (value.isNullOrBlank() || (value.startsWith("-") && value != "-")) {
-      fail("$what: --output needs a file after it (got ${value?.let { "'$it'" } ?: "nothing"})")
+    if (values.isEmpty()) return null
+
+    val bad = values.firstOrNull { it.isNullOrBlank() || (it.startsWith("-") && it != "-") }
+    if (values.any { it.isNullOrBlank() || (it.startsWith("-") && it != "-") }) {
+      fail("$what: --output needs a file after it (got ${bad?.let { "'$it'" } ?: "nothing"})")
     }
-    return value
+    // Two different destinations is a caller who believes something untrue about what this will
+    // write; picking either one silently makes them keep believing it.
+    val distinct = values.filterNotNull().distinct()
+    if (distinct.size > 1) {
+      fail("$what: --output given more than once (${distinct.joinToString(", ")}) — pick one")
+    }
+    return distinct.single()
   }
 
   /**
@@ -485,7 +530,11 @@ internal class RcCommand(
       } catch (_: Exception) {
         return false
       }
-    return "operations" in existing && "header" in existing
+    // The SHAPES, not just the key names. `{"header":null,"operations":null}` carries both keys and
+    // is not a dump, and an authoring document with an unrelated top-level `operations` would have
+    // been classified as one and destroyed — which is the guarantee this whole function exists to
+    // make. What a dump always has is a `header` object beside an `operations` array.
+    return existing["header"] is JsonObject && existing["operations"] is JsonArray
   }
 
   /**
@@ -556,7 +605,7 @@ internal class RcCommand(
   }
 
   private fun header(args: List<String>) {
-    val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc header: expected a .rc file")
+    val input = args.singleInput("rc header", "a .rc file")
     val header = guard { RemoteComposeJson.header(readBytesOrFail(input.toPath(), "rc header")) }
 
     if ("--json" in args) {

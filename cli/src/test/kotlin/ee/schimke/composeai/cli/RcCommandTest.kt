@@ -383,6 +383,63 @@ class RcCommandTest {
   }
 
   @Test
+  fun `refuses a second input operand`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    fs.write(dir / "b.rc") { write(document) }
+
+    // Taking the first of several silently produces output for a different input than the caller
+    // named — a typo that reads as a success.
+    assertEquals(
+      1,
+      runExpectingExit(
+        "dump",
+        (dir / "a.rc").toString(),
+        (dir / "b.rc").toString(),
+        "-o",
+        "/o.json",
+      ),
+    )
+
+    assertTrue(err.any { "this command takes one at a time" in it }, "names it: $err")
+    assertFalse(fs.exists("/o.json".toPath()))
+  }
+
+  @Test
+  fun `refuses a repeated output flag`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    val doc = (dir / "a.rc").toString()
+
+    // A valid earlier occurrence used to mask a malformed later one: `flagValue` found
+    // `report.json` and never looked at the trailing `--output`.
+    assertEquals(1, runExpectingExit("dump", doc, "-o", "/r.json", "--output"))
+    assertFalse(fs.exists("/r.json".toPath()), "wrote nothing")
+
+    // And two destinations is a caller who believes something untrue about what this will write.
+    err.clear()
+    assertEquals(1, runExpectingExit("dump", doc, "--output", "/first.json", "-o", "/second.json"))
+    assertTrue(err.any { "given more than once" in it }, "names it: $err")
+    assertFalse(fs.exists("/first.json".toPath()))
+    assertFalse(fs.exists("/second.json".toPath()))
+  }
+
+  @Test
+  fun `does not mistake a look-alike for one of its own dumps`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    // Both key names, neither shape. A membership-only check called this a previous dump and let
+    // the write destroy it — the exact guarantee the check exists to make.
+    val lookalike = """{"header":null,"operations":null}"""
+    fs.write(dir / "a.rc.json") { writeUtf8(lookalike) }
+
+    assertEquals(1, runExpectingExit("dump", dir.toString()))
+
+    assertEquals(lookalike, fs.read(dir / "a.rc.json") { readUtf8() })
+    assertTrue(err.any { "refusing to overwrite" in it }, "names the refusal: $err")
+  }
+
+  @Test
   fun `refuses an output flag with nothing after it`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }
