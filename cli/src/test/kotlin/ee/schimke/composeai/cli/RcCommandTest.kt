@@ -184,6 +184,22 @@ class RcCommandTest {
   }
 
   @Test
+  fun `refuses to compile a source over itself`() {
+    fs.createDirectories(dir)
+    val source =
+      """{"header":{"width":10,"height":10},"root":[{"box":{"modifiers":[{"size":10.0}]}}]}"""
+    fs.write(dir / "s.json") { writeUtf8(source) }
+
+    // The mirror of the dump guard and the costlier of the two: compiling is one-way, so the
+    // authoring JSON — the only copy of what a person wrote — cannot be recovered from the `.rc`
+    // that replaced it.
+    assertEquals(1, runExpectingExit("compile", (dir / "s.json").toString(), "-o", "/docs/s.json"))
+
+    assertEquals(source, fs.read(dir / "s.json") { readUtf8() })
+    assertTrue(err.any { "would overwrite the authoring JSON" in it }, "names it: $err")
+  }
+
+  @Test
   fun `dumps to a different file happily`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }

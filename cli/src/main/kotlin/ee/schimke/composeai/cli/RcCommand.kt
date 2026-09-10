@@ -97,6 +97,17 @@ internal class RcCommand(
         "rc compile: --output <file.rc> is required (a .rc document is binary; `-` is not stdout here)"
       )
     }
+    // The mirror of `dump`'s guard, and the more expensive mistake of the two: the authoring JSON
+    // is the source, and `compile` is one-way — a `.rc` cannot be turned back into the document
+    // that produced it, so overwriting the source with its own output loses the only copy of the
+    // thing a person actually wrote.
+    if (isSameFile(out.toPath(), input.toPath())) {
+      fail(
+        "rc compile: --output would overwrite the authoring JSON being compiled ($out). " +
+          "Compiling is one-way — a .rc cannot be turned back into its source — so this would " +
+          "destroy it. Name a different file."
+      )
+    }
     writing("rc compile", out) { path -> fileSystem.write(path) { write(bytes) } }
     stderr("compose-preview: wrote ${bytes.size} bytes to $out")
   }
