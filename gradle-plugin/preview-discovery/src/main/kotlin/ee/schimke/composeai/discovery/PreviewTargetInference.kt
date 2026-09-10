@@ -493,6 +493,38 @@ object PreviewTargetInference {
                     .filter { it.owner == ownerInternal }
                     .forEach { nestedMethods += MethodKey(it.name, it.desc) }
                 }
+
+                /**
+                 * A singleton lambda reached by READING its field rather than calling its getter.
+                 *
+                 * The getter is what a preview body compiles to, and it was the only edge the walk
+                 * knew. One singleton lambda passing another as content does not go through it:
+                 * `lambda_521476302$lambda$0` reaches `lambda$1915723479` with a GETSTATIC on the
+                 * private field, and the accessor is never called. So the walk stopped at the first
+                 * nested `{ … }` — `DatePickerModalSticker` reaches `DatePicker` through four of
+                 * them and m3-catalog's record carried `DateRangePicker` and neither picker
+                 * (yschimke/m3-catalog#317).
+                 *
+                 * Spelled as the getter call it stands for, so the one place that resolves a lambda
+                 * key keeps being the only one.
+                 */
+                override fun visitFieldInsn(
+                  opcode: Int,
+                  owner: String,
+                  name: String,
+                  descriptor: String,
+                ) {
+                  if (opcode != Opcodes.GETSTATIC) return
+                  if (!name.startsWith("lambda$")) return
+                  val ownerFqnRead = owner.replace('/', '.')
+                  if (".ComposableSingletons$" !in ownerFqnRead) return
+                  calls +=
+                    Invocation(
+                      ownerFqnRead,
+                      "getLambda$" + name.removePrefix("lambda$") + "\$fieldRead",
+                      descriptor,
+                    )
+                }
               }
             }
           },
@@ -605,70 +637,106 @@ object PreviewTargetInference {
     return found
   }
 
-  private fun extractComposeSingletonLambdaCalls(
-    directCalls: List<Invocation>,
-    scanResult: ScanResult,
+  /**
+   * How many singleton lambdas deep the walk goes.
+   *
+   * One hop was the whole of it, and one hop is not what a sticker with a frame does: `Sticker {
+   * KeyboardNavigable { InlineDialogHost { DatePickerDialog { DatePicker() } } } }` lifts each `{ …
+   * }` into its own singleton entry, and each reaches the next. Bounded for the same reason
+   * [PROJECT_COMPOSABLE_MAX_DEPTH] is — a lambda that hands content to a lambda is ordinary, and an
+   * unbounded walk makes discovery cost a function of how deeply a sticker nests.
+   */
+  private const val SINGLETON_LAMBDA_MAX_DEPTH = 4
+
+  /** The singleton lambda a call names, as `owner to key`. */
+  private fun singletonLambdaTargets(
+    calls: List<Invocation>,
     projectClassFqns: Set<String>,
-  ): List<Invocation> =
-    directCalls
-      .asSequence()
+  ): List<Pair<String, String>> =
+    calls
       .filter {
         it.ownerFqn in projectClassFqns &&
           ".ComposableSingletons$" in it.ownerFqn &&
           it.methodName.startsWith("getLambda$")
       }
-      .flatMap { getter ->
-        val lambdaKey = getter.methodName.removePrefix("getLambda$").substringBefore('$')
-        if (lambdaKey.isEmpty()) return@flatMap emptySequence()
-        val lambdaClassPrefix = getter.ownerFqn + "\$lambda\$$lambdaKey\$"
-        val ownerResource = scanResult.getClassInfo(getter.ownerFqn)?.resource
-        if (ownerResource == null) return@flatMap emptySequence()
-        val lambdaClasses =
-          referencedClasses(ownerResource, lambdaClassPrefix)
+      .mapNotNull { getter ->
+        val key = getter.methodName.removePrefix("getLambda$").substringBefore('$')
+        if (key.isEmpty()) null else getter.ownerFqn to key
+      }
+
+  private fun extractComposeSingletonLambdaCalls(
+    directCalls: List<Invocation>,
+    scanResult: ScanResult,
+    projectClassFqns: Set<String>,
+  ): List<Invocation> {
+    val found = mutableListOf<Invocation>()
+    val visited = mutableSetOf<Pair<String, String>>()
+    var frontier = singletonLambdaTargets(directCalls, projectClassFqns)
+    repeat(SINGLETON_LAMBDA_MAX_DEPTH) {
+      val next = mutableListOf<Pair<String, String>>()
+      for (target in frontier) {
+        if (!visited.add(target)) continue
+        val calls = callsInSingletonLambda(target.first, target.second, scanResult)
+        found += calls
+        next += singletonLambdaTargets(calls, projectClassFqns)
+      }
+      frontier = next
+      if (frontier.isEmpty()) return found.distinct()
+    }
+    return found.distinct()
+  }
+
+  /** Every call the singleton lambda [lambdaKey] of [singletonsFqn] makes, from either shape. */
+  private fun callsInSingletonLambda(
+    singletonsFqn: String,
+    lambdaKey: String,
+    scanResult: ScanResult,
+  ): List<Invocation> {
+    val ownerResource = scanResult.getClassInfo(singletonsFqn)?.resource ?: return emptyList()
+    val lambdaClassPrefix = singletonsFqn + "\$lambda\$$lambdaKey\$"
+    val lambdaClasses =
+      referencedClasses(ownerResource, lambdaClassPrefix)
+        .asSequence()
+        .flatMap { lambdaClassFqn ->
+          scanResult
+            .getResourcesWithPathIgnoringAccept(lambdaClassFqn.replace('.', '/') + ".class")
             .asSequence()
-            .flatMap { lambdaClassFqn ->
-              scanResult
-                .getResourcesWithPathIgnoringAccept(lambdaClassFqn.replace('.', '/') + ".class")
-                .asSequence()
-                .map { lambdaClassFqn to it }
-            }
-            .filter { it.second.classpathElementURI == ownerResource.classpathElementURI }
-            .flatMap { (lambdaClassFqn, resource) ->
-              try {
-                extractCalls(
-                    resource = resource,
-                    ownerFqn = lambdaClassFqn,
-                    isRoot = { key ->
-                      key.name == "invoke" &&
-                        "Landroidx/compose/runtime/Composer;" in key.descriptor
-                    },
-                    shouldFollow = { false },
-                  )
-                  .asSequence()
-              } catch (_: Throwable) {
-                emptySequence()
-              }
-            }
-        val lambdaMethods =
+            .map { lambdaClassFqn to it }
+        }
+        .filter { it.second.classpathElementURI == ownerResource.classpathElementURI }
+        .flatMap { (lambdaClassFqn, resource) ->
           try {
-            val bodyPrefix = "_" + normaliseLambdaName(lambdaKey) + "_lambda_"
             extractCalls(
-                resource = ownerResource,
-                ownerFqn = getter.ownerFqn,
+                resource = resource,
+                ownerFqn = lambdaClassFqn,
                 isRoot = { key ->
-                  isSingletonLambdaMethod(key.name, bodyPrefix) &&
-                    "Landroidx/compose/runtime/Composer;" in key.descriptor
+                  key.name == "invoke" && "Landroidx/compose/runtime/Composer;" in key.descriptor
                 },
-                shouldFollow = { key -> isSingletonLambdaMethod(key.name, bodyPrefix) },
+                shouldFollow = { false },
               )
               .asSequence()
           } catch (_: Throwable) {
             emptySequence()
           }
-        lambdaClasses + lambdaMethods
+        }
+    val lambdaMethods =
+      try {
+        val bodyPrefix = "_" + normaliseLambdaName(lambdaKey) + "_lambda_"
+        extractCalls(
+            resource = ownerResource,
+            ownerFqn = singletonsFqn,
+            isRoot = { key ->
+              isSingletonLambdaMethod(key.name, bodyPrefix) &&
+                "Landroidx/compose/runtime/Composer;" in key.descriptor
+            },
+            shouldFollow = { key -> isSingletonLambdaMethod(key.name, bodyPrefix) },
+          )
+          .asSequence()
+      } catch (_: Throwable) {
+        emptySequence()
       }
-      .distinct()
-      .toList()
+    return (lambdaClasses + lambdaMethods).distinct().toList()
+  }
 
   /**
    * Whether [methodName] is the static body of the singleton lambda whose normalised key gives
