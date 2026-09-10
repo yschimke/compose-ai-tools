@@ -7,11 +7,13 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import okio.Buffer
 import okio.FileSystem
 import okio.ForwardingFileSystem
 import okio.IOException as OkioIOException
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.Sink
 import okio.Source
 import okio.fakefilesystem.FakeFileSystem
 
@@ -236,6 +238,39 @@ class RcCommandTest {
 
     assertEquals(source, fs.read(dir / "s.json") { readUtf8() })
     assertTrue(err.any { "would overwrite the authoring JSON" in it }, "names it: $err")
+  }
+
+  @Test
+  fun `a failed write leaves the previous dump intact`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    run("dump", dir.toString())
+    val good = fs.read(dir / "a.rc.json") { readUtf8() }
+
+    // A sink that dies part-way — a full filesystem, in practice. Writing straight to the target
+    // truncates it first, so the old code left a PARTIAL dump: not a valid projection, and not
+    // absent either, so `discardStaleDump` could not recognise it and the publish step downstream
+    // would copy it into `documents/` and count it as projected.
+    //
+    // Modelled faithfully: the sink OPENS (truncating whatever it points at) and then fails on the
+    // write. A `sink()` that simply threw would never truncate, and the old code would have passed
+    // this test while leaving the very file it is about.
+    val failing =
+      object : ForwardingFileSystem(fs) {
+        override fun sink(file: Path, mustCreate: Boolean): Sink {
+          val delegate = super.sink(file, mustCreate)
+          if (!file.name.startsWith("a.rc.json")) return delegate
+          return object : Sink by delegate {
+            override fun write(source: Buffer, byteCount: Long) =
+              throw OkioIOException("No space left on device")
+          }
+        }
+      }
+
+    assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = failing))
+
+    assertEquals(good, fs.read(dir / "a.rc.json") { readUtf8() }, "the good dump is untouched")
+    assertFalse(fs.exists(dir / "a.rc.json.tmp"), "no temp left behind: ${fs.list(dir)}")
   }
 
   @Test

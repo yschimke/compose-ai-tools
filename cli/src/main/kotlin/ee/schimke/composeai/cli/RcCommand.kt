@@ -280,7 +280,7 @@ internal class RcCommand(
         }
         val text =
           RemoteComposeJson.dump(fileSystem.read(document) { readByteArray() }, pretty = !compact)
-        fileSystem.write(target) { writeUtf8(text + "\n") }
+        replaceAtomically(target, text + "\n")
       } catch (e: RemoteComposeJsonException) {
         // One unreadable document does not stop the batch. A catalog with a single sticker captured
         // from a newer alpha than this CLI links would otherwise publish NO documents at all, which
@@ -293,15 +293,49 @@ internal class RcCommand(
         // unprojectable document, and the batch has to survive it for the same reason. Without
         // this the loop aborts on the first permission error, having neither processed the rest
         // nor printed the count a caller checks.
+        //
+        // Note what is NOT done here: the existing dump is left alone. A filesystem error says
+        // nothing about the document's *content* — the previous dump may still describe it
+        // perfectly, and deleting it would turn "could not update this one" into "lost this one".
+        // Only a document that genuinely no longer projects takes its dump with it, above.
         failed++
         stderr("compose-preview: $document: ${e.message}")
-        discardStaleDump(target)
       }
     }
     stderr(
       "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under $root"
     )
     if (failed > 0 || walked.stoppedBy != null) exit(1)
+  }
+
+  /**
+   * Write [text] to [target] by writing a sibling and moving it into place.
+   *
+   * Writing straight to the target truncates it first, so a sink that fails part-way — a full
+   * filesystem is the ordinary way — leaves a **partial** dump where a complete one used to be.
+   * That file is worse than either outcome the batch is built around: it is not a valid projection,
+   * and it is not absent either, so [discardStaleDump] cannot recognise it as one of this command's
+   * dumps and leaves it, and the publish step downstream copies every `*.rc.json` it finds into
+   * `out/documents/` and counts it as projected. Truncated JSON on a delivery branch, from a run
+   * that reported the failure and exited non-zero.
+   *
+   * A temporary sibling never has that window: it is either moved into place whole or deleted. The
+   * `.tmp` suffix keeps it out of the publish glob even if the process dies between the two.
+   */
+  private fun replaceAtomically(target: Path, text: String) {
+    val temp = target.parent!! / "${target.name}.tmp"
+    try {
+      fileSystem.write(temp) { writeUtf8(text) }
+      fileSystem.atomicMove(temp, target)
+    } catch (e: OkioIOException) {
+      try {
+        fileSystem.delete(temp, mustExist = false)
+      } catch (_: OkioIOException) {
+        // Reported by the caller's handler as part of the write failure; a temp file that cannot be
+        // removed is not worth a second message, and it cannot be published.
+      }
+      throw e
+    }
   }
 
   /**
