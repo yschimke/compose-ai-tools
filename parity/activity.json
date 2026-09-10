@@ -1,11 +1,67 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-10T20:11:07.234Z",
+  "generatedAt": "2026-09-10T22:11:44.684Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "99b81cebaa1085056a00364c57e788ebc26c4762",
+        "subject": "fix(design-artifacts): report the CMP/Wasm first-frame budget, stop gating on it (#5381)",
+        "at": "2026-09-10T23:04:45+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0db83ded32ab38a846e90966b8d9ce5cae29a2d5",
+        "subject": "refactor(bundle): take the robolectric config facts from the daemon (#5379)",
+        "at": "2026-09-10T22:34:32+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c5a8d1852a70dc2a8343dc105cd4c0b23196dd70",
+        "subject": "fix(plugin): decide the KMP-Android lane after the plugins block, not during it (#5380)",
+        "at": "2026-09-10T22:20:19+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "502fb1c721d8052d39aa50a62872fe5969887e0b",
+        "subject": "fix(ui-builder): keep an excluded component off the shelf (#5378)",
+        "at": "2026-09-10T22:02:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "4037147903b78796bf69bc18e5a9f45ce7acea8f",
+        "subject": "fix(plugin): read the doctor's lane from the task graph, not the request (#5377)",
+        "at": "2026-09-10T21:57:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "123eb39620c7f3ba7063258137fceb1a08ef26eb",
+        "subject": "fix(plugin): stop the KMP-Android lane leaking into modules that didn't ask (#5376)",
+        "at": "2026-09-10T21:47:22+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8e3eddcbada3a90d888b461a74cdf7afdd4d554e",
+        "subject": "feat(plugin): give com.android.kotlin.multiplatform.library the Robolectric lane (#5375)",
+        "at": "2026-09-10T21:19:08+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "59eb6da9e161d76b3942e181b7ac9c7889b0f17c",
         "subject": "fix: publish design reference match scores (#5374)",
@@ -427,62 +483,6 @@
         "subject": "feat(discovery): publish a catalog's ui-builder.json from @BuilderComponent and a policy file (#5312)",
         "at": "2026-09-09T05:30:58+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d7e16757b3000b7ccdfc87e46921f1cb2f2d16ac",
-        "subject": "test(wear-widget): regenerate the fixture with its rectangular preview (#5313)",
-        "at": "2026-09-09T05:22:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0e5b860ae9b6fd6a44851b25082c1c00cb5bb8d6",
-        "subject": "chore(deps): regenerate Gradle dependency lockfiles for roborazzi 1.74.0 (#5311)",
-        "at": "2026-09-08T17:59:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6b3f6d59ab5bc2fadcc0cd0ae46f640d8aee1ea5",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.3.0 (#5300)",
-        "at": "2026-09-08T13:34:57+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8e4da81a5a4bbd43b78681471196c91bcff04dd6",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.18.0 (#5307)",
-        "at": "2026-09-08T12:40:46+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bbb591658a0f1052a9cda1ae28da1f20a88c5e43",
-        "subject": "fix(deps): update roborazzi to v1.74.0 (#5308)",
-        "at": "2026-09-08T12:40:21+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fe96bac2def567d25bcb0a07094ed17462979f2f",
-        "subject": "chore(deps): update dependency yschimke/rc-players to v1.60.0 (#5306)",
-        "at": "2026-09-08T12:39:55+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "31c13de0e891b06376b90cf4f34bafb709e144a1",
-        "subject": "fix(deps): update dependency io.github.classgraph:classgraph to v4.8.195 (#5304)",
-        "at": "2026-09-08T12:39:26+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
