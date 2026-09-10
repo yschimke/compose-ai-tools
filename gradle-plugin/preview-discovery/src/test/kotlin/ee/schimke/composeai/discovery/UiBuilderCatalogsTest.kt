@@ -237,7 +237,7 @@ class UiBuilderCatalogsTest {
       )!!
 
     assertThat(generated.catalog.id).isEqualTo("m3-catalog")
-    assertThat(generated.statusSemantics.components.keys).containsExactly("m3/filled")
+    assertThat(generated.statusSemantics.components.keys).containsExactly("m3/button")
   }
 
   @Test
@@ -593,12 +593,26 @@ class UiBuilderCatalogsTest {
     // The consumer shelves an unannotated component by deriving its id from `componentIdPrefix`,
     // exactly as this does — so a collision between two of them is two records claiming one
     // saved-design identity. Excluding them from the check made it blind to most of the shelf.
+    //
+    // Two callables of the same simple name in different packages is what a collision looks like
+    // now that the id is the symbol's rather than a catalog id's last segment. It is the realistic
+    // shape — a `Card` in `material3` and a `Card` in `foundation` — and it is rare, which is the
+    // point: the previous rule collided six unrelated components on `…/filled` because it named
+    // the variant.
+    val foundationCard =
+      component("Card", catalogId = "Layout/Card").let {
+        it.copy(
+          canonicalId = ":catalog/androidx.wear.compose.foundation.CardKt.Card",
+          symbol =
+            it.symbol.copy(
+              jvmOwner = "androidx.wear.compose.foundation.CardKt",
+              callable = "androidx.wear.compose.foundation.Card",
+            ),
+        )
+      }
     val generated =
       UiBuilderCatalogs.generate(
-        record(
-          component("Card", catalogId = "Containment/Card"),
-          component("Card2", catalogId = "Layout/Card"),
-        ),
+        record(component("Card", catalogId = "Containment/Card"), foundationCard),
         cover,
         policy(),
       )!!
@@ -928,8 +942,9 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a published entry names the catalog alias of the sticker that declared it`() {
-    // The entry must not contradict its own builder id: keyed `…/tonal` while linking a consumer to
-    // `Buttons/Filled` would land them on a different sticker than the one whose author wrote this.
+    // The entry links a consumer to the sticker whose author wrote this policy, which is still the
+    // declaring one — `Buttons/Tonal`, not the sorted-first `Buttons/Filled`. The id beside it is
+    // the component's, so the two answer different questions and both have to be right.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -945,7 +960,7 @@ class UiBuilderCatalogsTest {
 
     val entry = generated.statusSemantics.components.values.single()
     assertThat(entry.catalogId).isEqualTo("Buttons/Tonal")
-    assertThat(generated.statusSemantics.components.keys.single()).endsWith("/tonal")
+    assertThat(generated.statusSemantics.components.keys.single()).isEqualTo("wear-m3/button")
   }
 
   @Test
@@ -979,9 +994,10 @@ class UiBuilderCatalogsTest {
   @Test
   fun `a derived id comes from the sticker that declared the policy`() {
     // One callable is routinely published under several catalog ids — `Button/Filled` and
-    // `Button/Tonal` over one `Button` — and `componentIds` is the sorted union across previews.
-    // Taking its first would give a policy declared on Tonal the identity `…/filled`, which is the
-    // string every saved design then stores.
+    // `Button/Tonal` over one `Button`. Which of them the id came from used to matter, and picking
+    // wrong renamed the component in every saved design. It no longer arises: the id is the
+    // COMPONENT's symbol, so all three stickers of one `Button` publish `wear-m3/button` and there
+    // is no variant to pick between.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -993,7 +1009,7 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    assertThat(generated.statusSemantics.components.keys).containsExactly("wear-m3/tonal")
+    assertThat(generated.statusSemantics.components.keys).containsExactly("wear-m3/button")
   }
 
   @Test
@@ -1237,7 +1253,7 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/tonal"]?.group)
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Selection")
   }
 
@@ -1490,8 +1506,10 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    // The id comes from `Buttons/Filled`, so the shelf has to be Filled's.
-    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/filled"]?.group)
+    // The id is the component's now, so it names no alias — but the shelf still has to come from
+    // the alias the id was ATTRIBUTED to (the sorted-first `Buttons/Filled`) rather than from the
+    // first binding, which is preview-id order and would shelve this under Tonal's group.
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Actions")
   }
 
