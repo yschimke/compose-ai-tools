@@ -170,6 +170,45 @@ class RcCommandTest {
   }
 
   @Test
+  fun `a stale dump is removed when its document stops projecting`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    run("dump", dir.toString())
+    assertTrue(fs.exists(dir / "a.rc.json"))
+
+    // The document is replaced by one this CLI cannot project — a newer alpha's opcodes, in the
+    // case the delivery lane actually hits.
+    fs.write(dir / "a.rc") { writeUtf8("not a remote compose document") }
+
+    assertEquals(1, runExpectingExit("dump", dir.toString()))
+
+    // A gap is visible; a stale file is not. Left in place it still parses, still reads like a
+    // projection of the `.rc` beside it, and `git diff` on the delivery branch shows nothing at
+    // all — which is worse than publishing no document for that sticker.
+    assertFalse(fs.exists(dir / "a.rc.json"), "the stale dump is gone: ${fs.list(dir)}")
+  }
+
+  @Test
+  fun `refuses to write a dump through a symlink`() {
+    fs.createDirectories(dir)
+    fs.createDirectories("/elsewhere".toPath())
+    fs.write(dir / "a.rc") { write(document) }
+    // A real dump, outside the tree, that the target links to. `mayWrite` would read *through* the
+    // link, recognise a previous dump and approve it — and the write would follow the same link.
+    val outside = "/elsewhere/other.rc.json".toPath()
+    fs.write(outside) { writeUtf8("""{"header":{},"operations":[]}""") }
+    fs.createSymlink(dir / "a.rc.json", outside)
+
+    assertEquals(1, runExpectingExit("dump", dir.toString()))
+
+    // The walk already refuses to descend into a symlinked directory; that boundary was one-sided
+    // until the target got checked on its own metadata rather than the metadata of what it
+    // resolves to.
+    assertEquals("""{"header":{},"operations":[]}""", fs.read(outside) { readUtf8() })
+    assertTrue(err.any { "it is a symlink" in it }, "names the refusal: $err")
+  }
+
+  @Test
   fun `refuses to dump a document over itself`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }

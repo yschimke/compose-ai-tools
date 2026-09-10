@@ -243,9 +243,13 @@ internal class RcCommand(
         if (!mayWrite(target)) {
           failed++
           stderr(
-            "compose-preview: $target: refusing to overwrite — it is not a document dump. " +
-              "Document JSON cannot be compiled back, so replacing authoring JSON here would " +
-              "destroy it."
+            if (fileSystem.metadataOrNull(target)?.symlinkTarget != null)
+              "compose-preview: $target: refusing to overwrite — it is a symlink, and writing " +
+                "through it would put a dump outside the tree this command was pointed at."
+            else
+              "compose-preview: $target: refusing to overwrite — it is not a document dump. " +
+                "Document JSON cannot be compiled back, so replacing authoring JSON here would " +
+                "destroy it."
           )
           continue
         }
@@ -258,6 +262,7 @@ internal class RcCommand(
         // is a strictly worse outcome than publishing the other thirty-nine and naming the one.
         failed++
         stderr("compose-preview: $document: ${e.message}")
+        discardStaleDump(target)
       } catch (e: OkioIOException) {
         // An unreadable input or an unwritable output is the same shape of problem as an
         // unprojectable document, and the batch has to survive it for the same reason. Without
@@ -265,12 +270,38 @@ internal class RcCommand(
         // nor printed the count a caller checks.
         failed++
         stderr("compose-preview: $document: ${e.message}")
+        discardStaleDump(target)
       }
     }
     stderr(
       "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under $root"
     )
     if (failed > 0 || walked.stoppedBy != null) exit(1)
+  }
+
+  /**
+   * Remove a dump this command wrote earlier, once the document it described stops projecting.
+   *
+   * Leaving it is the failure mode that actually costs something. The batch is fail-soft by design,
+   * so a document that starts failing — replaced, or captured from a newer alpha than this CLI
+   * links — drops out of the run with a message and a non-zero exit. But its `.rc.json` from the
+   * *previous* run stays on disk, still parses, still reads like a projection of the file beside
+   * it, and now describes a document that no longer exists. On a delivery branch that is worse than
+   * a gap: a gap is visible, and `git diff` on a stale file shows nothing at all.
+   *
+   * Deliberately narrow. Only a target [mayWrite] recognises as a prior dump is removed — never an
+   * authoring document, never a file this command did not write — and a failure to remove it is
+   * reported rather than thrown, since the batch is mid-flight and the other documents still have
+   * to finish.
+   */
+  private fun discardStaleDump(target: Path) {
+    if (!fileSystem.exists(target) || !mayWrite(target)) return
+    try {
+      fileSystem.delete(target)
+      stderr("compose-preview: $target: removed — it described a document that no longer projects")
+    } catch (e: OkioIOException) {
+      stderr("compose-preview: $target: stale, and could not be removed: ${e.message}")
+    }
   }
 
   /**
@@ -287,7 +318,15 @@ internal class RcCommand(
    * which costs a re-run at worst; guessing wrong costs someone's file.
    */
   private fun mayWrite(target: Path): Boolean {
-    if (!fileSystem.exists(target)) return true
+    val metadata = fileSystem.metadataOrNull(target) ?: return true
+    // A symlink is refused on its own metadata, before anything reads through it. The walk already
+    // declines to *descend* into a symlinked directory, but that boundary was one-sided: a
+    // `<stem>.rc.json` that is itself a link resolves elsewhere, and both the structural check
+    // below and the write follow it — so a link pointing at a real dump outside the tree would be
+    // approved as "a previous dump" and then overwritten, which is exactly the writing-outside-the-
+    // tree the walk exists to prevent. Refusing rather than resolving-and-comparing, because a
+    // symlink here is not a shape this command produces and a publish step has no use for one.
+    if (metadata.symlinkTarget != null) return false
     val existing =
       try {
         Json.parseToJsonElement(fileSystem.read(target) { readUtf8() }) as? JsonObject
