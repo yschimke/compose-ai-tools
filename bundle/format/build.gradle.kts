@@ -39,6 +39,13 @@ dependencies {
   // on the consumer's compile classpath exactly as they were before the split.
   api(libs.composeai.preview.data.api)
 
+  // The Android launch facts — the `--add-opens` set, the `robolectric.*` flags, the
+  // `robolectric.properties` bodies and their packages, the SDK clamp and SDK discovery — are the
+  // daemon's, not ours. `AndroidBundleLaunch` is the bundle-shaped view of them (#5371 was the cost
+  // of keeping our own copy). Nothing from this module's public surface leaks a daemon type, so
+  // `implementation`.
+  implementation(libs.composeai.daemon.client)
+
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)
