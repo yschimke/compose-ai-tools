@@ -174,6 +174,11 @@ on:
         required: false
         type: boolean
         default: true
+      rc-document-json:
+        description: "Publish each ir/*.rc document's operation-level JSON projection alongside it, under documents/<id>.rc.json. What the delivery branch carries today for a Remote catalog is pixels and opaque bytes, so a review can see THAT a sticker changed and never what changed in it — and a picture diff cannot tell a moved padding from a different antialiasing pass. The projection is `compose-preview rc dump`, which reads the document through AndroidX's own operation model. Opt-in and FAIL-SOFT, like the embedded player lanes and for the same reason: a CLI too old to carry the `rc` verb, or a document a newer alpha wrote, drops the file rather than the publish. No-op for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       publish-live-bundle:
         description: 'Carry the executable primary render bundle onto the branch under bundle/ and record liveBundle:{path,file} in catalog.json, so a serve box that bakes the matching (Android/desktop) daemon re-renders the previews live instead of replaying baked PNGs.'
         required: false
@@ -4697,6 +4702,85 @@ jobs:
             --system "$INPUT_SYSTEM" \
             --title "$INPUT_SYSTEM" \
             ${EMBEDDED_ARGS[@]+"${EMBEDDED_ARGS[@]}"}
+
+      # THE DOCUMENTS THEMSELVES, as text, beside the pixels.
+      #
+      # A Remote catalog's delivery branch carries baked PNGs and — inside the bundle — the `.rc`
+      # documents that drew them. Both are opaque to a review: the PNG shows THAT a sticker moved
+      # and the bytes show nothing at all, so "did the padding change or did the render just
+      # antialias differently" is a question nobody can answer from the branch. `compose-preview rc
+      # dump` projects each document through AndroidX's own operation model, and a `documents/`
+      # tree of those projections is diffable by `git diff` on the delivery branch itself.
+      #
+      # It reads the documents OUT OF THE PACKED BUNDLE rather than out of `renders/`, because the
+      # bundle is what actually ships: a document that failed to pack is one this catalog does not
+      # publish, and projecting it here would put a file on the branch describing a sticker no
+      # visitor can reach.
+      #
+      # FAIL-SOFT throughout, matching the embedded player lanes. Two things it must not turn into
+      # a failed publish: a CLI predating the `rc` verb (every caller pinning `cli-version:
+      # catalog` is on a released CLI, and this input outlives the release that first carries it),
+      # and a document written by a newer Remote Compose alpha than the CLI's `remote-core` can
+      # inflate — the split-family case, which is a property of the pin rather than of this run.
+      # Either drops files and prints why; neither costs the catalog its delivery.
+      - name: Remote Compose documents as JSON
+        if: ${{ inputs.rc-document-json && (inputs.publish || inputs.upload-out) }}
+        run: |
+          set -euo pipefail
+          docs_dir="$GITHUB_WORKSPACE/out/documents"
+          staged="$RUNNER_TEMP/rc-documents"
+          rm -rf "$staged"
+          mkdir -p "$staged"
+
+          # Unpack `ir/*.rc` flat. The bundle stores them as `ir/<preview id>.rc` and the ids can
+          # carry an em-dash, so this goes through Python rather than `unzip -j` + a glob: the
+          # shell would mangle the names that `LANG: C.UTF-8` above exists to keep exact.
+          python3 - "$GITHUB_WORKSPACE/bundle.png" "$staged" <<'PY'
+          import os, sys, zipfile
+          bundle, out = sys.argv[1], sys.argv[2]
+          try:
+              zf = zipfile.ZipFile(bundle)
+          except Exception as e:
+              print(f"::notice title=No bundle to read documents from::{e}")
+              sys.exit(0)
+          n = 0
+          for name in zf.namelist():
+              if name.startswith("ir/") and name.endswith(".rc"):
+                  target = os.path.join(out, os.path.basename(name))
+                  with zf.open(name) as src, open(target, "wb") as dst:
+                      dst.write(src.read())
+                  n += 1
+          print(f"staged {n} document(s)")
+          PY
+
+          if [ -z "$(find "$staged" -maxdepth 1 -name '*.rc' -print -quit)" ]; then
+            echo "No ir/*.rc documents in the bundle — nothing to project."
+            exit 0
+          fi
+
+          if ! compose-preview rc --help >/dev/null 2>&1; then
+            echo "::notice title=Remote Compose document JSON skipped::This compose-preview CLI has no 'rc' verb; the projection needs a release carrying it. Catalog publishes without documents/."
+            exit 0
+          fi
+
+          # `rc dump <dir>` writes `<stem>.rc.json` beside each document and exits non-zero if ANY
+          # of them could not be projected, having still written the rest. `|| true` is therefore
+          # the fail-soft, not a swallowed error: the per-document reason is on stderr above, and
+          # the count below is what a reader checks.
+          compose-preview rc dump "$staged" || true
+
+          mkdir -p "$docs_dir"
+          projected=0
+          for json in "$staged"/*.rc.json; do
+            [ -e "$json" ] || continue
+            cp "$json" "$docs_dir/"
+            projected=$((projected + 1))
+          done
+          total="$(find "$staged" -maxdepth 1 -name '*.rc' | wc -l | tr -d ' ')"
+          echo "Projected $projected of $total document(s) into out/documents/."
+          if [ "$projected" -lt "$total" ]; then
+            echo "::warning title=Some Remote Compose documents were not projected::$((total - projected)) of $total. The per-document reason is in this step's log; a document a newer Remote Compose alpha wrote than this CLI links is the usual cause."
+          fi
 
       - name: Upload CMP/Wasm parity evidence
         if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) }}

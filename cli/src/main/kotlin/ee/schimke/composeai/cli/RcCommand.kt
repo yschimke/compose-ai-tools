@@ -99,8 +99,9 @@ internal class RcCommand(private val args: List<String>) {
   }
 
   private fun dumpTree(root: File, compact: Boolean) {
-    val documents =
-      root.walkTopDown().filter { it.isFile && it.extension == "rc" }.sorted().toList()
+    val entries = root.walkTopDown().toList()
+    refuseUndecodableNames(root, entries)
+    val documents = entries.filter { it.isFile && it.extension == "rc" }.sorted()
     if (documents.isEmpty()) fail("rc dump: no .rc documents under ${root.path}")
 
     var failed = 0
@@ -120,6 +121,36 @@ internal class RcCommand(private val args: List<String>) {
       "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under ${root.path}"
     )
     if (failed > 0) exitProcess(1)
+  }
+
+  /**
+   * Refuse a tree this JVM cannot name, rather than reporting it as empty.
+   *
+   * `File.listFiles()` decodes directory entries with `sun.jnu.encoding`, which follows the process
+   * locale. Under `LANG=C` / `POSIX` that is `ANSI_X3.4-1968`, and every filename holding a byte
+   * above 0x7F comes back with U+FFFD replacement characters — a `File` whose `isFile()` is false,
+   * because the mangled name resolves to nothing on disk.
+   *
+   * This repository's preview ids **do** hold such bytes: they can carry an em-dash, which is why
+   * the design-artifacts workflow sets `LANG: C.UTF-8` and says so. Without this check a batch dump
+   * under the wrong locale reports "no .rc documents under …" for a directory full of them — a
+   * wrong answer that reads exactly like a correct one, and one that would have published an empty
+   * `documents/` tree with nothing anywhere reporting a problem.
+   *
+   * Measured rather than inferred: the check is for entries that came back **undecodable**, not for
+   * an unfortunate-looking `sun.jnu.encoding`. An ASCII-only tree works fine under any locale and
+   * must not be refused for a hazard it does not have.
+   */
+  private fun refuseUndecodableNames(root: File, entries: List<File>) {
+    val undecodable = entries.filter { UNDECODABLE in it.name }
+    if (undecodable.isEmpty()) return
+    fail(
+      "rc dump: ${undecodable.size} entr${if (undecodable.size == 1) "y" else "ies"} under " +
+        "${root.path} have names this JVM cannot decode — sun.jnu.encoding is " +
+        "${System.getProperty("sun.jnu.encoding")}, and a preview id can carry an em-dash. " +
+        "Re-run with a UTF-8 locale (LANG=C.UTF-8). Refusing rather than reporting an empty tree, " +
+        "which is what this looks like otherwise."
+    )
   }
 
   private fun header(args: List<String>) {
@@ -204,5 +235,8 @@ internal class RcCommand(private val args: List<String>) {
 
   private companion object {
     val PRETTY = Json { prettyPrint = true }
+
+    /** The replacement character `File.listFiles()` substitutes for a byte it cannot decode. */
+    const val UNDECODABLE: Char = '\uFFFD'
   }
 }

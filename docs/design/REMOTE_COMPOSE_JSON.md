@@ -120,6 +120,25 @@ an error. `RemoteComposeJson.compile` therefore spends a JSON parse to require `
 only `required` property — before handing anything to the parser, and names the wrapper case
 separately because unwrapping is the fix and "missing root" does not suggest it.
 
+## The locale trap in the batch dump
+
+`File.listFiles()` decodes directory entries with `sun.jnu.encoding`, which follows the process
+locale. Under `LANG=C` / `POSIX` that is `ANSI_X3.4-1968`, and **every filename holding a byte above
+0x7F comes back with U+FFFD replacement characters** — a `File` whose `isFile()` is false, because
+the mangled name resolves to nothing on disk.
+
+This repository's preview ids do hold such bytes: they can carry an em-dash, which is why
+`design-artifacts-reusable.yml` sets `LANG: C.UTF-8` and says so. So a batch dump under the wrong
+locale reports *"no .rc documents under …"* for a directory full of them — a wrong answer that reads
+exactly like a correct one, and one that would publish an empty `documents/` tree with nothing
+anywhere reporting a problem. Measured, not theorised: an em-dash-named tree of four documents
+listed as four unresolvable entries.
+
+`rc dump <dir>` therefore refuses a tree containing an undecodable entry, naming the encoding and
+the fix. The check is on entries that actually came back undecodable rather than on an
+unfortunate-looking `sun.jnu.encoding`, so an ASCII-only tree is never refused for a hazard it does
+not have.
+
 ## Command line
 
 ```
