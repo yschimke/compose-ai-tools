@@ -68,6 +68,7 @@ internal class RcCommand(
     val sub = if (subIndex >= 0) args[subIndex] else null
     val subArgs =
       if (subIndex >= 0) args.toMutableList().apply { removeAt(subIndex) } else emptyList()
+    warnUnreadFlags(sub, subArgs)
     when (sub) {
       "compile" -> compile(subArgs)
       "dump" -> dump(subArgs)
@@ -80,6 +81,29 @@ internal class RcCommand(
         exit(2)
       }
     }
+  }
+
+  /**
+   * Name a flag the chosen subcommand does not read.
+   *
+   * `CliFlagValidation`'s entry for `rc` is necessarily the **union** of what `compile`, `dump` and
+   * `header` read — it validates at the routed-command boundary, where the subcommand has not been
+   * resolved yet — so it cannot tell that `rc header doc.rc -o report.json` names an output nothing
+   * will write, or that `rc compile x.json --compact` asks for formatting of a binary. Each is
+   * silently ignored, which is precisely the failure that validator exists to warn about; only this
+   * class knows enough to say so.
+   *
+   * A warning rather than a refusal, matching what the CLI does with an unrecognised option
+   * everywhere else: the invocation still means something, and nothing downstream breaks.
+   */
+  private fun warnUnreadFlags(sub: String?, args: List<String>) {
+    val read = READS[sub] ?: return
+    args
+      .filter { it.startsWith("-") && it != "-" }
+      .map { it.substringBefore("=") }
+      .filter { it !in read && it !in HELP }
+      .distinct()
+      .forEach { stderr("compose-preview: warning: '$it' has no effect on 'rc $sub' (ignored)") }
   }
 
   private fun compile(args: List<String>) {
@@ -324,6 +348,15 @@ internal class RcCommand(
    */
   private fun replaceAtomically(target: Path, text: String) {
     val temp = target.parent!! / "${target.name}.tmp"
+    // The temp path is deterministic, so it is a path an attacker — or a previous crashed run —
+    // can have made into something already. A symlink here would be followed by the write and
+    // truncate whatever it points at, outside the tree, which is the same escape `mayWrite` refuses
+    // for the target itself; a guard that opens a second hole while closing the first is not a
+    // guard. A plain leftover file is fine to overwrite: this command wrote it, and it is about to
+    // be moved onto the target anyway.
+    if (fileSystem.metadataOrNull(temp)?.symlinkTarget != null) {
+      throw OkioIOException("$temp is a symlink; refusing to write a dump through it")
+    }
     try {
       fileSystem.write(temp) { writeUtf8(text) }
       fileSystem.atomicMove(temp, target)
@@ -468,10 +501,11 @@ internal class RcCommand(
     val header = guard { RemoteComposeJson.header(readBytesOrFail(input.toPath(), "rc header")) }
 
     if ("--json" in args) {
-      // `toJsonObject()`, not the data class's own serializer. They disagree: the property is
-      // `desiredFps` and the wire field is `desiredFPS`, so serializing the class directly would
-      // give `rc header --json` a different shape from `rc dump`'s `header` block for the same
-      // document — and a `jq` query written against one would silently miss on the other.
+      // `toJsonObject()`, not the data class's own serializer. The two agree on field names now
+      // (`@SerialName("desiredFPS")` settled the one that did not), so this is no longer a
+      // workaround — it is the omit-what-the-document-did-not-say behaviour: a header with no
+      // declared FPS has no `desiredFPS` key here, where the generated serializer would emit
+      // `null`, and "the document did not say" is the distinction this whole type is built on.
       stdout(PRETTY.encodeToString(JsonObject.serializer(), header.toJsonObject()))
       return
     }
@@ -562,6 +596,16 @@ internal class RcCommand(
 
   private companion object {
     val PRETTY = Json { prettyPrint = true }
+
+    /** What each subcommand actually reads — the per-subcommand half of `rc`'s flag allowlist. */
+    val READS =
+      mapOf(
+        "compile" to setOf("--output", "-o"),
+        "dump" to setOf("--output", "-o", "--compact"),
+        "header" to setOf("--json"),
+      )
+
+    val HELP = setOf("--help", "-h")
 
     /** The replacement character a directory listing substitutes for a byte it cannot decode. */
     const val UNDECODABLE: Char = '\uFFFD'

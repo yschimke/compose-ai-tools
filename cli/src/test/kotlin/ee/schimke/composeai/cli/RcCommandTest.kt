@@ -274,6 +274,37 @@ class RcCommandTest {
   }
 
   @Test
+  fun `names a flag the chosen subcommand does not read`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+
+    // `CliFlagValidation`'s `rc` entry is the union of the three subcommands' flags — it runs
+    // before the subcommand is resolved — so it cannot see that `header -o` names an output
+    // nothing will write. Silently ignored is the failure that validator exists to warn about.
+    run("header", (dir / "a.rc").toString(), "-o", "report.json")
+
+    assertTrue(err.any { "'-o' has no effect on 'rc header'" in it }, "warns: $err")
+    assertFalse(fs.exists("report.json".toPath()), "and wrote nothing")
+  }
+
+  @Test
+  fun `will not write a dump through a symlinked temporary`() {
+    fs.createDirectories(dir)
+    fs.createDirectories("/elsewhere".toPath())
+    fs.write(dir / "a.rc") { write(document) }
+    val outside = "/elsewhere/precious".toPath()
+    fs.write(outside) { writeUtf8("not mine") }
+    // The temp path is deterministic, so it is a path something else can have made into a symlink
+    // first. A guard that opens a second escape while closing the first is not a guard.
+    fs.createSymlink(dir / "a.rc.json.tmp", outside)
+
+    assertEquals(1, runExpectingExit("dump", dir.toString()))
+
+    assertEquals("not mine", fs.read(outside) { readUtf8() })
+    assertTrue(err.any { "is a symlink" in it }, "names it: $err")
+  }
+
+  @Test
   fun `refuses an output flag with nothing after it`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }

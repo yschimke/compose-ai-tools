@@ -1,6 +1,7 @@
 package ee.schimke.composeai.remotecompose.json
 
 import androidx.compose.remote.core.operations.Header
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -32,7 +33,13 @@ public data class RemoteComposeDocumentHeader(
    * document that plays in one host is blank in another.
    */
   public val profiles: Int?,
-  public val desiredFps: Int?,
+  /**
+   * Named `desiredFPS` on the wire, matching what [toJsonObject] and `rc dump`'s `header` block
+   * emit. Without the annotation a consumer serializing this class directly got `desiredFps` while
+   * every JSON surface of this codec said `desiredFPS`, so a `jq` query written against a dump
+   * missed silently on the other.
+   */
+  @SerialName("desiredFPS") public val desiredFps: Int?,
   /**
    * Screen density at authoring time. Not the playback density — the document is
    * resolution-independent.

@@ -234,6 +234,28 @@ class RemoteComposeJsonTest {
     assertThat(encoded).contains("\"densityAtGeneration\":\"NaN\"")
   }
 
+  @Test
+  fun `the header serializer and the projection agree on field names`() {
+    val header =
+      RemoteComposeDocumentHeader(
+        version = "1.1.0",
+        width = 10,
+        height = 10,
+        contentDescription = null,
+        profiles = null,
+        desiredFps = 30,
+        densityAtGeneration = null,
+        byteLength = 39,
+      )
+
+    // A consumer of the published type may serialize it directly rather than through
+    // `toJsonObject()`, and until `@SerialName` was added the two disagreed on exactly one field —
+    // so a `jq` query written against a dump's header block missed silently on the other shape.
+    val generated = Json.encodeToString(RemoteComposeDocumentHeader.serializer(), header)
+    assertThat(generated).contains("\"desiredFPS\":30")
+    assertThat(header.toJsonObject()["desiredFPS"]!!.jsonPrimitive.content).isEqualTo("30")
+  }
+
   /** The first operation of [type] anywhere in the projection, nesting included. */
   private fun kotlinx.serialization.json.JsonElement.find(type: String): JsonObject? =
     when (this) {
