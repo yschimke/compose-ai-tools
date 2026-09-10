@@ -68,10 +68,16 @@ import org.json.JSONException
  * - `RemoteComposeJsonParser` is written against `org.json.JSONObject`, which Android supplies from
  *   the platform and a JVM does not. `remote-creation-core` neither shades nor declares it, so this
  *   module declares `org.json:json` itself.
- * - [compile] runs on `RemoteComposeJsonParser.DEFAULT_PLATFORM`, whose text measurement and path
- *   parsing are stubs. A document whose *layout* depends on measured text therefore compiles here
- *   but must be measured by a real player before its bounds mean anything. Compiling is not
- *   rendering, and this class never claims otherwise.
+ * - [compile] runs on `RemoteComposeJsonParser.DEFAULT_PLATFORM`, whose **text measurement** is a
+ *   stub. A document whose *layout* depends on measured text therefore compiles here but must be
+ *   measured by a real player before its bounds mean anything. Compiling is not rendering, and this
+ *   class never claims otherwise.
+ *
+ *   **Path parsing is not** among the stubs, contrary to what this file used to say. Measured: the
+ *   default platform's `parsePath` returns a real `RemotePathBase`, and `PathParser.parsePathData`
+ *   turns `"M 10 10 L 90 10 L 90 90 Z"` into the NaN-opcode float array a player draws — `["@10",
+ *   10.0, 10.0, "@11", …]` in a dump, `@10`/`@11`/`@15` being MOVE/LINE/CLOSE. Geometry survives
+ *   compilation here intact.
  */
 public object RemoteComposeJson {
 

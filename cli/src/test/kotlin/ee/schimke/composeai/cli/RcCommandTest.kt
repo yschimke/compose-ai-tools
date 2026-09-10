@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJson
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -166,6 +167,32 @@ class RcCommandTest {
     assertEquals(1, runExpectingExit("dump", (dir / "a.rc").toString(), fileSystem = unreadable))
 
     assertTrue(err.any { "cannot read" in it && "Permission denied" in it }, "names it: $err")
+  }
+
+  @Test
+  fun `refuses to dump a document over itself`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+
+    // `-o` naming the input truncates the only binary copy and leaves the lossy projection there.
+    // Same one-way harm the directory mode's overwrite guard exists for, reached by a different
+    // typo — and the canonical comparison is what makes the indirect spelling refuse too.
+    assertEquals(1, runExpectingExit("dump", (dir / "a.rc").toString(), "-o", "/docs/./a.rc"))
+
+    assertContentEquals(document, fs.read(dir / "a.rc") { readByteArray() })
+    assertTrue(err.any { "would overwrite the document being dumped" in it }, "names it: $err")
+  }
+
+  @Test
+  fun `dumps to a different file happily`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+
+    // The guard must not catch the ordinary case: the output does not exist yet, so canonicalising
+    // it fails, and a path that is not there cannot be the input that is.
+    run("dump", (dir / "a.rc").toString(), "-o", (dir / "out.json").toString())
+
+    assertContains(fs.read(dir / "out.json") { readUtf8() }, "RootLayoutComponent")
   }
 
   @Test

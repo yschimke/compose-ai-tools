@@ -105,8 +105,14 @@ Two more consequences of the JVM target, neither visible from the coordinates:
   `remote-creation-core` neither shades nor declares it. `:remotecompose-json` does. Its absence is
   a runtime `NoClassDefFoundError`, not a resolution failure.
 - **Compiling is not rendering.** `compile` runs on `RemoteComposeJsonParser.DEFAULT_PLATFORM`,
-  whose text measurement and path parsing are stubs. A document whose *layout* depends on measured
-  text compiles fine and must still be measured by a real player before its bounds mean anything.
+  whose **text measurement** is a stub. A document whose *layout* depends on measured text compiles
+  fine and must still be measured by a real player before its bounds mean anything.
+
+  **Path parsing is not a stub**, though it is easy to assume it is from the same sentence. The
+  default platform's `parsePath` returns a real `RemotePathBase` and `PathParser.parsePathData`
+  does the work, so `"M 10 10 L 90 10 L 90 90 Z"` compiles to the NaN-opcode float array a player
+  draws — visible in a dump as `{"type": "PathData", "path": ["@10", 10.0, 10.0, "@11", …]}`, where
+  `@10` / `@11` / `@15` are MOVE / LINE / CLOSE. Geometry is not lost by compiling off-device.
 
 ## The empty-document trap
 

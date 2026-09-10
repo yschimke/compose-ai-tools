@@ -1,6 +1,7 @@
 package ee.schimke.composeai.remotecompose.json
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -187,6 +188,60 @@ class RemoteComposeJsonTest {
     assertThat(result["absentMap"]).isEqualTo(kotlinx.serialization.json.JsonNull)
     assertThat(result["emptyMap"].toString()).isEqualTo("{}")
   }
+
+  @Test
+  fun `a path compiles to real geometry, not a stub`() {
+    // Pinned because this file used to claim the opposite. The default platform's text measurement
+    // IS a stub; its path parsing is not, and the difference matters — a caller told that geometry
+    // is mangled off-device would reach for a real player it does not need.
+    val document =
+      RemoteComposeJson.compile(
+        """{"header":{"width":100,"height":100},"root":[{"canvas":{"modifiers":[{"size":""" +
+          """[100.0,100.0]}],"commands":[{"type":"drawPath","path":"M 10 10 L 90 10 L 90 90 Z"}]""" +
+          """}}]}"""
+      )
+
+    val path = RemoteComposeJson.dumpToJsonObject(document).find("PathData")!!["path"] as JsonArray
+
+    // `@10` / `@11` / `@15` are MOVE / LINE / CLOSE as NaN-encoded opcodes, and the coordinates
+    // between them are the triangle that was written. Asserting the coordinates rather than just
+    // the opcodes is the point: a stub could plausibly emit the verbs and drop the numbers.
+    assertThat(path.take(8).map { it.jsonPrimitive.content })
+      .containsExactly("@10", "10.0", "10.0", "@11", "0.0", "0.0", "90.0", "10.0")
+      .inOrder()
+  }
+
+  @Test
+  fun `a non-finite density does not break the projection`() {
+    // `Json.encodeToString` rejects a bare `NaN` / `Infinity` token outright, so putting a
+    // non-finite density in as a number took the whole dump down with a `JsonEncodingException` —
+    // thrown from outside this module's exception type, i.e. as a stack trace, over one optional
+    // header field nothing else depends on.
+    val header =
+      RemoteComposeDocumentHeader(
+        version = "1.1.0",
+        width = 10,
+        height = 10,
+        contentDescription = null,
+        profiles = null,
+        desiredFps = null,
+        densityAtGeneration = Float.NaN,
+        byteLength = 39,
+      )
+
+    val encoded = Json.encodeToString(JsonObject.serializer(), header.toJsonObject())
+
+    assertThat(encoded).contains("\"densityAtGeneration\":\"NaN\"")
+  }
+
+  /** The first operation of [type] anywhere in the projection, nesting included. */
+  private fun kotlinx.serialization.json.JsonElement.find(type: String): JsonObject? =
+    when (this) {
+      is JsonObject ->
+        if (typeName() == type) this else values.firstNotNullOfOrNull { it.find(type) }
+      is JsonArray -> firstNotNullOfOrNull { it.find(type) }
+      else -> null
+    }
 
   private fun kotlinx.serialization.json.JsonElement.typeName(): String? =
     (this as? JsonObject)?.typeName()

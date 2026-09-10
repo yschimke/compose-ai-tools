@@ -48,7 +48,14 @@ public data class RemoteComposeDocumentHeader(
     contentDescription?.let { put("contentDescription", it) }
     profiles?.let { put("profiles", it) }
     desiredFps?.let { put("desiredFPS", it) }
-    densityAtGeneration?.let { put("densityAtGeneration", it) }
+    // Through the shared float encoder, not `put(String, Float)`. A non-finite density would
+    // otherwise reach the JSON tree as a bare `NaN` / `Infinity` token, and `Json.encodeToString`
+    // rejects those outright — so a document with a broken density would take the whole dump down
+    // with a `JsonEncodingException` from outside the codec's own exception type, i.e. as a stack
+    // trace, for a field nothing else in the dump depends on. Same encoding as every other float
+    // in the projection, so `densityAtGeneration` reads the same way in `rc dump` and
+    // `rc header --json`.
+    densityAtGeneration?.let { put("densityAtGeneration", JsonMapSerializer.float(it)) }
     put("byteLength", byteLength)
   }
 

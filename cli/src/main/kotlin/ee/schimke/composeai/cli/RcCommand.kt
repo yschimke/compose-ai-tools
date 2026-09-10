@@ -147,9 +147,41 @@ internal class RcCommand(
       // Text, so `-` meaning stdout is honoured here rather than refused — the opposite of
       // `compile`, and for the reason that separates them: this output is pipeable.
       stdout(text)
+    } else if (isSameFile(out.toPath(), file)) {
+      // `rc dump doc.rc -o doc.rc` would truncate the only copy of the document and leave the
+      // lossy projection in its place. There is no undo: document JSON has no parser, so the `.rc`
+      // it replaced cannot be recovered from it. Same one-way harm the directory mode's overwrite
+      // guard exists for, arrived at by a different typo.
+      //
+      // Canonicalised on both sides so `-o ./doc.rc` and a symlink pointing back at the input are
+      // caught too; a path that cannot be canonicalised (the output does not exist yet, which is
+      // the ordinary case) simply is not the input.
+      fail(
+        "rc dump: --output would overwrite the document being dumped ($out). Document JSON " +
+          "cannot be compiled back, so this would destroy it — name a different file."
+      )
     } else {
       writing("rc dump", out) { path -> fileSystem.write(path) { writeUtf8(text + "\n") } }
     }
+  }
+
+  /**
+   * Whether [a] and [b] name the same file on disk.
+   *
+   * Canonicalised rather than compared as strings, so `./doc.rc`, `docs/../docs/doc.rc` and a
+   * symlink pointing back at the input are all the same file. `canonicalize` throws for a path that
+   * does not exist — the ordinary case for an output — and a path that is not there cannot be the
+   * input that just was, so that failure answers `false` rather than propagating.
+   */
+  private fun isSameFile(a: Path, b: Path): Boolean {
+    val canonical = { p: Path ->
+      try {
+        fileSystem.canonicalize(p)
+      } catch (_: OkioIOException) {
+        null
+      }
+    }
+    return canonical(a)?.let { it == canonical(b) } == true
   }
 
   /**
