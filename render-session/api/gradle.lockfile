@@ -2,7 +2,7 @@
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
 # To regenerate this file, run: ./gradlew :render-session-api:dependencies --write-locks
-ee.schimke.composeai:daemon-protocol:2.13.0=compileClasspath,runtimeClasspath
+ee.schimke.composeai:daemon-protocol:2.14.0=compileClasspath,runtimeClasspath
 org.jetbrains.kotlin:kotlin-stdlib:2.4.10=compileClasspath,runtimeClasspath
 org.jetbrains.kotlinx:kotlinx-serialization-bom:1.11.0=compileClasspath,runtimeClasspath
 org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.11.0=compileClasspath,runtimeClasspath
