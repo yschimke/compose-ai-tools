@@ -41,6 +41,7 @@ make_good() { # make_good <dir>
     printf '<!-- invariant: branch-prefix -->\n### agent/ prefix\nrule.\n\n'
     printf '<!-- invariant: conventional-commits -->\n### Conventional commits\nrule.\n\n'
     printf '<!-- invariant: format-before-commit -->\n### Format first\nrule.\n\n'
+    printf '<!-- invariant: regenerate-lockfiles -->\n### Regenerate lockfiles\nrule.\n\n'
     printf '<!-- invariant: pr-state-recheck -->\n### Re-check PR state\nrule.\n'
   } > "$d/AGENTS.md"
   printf '@AGENTS.md\n\n## Claude Code\nharness mechanics.\n' > "$d/CLAUDE.md"

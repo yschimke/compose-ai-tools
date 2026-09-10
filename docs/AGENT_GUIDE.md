@@ -201,6 +201,76 @@ Daemon (`daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/`):
 
 The seams are deliberately split per concern; a new feature usually maps to extending exactly one. If your change wants to add a new module-level `Map<String, …>` to `extension.ts` or `JsonRpcServer.kt`, check whether one of these classes already owns the conceptual state first.
 
+## Dependency lockfiles
+
+The rule — regenerate before you commit a dependency move — is stated once in
+[root `AGENTS.md`](../AGENTS.md#the-ci-enforced-invariants). This is why it bites
+and how it fails.
+
+`ComposeAiMavenPublishingPlugin` turns on Gradle dependency locking for the
+configurations that decide a published artifact: the JVM, Android `release` and
+KMP `jvm` compile/runtime classpaths, and deliberately *not* the test classpaths,
+since a test-only bump cannot change published bytes. Each locked module commits
+a `gradle.lockfile` recording what it actually resolved.
+
+**Lock state is what makes the release trains cheap.** The publish guard is
+conservative about shared build inputs, and `gradle/libs.versions.toml` is shared
+by every module — so before lockfiles, 16 of 38 measured windows forced all 94
+module publications (1,504 of them, against 50 for every other window combined),
+and in 9 of those 16 the only shared file touched was the catalog. The guard now
+diffs each module's `gradle.lockfile`, which lives in the module directory that is
+already watched, so a bump republishes exactly the modules that resolve it. The
+full measurement is in
+[`docs/design/RELEASE_TRAINS.md` §6](design/RELEASE_TRAINS.md#6-the-shared-input-rule-is-what-limits-this-and-lockfiles-are-the-fix).
+
+That is also why "just drop the lockfiles" is not on the table, and why splitting
+the daemon out into `yschimke/compose-preview-daemon` argued *for* them rather
+than against: the daemon is now an external release train whose version moves on
+its own cadence, and every one of those moves is exactly the catalog-only bump
+that lock state keeps from fanning out across all 94 modules.
+
+### How a stale lockfile fails
+
+Not quietly. The recorded versions are `strictly` constraints, so the catalog and
+the lock state disagreeing is a hard resolution failure:
+
+```
+> Could not resolve ee.schimke.composeai:preview-data-api:3.0.1.
+    Constraint path: ... 'preview-data-api:{strictly 3.0.0}' because of the
+    following reason: Dependency version enforced by Dependency Locking
+```
+
+`LockMode.DEFAULT` (not `STRICT`) means a locked configuration with *no* lock
+state resolves normally — that is what let locking land incrementally — but a
+configuration with *stale* state fails outright.
+
+Regenerate with:
+
+```
+./gradlew resolveAndLockAll --write-locks --no-configuration-cache
+```
+
+`--no-configuration-cache` is load-bearing rather than tidying: `gradle.properties`
+sets `org.gradle.configuration-cache=true` with `configuration-cache.problems=fail`,
+and writing lock state resolves configurations at execution time, which the
+configuration cache forbids.
+
+### The gap that broke `main` at daemon 3.0.1
+
+[`dependency-locks.yml`](../.github/workflows/dependency-locks.yml) regenerates and
+pushes into Renovate's branches, and refuses to pass on stale tracked lockfiles.
+It has one blind spot worth knowing, because it has already cost a red `main`:
+**it runs on `pull_request` only.** When
+[#5356](https://github.com/yschimke/compose-ai-tools/pull/5356) bumped
+`composeai-preview-daemon` to 3.0.1, the 3.0.1 artifacts had not yet propagated to
+Maven Central, so the job failed on `Could not find … :3.0.1` rather than
+producing regenerated locks — and the catalog bump merged with every lockfile
+still pinning `3.0.0`. Nothing re-checked it on `main`.
+
+So when you bump a coordinate whose release is fresh, confirm the lockfiles
+actually moved in the same commit rather than trusting the workflow to have done
+it. If they cannot be generated yet, the bump is not ready to merge.
+
 ## Git conventions
 
 The normative rules — no agent attribution in git history, `agent/…` branch
