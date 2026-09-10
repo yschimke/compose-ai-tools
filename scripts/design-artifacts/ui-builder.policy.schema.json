@@ -166,6 +166,7 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "acceptedRoles": { "type": "array", "items": { "type": "string" } },
                 "acceptedTraits": { "type": "array", "items": { "type": "string" } },
                 "required": { "type": "boolean" },
                 "role": {
