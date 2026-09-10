@@ -4,9 +4,12 @@ import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import ee.schimke.composeai.discovery.ChainLink
 import ee.schimke.composeai.discovery.ComponentRecordFile
+import ee.schimke.composeai.discovery.ScreenAction
 import ee.schimke.composeai.discovery.ScreenDocument
 import ee.schimke.composeai.discovery.ScreenGenerator
 import ee.schimke.composeai.discovery.ScreenNode
+import ee.schimke.composeai.discovery.ScreenSelection
+import ee.schimke.composeai.discovery.ScreenState
 import ee.schimke.composeai.discovery.ScreenValue
 import ee.schimke.composeai.discovery.SlotItem
 import java.io.File
@@ -304,6 +307,130 @@ class ScreenGeneratorCompileFunctionalTest {
     val compile = runGradle(projectDir, "compileKotlin")
     assertThat(compile.task(":compileKotlin")?.outcome)
       .isIn(listOf(TaskOutcome.SUCCESS, TaskOutcome.FROM_CACHE))
+  }
+
+  @Test
+  fun `state selection compiles and switches real Compose branches after a click`() {
+    val projectDir = createTestProject()
+    val buildFile = File(projectDir, "build.gradle.kts")
+    buildFile.writeText(
+      "@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)\n" +
+        buildFile.readText()
+    )
+    File(projectDir, "build.gradle.kts")
+      .appendText(
+        """
+
+        dependencies {
+          testImplementation(compose.uiTest)
+          testImplementation("junit:junit:4.13.2")
+        }
+        """
+          .trimIndent()
+      )
+    runGradle(projectDir, "composePreviewDiscover")
+    val components =
+      json.decodeFromString(
+        ComponentRecordFile.serializer(),
+        File(projectDir, "build/compose-previews/components.json").readText(),
+      )
+    fun label(text: String) =
+      ScreenNode(idOf(components, "Text"), mapOf("text" to ScreenValue.Text(text)))
+    fun button(text: String, value: Long) =
+      ScreenNode(
+        idOf(components, "Button"),
+        slots = mapOf("content" to listOf(label(text))),
+        handlers = mapOf("onClick" to listOf(ScreenAction.Set("page", ScreenValue.Whole(value)))),
+      )
+    val screen =
+      ScreenDocument(
+        name = "SelectedScreen",
+        state = listOf(ScreenState("page", "kotlin.Int", ScreenValue.Whole(10))),
+        root =
+          ScreenNode(
+            idOf(components, "Card"),
+            slots =
+              mapOf(
+                "content" to
+                  listOf(
+                    button("Show second", 20),
+                    button("Show unknown", 30),
+                    ScreenNode(
+                      "",
+                      selection =
+                        ScreenSelection(
+                          ScreenValue.StateRead("page", "kotlin.Int"),
+                          mapOf(
+                            "first" to ScreenValue.Whole(10),
+                            "second" to ScreenValue.Whole(20),
+                          ),
+                          "fallback",
+                        ),
+                      slots =
+                        mapOf(
+                          "first" to listOf(label("First")),
+                          "second" to listOf(label("Second")),
+                          "fallback" to listOf(label("Unknown page")),
+                        ),
+                    ),
+                  )
+              ),
+          ),
+      )
+    val result =
+      ScreenGenerator.generate(
+        screen,
+        components,
+        packageName = "generated",
+        expressionPackages = setOf("androidx.compose"),
+      )
+    assertWithMessage(result.toString())
+      .that(result)
+      .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+    val generated = File(projectDir, "src/main/kotlin/generated").apply { mkdirs() }
+    File(generated, "SelectedScreen.kt")
+      .writeText((result as ScreenGenerator.Result.Emitted).source)
+    val tests = File(projectDir, "src/test/kotlin/generated").apply { mkdirs() }
+    File(tests, "SelectionInteractionTest.kt")
+      .writeText(
+        """
+        package generated
+        import androidx.compose.ui.test.*
+        import androidx.compose.ui.graphics.asSkiaBitmap
+        import org.junit.Test
+        @OptIn(ExperimentalTestApi::class)
+        class SelectionInteractionTest {
+          @Test fun changesBranches() = runDesktopComposeUiTest {
+            fun capture(name: String) {
+              val directory = java.io.File("build/selection-evidence").apply { mkdirs() }
+              val bitmap = onRoot().captureToImage().asSkiaBitmap()
+              val png = org.jetbrains.skia.Image.makeFromBitmap(bitmap)
+                .encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!
+              java.io.File(directory, name).writeBytes(png.bytes)
+            }
+            setContent { androidx.compose.material3.MaterialTheme { SelectedScreen() } }
+            onNodeWithText("First").assertExists()
+            onNodeWithText("Second").assertDoesNotExist()
+            capture("first.png")
+            onNodeWithText("Show second").performClick()
+            waitForIdle()
+            onNodeWithText("Second").assertExists()
+            onNodeWithText("First").assertDoesNotExist()
+            capture("second.png")
+            onNodeWithText("Show unknown").performClick()
+            waitForIdle()
+            onNodeWithText("Unknown page").assertExists()
+            onNodeWithText("Second").assertDoesNotExist()
+          }
+        }
+        """
+          .trimIndent()
+      )
+    val run = runGradle(projectDir, "test", "--tests", "generated.SelectionInteractionTest")
+    assertThat(run.task(":test")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    File(projectDir, "build/selection-evidence")
+      .copyRecursively(File("build/selection-evidence"), overwrite = true)
+    File("build/selection-evidence/SelectedScreen.kt.txt").writeText(result.source)
   }
 
   @Test

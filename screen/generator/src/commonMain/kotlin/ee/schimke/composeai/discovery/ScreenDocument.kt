@@ -81,6 +81,28 @@ data class ScreenNode(
    * A parameter that is not a zero-argument function type is refused rather than guessed at.
    */
   val handlers: Map<String, List<ScreenAction>> = emptyMap(),
+  /**
+   * Selects one of [slots] instead of calling a component. Such a node has an empty [componentId]
+   * and no arguments, handlers or slot items. Wrap it in an ordinary layout node to apply
+   * modifiers. Branch children stay in [slots], so document traversal and editing use the same
+   * tree.
+   */
+  val selection: ScreenSelection? = null,
+)
+
+/**
+ * A Kotlin `when` over a scalar value, usually a [ScreenValue.StateRead].
+ *
+ * [cases] maps child slot names to matching literal values, in emitted order. [elseSlot] names the
+ * fallback slot; when absent, an unmatched value composes nothing. Every slot must be named exactly
+ * once. Selection introduces no layout or receiver scope and does not retain inactive branches:
+ * composition and remembered state follow ordinary Compose `when` behavior.
+ */
+@Serializable
+data class ScreenSelection(
+  val subject: ScreenValue,
+  val cases: Map<String, ScreenValue>,
+  val elseSlot: String? = null,
 )
 
 /**

@@ -1,0 +1,30 @@
+package generated
+
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+
+@Composable
+fun SelectedScreen() {
+    val page = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<kotlin.Int>(10) }
+    Card(content = {
+        Button(onClick = { page.value = 20 }, content = {
+            Text(text = "Show second")
+        })
+        Button(onClick = { page.value = 30 }, content = {
+            Text(text = "Show unknown")
+        })
+        when (page.value) {
+            10 -> {
+                Text(text = "First")
+            }
+            20 -> {
+                Text(text = "Second")
+            }
+            else -> {
+                Text(text = "Unknown page")
+            }
+        }
+    })
+}

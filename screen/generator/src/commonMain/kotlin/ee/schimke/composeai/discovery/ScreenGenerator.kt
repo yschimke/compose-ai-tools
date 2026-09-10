@@ -659,6 +659,7 @@ object ScreenGenerator {
     private var slotScope: String? = null
 
     fun node(node: ScreenNode, depth: Int): String {
+      if (node.selection != null) return selection(node, depth)
       val pad = INDENT.repeat(depth)
       val record =
         when (val outcome = index.resolve(node.componentId)) {
@@ -996,6 +997,101 @@ object ScreenGenerator {
         }
       }
       return "{ ${statements.joinToString("; ")} }"
+    }
+
+    private fun selection(node: ScreenNode, depth: Int): String {
+      val selection = requireNotNull(node.selection)
+      val pad = INDENT.repeat(depth)
+      val inner = INDENT.repeat(depth + 1)
+      // Walk every branch, including unreachable or malformed ones, so diagnostics never hide
+      // broken components behind the currently selected state. `when` introduces no receiver.
+      val branches =
+        node.slots.mapValues { (_, children) ->
+          children.joinToString("\n") { node(it, depth + 2) }
+        }
+      if (
+        node.componentId.isNotEmpty() ||
+          node.arguments.isNotEmpty() ||
+          node.handlers.isNotEmpty() ||
+          node.slotItems.isNotEmpty()
+      ) {
+        reasons +=
+          "selection cannot also call a component or carry arguments, handlers or slot items"
+      }
+      if (selection.cases.isEmpty()) reasons += "selection must declare at least one case"
+      val referenced = selection.cases.keys + listOfNotNull(selection.elseSlot)
+      if (selection.elseSlot in selection.cases) {
+        reasons += "selection fallback `${selection.elseSlot}` is also a case"
+      }
+      (referenced - node.slots.keys).forEach { reasons += "selection has no slot `$it`" }
+      (node.slots.keys - referenced).forEach {
+        reasons += "selection slot `$it` has no case or fallback"
+      }
+      val subjectType =
+        selection.subject.typeFqn
+          ?: when (val subject = selection.subject) {
+            is ScreenValue.Text -> "kotlin.String"
+            is ScreenValue.Bool -> "kotlin.Boolean"
+            is ScreenValue.Whole ->
+              if (subject.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) "kotlin.Int"
+              else "kotlin.Long"
+            is ScreenValue.Fractional32 -> "kotlin.Float"
+            is ScreenValue.Fractional -> "kotlin.Double"
+            else -> null
+          }
+      if (
+        subjectType?.removeSuffix("?") !in
+          setOf(
+            "kotlin.String",
+            "kotlin.Boolean",
+            "kotlin.Int",
+            "kotlin.Long",
+            "kotlin.Float",
+            "kotlin.Double",
+          )
+      ) {
+        reasons += "selection subject must be a scalar value, was $subjectType"
+        return "$pad// invalid selection"
+      }
+      val type = requireNotNull(subjectType)
+      val subject =
+        argument(selection.subject, TargetParameter("subject", type, typeFqn = type), "selection")
+      val parameter =
+        TargetParameter("case", type.removeSuffix("?"), typeFqn = type.removeSuffix("?"))
+      val seen = mutableSetOf<String>()
+      val rendered =
+        selection.cases
+          .map { (slot, value) ->
+            if (
+              value !is ScreenValue.Text &&
+                value !is ScreenValue.Bool &&
+                value !is ScreenValue.Whole &&
+                value !is ScreenValue.Fractional &&
+                value !is ScreenValue.Fractional32
+            ) {
+              reasons += "selection case `$slot` must be a literal"
+              return@map "$inner// invalid case"
+            }
+            val match = argument(value, parameter, "selection `$slot`")
+            // Kotlin primitive equality considers signed zero equal. Float narrowing can also make
+            // two different input decimals equal; compare the actual spellings emitted by
+            // argument().
+            val key =
+              when (match) {
+                "-0.0",
+                "0.0" -> "0.0"
+                "-0.0f",
+                "0.0f" -> "0.0f"
+                else -> match
+              }
+            if (key != null && !seen.add(key)) reasons += "selection case `$slot` duplicates $match"
+            "$inner$match -> {\n${branches[slot].orEmpty()}\n$inner}"
+          }
+          .toMutableList()
+      rendered +=
+        selection.elseSlot?.let { "${inner}else -> {\n${branches[it].orEmpty()}\n$inner}" }
+          ?: "${inner}else -> {}"
+      return "${pad}when ($subject) {\n${rendered.joinToString("\n")}\n$pad}"
     }
 
     /**
