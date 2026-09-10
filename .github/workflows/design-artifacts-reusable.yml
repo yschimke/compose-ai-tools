@@ -4775,7 +4775,7 @@ jobs:
               if os.path.isfile(path):
                   bundles.append((path, ""))
 
-          n, clobbered = 0, 0
+          n, clobbered, unreadable = 0, 0, 0
           for bundle, prefix in bundles:
               try:
                   zf = zipfile.ZipFile(bundle)
@@ -4796,10 +4796,22 @@ jobs:
                           # so, so it is named rather than left to arithmetic.
                           clobbered += 1
                           print(f"::warning title=Duplicate document id::{leaf} appears in more than one bundle")
-                      with zf.open(name) as src, open(target, "wb") as dst:
-                          dst.write(src.read())
+                      # PER MEMBER, not per bundle. A zip whose central directory reads fine can
+                      # still hold one member that does not — corrupt, truncated, encrypted — and
+                      # `open`/`read` raises only then. Outside this try it would reach `set -e`
+                      # and fail the whole catalog publish, which is the opposite of what a lane
+                      # documented as fail-soft promises.
+                      try:
+                          with zf.open(name) as src, open(target, "wb") as dst:
+                              dst.write(src.read())
+                      except Exception as e:
+                          unreadable += 1
+                          print(f"::warning title=Unreadable document::{name} in {bundle}: {e}")
+                          continue
                       n += 1
           print(f"staged {n} document(s) from {len(bundles)} bundle(s)")
+          if unreadable:
+              print(f"::warning title=Documents not staged::{unreadable} document(s) could not be read out of their bundle")
           if clobbered:
               print(f"::warning title=Documents overwritten::{clobbered} duplicate id(s) collided while staging")
           PY

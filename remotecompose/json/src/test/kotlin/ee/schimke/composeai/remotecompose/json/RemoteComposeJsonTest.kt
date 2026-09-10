@@ -169,6 +169,25 @@ class RemoteComposeJsonTest {
     }
   }
 
+  @Test
+  fun `a null collection is not an empty one`() {
+    val serializer = JsonMapSerializer()
+
+    serializer.add("absentList", null as List<String>?)
+    serializer.add("emptyList", emptyList<String>())
+    serializer.add("absentMap", null as Map<String, String>?)
+    serializer.add("emptyMap", emptyMap<String, String>())
+
+    // Collapsing these to `[]` / `{}` would mean an operation whose optional list went from absent
+    // to present-and-empty produced no diff at all — a direct hit on the one job this projection
+    // has. Every other nullable overload here already preserves the distinction.
+    val result = serializer.result()
+    assertThat(result["absentList"]).isEqualTo(kotlinx.serialization.json.JsonNull)
+    assertThat(result["emptyList"].toString()).isEqualTo("[]")
+    assertThat(result["absentMap"]).isEqualTo(kotlinx.serialization.json.JsonNull)
+    assertThat(result["emptyMap"].toString()).isEqualTo("{}")
+  }
+
   private fun kotlinx.serialization.json.JsonElement.typeName(): String? =
     (this as? JsonObject)?.typeName()
 

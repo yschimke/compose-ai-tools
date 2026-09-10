@@ -87,16 +87,17 @@ internal class RcCommand(
     val out = args.flagValue("--output") ?: args.flagValue("-o")
     val bytes = guard { RemoteComposeJson.compile(readTextOrFail(input.toPath(), "rc compile")) }
 
-    if (out == null) {
-      // A document is binary, and a binary written to a terminal is a wrecked terminal. Refuse
-      // rather than help: `-o -` is not offered either, because the only reason to want a document
-      // on stdout is to pipe it, and a caller that can pipe can name a file.
-      fail("rc compile: --output <file.rc> is required (a .rc document is binary)")
+    // A document is binary, and a binary written to a terminal is a wrecked terminal. Refuse
+    // rather than help. `-` is refused explicitly and not just left to fall through: it is the
+    // conventional stdout sentinel, so a caller reaching for it means the pipe, and writing them a
+    // file literally named `-` is the one outcome nobody wants. The comment used to claim this was
+    // refused while the code created that file.
+    if (out == null || out == "-") {
+      fail(
+        "rc compile: --output <file.rc> is required (a .rc document is binary; `-` is not stdout here)"
+      )
     }
-    out.toPath().let { path ->
-      path.parent?.let(fileSystem::createDirectories)
-      fileSystem.write(path) { write(bytes) }
-    }
+    writing("rc compile", out) { path -> fileSystem.write(path) { write(bytes) } }
     stderr("compose-preview: wrote ${bytes.size} bytes to $out")
   }
 
@@ -125,19 +126,50 @@ internal class RcCommand(
     // Compose in them at all, and including a `RemoteComposePairing` skew this repository would
     // then own a fourth source of. A publish step calling one CLI command is the cheaper seam.
     if (fileSystem.metadataOrNull(file)?.isDirectory == true) {
+      // Directory mode writes each document's twin beside it, which is what the delivery lane
+      // wants and what makes a re-dump idempotent. It has no destination to redirect, so `-o` is
+      // REFUSED rather than ignored: the flag is on this command's allowlist, so an ignored one
+      // draws no "unrecognised option" warning, and `rc dump renders -o reports` would quietly
+      // rewrite `renders` while leaving `reports` empty.
+      if (out != null) {
+        fail(
+          "rc dump: --output does not apply to a directory — each document is written beside its " +
+            "source as <stem>.rc.json. Drop it, or dump one file at a time."
+        )
+      }
       dumpTree(file, compact)
       return
     }
 
     val text = guard { RemoteComposeJson.dump(readBytesOrFail(file, "rc dump"), pretty = !compact) }
 
-    if (out == null) {
+    if (out == null || out == "-") {
+      // Text, so `-` meaning stdout is honoured here rather than refused — the opposite of
+      // `compile`, and for the reason that separates them: this output is pipeable.
       stdout(text)
     } else {
-      out.toPath().let { path ->
-        path.parent?.let(fileSystem::createDirectories)
-        fileSystem.write(path) { writeUtf8(text + "\n") }
-      }
+      writing("rc dump", out) { path -> fileSystem.write(path) { writeUtf8(text + "\n") } }
+    }
+  }
+
+  /**
+   * Create [out]'s parent and run [write], turning a filesystem refusal into a diagnostic.
+   *
+   * `guard` covers the codec; this covers the disk. Neither `createDirectories` nor `write` is a
+   * codec failure, so without this a read-only destination — or one naming an existing directory —
+   * left `main` to print a Kotlin stack trace, which is the one thing every other message in this
+   * command is written to avoid. The batch loop already had its own handler; the single-file paths
+   * did not.
+   */
+  private fun writing(what: String, out: String, write: (Path) -> Unit) {
+    val path = out.toPath()
+    try {
+      path.parent?.let(fileSystem::createDirectories)
+      write(path)
+    } catch (e: OkioIOException) {
+      // One catch covers both: on the JVM `okio.IOException` is a typealias for
+      // `java.io.IOException`, so this is not narrower than it looks.
+      fail("$what: cannot write $out: ${e.message}")
     }
   }
 

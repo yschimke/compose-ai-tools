@@ -80,11 +80,14 @@ internal class JsonMapSerializer : MapSerializer {
   override fun addTags(vararg tags: SerializeTags): MapSerializer =
     put(TAGS, JsonArray(tags.map { JsonPrimitive(it.name) }))
 
+  // `null` and empty are DIFFERENT and both are kept, matching every other nullable overload here.
+  // `orEmpty()` collapsed them, so an operation whose optional list went from absent to present-
+  // and-empty produced no diff at all — which is a direct hit on the one job this projection has.
   override fun <T : Any?> add(key: String, value: List<T>?): MapSerializer =
-    put(key, JsonArray(value.orEmpty().map { convert(it) }))
+    put(key, value?.let { list -> JsonArray(list.map { convert(it) }) } ?: JsonNull)
 
   override fun <T : Any?> add(key: String, value: Map<String, T>?): MapSerializer =
-    put(key, JsonObject(value.orEmpty().mapValues { (_, v) -> convert(v) }))
+    put(key, value?.let { map -> JsonObject(map.mapValues { (_, v) -> convert(v) }) } ?: JsonNull)
 
   override fun add(key: String, value: RcSerializable?): MapSerializer = put(key, convert(value))
 
