@@ -28,6 +28,7 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 
 | Preview | Image |
 |---------|-------|
+| `InstallActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/activity__InstallActivity.png" width="150" /> |
 | `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/activity__MainActivity.png" width="150" /> |
 | `BackButtonScreenshot` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/BackButtonScreenshot-2e667f37.png" width="150" /> |
 | `ErrorScreenshot` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/ErrorScreenshot-a461ee2b.png" width="150" /> |

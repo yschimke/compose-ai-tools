@@ -1,4 +1,12 @@
 {
+  "jetstream/activity__InstallActivity": {
+    "captureLabel": "",
+    "functionName": "InstallActivity",
+    "module": "jetstream",
+    "renderBasename": "activity__InstallActivity.png",
+    "sha256": "ed620e8125202dcb1cfd3501c3e6f43a1502ae4591f0ee2fed8f8f0208ad3b91",
+    "sourceFile": null
+  },
   "jetstream/activity__MainActivity": {
     "captureLabel": "",
     "functionName": "MainActivity",
