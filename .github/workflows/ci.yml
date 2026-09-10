@@ -363,8 +363,14 @@ jobs:
       # classpath — and only surface as a `NoClassDefFoundError` inside the Robolectric sandbox at
       # render time. This sample's preview reads `android.os.Build`, so a render that produces a
       # PNG at all proves the sandbox came up.
+      #
+      # `composePreviewRenderAll`, NOT `composePreviewRender`: only the aggregate carries the
+      # missing-render gate that compares the manifest against the PNGs on disk (see
+      # `missingRendersProperty`, default `fail`). The bare render task writes a `.error.json`
+      # beside each preview it could not draw and still exits 0 — which is exactly how this lane
+      # failed while I was building it, so a gate that cannot see that is no gate.
       - name: Render the KMP-Android Robolectric sample
-        run: ./gradlew :samples:cmp-android-robolectric:composePreviewRender
+        run: ./gradlew :samples:cmp-android-robolectric:composePreviewRenderAll
       # The other side of the same fix: a KMP-Android module WITHOUT the opt-in must still take
       # the Desktop lane it has taken since #248. `:samples:cmp-shared` is that shape.
       - name: Discover previews on the default (Desktop) KMP-Android lane

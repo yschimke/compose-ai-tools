@@ -2051,6 +2051,7 @@ internal object AndroidPreviewSupport {
         validateExternallyManagedDependencies(
           project = project,
           variantName = variantName,
+          testImplementation = testImplementationBucket,
           tilesRendererRequired = matchedConfigs.isNotEmpty(),
           composeAiTraceRequired = composeAiTraceEnabled,
         )
@@ -2663,7 +2664,7 @@ internal object AndroidPreviewSupport {
     val renderJavaOverride =
       project.providers.gradleProperty("composePreview.renderJavaVersion").orNull?.toIntOrNull()
         ?: extension.renderJavaVersion.orNull
-    val renderBytecodeMajor = detectRenderBytecodeMajor(project, capVariant)
+    val renderBytecodeMajor = detectRenderBytecodeMajor(project, mainCompileTaskNames)
     fun renderJavaLauncher(agpTestTask: Test?): Provider<JavaLauncher>? =
       RenderJvmSelection.launcherFor(
         toolchains = javaToolchains,
@@ -3039,6 +3040,13 @@ internal object AndroidPreviewSupport {
         include("**/ResourcePreviewRenderTest.class")
         useJUnit()
         validateComposeFloorTask?.let { dependsOn(it) }
+        // Reads AGP's unit-test-config dir via `resolvedClasspath`, exactly as
+        // `composePreviewRender` and `composePreviewCompileRenderShards` do — and so needs the
+        // same declared dependency on its producer (see `unitTestConfigProducer`). Missing here
+        // since the task was added; on a clean `composePreviewRenderAndroidResources` that is
+        // either a `WorkValidationException` under Gradle 9's strict validation or a render with
+        // no `test_config.properties`, which is the silent half.
+        dependsOn(unitTestConfigProducer)
         // Same locale exposure as the main render task — resource names reach the report path too.
         configureRenderTaskReporting(this)
 
@@ -4138,7 +4146,19 @@ internal object AndroidPreviewSupport {
    * the per-target task) — the same pair the discovery/compile wiring uses above, so a KMP module
    * on `jvmTarget = 21` with a 17 unit-test toolchain isn't missed.
    */
-  private fun detectRenderBytecodeMajor(project: Project, capVariant: String): Int? {
+  /**
+   * [compileTaskNames] is the same candidate list the render classpath is built from, threaded in
+   * rather than re-derived. It matters on KMP-Android, where BOTH of this function's sources would
+   * otherwise come back empty: the compile task is `compileAndroidMain`, which neither
+   * `compile${'$'}{capVariant}Kotlin` spelling matches, and the DSL is not a [CommonExtension], so
+   * there is no `compileOptions.targetCompatibility` to read either. A module compiling to 21 would
+   * be read as "unknown", the renderer would fork on the daemon's 17, and the consumer's classes
+   * would fail to load with `UnsupportedClassVersionError`.
+   */
+  private fun detectRenderBytecodeMajor(
+    project: Project,
+    compileTaskNames: List<String>,
+  ): Int? {
     val candidates = mutableListOf<Int>()
     runCatching {
       project.extensions
@@ -4148,11 +4168,9 @@ internal object AndroidPreviewSupport {
         ?.let { BytecodeTargetDetector.parseTargetMajor(it.toString()) }
         ?.let { candidates += it }
     }
-    BytecodeTargetDetector.detectKotlinJvmTarget(
-        project,
-        listOf("compile${capVariant}Kotlin", "compile${capVariant}KotlinAndroid"),
-      )
-      ?.let { candidates += it }
+    BytecodeTargetDetector.detectKotlinJvmTarget(project, compileTaskNames)?.let {
+      candidates += it
+    }
     return candidates.filter { it > 0 }.maxOrNull()
   }
 
@@ -4256,6 +4274,7 @@ internal object AndroidPreviewSupport {
   private fun validateExternallyManagedDependencies(
     project: Project,
     variantName: String,
+    testImplementation: String,
     tilesRendererRequired: Boolean,
     composeAiTraceRequired: Boolean,
   ) {
@@ -4274,11 +4293,11 @@ internal object AndroidPreviewSupport {
       declared(configName).any { it.group == group && it.name == name }
 
     val missing = mutableListOf<String>()
-    if (!hasCoord("testImplementation", "androidx.compose.ui", "ui-test-manifest")) {
-      missing += "testImplementation(\"androidx.compose.ui:ui-test-manifest\")"
+    if (!hasCoord(testImplementation, "androidx.compose.ui", "ui-test-manifest")) {
+      missing += "$testImplementation(\"androidx.compose.ui:ui-test-manifest\")"
     }
-    if (!hasCoord("testImplementation", "androidx.compose.ui", "ui-test-junit4")) {
-      missing += "testImplementation(\"androidx.compose.ui:ui-test-junit4\")"
+    if (!hasCoord(testImplementation, "androidx.compose.ui", "ui-test-junit4")) {
+      missing += "$testImplementation(\"androidx.compose.ui:ui-test-junit4\")"
     }
     if (!hasCoord("${variantName}Implementation", "androidx.core", "core")) {
       missing += "${variantName}Implementation(\"androidx.core:core:1.16.0\")"
@@ -4301,9 +4320,9 @@ internal object AndroidPreviewSupport {
     }
     if (
       composeAiTraceRequired &&
-        !hasCoord("testImplementation", "androidx.compose.runtime", "runtime-tracing")
+        !hasCoord(testImplementation, "androidx.compose.runtime", "runtime-tracing")
     ) {
-      missing += "testImplementation(\"androidx.compose.runtime:runtime-tracing\")"
+      missing += "$testImplementation(\"androidx.compose.runtime:runtime-tracing\")"
     }
 
     if (missing.isNotEmpty()) {
