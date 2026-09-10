@@ -440,6 +440,49 @@ class RcCommandTest {
   }
 
   @Test
+  fun `refuses an authoring document even in a dump's shape`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    // Both dump shapes present, and still authoring JSON — `root` is the authoring dialect's only
+    // required property and appears in no dump, so it settles the question the shapes cannot.
+    val source = """{"header":{"width":10},"root":[{"box":{}}],"operations":[]}"""
+    fs.write(dir / "a.rc.json") { writeUtf8(source) }
+
+    assertEquals(1, runExpectingExit("dump", dir.toString()))
+
+    assertEquals(source, fs.read(dir / "a.rc.json") { readUtf8() })
+  }
+
+  @Test
+  fun `claims a temporary name rather than checking then writing`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    fs.createDirectories("/elsewhere".toPath())
+    val outside = "/elsewhere/precious".toPath()
+    fs.write(outside) { writeUtf8("not mine") }
+
+    // Something appears at the candidate path between the look and the write. `mustCreate` closes
+    // that window in the filesystem, which is the only place it can be closed: a check followed by
+    // a write would truncate this file or, were it a symlink, follow it out of the tree.
+    var looked = false
+    val racing =
+      object : ForwardingFileSystem(fs) {
+        override fun sink(file: Path, mustCreate: Boolean): Sink {
+          if (file.name == "a.rc.json.tmp" && !looked) {
+            looked = true
+            fs.createSymlink(file, outside)
+          }
+          return super.sink(file, mustCreate)
+        }
+      }
+
+    run("dump", dir.toString(), fileSystem = racing)
+
+    assertEquals("not mine", fs.read(outside) { readUtf8() })
+    assertContains(fs.read(dir / "a.rc.json") { readUtf8() }, "RootLayoutComponent")
+  }
+
+  @Test
   fun `refuses an output flag with nothing after it`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }

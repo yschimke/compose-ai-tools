@@ -256,6 +256,29 @@ class RemoteComposeJsonTest {
     assertThat(header.toJsonObject()["desiredFPS"]!!.jsonPrimitive.content).isEqualTo("30")
   }
 
+  @Test
+  fun `a header round-trips through its own json`() {
+    val header = RemoteComposeJson.header(RemoteComposeJson.compile(authoringJson))
+
+    // `toJsonObject()` omits what the document did not declare, and without null defaults on the
+    // constructor the generated decoder treats every nullable parameter as required — so a
+    // consumer was handed JSON by this type that the same type could not read back.
+    val emitted = Json.encodeToString(JsonObject.serializer(), header.toJsonObject())
+    val decoded = Json.decodeFromString(RemoteComposeDocumentHeader.serializer(), emitted)
+
+    assertThat(decoded.width).isEqualTo(300)
+    assertThat(decoded.contentDescription).isEqualTo("Remote Compose JSON smoke")
+
+    // The sparse shape is the one that actually failed: a header naming nothing but its version.
+    val sparse =
+      Json.decodeFromString(
+        RemoteComposeDocumentHeader.serializer(),
+        """{"version":"1.1.0","byteLength":17}""",
+      )
+    assertThat(sparse.width).isNull()
+    assertThat(sparse.desiredFps).isNull()
+  }
+
   /** The first operation of [type] anywhere in the projection, nesting included. */
   private fun kotlinx.serialization.json.JsonElement.find(type: String): JsonObject? =
     when (this) {

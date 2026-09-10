@@ -19,32 +19,37 @@ import kotlinx.serialization.json.put
  * Every field is nullable because every header field except the version triple is optional in the
  * wire format. A `null` here means "the document did not say", not "the document said zero", and
  * those differ: a sticker with no declared `desiredFPS` is not a sticker asking for 0 fps.
+ *
+ * Each of those also defaults to `null`, which is what makes this type's own JSON round-trip.
+ * [toJsonObject] omits a key the document did not declare, and without the defaults the generated
+ * decoder treats every nullable parameter as required — so a consumer handed a header with no
+ * `width` got a `MissingFieldException` reading back the very shape this codec emits.
  */
 @Serializable
 public data class RemoteComposeDocumentHeader(
   /** Wire-format version the document was written at, as `major.minor.patch`. */
   public val version: String,
-  public val width: Int?,
-  public val height: Int?,
-  public val contentDescription: String?,
+  public val width: Int? = null,
+  public val height: Int? = null,
+  public val contentDescription: String? = null,
   /**
    * Capability profile bitmask — `512` = `ANDROIDX`, `513` = `EXPERIMENTAL`. A player refuses a
    * document whose profile it does not implement, so this is the first thing to check when a
    * document that plays in one host is blank in another.
    */
-  public val profiles: Int?,
+  public val profiles: Int? = null,
   /**
    * Named `desiredFPS` on the wire, matching what [toJsonObject] and `rc dump`'s `header` block
    * emit. Without the annotation a consumer serializing this class directly got `desiredFps` while
    * every JSON surface of this codec said `desiredFPS`, so a `jq` query written against a dump
    * missed silently on the other.
    */
-  @SerialName("desiredFPS") public val desiredFps: Int?,
+  @SerialName("desiredFPS") public val desiredFps: Int? = null,
   /**
    * Screen density at authoring time. Not the playback density — the document is
    * resolution-independent.
    */
-  public val densityAtGeneration: Float?,
+  public val densityAtGeneration: Float? = null,
   /** Byte length of the document these fields were read from. */
   public val byteLength: Int,
 ) {

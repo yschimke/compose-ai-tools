@@ -418,13 +418,17 @@ internal class RcCommand(
     // make writing safer. Claiming an unused name instead means the write can only ever land on
     // something this command made, and a leftover from a crashed run neither blocks the dump nor
     // gets clobbered.
-    val temp = freeTempPath(target)
+    // `temp` is assigned inside the try because claiming a name is itself a step that can fail —
+    // an unwritable directory fails every candidate — and that failure has to reach the caller's
+    // handler like any other, rather than escaping past it.
+    var temp: Path? = null
     try {
+      temp = claimTempPath(target)
       fileSystem.write(temp) { writeUtf8(text) }
       fileSystem.atomicMove(temp, target)
     } catch (e: OkioIOException) {
       try {
-        fileSystem.delete(temp, mustExist = false)
+        temp?.let { fileSystem.delete(it, mustExist = false) }
       } catch (_: OkioIOException) {
         // Reported by the caller's handler as part of the write failure; a temp file that cannot be
         // removed is not worth a second message, and it cannot be published.
@@ -455,23 +459,46 @@ internal class RcCommand(
   }
 
   /**
-   * The first `<target>.tmp`, `<target>.1.tmp`, … that nothing occupies.
+   * Claim the first `<target>.tmp`, `<target>.1.tmp`, … this command can **create**.
    *
-   * `metadataOrNull` answers for the path itself rather than what it resolves to, so a symlink
-   * counts as occupied and is stepped over rather than followed. The scan is bounded because an
-   * unbounded one is a hang: a directory that somehow holds every candidate is a filesystem
-   * problem, and saying so beats spinning.
+   * Creating an empty file is the claim, and `mustCreate` is what makes it one: it refuses an
+   * existing name, so a symlink or somebody else's file at that path is stepped over rather than
+   * truncated or followed, and no window exists between deciding a name is free and taking it.
+   *
+   * Deliberately claim-then-write rather than one `write(mustCreate = true)` carrying the content:
+   * a failure to CREATE means the name is taken and the next candidate should be tried, while a
+   * failure to WRITE is a real problem with a file this command already owns. Conflating them had
+   * one full disk try a hundred names and leave a hundred empty files behind.
+   *
+   * The scan is bounded because an unbounded one is a hang — a directory that holds every candidate
+   * is a filesystem problem, and saying so beats spinning.
    */
-  private fun freeTempPath(target: Path): Path {
+  private fun claimTempPath(target: Path): Path {
     val parent = target.parent!!
+    var lastFailure: OkioIOException? = null
     for (attempt in 0 until MAX_TEMP_ATTEMPTS) {
       val suffix = if (attempt == 0) ".tmp" else ".$attempt.tmp"
       val candidate = parent / "${target.name}$suffix"
-      if (fileSystem.metadataOrNull(candidate) == null) return candidate
+      try {
+        fileSystem.write(candidate, mustCreate = true) {}
+        return candidate
+      } catch (e: OkioIOException) {
+        // `mustCreate` is what makes this a claim rather than a hope. Looking first with
+        // `metadataOrNull` and writing after left a window a concurrent dump — or anything else
+        // sharing the directory — could use to create the file, or to put a symlink there, between
+        // the two calls; the write's default overwrite semantics would then truncate it or follow
+        // the link out of the tree. Refusing to create over an existing name closes the window in
+        // the filesystem rather than in this process, which is the only place it can be closed.
+        //
+        // The next candidate is tried rather than the failure reported, because the common reason
+        // to be here is exactly what the loop is for: that name is taken. A real problem — an
+        // unwritable directory — fails every candidate and surfaces below.
+        lastFailure = e
+      }
     }
     throw OkioIOException(
-      "no free temporary name beside $target after $MAX_TEMP_ATTEMPTS attempts; " +
-        "remove the leftover ${target.name}*.tmp files"
+      "could not claim a temporary name beside $target after $MAX_TEMP_ATTEMPTS attempts" +
+        (lastFailure?.message?.let { " (last: $it)" } ?: "")
     )
   }
 
@@ -530,10 +557,15 @@ internal class RcCommand(
       } catch (_: Exception) {
         return false
       }
-    // The SHAPES, not just the key names. `{"header":null,"operations":null}` carries both keys and
-    // is not a dump, and an authoring document with an unrelated top-level `operations` would have
-    // been classified as one and destroyed — which is the guarantee this whole function exists to
-    // make. What a dump always has is a `header` object beside an `operations` array.
+    // `root` is the authoring dialect's only required property and appears in no dump, so its
+    // presence settles the question before any shape test does. It is checked first because the
+    // shapes alone are not decisive: an authoring document that happens to carry a top-level
+    // `operations` array satisfies them, and that document is precisely the file this must never
+    // destroy.
+    if ("root" in existing) return false
+    // Then the SHAPES, not just the key names: `{"header":null,"operations":null}` carries both
+    // keys and is not a dump. What a dump always has is a `header` object beside an `operations`
+    // array.
     return existing["header"] is JsonObject && existing["operations"] is JsonArray
   }
 
