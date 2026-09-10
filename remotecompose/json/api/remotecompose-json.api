@@ -1,0 +1,57 @@
+public final class ee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader {
+	public static final field Companion Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;I)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun component6 ()Ljava/lang/Integer;
+	public final fun component7 ()Ljava/lang/Float;
+	public final fun component8 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;I)Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader;
+	public static synthetic fun copy$default (Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Float;IILjava/lang/Object;)Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getByteLength ()I
+	public final fun getContentDescription ()Ljava/lang/String;
+	public final fun getDensityAtGeneration ()Ljava/lang/Float;
+	public final fun getDesiredFps ()Ljava/lang/Integer;
+	public final fun getHeight ()Ljava/lang/Integer;
+	public final fun getProfiles ()Ljava/lang/Integer;
+	public final fun getVersion ()Ljava/lang/String;
+	public final fun getWidth ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public final fun toJsonObject ()Lkotlinx/serialization/json/JsonObject;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/remotecompose/json/RemoteComposeJson {
+	public static final field INSTANCE Lee/schimke/composeai/remotecompose/json/RemoteComposeJson;
+	public final fun compile (Ljava/lang/String;)[B
+	public final fun dump ([BZ)Ljava/lang/String;
+	public static synthetic fun dump$default (Lee/schimke/composeai/remotecompose/json/RemoteComposeJson;[BZILjava/lang/Object;)Ljava/lang/String;
+	public final fun dumpToJsonObject ([B)Lkotlinx/serialization/json/JsonObject;
+	public final fun header ([B)Lee/schimke/composeai/remotecompose/json/RemoteComposeDocumentHeader;
+}
+
+public final class ee/schimke/composeai/remotecompose/json/RemoteComposeJsonException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+

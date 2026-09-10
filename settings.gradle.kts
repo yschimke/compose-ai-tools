@@ -193,6 +193,15 @@ include(":common-web-escaping")
 
 project(":common-web-escaping").projectDir = file("common/web-escaping")
 
+// The Remote Compose JSON codec — authoring JSON to `.rc` bytes and back out as document JSON.
+// Layer 1 by `docs/design/REPOSITORY_LAYERS.md`'s test (behaviour, opens no socket), and its own
+// module rather than a package in `:render-host` so that an offline render does not link 1.6 MB of
+// Remote Compose runtime it never calls. See `remotecompose/json/build.gradle.kts` for why the
+// classpath is `-core` only, and `docs/design/REMOTE_COMPOSE_JSON.md` for the two dialects.
+include(":remotecompose-json")
+
+project(":remotecompose-json").projectDir = file("remotecompose/json")
+
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
 // external consumers (contrib scripting, third-party tooling) can render previews and read the

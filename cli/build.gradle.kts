@@ -289,6 +289,14 @@ dependencies {
   // (#5176).
   implementation(project(":render-matrix"))
 
+  // The Remote Compose JSON codec behind `compose-preview rc`. Brings `remote-core`,
+  // `remote-creation-core` and `org.json` into the CLI distribution — 1.6 MB, all JVM jars, no
+  // Android AAR. Worth restating because the CLI is the one place in this repository where a
+  // Remote Compose artifact reaching the classpath is *not* a `RemoteComposePairing` concern: the
+  // CLI never stands a daemon's classpath up from these, it compiles and inflates documents
+  // in-process, so there is no second copy of the family for these to skew against.
+  implementation(project(":remotecompose-json"))
+
   // The MCP server is NOT on this module's compile or runtime classpath.
   //
   // `mcp serve` is a launcher now, like `serve` and `ui-builder`: it execs the

@@ -174,6 +174,11 @@ on:
         required: false
         type: boolean
         default: true
+      rc-document-json:
+        description: "Publish each ir/*.rc document's operation-level JSON projection alongside it, under documents/<id>.rc.json. What the delivery branch carries today for a Remote catalog is pixels and opaque bytes, so a review can see THAT a sticker changed and never what changed in it — and a picture diff cannot tell a moved padding from a different antialiasing pass. The projection is `compose-preview rc dump`, which reads the document through AndroidX's own operation model. Opt-in and FAIL-SOFT, like the embedded player lanes and for the same reason: a CLI too old to carry the `rc` verb, or a document a newer alpha wrote, drops the file rather than the publish. No-op for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       publish-live-bundle:
         description: 'Carry the executable primary render bundle onto the branch under bundle/ and record liveBundle:{path,file} in catalog.json, so a serve box that bakes the matching (Android/desktop) daemon re-renders the previews live instead of replaying baked PNGs.'
         required: false
@@ -4697,6 +4702,165 @@ jobs:
             --system "$INPUT_SYSTEM" \
             --title "$INPUT_SYSTEM" \
             ${EMBEDDED_ARGS[@]+"${EMBEDDED_ARGS[@]}"}
+
+      # THE DOCUMENTS THEMSELVES, as text, beside the pixels.
+      #
+      # A Remote catalog's delivery branch carries baked PNGs and — inside the bundle — the `.rc`
+      # documents that drew them. Both are opaque to a review: the PNG shows THAT a sticker moved
+      # and the bytes show nothing at all, so "did the padding change or did the render just
+      # antialias differently" is a question nobody can answer from the branch. `compose-preview rc
+      # dump` projects each document through AndroidX's own operation model, and a `documents/`
+      # tree of those projections is diffable by `git diff` on the delivery branch itself.
+      #
+      # It reads the documents OUT OF THE PACKED BUNDLE rather than out of `renders/`, because the
+      # bundle is what actually ships: a document that failed to pack is one this catalog does not
+      # publish, and projecting it here would put a file on the branch describing a sticker no
+      # visitor can reach.
+      #
+      # FAIL-SOFT throughout, matching the embedded player lanes. Two things it must not turn into
+      # a failed publish: a CLI predating the `rc` verb (every caller pinning `cli-version:
+      # catalog` is on a released CLI, and this input outlives the release that first carries it),
+      # and a document written by a newer Remote Compose alpha than the CLI's `remote-core` can
+      # inflate — the split-family case, which is a property of the pin rather than of this run.
+      # Either drops files and prints why; neither costs the catalog its delivery.
+      - name: Remote Compose documents as JSON
+        if: ${{ inputs.rc-document-json && (inputs.publish || inputs.upload-out) }}
+        run: |
+          set -euo pipefail
+          docs_dir="$GITHUB_WORKSPACE/out/documents"
+          staged="$RUNNER_TEMP/rc-documents"
+          rm -rf "$staged"
+          mkdir -p "$staged"
+
+          # EVERY bundle that feeds the generated catalog, not just the primary one. A catalog on
+          # `modules: all` renders each module into `module-bundles/<key>.png` and copies `0000.png`
+          # to `bundle.png`, and `extra-module` adds `extra-bundle.png`; reading only `bundle.png`
+          # would publish a `documents/` tree missing every secondary module's stickers while the
+          # catalog itself lists them. `0000.png` is skipped when the per-module tree exists,
+          # because it IS `bundle.png` — the same skip the generator's own join makes.
+          #
+          # Unpacked flat, keyed by the id the bundle stores (`ir/<preview id>.rc`), which is
+          # already namespaced per module. Through Python rather than `unzip -j` + a glob: the ids
+          # can carry an em-dash and the shell would mangle exactly the names `LANG: C.UTF-8` above
+          # exists to keep exact.
+          python3 - "$GITHUB_WORKSPACE" "$staged" <<'PY'
+          import os, sys, zipfile
+          workspace, out = sys.argv[1], sys.argv[2]
+
+          # (bundle path, id prefix). The prefix has to match what the CATALOG publishes, or the
+          # documents land under names no visitor can join to a sticker — and, worse, two modules
+          # holding the same raw preview id overwrite each other here, silently losing one.
+          #
+          # `namespaceModuleRecords` rewrites every ADDITIONAL module's preview ids with
+          # `moduleIdentityPrefix(module)` = `module_<hex of module path>__`, and the workflow
+          # already names that module's bundle `module-bundles/<module_<hex>>.png` — the same
+          # `moduleArtifactKey` — so the prefix is the bundle's own basename plus `__`. Reading it
+          # off the filename is what keeps the two in step without this step knowing the module
+          # path, exactly as the split step above already does.
+          #
+          # NOT prefixed: `0000.png` / `bundle.png`, which are the primary record, and
+          # `extra-bundle.png`, whose previews are handled by `--extra-renders` AFTER
+          # `namespaceModuleRecords` and split into the primary previews directory unrenamed.
+          bundles = []
+          module_bundles = os.path.join(workspace, "module-bundles")
+          if os.path.isdir(module_bundles):
+              for n in sorted(os.listdir(module_bundles)):
+                  if not n.endswith(".png") or n == "0000.png":
+                      continue
+                  key = n[: -len(".png")]
+                  prefix = f"{key}__" if key.startswith("module_") else ""
+                  bundles.append((os.path.join(module_bundles, n), prefix))
+          for extra in ("bundle.png", "extra-bundle.png"):
+              path = os.path.join(workspace, extra)
+              if os.path.isfile(path):
+                  bundles.append((path, ""))
+
+          n, clobbered, unreadable = 0, 0, 0
+          for bundle, prefix in bundles:
+              try:
+                  zf = zipfile.ZipFile(bundle)
+              except Exception as e:
+                  print(f"::notice title=Skipping unreadable bundle::{bundle}: {e}")
+                  continue
+              for name in zf.namelist():
+                  if name.startswith("ir/") and name.endswith(".rc"):
+                      leaf = os.path.basename(name)
+                      # `modulePreviewId` is idempotent — it leaves an id that already carries the
+                      # prefix alone — so this is too.
+                      if prefix and not leaf.startswith(prefix):
+                          leaf = prefix + leaf
+                      target = os.path.join(out, leaf)
+                      if os.path.exists(target):
+                          # Should be unreachable now that additional modules are namespaced. If it
+                          # ever fires, a document is being lost and the count alone would not say
+                          # so, so it is named rather than left to arithmetic.
+                          clobbered += 1
+                          print(f"::warning title=Duplicate document id::{leaf} appears in more than one bundle")
+                      # PER MEMBER, not per bundle. A zip whose central directory reads fine can
+                      # still hold one member that does not — corrupt, truncated, encrypted — and
+                      # `open`/`read` raises only then. Outside this try it would reach `set -e`
+                      # and fail the whole catalog publish, which is the opposite of what a lane
+                      # documented as fail-soft promises.
+                      try:
+                          with zf.open(name) as src, open(target, "wb") as dst:
+                              dst.write(src.read())
+                      except Exception as e:
+                          unreadable += 1
+                          print(f"::warning title=Unreadable document::{name} in {bundle}: {e}")
+                          continue
+                      n += 1
+          print(f"staged {n} document(s) from {len(bundles)} bundle(s)")
+          if unreadable:
+              print(f"::warning title=Documents not staged::{unreadable} document(s) could not be read out of their bundle")
+          if clobbered:
+              print(f"::warning title=Documents overwritten::{clobbered} duplicate id(s) collided while staging")
+          PY
+
+          # NOT filtered against the catalog, deliberately, and this is the second attempt at it.
+          #
+          # `--extra-renders` REPLACES a primary function's candidates rather than adding to them
+          # (generate-design-catalog.mjs, the splice around line 1104), so a sticker the catalog
+          # dropped can still have its document staged here, sitting beside the one that replaced
+          # it. That wart is real. The obvious fix — keep only the ids the catalog publishes — is
+          # not available, because the catalog records no such list: `previewId` is stamped by
+          # `bridgeLivePreviewIds` and is a LIVE-ROUTING id, deliberately absent from exactly the
+          # images an Android-only supplement overrode (lines 1965-1969 and 2225-2233 say so). A
+          # filter keyed on it deletes the OVERRIDE's document and keeps the superseded one, which
+          # is strictly worse than publishing both — a wrong document where the reader expects the
+          # authoritative one, rather than a spare beside it.
+          #
+          # Fixing it properly means the generator emitting the document ids it actually published,
+          # which is its change to make, not this step's. Until then an extra-module catalog can
+          # carry one stale document per overridden function; both are named by their preview id,
+          # and the catalog is the arbiter of which id it lists.
+          if [ -z "$(find "$staged" -maxdepth 1 -name '*.rc' -print -quit)" ]; then
+            echo "No ir/*.rc documents in the bundle — nothing to project."
+            exit 0
+          fi
+
+          if ! compose-preview rc --help >/dev/null 2>&1; then
+            echo "::notice title=Remote Compose document JSON skipped::This compose-preview CLI has no 'rc' verb; the projection needs a release carrying it. Catalog publishes without documents/."
+            exit 0
+          fi
+
+          # `rc dump <dir>` writes `<stem>.rc.json` beside each document and exits non-zero if ANY
+          # of them could not be projected, having still written the rest. `|| true` is therefore
+          # the fail-soft, not a swallowed error: the per-document reason is on stderr above, and
+          # the count below is what a reader checks.
+          compose-preview rc dump "$staged" || true
+
+          mkdir -p "$docs_dir"
+          projected=0
+          for json in "$staged"/*.rc.json; do
+            [ -e "$json" ] || continue
+            cp "$json" "$docs_dir/"
+            projected=$((projected + 1))
+          done
+          total="$(find "$staged" -maxdepth 1 -name '*.rc' | wc -l | tr -d ' ')"
+          echo "Projected $projected of $total document(s) into out/documents/."
+          if [ "$projected" -lt "$total" ]; then
+            echo "::warning title=Some Remote Compose documents were not projected::$((total - projected)) of $total. The per-document reason is in this step's log; a document a newer Remote Compose alpha wrote than this CLI links is the usual cause."
+          fi
 
       - name: Upload CMP/Wasm parity evidence
         if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) }}

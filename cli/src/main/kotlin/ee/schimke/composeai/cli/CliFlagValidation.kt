@@ -294,6 +294,13 @@ internal object CliFlagValidation {
           // a token may not be an argument, which "unrecognised option" does not.
           "--github-token",
         ),
+      // `rc` owns nested subcommands, so this is the union of what `compile` / `dump` / `header`
+      // read — and ONLY that. Deliberately not `commandBase`, unlike most entries here: `rc` drives
+      // no build and reads no project, so `--module`, `--filter`, `--timeout` and the rest have
+      // nothing to act on. Including them would have this validator call
+      // `rc --module :app dump doc.rc` well-formed while the module is silently discarded, which
+      // is the exact failure it exists to warn about. `devices` sets the precedent.
+      "rc" to setOf("--help", "-h", "--output", "-o", "--compact", "--json"),
       // `bundle` owns nested subcommands. Validate at the routed-command boundary while allowing
       // the union of their options; nested positional dispatch remains BundleCommand's concern.
       "bundle" to
