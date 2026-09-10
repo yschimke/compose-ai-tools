@@ -899,6 +899,64 @@ class UiBuilderCatalogsTest {
     assertThat(menu["wear-m3/button"]?.group).isEqualTo("Overridden")
   }
 
+  /**
+   * A callable the sticker draws but does not declare is still on the sticker's shelf.
+   *
+   * A binding carries a group only for the component it DECLARES. `TopAppBar/Small` draws
+   * `CenterAlignedTopAppBar` and `LargeTopAppBar` on the way past, and both arrived with a null
+   * group — so the chain fell through to `continue` and neither got a menu entry at all. In
+   * m3-catalog that was twenty-eight of a hundred and eight components, filed by the editor under a
+   * generic role heading, while the comment over the loop said the menu covered every admitted
+   * component.
+   */
+  @Test
+  fun `a component the sticker did not declare is shelved by its catalog id`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("TopAppBar", catalogId = "TopAppBar/Small", group = "Top app bar"),
+          component("LargeTopAppBar", catalogId = "TopAppBar/Small", group = null),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val menu = generated.statusSemantics.componentMenu.components
+    assertThat(menu["wear-m3/top-app-bar"]?.group).isEqualTo("Top app bar")
+    assertThat(menu["wear-m3/large-top-app-bar"]?.group).isEqualTo("Top app bar")
+    // The invariant the loop's own comment states, asserted rather than described.
+    assertThat(menu.keys).containsExactlyElementsIn(generated.statusSemantics.components.keys)
+  }
+
+  /**
+   * What the catalog id cannot place, only the policy file can.
+   *
+   * A component no sticker declares has no catalog id and therefore no shelf to inherit —
+   * m3-catalog's `AnimatedPane`, `NavigationSuiteScaffold` and four more. Asserted as absent so the
+   * gap is a stated fact rather than a silently generic heading, and asserted as placeable so the
+   * way out is checked too.
+   */
+  @Test
+  fun `a component no sticker declares is left for the policy file to place`() {
+    val unclaimed = record(component("AnimatedPane", catalogId = null, group = null))
+
+    val bare = UiBuilderCatalogs.generate(unclaimed, cover, policy())!!
+    assertThat(bare.statusSemantics.components.keys).contains("wear-m3/animated-pane")
+    assertThat(bare.statusSemantics.componentMenu.components["wear-m3/animated-pane"]).isNull()
+
+    val placed =
+      UiBuilderCatalogs.generate(
+        unclaimed,
+        cover,
+        policy(
+          components =
+            mapOf("wear-m3/animated-pane" to UiBuilderAuthoredComponent(group = "Layout"))
+        ),
+      )!!
+    assertThat(placed.statusSemantics.componentMenu.components["wear-m3/animated-pane"]?.group)
+      .isEqualTo("Layout")
+  }
+
   @Test
   fun `a starter naming something that is not a parameter is reported`() {
     // A starter value is printed as a NAMED ARGUMENT, so a `lable=` typo is either dropped by a

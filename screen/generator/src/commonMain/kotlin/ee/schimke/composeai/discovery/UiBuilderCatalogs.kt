@@ -416,6 +416,29 @@ object UiBuilderCatalogs {
         )
     }
 
+    // One catalog id is one shelf, whoever draws it.
+    //
+    // A binding carries a group only for the component the sticker DECLARES. Every other callable
+    // the preview reaches — `CenterAlignedTopAppBar` and `LargeTopAppBar` under `TopAppBar/Small`,
+    // four floating action buttons under `Fab/Standard`, twenty-two components in m3-catalog —
+    // gets a binding with a null group, so the chain below ran out and `continue` dropped the
+    // entry. The comment under it claimed the menu covered every admitted component; it covered
+    // eighty of a hundred and eight.
+    //
+    // The catalog id is the fact that survives: a component published under `TopAppBar/Small` is
+    // on whatever shelf that catalog id is on, and the sticker that declares it says which. First
+    // writer wins, because two groups for one catalog id is one shelf disagreeing with itself and
+    // taking the later one would make the answer depend on record order.
+    val groupByCatalogId = buildMap {
+      for (component in record.components) {
+        for (binding in component.bindings) {
+          val catalogId = binding.componentId ?: continue
+          val group = binding.group?.takeIf(String::isNotBlank) ?: continue
+          putIfAbsent(catalogId, group)
+        }
+      }
+    }
+
     // The shelf covers EVERY admitted component, so the menu has to as well.
     //
     // `builder.group` was the only source, which meant a menu entry existed solely for a component
@@ -452,6 +475,10 @@ object UiBuilderCatalogs {
             .firstOrNull { it.componentId == idAlias && !it.group.isNullOrBlank() }
             ?.group
           ?: component.bindings.firstNotNullOfOrNull { it.group?.takeIf(String::isNotBlank) }
+          // The shelf of the catalog id this component is published under, stated by whichever
+          // sticker declares it. What is left after this is a component with no catalog id at
+          // all — nothing declares it, so nothing but the policy file can place it.
+          ?: idAlias?.let { groupByCatalogId[it] }
           ?: continue
       menuEntries[builderId] = UiBuilderMenuEntry(group)
     }
