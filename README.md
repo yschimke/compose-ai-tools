@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 291 preview(s) across 17 module(s) · 13 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 292 preview(s) across 18 module(s) · 13 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1154,6 +1154,14 @@ _No findings._
 ### `WallpaperDemoPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/WallpaperDemoPreview_Wallpaper_Demo-72cdb306.a11y.png" width="400" />
+
+_No findings._
+
+## cmp-android-robolectric
+
+### `ApiLevelBadgePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-android-robolectric/ApiLevelBadgePreview-d9e149b8.a11y.png" width="400" />
 
 _No findings._
 

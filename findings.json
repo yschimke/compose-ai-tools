@@ -1673,6 +1673,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ApiLevelBadgePreview-d9e149b8.a11y.png",
+      "cleanBasename": "ApiLevelBadgePreview-d9e149b8.png",
+      "findings": [],
+      "functionName": "ApiLevelBadgePreview",
+      "module": "cmp-android-robolectric",
+      "previewId": "com.example.cmpandroidrobolectric.AndroidOnlyPreviewsKt.ApiLevelBadgePreview",
+      "rendersDir": "cmp-android-robolectric",
+      "sourceFile": "src/androidMain/kotlin/com/example/cmpandroidrobolectric/AndroidOnlyPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SharedBlueBoxPreview_Blue-31ffdd83.a11y.png",
       "cleanBasename": "SharedBlueBoxPreview_Blue-31ffdd83.png",
       "findings": [],
