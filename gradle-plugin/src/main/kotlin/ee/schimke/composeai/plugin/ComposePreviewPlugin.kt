@@ -102,15 +102,17 @@ constructor(
     // property for why the choice is explicit. [AndroidPreviewSupport.configure]
     // makes it, because only `onVariants` knows whether the consumer also
     // declared the `withHostTest { }` compilation the lane needs — and hands
-    // back to `desktopHandler` when the answer is no, so the default path is
+    // back to `registerDesktop` when the answer is no, so the default path is
     // reached by exactly the same code as before.
     //
-    // Two flags, not one. `androidConfigured` means "classic AGP owns task registration, the
-    // desktop branch must never run". `kmpAndroidRouting` means "the decision is deferred to
-    // `onVariants`, so the desktop branch must not run YET" — it is suppressed exactly until the
-    // fallback fires, which is the one caller allowed through the guard.
+    // Three flags. `androidConfigured` means "classic AGP owns task registration, the desktop
+    // branch must never run". `kmpAndroidRouting` means "the KMP-Android lane is deciding in
+    // `onVariants`, so the desktop branch must not run YET" — suppressed exactly until the
+    // fallback fires, which is the one caller allowed through the guard. `desktopDeferred` means
+    // "the desktop branch WOULD have run, but the KMP-Android plugin might still arrive".
     var kmpAndroidRouting = false
     var desktopRegistered = false
+    var desktopDeferred = false
     val registerDesktop: () -> Unit = {
       if (!desktopRegistered) {
         desktopRegistered = true
@@ -120,40 +122,57 @@ constructor(
     val desktopHandler: () -> Unit = {
       if (!androidConfigured && !kmpAndroidRouting) registerDesktop()
     }
-    // Apply order isn't guaranteed: a downstream `:shared` build may declare
-    // `androidKotlinMultiplatformLibrary` before `composeMultiplatform` or
-    // vice-versa. Both withPlugin hooks fire when their plugin lands, and
-    // the idempotent handlers only run once — whichever fires second is a no-op.
+
+    // THE ORDERING PROBLEM, AND WHY THE DESKTOP BRANCH SOMETIMES WAITS
+    //
+    // Apply order is the consumer's, and a convention plugin can apply `org.jetbrains.compose`
+    // BEFORE `com.android.kotlin.multiplatform.library`. Committing to Desktop the moment compose
+    // lands then loses a module that was going to ask for the Robolectric lane: by the time the
+    // KMP-Android hook fires, `composePreviewDiscover` / `composePreviewRender` already exist, and
+    // registering them again fails configuration outright. Keeping Desktop instead is safe but
+    // wrong — an Android-only module whose previews cannot render there, which is the whole reason
+    // the lane exists (`:samples:cmp-android-robolectric` is pinned in that hostile order for
+    // exactly this reason, and rendered by CI).
+    //
+    // So when the KMP-Android plugin could still be coming, the compose hook records the intent
+    // and the commit happens in `afterEvaluate` instead — by which point every plugin in the
+    // `plugins { }` block has been applied and the answer is known. It is narrow on purpose:
+    // ONLY when `org.jetbrains.kotlin.multiplatform` is applied (the KMP-Android plugin requires
+    // it, so nothing else can grow one) and KMP-Android is not applied yet. A `kotlin("jvm")` +
+    // compose module, or one that already has KMP-Android when compose lands, registers
+    // immediately exactly as before — the overwhelming majority of consumers, and every shape
+    // where the plugin is applied last, see byte-identical behaviour.
+    fun kmpAndroidStillPossible(): Boolean =
+      project.pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform") &&
+        !project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")
+
     project.pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
-      // `desktopRegistered` is the third condition and it is load-bearing. Plugin apply order is
-      // the consumer's, and a convention plugin can apply `org.jetbrains.compose` BEFORE
-      // `com.android.kotlin.multiplatform.library` — in which case the compose hook has already
-      // committed to the Desktop lane and registered `composePreviewDiscover` /
-      // `composePreviewRender`
-      // by the time this one fires. Taking the Robolectric lane on top of that would try to
-      // register those same names a second time and fail configuration outright. The module keeps
-      // Desktop instead, which is the pre-existing behaviour for every apply order.
+      // `desktopRegistered` stays in the guard as a backstop for the one order the deferral above
+      // cannot cover: `org.jetbrains.compose` applied before `org.jetbrains.kotlin.multiplatform`,
+      // where at compose time there is no KMP plugin to predict a KMP-Android one from. Rare, and
+      // it degrades to the previous behaviour — Desktop, plus the warning below — rather than to a
+      // duplicate-registration failure.
       if (!androidConfigured && !kmpAndroidRouting && !desktopRegistered) {
         kmpAndroidRouting = true
         // `registerDesktop`, not `desktopHandler`: this IS the fallback, and it has to get past
         // the `kmpAndroidRouting` guard it just set.
         AndroidPreviewSupport.configure(project, extension, kmpAndroidFallback = registerDesktop)
       } else if (desktopRegistered) {
-        // Losing the race is silent otherwise, and silence is the worst outcome here: the
-        // consumer's `kmpAndroidRobolectric = true` is simply ignored and their Android-only
-        // previews fail to render with nothing pointing at why. The flag cannot be read at THIS
-        // moment — `withPlugin` callbacks run while the `plugins { }` block is still applying, so
-        // the `composePreview { }` block has not been evaluated yet — hence the deferred check.
-        // Warning only; it wires no tasks.
+        // Silence is the worst outcome here: the consumer's `kmpAndroidRobolectric = true` is
+        // ignored and their Android-only previews fail to render with nothing pointing at why. The
+        // flag cannot be read at THIS moment — `withPlugin` callbacks run while the `plugins { }`
+        // block is still applying, so `composePreview { }` has not been evaluated — hence the
+        // deferred check. Warning only; it wires no tasks.
         project.afterEvaluate {
           if (extension.kmpAndroidRobolectric.getOrElse(false)) {
             logger.warn(
               "compose-preview: `composePreview { kmpAndroidRobolectric = true }` is set on " +
-                "'$path', but `org.jetbrains.compose` was applied before " +
+                "'$path', but `org.jetbrains.compose` was applied before both " +
+                "`org.jetbrains.kotlin.multiplatform` and " +
                 "`com.android.kotlin.multiplatform.library`, so the Desktop renderer was already " +
                 "wired up by the time the Robolectric lane could claim it. The module is " +
-                "rendering on Desktop. Apply `com.android.kotlin.multiplatform.library` first, or " +
-                "apply `ee.schimke.composeai.preview` after both, to get the Robolectric lane."
+                "rendering on Desktop. Apply the Kotlin Multiplatform plugin before " +
+                "`org.jetbrains.compose` to get the Robolectric lane."
             )
           }
         }
@@ -168,8 +187,19 @@ constructor(
       ) {
         return@withPlugin
       }
+      if (kmpAndroidStillPossible()) {
+        desktopDeferred = true
+        return@withPlugin
+      }
       desktopHandler()
     }
+
+    // The deferred commit. Registered unconditionally so it exists whichever hook set the flag,
+    // and a no-op unless one did: `desktopDeferred` gates it, and the `desktopHandler` guards
+    // re-check the lane, so a KMP-Android module that claimed Robolectric in between is left
+    // alone. `afterEvaluate` is the last point before task realization at which
+    // `registerDesktopTasks` can still do its own `afterEvaluate` dependency wiring.
+    project.afterEvaluate { if (desktopDeferred) desktopHandler() }
   }
 
   /**

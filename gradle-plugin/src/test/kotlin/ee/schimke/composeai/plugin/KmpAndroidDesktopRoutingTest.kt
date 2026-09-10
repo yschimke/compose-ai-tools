@@ -235,4 +235,35 @@ class KmpAndroidDesktopRoutingTest {
         as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
     assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
   }
+
+  @Test
+  fun `desktop tasks can be registered from afterEvaluate`() {
+    // The mechanism behind the deferred lane decision in [ComposePreviewPlugin]. When
+    // `org.jetbrains.compose` lands on a KMP module before
+    // `com.android.kotlin.multiplatform.library`
+    // has had its chance, the desktop branch does NOT commit at that moment — it records the intent
+    // and registers in `afterEvaluate`, by which point the whole `plugins { }` block has been
+    // applied and the lane is known.
+    //
+    // That only works if `registerDesktopTasks` tolerates being called from inside `afterEvaluate`,
+    // which is not obvious: it schedules THREE `project.afterEvaluate` blocks of its own (the
+    // renderer-dependency default, the KMP dependency wiring, the stage-2 BTA configurations), so
+    // the deferral nests `afterEvaluate` inside `afterEvaluate`. Gradle rejects that outright once
+    // a project has FINISHED evaluating, which is why the deferral point matters and why it is
+    // pinned here rather than left to hold by luck.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    project.afterEvaluate { ComposePreviewTasks.registerDesktopTasks(project, extension) }
+    (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+
+    // Registered, and reachable — the nested `afterEvaluate` blocks did not throw on the way.
+    assertThat(project.tasks.findByName("composePreviewDiscover")).isNotNull()
+    assertThat(project.tasks.findByName("composePreviewRender")).isNotNull()
+    assertThat(project.tasks.findByName("composePreviewRenderAll")).isNotNull()
+  }
 }
