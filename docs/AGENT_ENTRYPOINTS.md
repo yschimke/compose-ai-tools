@@ -84,13 +84,13 @@ writing:
 
 | Agent | Entrypoint | Bytes per turn | ~tokens | Invariants |
 | --- | --- | --- | --- | --- |
-| Claude Code | `CLAUDE.md` + imported `AGENTS.md` | 9,272 | ~2,300 | 5 of 5 |
-| Codex CLI | `AGENTS.md` | 7,497 | ~1,900 | 5 of 5 |
-| Gemini CLI | `GEMINI.md` + imported `AGENTS.md` | 7,915 | ~2,000 | 5 of 5 |
-| Copilot | `.github/copilot-instructions.md` + `AGENTS.md` | 8,029 | ~2,000 | 5 of 5 |
+| Claude Code | `CLAUDE.md` + imported `AGENTS.md` | 13,857 | ~3,500 | 6 of 6 |
+| Codex CLI | `AGENTS.md` | 12,082 | ~3,000 | 6 of 6 |
+| Gemini CLI | `GEMINI.md` + imported `AGENTS.md` | 12,510 | ~3,100 | 6 of 6 |
+| Copilot | `.github/copilot-instructions.md` + `AGENTS.md` | 12,614 | ~3,200 | 6 of 6 |
 
 `~tokens` is bytes/4, the usual rough estimate, and is paid on every turn.
-`docs/AGENT_GUIDE.md` (~73 KB, ~18,000 tokens) is **not** in this table: no agent loads it
+`docs/AGENT_GUIDE.md` (~95 KB, ~24,000 tokens) is **not** in this table: no agent loads it
 automatically, and it should stay that way.
 
 Claude Code's per-turn cost went *down* — from 11,088 bytes of invariants plus PR
