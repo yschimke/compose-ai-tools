@@ -98,6 +98,26 @@ public class AndroidBundleLaunch(
     System.getProperty("composeai.fonts.failOnFallback")?.let {
       put("composeai.fonts.failOnFallback", it)
     }
+    // Same forwarding, for the three the Android renderer and the figma-svg connector also read
+    // off system properties. A `-D` on this process does NOT reach a spawned JVM, so anything the
+    // child reads has to be named here or it silently takes its default:
+    //
+    //   composeai.fonts.offline   GoogleFontInterceptor, AndroidFigmaFontResolver
+    //   composeai.svg.embedFonts  AndroidFigmaFontResolver
+    //   composeai.svg.background  ComposeFigmaSvgDataProduct.PROP_BACKGROUND
+    //
+    // They were missing, so `-Dcomposeai.fonts.offline=true` reached the Gradle render task (which
+    // sets it in `AndroidPreviewClasspath`) and the desktop serve daemon (which forwards it in
+    // `ServeBundleDaemon.desktopFontSystemProperties`) but not ANY Android lane through here —
+    // `bundle render`, `bundle daemon`, or serve's Android backend. An air-gapped Android render
+    // still tried to fetch Google Fonts.
+    //
+    // The real fix is one launch plan owned by the daemon rather than three partial copies
+    // (compose-preview-daemon's docs/design/EMBEDDING.md); until tools adopts it, this closes the
+    // gap where every Android consumer already funnels through.
+    System.getProperty("composeai.fonts.offline")?.let { put("composeai.fonts.offline", it) }
+    System.getProperty("composeai.svg.embedFonts")?.let { put("composeai.svg.embedFonts", it) }
+    System.getProperty("composeai.svg.background")?.let { put("composeai.svg.background", it) }
   }
 
   /**
