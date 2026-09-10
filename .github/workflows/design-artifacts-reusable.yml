@@ -4816,71 +4816,23 @@ jobs:
               print(f"::warning title=Documents overwritten::{clobbered} duplicate id(s) collided while staging")
           PY
 
-          # Drop what the generated catalog does not actually publish. `--extra-renders` REPLACES a
-          # primary function's candidates rather than adding to them (generate-design-catalog.mjs,
-          # the splice around line 1104), and the overriding preview's id is usually a different
-          # class-qualified name — so staging every bundle's `ir/` tree publishes a document for a
-          # sticker the catalog dropped, sitting beside the one that replaced it. On a lane whose
-          # whole purpose is answering "did this component change", a document contradicting the
-          # visible render is worse than a missing one.
+          # NOT filtered against the catalog, deliberately, and this is the second attempt at it.
           #
-          # Guarded rather than trusted: the filter applies only when a catalog was found, yielded
-          # ids, and those ids cover at least one staged document. Any other outcome means the
-          # manifest's shape has moved and the filter would empty `documents/` while reporting
-          # success — publish everything and say so instead.
-          python3 - "$GITHUB_WORKSPACE/out" "$staged" <<'PY'
-          import json, os, sys
-
-          out, staged = sys.argv[1], sys.argv[2]
-
-          published = set()
-          for root, _, names in os.walk(out):
-              for name in names:
-                  if name != "catalog.json":
-                      continue
-                  try:
-                      with open(os.path.join(root, name), encoding="utf-8") as f:
-                          manifest = json.load(f)
-                  except Exception as e:
-                      print(f"::notice title=Unreadable catalog::{os.path.join(root, name)}: {e}")
-                      continue
-
-                  # Walked rather than indexed by a known path: `previewId` and `previewIds` hang
-                  # off records nested differently per system, and a walk cannot go stale when that
-                  # nesting changes — only when the KEY names do, which the guard below catches.
-                  def collect(node):
-                      if isinstance(node, dict):
-                          one = node.get("previewId")
-                          if isinstance(one, str):
-                              published.add(one)
-                          many = node.get("previewIds")
-                          if isinstance(many, list):
-                              published.update(i for i in many if isinstance(i, str))
-                          for v in node.values():
-                              collect(v)
-                      elif isinstance(node, list):
-                          for v in node:
-                              collect(v)
-
-                  collect(manifest)
-
-          documents = sorted(n for n in os.listdir(staged) if n.endswith(".rc"))
-          ids = {n[: -len(".rc")] for n in documents}
-          if not published:
-              print("::notice title=Documents not filtered::no catalog.json yielded preview ids; publishing every staged document")
-          elif not (ids & published):
-              print(f"::warning title=Documents not filtered::the catalog's {len(published)} preview id(s) match none of the {len(ids)} staged document(s); the manifest's shape has probably moved. Publishing every staged document rather than none.")
-          else:
-              dropped = 0
-              for name in documents:
-                  if name[: -len(".rc")] in published:
-                      continue
-                  os.remove(os.path.join(staged, name))
-                  dropped += 1
-              if dropped:
-                  print(f"dropped {dropped} staged document(s) the catalog does not publish")
-          PY
-
+          # `--extra-renders` REPLACES a primary function's candidates rather than adding to them
+          # (generate-design-catalog.mjs, the splice around line 1104), so a sticker the catalog
+          # dropped can still have its document staged here, sitting beside the one that replaced
+          # it. That wart is real. The obvious fix — keep only the ids the catalog publishes — is
+          # not available, because the catalog records no such list: `previewId` is stamped by
+          # `bridgeLivePreviewIds` and is a LIVE-ROUTING id, deliberately absent from exactly the
+          # images an Android-only supplement overrode (lines 1965-1969 and 2225-2233 say so). A
+          # filter keyed on it deletes the OVERRIDE's document and keeps the superseded one, which
+          # is strictly worse than publishing both — a wrong document where the reader expects the
+          # authoritative one, rather than a spare beside it.
+          #
+          # Fixing it properly means the generator emitting the document ids it actually published,
+          # which is its change to make, not this step's. Until then an extra-module catalog can
+          # carry one stale document per overridden function; both are named by their preview id,
+          # and the catalog is the arbiter of which id it lists.
           if [ -z "$(find "$staged" -maxdepth 1 -name '*.rc' -print -quit)" ]; then
             echo "No ir/*.rc documents in the bundle — nothing to project."
             exit 0
