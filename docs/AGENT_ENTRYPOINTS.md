@@ -84,10 +84,10 @@ writing:
 
 | Agent | Entrypoint | Bytes per turn | ~tokens | Invariants |
 | --- | --- | --- | --- | --- |
-| Claude Code | `CLAUDE.md` + imported `AGENTS.md` | 13,857 | ~3,500 | 6 of 6 |
-| Codex CLI | `AGENTS.md` | 12,082 | ~3,000 | 6 of 6 |
-| Gemini CLI | `GEMINI.md` + imported `AGENTS.md` | 12,510 | ~3,100 | 6 of 6 |
-| Copilot | `.github/copilot-instructions.md` + `AGENTS.md` | 12,614 | ~3,200 | 6 of 6 |
+| Claude Code | `CLAUDE.md` + imported `AGENTS.md` | 13,857 | ~3,500 | 5 of 5 |
+| Codex CLI | `AGENTS.md` | 12,082 | ~3,000 | 5 of 5 |
+| Gemini CLI | `GEMINI.md` + imported `AGENTS.md` | 12,510 | ~3,100 | 5 of 5 |
+| Copilot | `.github/copilot-instructions.md` + `AGENTS.md` | 12,614 | ~3,200 | 5 of 5 |
 
 `~tokens` is bytes/4, the usual rough estimate, and is paid on every turn.
 `docs/AGENT_GUIDE.md` (~95 KB, ~24,000 tokens) is **not** in this table: no agent loads it

@@ -112,25 +112,6 @@ modules) and stage the result. For the serve-web TypeScript, run
 `npm --prefix cli/serve-web run format`. The round-trip through CI costs more
 than running the formatter locally.
 
-<!-- invariant: regenerate-lockfiles -->
-### Regenerate the lockfiles when you move a dependency
-
-Every published module commits a `gradle.lockfile`, and those pins are
-`strictly` constraints. A `gradle/libs.versions.toml` bump not matched by
-regenerated lock state therefore does not merely go unrecorded — it **fails to
-resolve**, with `Dependency version enforced by Dependency Locking`. After
-touching the catalog or a `build.gradle.kts` dependency block, run
-`./gradlew resolveAndLockAll --write-locks --no-configuration-cache` (the flag is
-load-bearing) and stage every `gradle.lockfile` it moves.
-
-[`Dependency Locks`](.github/workflows/dependency-locks.yml) does this for
-Renovate's branches, but it runs on `pull_request` only and regenerates nothing
-when the new artifacts have not reached Maven Central yet — so a bump can still
-land on `main` stale. Lock state is not bookkeeping: the release-train publish
-guard diffs it *instead of* the catalog, which is the only reason one dependency
-bump does not republish all 94 modules. Detail:
-[`docs/AGENT_GUIDE.md` → Dependency lockfiles](docs/AGENT_GUIDE.md#dependency-lockfiles).
-
 <!-- invariant: pr-state-recheck -->
 ### Re-check PR state immediately before **every** push
 
