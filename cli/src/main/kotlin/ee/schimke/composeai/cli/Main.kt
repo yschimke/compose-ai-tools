@@ -31,6 +31,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
+    "rc" to { a -> RcCommand(a).run() },
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },

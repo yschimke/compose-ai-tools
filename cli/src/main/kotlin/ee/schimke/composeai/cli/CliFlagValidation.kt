@@ -294,6 +294,10 @@ internal object CliFlagValidation {
           // a token may not be an argument, which "unrecognised option" does not.
           "--github-token",
         ),
+      // `rc` owns nested subcommands too, and the same rule applies: validate the union here,
+      // leave `compile` / `dump` / `header` dispatch to RcCommand. The set is small enough that
+      // listing it is cheaper than reasoning about which subcommand takes which.
+      "rc" to commandBase + setOf("--help", "-h", "--output", "-o", "--compact", "--json"),
       // `bundle` owns nested subcommands. Validate at the routed-command boundary while allowing
       // the union of their options; nested positional dispatch remains BundleCommand's concern.
       "bundle" to

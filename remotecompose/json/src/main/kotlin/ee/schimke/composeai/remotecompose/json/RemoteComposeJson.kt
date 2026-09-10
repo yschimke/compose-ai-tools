@@ -135,6 +135,24 @@ public object RemoteComposeJson {
   }
 
   /**
+   * Refuse *authoring* JSON handed to a *document* entry point, by name.
+   *
+   * The two dialects are the confusion this whole class is shaped around, and the confusion has a
+   * command-line form: `rc dump doc.json`. Without this check the bytes reach the inflater, which
+   * reads the ASCII of `{"header":` as opcodes and fails somewhere arbitrary — the observed message
+   * was `Path too long`, which sends the reader looking for a filesystem problem that does not
+   * exist. Naming the mistake costs one byte of lookahead.
+   */
+  private fun refuseAuthoringJson(document: ByteArray) {
+    val first = document.firstOrNull { !it.toInt().toChar().isWhitespace() } ?: return
+    if (first.toInt().toChar() != '{') return
+    throw RemoteComposeJsonException(
+      "That is JSON text, not a binary RemoteCompose document. If it is authoring JSON, compile " +
+        "it first — the document dialect this reads is not the dialect a person writes."
+    )
+  }
+
+  /**
    * Inflate binary `.rc` [document] bytes and project them as **document JSON**.
    *
    * The returned object is `{"header": {...}, "operations": [...]}`. [header] is the decoded
@@ -143,6 +161,7 @@ public object RemoteComposeJson {
    * and there is no measure pass here.
    */
   public fun dumpToJsonObject(document: ByteArray): JsonObject {
+    refuseAuthoringJson(document)
     val buffer =
       try {
         ByteArrayInputStream(document).use { RemoteComposeBuffer.fromInputStream(it) }

@@ -119,6 +119,20 @@ class RemoteComposeJsonTest {
     assertThat(e).hasMessageThat().contains("bytes")
   }
 
+  @Test
+  fun `names the dialect mistake instead of failing arbitrarily`() {
+    // `rc dump doc.json` is the shape of it. Left to the inflater this reads the ASCII of
+    // `{"header":` as opcodes and dies with something like `Path too long`, which sends the reader
+    // after a filesystem problem that does not exist.
+    val e =
+      assertThrows(RemoteComposeJsonException::class.java) {
+        RemoteComposeJson.dumpToJsonObject(authoringJson.toByteArray())
+      }
+
+    assertThat(e).hasMessageThat().contains("JSON text")
+    assertThat(e).hasMessageThat().contains("compile")
+  }
+
   private fun kotlinx.serialization.json.JsonElement.typeName(): String? =
     (this as? JsonObject)?.typeName()
 
