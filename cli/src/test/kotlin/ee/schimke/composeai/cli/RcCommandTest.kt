@@ -440,6 +440,24 @@ class RcCommandTest {
   }
 
   @Test
+  fun `a named input that cannot be stat-ed is a message and not a stack trace`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+
+    // The directory check and `readBytesOrFail`'s lookup are both input boundaries, and
+    // `metadataOrNull` throws rather than answering null for a path it cannot stat — escaping
+    // `guard`, `writing` and the batch handlers alike.
+    val unstattable =
+      object : ForwardingFileSystem(fs) {
+        override fun metadataOrNull(path: Path) = throw OkioIOException("Permission denied")
+      }
+
+    assertEquals(1, runExpectingExit("dump", (dir / "a.rc").toString(), fileSystem = unstattable))
+
+    assertTrue(err.any { "cannot read" in it && "Permission denied" in it }, "names it: $err")
+  }
+
+  @Test
   fun `an entry that cannot be stat-ed does not stop the batch`() {
     fs.createDirectories(dir)
     fs.write(dir / "good.rc") { write(document) }

@@ -10,6 +10,7 @@ import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import okio.FileMetadata
 import okio.FileSystem
 import okio.IOException as OkioIOException
 import okio.Path
@@ -165,7 +166,7 @@ internal class RcCommand(
     // classpath of every project that applies the plugin — including projects with no Remote
     // Compose in them at all, and including a `RemoteComposePairing` skew this repository would
     // then own a fourth source of. A publish step calling one CLI command is the cheaper seam.
-    if (fileSystem.metadataOrNull(file)?.isDirectory == true) {
+    if (statOrFail(file, "rc dump")?.isDirectory == true) {
       // Directory mode writes each document's twin beside it, which is what the delivery lane
       // wants and what makes a re-dump idempotent. It has no destination to redirect, so `-o` is
       // REFUSED rather than ignored: the flag is on this command's allowlist, so an ignored one
@@ -439,6 +440,19 @@ internal class RcCommand(
     var temp: Path? = null
     try {
       temp = claimAndWrite(target, text)
+      // Re-checked here, right before the move, and not only before the projection. `mayWrite`
+      // above answers for the target as it was when the document was still being inflated —
+      // milliseconds for a sticker, longer for a big one — and anything sharing the directory can
+      // put an authoring file at that name in between. Asking again costs one stat and narrows the
+      // window from the whole projection to the gap between these two lines.
+      //
+      // It does not CLOSE it: replacing a file only if it has not changed since it was looked at
+      // is not something the filesystem primitives available here can express, and a rename that
+      // refuses an existing target cannot express "replace the dump I wrote last run" either. The
+      // residual race is one stat wide and is stated rather than papered over.
+      if (!mayWrite(target)) {
+        throw OkioIOException("$target changed after it was approved for overwriting; left alone")
+      }
       fileSystem.atomicMove(temp, target)
     } catch (e: OkioIOException) {
       try {
@@ -718,6 +732,21 @@ internal class RcCommand(
     }
 
   /**
+   * `metadataOrNull`, with the exception it can throw turned into this command's diagnostic.
+   *
+   * The name says "orNull" and the null means "not there", but a path it cannot *stat* — a
+   * permissions problem, a stale NFS handle — throws instead. Every caller here is at an input
+   * boundary where that escaped `guard`, `writing` and the batch's own handlers alike and reached
+   * `main` as a stack trace, which is the one thing every message in this command exists to avoid.
+   */
+  private fun statOrFail(path: Path, what: String): FileMetadata? =
+    try {
+      fileSystem.metadataOrNull(path)
+    } catch (e: OkioIOException) {
+      fail("$what: cannot read $path: ${e.message}")
+    }
+
+  /**
    * Read [path] as **strict** UTF-8.
    *
    * `decodeToString()` substitutes U+FFFD for a malformed byte sequence rather than failing, and
@@ -744,7 +773,7 @@ internal class RcCommand(
     // rather than guessed: a directory the process may traverse but not read comes back null here,
     // and reporting that one as "no such file" sends the reader looking for a path that is right
     // in front of them.
-    if (fileSystem.metadataOrNull(path)?.isRegularFile != true) {
+    if (statOrFail(path, what)?.isRegularFile != true) {
       fail("$what: no such file (or not readable): $path")
     }
     return try {
