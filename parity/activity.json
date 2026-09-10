@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-10T19:42:03.790Z",
+  "generatedAt": "2026-09-10T20:11:07.234Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "59eb6da9e161d76b3942e181b7ac9c7889b0f17c",
+        "subject": "fix: publish design reference match scores (#5374)",
+        "at": "2026-09-10T21:03:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f275f5c424664f950f7d54013e2888cb9a40f770",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.7.0 (#5372)",
+        "at": "2026-09-10T19:56:53Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5694b4a6a51520710bfc12f49fd7de1531288a95",
+        "subject": "fix(bundle): forward the font and svg opt-outs to the Android child JVM (#5371)",
+        "at": "2026-09-10T20:47:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "f904410c8ce2968fb86f1a8c1c6ee0fb10e4e7ba",
         "subject": "chore(main): release 2.7.0 (#5368)",
@@ -459,30 +483,6 @@
         "subject": "fix(deps): update dependency io.github.classgraph:classgraph to v4.8.195 (#5304)",
         "at": "2026-09-08T12:39:26+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "dfd90e5d853fc8204e7804c0746e64ceb312ab40",
-        "subject": "test: pin the capture's non-linear sp-to-px font scale curve (#5301)",
-        "at": "2026-09-08T08:57:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "50c086c5601bce832ebd77c49630109bdf00a589",
-        "subject": "chore(main): release 2.3.0 (#5297)",
-        "at": "2026-09-08T08:15:56+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "426a3d1f1116a5e29b113c2df18396190e58eb5f",
-        "subject": "docs: name the Remote Compose players by implementation (#5299)",
-        "at": "2026-09-08T08:08:59+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
