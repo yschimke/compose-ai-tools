@@ -83,44 +83,58 @@ constructor(
     project.pluginManager.withPlugin("com.android.library") { androidHandler() }
 
     // `com.android.kotlin.multiplatform.library` (the AGP 9 replacement for
-    // nesting `com.android.library` inside KMP) ships a single `android`
-    // variant via `KotlinMultiplatformAndroidComponentsExtension` — there are
-    // no classic `debug`/`release` build types and no AGP unit-test pipeline
-    // unless the consumer opts in via `withHostTest { … }`. Wiring the
-    // Robolectric renderer through that path would mean replicating most of
-    // [AndroidPreviewSupport] for a different DSL surface (issue #248).
+    // nesting `com.android.library` inside KMP) ships a single variant, named
+    // after its main source set (`androidMain`) rather than a build type, via
+    // `KotlinMultiplatformAndroidComponentsExtension`.
     //
-    // The simpler answer for the canonical CMP-on-Android layout (UI under
-    // `:shared/src/androidMain/kotlin/...`) is to render through the Compose
-    // Multiplatform Desktop renderer instead: `androidMain` previews are
-    // pure-Compose composables that `ImageComposeScene` can capture once we
-    // point discovery at the KMP-Android compile output and runtime
-    // classpath. Done in [ComposePreviewTasks.registerDesktopTasks], gated on
-    // `org.jetbrains.compose` actually being applied (which the standard CMP
-    // sample plugin block — `composeMultiplatform` — applies).
+    // Its DEFAULT lane is the Compose Multiplatform Desktop renderer, which is
+    // what issue #248 settled on and what every such module has rendered
+    // through since: for the canonical CMP-on-Android layout (UI under
+    // `:shared/src/commonMain/kotlin/...`) the previews are pure-Compose
+    // composables that `ImageComposeScene` captures on the host JVM with no
+    // Android infrastructure at all. Done in
+    // [ComposePreviewTasks.registerDesktopTasks], gated on `org.jetbrains.compose`
+    // actually being applied (which the standard CMP sample plugin block —
+    // `composeMultiplatform` — applies).
     //
-    // We deliberately do NOT set `androidConfigured = true` here: that flag
-    // exists to suppress the desktop branch on classic Android modules where
-    // the AGP path owns task registration. KMP-Android wants the desktop
-    // branch.
+    // A module whose UI is Android-only can ask for the Robolectric lane
+    // instead with `composePreview { kmpAndroidRobolectric = true }`; see that
+    // property for why the choice is explicit. [AndroidPreviewSupport.configure]
+    // makes it, because only `onVariants` knows whether the consumer also
+    // declared the `withHostTest { }` compilation the lane needs — and hands
+    // back to `desktopHandler` when the answer is no, so the default path is
+    // reached by exactly the same code as before.
+    //
+    // Two flags, not one. `androidConfigured` means "classic AGP owns task registration, the
+    // desktop branch must never run". `kmpAndroidRouting` means "the decision is deferred to
+    // `onVariants`, so the desktop branch must not run YET" — it is suppressed exactly until the
+    // fallback fires, which is the one caller allowed through the guard.
+    var kmpAndroidRouting = false
     var desktopRegistered = false
-    val desktopHandler: () -> Unit = {
-      if (!androidConfigured && !desktopRegistered) {
+    val registerDesktop: () -> Unit = {
+      if (!desktopRegistered) {
         desktopRegistered = true
         ComposePreviewTasks.registerDesktopTasks(project, extension)
       }
     }
+    val desktopHandler: () -> Unit = {
+      if (!androidConfigured && !kmpAndroidRouting) registerDesktop()
+    }
     // Apply order isn't guaranteed: a downstream `:shared` build may declare
     // `androidKotlinMultiplatformLibrary` before `composeMultiplatform` or
     // vice-versa. Both withPlugin hooks fire when their plugin lands, and
-    // the idempotent `desktopHandler` only runs once — whichever fires
-    // second is a no-op.
+    // the idempotent handlers only run once — whichever fires second is a no-op.
     project.pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
-      desktopHandler()
+      if (!androidConfigured && !kmpAndroidRouting) {
+        kmpAndroidRouting = true
+        // `registerDesktop`, not `desktopHandler`: this IS the fallback, and it has to get past
+        // the `kmpAndroidRouting` guard it just set.
+        AndroidPreviewSupport.configure(project, extension, kmpAndroidFallback = registerDesktop)
+      }
     }
 
     project.pluginManager.withPlugin("org.jetbrains.compose") {
-      if (androidConfigured) return@withPlugin
+      if (androidConfigured || kmpAndroidRouting) return@withPlugin
       if (
         project.plugins.hasPlugin("com.android.application") ||
           project.plugins.hasPlugin("com.android.library")

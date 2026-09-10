@@ -3,7 +3,9 @@ package ee.schimke.composeai.plugin
 import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.dsl.CommonExtension
+import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.HasUnitTest
 import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
 import ee.schimke.composeai.daemonlaunch.*
@@ -499,9 +501,12 @@ internal object AndroidPreviewSupport {
    * Consumers already above the floor are unaffected: this is a pin, so Gradle's max-version
    * conflict resolution leaves their own Compose line in place.
    */
-  internal fun mainVariantComposeVersion(project: Project, variantName: String): String {
-    val unitTestClasspath =
-      project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
+  internal fun mainVariantComposeVersion(
+    project: Project,
+    variantName: String,
+    unitTestClasspathName: String? = "${variantName}UnitTestRuntimeClasspath",
+  ): String {
+    val unitTestClasspath = unitTestClasspathName?.let { project.configurations.findByName(it) }
     return if (consumerBringsOwnCompose(project, unitTestClasspath)) {
       RENDERER_COMPOSE_LINK_FLOOR_VERSION
     } else {
@@ -805,7 +810,19 @@ internal object AndroidPreviewSupport {
     // JVM, with the SDK matrix overriding it to its forked test toolchain.
   }
 
-  fun configure(project: Project, extension: PreviewExtension) {
+  /**
+   * [kmpAndroidFallback] is run, once, when a `com.android.kotlin.multiplatform.library` module
+   * turns out NOT to want the Robolectric lane — either because `composePreview {
+   * kmpAndroidRobolectric = true }` was never set, or because it was set on a module with no
+   * host-test compilation to render on. It re-routes to the Desktop renderer, which is what such a
+   * module got before this branch existed. Null for classic Android modules, which have no other
+   * lane.
+   */
+  fun configure(
+    project: Project,
+    extension: PreviewExtension,
+    kmpAndroidFallback: (() -> Unit)? = null,
+  ) {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
     // Captures the consumer's `android.compileSdk` from `finalizeDsl` so the
@@ -821,21 +838,53 @@ internal object AndroidPreviewSupport {
     val consumerMinSdk = project.objects.property(Int::class.java)
 
     androidComponents.finalizeDsl { android: Any ->
-      val common = android as CommonExtension
-      if (extension.enabled.get()) {
-        common.testOptions.unitTests.isIncludeAndroidResources = true
-      }
-      // `compileSdk` is nullable on `CommonExtension` (consumers can omit it,
-      // though AGP usually fails the build later). Only propagate when set so
-      // [GenerateRobolectricPropertiesTask.sdk]'s `.orElse(...)` chain falls
-      // through to the user override / floor when AGP couldn't supply one.
-      val resolvedCompileSdk: Int? = common.compileSdk
-      if (resolvedCompileSdk != null) {
-        consumerCompileSdk.set(resolvedCompileSdk)
-      }
-      val resolvedMinSdk: Int? = common.defaultConfig.minSdk
-      if (resolvedMinSdk != null) {
-        consumerMinSdk.set(resolvedMinSdk)
+      // Two DSL surfaces reach here. `com.android.application` / `com.android.library` hand over a
+      // [CommonExtension]; `com.android.kotlin.multiplatform.library` hands over a
+      // [KotlinMultiplatformAndroidLibraryExtension], which is NOT one — it carries `compileSdk`
+      // and `minSdk` directly instead of behind `defaultConfig`, and replaces
+      // `testOptions.unitTests` with `withHostTest { }`.
+      when (android) {
+        is CommonExtension -> {
+          if (extension.enabled.get()) {
+            android.testOptions.unitTests.isIncludeAndroidResources = true
+          }
+          // `compileSdk` is nullable on `CommonExtension` (consumers can omit it,
+          // though AGP usually fails the build later). Only propagate when set so
+          // [GenerateRobolectricPropertiesTask.sdk]'s `.orElse(...)` chain falls
+          // through to the user override / floor when AGP couldn't supply one.
+          val resolvedCompileSdk: Int? = android.compileSdk
+          if (resolvedCompileSdk != null) {
+            consumerCompileSdk.set(resolvedCompileSdk)
+          }
+          val resolvedMinSdk: Int? = android.defaultConfig.minSdk
+          if (resolvedMinSdk != null) {
+            consumerMinSdk.set(resolvedMinSdk)
+          }
+        }
+        is KotlinMultiplatformAndroidLibraryExtension -> {
+          // KMP-Android leaves android resources OFF by default — `variant.sources.res` is null
+          // and AGP generates no R classes for the variant's AAR dependencies. Robolectric needs
+          // them: `ViewTreeLifecycleOwner.get` reads `androidx.lifecycle.runtime.R.id`, so the
+          // first `setContent` dies with `NoClassDefFoundError: androidx/lifecycle/runtime/R$id`.
+          // Unlike `withHostTest { }` this is a plain property AGP is happy to see set here.
+          if (extension.enabled.get()) {
+            android.androidResources.enable = true
+          }
+          // NOT the `isIncludeAndroidResources` flip the classic branch does. `withHostTest { }`
+          // both CREATES the host-test compilation and configures it, and AGP rejects a second
+          // call with "Android host tests have already been enabled" — so the plugin cannot turn
+          // the flag on for a consumer who wrote a bare `withHostTest { }`, and calling it on a
+          // consumer who wrote none would conjure a compilation they never asked for. The
+          // consumer owns that line; [routeKmpAndroid] says so when it matters.
+          val resolvedCompileSdk: Int? = android.compileSdk
+          if (resolvedCompileSdk != null) {
+            consumerCompileSdk.set(resolvedCompileSdk)
+          }
+          val resolvedMinSdk: Int? = android.minSdk
+          if (resolvedMinSdk != null) {
+            consumerMinSdk.set(resolvedMinSdk)
+          }
+        }
       }
     }
 
@@ -853,12 +902,22 @@ internal object AndroidPreviewSupport {
     // Fetching `sdkComponents.bootClasspath` eagerly (at apply time) forces
     // AGP to read `compileOptions.targetCompatibility` before it's finalized
     // and crashes — grab it inside onVariants instead.
+    // `com.android.kotlin.multiplatform.library` publishes ONE variant, named after its main
+    // source set (`androidMain`) rather than a build type — there are no build types. The
+    // `variant` property's `debug` convention can therefore never match it, and there is nothing
+    // to disambiguate, so the single variant is taken as-is unless the consumer named it exactly.
+    val kmpAndroid = isKmpAndroidModule(project)
     var registered = false
     androidComponents.onVariants(androidComponents.selector().all()) { variant ->
       if (registered) return@onVariants
       if (!extension.enabled.get()) return@onVariants
       val target = extension.variant.get()
-      if (!variantMatchesTarget(variant.name, target)) return@onVariants
+      if (!kmpAndroid && !variantMatchesTarget(variant.name, target)) return@onVariants
+      if (kmpAndroid && !kmpAndroidWantsRobolectric(project, extension, variant)) {
+        registered = true
+        kmpAndroidFallback?.invoke()
+        return@onVariants
+      }
       val enforceToolingDep = extension.enforcePreviewToolingDependency.get()
       if (enforceToolingDep && !hasPreviewDependency(project, variant.name)) {
         project.logger.info(
@@ -878,6 +937,12 @@ internal object AndroidPreviewSupport {
       // actually-selected name instead of the unresolved target. No-op when
       // the match was already exact.
       if (variant.name != target) extension.variant.set(variant.name)
+      val naming =
+        if (kmpAndroid) {
+          kmpAndroidNaming(project, variant)
+        } else {
+          AndroidVariantNaming.classic(variant.name)
+        }
       registerAndroidTasks(
         project,
         extension,
@@ -885,6 +950,7 @@ internal object AndroidPreviewSupport {
         androidComponents.sdkComponents.bootClasspath,
         consumerCompileSdk,
         consumerMinSdk,
+        naming,
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
     }
@@ -914,6 +980,93 @@ internal object AndroidPreviewSupport {
    * `debug` variant. The user picked a flavor and the module doesn't have it, so the module is
    * silently skipped — same outcome as today.
    */
+  /**
+   * Whether a KMP-Android module should take the Robolectric lane rather than the Desktop one.
+   *
+   * Two conditions, both required. The consumer has to ask — see
+   * [PreviewExtension.kmpAndroidRobolectric] for why this is opt-in and not inferred — and AGP has
+   * to have a host-test compilation to hang the Android test classpath off, which only
+   * `withHostTest { }` creates. Asking without it is a build-script mistake rather than a state to
+   * render badly in, so it warns and hands back to Desktop instead of failing: the module still
+   * gets whatever previews Desktop can capture.
+   */
+  private fun kmpAndroidWantsRobolectric(
+    project: Project,
+    extension: PreviewExtension,
+    variant: Variant,
+  ): Boolean =
+    kmpAndroidLaneDecision(
+      optedIn = extension.kmpAndroidRobolectric.get(),
+      hasHostTest = (variant as? HasUnitTest)?.unitTest != null,
+    ) {
+      project.logger.warn(kmpAndroidMissingHostTestMessage(project.path))
+    }
+
+  /**
+   * The decision itself, separated from the `Variant` it is read off so it can be pinned by a test
+   * — the "a module that did not opt in keeps the Desktop lane" half is the guarantee that every
+   * existing KMP-Android consumer relies on, and it is not otherwise visible without standing up
+   * AGP. [onMissingHostTest] fires only for the one case that is a build-script mistake.
+   */
+  internal fun kmpAndroidLaneDecision(
+    optedIn: Boolean,
+    hasHostTest: Boolean,
+    onMissingHostTest: () -> Unit = {},
+  ): Boolean {
+    if (!optedIn) return false
+    if (hasHostTest) return true
+    onMissingHostTest()
+    return false
+  }
+
+  internal fun kmpAndroidMissingHostTestMessage(projectPath: String): String =
+    "compose-preview: `composePreview { kmpAndroidRobolectric = true }` is set on " +
+      "'$projectPath', but its `com.android.kotlin.multiplatform.library` module declares no " +
+      "host test, so there is no Android test classpath to render on. Add " +
+      "`kotlin { android { withHostTest { isIncludeAndroidResources = true } } }` to render " +
+      "through Robolectric. Falling back to the Compose Multiplatform Desktop renderer."
+
+  /**
+   * True on a `com.android.kotlin.multiplatform.library` module — AGP 9's replacement for nesting
+   * `com.android.library` inside KMP. Its variant, configuration and task names follow the KMP
+   * target and host-test compilation rather than a build type, which is what [kmpAndroidNaming]
+   * translates.
+   */
+  internal fun isKmpAndroidModule(project: Project): Boolean =
+    project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")
+
+  /**
+   * The KMP target behind a KMP-Android variant. The plugin names its variant after the main source
+   * set of the target — target `android` gives `androidMain` — so the target is the name with that
+   * suffix removed. Verified against the configuration it has to address before it is trusted: a
+   * consumer who renames the target keeps the convention, but a future AGP that breaks it should
+   * fall back to the default rather than address a configuration that isn't there.
+   */
+  internal fun kmpAndroidTargetName(project: Project, variantName: String): String {
+    val derived = variantName.removeSuffix("Main")
+    if (
+      derived.isNotEmpty() &&
+        project.configurations.findByName("${derived}RuntimeClasspath") != null
+    ) {
+      return derived
+    }
+    return "android"
+  }
+
+  /**
+   * [AndroidVariantNaming] for a KMP-Android variant, with the host-test compilation's own name
+   * taken from the variant rather than assumed. `unitTest` is null until the consumer opts in with
+   * `withHostTest { }`, and the naming carries that through as "no unit-test classpath, no
+   * `test_config.properties`" — a render then still runs, it just has no merged AAR resources,
+   * exactly as on a classic module with `isIncludeAndroidResources` left off.
+   */
+  internal fun kmpAndroidNaming(project: Project, variant: Variant): AndroidVariantNaming =
+    AndroidVariantNaming.kmpAndroid(
+      variantName = variant.name,
+      targetName = kmpAndroidTargetName(project, variant.name),
+      unitTestName = (variant as? HasUnitTest)?.unitTest?.name,
+    )
+
   internal fun variantMatchesTarget(variantName: String, target: String): Boolean {
     if (variantName == target) return true
     if (target.isEmpty()) return false
@@ -1111,9 +1264,26 @@ internal object AndroidPreviewSupport {
     bootClasspath: org.gradle.api.provider.Provider<List<org.gradle.api.file.RegularFile>>,
     consumerCompileSdk: org.gradle.api.provider.Provider<Int>,
     consumerMinSdk: org.gradle.api.provider.Provider<Int>,
+    naming: AndroidVariantNaming,
   ) {
+    // Every AGP-derived name goes through [naming]: `com.android.kotlin.multiplatform.library`
+    // names
+    // its configurations and tasks after the KMP target and host-test compilation rather than after
+    // the variant, so `"${'$'}{variantName}RuntimeClasspath"` and friends are wrong there. The two
+    // locals stay for the names that ARE the variant's own — the source-set buckets, task
+    // descriptions and intermediate paths AGP keys by variant in both worlds.
     val variantName = variant.name
     val capVariant = variantName.cap()
+    // The host-test declarable bucket. `testImplementation` on classic AGP; named after the
+    // host-test compilation on KMP-Android. The elvis is unreachable on the Robolectric lane —
+    // `kmpAndroidWantsRobolectric` refuses a module with no host test — and keeps the classic
+    // default readable rather than making every call site handle a null that cannot arrive.
+    val testImplementationBucket = naming.testImplementation ?: "testImplementation"
+    // AGP's own host-test `Test` task, looked up by name because it is registered later than this
+    // block runs. `""` on a module with no host test: `findByName("")` is null, which every call
+    // site already treats as "no AGP test task", so the classic `?: project.files()` fallbacks
+    // stand unchanged.
+    val unitTestTaskName = naming.unitTestTask ?: ""
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
     val artifactType = Attribute.of("artifactType", String::class.java)
     val daemonResDirs =
@@ -1159,7 +1329,12 @@ internal object AndroidPreviewSupport {
         ),
       )
     if (isKmp) {
+      // `androidTarget()` + `com.android.library` (issue #1492): target `android`, variant `debug`.
       sourceClassDirs.from(project.layout.buildDirectory.dir("classes/kotlin/android/$variantName"))
+      // `com.android.kotlin.multiplatform.library` (issue #248): one compilation called `main`
+      // under the same target, whatever the variant is named. Listing both is safe —
+      // [DiscoverPreviewsTask] skips directories that don't exist.
+      sourceClassDirs.from(project.layout.buildDirectory.dir("classes/kotlin/android/main"))
     }
     if (screenshotTestEnabled) {
       sourceClassDirs.from(
@@ -1172,14 +1347,22 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    val dependencyConfigName = "${variantName}RuntimeClasspath"
+    val dependencyConfigName = naming.runtimeClasspath
     val screenshotTestRuntimeConfig =
       if (screenshotTestEnabled) {
         project.configurations.findByName("${variantName}ScreenshotTestRuntimeClasspath")
       } else null
 
     val mainCompileTaskNames =
-      if (isKmp) listOf("compile${capVariant}Kotlin", "compile${capVariant}KotlinAndroid")
+      if (isKmp)
+        // `compile${'$'}{capVariant}` is the KMP-Android plugin's own name for the single android
+        // compilation (`compileAndroidMain`); the other two are the `androidTarget()` shape.
+        // Matched by name, so the ones that don't exist cost nothing.
+        listOf(
+          "compile${capVariant}Kotlin",
+          "compile${capVariant}KotlinAndroid",
+          "compile$capVariant",
+        )
       else listOf("compile${capVariant}Kotlin")
     // Includes the screenshotTest *javac* task: `sourceClassDirs` adds both the Kotlin
     // (`built_in_kotlinc/…ScreenshotTest/…Kotlin/classes`) and the javac
@@ -1356,13 +1539,13 @@ internal object AndroidPreviewSupport {
     // unset Property as "no deps to inspect".
     val mainRuntimeRoot =
       project.configurations
-        .findByName("${variantName}RuntimeClasspath")
+        .findByName(naming.runtimeClasspath)
         ?.incoming
         ?.resolutionResult
         ?.rootComponent
     val testRuntimeRoot =
-      project.configurations
-        .findByName("${variantName}UnitTestRuntimeClasspath")
+      naming.unitTestRuntimeClasspath
+        ?.let { project.configurations.findByName(it) }
         ?.incoming
         ?.resolutionResult
         ?.rootComponent
@@ -1370,8 +1553,8 @@ internal object AndroidPreviewSupport {
     // can read each library's declared `minSdkVersion` (CompatRules.checkLibraryMinSdk) without
     // forcing artifact resolution at configuration time.
     val testManifestArtifacts =
-      project.configurations
-        .findByName("${variantName}UnitTestRuntimeClasspath")
+      naming.unitTestRuntimeClasspath
+        ?.let { project.configurations.findByName(it) }
         ?.incoming
         ?.artifactView {
           lenient(true)
@@ -1517,12 +1700,12 @@ internal object AndroidPreviewSupport {
     if (manageDependencies) {
       addPluginDependency(
         project,
-        "testImplementation",
+        testImplementationBucket,
         "androidx.compose.ui:ui-test-manifest:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
       addPluginDependency(
         project,
-        "testImplementation",
+        testImplementationBucket,
         "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
       // Main-variant floor pins for tile-only / non-Compose-UI consumers.
@@ -1573,7 +1756,8 @@ internal object AndroidPreviewSupport {
       //
       // Resolved once and reused for `foundation` below and for both `recordInjectedDependency`
       // entries, so `composePreviewDoctor` reports the version actually injected.
-      val mainComposeVersion = mainVariantComposeVersion(project, variantName)
+      val mainComposeVersion =
+        mainVariantComposeVersion(project, variantName, naming.unitTestRuntimeClasspath)
       addPluginDependency(
         project,
         "${variantName}Implementation",
@@ -1593,7 +1777,7 @@ internal object AndroidPreviewSupport {
         project,
         injectedDependencies,
         coordinate = "androidx.compose.ui:ui-test-manifest:$RENDERER_COMPOSE_FLOOR_VERSION",
-        configuration = "testImplementation",
+        configuration = testImplementationBucket,
         outcome = "APPLIED",
         reason =
           "merges ComponentActivity into the unit-test manifest for renderer; pinned to the renderer's compile floor so tile-only consumers without a Compose BOM still resolve a version (Gradle picks max with consumer-BOM-aligned versions)",
@@ -1602,7 +1786,7 @@ internal object AndroidPreviewSupport {
         project,
         injectedDependencies,
         coordinate = "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
-        configuration = "testImplementation",
+        configuration = testImplementationBucket,
         outcome = "APPLIED",
         reason =
           "provides createAndroidComposeRule / mainClock used by renderer; pinned to the renderer's compile floor (see ui-test-manifest entry above for the version-pin rationale)",
@@ -1657,7 +1841,7 @@ internal object AndroidPreviewSupport {
         project,
         injectedDependencies,
         coordinate = "androidx.compose.ui:ui-test-manifest",
-        configuration = "testImplementation",
+        configuration = testImplementationBucket,
         outcome = "SKIPPED_BY_CONFIG",
         reason = "manageDependencies=false; consumer must declare this in testImplementation",
       )
@@ -1665,7 +1849,7 @@ internal object AndroidPreviewSupport {
         project,
         injectedDependencies,
         coordinate = "androidx.compose.ui:ui-test-junit4",
-        configuration = "testImplementation",
+        configuration = testImplementationBucket,
         outcome = "SKIPPED_BY_CONFIG",
         reason = "manageDependencies=false; consumer must declare this in testImplementation",
       )
@@ -1750,14 +1934,14 @@ internal object AndroidPreviewSupport {
           // [RENDERER_COMPOSE_FLOOR_VERSION] KDoc for the resolution model.
           addPluginDependency(
             project,
-            "testImplementation",
+            testImplementationBucket,
             "androidx.compose.runtime:runtime-tracing:$RENDERER_COMPOSE_FLOOR_VERSION",
           )
           recordInjectedDependency(
             project,
             injectedDependencies,
             coordinate = "androidx.compose.runtime:runtime-tracing:$RENDERER_COMPOSE_FLOOR_VERSION",
-            configuration = "testImplementation",
+            configuration = testImplementationBucket,
             outcome = "APPLIED",
             reason =
               "required by compose-ai-tools trace data product; pinned to the renderer's compile floor (Gradle picks max with consumer BOM)",
@@ -1767,7 +1951,7 @@ internal object AndroidPreviewSupport {
             project,
             injectedDependencies,
             coordinate = "androidx.compose.runtime:runtime-tracing",
-            configuration = "testImplementation",
+            configuration = testImplementationBucket,
             outcome = "SKIPPED_BY_CONFIG",
             reason =
               "manageDependencies=false; consumer must declare this when composeAiTrace is enabled",
@@ -1873,7 +2057,7 @@ internal object AndroidPreviewSupport {
       }
     }
 
-    val testConfig = project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
+    val testConfig = naming.unitTestRuntimeClasspath?.let { project.configurations.findByName(it) }
 
     // `composePreview { renderGraph { exclude(…) } }` / `-PcomposePreview.renderGraphExcludes=…`.
     // Read once here: this runs inside `onVariants`, so the consumer's build script has already
@@ -2218,10 +2402,10 @@ internal object AndroidPreviewSupport {
     // 0 for any library-provided style and TileRenderer's theme construction
     // explodes on `Unknown resource value type 0`. Compose-only previews
     // don't read AAR resources, which is why this only surfaced with tiles.
-    val unitTestConfigDir =
-      project.layout.buildDirectory.dir(
-        "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${capVariant}UnitTestConfig/out"
-      )
+    // Null on a module with no host-test component — the KMP-Android default, where
+    // `withHostTest { }` is opt-in. `project.files()` of nothing is an empty, dependency-free
+    // input, which is what every consumer of this directory already tolerates.
+    val unitTestConfigDir = naming.unitTestConfigDir?.let { project.layout.buildDirectory.dir(it) }
 
     // `unitTestConfigDir` is a bare buildDir path with no producer wired in, but it IS the output
     // of AGP's `generate${capVariant}UnitTestConfig` task. Any task that reads it via the render
@@ -2230,8 +2414,7 @@ internal object AndroidPreviewSupport {
     // (AGP 9 / Gradle 9) fails the build with a `WorkValidationException` ("uses this output …
     // without declaring an explicit or implicit dependency"). Match by name so it's empty-safe:
     // modules with unit tests disabled have no such task, and then nothing consumes the dir either.
-    val unitTestConfigProducer =
-      project.tasks.matching { it.name == "generate${capVariant}UnitTestConfig" }
+    val unitTestConfigProducer = project.tasks.matching { it.name == naming.unitTestConfigTask }
 
     // Generates `ee/schimke/composeai/renderer/robolectric.properties`
     // onto the render classpath so Robolectric overrides the consumer's
@@ -2283,7 +2466,7 @@ internal object AndroidPreviewSupport {
     // the upcoming preview daemon (see docs/daemon/DESIGN.md) can build the same
     // classpath without re-implementing the inline DSL. The trailing AGP test
     // classes / classpath additions are still composed in the Test lambda below
-    // (they need `findByName("test${capVariant}UnitTest")` which only resolves
+    // (they need `findByName(unitTestTaskName)` which only resolves
     // late).
     val bootClasspathFallback = AndroidPreviewClasspath.buildBootClasspathFallback(project)
     // Escape hatch back to the pre-#2731 behaviour, where the consumer's separately-resolved
@@ -2528,7 +2711,7 @@ internal object AndroidPreviewSupport {
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
         }
-        val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+        val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
         testClassesDirs =
           if (compileShardsTask != null) {
             rendererClassDirs +
@@ -2809,7 +2992,7 @@ internal object AndroidPreviewSupport {
     // `samples/sdk-matrix/build.gradle.kts`). See
     // [GenerateRobolectricPropertiesTask.buildJavaMajor].
     generateRobolectricPropertiesTask.configure {
-      val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+      val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
       val launcher = renderJavaLauncher(agpTestTask) ?: agpTestTask?.javaLauncher
       if (launcher != null) {
         buildJavaMajor.set(launcher.map { it.metadata.languageVersion.asInt() })
@@ -2837,7 +3020,7 @@ internal object AndroidPreviewSupport {
       project.tasks.register("composePreviewRenderAndroidResources", Test::class.java) {
         group = "compose preview"
         description = "Render Android XML resource previews via Robolectric"
-        val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+        val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
         testClassesDirs = rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
         // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
         // from the single renderer graph. Same rationale as composePreviewRender above.
@@ -2936,7 +3119,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Render XR subspace previews to scene.json via Robolectric"
         validateComposeFloorTask?.let { dependsOn(it) }
-        val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+        val agpTestTask = project.tasks.findByName(unitTestTaskName) as? Test
         testClassesDirs = xrRendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
         // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
         // from the single renderer graph. Same rationale as composePreviewRender above.
@@ -3334,7 +3517,7 @@ internal object AndroidPreviewSupport {
         // and
         // invoked inside the bundle task's config lambda, by which point the unit-test task exists.
         androidUnitTestRuntimeClasspath = {
-          (project.tasks.findByName("test${capVariant}UnitTest") as? Test)?.classpath
+          (project.tasks.findByName(unitTestTaskName) as? Test)?.classpath
         },
       )
 
@@ -3442,7 +3625,7 @@ internal object AndroidPreviewSupport {
       // re-runs at execution time) keeps the @Input Provider chains below from capturing
       // `project`, which is what the configuration cache rejects.
       val agpTestTask =
-        project.tasks.findByName("test${capVariant}UnitTest") as? org.gradle.api.tasks.testing.Test
+        project.tasks.findByName(unitTestTaskName) as? org.gradle.api.tasks.testing.Test
 
       this.modulePath.set(project.path)
       this.variant.set(variantName)

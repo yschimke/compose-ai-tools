@@ -317,6 +317,7 @@ include(":samples:cmp-wasm-catalog")
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.
 include(":samples:cmp-android-only")
+include(":samples:cmp-android-robolectric")
 
 include(":samples:desktop-daemon-bench")
 
