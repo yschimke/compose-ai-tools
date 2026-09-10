@@ -38,16 +38,30 @@ import kotlinx.serialization.json.JsonObject
 internal class RcCommand(private val args: List<String>) {
 
   fun run() {
-    when (args.firstOrNull()) {
-      "compile" -> compile(args.drop(1))
-      "dump" -> dump(args.drop(1))
-      "header" -> header(args.drop(1))
+    // Find the subcommand skipping any leading flags, then hand it the args with only the
+    // subcommand token removed — the same shape `BundleCommand` uses, and for the same reason.
+    // The router deliberately preserves a leading option, so `compose-preview --compact rc dump
+    // doc.rc` arrives here with `--compact` at index 0; reading element zero as the subcommand
+    // rejected it as "unknown subcommand --compact".
+    // `--help` anywhere wins, so `rc dump --help` explains itself rather than complaining that it
+    // was given no file. It cannot be handled in the `when` below: it is a flag, so the subcommand
+    // scan skips it and `rc dump --help` would dispatch to `dump` with nothing to read.
+    if ("--help" in args || "-h" in args) {
+      usage()
+      return
+    }
+    val subIndex = CliFlags.firstPositionalIndex(args)
+    val sub = if (subIndex >= 0) args[subIndex] else null
+    val subArgs =
+      if (subIndex >= 0) args.toMutableList().apply { removeAt(subIndex) } else emptyList()
+    when (sub) {
+      "compile" -> compile(subArgs)
+      "dump" -> dump(subArgs)
+      "header" -> header(subArgs)
       null,
-      "help",
-      "--help",
-      "-h" -> usage()
+      "help" -> usage()
       else -> {
-        System.err.println("compose-preview rc: unknown subcommand '${args.first()}'")
+        System.err.println("compose-preview rc: unknown subcommand '$sub'")
         usage()
         exitProcess(2)
       }

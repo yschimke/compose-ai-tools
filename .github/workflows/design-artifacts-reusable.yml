@@ -4747,21 +4747,36 @@ jobs:
           import os, sys, zipfile
           workspace, out = sys.argv[1], sys.argv[2]
 
+          # (bundle path, id prefix). The prefix has to match what the CATALOG publishes, or the
+          # documents land under names no visitor can join to a sticker — and, worse, two modules
+          # holding the same raw preview id overwrite each other here, silently losing one.
+          #
+          # `namespaceModuleRecords` rewrites every ADDITIONAL module's preview ids with
+          # `moduleIdentityPrefix(module)` = `module_<hex of module path>__`, and the workflow
+          # already names that module's bundle `module-bundles/<module_<hex>>.png` — the same
+          # `moduleArtifactKey` — so the prefix is the bundle's own basename plus `__`. Reading it
+          # off the filename is what keeps the two in step without this step knowing the module
+          # path, exactly as the split step above already does.
+          #
+          # NOT prefixed: `0000.png` / `bundle.png`, which are the primary record, and
+          # `extra-bundle.png`, whose previews are handled by `--extra-renders` AFTER
+          # `namespaceModuleRecords` and split into the primary previews directory unrenamed.
           bundles = []
           module_bundles = os.path.join(workspace, "module-bundles")
           if os.path.isdir(module_bundles):
-              bundles += [
-                  os.path.join(module_bundles, n)
-                  for n in sorted(os.listdir(module_bundles))
-                  if n.endswith(".png") and n != "0000.png"
-              ]
+              for n in sorted(os.listdir(module_bundles)):
+                  if not n.endswith(".png") or n == "0000.png":
+                      continue
+                  key = n[: -len(".png")]
+                  prefix = f"{key}__" if key.startswith("module_") else ""
+                  bundles.append((os.path.join(module_bundles, n), prefix))
           for extra in ("bundle.png", "extra-bundle.png"):
               path = os.path.join(workspace, extra)
               if os.path.isfile(path):
-                  bundles.append(path)
+                  bundles.append((path, ""))
 
-          n = 0
-          for bundle in bundles:
+          n, clobbered = 0, 0
+          for bundle, prefix in bundles:
               try:
                   zf = zipfile.ZipFile(bundle)
               except Exception as e:
@@ -4769,11 +4784,24 @@ jobs:
                   continue
               for name in zf.namelist():
                   if name.startswith("ir/") and name.endswith(".rc"):
-                      target = os.path.join(out, os.path.basename(name))
+                      leaf = os.path.basename(name)
+                      # `modulePreviewId` is idempotent — it leaves an id that already carries the
+                      # prefix alone — so this is too.
+                      if prefix and not leaf.startswith(prefix):
+                          leaf = prefix + leaf
+                      target = os.path.join(out, leaf)
+                      if os.path.exists(target):
+                          # Should be unreachable now that additional modules are namespaced. If it
+                          # ever fires, a document is being lost and the count alone would not say
+                          # so, so it is named rather than left to arithmetic.
+                          clobbered += 1
+                          print(f"::warning title=Duplicate document id::{leaf} appears in more than one bundle")
                       with zf.open(name) as src, open(target, "wb") as dst:
                           dst.write(src.read())
                       n += 1
           print(f"staged {n} document(s) from {len(bundles)} bundle(s)")
+          if clobbered:
+              print(f"::warning title=Documents overwritten::{clobbered} duplicate id(s) collided while staging")
           PY
 
           if [ -z "$(find "$staged" -maxdepth 1 -name '*.rc' -print -quit)" ]; then
