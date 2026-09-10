@@ -293,8 +293,8 @@ class RcCommandTest {
     assertFalse(fs.exists(dir / "a.rc.json"), "gone: ${fs.list(dir)}")
 
     // Write failure is the opposite case, and the asymmetry is the whole point: the read and the
-    // projection both succeeded, so the existing dump is KNOWN to be sound — all that failed was
-    // replacing a file with what it already says.
+    // projection both succeeded, so what the existing dump says can be CHECKED rather than
+    // assumed — the projected text is in hand. Matching, it is kept.
     run("dump", dir.toString())
     val unwritable =
       object : ForwardingFileSystem(fs) {
@@ -304,6 +304,47 @@ class RcCommandTest {
       }
     assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = unwritable))
     assertEquals(good, fs.read(dir / "a.rc.json") { readUtf8() }, "kept")
+
+    // …and not matching, it goes. "The projection succeeded" says nothing about what the file
+    // already there describes: the document may have changed since the run that wrote it, leaving
+    // a valid-looking projection of a document that no longer exists.
+    fs.write(dir / "a.rc.json") { writeUtf8("""{"header":{},"operations":[{"type":"Stale"}]}""") }
+    assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = unwritable))
+    assertFalse(fs.exists(dir / "a.rc.json"), "the stale one goes: ${fs.list(dir)}")
+  }
+
+  @Test
+  fun `will not truncate a temporary path it did not create`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    // Somebody's file that happens to sit at the name the atomic write would have claimed. The
+    // guard added for symlinks made this case worse, not better: it declared every plain file
+    // there command-owned and opened it with overwrite semantics.
+    fs.write(dir / "a.rc.json.tmp") { writeUtf8("not mine") }
+
+    run("dump", dir.toString())
+
+    assertEquals("not mine", fs.read(dir / "a.rc.json.tmp") { readUtf8() })
+    assertContains(fs.read(dir / "a.rc.json") { readUtf8() }, "RootLayoutComponent")
+  }
+
+  @Test
+  fun `refuses an authoring file that is not valid utf-8`() {
+    fs.createDirectories(dir)
+    // Valid JSON structurally; one byte inside a string is not valid UTF-8. `decodeToString()`
+    // would substitute U+FFFD, the parser would accept the repaired text, and `compile` would
+    // report success over a document whose content is not what the file says.
+    val source = """{"header":{"width":10,"height":10},"root":[{"text":{"value":"x"""
+    fs.write(dir / "s.json") {
+      writeUtf8(source)
+      write(byteArrayOf(0xFF.toByte()))
+      writeUtf8(""""}}]}""")
+    }
+
+    assertEquals(1, runExpectingExit("compile", (dir / "s.json").toString(), "-o", "/docs/out.rc"))
+
+    assertTrue(err.any { "not valid UTF-8" in it }, "names it: $err")
+    assertFalse(fs.exists(dir / "out.rc"))
   }
 
   @Test
@@ -327,14 +368,18 @@ class RcCommandTest {
     fs.write(dir / "a.rc") { write(document) }
     val outside = "/elsewhere/precious".toPath()
     fs.write(outside) { writeUtf8("not mine") }
-    // The temp path is deterministic, so it is a path something else can have made into a symlink
-    // first. A guard that opens a second escape while closing the first is not a guard.
+    // The first candidate temp name is a path something else can have made into a symlink first,
+    // and writing through it would truncate a file outside the tree — the escape `mayWrite`
+    // refuses for the target, reintroduced by the guard meant to make writing safer.
     fs.createSymlink(dir / "a.rc.json.tmp", outside)
 
-    assertEquals(1, runExpectingExit("dump", dir.toString()))
+    run("dump", dir.toString())
 
+    // Stepped over rather than refused: `metadataOrNull` answers for the link itself, so the name
+    // reads as occupied and the next candidate is claimed. Nothing outside is touched and the
+    // document still gets its dump, which beats failing the batch over someone else's symlink.
     assertEquals("not mine", fs.read(outside) { readUtf8() })
-    assertTrue(err.any { "is a symlink" in it }, "names it: $err")
+    assertContains(fs.read(dir / "a.rc.json") { readUtf8() }, "RootLayoutComponent")
   }
 
   @Test

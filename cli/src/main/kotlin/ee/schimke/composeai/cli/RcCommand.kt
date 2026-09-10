@@ -3,6 +3,9 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJson
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJsonException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -320,7 +323,7 @@ internal class RcCommand(
             continue
           }
         val text = RemoteComposeJson.dump(bytes, pretty = !compact)
-        replaceAtomically(target, text + "\n")
+        replaceAtomically(target, text + "\n") { discardIfStale(target, text + "\n") }
       } catch (e: RemoteComposeJsonException) {
         // One unreadable document does not stop the batch. A catalog with a single sticker captured
         // from a newer alpha than this CLI links would otherwise publish NO documents at all, which
@@ -329,11 +332,12 @@ internal class RcCommand(
         stderr("compose-preview: $document: ${e.message}")
         discardStaleDump(target)
       } catch (e: OkioIOException) {
-        // Reaching here means the WRITE failed — the read succeeded above and the projection
-        // succeeded after it. So this is the one case where the existing dump is known to be
-        // sound: the document projects, and all that failed was replacing a file with the same
-        // content it would have had. Deleting it would turn "could not update this one" into
-        // "lost this one", and unlike the read case there is nothing unknown to justify that.
+        // Reaching here means the WRITE failed — the read and the projection both succeeded. What
+        // that does NOT establish is that the file already there says the same thing: the document
+        // may have changed since the run that wrote it, so the dump beside it can be a projection
+        // of a document that no longer exists. `replaceAtomically`'s failure hook settles it by
+        // comparison rather than by assumption — the projected text is in hand, so an existing
+        // dump that matches it is kept and one that does not is removed.
         //
         // The batch survives it either way. Without this handler the loop aborts on the first
         // full disk, having neither processed the rest nor printed the count a caller checks.
@@ -361,17 +365,15 @@ internal class RcCommand(
    * A temporary sibling never has that window: it is either moved into place whole or deleted. The
    * `.tmp` suffix keeps it out of the publish glob even if the process dies between the two.
    */
-  private fun replaceAtomically(target: Path, text: String) {
-    val temp = target.parent!! / "${target.name}.tmp"
-    // The temp path is deterministic, so it is a path an attacker — or a previous crashed run —
-    // can have made into something already. A symlink here would be followed by the write and
-    // truncate whatever it points at, outside the tree, which is the same escape `mayWrite` refuses
-    // for the target itself; a guard that opens a second hole while closing the first is not a
-    // guard. A plain leftover file is fine to overwrite: this command wrote it, and it is about to
-    // be moved onto the target anyway.
-    if (fileSystem.metadataOrNull(temp)?.symlinkTarget != null) {
-      throw OkioIOException("$temp is a symlink; refusing to write a dump through it")
-    }
+  private fun replaceAtomically(target: Path, text: String, onFailure: () -> Unit = {}) {
+    // A path that does not exist, rather than a fixed `<target>.tmp`. The fixed name was a second
+    // way to destroy a file this command did not write: a symlink there would be followed out of
+    // the tree, and an ordinary `a.rc.json.tmp` a person happens to keep beside `a.rc` would be
+    // truncated — the exact thing `mayWrite` exists to refuse, reintroduced by the guard meant to
+    // make writing safer. Claiming an unused name instead means the write can only ever land on
+    // something this command made, and a leftover from a crashed run neither blocks the dump nor
+    // gets clobbered.
+    val temp = freeTempPath(target)
     try {
       fileSystem.write(temp) { writeUtf8(text) }
       fileSystem.atomicMove(temp, target)
@@ -382,8 +384,50 @@ internal class RcCommand(
         // Reported by the caller's handler as part of the write failure; a temp file that cannot be
         // removed is not worth a second message, and it cannot be published.
       }
+      onFailure()
       throw e
     }
+  }
+
+  /**
+   * Remove [target] if it disagrees with the projection that could not be written.
+   *
+   * Called when the replacement fails. The previous dump is only sound if it says what the new one
+   * would have said, and that is a question with an answer rather than a judgement call: the
+   * projected text is right here. Matching means nothing was lost and the file stays. Differing
+   * means it is a projection of a document that has since changed — the same stale file a codec
+   * failure removes — and it goes.
+   */
+  private fun discardIfStale(target: Path, projected: String) {
+    val existing =
+      try {
+        if (fileSystem.metadataOrNull(target)?.symlinkTarget != null) return
+        fileSystem.read(target) { readUtf8() }
+      } catch (_: OkioIOException) {
+        return
+      }
+    if (existing != projected) discardStaleDump(target)
+  }
+
+  /**
+   * The first `<target>.tmp`, `<target>.1.tmp`, … that nothing occupies.
+   *
+   * `metadataOrNull` answers for the path itself rather than what it resolves to, so a symlink
+   * counts as occupied and is stepped over rather than followed. The scan is bounded because an
+   * unbounded one is a hang: a directory that somehow holds every candidate is a filesystem
+   * problem, and saying so beats spinning.
+   */
+  private fun freeTempPath(target: Path): Path {
+    val parent = target.parent!!
+    for (attempt in 0 until MAX_TEMP_ATTEMPTS) {
+      val suffix = if (attempt == 0) ".tmp" else ".$attempt.tmp"
+      val candidate = parent / "${target.name}$suffix"
+      if (fileSystem.metadataOrNull(candidate) == null) return candidate
+    }
+    throw OkioIOException(
+      "no free temporary name beside $target after $MAX_TEMP_ATTEMPTS attempts; " +
+        "remove the leftover ${target.name}*.tmp files"
+    )
   }
 
   /**
@@ -562,8 +606,27 @@ internal class RcCommand(
       fail("compose-preview: ${e.message}")
     }
 
-  private fun readTextOrFail(path: Path, what: String): String =
-    readBytesOrFail(path, what).decodeToString()
+  /**
+   * Read [path] as **strict** UTF-8.
+   *
+   * `decodeToString()` substitutes U+FFFD for a malformed byte sequence rather than failing, and
+   * the JSON parser then accepts the repaired text — so an authoring file with one bad byte inside
+   * a string compiles, reports success, and ships a document whose label or resource name is not
+   * what the file says. Silently wrong, which is the same shape as the directory-listing hazard
+   * `refuseUndecodableNames` refuses: a wrong answer that reads exactly like a right one.
+   */
+  private fun readTextOrFail(path: Path, what: String): String {
+    val bytes = readBytesOrFail(path, what)
+    return try {
+      Charsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(bytes))
+        .toString()
+    } catch (e: CharacterCodingException) {
+      fail("$what: $path is not valid UTF-8 (${e.message ?: e::class.simpleName})")
+    }
+  }
 
   private fun readBytesOrFail(path: Path, what: String): ByteArray {
     // "or not readable", because `metadataOrNull` cannot tell those apart and this was measured
@@ -621,6 +684,9 @@ internal class RcCommand(
       )
 
     val HELP = setOf("--help", "-h")
+
+    /** Bound on the temporary-name scan — see [freeTempPath]. */
+    const val MAX_TEMP_ATTEMPTS = 100
 
     /** The replacement character a directory listing substitutes for a byte it cannot decode. */
     const val UNDECODABLE: Char = '\uFFFD'
