@@ -2,6 +2,7 @@ package ee.schimke.composeai.bundle
 
 import ee.schimke.composeai.daemon.client.AndroidSdk
 import ee.schimke.composeai.daemon.client.RobolectricConfig
+import ee.schimke.composeai.daemon.client.RobolectricLaunch
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
@@ -72,68 +73,34 @@ public class AndroidBundleLaunch(
   public val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
 
   /**
-   * JVM args the spawned Robolectric process needs on JDK 17+. Mirrors
-   * `AndroidPreviewClasspath.buildJvmArgs()` plus `--enable-native-access` (which the desktop spawn
-   * also passes). Without the `--add-opens` set Robolectric's reflective access into `java.base`
-   * internals fails with `IllegalAccessException` on SDK 36 sandboxes (issue #1328).
+   * JVM args the spawned Robolectric process needs on JDK 17+ — the daemon's, verbatim.
+   *
+   * Without the `--add-opens` set, Robolectric's reflective access into `java.base` internals fails
+   * with `IllegalAccessException` on SDK 36 sandboxes (#1328). Which opens are needed is a property
+   * of the renderer, not of this repository, so the list lives with the renderer.
    */
-  public fun jvmArgs(): List<String> =
-    listOf(
-      "--enable-native-access=ALL-UNNAMED",
-      "--add-opens=java.base/java.io=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
-    )
+  public fun jvmArgs(): List<String> = RobolectricLaunch.jvmArgs()
 
   /**
    * Robolectric render flags — plus the shared GoogleFont download cache dir — shared by the
-   * one-shot renderer ([BundleRenderer]), the detached daemon ([BundleDaemonCommand]), and the
-   * serve host ([ee.schimke.composeai.cli.serve.ServeBundleDaemon], which forwards this map as its
-   * backend `extraSystemProperties`). Mirrors the `robolectric.*` flags and
-   * `composeai.fonts.cacheDir` from `AndroidPreviewClasspath.buildSystemProperties(...)`, so a
-   * downloadable `Font(GoogleFont(...))` resolves the same on a detached/serve render as it does
-   * under Gradle — without it the shadow's cache is disabled and such text silently falls back to
-   * the platform default. The daemon uses just these — it routes previews via
-   * `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
+   * one-shot renderer ([BundleRenderer]), the detached daemon ([BundleDaemonCommand]) and the serve
+   * host ([ee.schimke.composeai.cli.serve.ServeBundleDaemon], which forwards this map as its
+   * backend `extraSystemProperties`).
+   *
+   * The set is the daemon's. That includes the four properties a `-D` on *this* process cannot
+   * deliver to a spawned one and so have to be named explicitly — `composeai.fonts.failOnFallback`,
+   * `composeai.fonts.offline`, `composeai.svg.embedFonts`, `composeai.svg.background`. Three of
+   * them were missing from this copy, which is how `-Dcomposeai.fonts.offline=true` reached the
+   * Gradle render task and the desktop serve daemon but no Android lane at all, and an air-gapped
+   * Android render still tried to fetch Google Fonts (#5371). Taking the set from the renderer that
+   * reads it is what stops that recurring.
+   *
+   * The one thing added here is [fontsCacheDir], which wins over the daemon's own resolution: a
+   * caller that names a cache directory means it. Unset, the two compute the same path, so a
+   * `bundle`/serve render reuses the faces a pack-time render already downloaded.
    */
-  public fun robolectricSystemProperties(): Map<String, String> = buildMap {
-    put("robolectric.graphicsMode", "NATIVE")
-    put("robolectric.looperMode", "PAUSED")
-    put("robolectric.conscryptMode", "OFF")
-    put("robolectric.pixelCopyRenderMode", "hardware")
-    put("roborazzi.test.record", "true")
-    put("composeai.fonts.cacheDir", fontsCacheDir)
-    // An unresolved downloadable font fails its preview by default (`FontResolutionDiagnostics`).
-    // Forward the opt-out when this process carries it, so a detached/serve operator can set
-    // `-Dcomposeai.fonts.failOnFallback=false` on the CLI JVM and the child daemon honours it —
-    // else a cold-cache render on the live server fails previews with no downgrade path. Unset ⇒
-    // absent ⇒ the renderer's own default (fatal) applies.
-    System.getProperty("composeai.fonts.failOnFallback")?.let {
-      put("composeai.fonts.failOnFallback", it)
-    }
-    // Same forwarding, for the three the Android renderer and the figma-svg connector also read
-    // off system properties. A `-D` on this process does NOT reach a spawned JVM, so anything the
-    // child reads has to be named here or it silently takes its default:
-    //
-    //   composeai.fonts.offline   GoogleFontInterceptor, AndroidFigmaFontResolver
-    //   composeai.svg.embedFonts  AndroidFigmaFontResolver
-    //   composeai.svg.background  ComposeFigmaSvgDataProduct.PROP_BACKGROUND
-    //
-    // They were missing, so `-Dcomposeai.fonts.offline=true` reached the Gradle render task (which
-    // sets it in `AndroidPreviewClasspath`) and the desktop serve daemon (which forwards it in
-    // `ServeBundleDaemon.desktopFontSystemProperties`) but not ANY Android lane through here —
-    // `bundle render`, `bundle daemon`, or serve's Android backend. An air-gapped Android render
-    // still tried to fetch Google Fonts.
-    //
-    // The real fix is one launch plan owned by the daemon rather than three partial copies
-    // (compose-preview-daemon's docs/design/EMBEDDING.md); until tools adopts it, this closes the
-    // gap where every Android consumer already funnels through.
-    System.getProperty("composeai.fonts.offline")?.let { put("composeai.fonts.offline", it) }
-    System.getProperty("composeai.svg.embedFonts")?.let { put("composeai.svg.embedFonts", it) }
-    System.getProperty("composeai.svg.background")?.let { put("composeai.svg.background", it) }
-  }
+  public fun robolectricSystemProperties(): Map<String, String> =
+    RobolectricLaunch.systemProperties() + ("composeai.fonts.cacheDir" to fontsCacheDir)
 
   /**
    * [robolectricSystemProperties] plus the one-shot renderer's batch I/O props: the renderer reads
