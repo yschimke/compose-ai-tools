@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-10T09:38:46.989Z",
+  "generatedAt": "2026-09-10T19:23:11.697Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c26092bc6017d38c3735f8673fb78778f87eec2e",
+        "subject": "feat: add Remote Compose JSON support (`:remotecompose-json`, `compose-preview rc`) (#5370)",
+        "at": "2026-09-10T20:11:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "4ba305be56c0a286a20789744efbcf10a7152746",
         "subject": "docs(ui-builder): stop the policy schema telling authors not to use it (#5369)",
@@ -474,14 +482,6 @@
         "sha": "42efc710cbc73b15a5f5a7531a8567b556d7d82a",
         "subject": "fix: track rc-players 1.59.4 for the font-scale fix (#5298)",
         "at": "2026-09-08T07:57:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ede31f6127f8298b29a2cfba5ee3d5e974099853",
-        "subject": "feat: let a Remote Compose capture defer density to the player (#5296)",
-        "at": "2026-09-08T06:51:58+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
