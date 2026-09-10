@@ -1783,6 +1783,14 @@
     "sha256": "ac4d108800b3e1c05637d78b6685dbfc5e13c2e559e3a0477375960a7c527e6a",
     "sourceFile": null
   },
+  "samples:cmp-android-robolectric/com.example.cmpandroidrobolectric.AndroidOnlyPreviewsKt.ApiLevelBadgePreview": {
+    "captureLabel": "",
+    "functionName": "ApiLevelBadgePreview",
+    "module": "samples:cmp-android-robolectric",
+    "renderBasename": "ApiLevelBadgePreview-d9e149b8.png",
+    "sha256": "e032e9511ec264a70e01675c652368a81b0c13796d1bbaff03f0084c2ecbcad3",
+    "sourceFile": "src/androidMain/kotlin/com/example/cmpandroidrobolectric/AndroidOnlyPreviews.kt"
+  },
   "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
     "captureLabel": "",
     "functionName": "SharedBlueBoxPreview",

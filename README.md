@@ -343,6 +343,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `svg/badge.svg` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/svg__svg_badge.png" width="150" /> |
 | `svg/star.svg` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/svg__svg_star.png" width="150" /> |
 
+## samples:cmp-android-robolectric
+
+| Preview | Image |
+|---------|-------|
+| `ApiLevelBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-android-robolectric/ApiLevelBadgePreview-d9e149b8.png" width="150" /> |
+
 ## samples:cmp-shared
 
 | Preview | Image |
