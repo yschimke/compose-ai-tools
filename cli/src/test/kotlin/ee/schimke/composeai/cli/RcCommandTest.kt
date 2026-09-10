@@ -440,6 +440,29 @@ class RcCommandTest {
   }
 
   @Test
+  fun `an entry that cannot be stat-ed does not stop the batch`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "good.rc") { write(document) }
+    fs.write(dir / "locked.rc") { write(document) }
+
+    // `metadataOrNull` answers null for "not there" but THROWS for an entry it cannot stat — a
+    // permissions problem, a stale NFS handle. That filter runs before the per-document handlers,
+    // so one such entry aborted the command with a stack trace having dumped nothing.
+    val unstattable =
+      object : ForwardingFileSystem(fs) {
+        override fun metadataOrNull(path: Path) =
+          if (path.name == "locked.rc") throw OkioIOException("Permission denied")
+          else super.metadataOrNull(path)
+      }
+
+    assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = unstattable))
+
+    assertTrue(fs.exists(dir / "good.rc.json"), "dumped what it could: ${fs.list(dir)}")
+    assertTrue(err.any { "locked.rc" in it && "Permission denied" in it }, "names it: $err")
+    assertTrue(err.any { "dumped 1/2 documents" in it }, "counts it as a failure: $err")
+  }
+
+  @Test
   fun `refuses an authoring document even in a dump's shape`() {
     fs.createDirectories(dir)
     fs.write(dir / "a.rc") { write(document) }

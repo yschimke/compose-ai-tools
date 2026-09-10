@@ -1,6 +1,7 @@
 package ee.schimke.composeai.remotecompose.json
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -277,6 +278,46 @@ class RemoteComposeJsonTest {
       )
     assertThat(sparse.width).isNull()
     assertThat(sparse.desiredFps).isNull()
+  }
+
+  @Test
+  fun `a non-finite density round-trips through the public serializer`() {
+    // `Json` cannot write a bare NaN, so the generated serializer used to refuse the whole header
+    // over one optional field — while `toJsonObject()` emitted a perfectly good string for it. A
+    // consumer should not have to know which of the two produced their JSON.
+    val header = RemoteComposeDocumentHeader(version = "1.1.0", byteLength = 17)
+
+    for ((value, wire) in
+      listOf(
+        Float.NaN to "\"NaN\"",
+        Float.POSITIVE_INFINITY to "\"Infinity\"",
+        Float.NEGATIVE_INFINITY to "\"-Infinity\"",
+        2.0f to "2.0",
+      )) {
+      val encoded =
+        Json.encodeToString(
+          RemoteComposeDocumentHeader.serializer(),
+          header.copy(densityAtGeneration = value),
+        )
+      assertWithMessage(encoded).that(encoded).contains("\"densityAtGeneration\":$wire")
+
+      val decoded = Json.decodeFromString(RemoteComposeDocumentHeader.serializer(), encoded)
+      assertThat(decoded.densityAtGeneration).isEqualTo(value)
+    }
+
+    // An id-bearing NaN keeps its payload, which is the case that makes this worth encoding rather
+    // than dropping: a non-finite float in this format is usually a reference, not a missing value.
+    val encoded =
+      Json.encodeToString(
+        RemoteComposeDocumentHeader.serializer(),
+        header.copy(densityAtGeneration = androidx.compose.remote.core.operations.Utils.asNan(42)),
+      )
+    assertThat(encoded).contains("\"densityAtGeneration\":\"@42\"")
+    val decoded = Json.decodeFromString(RemoteComposeDocumentHeader.serializer(), encoded)
+    assertThat(
+        androidx.compose.remote.core.operations.Utils.idFromNan(decoded.densityAtGeneration!!)
+      )
+      .isEqualTo(42)
   }
 
   /** The first operation of [type] anywhere in the projection, nesting included. */

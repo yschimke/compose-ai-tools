@@ -48,7 +48,12 @@ public data class RemoteComposeDocumentHeader(
   /**
    * Screen density at authoring time. Not the playback density — the document is
    * resolution-independent.
+   *
+   * Serialized through [NonFiniteFloatSerializer], because `Json` cannot write a bare `NaN` or
+   * `Infinity` and a document carrying one here is readable in every other respect — the generated
+   * serializer would refuse the whole header over one optional field.
    */
+  @Serializable(with = NonFiniteFloatSerializer::class)
   public val densityAtGeneration: Float? = null,
   /** Byte length of the document these fields were read from. */
   public val byteLength: Int,

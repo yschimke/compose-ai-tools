@@ -14,6 +14,7 @@ import okio.FileSystem
 import okio.IOException as OkioIOException
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.buffer
 
 /**
  * `compose-preview rc <compile|dump|header>` — the Remote Compose JSON codec at the command line.
@@ -316,11 +317,26 @@ internal class RcCommand(
   private fun dumpTree(root: Path, compact: Boolean) {
     val walked = walk(root)
     refuseUndecodableNames(root, walked.entries)
+    // `metadataOrNull` answers null for "not there" but THROWS for an entry it cannot stat — a
+    // permissions problem, a stale NFS handle. This filter runs before the per-document handlers
+    // below, so one such entry used to abort the whole command with a stack trace having dumped
+    // nothing and printed no summary, which is the opposite of what the batch promises. Each
+    // lookup is its own question now, and one that cannot be answered is a failure of that entry.
+    val unstattable = mutableListOf<Path>()
     val documents =
       walked.entries
-        .filter { fileSystem.metadataOrNull(it)?.isRegularFile == true && it.name.endsWith(".rc") }
+        .filter { entry ->
+          if (!entry.name.endsWith(".rc")) return@filter false
+          try {
+            fileSystem.metadataOrNull(entry)?.isRegularFile == true
+          } catch (e: OkioIOException) {
+            unstattable += entry
+            stderr("compose-preview: $entry: ${e.message}")
+            false
+          }
+        }
         .sorted()
-    if (documents.isEmpty()) {
+    if (documents.isEmpty() && unstattable.isEmpty()) {
       fail(
         walked.stoppedBy?.let { "rc dump: could not list $root: $it" }
           ?: "rc dump: no .rc documents under $root"
@@ -333,7 +349,7 @@ internal class RcCommand(
       )
     }
 
-    var failed = 0
+    var failed = unstattable.size
     for (document in documents) {
       val target = document.parent!! / "${document.name.removeSuffix(".rc")}.rc.json"
       try {
@@ -390,9 +406,8 @@ internal class RcCommand(
         stderr("compose-preview: $document: ${e.message}")
       }
     }
-    stderr(
-      "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under $root"
-    )
+    val considered = documents.size + unstattable.size
+    stderr("compose-preview: dumped ${considered - failed}/$considered documents under $root")
     if (failed > 0 || walked.stoppedBy != null) exit(1)
   }
 
@@ -423,8 +438,7 @@ internal class RcCommand(
     // handler like any other, rather than escaping past it.
     var temp: Path? = null
     try {
-      temp = claimTempPath(target)
-      fileSystem.write(temp) { writeUtf8(text) }
+      temp = claimAndWrite(target, text)
       fileSystem.atomicMove(temp, target)
     } catch (e: OkioIOException) {
       try {
@@ -473,28 +487,44 @@ internal class RcCommand(
    * The scan is bounded because an unbounded one is a hang — a directory that holds every candidate
    * is a filesystem problem, and saying so beats spinning.
    */
-  private fun claimTempPath(target: Path): Path {
+  private fun claimAndWrite(target: Path, text: String): Path {
     val parent = target.parent!!
     var lastFailure: OkioIOException? = null
     for (attempt in 0 until MAX_TEMP_ATTEMPTS) {
       val suffix = if (attempt == 0) ".tmp" else ".$attempt.tmp"
       val candidate = parent / "${target.name}$suffix"
+      val sink =
+        try {
+          // Opening it IS the claim, and the handle from that open is what gets written — the path
+          // is never resolved a second time. Creating the file and then reopening it by name left
+          // exactly the window this loop exists to close: between the two calls the name can be
+          // unlinked and replaced with a symlink, and the reopen would follow it out of the tree.
+          fileSystem.sink(candidate, mustCreate = true)
+        } catch (e: OkioIOException) {
+          // The next candidate is tried rather than the failure reported, because the common
+          // reason to be here is exactly what the loop is for: that name is taken. A real problem
+          // — an unwritable directory — fails every candidate and surfaces below.
+          lastFailure = e
+          continue
+        }
+      // Past the claim, a failure is a real problem with a file this command owns, not a taken
+      // name, so it propagates instead of advancing the loop. Conflating the two had one full disk
+      // try every candidate and leave a file behind for each.
+      //
+      // It also cleans up after itself here rather than leaving that to the caller: the claim
+      // succeeded, so the file exists, and the caller has no name to remove until this returns one.
       try {
-        fileSystem.write(candidate, mustCreate = true) {}
-        return candidate
+        sink.buffer().use { it.writeUtf8(text) }
       } catch (e: OkioIOException) {
-        // `mustCreate` is what makes this a claim rather than a hope. Looking first with
-        // `metadataOrNull` and writing after left a window a concurrent dump — or anything else
-        // sharing the directory — could use to create the file, or to put a symlink there, between
-        // the two calls; the write's default overwrite semantics would then truncate it or follow
-        // the link out of the tree. Refusing to create over an existing name closes the window in
-        // the filesystem rather than in this process, which is the only place it can be closed.
-        //
-        // The next candidate is tried rather than the failure reported, because the common reason
-        // to be here is exactly what the loop is for: that name is taken. A real problem — an
-        // unwritable directory — fails every candidate and surfaces below.
-        lastFailure = e
+        try {
+          fileSystem.delete(candidate, mustExist = false)
+        } catch (_: OkioIOException) {
+          // Reported as part of the write failure; a temp that cannot be removed is not worth a
+          // second message, and its name keeps it out of the publish glob.
+        }
+        throw e
       }
+      return candidate
     }
     throw OkioIOException(
       "could not claim a temporary name beside $target after $MAX_TEMP_ATTEMPTS attempts" +
