@@ -57,7 +57,11 @@ dependencies {
   // org/json/JSONObject` at runtime rather than failing to resolve.
   implementation(libs.json.org)
 
-  implementation(libs.kotlinx.serialization.json)
+  // `api`, not `implementation`: `dumpToJsonObject()` returns a `JsonObject` and
+  // `RemoteComposeDocumentHeader.toJsonObject()` does too, so the type is on this module's ABI. A
+  // consumer resolving from POM metadata would otherwise have no `kotlinx-serialization-json` on
+  // its compile classpath and could not name the value it was handed.
+  api(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

@@ -142,7 +142,7 @@ private fun printUsage(full: Boolean = false) {
       help             Show this message (`help --all` for every command + flag)
 
     Command groups (each command is also callable directly by its name):
-      inspect   a11y · diff-semantics · devices · extensions · history · profile
+      inspect   a11y · diff-semantics · devices · extensions · history · profile · rc
       capture   render-matrix · record · bundle
       share     serve · ui-builder · design · share-preview
       setup     update · init-script · pin · auth
@@ -208,6 +208,16 @@ private fun printFullUsage() {
                        `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
+      rc               Remote Compose JSON codec, offline (no daemon, no Gradle, no project):
+                         rc compile <doc.json> -o <doc.rc>   authoring JSON -> binary document
+                         rc dump <doc.rc> [--compact] [-o f] binary document -> document JSON
+                         rc dump <dir> [--compact]           every .rc under <dir>, in place
+                         rc header <doc.rc> [--json]         declared header only, no inflate
+                       The two JSON dialects are NOT inverses: `compile` reads AndroidX's
+                       AUTHORING dialect (remote_compose_schema.json — named resources, infix
+                       expressions, modifier shorthands); `dump` writes the DOCUMENT dialect,
+                       the operation stream, for reading and diffing. Dumping a compiled
+                       document does not give back its source.
       browse           Discover local @Previews and serve the streamlined component browser.
                        Implies local discovery and hides renderer, comparison, history and
                        administration tooling. Use --module when several modules have previews.

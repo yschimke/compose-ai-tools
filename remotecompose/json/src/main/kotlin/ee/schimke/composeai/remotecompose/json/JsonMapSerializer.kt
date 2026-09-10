@@ -51,8 +51,22 @@ internal class JsonMapSerializer : MapSerializer {
   override fun addFloatExpressionSrc(key: String, value: FloatArray): MapSerializer =
     put(key, floats(value))
 
-  override fun addIntExpressionSrc(key: String, value: IntArray, mask: Int): MapSerializer =
+  /**
+   * An integer expression, with its **mask**.
+   *
+   * The mask is not decoration: it says which entries of the array are literals and which are
+   * variable references, so two documents with byte-identical arrays and different masks mean
+   * different things. Dropping it made them project to identical JSON — which is a direct hit on
+   * the one job this projection has, since a diff that cannot separate them reports no change where
+   * there is one.
+   *
+   * Emitted as a sibling `<key>Mask` rather than folded into the array, because the array is the
+   * expression and a reader walking it should not have to skip an element that is not part of it.
+   */
+  override fun addIntExpressionSrc(key: String, value: IntArray, mask: Int): MapSerializer {
     put(key, JsonArray(value.map { JsonPrimitive(it) }))
+    return put("${key}Mask", JsonPrimitive(mask))
+  }
 
   override fun addPath(key: String, value: FloatArray): MapSerializer = put(key, floats(value))
 

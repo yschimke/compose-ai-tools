@@ -4732,25 +4732,48 @@ jobs:
           rm -rf "$staged"
           mkdir -p "$staged"
 
-          # Unpack `ir/*.rc` flat. The bundle stores them as `ir/<preview id>.rc` and the ids can
-          # carry an em-dash, so this goes through Python rather than `unzip -j` + a glob: the
-          # shell would mangle the names that `LANG: C.UTF-8` above exists to keep exact.
-          python3 - "$GITHUB_WORKSPACE/bundle.png" "$staged" <<'PY'
+          # EVERY bundle that feeds the generated catalog, not just the primary one. A catalog on
+          # `modules: all` renders each module into `module-bundles/<key>.png` and copies `0000.png`
+          # to `bundle.png`, and `extra-module` adds `extra-bundle.png`; reading only `bundle.png`
+          # would publish a `documents/` tree missing every secondary module's stickers while the
+          # catalog itself lists them. `0000.png` is skipped when the per-module tree exists,
+          # because it IS `bundle.png` — the same skip the generator's own join makes.
+          #
+          # Unpacked flat, keyed by the id the bundle stores (`ir/<preview id>.rc`), which is
+          # already namespaced per module. Through Python rather than `unzip -j` + a glob: the ids
+          # can carry an em-dash and the shell would mangle exactly the names `LANG: C.UTF-8` above
+          # exists to keep exact.
+          python3 - "$GITHUB_WORKSPACE" "$staged" <<'PY'
           import os, sys, zipfile
-          bundle, out = sys.argv[1], sys.argv[2]
-          try:
-              zf = zipfile.ZipFile(bundle)
-          except Exception as e:
-              print(f"::notice title=No bundle to read documents from::{e}")
-              sys.exit(0)
+          workspace, out = sys.argv[1], sys.argv[2]
+
+          bundles = []
+          module_bundles = os.path.join(workspace, "module-bundles")
+          if os.path.isdir(module_bundles):
+              bundles += [
+                  os.path.join(module_bundles, n)
+                  for n in sorted(os.listdir(module_bundles))
+                  if n.endswith(".png") and n != "0000.png"
+              ]
+          for extra in ("bundle.png", "extra-bundle.png"):
+              path = os.path.join(workspace, extra)
+              if os.path.isfile(path):
+                  bundles.append(path)
+
           n = 0
-          for name in zf.namelist():
-              if name.startswith("ir/") and name.endswith(".rc"):
-                  target = os.path.join(out, os.path.basename(name))
-                  with zf.open(name) as src, open(target, "wb") as dst:
-                      dst.write(src.read())
-                  n += 1
-          print(f"staged {n} document(s)")
+          for bundle in bundles:
+              try:
+                  zf = zipfile.ZipFile(bundle)
+              except Exception as e:
+                  print(f"::notice title=Skipping unreadable bundle::{bundle}: {e}")
+                  continue
+              for name in zf.namelist():
+                  if name.startswith("ir/") and name.endswith(".rc"):
+                      target = os.path.join(out, os.path.basename(name))
+                      with zf.open(name) as src, open(target, "wb") as dst:
+                          dst.write(src.read())
+                      n += 1
+          print(f"staged {n} document(s) from {len(bundles)} bundle(s)")
           PY
 
           if [ -z "$(find "$staged" -maxdepth 1 -name '*.rc' -print -quit)" ]; then

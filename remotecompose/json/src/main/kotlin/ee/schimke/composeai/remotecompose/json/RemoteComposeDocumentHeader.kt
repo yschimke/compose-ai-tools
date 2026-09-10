@@ -1,6 +1,5 @@
 package ee.schimke.composeai.remotecompose.json
 
-import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.operations.Header
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -10,10 +9,10 @@ import kotlinx.serialization.json.put
 /**
  * What a `.rc` declares about itself, before anything measures it.
  *
- * Deliberately not [CoreDocument]'s own geometry. `CoreDocument.getWidth()` / `getHeight()` are the
- * *measured* size and a document that has never been through a layout pass reports `0 x 0` for both
- * — which is what a dump produced outside a player always is. The numbers here come from the
- * [Header] operation, so they are the size the document was authored at, which is the only size
+ * Deliberately not the inflated document's own geometry. `CoreDocument.getWidth()` / `getHeight()`
+ * are the *measured* size and a document that has never been through a layout pass reports `0 x 0`
+ * for both — which is what a dump produced outside a player always is. The numbers here come from
+ * the [Header] operation, so they are the size the document was authored at, which is the only size
  * available without a player and the one a caller sizing a canvas actually wants.
  *
  * Every field is nullable because every header field except the version triple is optional in the
@@ -55,20 +54,12 @@ public data class RemoteComposeDocumentHeader(
 
   public companion object {
     /**
-     * Read the header out of an already-inflated [document].
-     *
-     * The [Header] operation is always the first in the stream — `structure.md` states it as a
-     * well-formedness rule and `RemoteComposeBuffer` cannot inflate anything without it — so this
-     * takes the first one it finds rather than scanning. A document with none is not a document,
-     * and inflation would already have failed.
+     * Build from an already-decoded [Header] — the one operation a document can be read from
+     * without inflating the rest, which is what makes this cheap and what makes it work on a
+     * document whose later operations this `remote-core` cannot parse.
      */
-    internal fun of(document: CoreDocument, bytes: ByteArray): RemoteComposeDocumentHeader {
-      val header =
-        document.operations.filterIsInstance<Header>().firstOrNull()
-          ?: throw RemoteComposeJsonException(
-            "RemoteCompose document has no Header operation (${bytes.size} bytes)"
-          )
-      return RemoteComposeDocumentHeader(
+    internal operator fun invoke(header: Header, byteLength: Int): RemoteComposeDocumentHeader =
+      RemoteComposeDocumentHeader(
         // The version triple is the only thing `Header` exposes solely through `deepToString`, so
         // it is parsed from there. `HEADER v1.1.0` is the shape; anything else means upstream
         // changed the rendering and the version simply goes missing rather than the dump failing.
@@ -79,9 +70,8 @@ public data class RemoteComposeDocumentHeader(
         profiles = header.int(Header.DOC_PROFILES),
         desiredFps = header.int(Header.DOC_DESIRED_FPS),
         densityAtGeneration = (header.get(Header.DOC_DENSITY_AT_GENERATION) as? Number)?.toFloat(),
-        byteLength = bytes.size,
+        byteLength = byteLength,
       )
-    }
 
     /**
      * `Header.get` returns the boxed value the writer put in, and the writer's choice of box is not

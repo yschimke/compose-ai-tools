@@ -10,7 +10,11 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * Both directions, on the fixture in `src/test/resources/smoke.rc.json`.
+ * Both directions, on the fixture in `src/test/resources/smoke.authoring.json`.
+ *
+ * Named `.authoring.json` and not `.rc.json` deliberately. `<stem>.rc.json` is what `rc dump`
+ * WRITES, and a fixture holding authoring JSON under the name of a dump output is the same
+ * two-dialects confusion this class documents, sitting in the tests that document it.
  *
  * The fixture is small on purpose but not trivial on purpose either: it carries a named colour
  * resource, a modifier shorthand string (`"fillMaxSize"`), an ordered modifier list, a text
@@ -22,7 +26,7 @@ import org.junit.Test
 class RemoteComposeJsonTest {
 
   private val authoringJson: String =
-    checkNotNull(javaClass.getResourceAsStream("/smoke.rc.json")) { "fixture missing" }
+    checkNotNull(javaClass.getResourceAsStream("/smoke.authoring.json")) { "fixture missing" }
       .use { it.readBytes().decodeToString() }
 
   @Test
@@ -131,6 +135,29 @@ class RemoteComposeJsonTest {
 
     assertThat(e).hasMessageThat().contains("JSON text")
     assertThat(e).hasMessageThat().contains("compile")
+  }
+
+  @Test
+  fun `header reads a document whose later operations cannot be inflated`() {
+    // The whole point of a header-only read. A document carrying an opcode this `remote-core` does
+    // not know — a sticker baked on a newer Remote Compose alpha — still has a readable header, and
+    // "which profile, which version does this want" is exactly what someone asks when a document
+    // will not play. Inflating the stream to answer it would fail on the question it was asked to
+    // settle.
+    // A trailing opcode `remote-core` has no reader for. Truncation is NOT the way to build this
+    // fixture — the buffer tolerates a short tail and inflates what it has, so a truncated document
+    // would leave the second assertion below vacuous and the test claiming something it had not
+    // shown.
+    val unreadable = RemoteComposeJson.compile(authoringJson) + byteArrayOf(110, 0, 0, 0)
+
+    val header = RemoteComposeJson.header(unreadable)
+
+    assertThat(header.width).isEqualTo(300)
+    assertThat(header.contentDescription).isEqualTo("Remote Compose JSON smoke")
+    // And the full projection genuinely cannot read it, so the assertion above is not vacuous.
+    assertThrows(RemoteComposeJsonException::class.java) {
+      RemoteComposeJson.dumpToJsonObject(unreadable)
+    }
   }
 
   private fun kotlinx.serialization.json.JsonElement.typeName(): String? =

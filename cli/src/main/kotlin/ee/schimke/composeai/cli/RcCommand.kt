@@ -3,9 +3,11 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJson
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJsonException
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.JsonObject
 
 /**
  * `compose-preview rc <compile|dump|header>` — the Remote Compose JSON codec at the command line.
@@ -53,7 +55,7 @@ internal class RcCommand(private val args: List<String>) {
   }
 
   private fun compile(args: List<String>) {
-    val input = args.firstOrNull { !it.startsWith("-") } ?: fail("rc compile: expected a JSON file")
+    val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc compile: expected a JSON file")
     val out = args.flagValue("--output") ?: args.flagValue("-o")
     val bytes = guard { RemoteComposeJson.compile(File(input).readTextOrFail("rc compile")) }
 
@@ -68,7 +70,10 @@ internal class RcCommand(private val args: List<String>) {
   }
 
   private fun dump(args: List<String>) {
-    val input = args.firstOrNull { !it.startsWith("-") } ?: fail("rc dump: expected a .rc file")
+    // `CliFlags.positionals`, not "the first token without a dash". `rc dump --output out.json
+    // input.rc` puts `out.json` first by that reading, so the command would dump the file it was
+    // asked to write — and `rc compile -o out.rc in.json` would compile its own output path.
+    val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc dump: expected a .rc file")
     val compact = "--compact" in args
     val out = args.flagValue("--output") ?: args.flagValue("-o")
     val file = File(input)
@@ -95,11 +100,15 @@ internal class RcCommand(private val args: List<String>) {
 
     val text = guard { RemoteComposeJson.dump(file.readBytesOrFail("rc dump"), pretty = !compact) }
 
-    if (out == null) println(text) else File(out).absoluteFile.writeText(text + "\n")
+    if (out == null) {
+      println(text)
+    } else {
+      File(out).absoluteFile.also { it.parentFile?.mkdirs() }.writeText(text + "\n")
+    }
   }
 
   private fun dumpTree(root: File, compact: Boolean) {
-    val entries = root.walkTopDown().toList()
+    val entries = walk(root)
     refuseUndecodableNames(root, entries)
     val documents = entries.filter { it.isFile && it.extension == "rc" }.sorted()
     if (documents.isEmpty()) fail("rc dump: no .rc documents under ${root.path}")
@@ -108,11 +117,27 @@ internal class RcCommand(private val args: List<String>) {
     for (document in documents) {
       val target = File(document.parentFile, "${document.nameWithoutExtension}.rc.json")
       try {
+        if (!mayWrite(target)) {
+          failed++
+          System.err.println(
+            "compose-preview: ${target.path}: refusing to overwrite — it is not a document dump. " +
+              "Document JSON cannot be compiled back, so replacing authoring JSON here would " +
+              "destroy it."
+          )
+          continue
+        }
         target.writeText(RemoteComposeJson.dump(document.readBytes(), pretty = !compact) + "\n")
       } catch (e: RemoteComposeJsonException) {
         // One unreadable document does not stop the batch. A catalog with a single sticker captured
         // from a newer alpha than this CLI links would otherwise publish NO documents at all, which
         // is a strictly worse outcome than publishing the other thirty-nine and naming the one.
+        failed++
+        System.err.println("compose-preview: ${document.path}: ${e.message}")
+      } catch (e: IOException) {
+        // An unreadable input or an unwritable output is the same shape of problem as an
+        // unprojectable document, and the batch has to survive it for the same reason. Without
+        // this the loop aborts on the first permission error, having neither processed the rest
+        // nor printed the count a caller checks.
         failed++
         System.err.println("compose-preview: ${document.path}: ${e.message}")
       }
@@ -122,6 +147,42 @@ internal class RcCommand(private val args: List<String>) {
     )
     if (failed > 0) exitProcess(1)
   }
+
+  /**
+   * Whether [target] may be written, which is not the same question as whether it exists.
+   *
+   * `<stem>.rc` dumps to `<stem>.rc.json`, and `<stem>.rc.json` is also a perfectly ordinary name
+   * for the **authoring** JSON that produced it — the two dialects collide in the filesystem the
+   * same way they collide in conversation. Overwriting is one-way harm: document JSON has no
+   * parser, so a clobbered source cannot be recovered from the file that replaced it.
+   *
+   * So a target is writable when it does not exist, or when it is a previous dump — recognised by
+   * the two keys every dump has and no authoring document has (an authoring `header` is an object
+   * too, but it never sits beside an `operations` array). Anything else is left alone and reported,
+   * which costs a re-run at worst; guessing wrong costs someone's file.
+   */
+  private fun mayWrite(target: File): Boolean {
+    if (!target.exists()) return true
+    val existing =
+      try {
+        Json.parseToJsonElement(target.readText()) as? JsonObject ?: return false
+      } catch (_: Exception) {
+        return false
+      }
+    return "operations" in existing && "header" in existing
+  }
+
+  /**
+   * Walk [root] without following directory symlinks.
+   *
+   * `File.walkTopDown()` follows them and does not detect cycles, so a link to an ancestor turns
+   * the walk into an unbounded one — and even an acyclic link would have the command writing
+   * `.rc.json` files outside the tree it was pointed at, which for a publish step is a surprise
+   * nobody asked for. `Files.walk` with no `FOLLOW_LINKS` visits the link itself rather than its
+   * target, so a linked directory is simply not descended into.
+   */
+  private fun walk(root: File): List<File> =
+    Files.walk(root.toPath()).use { paths -> paths.map { it.toFile() }.toList() }
 
   /**
    * Refuse a tree this JVM cannot name, rather than reporting it as empty.
@@ -154,11 +215,15 @@ internal class RcCommand(private val args: List<String>) {
   }
 
   private fun header(args: List<String>) {
-    val input = args.firstOrNull { !it.startsWith("-") } ?: fail("rc header: expected a .rc file")
+    val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc header: expected a .rc file")
     val header = guard { RemoteComposeJson.header(File(input).readBytesOrFail("rc header")) }
 
     if ("--json" in args) {
-      println(PRETTY.encodeToString(PRETTY.encodeToJsonElement(header)))
+      // `toJsonObject()`, not the data class's own serializer. They disagree: the property is
+      // `desiredFps` and the wire field is `desiredFPS`, so serializing the class directly would
+      // give `rc header --json` a different shape from `rc dump`'s `header` block for the same
+      // document — and a `jq` query written against one would silently miss on the other.
+      println(PRETTY.encodeToString(JsonObject.serializer(), header.toJsonObject()))
       return
     }
     println("version              ${header.version}")

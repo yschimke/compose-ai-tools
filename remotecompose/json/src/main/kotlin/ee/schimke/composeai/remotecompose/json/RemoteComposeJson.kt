@@ -5,6 +5,7 @@ import androidx.compose.remote.core.RemoteComposeBuffer
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.creation.json.RemoteComposeJsonParser
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -183,7 +184,7 @@ public object RemoteComposeJson {
     val serializer = JsonMapSerializer()
     core.serialize(serializer)
     return buildJsonObject {
-      put("header", RemoteComposeDocumentHeader.of(core, document).toJsonObject())
+      put("header", RemoteComposeDocumentHeader(readHeader(document), document.size).toJsonObject())
       // `CoreDocument.serialize` puts the operation list under `operations` alongside its own
       // (unmeasured, therefore zero) width/height. Only the list is worth keeping — the geometry is
       // the header's, above, where it is the *declared* size rather than a measure result.
@@ -202,18 +203,35 @@ public object RemoteComposeJson {
    * Decode just the [Header] of [document] — the one part of a `.rc` readable without inflating the
    * whole operation stream, and all a caller needs to size a canvas or check an API level.
    */
-  public fun header(document: ByteArray): RemoteComposeDocumentHeader {
-    val buffer =
-      try {
-        ByteArrayInputStream(document).use { RemoteComposeBuffer.fromInputStream(it) }
-      } catch (e: RuntimeException) {
-        throw RemoteComposeJsonException(
-          "Not a RemoteCompose document (${document.size} bytes): ${e.message}",
-          e,
-        )
-      }
-    return RemoteComposeDocumentHeader.of(CoreDocument().apply { initFromBuffer(buffer) }, document)
-  }
+  /**
+   * Decode just the [Header] of [document] — genuinely just it.
+   *
+   * `Header.readDirect` reads the first operation and stops, where inflating a [CoreDocument] would
+   * walk the whole stream. That is the difference between an answer and a failure for the case this
+   * method exists for: a document carrying an opcode this `remote-core` does not know still has a
+   * readable header, and "which profile / which version does this thing want" is exactly the
+   * question being asked when a document will not play.
+   */
+  public fun header(document: ByteArray): RemoteComposeDocumentHeader =
+    RemoteComposeDocumentHeader(readHeader(document), document.size)
+
+  private fun readHeader(document: ByteArray): Header =
+    try {
+      ByteArrayInputStream(document).use { Header.readDirect(it) }
+    } catch (e: IOException) {
+      throw RemoteComposeJsonException(
+        "Not a RemoteCompose document (${document.size} bytes): ${e.message}",
+        e,
+      )
+    } catch (e: RuntimeException) {
+      // `readDirect` is declared to throw `IOException`, but a byte sequence that parses far enough
+      // to be read and not far enough to make sense surfaces as an unchecked one from the buffer
+      // underneath. Both mean the same thing to a caller.
+      throw RemoteComposeJsonException(
+        "Not a RemoteCompose document (${document.size} bytes): ${e.message}",
+        e,
+      )
+    }
 
   private val PRETTY = Json { prettyPrint = true }
   private val COMPACT = Json

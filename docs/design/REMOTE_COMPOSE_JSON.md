@@ -139,6 +139,18 @@ the fix. The check is on entries that actually came back undecodable rather than
 unfortunate-looking `sun.jnu.encoding`, so an ASCII-only tree is never refused for a hazard it does
 not have.
 
+## `rc dump <dir>` will not overwrite what it did not write
+
+`<stem>.rc` dumps to `<stem>.rc.json`, and `<stem>.rc.json` is also a perfectly ordinary name for
+the **authoring** JSON that produced it — the two dialects collide in the filesystem the same way
+they collide in conversation. Overwriting is one-way harm: document JSON has no parser, so a
+clobbered source cannot be recovered from the file that replaced it.
+
+A target is therefore written only when it does not exist or is itself a previous dump, recognised
+by the two keys every dump has and no authoring document does (`header` **beside** an `operations`
+array). Anything else is left alone and reported, which costs a re-run at worst; guessing wrong
+costs someone's file. Re-dumping stays idempotent, which is what the delivery lane needs.
+
 ## Command line
 
 ```
