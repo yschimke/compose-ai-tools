@@ -376,6 +376,39 @@ class UiBuilderCatalogsTest {
       )
   }
 
+  /**
+   * A builtin's traits and modifiers reach the published file.
+   *
+   * A builtin is the only way a catalog offers a component the record cannot carry, so what it
+   * declares is all there is. The consumer (`PublishedUiBuilderCatalog.builtinCapability`) reads
+   * `traits` and `modifierCapabilities`, and this type had neither field and the policy schema
+   * forbade both — so every builtin a schema-valid catalog could publish arrived on the shelf
+   * claiming no traits, which the slot-acceptance rules read as "accepted nowhere".
+   */
+  @Test
+  fun `a builtin publishes the traits and modifiers a catalog states`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", catalogId = "Containment/Card", group = "Containment")),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "wear-m3/widget-host" to
+                UiBuilderBuiltin(
+                  role = "screen-root",
+                  traits = listOf("WearWidgetHost", "ScreenContent"),
+                  modifierCapabilities = listOf("padding"),
+                )
+            )
+        ),
+      )!!
+
+    val builtin = generated.statusSemantics.builtins.getValue("wear-m3/widget-host")
+    assertThat(builtin.traits).containsExactly("WearWidgetHost", "ScreenContent").inOrder()
+    assertThat(builtin.modifierCapabilities).containsExactly("padding")
+  }
+
   @Test
   fun `a builtin slot names a structural role too`() {
     // The slot's role selects a template exactly as the builtin's own role does. It was checked in

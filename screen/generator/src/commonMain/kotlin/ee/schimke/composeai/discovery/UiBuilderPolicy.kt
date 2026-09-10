@@ -208,8 +208,19 @@ data class UiBuilderBuiltin(
   val displayName: String? = null,
   val group: String? = null,
   val canvas: String? = null,
+  /**
+   * What this builtin IS, for the slot-acceptance rules — a component whose slot accepts
+   * `AnyContent` cannot admit one that claims no traits at all.
+   *
+   * The consumer already reads it; without it here there was no way to write it, so every builtin a
+   * catalog could publish arrived on the shelf with an empty list. The same was true of
+   * [modifierCapabilities].
+   */
+  val traits: List<String> = emptyList(),
   val slots: Map<String, JsonElement> = emptyMap(),
   val properties: List<JsonElement> = emptyList(),
+  /** The modifiers this builtin accepts, or null for the consumer's structural default. */
+  val modifierCapabilities: List<String>? = null,
 )
 
 /**
