@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "75f8127c48953888d9154a54f54932322d9b1085",
+    "generatedFrom": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -8641,6 +8641,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png",
             "versions": [
                 {
+                    "blob": "db45f9d7cca9990b587cadcec36a862a95db4436",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
+                {
                     "blob": "2d6a3aea7a04577a4bca29b073432b096de9cfb2",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
                     "date": "2026-09-08T06:28:18Z",
@@ -8648,13 +8655,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer · Pressed": {
             "path": "renders/samples:xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed-2221a813.png",
             "versions": [
+                {
+                    "blob": "1885ccd76268bed8a40dc89066be954ada56af50",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
                 {
                     "blob": "a6d2435fcf9e502ff2b56fb81472d17be921d54b",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
@@ -8663,7 +8677,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8686,6 +8700,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
             "versions": [
                 {
+                    "blob": "d3151218ed6f419e32f2018bc42276201cd4681c",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
+                {
                     "blob": "edcf336c66b11cea6d2b2a275ad0297a46409901",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
                     "date": "2026-09-08T06:28:18Z",
@@ -8693,13 +8714,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer · Pressed Walk#2": {
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
             "versions": [
+                {
+                    "blob": "ad705bd410126193249cfe5494d3aae9a38b1ca6",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
                 {
                     "blob": "ccf5b883e87218df54fd0c5c626f5215492b595c",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
@@ -8708,7 +8736,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8731,6 +8759,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerXrMenuBusy_Busy-67a81f39.gif",
             "versions": [
                 {
+                    "blob": "cc20557f269bcce95960cb100d3d1b2806d5d18c",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
+                {
                     "blob": "d4d3f94acac7d87b43fc389486e2539b56ff842f",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
                     "date": "2026-09-08T06:28:18Z",
@@ -8738,13 +8773,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuDark_Dark": {
             "path": "renders/samples:xr-glimmer/GlimmerXrMenuDark_Dark-3cf9c01e.gif",
             "versions": [
+                {
+                    "blob": "8f393e47e2ceca5da60e498a86906ef343053b23",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
                 {
                     "blob": "fceacbc32b9422242f207d2f4b12f660db7f6f19",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
@@ -8753,13 +8795,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuLight_Light": {
             "path": "renders/samples:xr-glimmer/GlimmerXrMenuLight_Light-da3d4601.gif",
             "versions": [
+                {
+                    "blob": "b37decbf7e72c93aa197b4848bba347cb3e2c9ec",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
                 {
                     "blob": "950b430c777ec060879507f5452f1beaf6a9efef",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
@@ -8768,13 +8817,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuOverlay_Overlay Light": {
             "path": "renders/samples:xr-glimmer/GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.png",
             "versions": [
+                {
+                    "blob": "94fc42f37cf440301a4b53c26506f484125d7d4a",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
                 {
                     "blob": "c88f0a5a03a5bdabf45fac5e3a8f00a664270e07",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
@@ -8783,13 +8839,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuVeniceCanalCats_VeniceCanalCats": {
             "path": "renders/samples:xr-glimmer/GlimmerXrMenuVeniceCanalCats_VeniceCanalCats-5c5dccdc.gif",
             "versions": [
+                {
+                    "blob": "d7ed3a20d87b885f7a629a9602258b88039dd069",
+                    "commit": "29b468ad7947a99a510dc910ee3ff8e2acf4a03d",
+                    "date": "2026-09-10T08:05:08Z",
+                    "sourceSha": "7e3550a3",
+                    "commits": 1
+                },
                 {
                     "blob": "3d1c797eda1ac0d1121bde8f440341b99917421e",
                     "commit": "ba8deee9dd7ba9183383adc66c612285ec45b5ca",
@@ -8798,7 +8861,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
