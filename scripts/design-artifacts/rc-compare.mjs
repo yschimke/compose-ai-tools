@@ -48,7 +48,7 @@ import { CHROMIUM_LAUNCH_ARGS } from "./rc-chromium.mjs";
 import { settledScreenshot } from "./rc-settle.mjs";
 import { PARITY_CLOCK_ISO, PARITY_CLOCK_TIMEZONE, pinWallClock } from "./rc-clock.mjs";
 import {
-  applyCmpWasmPerformanceBudgets,
+  summarizeCmpWasmFirstFrame,
   evaluateCmpWasmGate,
   formatCmpWasmGate,
   readCmpWasmAllowlist,
@@ -885,7 +885,7 @@ let cmpWasmGate = null;
 if (REQUIRE_CMP_WASM) {
   try {
     cmpWasmGate = evaluateCmpWasmGate(rcIds, rows, readCmpWasmAllowlist(CMP_WASM_ALLOWLIST));
-    applyCmpWasmPerformanceBudgets(
+    summarizeCmpWasmFirstFrame(
       cmpWasmGate,
       rows,
       CMP_WASM_MAX_COLD_FIRST_FRAME_MS,

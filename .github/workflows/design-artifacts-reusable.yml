@@ -235,7 +235,7 @@ on:
         type: boolean
         default: false
       rc-cmp-wasm-lane:
-        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw, or one that misses the first-frame budgets, fails the step and the catalog does not publish. Opt in per catalog once you know what its documents do in that player."
+        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw fails the step and the catalog does not publish. The first-frame budgets below are report-only. Opt in per catalog once you know what its documents do in that player."
         required: false
         type: boolean
         default: false
@@ -245,12 +245,12 @@ on:
         type: string
         default: ''
       rc-cmp-wasm-max-cold-first-frame-ms:
-        description: 'Maximum cold CMP/Wasm navigation-to-painted-ready time. The strict lane fails above it.'
+        description: 'Cold CMP/Wasm navigation-to-painted-ready time to report against. REPORT-ONLY: rows above it are named in the job summary and the lane still passes — the budget ran post-merge, so it could only strand a publish, never stop a slow player landing. A missing measurement is still a failure.'
         required: false
         type: number
         default: 10000
       rc-cmp-wasm-max-warm-first-frame-ms:
-        description: 'Maximum cached CMP/Wasm navigation-to-painted-ready time. The strict lane fails above it.'
+        description: 'Cached CMP/Wasm navigation-to-painted-ready time to report against. REPORT-ONLY, on the same terms as the cold budget above.'
         required: false
         type: number
         default: 5000
