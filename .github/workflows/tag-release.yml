@@ -60,7 +60,8 @@ jobs:
       # So this escape hatch no longer depends on being able to explain it: give it a token that
       # can create a ref and it works. A fine-grained PAT or GitHub App installation token with
       # `contents: write` is enough. Same pattern, and the same reason, as `LOCKFILE_REGEN_TOKEN`
-      # in dependency-locks.yml — a job whose whole purpose is unblocking a stuck state must not be
+      # in the retired dependency-locks.yml — a job whose whole purpose is unblocking a stuck
+      # state must not be
       # the thing that is stuck.
       GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
       USING_PAT: ${{ secrets.RELEASE_TAG_TOKEN != '' }}

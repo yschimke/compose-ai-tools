@@ -56,7 +56,6 @@ INVARIANTS=(
   branch-prefix
   conventional-commits
   format-before-commit
-  regenerate-lockfiles
   pr-state-recheck
 )
 
