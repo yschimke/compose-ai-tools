@@ -385,6 +385,44 @@ class UiBuilderCatalogsTest {
    * forbade both — so every builtin a schema-valid catalog could publish arrived on the shelf
    * claiming no traits, which the slot-acceptance rules read as "accepted nowhere".
    */
+  /**
+   * An excluded component gets no shelf entry.
+   *
+   * `excluded` means the consumer refuses to serve it — `PublishedUiBuilderCatalog` skips it and
+   * reports the reason — so a menu entry naming it offers a shelf item that disappears between the
+   * palette and the design. m3-catalog excluding its own `Sticker` and `MaterialExpressiveTheme`
+   * published both under "Badges" anyway, which is how this was found.
+   *
+   * The reason still ships in `statusSemantics.components`, so a component missing from the shelf
+   * can say why rather than looking lost. Only the menu drops it.
+   */
+  @Test
+  fun `an excluded component is not on the menu`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Card", catalogId = "Containment/Card", group = "Containment"),
+          component("Sticker", catalogId = "Containment/Sticker", group = "Containment"),
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf(
+              "wear-m3/sticker" to
+                UiBuilderAuthoredComponent(excluded = "the catalog's own preview frame")
+            ),
+        ),
+      )!!
+
+    val menu = generated.statusSemantics.componentMenu.components
+    assertThat(menu.keys).contains("wear-m3/card")
+    assertThat(menu.keys).doesNotContain("wear-m3/sticker")
+    // The reason is still published, so the shelf's absence is explained rather than silent.
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/sticker").excluded)
+      .isEqualTo("the catalog's own preview frame")
+  }
+
   @Test
   fun `a builtin publishes the traits and modifiers a catalog states`() {
     val generated =
