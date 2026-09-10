@@ -4100,7 +4100,7 @@
     "functionName": "GlimmerListItemFocused",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png",
-    "sha256": "9cdd625b73e2aceb4e8b9157dba21b97a8a0b4d8ac66eb5e8643920866e67384",
+    "sha256": "5b2d9fdaa0d398e143ccc27959c5c7d73cb8771311869b7692784cbb5cd65c62",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed": {
@@ -4108,7 +4108,7 @@
     "functionName": "GlimmerListItemPressed",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListItemPressed_Glimmer_Pressed-2221a813.png",
-    "sha256": "d458994c4a5c7a089c328b18d0d1043d51667446bca7655b6f72912784b7b6ad",
+    "sha256": "64979b70ba6d63e2cfdacff1f829f827910b6ce519f670d13c31159547ae1519",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk": {
@@ -4124,7 +4124,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
-    "sha256": "d66dac712ad41dccaf307c61dc28f94b0c696df398c735dc2da58d14695e60f3",
+    "sha256": "58d239ccf6283db66d94d3b540cd65076897ee550756ea40b8da3b80bfdce017",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#2": {
@@ -4132,7 +4132,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
-    "sha256": "6f20618efa02843b3d9b4e7038cc94f8efda0a791c186e1b661d0a525f28307b",
+    "sha256": "7e8a83fa6df6b0af2dab472b5da3de9635d6ffd78e3dfd32ac9b19aa7a72b3af",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuAnimated_Animated Light": {
@@ -4148,7 +4148,7 @@
     "functionName": "GlimmerXrMenuBusy",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuBusy_Busy-67a81f39.gif",
-    "sha256": "a00fe61e5a2af0e6ce3b3472a687fef6dfd8c484d570869dd274740b16e820fb",
+    "sha256": "614841439cacad357189344949f8482d0d48b98571243e2614538ed5157aa64e",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuDark_Dark": {
@@ -4156,7 +4156,7 @@
     "functionName": "GlimmerXrMenuDark",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuDark_Dark-3cf9c01e.gif",
-    "sha256": "7590975d40e69e9ea2ec44f180a3e94a3451617e4a2df295cf9b8349917245ea",
+    "sha256": "5edc1f7a0bece0f660fe48059c6a9e95916f8f4acacaeac71a6a6543cb2f54aa",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuLight_Light": {
@@ -4164,7 +4164,7 @@
     "functionName": "GlimmerXrMenuLight",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuLight_Light-da3d4601.gif",
-    "sha256": "7069c2437879ed72267085b821cd2e3543b56f7c277524be7141debbd7bee40c",
+    "sha256": "3db242c2bbdf6827bde0905c70a31f32db400bba96b4b3e81f45d8d9c3b394cf",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuOverlay_Overlay Light": {
@@ -4172,7 +4172,7 @@
     "functionName": "GlimmerXrMenuOverlay",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.png",
-    "sha256": "f24e4d91906c31c573807bc4f284a532355961da01001f06435eb82d80629756",
+    "sha256": "719b362db0148db583db7a998d68595790999f0105ce1e94b5b227860e53ab38",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuVeniceCanalCats_VeniceCanalCats": {
@@ -4180,7 +4180,7 @@
     "functionName": "GlimmerXrMenuVeniceCanalCats",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuVeniceCanalCats_VeniceCanalCats-5c5dccdc.gif",
-    "sha256": "64ac1b9c3d00e60e7f43af16ef1031104a0b3bfcd46681102ecb34fe2f6165b1",
+    "sha256": "0190e6e44d8ed3a61ab60dcc5b5b55b265372a40d543731327fd14792e6ae538",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input": {
