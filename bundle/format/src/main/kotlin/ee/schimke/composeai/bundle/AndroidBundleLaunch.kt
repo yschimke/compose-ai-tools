@@ -1,5 +1,7 @@
 package ee.schimke.composeai.bundle
 
+import ee.schimke.composeai.daemon.client.AndroidSdk
+import ee.schimke.composeai.daemon.client.RobolectricConfig
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
@@ -27,11 +29,24 @@ import okio.Path.Companion.toPath
  * resource APK + manifest + generated R classes, and [BundleDaemonCommand] rebuilds the Robolectric
  * `test_config.properties` from them so the tile renderer resolves its theme on a detached daemon.
  *
- * The constants below MUST stay in lockstep with the Gradle plugin's
- * [ee.schimke.composeai.plugin.AndroidPreviewClasspath] (`buildJvmArgs`, `buildSystemProperties`)
- * and `GenerateRobolectricPropertiesTask`, which the in-workspace Android render task uses. The CLI
- * links a different module graph, so we re-declare them here — same pattern as [BundleReader]
- * mirroring the on-disk bundle schema. Keep them in sync if the plugin side changes.
+ * ### Where these facts come from
+ *
+ * The `robolectric.properties` bodies, the packages they are written to and the SDK-level range are
+ * **not** facts about this repository: they are how the daemon's renderer expects Robolectric
+ * configured, and the packages are its packages — rename one there and nothing here fails to
+ * compile, the config simply stops being found and the renders change. They now come from
+ * `ee.schimke.composeai.daemon.client.RobolectricConfig` / `AndroidSdk`, published by
+ * compose-preview-daemon and pinned there by golden descriptors (its `docs/design/EMBEDDING.md`).
+ *
+ * The JVM args and the `robolectric.*` / font system properties below are the same facts and belong
+ * there too, but the daemon exposes them only through `DaemonBackend.Android`, which requires an
+ * `android.jar` this class does not have and does not need. Moving them waits on a jar-free seam on
+ * that side; until then they stay here, and this class's own tests pin them.
+ *
+ * The Gradle plugin's [ee.schimke.composeai.plugin.AndroidPreviewClasspath] still holds its own
+ * copy of all of it. That is the other half of the same problem: the plugin is a separate composite
+ * build with no daemon dependency, and adding one would put the daemon client, its core and their
+ * transitives on every consumer's buildscript classpath.
  */
 public class AndroidBundleLaunch(
   sdkLevel: Int = DEFAULT_SDK,
@@ -138,12 +153,7 @@ public class AndroidBundleLaunch(
    * `sdk` + `graphicsMode` + the GoogleFont shadow registration, and (unless
    * [useConsumerApplication]) the stub `application=`.
    */
-  public fun robolectricPropertiesBody(): String = buildString {
-    appendLine("sdk=$sdkLevel")
-    appendLine("graphicsMode=NATIVE")
-    if (!useConsumerApplication) appendLine("application=android.app.Application")
-    append("shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat")
-  }
+  public fun robolectricPropertiesBody(): String = robolectricConfig().composableLaneBody()
 
   /**
    * The app-tour lane's `robolectric.properties` body — [robolectricPropertiesBody] without the
@@ -171,11 +181,10 @@ public class AndroidBundleLaunch(
    * Unlike the Gradle path there is no `appTourUseConsumerApplication` to consult — a bundle
    * carries no extension — so this always tracks that flag's default.
    */
-  public fun appTourRobolectricPropertiesBody(): String = buildString {
-    appendLine("sdk=$sdkLevel")
-    appendLine("graphicsMode=NATIVE")
-    append("shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat")
-  }
+  public fun appTourRobolectricPropertiesBody(): String = robolectricConfig().appTourLaneBody()
+
+  private fun robolectricConfig(): RobolectricConfig =
+    RobolectricConfig(sdkLevel = sdkLevel, useConsumerApplication = useConsumerApplication)
 
   /**
    * Materialise [robolectricPropertiesBody] at the classpath path Robolectric looks it up by —
@@ -198,25 +207,26 @@ public class AndroidBundleLaunch(
   }
 
   public companion object {
-    /** Floor of Robolectric 4.16.x's `android-all-instrumented` range (API 21, LOLLIPOP). */
-    public const val MIN_SDK: Int = 21
+    /** Floor of the bundled Robolectric's `android-all-instrumented` range (API 21, LOLLIPOP). */
+    public const val MIN_SDK: Int = AndroidSdk.MIN_SDK
+
     /** Ceiling of the bundled Robolectric's supported range (API 36). */
-    public const val MAX_SDK: Int = 36
+    public const val MAX_SDK: Int = AndroidSdk.MAX_SDK
     /**
      * SDK level used when the bundle doesn't pin one. Bundles don't yet record the consumer's
      * `compileSdk` (Phase 2), so default to a recent, widely-available level; override with
      * `-Dcomposeai.bundle.androidSdk=<n>`.
      */
-    public const val DEFAULT_SDK: Int = 35
+    public const val DEFAULT_SDK: Int = AndroidSdk.DEFAULT_SDK
 
-    private const val RENDERER_PKG_PATH = "ee/schimke/composeai/renderer"
+    private val RENDERER_PKG_PATH = RobolectricConfig.RENDERER_PACKAGE.replace('.', '/')
 
     /**
      * The app-tour render lane's package. A SIBLING of [RENDERER_PKG_PATH], never a child:
      * Robolectric merges a parent package's `robolectric.properties` into a child's, so nesting it
      * would inherit the stub `application=` line the composable lane pins.
      */
-    private const val APP_TOUR_PKG_PATH = "ee/schimke/composeai/apptour"
+    private val APP_TOUR_PKG_PATH = RobolectricConfig.APP_TOUR_PACKAGE.replace('.', '/')
 
     /** `-Dcomposeai.bundle.androidSdk=<n>` override for [DEFAULT_SDK]. */
     public fun sdkLevelFromSystemProperty(
