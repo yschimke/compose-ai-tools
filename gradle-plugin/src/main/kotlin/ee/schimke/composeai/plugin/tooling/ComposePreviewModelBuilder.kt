@@ -7,6 +7,7 @@ import ee.schimke.composeai.plugin.PreviewExtension
 import java.io.Serializable
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.plugins.ExtensionAware
 import org.gradle.api.tasks.testing.Test
 import org.gradle.tooling.provider.model.ToolingModelBuilder
 
@@ -173,12 +174,15 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * Plugin presence alone is the wrong question; the lane is the right one.
    */
   private fun resolveNaming(project: Project, variant: String): AndroidVariantNaming {
-    val robolectric =
-      project.extensions
-        .findByType(PreviewExtension::class.java)
-        ?.kmpAndroidRobolectric
-        ?.getOrElse(false) == true
-    return if (robolectric) AndroidVariantNaming.forProject(project, variant)
+    // The task, not the property. `kmpAndroidRobolectric = true` is a REQUEST, and the request is
+    // refused in two real cases — a module with no `withHostTest { }` compilation, and one where
+    // `org.jetbrains.compose` was applied first and Desktop had already committed. Both fall back
+    // to Desktop, and keying off the property would then describe a backend the renders never use.
+    // `composePreviewGenerateRobolectricProperties` is registered by `registerAndroidTasks` and
+    // nowhere else, so its presence is the lane that was actually taken.
+    val robolectricLane =
+      project.tasks.findByName("composePreviewGenerateRobolectricProperties") != null
+    return if (robolectricLane) AndroidVariantNaming.forProject(project, variant)
     else AndroidVariantNaming.classic(variant)
   }
 
@@ -223,9 +227,26 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * reflection failure — [CompatRules.checkLibraryMinSdk] treats `null` as "not checkable".
    */
   private fun resolveModuleMinSdk(project: Project): Int? = runCatching {
-    val android = project.extensions.findByName("android") ?: return null
+    val android = project.extensions.findByName("android") ?: return kmpAndroidMinSdk(project)
     val defaultConfig = android.javaClass.getMethod("getDefaultConfig").invoke(android)
     defaultConfig?.javaClass?.getMethod("getMinSdk")?.invoke(defaultConfig) as? Int
+  }
+    .getOrNull()
+
+  /**
+   * `minSdk` off a `com.android.kotlin.multiplatform.library` module.
+   *
+   * There is no project-level `android` extension to read: the block is `kotlin { android { … } }`,
+   * registered on the Kotlin extension's own container, and the target it yields carries `minSdk`
+   * directly rather than behind `defaultConfig` (the same shape `AndroidPreviewSupport`'s
+   * `finalizeDsl` branch reads). Without this the classic lookup returns null, the exception is
+   * swallowed, and `compose-preview doctor` silently skips every library-minSdk conflict its
+   * task-based counterpart still reports.
+   */
+  private fun kmpAndroidMinSdk(project: Project): Int? = runCatching {
+    val kotlin = project.extensions.findByName("kotlin") as? ExtensionAware ?: return null
+    val android = kotlin.extensions.findByName("android") ?: return null
+    android.javaClass.getMethod("getMinSdk").invoke(android) as? Int
   }
     .getOrNull()
 
