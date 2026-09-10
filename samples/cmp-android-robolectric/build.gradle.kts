@@ -4,11 +4,23 @@ plugins {
   // Same buildscript-classpath bundle story as `:samples:cmp-shared` — apply KGP, the
   // KMP-Android plugin and `kotlin.plugin.compose` by id (no version) so they resolve from
   // the AGP-provided classpath rather than erroring on an unknown-version alias.
+  // DELIBERATELY THE HOSTILE APPLY ORDER, and it is the fixture for it.
+  //
+  // `ee.schimke.composeai.preview` FIRST and `com.android.kotlin.multiplatform.library` LAST is
+  // the shape a convention plugin produces, and it is the one that used to lose this module its
+  // lane: `org.jetbrains.compose` landing first made the plugin commit to the Desktop renderer
+  // before the KMP-Android plugin could ask for Robolectric, and the render then died with
+  // `NoClassDefFoundError: android/os/Parcelable`. The plugin now defers that commit to
+  // `afterEvaluate` when a KMP module has no KMP-Android plugin YET.
+  //
+  // Keeping the sample in this order means CI renders the awkward case on every run. The ordinary
+  // order — the preview plugin applied last, which the docs show and every other sample uses — is
+  // covered by `:samples:cmp-shared` alongside it.
+  id("ee.schimke.composeai.preview")
   id("org.jetbrains.kotlin.multiplatform")
-  id("com.android.kotlin.multiplatform.library")
   alias(libs.plugins.compose.multiplatform)
   id("org.jetbrains.kotlin.plugin.compose")
-  id("ee.schimke.composeai.preview")
+  id("com.android.kotlin.multiplatform.library")
 }
 
 // The `com.android.kotlin.multiplatform.library` module that renders through ROBOLECTRIC
