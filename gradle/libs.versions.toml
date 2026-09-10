@@ -53,7 +53,7 @@ classgraph = "4.8.195"
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.08.00"
+compose-bom-stable = "2026.09.00"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -105,7 +105,7 @@ compose-multiplatform-forward = "1.12.0-rc01"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:remotecompose`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha27"
+compose-material3-catalog = "1.5.0-alpha28"
 # JetBrains Compose Multiplatform material3 tracks its own line, so the explicit coordinate must
 # use this version rather than `compose-multiplatform`. Matched to what `m3-catalog` pins on the
 # 1.11 line, so the largest live-rendered catalog and the host agree on the material3 ABI as well
@@ -264,7 +264,7 @@ glance-wear = "1.0.0-alpha17"
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.12.0"
+compose-ui-prerelease = "1.12.1"
 kotlinx-coroutines = "1.11.0"
 kotlinx-datetime = "0.8.0"
 kotlinx-serialization = "1.11.0"
