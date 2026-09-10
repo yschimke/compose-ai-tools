@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.6.0](https://github.com/yschimke/compose-ai-tools/compare/v2.5.0...v2.6.0) (2026-09-10)
+
+
+### Features
+
+* **release:** publish the whole project every release ([#5365](https://github.com/yschimke/compose-ai-tools/issues/5365)) ([bcb0b1a](https://github.com/yschimke/compose-ai-tools/commit/bcb0b1a0f8be3c13b4162bc6407c4e885c193d14))
+
+
+### Bug Fixes
+
+* **deps:** regenerate Gradle lockfiles for compose-preview-daemon 3.0.1 ([#5363](https://github.com/yschimke/compose-ai-tools/issues/5363)) ([93e56ec](https://github.com/yschimke/compose-ai-tools/commit/93e56ecb19226df1d5a9783cb3db12410447c989))
+* **deps:** take compose-preview-daemon 3.0.1 ([#5356](https://github.com/yschimke/compose-ai-tools/issues/5356)) ([c140216](https://github.com/yschimke/compose-ai-tools/commit/c140216f78438a9b8645697590037e9136e368c5))
+* **deps:** update androidx ([#5357](https://github.com/yschimke/compose-ai-tools/issues/5357)) ([a1379fc](https://github.com/yschimke/compose-ai-tools/commit/a1379fc2f4086cca47608081daaf7cc931b2d3ac))
+* **deps:** update androidx-compose ([#5358](https://github.com/yschimke/compose-ai-tools/issues/5358)) ([876dd60](https://github.com/yschimke/compose-ai-tools/commit/876dd6000155780db13c6930b15eb7d0448fd8bf))
+* **deps:** update androidx-wear to v1.7.0-rc01 ([#5359](https://github.com/yschimke/compose-ai-tools/issues/5359)) ([f829a7e](https://github.com/yschimke/compose-ai-tools/commit/f829a7e8e89c909f3223f0992bba5ec40c66c57c))
+* **deps:** update compose-ai-tools to v2.14.0 ([#5360](https://github.com/yschimke/compose-ai-tools/issues/5360)) ([615933a](https://github.com/yschimke/compose-ai-tools/commit/615933aa57b180872bb57d01fcb80747c0b4e2c8))
+* **deps:** update compose-preview-contracts to v2.14.0 ([#5361](https://github.com/yschimke/compose-ai-tools/issues/5361)) ([655f7fe](https://github.com/yschimke/compose-ai-tools/commit/655f7fec45d8eb9fb50b83fa1c68d824711cc09c))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.22.0 ([#5362](https://github.com/yschimke/compose-ai-tools/issues/5362)) ([9b17cb8](https://github.com/yschimke/compose-ai-tools/commit/9b17cb808d7b9501f01fb8498148fc7d3e54ced0))
+* **ui-builder:** name a component by what it is, in the record, in the id, and in the file ([#5354](https://github.com/yschimke/compose-ai-tools/issues/5354)) ([db6dcdd](https://github.com/yschimke/compose-ai-tools/commit/db6dcdd9ba199b988cdae1002d48b81a839e4dc8))
+
 ## [2.5.0](https://github.com/yschimke/compose-ai-tools/compare/v2.4.1...v2.5.0) (2026-09-09)
 
 
