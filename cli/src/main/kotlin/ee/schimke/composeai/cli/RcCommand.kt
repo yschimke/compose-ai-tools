@@ -174,13 +174,24 @@ internal class RcCommand(
   }
 
   private fun dumpTree(root: Path, compact: Boolean) {
-    val entries = walk(root)
-    refuseUndecodableNames(root, entries)
+    val walked = walk(root)
+    refuseUndecodableNames(root, walked.entries)
     val documents =
-      entries
+      walked.entries
         .filter { fileSystem.metadataOrNull(it)?.isRegularFile == true && it.name.endsWith(".rc") }
         .sorted()
-    if (documents.isEmpty()) fail("rc dump: no .rc documents under $root")
+    if (documents.isEmpty()) {
+      fail(
+        walked.stoppedBy?.let { "rc dump: could not list $root: $it" }
+          ?: "rc dump: no .rc documents under $root"
+      )
+    }
+    walked.stoppedBy?.let {
+      stderr(
+        "compose-preview: $root: directory listing failed part-way ($it) — dumping the " +
+          "${documents.size} document(s) enumerated before it, and exiting non-zero."
+      )
+    }
 
     var failed = 0
     for (document in documents) {
@@ -216,7 +227,7 @@ internal class RcCommand(
     stderr(
       "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under $root"
     )
-    if (failed > 0) exit(1)
+    if (failed > 0 || walked.stoppedBy != null) exit(1)
   }
 
   /**
@@ -252,9 +263,34 @@ internal class RcCommand(
    * nobody asked for in a publish step. Okio's `listRecursively` defaults to `followSymlinks =
    * false`, which is the behaviour wanted here; it is passed explicitly so the default changing
    * cannot change this quietly.
+   *
+   * Drained one entry at a time rather than with `.toList()`, because `listRecursively` is **lazy**
+   * and the listing of each descendant directory happens during iteration. A subtree the process
+   * cannot list — a mode-000 directory in a published tree, an NFS mount that went away — throws
+   * from `hasNext()`/`next()`, and a `.toList()` let that escape past every per-document handler
+   * below: the command died with a stack trace having dumped nothing, which is precisely the
+   * fail-soft the batch mode promises. Now the walk stops where the filesystem stopped it, the
+   * entries already enumerated are still dumped, and [Walk.stoppedBy] carries the reason so the
+   * caller can name it and exit non-zero.
    */
-  private fun walk(root: Path): List<Path> =
-    fileSystem.listRecursively(root, followSymlinks = false).toList()
+  private fun walk(root: Path): Walk {
+    val entries = mutableListOf<Path>()
+    val iterator = fileSystem.listRecursively(root, followSymlinks = false).iterator()
+    while (true) {
+      val next =
+        try {
+          if (!iterator.hasNext()) break
+          iterator.next()
+        } catch (e: OkioIOException) {
+          return Walk(entries, e.message ?: e.toString())
+        }
+      entries += next
+    }
+    return Walk(entries, null)
+  }
+
+  /** What [walk] enumerated, and why it stopped early if it did. */
+  private class Walk(val entries: List<Path>, val stoppedBy: String?)
 
   /**
    * Refuse a tree this JVM cannot name, rather than reporting it as empty.
@@ -340,8 +376,23 @@ internal class RcCommand(
     readBytesOrFail(path, what).decodeToString()
 
   private fun readBytesOrFail(path: Path, what: String): ByteArray {
-    if (fileSystem.metadataOrNull(path)?.isRegularFile != true) fail("$what: no such file: $path")
-    return fileSystem.read(path) { readByteArray() }
+    // "or not readable", because `metadataOrNull` cannot tell those apart and this was measured
+    // rather than guessed: a directory the process may traverse but not read comes back null here,
+    // and reporting that one as "no such file" sends the reader looking for a path that is right
+    // in front of them.
+    if (fileSystem.metadataOrNull(path)?.isRegularFile != true) {
+      fail("$what: no such file (or not readable): $path")
+    }
+    return try {
+      fileSystem.read(path) { readByteArray() }
+    } catch (e: OkioIOException) {
+      // Existing and readable are different questions, and the gap between them is where a real
+      // tree lives: a mode-000 file, a stale NFS handle, a symlink to a device that went away.
+      // `guard` catches codec failures and `writing` catches output failures; without this the
+      // INPUT side of `compile`, single-file `dump` and `header` was the one path left printing a
+      // stack trace, for a problem whose whole diagnosis is one line.
+      fail("$what: cannot read $path: ${e.message}")
+    }
   }
 
   private fun fail(message: String): Nothing {

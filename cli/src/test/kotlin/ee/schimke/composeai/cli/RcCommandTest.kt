@@ -6,7 +6,12 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import okio.FileSystem
+import okio.ForwardingFileSystem
+import okio.IOException as OkioIOException
+import okio.Path
 import okio.Path.Companion.toPath
+import okio.Source
 import okio.fakefilesystem.FakeFileSystem
 
 /**
@@ -38,14 +43,20 @@ class RcCommandTest {
 
   private val err = mutableListOf<String>()
 
-  private fun run(vararg args: String) =
-    RcCommand(args.toList(), fs, stdout = {}, stderr = { err += it }, exit = { throw Exited(it) })
+  private fun run(vararg args: String, fileSystem: FileSystem = fs) =
+    RcCommand(
+        args.toList(),
+        fileSystem,
+        stdout = {},
+        stderr = { err += it },
+        exit = { throw Exited(it) },
+      )
       .run()
 
   /** Run expecting the command to refuse, and return the exit code it asked for. */
-  private fun runExpectingExit(vararg args: String): Int =
+  private fun runExpectingExit(vararg args: String, fileSystem: FileSystem = fs): Int =
     try {
-      run(*args)
+      run(*args, fileSystem = fileSystem)
       error("expected a non-zero exit")
     } catch (e: Exited) {
       e.code
@@ -107,6 +118,54 @@ class RcCommandTest {
     assertTrue(fs.exists(dir / "good.rc.json"))
     assertFalse(fs.exists(dir / "bad.rc.json"))
     assertTrue(err.any { "bad.rc" in it }, "names the document that failed: $err")
+  }
+
+  @Test
+  fun `an unlistable subtree does not stop the batch`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+    fs.createDirectories(dir / "locked")
+
+    // `listRecursively` is lazy: on a real filesystem an unlistable subtree throws from
+    // `hasNext()`/`next()` part-way through the walk, not from the call that returned the
+    // sequence — which is exactly why draining it entry-by-entry matters, since `.toList()` let it
+    // past every per-document handler and killed the command with a stack trace having dumped
+    // nothing.
+    //
+    // The sequence is built here rather than by overriding `list`, because
+    // `ForwardingFileSystem.listRecursively` delegates to the DELEGATE's own `listRecursively` and
+    // never calls this class's `list` at all. Overriding `list` produced a passing command and a
+    // test that proved nothing.
+    val unlistable =
+      object : ForwardingFileSystem(fs) {
+        override fun listRecursively(dir: Path, followSymlinks: Boolean): Sequence<Path> =
+          sequence {
+            yieldAll(fs.list(dir))
+            throw OkioIOException("Permission denied")
+          }
+      }
+
+    assertEquals(1, runExpectingExit("dump", dir.toString(), fileSystem = unlistable))
+
+    assertTrue(fs.exists(dir / "a.rc.json"), "dumps what it enumerated before the failure")
+    assertTrue(err.any { "Permission denied" in it }, "names why the walk stopped: $err")
+  }
+
+  @Test
+  fun `an unreadable input is a message and not a stack trace`() {
+    fs.createDirectories(dir)
+    fs.write(dir / "a.rc") { write(document) }
+
+    // Existing and readable are different questions: the file is a regular file, so the metadata
+    // check passes and the failure lands on the read itself.
+    val unreadable =
+      object : ForwardingFileSystem(fs) {
+        override fun source(file: Path): Source = throw OkioIOException("Permission denied")
+      }
+
+    assertEquals(1, runExpectingExit("dump", (dir / "a.rc").toString(), fileSystem = unreadable))
+
+    assertTrue(err.any { "cannot read" in it && "Permission denied" in it }, "names it: $err")
   }
 
   @Test
