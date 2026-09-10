@@ -66,10 +66,49 @@ internal data class AndroidVariantNaming(
    * Null when there is no host-test component.
    */
   val unitTestTask: String?,
+  /**
+   * AGP's merged unit-test resource APK directory (`apk_for_local_test`), relative to the build
+   * directory. `BundlePreviewTask` reads the real APK during its action, so this has to be declared
+   * as an input or a resource-only change leaves a cache hit carrying stale resources.
+   */
+  val apkForLocalTest: String?,
+  /**
+   * Extra compiled-class directories beyond the classic AGP ones, relative to the build directory.
+   * On KMP the target's own output lives under `classes/kotlin/<target>/…`, and the target is NOT
+   * always `android` — a consumer who renames it gets `classes/kotlin/mobile/main`, which the
+   * render classpath has to carry or `composePreviewRender` cannot load a class discovery already
+   * found.
+   */
+  val extraClassDirs: List<String>,
 ) {
   val capVariant: String = variantName.replaceFirstChar { it.uppercase() }
 
   companion object {
+    /**
+     * The naming for [variantName] on [project], picking the KMP-Android mapping when that plugin
+     * is applied. The host-test compilation is derived (`<target>HostTest`) and verified against
+     * the configuration it names rather than assumed, because this entry point has no `Variant` to
+     * read `unitTest` off — it exists for callers outside `onVariants`, the Tooling API model
+     * builder above all, which resolves the same configurations for `compose-preview doctor`.
+     */
+    fun forProject(project: org.gradle.api.Project, variantName: String): AndroidVariantNaming {
+      if (!project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")) {
+        return classic(variantName)
+      }
+      val target = variantName.removeSuffix("Main").ifEmpty { "android" }
+      val targetName =
+        if (project.configurations.findByName("${target}RuntimeClasspath") != null) target
+        else "android"
+      val hostTest = "${targetName}HostTest"
+      return kmpAndroid(
+        variantName = variantName,
+        targetName = targetName,
+        unitTestName =
+          if (project.configurations.findByName("${hostTest}RuntimeClasspath") != null) hostTest
+          else null,
+      )
+    }
+
     fun classic(variantName: String): AndroidVariantNaming {
       val cap = variantName.replaceFirstChar { it.uppercase() }
       return AndroidVariantNaming(
@@ -82,6 +121,9 @@ internal data class AndroidVariantNaming(
         unitTestConfigDir =
           "intermediates/unit_test_config_directory/${variantName}UnitTest/generate${cap}UnitTestConfig/out",
         unitTestTask = "test${cap}UnitTest",
+        apkForLocalTest = "intermediates/apk_for_local_test/${variantName}UnitTest",
+        // Classic AGP's own class outputs are listed at the call site; KMP adds the target dir.
+        extraClassDirs = emptyList(),
       )
     }
 
@@ -107,6 +149,15 @@ internal data class AndroidVariantNaming(
           if (unitTestName == null || cap == null) null
           else "intermediates/unit_test_config_directory/$unitTestName/generate${cap}Config/out",
         unitTestTask = cap?.let { "test$it" },
+        apkForLocalTest = unitTestName?.let { "intermediates/apk_for_local_test/$it" },
+        extraClassDirs =
+          listOf(
+            // `androidTarget()` + `com.android.library` (issue #1492): compilation named after
+            // the variant.
+            "classes/kotlin/$targetName/$variantName",
+            // `com.android.kotlin.multiplatform.library` (issue #248): one compilation, `main`.
+            "classes/kotlin/$targetName/main",
+          ),
       )
     }
   }

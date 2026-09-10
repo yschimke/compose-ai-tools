@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin.tooling
 
 import ee.schimke.composeai.plugin.AndroidPreviewSupport
+import ee.schimke.composeai.plugin.AndroidVariantNaming
 import ee.schimke.composeai.plugin.PluginVersion
 import ee.schimke.composeai.plugin.PreviewExtension
 import java.io.Serializable
@@ -34,8 +35,15 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
       return ComposePreviewModelData(PluginVersion.value, emptyMap())
     }
     val variant = resolveVariant(project)
-    val main = resolveConfiguration(project, "${variant}RuntimeClasspath")
-    val test = resolveConfiguration(project, "${variant}UnitTestRuntimeClasspath")
+    // NOT `"${'$'}{variant}RuntimeClasspath"`: on a `com.android.kotlin.multiplatform.library`
+    // module that took the Robolectric lane the variant is `androidMain` while the configurations
+    // are `androidRuntimeClasspath` and `androidHostTestRuntimeClasspath`, so deriving from the
+    // variant resolves nothing and `compose-preview doctor` reports empty dependency maps —
+    // silently, since an empty map is also what a genuine non-Android module returns.
+    val naming = resolveNaming(project, variant)
+    val main = resolveConfiguration(project, naming.runtimeClasspath)
+    val test =
+      naming.unitTestRuntimeClasspath?.let { resolveConfiguration(project, it) } ?: emptyMap()
     val gradleVersion = org.gradle.util.GradleVersion.current().version
     val (toolingDeclared, enforceTooling) = androidPreviewToolingSignals(project, variant)
     val findings: List<ModuleFinding> =
@@ -46,7 +54,9 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         previewToolingDeclared = toolingDeclared,
         enforcePreviewToolingDependency = enforceTooling,
         moduleMinSdk = resolveModuleMinSdk(project),
-        libraryMinSdks = resolveLibraryMinSdks(project, "${variant}UnitTestRuntimeClasspath"),
+        libraryMinSdks =
+          naming.unitTestRuntimeClasspath?.let { resolveLibraryMinSdks(project, it) }
+            ?: emptyList(),
       )
     val info: ModuleInfo =
       ModuleInfoData(
@@ -151,6 +161,27 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * Keeps the doctor's `${variant}RuntimeClasspath` / `${variant}UnitTestRuntimeClasspath` lookups
    * pointing at real configs when the model builder runs before / outside `onVariants`.
    */
+  /**
+   * The AGP name mapping for this project, keyed on the lane it actually renders through.
+   *
+   * The KMP-Android mapping is taken ONLY when the module opted into the Robolectric lane. A
+   * KMP-Android module on the default Desktop lane is not an Android module as far as this model is
+   * concerned — its renderer resolves `jvmRuntimeClasspath` / `desktopRuntimeClasspath`, and
+   * pointing the doctor at `androidRuntimeClasspath` would both snapshot the wrong backend's
+   * dependencies and switch on the Android-only compatibility checks in
+   * [androidPreviewToolingSignals], producing findings about a classpath the renders never touch.
+   * Plugin presence alone is the wrong question; the lane is the right one.
+   */
+  private fun resolveNaming(project: Project, variant: String): AndroidVariantNaming {
+    val robolectric =
+      project.extensions
+        .findByType(PreviewExtension::class.java)
+        ?.kmpAndroidRobolectric
+        ?.getOrElse(false) == true
+    return if (robolectric) AndroidVariantNaming.forProject(project, variant)
+    else AndroidVariantNaming.classic(variant)
+  }
+
   private fun resolveVariant(project: Project): String {
     val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return "debug"
     val target = ext.variant.getOrElse("debug")
@@ -175,7 +206,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     project: Project,
     variant: String,
   ): Pair<Boolean?, Boolean?> {
-    val isAndroid = project.configurations.findByName("${variant}RuntimeClasspath") != null
+    val isAndroid =
+      project.configurations.findByName(resolveNaming(project, variant).runtimeClasspath) != null
     if (!isAndroid) return null to null
     val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return null to null
     val declared =

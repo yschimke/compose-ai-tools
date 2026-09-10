@@ -867,7 +867,14 @@ internal object AndroidPreviewSupport {
           // them: `ViewTreeLifecycleOwner.get` reads `androidx.lifecycle.runtime.R.id`, so the
           // first `setContent` dies with `NoClassDefFoundError: androidx/lifecycle/runtime/R$id`.
           // Unlike `withHostTest { }` this is a plain property AGP is happy to see set here.
-          if (extension.enabled.get()) {
+          //
+          // Gated on the OPT-IN, not on `enabled`. `finalizeDsl` runs on every KMP-Android module
+          // the plugin is applied to, including the ones that keep the Desktop lane — and turning
+          // resource processing on there would be a real behaviour change (an existing
+          // `src/androidMain/res` tree starts being processed and packaged) for a module that
+          // never asked for the lane that needs it. The promise is that upgrading the plugin
+          // changes nothing for them.
+          if (extension.enabled.get() && extension.kmpAndroidRobolectric.get()) {
             android.androidResources.enable = true
           }
           // NOT the `isIncludeAndroidResources` flip the classic branch does. `withHostTest { }`
@@ -1329,12 +1336,20 @@ internal object AndroidPreviewSupport {
         ),
       )
     if (isKmp) {
-      // `androidTarget()` + `com.android.library` (issue #1492): target `android`, variant `debug`.
-      sourceClassDirs.from(project.layout.buildDirectory.dir("classes/kotlin/android/$variantName"))
-      // `com.android.kotlin.multiplatform.library` (issue #248): one compilation called `main`
-      // under the same target, whatever the variant is named. Listing both is safe —
-      // [DiscoverPreviewsTask] skips directories that don't exist.
-      sourceClassDirs.from(project.layout.buildDirectory.dir("classes/kotlin/android/main"))
+      // Both KMP shapes, both named after the TARGET rather than hardcoded to `android`: a
+      // consumer who renamed it (`androidTarget("mobile")`, or the KMP-Android plugin under a
+      // renamed target) compiles into `classes/kotlin/mobile/…`, and the render classpath has to
+      // carry it or `composePreviewRender` cannot load a class discovery already found. Listing
+      // both is safe — [DiscoverPreviewsTask] skips directories that don't exist.
+      naming.extraClassDirs.forEach { sourceClassDirs.from(project.layout.buildDirectory.dir(it)) }
+      // The `androidTarget()` + `com.android.library` shape (issue #1492) keeps `android` as its
+      // default target name and the variant as its compilation, which `classic` naming does not
+      // carry — add it here so that path is unchanged.
+      if (naming.extraClassDirs.isEmpty()) {
+        sourceClassDirs.from(
+          project.layout.buildDirectory.dir("classes/kotlin/android/$variantName")
+        )
+      }
     }
     if (screenshotTestEnabled) {
       sourceClassDirs.from(
@@ -3507,7 +3522,7 @@ internal object AndroidPreviewSupport {
           project.files(
             unitTestConfigDir,
             project.layout.buildDirectory.dir(
-              "intermediates/apk_for_local_test/${variantName}UnitTest"
+              naming.apkForLocalTest ?: "intermediates/apk_for_local_test/${variantName}UnitTest"
             ),
             variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
           ),
