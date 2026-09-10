@@ -98,3 +98,24 @@ composeAiMavenPublishing {
 tasks.named<Jar>("jar").configure {
   manifest { attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli") }
 }
+
+// The published policy schema is a test INPUT, and Gradle cannot know that.
+//
+// `UiBuilderPolicySchemaTest` reads `scripts/design-artifacts/ui-builder.policy.schema.json` and
+// holds it to the serial names of `UiBuilderAuthoredComponent` and `UiBuilderBuiltin`. Without
+// this the test task is up to date after a schema edit — so the one change the test exists to
+// catch is the one change that would not re-run it, which is how a check stops checking.
+tasks.named<Test>("test").configure {
+  inputs
+    .file(
+      // `..` because `gradle-plugin` is an INCLUDED build: its `rootProject` is that directory,
+      // not the repository, and the schema lives beside the other design-artifact scripts at the
+      // top. Resolved wrongly this fails loudly at configuration time rather than silently
+      // skipping the input, which is the failure mode worth having.
+      rootProject.layout.projectDirectory.file(
+        "../scripts/design-artifacts/ui-builder.policy.schema.json"
+      )
+    )
+    .withPropertyName("uiBuilderPolicySchema")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+}
