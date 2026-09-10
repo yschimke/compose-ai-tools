@@ -135,6 +135,15 @@ class RemoteComposeJsonTest {
 
     assertThat(e).hasMessageThat().contains("JSON text")
     assertThat(e).hasMessageThat().contains("compile")
+
+    // `header` is the same entry point for the same slip — `rc header doc.json` — so it refuses
+    // the same way. It read the bytes directly until this was pinned, and answered with whatever
+    // the wire-format reader made of `{"header":`.
+    val fromHeader =
+      assertThrows(RemoteComposeJsonException::class.java) {
+        RemoteComposeJson.header(authoringJson.toByteArray())
+      }
+    assertThat(fromHeader).hasMessageThat().contains("JSON text")
   }
 
   @Test

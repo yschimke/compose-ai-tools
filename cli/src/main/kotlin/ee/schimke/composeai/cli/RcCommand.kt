@@ -1,13 +1,15 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJson
 import ee.schimke.composeai.remotecompose.json.RemoteComposeJsonException
-import java.io.File
-import java.io.IOException
-import java.nio.file.Files
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import okio.FileSystem
+import okio.IOException as OkioIOException
+import okio.Path
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview rc <compile|dump|header>` — the Remote Compose JSON codec at the command line.
@@ -35,7 +37,19 @@ import kotlinx.serialization.json.JsonObject
  * Offline by construction — no daemon, no Gradle, no project. `rc dump` on a `.rc` pulled out of a
  * bundle with `unzip` is a complete workflow, which is the point.
  */
-internal class RcCommand(private val args: List<String>) {
+internal class RcCommand(
+  private val args: List<String>,
+  private val fileSystem: FileSystem = SystemFileSystem,
+  private val stdout: (String) -> Unit = ::println,
+  private val stderr: (String) -> Unit = System.err::println,
+  /**
+   * Injectable so the refusal paths are testable without killing the JVM — the same seam
+   * `HistoryManifestCommand` uses, and needed here for the same reason: the interesting behaviour
+   * of the batch dump is what it declines to do, and every one of those paths ends in a non-zero
+   * exit.
+   */
+  private val exit: (Int) -> Nothing = { exitProcess(it) },
+) {
 
   fun run() {
     // Find the subcommand skipping any leading flags, then hand it the args with only the
@@ -61,9 +75,9 @@ internal class RcCommand(private val args: List<String>) {
       null,
       "help" -> usage()
       else -> {
-        System.err.println("compose-preview rc: unknown subcommand '$sub'")
+        stderr("compose-preview rc: unknown subcommand '$sub'")
         usage()
-        exitProcess(2)
+        exit(2)
       }
     }
   }
@@ -71,7 +85,7 @@ internal class RcCommand(private val args: List<String>) {
   private fun compile(args: List<String>) {
     val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc compile: expected a JSON file")
     val out = args.flagValue("--output") ?: args.flagValue("-o")
-    val bytes = guard { RemoteComposeJson.compile(File(input).readTextOrFail("rc compile")) }
+    val bytes = guard { RemoteComposeJson.compile(readTextOrFail(input.toPath(), "rc compile")) }
 
     if (out == null) {
       // A document is binary, and a binary written to a terminal is a wrecked terminal. Refuse
@@ -79,8 +93,11 @@ internal class RcCommand(private val args: List<String>) {
       // on stdout is to pipe it, and a caller that can pipe can name a file.
       fail("rc compile: --output <file.rc> is required (a .rc document is binary)")
     }
-    File(out).absoluteFile.also { it.parentFile?.mkdirs() }.writeBytes(bytes)
-    System.err.println("compose-preview: wrote ${bytes.size} bytes to $out")
+    out.toPath().let { path ->
+      path.parent?.let(fileSystem::createDirectories)
+      fileSystem.write(path) { write(bytes) }
+    }
+    stderr("compose-preview: wrote ${bytes.size} bytes to $out")
   }
 
   private fun dump(args: List<String>) {
@@ -90,7 +107,7 @@ internal class RcCommand(private val args: List<String>) {
     val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc dump: expected a .rc file")
     val compact = "--compact" in args
     val out = args.flagValue("--output") ?: args.flagValue("-o")
-    val file = File(input)
+    val file = input.toPath()
 
     // A DIRECTORY dumps every `.rc` under it to a `.rc.json` twin beside the original, and that is
     // the mode that carries real weight rather than a convenience over a shell loop.
@@ -107,59 +124,67 @@ internal class RcCommand(private val args: List<String>) {
     // classpath of every project that applies the plugin — including projects with no Remote
     // Compose in them at all, and including a `RemoteComposePairing` skew this repository would
     // then own a fourth source of. A publish step calling one CLI command is the cheaper seam.
-    if (file.isDirectory) {
+    if (fileSystem.metadataOrNull(file)?.isDirectory == true) {
       dumpTree(file, compact)
       return
     }
 
-    val text = guard { RemoteComposeJson.dump(file.readBytesOrFail("rc dump"), pretty = !compact) }
+    val text = guard { RemoteComposeJson.dump(readBytesOrFail(file, "rc dump"), pretty = !compact) }
 
     if (out == null) {
-      println(text)
+      stdout(text)
     } else {
-      File(out).absoluteFile.also { it.parentFile?.mkdirs() }.writeText(text + "\n")
+      out.toPath().let { path ->
+        path.parent?.let(fileSystem::createDirectories)
+        fileSystem.write(path) { writeUtf8(text + "\n") }
+      }
     }
   }
 
-  private fun dumpTree(root: File, compact: Boolean) {
+  private fun dumpTree(root: Path, compact: Boolean) {
     val entries = walk(root)
     refuseUndecodableNames(root, entries)
-    val documents = entries.filter { it.isFile && it.extension == "rc" }.sorted()
-    if (documents.isEmpty()) fail("rc dump: no .rc documents under ${root.path}")
+    val documents =
+      entries
+        .filter { fileSystem.metadataOrNull(it)?.isRegularFile == true && it.name.endsWith(".rc") }
+        .sorted()
+    if (documents.isEmpty()) fail("rc dump: no .rc documents under $root")
 
     var failed = 0
     for (document in documents) {
-      val target = File(document.parentFile, "${document.nameWithoutExtension}.rc.json")
+      val target = document.parent!! / "${document.name.removeSuffix(".rc")}.rc.json"
       try {
         if (!mayWrite(target)) {
           failed++
-          System.err.println(
-            "compose-preview: ${target.path}: refusing to overwrite — it is not a document dump. " +
+          stderr(
+            "compose-preview: $target: refusing to overwrite — it is not a document dump. " +
               "Document JSON cannot be compiled back, so replacing authoring JSON here would " +
               "destroy it."
           )
           continue
         }
-        target.writeText(RemoteComposeJson.dump(document.readBytes(), pretty = !compact) + "\n")
+        val text =
+          RemoteComposeJson.dump(fileSystem.read(document) { readByteArray() }, pretty = !compact)
+        fileSystem.write(target) { writeUtf8(text + "\n") }
       } catch (e: RemoteComposeJsonException) {
         // One unreadable document does not stop the batch. A catalog with a single sticker captured
         // from a newer alpha than this CLI links would otherwise publish NO documents at all, which
         // is a strictly worse outcome than publishing the other thirty-nine and naming the one.
         failed++
-        System.err.println("compose-preview: ${document.path}: ${e.message}")
-      } catch (e: IOException) {
+        stderr("compose-preview: $document: ${e.message}")
+      } catch (e: OkioIOException) {
         // An unreadable input or an unwritable output is the same shape of problem as an
         // unprojectable document, and the batch has to survive it for the same reason. Without
         // this the loop aborts on the first permission error, having neither processed the rest
         // nor printed the count a caller checks.
         failed++
-        System.err.println("compose-preview: ${document.path}: ${e.message}")
+        stderr("compose-preview: $document: ${e.message}")
       }
     }
-    System.err.println(
-      "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under ${root.path}"
+    stderr(
+      "compose-preview: dumped ${documents.size - failed}/${documents.size} documents under $root"
     )
-    if (failed > 0) exitProcess(1)
+    if (failed > 0) exit(1)
   }
 
   /**
@@ -175,11 +200,12 @@ internal class RcCommand(private val args: List<String>) {
    * too, but it never sits beside an `operations` array). Anything else is left alone and reported,
    * which costs a re-run at worst; guessing wrong costs someone's file.
    */
-  private fun mayWrite(target: File): Boolean {
-    if (!target.exists()) return true
+  private fun mayWrite(target: Path): Boolean {
+    if (!fileSystem.exists(target)) return true
     val existing =
       try {
-        Json.parseToJsonElement(target.readText()) as? JsonObject ?: return false
+        Json.parseToJsonElement(fileSystem.read(target) { readUtf8() }) as? JsonObject
+          ?: return false
       } catch (_: Exception) {
         return false
       }
@@ -189,14 +215,14 @@ internal class RcCommand(private val args: List<String>) {
   /**
    * Walk [root] without following directory symlinks.
    *
-   * `File.walkTopDown()` follows them and does not detect cycles, so a link to an ancestor turns
-   * the walk into an unbounded one — and even an acyclic link would have the command writing
-   * `.rc.json` files outside the tree it was pointed at, which for a publish step is a surprise
-   * nobody asked for. `Files.walk` with no `FOLLOW_LINKS` visits the link itself rather than its
-   * target, so a linked directory is simply not descended into.
+   * A link to an ancestor would otherwise make the walk unbounded, and even an acyclic one would
+   * have the command writing `.rc.json` files outside the tree it was pointed at — a surprise
+   * nobody asked for in a publish step. Okio's `listRecursively` defaults to `followSymlinks =
+   * false`, which is the behaviour wanted here; it is passed explicitly so the default changing
+   * cannot change this quietly.
    */
-  private fun walk(root: File): List<File> =
-    Files.walk(root.toPath()).use { paths -> paths.map { it.toFile() }.toList() }
+  private fun walk(root: Path): List<Path> =
+    fileSystem.listRecursively(root, followSymlinks = false).toList()
 
   /**
    * Refuse a tree this JVM cannot name, rather than reporting it as empty.
@@ -216,12 +242,12 @@ internal class RcCommand(private val args: List<String>) {
    * an unfortunate-looking `sun.jnu.encoding`. An ASCII-only tree works fine under any locale and
    * must not be refused for a hazard it does not have.
    */
-  private fun refuseUndecodableNames(root: File, entries: List<File>) {
+  private fun refuseUndecodableNames(root: Path, entries: List<Path>) {
     val undecodable = entries.filter { UNDECODABLE in it.name }
     if (undecodable.isEmpty()) return
     fail(
       "rc dump: ${undecodable.size} entr${if (undecodable.size == 1) "y" else "ies"} under " +
-        "${root.path} have names this JVM cannot decode — sun.jnu.encoding is " +
+        "$root have names this JVM cannot decode — sun.jnu.encoding is " +
         "${System.getProperty("sun.jnu.encoding")}, and a preview id can carry an em-dash. " +
         "Re-run with a UTF-8 locale (LANG=C.UTF-8). Refusing rather than reporting an empty tree, " +
         "which is what this looks like otherwise."
@@ -230,23 +256,23 @@ internal class RcCommand(private val args: List<String>) {
 
   private fun header(args: List<String>) {
     val input = CliFlags.positionals(args).firstOrNull() ?: fail("rc header: expected a .rc file")
-    val header = guard { RemoteComposeJson.header(File(input).readBytesOrFail("rc header")) }
+    val header = guard { RemoteComposeJson.header(readBytesOrFail(input.toPath(), "rc header")) }
 
     if ("--json" in args) {
       // `toJsonObject()`, not the data class's own serializer. They disagree: the property is
       // `desiredFps` and the wire field is `desiredFPS`, so serializing the class directly would
       // give `rc header --json` a different shape from `rc dump`'s `header` block for the same
       // document — and a `jq` query written against one would silently miss on the other.
-      println(PRETTY.encodeToString(JsonObject.serializer(), header.toJsonObject()))
+      stdout(PRETTY.encodeToString(JsonObject.serializer(), header.toJsonObject()))
       return
     }
-    println("version              ${header.version}")
-    println("size                 ${header.width ?: "-"} x ${header.height ?: "-"}")
-    println("contentDescription   ${header.contentDescription ?: "-"}")
-    println("profiles             ${header.profiles?.toString() ?: "-"}${header.profileNote()}")
-    println("desiredFPS           ${header.desiredFps?.toString() ?: "-"}")
-    println("densityAtGeneration  ${header.densityAtGeneration?.toString() ?: "-"}")
-    println("bytes                ${header.byteLength}")
+    stdout("version              ${header.version}")
+    stdout("size                 ${header.width ?: "-"} x ${header.height ?: "-"}")
+    stdout("contentDescription   ${header.contentDescription ?: "-"}")
+    stdout("profiles             ${header.profiles?.toString() ?: "-"}${header.profileNote()}")
+    stdout("desiredFPS           ${header.desiredFps?.toString() ?: "-"}")
+    stdout("densityAtGeneration  ${header.densityAtGeneration?.toString() ?: "-"}")
+    stdout("bytes                ${header.byteLength}")
   }
 
   /**
@@ -278,23 +304,21 @@ internal class RcCommand(private val args: List<String>) {
       fail("compose-preview: ${e.message}")
     }
 
-  private fun File.readTextOrFail(what: String): String {
-    if (!isFile) fail("$what: no such file: $path")
-    return readText()
-  }
+  private fun readTextOrFail(path: Path, what: String): String =
+    readBytesOrFail(path, what).decodeToString()
 
-  private fun File.readBytesOrFail(what: String): ByteArray {
-    if (!isFile) fail("$what: no such file: $path")
-    return readBytes()
+  private fun readBytesOrFail(path: Path, what: String): ByteArray {
+    if (fileSystem.metadataOrNull(path)?.isRegularFile != true) fail("$what: no such file: $path")
+    return fileSystem.read(path) { readByteArray() }
   }
 
   private fun fail(message: String): Nothing {
-    System.err.println(message)
-    exitProcess(1)
+    stderr(message)
+    exit(1)
   }
 
   private fun usage() {
-    println(
+    stdout(
       """
       |compose-preview rc — the Remote Compose JSON codec, offline.
       |
@@ -315,7 +339,7 @@ internal class RcCommand(private val args: List<String>) {
   private companion object {
     val PRETTY = Json { prettyPrint = true }
 
-    /** The replacement character `File.listFiles()` substitutes for a byte it cannot decode. */
+    /** The replacement character a directory listing substitutes for a byte it cannot decode. */
     const val UNDECODABLE: Char = '\uFFFD'
   }
 }

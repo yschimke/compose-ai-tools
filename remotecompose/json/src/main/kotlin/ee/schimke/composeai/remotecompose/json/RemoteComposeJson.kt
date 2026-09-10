@@ -212,8 +212,14 @@ public object RemoteComposeJson {
    * readable header, and "which profile / which version does this thing want" is exactly the
    * question being asked when a document will not play.
    */
-  public fun header(document: ByteArray): RemoteComposeDocumentHeader =
-    RemoteComposeDocumentHeader(readHeader(document), document.size)
+  public fun header(document: ByteArray): RemoteComposeDocumentHeader {
+    // The same refusal [dumpToJsonObject] makes, and for the same reason: `rc header doc.json` is
+    // the same slip as `rc dump doc.json`, and without this the ASCII of `{"header":` is read as
+    // wire-format fields and answers with an arbitrary low-level parse error instead of naming the
+    // dialect. The check belonged on both entry points from the start; it reached only one.
+    refuseAuthoringJson(document)
+    return RemoteComposeDocumentHeader(readHeader(document), document.size)
+  }
 
   private fun readHeader(document: ByteArray): Header =
     try {
