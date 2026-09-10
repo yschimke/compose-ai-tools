@@ -4248,6 +4248,86 @@ class DiscoveryFunctionalTest {
     assertThat(target.parameters.map { it.name }).containsExactly("title")
   }
 
+  /**
+   * Two non-capturing lambdas, one inside the other — a sticker that wraps a frame.
+   *
+   * Each `{ … }` is lifted into its own `ComposableSingletons$…` entry, and the outer one reaches
+   * the inner by reading its FIELD: `lambda_<a>$lambda$0` does a GETSTATIC on the private
+   * `lambda$<b>`, never calling the `getLambda$<b>$…` accessor. The walk only knew the accessor
+   * edge, so it stopped at the first lambda and the component two frames in was invisible.
+   *
+   * The reproduction is m3-catalog's `DatePickerModalSticker` — `Sticker { KeyboardNavigable {
+   * InlineDialogHost { DatePickerDialog { DatePicker() } } } }` — whose record carried
+   * `DateRangePicker` and neither picker (yschimke/m3-catalog#317). Two hops is the smallest shape
+   * that shows it.
+   */
+  @Test
+  fun `composePreviewDiscover looks through a lambda that another lambda holds`() {
+    val projectDir = createCmpTestProject(kotlinVersion = "2.4.10", composeVersion = "1.11.1")
+
+    val srcDir = File(projectDir, "src/main/kotlin/test")
+    File(srcDir, "Previews.kt").delete()
+
+    File(srcDir, "Components.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun CalendarCard(month: String) {
+            Text(month)
+        }
+        """
+          .trimIndent()
+      )
+
+    File(srcDir, "Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Composable
+        fun Sticker(content: @Composable () -> Unit) {
+            content()
+        }
+
+        @Composable
+        fun DialogHost(content: @Composable () -> Unit) {
+            content()
+        }
+
+        @Preview
+        @Composable
+        fun CalendarCardModalPreview() {
+            Sticker { DialogHost { CalendarCard("March") } }
+        }
+        """
+          .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val target =
+      manifest.previews.single { it.functionName == "CalendarCardModalPreview" }.targets.single()
+    assertThat(target.functionName).isEqualTo("CalendarCard")
+    assertThat(target.sourceFile).contains("Components.kt")
+    assertThat(target.parameters.map { it.name }).containsExactly("month")
+  }
+
   @Test
   fun `composePreviewDiscover emits no target when preview body is purely framework`() {
     // A preview that only calls AndroidX Compose primitives (no project-local composable) gets no

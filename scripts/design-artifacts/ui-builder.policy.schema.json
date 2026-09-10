@@ -154,6 +154,11 @@
             "type": "string",
             "description": "Canvas adapter id, or `placeholder`. Same negotiation as `frame.adapter`: unknown to this build means placeholder plus a log line, never a refused catalog."
           },
+          "traits": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What this builtin IS, for the slot-acceptance rules: a slot accepting `AnyContent` cannot admit a component that claims no traits. The consumer already reads these and there was no way to write them, so every builtin a catalog could publish arrived on the shelf claiming nothing."
+          },
           "slots": {
             "type": "object",
             "description": "What each of the builtin's slots accepts.",
@@ -161,6 +166,7 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "acceptedRoles": { "type": "array", "items": { "type": "string" } },
                 "acceptedTraits": { "type": "array", "items": { "type": "string" } },
                 "required": { "type": "boolean" },
                 "role": {
@@ -185,6 +191,11 @@
                 "notes": { "type": "string" }
               }
             }
+          },
+          "modifierCapabilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "The modifiers this builtin accepts. Omit for the consumer's structural default — the leaf or container set — and state `[]` to accept none. It cannot be inferred: whether `fillMaxWidth` means anything on a host frame is editorial rather than structural."
           }
         }
       }

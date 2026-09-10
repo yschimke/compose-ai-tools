@@ -237,7 +237,7 @@ class UiBuilderCatalogsTest {
       )!!
 
     assertThat(generated.catalog.id).isEqualTo("m3-catalog")
-    assertThat(generated.statusSemantics.components.keys).containsExactly("m3/filled")
+    assertThat(generated.statusSemantics.components.keys).containsExactly("m3/button")
   }
 
   @Test
@@ -374,6 +374,39 @@ class UiBuilderCatalogsTest {
       .doesNotContain(
         UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN to "wear-m3/screen-scaffold"
       )
+  }
+
+  /**
+   * A builtin's traits and modifiers reach the published file.
+   *
+   * A builtin is the only way a catalog offers a component the record cannot carry, so what it
+   * declares is all there is. The consumer (`PublishedUiBuilderCatalog.builtinCapability`) reads
+   * `traits` and `modifierCapabilities`, and this type had neither field and the policy schema
+   * forbade both — so every builtin a schema-valid catalog could publish arrived on the shelf
+   * claiming no traits, which the slot-acceptance rules read as "accepted nowhere".
+   */
+  @Test
+  fun `a builtin publishes the traits and modifiers a catalog states`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", catalogId = "Containment/Card", group = "Containment")),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "wear-m3/widget-host" to
+                UiBuilderBuiltin(
+                  role = "screen-root",
+                  traits = listOf("WearWidgetHost", "ScreenContent"),
+                  modifierCapabilities = listOf("padding"),
+                )
+            )
+        ),
+      )!!
+
+    val builtin = generated.statusSemantics.builtins.getValue("wear-m3/widget-host")
+    assertThat(builtin.traits).containsExactly("WearWidgetHost", "ScreenContent").inOrder()
+    assertThat(builtin.modifierCapabilities).containsExactly("padding")
   }
 
   @Test
@@ -593,12 +626,26 @@ class UiBuilderCatalogsTest {
     // The consumer shelves an unannotated component by deriving its id from `componentIdPrefix`,
     // exactly as this does — so a collision between two of them is two records claiming one
     // saved-design identity. Excluding them from the check made it blind to most of the shelf.
+    //
+    // Two callables of the same simple name in different packages is what a collision looks like
+    // now that the id is the symbol's rather than a catalog id's last segment. It is the realistic
+    // shape — a `Card` in `material3` and a `Card` in `foundation` — and it is rare, which is the
+    // point: the previous rule collided six unrelated components on `…/filled` because it named
+    // the variant.
+    val foundationCard =
+      component("Card", catalogId = "Layout/Card").let {
+        it.copy(
+          canonicalId = ":catalog/androidx.wear.compose.foundation.CardKt.Card",
+          symbol =
+            it.symbol.copy(
+              jvmOwner = "androidx.wear.compose.foundation.CardKt",
+              callable = "androidx.wear.compose.foundation.Card",
+            ),
+        )
+      }
     val generated =
       UiBuilderCatalogs.generate(
-        record(
-          component("Card", catalogId = "Containment/Card"),
-          component("Card2", catalogId = "Layout/Card"),
-        ),
+        record(component("Card", catalogId = "Containment/Card"), foundationCard),
         cover,
         policy(),
       )!!
@@ -606,8 +653,11 @@ class UiBuilderCatalogsTest {
     val collision =
       generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.ID_COLLISION }
     assertThat(collision.subject).isEqualTo("wear-m3/card")
-    // Neither is annotated, so neither has a policy entry — and the collision is still reported.
-    assertThat(generated.statusSemantics.components).isEmpty()
+    // Exactly one of them owns the id — the first — and the collision is still reported. Both
+    // being named is what makes "which one survives" answerable from the file rather than from
+    // record order.
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
   }
 
   @Test
@@ -882,6 +932,64 @@ class UiBuilderCatalogsTest {
     assertThat(menu["wear-m3/button"]?.group).isEqualTo("Overridden")
   }
 
+  /**
+   * A callable the sticker draws but does not declare is still on the sticker's shelf.
+   *
+   * A binding carries a group only for the component it DECLARES. `TopAppBar/Small` draws
+   * `CenterAlignedTopAppBar` and `LargeTopAppBar` on the way past, and both arrived with a null
+   * group — so the chain fell through to `continue` and neither got a menu entry at all. In
+   * m3-catalog that was twenty-eight of a hundred and eight components, filed by the editor under a
+   * generic role heading, while the comment over the loop said the menu covered every admitted
+   * component.
+   */
+  @Test
+  fun `a component the sticker did not declare is shelved by its catalog id`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("TopAppBar", catalogId = "TopAppBar/Small", group = "Top app bar"),
+          component("LargeTopAppBar", catalogId = "TopAppBar/Small", group = null),
+        ),
+        cover,
+        policy(),
+      )!!
+
+    val menu = generated.statusSemantics.componentMenu.components
+    assertThat(menu["wear-m3/top-app-bar"]?.group).isEqualTo("Top app bar")
+    assertThat(menu["wear-m3/large-top-app-bar"]?.group).isEqualTo("Top app bar")
+    // The invariant the loop's own comment states, asserted rather than described.
+    assertThat(menu.keys).containsExactlyElementsIn(generated.statusSemantics.components.keys)
+  }
+
+  /**
+   * What the catalog id cannot place, only the policy file can.
+   *
+   * A component no sticker declares has no catalog id and therefore no shelf to inherit —
+   * m3-catalog's `AnimatedPane`, `NavigationSuiteScaffold` and four more. Asserted as absent so the
+   * gap is a stated fact rather than a silently generic heading, and asserted as placeable so the
+   * way out is checked too.
+   */
+  @Test
+  fun `a component no sticker declares is left for the policy file to place`() {
+    val unclaimed = record(component("AnimatedPane", catalogId = null, group = null))
+
+    val bare = UiBuilderCatalogs.generate(unclaimed, cover, policy())!!
+    assertThat(bare.statusSemantics.components.keys).contains("wear-m3/animated-pane")
+    assertThat(bare.statusSemantics.componentMenu.components["wear-m3/animated-pane"]).isNull()
+
+    val placed =
+      UiBuilderCatalogs.generate(
+        unclaimed,
+        cover,
+        policy(
+          components =
+            mapOf("wear-m3/animated-pane" to UiBuilderAuthoredComponent(group = "Layout"))
+        ),
+      )!!
+    assertThat(placed.statusSemantics.componentMenu.components["wear-m3/animated-pane"]?.group)
+      .isEqualTo("Layout")
+  }
+
   @Test
   fun `a starter naming something that is not a parameter is reported`() {
     // A starter value is printed as a NAMED ARGUMENT, so a `lable=` typo is either dropped by a
@@ -928,8 +1036,9 @@ class UiBuilderCatalogsTest {
 
   @Test
   fun `a published entry names the catalog alias of the sticker that declared it`() {
-    // The entry must not contradict its own builder id: keyed `…/tonal` while linking a consumer to
-    // `Buttons/Filled` would land them on a different sticker than the one whose author wrote this.
+    // The entry links a consumer to the sticker whose author wrote this policy, which is still the
+    // declaring one — `Buttons/Tonal`, not the sorted-first `Buttons/Filled`. The id beside it is
+    // the component's, so the two answer different questions and both have to be right.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -945,7 +1054,7 @@ class UiBuilderCatalogsTest {
 
     val entry = generated.statusSemantics.components.values.single()
     assertThat(entry.catalogId).isEqualTo("Buttons/Tonal")
-    assertThat(generated.statusSemantics.components.keys.single()).endsWith("/tonal")
+    assertThat(generated.statusSemantics.components.keys.single()).isEqualTo("wear-m3/button")
   }
 
   @Test
@@ -979,9 +1088,10 @@ class UiBuilderCatalogsTest {
   @Test
   fun `a derived id comes from the sticker that declared the policy`() {
     // One callable is routinely published under several catalog ids — `Button/Filled` and
-    // `Button/Tonal` over one `Button` — and `componentIds` is the sorted union across previews.
-    // Taking its first would give a policy declared on Tonal the identity `…/filled`, which is the
-    // string every saved design then stores.
+    // `Button/Tonal` over one `Button`. Which of them the id came from used to matter, and picking
+    // wrong renamed the component in every saved design. It no longer arises: the id is the
+    // COMPONENT's symbol, so all three stickers of one `Button` publish `wear-m3/button` and there
+    // is no variant to pick between.
     val generated =
       UiBuilderCatalogs.generate(
         record(
@@ -993,7 +1103,7 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    assertThat(generated.statusSemantics.components.keys).containsExactly("wear-m3/tonal")
+    assertThat(generated.statusSemantics.components.keys).containsExactly("wear-m3/button")
   }
 
   @Test
@@ -1175,8 +1285,11 @@ class UiBuilderCatalogsTest {
           .subject
       )
       .isEqualTo("wear-m3/button")
-    // The loser publishes nothing under the id it lost, and the winner keeps the shelf entry.
-    assertThat(generated.statusSemantics.components).doesNotContainKey("wear-m3/button")
+    // The shelf entry under the contested id belongs to the WINNER, and so does the menu entry.
+    // Stronger than the old "no entry at all": every component is named now, so an id pointing at
+    // the loser's record would be the file itself disagreeing with the diagnostic beside it.
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/button").record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.ButtonKt.Button")
     assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Actions")
   }
@@ -1202,8 +1315,15 @@ class UiBuilderCatalogsTest {
           .map { it.subject }
       )
       .containsExactly("wear-m3/card", "wear-m3/chip")
-    // Still no policy entry: the diagnostics are about the component, the map is about the policy.
-    assertThat(generated.statusSemantics.components).isEmpty()
+    // Both are named, with no policy on either. The map is what says which record an id belongs
+    // to, so an unannotated catalog is exactly the case that must not be missing from it — a
+    // consumer with no entry has to re-derive the id, which is a second answer to one question.
+    assertThat(generated.statusSemantics.components.keys)
+      .containsExactly("wear-m3/card", "wear-m3/chip")
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").record)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").propertyCapabilities)
+      .isNull()
   }
 
   @Test
@@ -1237,7 +1357,7 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/tonal"]?.group)
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Selection")
   }
 
@@ -1490,8 +1610,10 @@ class UiBuilderCatalogsTest {
         policy(),
       )!!
 
-    // The id comes from `Buttons/Filled`, so the shelf has to be Filled's.
-    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/filled"]?.group)
+    // The id is the component's now, so it names no alias — but the shelf still has to come from
+    // the alias the id was ATTRIBUTED to (the sorted-first `Buttons/Filled`) rather than from the
+    // first binding, which is preview-id order and would shelve this under Tonal's group.
+    assertThat(generated.statusSemantics.componentMenu.components["wear-m3/button"]?.group)
       .isEqualTo("Actions")
   }
 

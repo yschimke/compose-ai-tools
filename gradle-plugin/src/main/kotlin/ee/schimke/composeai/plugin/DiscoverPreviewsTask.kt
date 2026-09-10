@@ -15,6 +15,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFile
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
@@ -84,6 +85,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.NONE)
   abstract val dependencyJars: ConfigurableFileCollection
+
+  /**
+   * Maven coordinate of each [dependencyJars] entry, keyed by absolute path, so the scan-classpath
+   * filter can ask what a jar *is* instead of guessing from where the cache put it. See
+   * [PreviewDiscovery.Input.dependencyJarCoordinates].
+   *
+   * `@Internal`, deliberately: it is derived from [dependencyJars], which is already tracked as a
+   * `@Classpath`, and its keys are absolute paths — declaring it an input would pin this task's
+   * cache key to one machine's Gradle cache layout for no added coverage.
+   */
+  @get:Internal abstract val dependencyJarCoordinates: MapProperty<String, String>
 
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -307,6 +319,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       PreviewDiscovery.Input(
         classDirs = classDirs.files.toList() + scopedClassDirs,
         dependencyJars = dependencyJars.files.toList(),
+        dependencyJarCoordinates = dependencyJarCoordinates.getOrElse(emptyMap()),
         sourceFiles = sourceFiles.files.toList(),
         activeSourceFiles = activeSourceFiles.files.toList(),
         moduleName = moduleName.get(),

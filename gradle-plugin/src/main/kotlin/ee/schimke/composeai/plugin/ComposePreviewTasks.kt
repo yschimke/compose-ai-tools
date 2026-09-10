@@ -1795,6 +1795,29 @@ internal object ComposePreviewTasks {
             }
             .files
         )
+        // The coordinate of every jar the two views above contribute, so the scan-classpath
+        // filter can match on what a dependency IS rather than on where its cache entry landed.
+        // Read from the SAME views, because an AAR's transformed `classes.jar` is the path the
+        // filter sees and the untransformed `.aar` is not — the mismatch
+        // [dependencyClasspathBinding] documents for the bundle's coordinate map. The transformed
+        // artifact keeps its original `componentIdentifier`, so the coordinate is still the Maven
+        // module's. Provider transformations throughout: config-cache-safe, resolved on demand.
+        for (attributeValue in listOf("jar", "android-classes")) {
+          dependencyJarCoordinates.putAll(
+            config.incoming
+              .artifactView {
+                if (useLenient) lenient(true)
+                attributes.attribute(artifactType, attributeValue)
+              }
+              .artifacts
+              .resolvedArtifacts
+              .map { artifacts ->
+                artifacts.associate {
+                  it.file.absolutePath to it.id.componentIdentifier.displayName
+                }
+              }
+          )
+        }
       }
       moduleName.set(project.name)
       variantName.set(extension.variant)

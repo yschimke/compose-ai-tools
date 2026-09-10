@@ -375,13 +375,24 @@ object UiBuilderCatalogs {
       // catalog, which never reached this loop. The one diagnostic written for that case was the
       // one case it could not fire in.
       diagnose(component, builder, builderId, diagnostics)
+      // EVERY admitted component gets an entry, annotated or not — the same argument as the
+      // `diagnose` call above and the menu loop below, both of which already cover all of them.
+      // The shelf was the odd one out, and the omission was not cosmetic: an entry is where the
+      // file states which record an id belongs to, so a component with no entry is a component the
+      // published file does not NAME. A consumer then has to re-derive the id from the record, and
+      // a second implementation of a derivation is a second answer to it.
+      //
+      // That is not hypothetical. `PublishedUiBuilderCatalog` derives the ids it cannot read, by
+      // the rule this generator used before the id became the component's symbol — so a catalog
+      // that annotates and authors nothing handed the server 27 unnamed components and got 7 id
+      // collisions back on a file this generator had just reported zero for. m3-catalog, 108
+      // unnamed, got 49 and was refused outright. Naming them all is what makes the file
+      // self-describing, and it costs a `{record, displayName}` pair per component.
       val authored = policy.components[builderId]
-      if (component.builder != null || authored != null) {
-        val fromAnnotation =
-          if (component.builder != null) policyFor(component, builder)
-          else UiBuilderComponentPolicy(record = component.canonicalId)
-        components[builderId] = fromAnnotation.mergedWith(authored)
-      }
+      val fromAnnotation =
+        if (component.builder != null) policyFor(component, builder)
+        else UiBuilderComponentPolicy(record = component.canonicalId)
+      components[builderId] = fromAnnotation.mergedWith(authored)
     }
 
     // An authored entry naming an id no component derives.
@@ -403,6 +414,31 @@ object UiBuilderCatalogs {
               "are derived from componentIdPrefix \"$idPrefix\"; check the spelling against " +
               "components.json.",
         )
+    }
+
+    // One catalog id is one shelf, whoever draws it.
+    //
+    // A binding carries a group only for the component the sticker DECLARES. Every other callable
+    // the preview reaches — `CenterAlignedTopAppBar` and `LargeTopAppBar` under `TopAppBar/Small`,
+    // four floating action buttons under `Fab/Standard`, twenty-two components in m3-catalog —
+    // gets a binding with a null group, so the chain below ran out and `continue` dropped the
+    // entry. The comment under it claimed the menu covered every admitted component; it covered
+    // eighty of a hundred and eight.
+    //
+    // The catalog id is the fact that survives: a component published under `TopAppBar/Small` is
+    // on whatever shelf that catalog id is on, and the sticker that declares it says which. First
+    // writer wins, because two groups for one catalog id is one shelf disagreeing with itself and
+    // taking the later one would make the answer depend on record order. Spelled as a containment
+    // check rather than `putIfAbsent`, which is a JVM-only extension: this file is also compiled
+    // for `wasmJs`, by `:screen-model`.
+    val groupByCatalogId = buildMap {
+      for (component in record.components) {
+        for (binding in component.bindings) {
+          val catalogId = binding.componentId ?: continue
+          val group = binding.group?.takeIf(String::isNotBlank) ?: continue
+          if (catalogId !in this) put(catalogId, group)
+        }
+      }
     }
 
     // The shelf covers EVERY admitted component, so the menu has to as well.
@@ -441,6 +477,10 @@ object UiBuilderCatalogs {
             .firstOrNull { it.componentId == idAlias && !it.group.isNullOrBlank() }
             ?.group
           ?: component.bindings.firstNotNullOfOrNull { it.group?.takeIf(String::isNotBlank) }
+          // The shelf of the catalog id this component is published under, stated by whichever
+          // sticker declares it. What is left after this is a component with no catalog id at
+          // all — nothing declares it, so nothing but the policy file can place it.
+          ?: idAlias?.let { groupByCatalogId[it] }
           ?: continue
       menuEntries[builderId] = UiBuilderMenuEntry(group)
     }
@@ -485,7 +525,7 @@ object UiBuilderCatalogs {
 
   /**
    * The builder id for a record component: the annotation's, else [prefix] plus a slug of the
-   * catalog identity's last segment, else of the symbol's own name.
+   * component symbol's own name, else of the catalog identity's last segment.
    *
    * Derived rather than required so the common case costs nothing, and overridable because a
    * published design stores this string: a component renamed in the catalog can keep the id designs
@@ -507,16 +547,31 @@ object UiBuilderCatalogs {
       ?.let {
         return it
       }
-    // The DECLARING sticker's catalog id, not the record's first alias. One callable is routinely
-    // published under several — `Button/Filled` and `Button/Tonal` over one `Button` — and
-    // `componentIds` is the sorted union across every preview, so the first of it can belong to a
-    // different sticker than the one that declared this policy. The id a saved design stores must
-    // come from the sticker whose author chose it.
-    val leaf =
+    // The COMPONENT's own symbol, not the sticker's catalog id.
+    //
+    // A record is one callable and a catalog publishes several stickers over it — `Button/Filled`,
+    // `Button/Tonal` and `Button/Text` are all `ButtonKt.Button`. Naming the id after a catalog
+    // id's last segment therefore names the VARIANT, so two components sharing a variant word
+    // claim one id: `Button/Filled`, `Card/Filled`, `TextField/Filled`, `IconButton/Filled`,
+    // `ToggleButton/Filled` and `SplitButton/Filled` all derived `m3/filled`. m3-catalog produced
+    // 66 id collisions over 108 records that way, remote-catalog 7 over 27 — and the ids that did
+    // not collide were still the wrong noun for what a design references.
+    //
+    // The symbol is 1:1 with the record by construction, so an id derived from it is unique for
+    // the same reason the record is. It is also the noun the frozen catalogs already use:
+    // `m3/button`, `m3/horizontal-divider`, `m3/list-item`. Nineteen of the twenty-two
+    // hand-authored ids in the frozen m3 capability document come back exactly; the other three
+    // are deliberate renames (`AlertDialog` to `m3/dialog`, `LinearProgressIndicator` to
+    // `m3/progress-indicator`, `SearchBarDefaults.InputField` to `m3/search-input-field`), which
+    // is what `@BuilderComponent(id = …)` above is for.
+    //
+    // The catalog id stays as the fallback for a record whose symbol name is unreadable, so a
+    // catalog that relied on it is not left with no id at all.
+    val fromCatalogId =
       (builder.declaredForCatalogId ?: component.componentIds.firstOrNull())
         ?.substringAfterLast('/')
-        ?.takeIf { it.isNotBlank() } ?: component.symbol.name
-    return "$prefix${slug(leaf)}"
+        ?.takeIf { it.isNotBlank() }
+    return "$prefix${slug(component.symbol.name.takeIf { it.isNotBlank() } ?: fromCatalogId.orEmpty())}"
   }
 
   /**

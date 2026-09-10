@@ -62,6 +62,24 @@ object PreviewDiscovery {
      * by the scanner.
      */
     val dependencyJars: List<File>,
+    /**
+     * Maven coordinate of each [dependencyJars] entry, keyed by absolute path — `group:module` or
+     * anything containing them, as produced by Gradle's `ComponentIdentifier.displayName`.
+     *
+     * Supplied because **a jar's path does not carry its group**. A JVM dependency sits under
+     * `<cache>/modules-2/files-2.1/<group>/<module>/…`, so matching the path was the same as
+     * matching the coordinate; an AAR does not, because AGP's transform extracts it to
+     * `<cache>/transforms/<hash>/transformed/<module>/jars/classes.jar`, keeping only the module
+     * name. `androidx.compose.material3:material3` and
+     * `androidx.wear.compose.remote:remote-material3` are the shapes that exposed it: both are
+     * Compose component libraries, neither module name says so, and both were silently dropped from
+     * the scan classpath on every Android consumer — so every component call into them failed to
+     * resolve and the catalog collapsed onto its own wrapper composable.
+     *
+     * Optional: an entry with no coordinate here falls back to matching on its path, which is still
+     * right for a file dependency or a jar the caller could not attribute.
+     */
+    val dependencyJarCoordinates: Map<String, String> = emptyMap(),
     /** Source files used to attach module-relative `sourceFile` paths to each [PreviewInfo]. */
     val sourceFiles: List<File>,
     /**
@@ -476,6 +494,20 @@ object PreviewDiscovery {
     runCatching { add(file.canonicalPath) }
   }
 
+  /**
+   * Tokens that mark a dependency as one whose classes a preview scan needs to see: the Compose
+   * libraries, the tooling/preview annotations, and the annotation artifacts that carry
+   * multi-preview definitions. Everything else stays off the ClassGraph classpath, which is what
+   * keeps the scan proportional to the previews rather than to the app.
+   */
+  private val PREVIEW_RELEVANT_TOKENS = listOf("preview", "tooling", "compose", "annotation")
+
+  /** Whether [subject] — a coordinate, or a path standing in for one — names such a dependency. */
+  private fun isPreviewRelevant(subject: String): Boolean {
+    val lowered = subject.lowercase()
+    return PREVIEW_RELEVANT_TOKENS.any { it in lowered }
+  }
+
   fun discover(input: Input): Outcome {
     val warnings = mutableListOf<String>()
     val infoMessages = mutableListOf<String>()
@@ -491,7 +523,11 @@ object PreviewDiscovery {
       input.projectClassJars.filter {
         it.exists() && it.isFile && it.name.lowercase().endsWith(".jar")
       }
-    // Match on the absolute path, not just the file name: AGP 9.x +
+    // Prefer the Maven coordinate; fall back to the absolute path when the caller could not
+    // attribute the jar. The path is a poor stand-in for the coordinate on Android and a fine one
+    // on the JVM — see [Input.dependencyJarCoordinates] for why, and for what it cost.
+    //
+    // The path fallback still matches on the whole path rather than the file name: AGP 9.x +
     // KGP 2.3 resolve AAR dependencies to `<cache>/transforms/<hash>/
     // transformed/<library>/jars/classes.jar` where the library name
     // lives in the parent directory, not the filename. Filtering on
@@ -500,13 +536,7 @@ object PreviewDiscovery {
       input.dependencyJars.filter { file ->
         file.exists() &&
           file.name.lowercase().endsWith(".jar") &&
-          run {
-            val path = file.absolutePath.lowercase()
-            path.contains("preview") ||
-              path.contains("tooling") ||
-              path.contains("compose") ||
-              path.contains("annotation")
-          }
+          isPreviewRelevant(input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath)
       }
     // Project jars BEFORE dependency jars so a class present in both (the
     // module's own output shadowing a stale dependency copy) is attributed by
