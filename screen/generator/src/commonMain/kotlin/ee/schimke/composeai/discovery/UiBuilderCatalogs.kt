@@ -428,13 +428,15 @@ object UiBuilderCatalogs {
     // The catalog id is the fact that survives: a component published under `TopAppBar/Small` is
     // on whatever shelf that catalog id is on, and the sticker that declares it says which. First
     // writer wins, because two groups for one catalog id is one shelf disagreeing with itself and
-    // taking the later one would make the answer depend on record order.
+    // taking the later one would make the answer depend on record order. Spelled as a containment
+    // check rather than `putIfAbsent`, which is a JVM-only extension: this file is also compiled
+    // for `wasmJs`, by `:screen-model`.
     val groupByCatalogId = buildMap {
       for (component in record.components) {
         for (binding in component.bindings) {
           val catalogId = binding.componentId ?: continue
           val group = binding.group?.takeIf(String::isNotBlank) ?: continue
-          putIfAbsent(catalogId, group)
+          if (catalogId !in this) put(catalogId, group)
         }
       }
     }
