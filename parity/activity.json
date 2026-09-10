@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-10T19:23:11.697Z",
+  "generatedAt": "2026-09-10T19:42:03.790Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "f904410c8ce2968fb86f1a8c1c6ee0fb10e4e7ba",
+        "subject": "chore(main): release 2.7.0 (#5368)",
+        "at": "2026-09-10T20:13:59+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c26092bc6017d38c3735f8673fb78778f87eec2e",
         "subject": "feat: add Remote Compose JSON support (`:remotecompose-json`, `compose-preview rc`) (#5370)",
@@ -474,14 +482,6 @@
         "sha": "426a3d1f1116a5e29b113c2df18396190e58eb5f",
         "subject": "docs: name the Remote Compose players by implementation (#5299)",
         "at": "2026-09-08T08:08:59+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "42efc710cbc73b15a5f5a7531a8567b556d7d82a",
-        "subject": "fix: track rc-players 1.59.4 for the font-scale fix (#5298)",
-        "at": "2026-09-08T07:57:32+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
