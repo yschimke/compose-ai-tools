@@ -6,8 +6,10 @@ import ee.schimke.composeai.discovery.ChainLink
 import ee.schimke.composeai.discovery.ComponentRecordFile
 import ee.schimke.composeai.discovery.ScreenAction
 import ee.schimke.composeai.discovery.ScreenDocument
+import ee.schimke.composeai.discovery.ScreenFunction
 import ee.schimke.composeai.discovery.ScreenGenerator
 import ee.schimke.composeai.discovery.ScreenNode
+import ee.schimke.composeai.discovery.ScreenParameter
 import ee.schimke.composeai.discovery.ScreenRepetition
 import ee.schimke.composeai.discovery.ScreenSelection
 import ee.schimke.composeai.discovery.ScreenState
@@ -436,6 +438,16 @@ class ScreenGeneratorCompileFunctionalTest {
 
   @Test
   fun `typed repetition compiles and each row callback selects its own value`() {
+    verifyTypedRepetition(useFunction = false)
+  }
+
+  @Test
+  fun `reusable composables preserve row arguments modifiers and callback instances`() {
+    verifyTypedRepetition(useFunction = true)
+  }
+
+  private fun verifyTypedRepetition(useFunction: Boolean) {
+    val evidenceName = if (useFunction) "function-repetition-evidence" else "repetition-evidence"
     val projectDir = createTestProject()
     val buildFile = File(projectDir, "build.gradle.kts")
     buildFile.writeText(
@@ -457,11 +469,16 @@ class ScreenGeneratorCompileFunctionalTest {
         "",
         repetition =
           ScreenRepetition(
-            linkedMapOf("label" to "kotlin.String", "selection" to "kotlin.String"),
-            listOf("Alpha", "Beta", "Gamma").map { name ->
+            linkedMapOf(
+              "label" to "kotlin.String",
+              "selection" to "kotlin.String",
+              "inset" to "kotlin.Float",
+            ),
+            listOf("Alpha", "Beta", "Gamma").mapIndexed { index, name ->
               mapOf(
                 "label" to ScreenValue.Text(name),
                 "selection" to ScreenValue.Text("Selected $name"),
+                "inset" to ScreenValue.Fractional32(index * 8f),
               )
             },
           ),
@@ -489,6 +506,63 @@ class ScreenGeneratorCompileFunctionalTest {
               )
           ),
       )
+    val modifierType = "androidx.compose.ui.Modifier"
+    val definition =
+      ScreenFunction(
+        "RowChoice",
+        listOf(
+          ScreenParameter.Value("caption", "kotlin.String"),
+          ScreenParameter.Value("modifier", modifierType),
+          ScreenParameter.Callback("onSelect"),
+        ),
+        ScreenNode(
+          idOf(components, "Button"),
+          arguments =
+            mapOf(
+              "modifier" to ScreenValue.ParameterRead("modifier", modifierType),
+              "onClick" to ScreenValue.ParameterRead("onSelect", "kotlin.Function0"),
+            ),
+          slots =
+            mapOf(
+              "content" to listOf(label(ScreenValue.ParameterRead("caption", "kotlin.String")))
+            ),
+        ),
+      )
+    val call =
+      ScreenNode(
+        "",
+        function = "RowChoice",
+        arguments =
+          mapOf(
+            "caption" to ScreenValue.RowRead("label", "kotlin.String"),
+            "modifier" to
+              ScreenValue.Chain(
+                ScreenValue.Reference("androidx.compose.ui.Modifier", typeFqn = modifierType),
+                listOf(
+                  ChainLink(
+                    "androidx.compose.foundation.layout.padding",
+                    positional =
+                      listOf(
+                        ScreenValue.Chain(
+                          ScreenValue.RowRead("inset", "kotlin.Float"),
+                          listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+                          "androidx.compose.ui.unit.Dp",
+                        )
+                      ),
+                  )
+                ),
+                modifierType,
+              ),
+          ),
+        handlers =
+          mapOf(
+            "onSelect" to
+              listOf(
+                ScreenAction.Set("selection", ScreenValue.RowRead("selection", "kotlin.String"))
+              )
+          ),
+      )
+    val repeated = if (useFunction) loop.copy(slots = mapOf("body" to listOf(call))) else loop
     val screen =
       ScreenDocument(
         "RepeatedScreen",
@@ -496,10 +570,12 @@ class ScreenGeneratorCompileFunctionalTest {
           idOf(components, "Card"),
           slots =
             mapOf(
-              "content" to listOf(loop, label(ScreenValue.StateRead("selection", "kotlin.String")))
+              "content" to
+                listOf(repeated, label(ScreenValue.StateRead("selection", "kotlin.String")))
             ),
         ),
         listOf(ScreenState("selection", "kotlin.String", ScreenValue.Text("Nothing selected"))),
+        functions = if (useFunction) listOf(definition) else emptyList(),
       )
     val result =
       ScreenGenerator.generate(
@@ -513,6 +589,11 @@ class ScreenGeneratorCompileFunctionalTest {
       .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
     val source = (result as ScreenGenerator.Result.Emitted).source
     assertThat(source).contains(".forEach { screenRow ->")
+    if (useFunction) {
+      assertThat(source).contains("private fun RowChoice(")
+      assertThat(source).contains("onClick = onSelect")
+      assertThat(source).contains("modifier = Modifier.padding(screenRow.field2.dp)")
+    }
     val generated = File(projectDir, "src/main/kotlin/generated").apply { mkdirs() }
     File(generated, "RepeatedScreen.kt").writeText(source)
     val tests = File(projectDir, "src/test/kotlin/generated").apply { mkdirs() }
@@ -532,7 +613,7 @@ class ScreenGeneratorCompileFunctionalTest {
           @Test fun densityTwo() = verify(2)
           private fun verify(density: Int) = runDesktopComposeUiTest {
             fun capture(name: String) {
-              val directory = java.io.File("build/repetition-evidence").apply { mkdirs() }
+              val directory = java.io.File("build/$evidenceName").apply { mkdirs() }
               val bitmap = onRoot().captureToImage().asSkiaBitmap()
               val png = org.jetbrains.skia.Image.makeFromBitmap(bitmap)
                 .encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!
@@ -544,9 +625,15 @@ class ScreenGeneratorCompileFunctionalTest {
               }
             }
             onNodeWithText("Nothing selected").assertExists()
+            if ($useFunction) {
+              for ((index, name) in listOf("Alpha", "Beta", "Gamma").withIndex()) {
+                org.junit.Assert.assertEquals("authored row inset", index * 8f * density,
+                  onNodeWithText(name).fetchSemanticsNode().boundsInRoot.left, .01f)
+              }
+            }
             capture("initial")
             for (name in listOf("Alpha", "Beta", "Gamma", "Alpha")) {
-              onNodeWithText(name).performClick()
+              onNodeWithText(name).performTouchInput { click() }
               waitForIdle()
               onNodeWithText("Selected " + name).assertExists()
               onNodeWithText("Nothing selected").assertDoesNotExist()
@@ -559,9 +646,9 @@ class ScreenGeneratorCompileFunctionalTest {
       )
     val run = runGradle(projectDir, "test", "--tests", "generated.RepetitionInteractionTest")
     assertThat(run.task(":test")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
-    File(projectDir, "build/repetition-evidence")
-      .copyRecursively(File("build/repetition-evidence"), overwrite = true)
-    File("build/repetition-evidence/RepeatedScreen.kt.txt").writeText(source)
+    File(projectDir, "build/$evidenceName")
+      .copyRecursively(File("build/$evidenceName"), overwrite = true)
+    File("build/$evidenceName/RepeatedScreen.kt.txt").writeText(source)
   }
 
   @Test

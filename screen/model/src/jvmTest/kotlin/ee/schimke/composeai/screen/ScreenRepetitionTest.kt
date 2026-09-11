@@ -96,8 +96,8 @@ class ScreenRepetitionTest {
     val inner =
       loop(rows = listOf(mapOf("caption" to ScreenValue.RowRead("caption", "kotlin.String"))))
     val source = emitted(loop(body = inner))
-    assertTrue(source, "ScreenRow_(screenRow.field0)" in source)
-    assertTrue(source, "text = screenRow_.field0" in source)
+    assertTrue(source, "ScreenRow_1(screenRow.field0)" in source)
+    assertTrue(source, "text = screenRow_1.field0" in source)
     refused(loop(body = loop(fields = emptyMap(), rows = listOf(emptyMap()))), "no such field")
   }
 
@@ -140,8 +140,8 @@ class ScreenRepetitionTest {
           ScreenState("ScreenRow", "kotlin.Int", ScreenValue.Whole(0)),
         ),
       )
-    assertTrue(source, ".forEach { screenRow_ ->" in source)
-    assertTrue(source, "data class ScreenRow_(" in source)
+    assertTrue(source, ".forEach { screenRow_1 ->" in source)
+    assertTrue(source, "data class ScreenRow_1(" in source)
     assertFalse(source, key in source)
     refused(
       loop(),

@@ -50,5 +50,7 @@ is required to integrate the browser/server consumer.
 ./gradlew :gradle-plugin:functionalTest --tests '*ScreenGeneratorCompileFunctionalTest.typed repetition*'
 ```
 
-The consumer still needs its semantic-loop projection and reusable-function lowering. This change
-provides the shared generator primitive; it does not claim the UI-builder Kotlin/MCP path is complete.
+The shared generator also supports [reusable composables with explicit parameters](SCREEN_FUNCTIONS.md),
+including calls from a loop that forward row values and callbacks. The consumer still needs its
+semantic-loop/component projection. These primitives do not claim the UI-builder Kotlin/MCP path
+is complete.

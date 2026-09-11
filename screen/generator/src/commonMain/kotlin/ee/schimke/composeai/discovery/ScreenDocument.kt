@@ -26,7 +26,29 @@ data class ScreenDocument(
    * Empty for a static screen, which is every screen the generator could express before this.
    */
   val state: List<ScreenState> = emptyList(),
+  /** Reusable composables declared in this file, with explicit value and callback parameters. */
+  val functions: List<ScreenFunction> = emptyList(),
 )
+
+/**
+ * A reusable composable. Its body cannot implicitly capture the screen's state or a caller's row.
+ */
+@Serializable
+data class ScreenFunction(
+  val name: String,
+  val parameters: List<ScreenParameter>,
+  val root: ScreenNode,
+)
+
+/** Function parameters are either concrete values or ordinary zero-argument Unit callbacks. */
+@Serializable
+sealed interface ScreenParameter {
+  val name: String
+
+  @Serializable data class Value(override val name: String, val typeFqn: String) : ScreenParameter
+
+  @Serializable data class Callback(override val name: String) : ScreenParameter
+}
 
 /**
  * One `mutableStateOf` the generated screen declares.
@@ -90,6 +112,8 @@ data class ScreenNode(
   val selection: ScreenSelection? = null,
   /** Repeats one template slot over typed authored rows; introduces no layout of its own. */
   val repetition: ScreenRepetition? = null,
+  /** Calls one of [ScreenDocument.functions], using [arguments] and/or [handlers]. */
+  val function: String? = null,
 )
 
 /**
@@ -423,6 +447,10 @@ sealed interface ScreenValue {
 
   /** A checked read of a field in the innermost repetition's row. Never a source identifier. */
   @Serializable data class RowRead(val field: String, override val typeFqn: String) : ScreenValue
+
+  /** A checked read of a parameter of the function currently being generated. */
+  @Serializable
+  data class ParameterRead(val parameter: String, override val typeFqn: String) : ScreenValue
 
   @Serializable
   data class Chain(
