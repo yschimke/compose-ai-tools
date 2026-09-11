@@ -220,7 +220,7 @@
     "functionName": "MainActivity",
     "module": "samples:android",
     "renderBasename": "activity__MainActivity.png",
-    "sha256": "8fd5bd1d5f640146aa0d83f61e5a568a3366fa607156d6bb4c6a1f79ed1cde28",
+    "sha256": "fcc412d98fa7768fa8b00b74c9ea629717a42633fa597c7e0e25721766863572",
     "sourceFile": null
   },
   "samples:android/activity__NowPlayingActivity": {
@@ -228,7 +228,7 @@
     "functionName": "NowPlayingActivity",
     "module": "samples:android",
     "renderBasename": "activity__NowPlayingActivity.png",
-    "sha256": "7ccb74ce9aeafd4487008d2836f1cc2be91e2b05022d793a121800fb459eff4d",
+    "sha256": "6858b57128316046c43ce22a106bdb5f5686ee3c37095e9025e9c550b1ebedcf",
     "sourceFile": null
   },
   "samples:android/apptour__getting-started": {
@@ -236,7 +236,7 @@
     "functionName": "getting-started",
     "module": "samples:android",
     "renderBasename": "apptour__getting-started_step00_launch.png",
-    "sha256": "8fd5bd1d5f640146aa0d83f61e5a568a3366fa607156d6bb4c6a1f79ed1cde28",
+    "sha256": "fcc412d98fa7768fa8b00b74c9ea629717a42633fa597c7e0e25721766863572",
     "sourceFile": null
   },
   "samples:android/apptour__getting-started#1": {
@@ -244,7 +244,7 @@
     "functionName": "getting-started",
     "module": "samples:android",
     "renderBasename": "apptour__getting-started_step01_open_now_playing.png",
-    "sha256": "7ccb74ce9aeafd4487008d2836f1cc2be91e2b05022d793a121800fb459eff4d",
+    "sha256": "6858b57128316046c43ce22a106bdb5f5686ee3c37095e9025e9c550b1ebedcf",
     "sourceFile": null
   },
   "samples:android/apptour__getting-started#2": {
@@ -252,7 +252,7 @@
     "functionName": "getting-started",
     "module": "samples:android",
     "renderBasename": "apptour__getting-started_step02_back_home.png",
-    "sha256": "8fd5bd1d5f640146aa0d83f61e5a568a3366fa607156d6bb4c6a1f79ed1cde28",
+    "sha256": "fcc412d98fa7768fa8b00b74c9ea629717a42633fa597c7e0e25721766863572",
     "sourceFile": null
   },
   "samples:android/apptour__getting-started#3": {
@@ -260,7 +260,7 @@
     "functionName": "getting-started",
     "module": "samples:android",
     "renderBasename": "apptour__getting-started_step03_deep_link.png",
-    "sha256": "7ccb74ce9aeafd4487008d2836f1cc2be91e2b05022d793a121800fb459eff4d",
+    "sha256": "6858b57128316046c43ce22a106bdb5f5686ee3c37095e9025e9c550b1ebedcf",
     "sourceFile": null
   },
   "samples:android/colorcatalog__Brand": {
@@ -572,7 +572,7 @@
     "functionName": "ScaffoldedInboxFramePreview",
     "module": "samples:android",
     "renderBasename": "ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.png",
-    "sha256": "ec47d4100a1c2dc849646de65a2457148a5b5676d4d60733098207be3162e465",
+    "sha256": "5805fa2684786e05fd7ff0f28939d06194facbb58778824114d1f3bcd65457a8",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/InboxScrollPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long": {
@@ -580,7 +580,7 @@
     "functionName": "ScaffoldedInboxLongPreview",
     "module": "samples:android",
     "renderBasename": "ScaffoldedInboxLongPreview_Inbox_Long-7261c0ed.png",
-    "sha256": "979cadf508594b41098eaf4456bd51e46ff3605a113a47cc9d859466631a431f",
+    "sha256": "b46aaac5f136514351b1f1f797cf22786061492e1dc62f83caf7c8a278479271",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/InboxScrollPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
@@ -3436,7 +3436,7 @@
     "functionName": "MainActivity",
     "module": "samples:remotecompose",
     "renderBasename": "activity__MainActivity.png",
-    "sha256": "e9601a16f647da672915004c00851b013307007d258e21021026b891a9b3c46c",
+    "sha256": "35201c08313b7525b5ed3b53496a5114ea76245cc0cfc51f8332a14c14bce7b4",
     "sourceFile": null
   },
   "samples:remotecompose/colorcatalog__Remote_theme": {
