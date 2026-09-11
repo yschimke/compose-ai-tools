@@ -9,6 +9,12 @@ import org.gradle.api.configuration.BuildFeatures
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
 import org.gradle.util.GradleVersion
 
+/**
+ * Name of the dependency configuration a module names its shared preview-source modules in. See the
+ * `configurations.create` call in [ComposePreviewPlugin.apply] for what it is for.
+ */
+const val PREVIEW_SOURCE_CONFIGURATION = "composePreviewSource"
+
 abstract class ComposePreviewPlugin
 @Inject
 constructor(
@@ -32,6 +38,41 @@ constructor(
     // `Property` objects. Convention wiring (`-PcomposePreview.variant=…` etc.) lives in
     // [ComposePreviewDsl.createOrFindExtension].
     val extension = ComposePreviewDsl.createOrFindExtension(project)
+
+    // `composePreviewSource` — the bucket a module names a SHARED SOURCE MODULE in, so that
+    // module's `@Preview`s are discovered here and rendered on this module's lane.
+    //
+    // The plugin registers exactly one render lane per module (Robolectric or CMP Desktop), and
+    // discovery method-walks only the module's OWN classes: a dependency JAR stays on the scan
+    // classpath so a multi-preview annotation still resolves, but its `@Preview` functions are
+    // never walked. Together those two rules mean a catalog that wants to render on more than one
+    // lane has to re-declare its previews once per lane. This configuration is the seam that
+    // removes the duplication: the previews live once, in a plain library module with no preview
+    // plugin, and each lane module points at it.
+    //
+    //     dependencies {
+    //       implementation(project(":catalog-shared"))        // the classes, at runtime
+    //       composePreviewSource(project(":catalog-shared"))  // + discover its @Previews
+    //     }
+    //
+    // Deliberately NOT extended from (or by) `implementation`. What a module renders is a narrower
+    // question than what it compiles against: a catalog depends on a dozen libraries whose
+    // `@Preview`s — the ones a library ships for its own sticker sheet — must not silently become
+    // this module's. Naming the source module is the opt-in.
+    // A plain BUCKET — neither resolvable nor consumable. It carries declarations only; the
+    // resolvable view is derived in [ComposePreviewTasks.registerDiscoverTask], which copies the
+    // attributes of the module's own runtime classpath onto it. That indirection is not optional:
+    // a KMP producer publishes several variants, and a configuration with no attributes cannot
+    // choose between them — it resolves to nothing, silently, and the shared previews simply never
+    // appear. Borrowing the lane's own attributes asks for exactly the variant this module already
+    // renders against (`androidJvm` on the Robolectric lane, `jvm` on Desktop).
+    project.configurations.create(PREVIEW_SOURCE_CONFIGURATION) {
+      isCanBeConsumed = false
+      isCanBeResolved = false
+      description =
+        "Modules whose @Preview functions are discovered and rendered by this module's " +
+          "compose-preview lane. See composePreview.previewSourceRoots for their sources."
+    }
 
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every

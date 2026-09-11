@@ -82,6 +82,25 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val projectClassJars: ListProperty<RegularFile>
 
+  /**
+   * Compiled output of the modules named in the `composePreviewSource` configuration — shared
+   * preview-source modules whose `@Preview` functions this module renders on its own lane.
+   *
+   * One collection rather than a dirs/jars pair because what a project dependency resolves to is
+   * not the consumer's to predict: a KMP producer hands back a jar, an Android one an extracted
+   * `classes.jar`, an in-place compilation a directory. [discover] sorts them, because the two
+   * halves land in different [PreviewDiscovery.Input] fields — and putting a jar on `classDirs`
+   * fails silently, since discovery filters that list to directories that exist.
+   *
+   * Method-walked as project classes, exactly like the module's own output. That is the whole
+   * point: a dependency JAR stays on the ClassGraph classpath so a multi-preview annotation
+   * resolves, but its previews are never walked.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val previewSourceClasses: ConfigurableFileCollection
+
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.NONE)
   abstract val dependencyJars: ConfigurableFileCollection
@@ -305,8 +324,13 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // which compiler produced them. ClassGraph attributes each FQN to a single
     // element and previews are deduped by id, so any overlap between the two
     // sources is harmless. See issue #1924.
-    val scopedClassDirs = projectClassDirs.getOrElse(emptyList()).map { it.asFile }
-    val scopedClassJars = projectClassJars.getOrElse(emptyList()).map { it.asFile }
+    val sharedPreviewSources = previewSourceClasses.files.filter { it.exists() }
+    val scopedClassDirs =
+      projectClassDirs.getOrElse(emptyList()).map { it.asFile } +
+        sharedPreviewSources.filter { it.isDirectory }
+    val scopedClassJars =
+      projectClassJars.getOrElse(emptyList()).map { it.asFile } +
+        sharedPreviewSources.filter { it.isFile && it.name.lowercase().endsWith(".jar") }
     // A Wear OS module declares `<uses-feature android:name="android.hardware.type.watch">` in its
     // merged manifest. Plain-substring match on the raw XML — enough to distinguish a Wear module
     // from a phone one without pulling in an XML parser; absent manifest → not Wear.

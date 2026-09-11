@@ -307,6 +307,9 @@ include(":samples:xr-glimmer")
 include(":samples:cmp")
 
 include(":samples:cmp-shared")
+// Previews declared once and rendered on BOTH lanes by the two samples above/below it, through
+// the `composePreviewSource` configuration. Applies no preview plugin itself.
+include(":samples:preview-source-shared")
 
 // In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
 // browser sandbox (a `wasmJs` Compose app). wasmJs-only, no
