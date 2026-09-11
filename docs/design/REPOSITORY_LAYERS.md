@@ -36,6 +36,11 @@ bytes.
 Cheap to publish and safe for everyone to depend on, which is what makes it the right home for a
 seam that would otherwise become a library edge between layers 1 and 2.
 
+`ScreenDocument`, its nodes, values, actions and scoped function/row declarations are an example:
+`screen-document` in contracts owns those serializable inputs. This repository's `screen-model`
+and `preview-discovery` both consume that artifact; generation, validation, editing and discovery
+remain here. Keeping their existing Kotlin package does not change which repository owns them.
+
 ### 1 — `compose-ai-tools`
 
 **Behaviour that opens no socket.** Preview discovery, the Gradle plugin and the Tooling-API driver,

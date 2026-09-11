@@ -301,12 +301,18 @@ object ScreenGenerator {
     // more paranoid than the language bought unreadable output rather than safety.
     // `ScreenGeneratorCompileFunctionalTest` compiles a screen nested through `Card` and `Button`
     // against real Material 3, which is what says the imports resolve.
+    val functionIssues = validateFunctions(document, preview)
+    if (functionIssues.isNotEmpty()) return Result.Refused(functionIssues)
+    val functionNames = document.functions.map { it.name }.toSet()
+    val parameterNames = document.functions.flatMap { it.parameters }.map { it.name }.toSet()
     val claimants = components.components.groupBy { it.symbol.name }
     val simplyImportable =
       components.components
         .filter {
           claimants.getValue(it.symbol.name).size == 1 &&
             it.symbol.name != document.name &&
+            it.symbol.name !in functionNames &&
+            it.symbol.name !in parameterNames &&
             it.symbol.name !in RESERVED_BY_THE_WRAPPER &&
             // Both only when a preview is emitted, because only then does the file spend these
             // names; reserving them always would needlessly qualify a component in every other
@@ -367,9 +373,25 @@ object ScreenGenerator {
       components.components.mapTo(this) { it.symbol.callable.substringBefore('.') }
       expressionPackages.mapTo(this) { it.substringBefore('.') }
       document.state.mapTo(this) { it.typeFqn.substringBefore('.') }
+      document.functions
+        .flatMap { it.parameters }
+        .filterIsInstance<ScreenParameter.Value>()
+        .mapTo(this) { it.typeFqn.substringBefore('.') }
     }
     val shadowedRoots =
       document.state.map(ScreenState::name).filter { it in qualifiedRoots }.distinct()
+    val capturedParameters = parameterNames.filter {
+      it in qualifiedRoots ||
+        it in functionNames ||
+        it == document.name ||
+        it in RESERVED_BY_THE_WRAPPER
+    }
+    if (capturedParameters.isNotEmpty())
+      return Result.Refused(
+        capturedParameters.map {
+          "function parameter `$it` would shadow a generated function or qualified package"
+        }
+      )
     if (shadowedRoots.isNotEmpty()) {
       return Result.Refused(
         shadowedRoots.sorted().map {
@@ -390,6 +412,16 @@ object ScreenGenerator {
         // generated with its siblings written out, exactly as before folding existed. Every other
         // way the name could enter the file is closed by never importing it — see [importedName].
         foldsRepeatedSiblings = document.state.none { it.name == "kotlin" },
+        allocatedNames =
+          (document.state.map(ScreenState::name) +
+              components.components.map { it.symbol.name } +
+              qualifiedRoots +
+              document.name +
+              RESERVED_BY_THE_WRAPPER +
+              functionNames +
+              parameterNames)
+            .toMutableSet(),
+        functions = document.functions.associateBy { it.name },
       )
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
@@ -473,6 +505,7 @@ object ScreenGenerator {
     // The body is not an initializer: every declaration is in scope there.
     context.initializerScope = null
     val body = context.node(document.root, depth = 1)
+    val functionBodies = context.functionBodies()
     if (context.reasons.isNotEmpty()) return Result.Refused(context.reasons.toList())
     val declarations = preamble.filterNotNull().flatten()
 
@@ -545,6 +578,21 @@ object ScreenGenerator {
       declarations.forEach { appendLine("    $it") }
       appendLine(body)
       appendLine("}")
+      functionBodies.forEach { function ->
+        appendLine()
+        if (optIns.isNotEmpty())
+          appendLine(
+            optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${markerReference(it)}::class" }
+          )
+        if (androidxOptIns.isNotEmpty())
+          appendLine(
+            androidxOptIns.joinToString(", ", "@androidx.annotation.OptIn(markerClass = [", "])") {
+              "${markerReference(it)}::class"
+            }
+          )
+        appendLine("@Composable")
+        appendLine(function)
+      }
       if (preview != null) {
         appendLine()
         append(previewFunction(document.name, preview))
@@ -561,6 +609,72 @@ object ScreenGenerator {
     }
     return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
   }
+
+  private fun validateFunctions(document: ScreenDocument, preview: Preview?): List<String> =
+    buildList {
+      val names = document.functions.map { it.name }
+      if (names.toSet().size != names.size) add("function names must be unique")
+      val reserved = buildSet {
+        addAll(document.state.map { it.name })
+        add(document.name)
+        addAll(RESERVED_BY_THE_WRAPPER)
+        if (preview != null) {
+          add(PREVIEW_SIMPLE_NAME)
+          add(previewFunctionName(document.name))
+          if (preview.screenSizes) {
+            add(PREVIEW_SCREEN_SIZES_SIMPLE_NAME)
+            add(screenSizesPreviewFunctionName(document.name))
+          }
+          if (preview.devices.isNotEmpty()) add(devicesPreviewFunctionName(document.name))
+        }
+      }
+      document.functions.forEach { function ->
+        if (!isUsableIdentifier(function.name) || function.name in reserved) {
+          add("function `${function.name}` is not an available Kotlin function name")
+        }
+        val parameters = function.parameters.map { it.name }
+        if (parameters.toSet().size != parameters.size)
+          add("function `${function.name}` has duplicate parameters")
+        function.parameters.forEach { parameter ->
+          if (!isUsableIdentifier(parameter.name))
+            add("function `${function.name}` has an unusable parameter `${parameter.name}`")
+          if (
+            parameter is ScreenParameter.Value &&
+              (!isQualifiedName(parameter.typeFqn) ||
+                parameter.typeFqn.split('.').any { !isUsableIdentifier(it) } ||
+                parameter.typeFqn.startsWith("kotlin.Function"))
+          ) {
+            add(
+              "function `${function.name}` parameter `${parameter.name}` needs a concrete qualified value type; callbacks use Callback"
+            )
+          }
+        }
+      }
+      val definitions = document.functions.associateBy { it.name }
+      val visited = mutableSetOf<String>()
+      val active = mutableSetOf<String>()
+      fun references(node: ScreenNode, depth: Int = 0): Set<String> {
+        if (depth > 128) {
+          add("function tree exceeds 128 levels")
+          return emptySet()
+        }
+        return listOfNotNull(node.function).toSet() +
+          node.slots.values.flatten().flatMap { references(it, depth + 1) }
+      }
+      fun visit(name: String) {
+        if (name in visited) return
+        if (name in active || active.size >= 128) {
+          add("recursive or excessively nested function call `$name`")
+          return
+        }
+        val function = definitions[name] ?: return
+        active += name
+        references(function.root).forEach(::visit)
+        active -= name
+        visited += name
+      }
+      names.forEach(::visit)
+    }
 
   /**
    * Resolves a document's component id, by canonical key or by catalog alias.
@@ -626,6 +740,8 @@ object ScreenGenerator {
     val state: Map<String, ScreenState> = emptyMap(),
     /** Whether [foldRepeats] may fold here — see the call that computes it. */
     val foldsRepeatedSiblings: Boolean = true,
+    val allocatedNames: MutableSet<String> = mutableSetOf(),
+    val functions: Map<String, ScreenFunction> = emptyMap(),
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -658,7 +774,118 @@ object ScreenGenerator {
      */
     private var slotScope: String? = null
 
+    private data class RowScope(val variable: String, val fields: Map<String, String>)
+
+    private var rowScope: RowScope? = null
+    private var parameterScope: Map<String, ScreenParameter>? = null
+    private val visibleState: Map<String, ScreenState>
+      get() = if (parameterScope == null) state else emptyMap()
+
+    private val localNameCounters = mutableMapOf<String, Int>()
+
+    private fun allocateLocal(base: String): String {
+      var counter = localNameCounters[base] ?: 0
+      var candidate: String
+      do {
+        candidate = if (counter == 0) base else "${base}_$counter"
+        counter++
+      } while (
+        candidate in allocatedNames || imports.any { it.substringAfterLast('.') == candidate }
+      )
+      localNameCounters[base] = counter
+      allocatedNames += candidate
+      return candidate
+    }
+
+    private fun parameterTarget(parameter: ScreenParameter): TargetParameter =
+      when (parameter) {
+        is ScreenParameter.Value ->
+          TargetParameter(parameter.name, parameter.typeFqn, typeFqn = parameter.typeFqn)
+        is ScreenParameter.Callback ->
+          TargetParameter(
+            parameter.name,
+            "() -> Unit",
+            typeFqn = "kotlin.Function0",
+            lambdaReturnTypeFqn = "kotlin.Unit",
+          )
+      }
+
+    fun functionBodies(): List<String> =
+      functions.values.map { function ->
+        parameterScope = function.parameters.associateBy { it.name }
+        rowScope = null
+        slotScope = null
+        try {
+          val parameters =
+            function.parameters.joinToString(", ") {
+              val type =
+                when (it) {
+                  is ScreenParameter.Value -> it.typeFqn
+                  is ScreenParameter.Callback -> "() -> kotlin.Unit"
+                }
+              "${it.name}: $type"
+            }
+          "private fun ${function.name}($parameters) {\n${node(function.root, 1)}\n}"
+        } finally {
+          parameterScope = null
+          rowScope = null
+          slotScope = null
+        }
+      }
+
+    private fun parameterRead(value: ScreenValue.ParameterRead, where: String): String? {
+      val declaration = parameterScope?.get(value.parameter)
+      if (declaration == null || parameterTarget(declaration).typeFqn != value.typeFqn) {
+        reasons +=
+          "$where reads parameter `${value.parameter}` as ${value.typeFqn}, but this function does not declare that type"
+        return null
+      }
+      return declaration.name
+    }
+
+    private fun functionCall(node: ScreenNode, depth: Int): String {
+      val function = functions[node.function]
+      if (function == null) {
+        reasons += "no generated function `${node.function}`"
+        return ""
+      }
+      if (node.componentId.isNotEmpty() || node.slots.isNotEmpty() || node.slotItems.isNotEmpty()) {
+        reasons +=
+          "function `${function.name}` cannot also call a component or carry slots or slot items"
+      }
+      val declared = function.parameters.map { it.name }.toSet()
+      (node.arguments.keys + node.handlers.keys - declared).forEach {
+        reasons += "function `${function.name}` has no parameter `$it`"
+      }
+      val arguments =
+        function.parameters.map { parameter ->
+          val target = parameterTarget(parameter)
+          val value = node.arguments[parameter.name]
+          val handler = node.handlers[parameter.name]
+          if (value != null && handler != null)
+            reasons += "function `${function.name}` supplies `${parameter.name}` twice"
+          val rendered =
+            when {
+              value != null -> argument(value, target, function.name)
+              handler != null -> lambda(handler, target, function.name)
+              else -> {
+                reasons += "function `${function.name}` is missing parameter `${parameter.name}`"
+                null
+              }
+            }
+          "${parameter.name} = $rendered"
+        }
+      return INDENT.repeat(depth) + function.name + "(" + arguments.joinToString(", ") + ")"
+    }
+
     fun node(node: ScreenNode, depth: Int): String {
+      if (depth > 128) {
+        reasons += "screen nesting exceeds 128 levels"
+        return ""
+      }
+      if (node.repetition != null) return repetition(node, depth)
+      if (node.selection != null) return selection(node, depth)
+      if (node.function != null) return functionCall(node, depth)
       val pad = INDENT.repeat(depth)
       val record =
         when (val outcome = index.resolve(node.componentId)) {
@@ -941,8 +1168,13 @@ object ScreenGenerator {
         return null
       }
       val statements = actions.map { action ->
-        val declared = state[action.variable]
+        val declared = visibleState[action.variable]
         if (declared == null) {
+          if (parameterScope != null) {
+            reasons +=
+              "$where cannot capture screen state `${action.variable}` inside a function; pass a callback parameter"
+            return null
+          }
           reasons +=
             "$where writes `${action.variable}`, which this screen does not declare" +
               if (state.isEmpty()) ""
@@ -998,6 +1230,185 @@ object ScreenGenerator {
       return "{ ${statements.joinToString("; ")} }"
     }
 
+    private fun repetition(node: ScreenNode, depth: Int): String {
+      val repetition = requireNotNull(node.repetition)
+      val pad = INDENT.repeat(depth)
+      if (
+        node.componentId.isNotEmpty() ||
+          node.arguments.isNotEmpty() ||
+          node.handlers.isNotEmpty() ||
+          node.slotItems.isNotEmpty() ||
+          node.selection != null ||
+          node.function != null
+      ) {
+        reasons +=
+          "repetition cannot also call a component or carry arguments, handlers, slot items or selection"
+      }
+      if (node.slots.keys != setOf(repetition.templateSlot)) {
+        reasons += "repetition must have exactly its template slot `${repetition.templateSlot}`"
+      }
+      if (repetition.rows.size > 10_000) {
+        reasons += "repetition exceeds 10000 authored rows"
+        return ""
+      }
+      if (
+        repetition.fields.any { (key, type) ->
+          key.isEmpty() ||
+            !isQualifiedName(type) ||
+            type.split('.').any { !isUsableIdentifier(it) } ||
+            type.startsWith("kotlin.Function")
+        }
+      ) {
+        reasons += "repetition fields require nonempty keys and qualified non-function value types"
+        return ""
+      }
+      if ("kotlin" in state) {
+        reasons += "state `kotlin` shadows the package required by repetition"
+      }
+      repetition.fields.values
+        .map { it.substringBefore('.') }
+        .filter { it in state }
+        .forEach { reasons += "state `$it` shadows a repetition field type's package" }
+      allocatedNames += repetition.fields.values.map { it.substringBefore('.') }
+      val className = allocateLocal("ScreenRow")
+      val variable = allocateLocal("screenRow")
+      val fields = repetition.fields.entries.toList()
+      val parameters = fields.mapIndexed { index, (_, type) -> "val field$index: $type" }
+      // Evaluate initializers before entering the template's scope. Nested loops can forward a
+      // value from their enclosing row without accidentally reading their own not-yet-bound row.
+      val rows =
+        repetition.rows.mapIndexed { rowIndex, row ->
+          if (row.keys != repetition.fields.keys) {
+            reasons += "repetition row $rowIndex must supply exactly ${repetition.fields.keys}"
+          }
+          val arguments = fields.map { (key, type) ->
+            row[key]?.let {
+              argument(it, TargetParameter(key, type, typeFqn = type), "row $rowIndex")
+            }
+          }
+          "$className(${arguments.joinToString(", ")})"
+        }
+      val outer = rowScope
+      rowScope = RowScope(variable, repetition.fields)
+      val body =
+        try {
+          node.slots.values.flatten().joinToString("\n") { node(it, depth + 1) }
+        } finally {
+          rowScope = outer
+        }
+      val declaration =
+        if (parameters.isEmpty()) "class $className"
+        else "data class $className(${parameters.joinToString(", ")})"
+      return "$pad$declaration\n${pad}kotlin.collections.listOf<$className>(${rows.joinToString(", ")}).forEach { $variable ->\n$body\n$pad}"
+    }
+
+    private fun rowRead(value: ScreenValue.RowRead, where: String): String? {
+      val scope = rowScope
+      val type = scope?.fields?.get(value.field)
+      if (type == null || type != value.typeFqn) {
+        reasons +=
+          "$where reads row field `${value.field}` as ${value.typeFqn}, but its scope declares ${type ?: "no such field"}"
+        return null
+      }
+      return "${scope.variable}.field${scope.fields.keys.indexOf(value.field)}"
+    }
+
+    private fun selection(node: ScreenNode, depth: Int): String {
+      val selection = requireNotNull(node.selection)
+      val pad = INDENT.repeat(depth)
+      val inner = INDENT.repeat(depth + 1)
+      // Walk every branch, including unreachable or malformed ones, so diagnostics never hide
+      // broken components behind the currently selected state. `when` introduces no receiver.
+      val branches =
+        node.slots.mapValues { (_, children) ->
+          children.joinToString("\n") { node(it, depth + 2) }
+        }
+      if (
+        node.componentId.isNotEmpty() ||
+          node.arguments.isNotEmpty() ||
+          node.handlers.isNotEmpty() ||
+          node.slotItems.isNotEmpty() ||
+          node.function != null
+      ) {
+        reasons +=
+          "selection cannot also call a component or carry arguments, handlers or slot items"
+      }
+      if (selection.cases.isEmpty()) reasons += "selection must declare at least one case"
+      val referenced = selection.cases.keys + listOfNotNull(selection.elseSlot)
+      if (selection.elseSlot in selection.cases) {
+        reasons += "selection fallback `${selection.elseSlot}` is also a case"
+      }
+      (referenced - node.slots.keys).forEach { reasons += "selection has no slot `$it`" }
+      (node.slots.keys - referenced).forEach {
+        reasons += "selection slot `$it` has no case or fallback"
+      }
+      val subjectType =
+        selection.subject.typeFqn
+          ?: when (val subject = selection.subject) {
+            is ScreenValue.Text -> "kotlin.String"
+            is ScreenValue.Bool -> "kotlin.Boolean"
+            is ScreenValue.Whole ->
+              if (subject.value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) "kotlin.Int"
+              else "kotlin.Long"
+            is ScreenValue.Fractional32 -> "kotlin.Float"
+            is ScreenValue.Fractional -> "kotlin.Double"
+            else -> null
+          }
+      if (
+        subjectType?.removeSuffix("?") !in
+          setOf(
+            "kotlin.String",
+            "kotlin.Boolean",
+            "kotlin.Int",
+            "kotlin.Long",
+            "kotlin.Float",
+            "kotlin.Double",
+          )
+      ) {
+        reasons += "selection subject must be a scalar value, was $subjectType"
+        return "$pad// invalid selection"
+      }
+      val type = requireNotNull(subjectType)
+      val subject =
+        argument(selection.subject, TargetParameter("subject", type, typeFqn = type), "selection")
+      val parameter =
+        TargetParameter("case", type.removeSuffix("?"), typeFqn = type.removeSuffix("?"))
+      val seen = mutableSetOf<String>()
+      val rendered =
+        selection.cases
+          .map { (slot, value) ->
+            if (
+              value !is ScreenValue.Text &&
+                value !is ScreenValue.Bool &&
+                value !is ScreenValue.Whole &&
+                value !is ScreenValue.Fractional &&
+                value !is ScreenValue.Fractional32
+            ) {
+              reasons += "selection case `$slot` must be a literal"
+              return@map "$inner// invalid case"
+            }
+            val match = argument(value, parameter, "selection `$slot`")
+            // Kotlin primitive equality considers signed zero equal. Float narrowing can also make
+            // two different input decimals equal; compare the actual spellings emitted by
+            // argument().
+            val key =
+              when (match) {
+                "-0.0",
+                "0.0" -> "0.0"
+                "-0.0f",
+                "0.0f" -> "0.0f"
+                else -> match
+              }
+            if (key != null && !seen.add(key)) reasons += "selection case `$slot` duplicates $match"
+            "$inner$match -> {\n${branches[slot].orEmpty()}\n$inner}"
+          }
+          .toMutableList()
+      rendered +=
+        selection.elseSlot?.let { "${inner}else -> {\n${branches[it].orEmpty()}\n$inner}" }
+          ?: "${inner}else -> {}"
+      return "${pad}when ($subject) {\n${rendered.joinToString("\n")}\n$pad}"
+    }
+
     /**
      * A state read, as the `.value` of the declared property.
      *
@@ -1007,8 +1418,13 @@ object ScreenGenerator {
      * bought for a spelling nobody reads twice in generated code.
      */
     fun stateRead(value: ScreenValue.StateRead, where: String): String? {
-      val declared = state[value.variable]
+      val declared = visibleState[value.variable]
       if (declared == null) {
+        if (parameterScope != null) {
+          reasons +=
+            "$where cannot capture screen state `${value.variable}` inside a function; pass a value parameter"
+          return null
+        }
         reasons +=
           "$where reads `${value.variable}`, which this screen does not declare" +
             if (state.isEmpty()) "" else " (it declares ${state.keys.sorted().joinToString(", ")})"
@@ -1084,6 +1500,16 @@ object ScreenGenerator {
     fun argument(value: ScreenValue, parameter: TargetParameter, owner: String): String? {
       val type = ComponentSnippets.qualifiedTypeOf(parameter)
       val where = "`$owner`.`${parameter.name}`"
+      if (
+        value is ScreenValue.ParameterRead &&
+          parameterScope?.get(value.parameter) is ScreenParameter.Callback &&
+          (parameter.composableSlot ||
+            !ComponentSnippets.acceptsZeroArgLambda(parameter.type) ||
+            parameter.lambdaReturnTypeFqn?.let { it != "kotlin.Unit" } == true)
+      ) {
+        reasons += "$where cannot take a zero-argument Unit callback parameter"
+        return null
+      }
       if (value.typeFqn != null) {
         val rendered = expression(value, where, depth = 0) ?: return null
         if (value.typeFqn != type) {
@@ -1137,6 +1563,7 @@ object ScreenGenerator {
           // A lambda returning a constant. Held to the parameter's *return* type rather than to
           // its `kotlin.Function0` classifier, which every zero-argument function type shares.
           is ScreenValue.Lambda -> lambda(value, parameter, owner)
+          is ScreenValue.ActionLambda -> lambda(value.actions, parameter, owner)
           // Every case with a claimed type left through the branch above.
           else -> null
         }
@@ -1196,7 +1623,18 @@ object ScreenGenerator {
         // makes `rememberCarouselState { 5 }` writable: the count is an `Int` because a nested
         // whole number always is.
         is ScreenValue.Lambda -> expression(value.result, where, depth + 1)?.let { "{ $it }" }
+        // Like other nested expressions, the enclosing callable has no discovered signature
+        // here. This validates the actions and emits a body without authored parameters; the
+        // compiler still checks the enclosing factory/modifier overload.
+        is ScreenValue.ActionLambda ->
+          lambda(
+            value.actions,
+            TargetParameter("callback", "() -> Unit", typeFqn = "kotlin.Function0"),
+            where,
+          )
         is ScreenValue.StateRead -> stateRead(value, where)
+        is ScreenValue.RowRead -> rowRead(value, where)
+        is ScreenValue.ParameterRead -> parameterRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null
           val members = value.members.map { name(it, where) ?: return null }
@@ -1404,7 +1842,7 @@ object ScreenGenerator {
         // Nothing is imported, so the qualifier a folded run writes still means the package.
         return qualifiedName(fqn, where)
       }
-      if (simple == screenName) {
+      if (simple == screenName || simple in allocatedNames) {
         // The generated function shadows an import of its own name, so the expression would name
         // the screen rather than the declaration. The chain-link path refuses this already.
         reasons += "$where imports `$simple`, which is the screen's own name"

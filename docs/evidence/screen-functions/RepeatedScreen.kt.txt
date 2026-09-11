@@ -1,0 +1,28 @@
+package generated
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun RepeatedScreen() {
+    val selection = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<kotlin.String>("Nothing selected") }
+    Card(content = {
+        data class ScreenRow(val field0: kotlin.String, val field1: kotlin.String, val field2: kotlin.Float)
+        kotlin.collections.listOf<ScreenRow>(ScreenRow("Alpha", "Selected Alpha", 0.0f), ScreenRow("Beta", "Selected Beta", 8.0f), ScreenRow("Gamma", "Selected Gamma", 16.0f)).forEach { screenRow ->
+            RowChoice(caption = screenRow.field0, modifier = Modifier.padding(screenRow.field2.dp), onSelect = { selection.value = screenRow.field1 })
+        }
+        Text(text = selection.value)
+    })
+}
+
+@Composable
+private fun RowChoice(caption: kotlin.String, modifier: androidx.compose.ui.Modifier, onSelect: () -> kotlin.Unit) {
+    Button(onClick = onSelect, modifier = modifier, content = {
+        Text(text = caption)
+    })
+}

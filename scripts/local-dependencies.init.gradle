@@ -1,0 +1,40 @@
+import java.util.Properties
+
+// Opt-in local Maven publications, applied to both the root and included plugin build.
+def manifestPath = gradle.startParameter.projectProperties.get('localDependencies') ?: System.getenv('COMPOSE_AI_LOCAL_DEPENDENCIES')
+if (manifestPath == null) return
+def manifest = new File(manifestPath).canonicalFile
+def properties = new Properties()
+manifest.withReader { properties.load(it) }
+def repository = new File(manifest.parentFile, properties.getProperty('repository')).canonicalFile
+def versions = properties.getProperty('coordinates').split(',').collectEntries { coordinate ->
+    def parts = coordinate.split(':')
+    [(parts[0] + ':' + parts[1]): parts[2]]
+}
+def addRepository = { repositories ->
+    repositories.maven {
+        name = 'stagedLocalDependencies'
+        url = repository.toURI()
+        content {
+            versions.keySet().each { module ->
+                def parts = module.split(':')
+                includeModule(parts[0], parts[1])
+            }
+        }
+    }
+}
+gradle.settingsEvaluated { settings ->
+    addRepository(settings.dependencyResolutionManagement.repositories)
+    addRepository(settings.pluginManagement.repositories)
+}
+gradle.beforeProject { project ->
+    addRepository(project.buildscript.repositories)
+    [project.configurations, project.buildscript.configurations].each { configurations ->
+        configurations.configureEach {
+            resolutionStrategy.eachDependency {
+                def version = versions[requested.group + ':' + requested.name]
+                if (version != null) useVersion(version)
+            }
+        }
+    }
+}
