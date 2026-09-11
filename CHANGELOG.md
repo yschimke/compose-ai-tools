@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.9.0](https://github.com/yschimke/compose-ai-tools/compare/v2.8.1...v2.9.0) (2026-09-11)
+
+
+### Features
+
+* **design-artifacts:** publish a generic `related` list on catalog components ([#5399](https://github.com/yschimke/compose-ai-tools/issues/5399)) ([c33231d](https://github.com/yschimke/compose-ai-tools/commit/c33231df707d024235fb0a4c0787e7b9d048fb36))
+* **discovery:** read `@CatalogComponent(related = ...)` into the catalog inventory ([#5401](https://github.com/yschimke/compose-ai-tools/issues/5401)) ([5ac79c4](https://github.com/yschimke/compose-ai-tools/commit/5ac79c477ecb2f1ee6eff5ce6147145815b2fb26))
+* **plugin:** render one module's previews on another module's lane ([#5402](https://github.com/yschimke/compose-ai-tools/issues/5402)) ([a807df1](https://github.com/yschimke/compose-ai-tools/commit/a807df1968534f82eed81829293035bd2dffa5e3))
+
 ## [2.8.1](https://github.com/yschimke/compose-ai-tools/compare/v2.8.0...v2.8.1) (2026-09-11)
 
 
