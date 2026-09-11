@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.10.0](https://github.com/yschimke/compose-ai-tools/compare/v2.9.0...v2.10.0) (2026-09-11)
+
+
+### Features
+
+* **remote-json:** compile exact decimal comparisons ([#5407](https://github.com/yschimke/compose-ai-tools/issues/5407)) ([bb83a97](https://github.com/yschimke/compose-ai-tools/commit/bb83a9756ab530179b001be30bbf60ea241516a6))
+* **remote-json:** preserve independent mutable string state ([#5406](https://github.com/yschimke/compose-ai-tools/issues/5406)) ([e114eb4](https://github.com/yschimke/compose-ai-tools/commit/e114eb4ae2563a071cac4ff3948724ccb83beec0))
+* **ui-builder:** let a builtin slot state how many children it admits ([#5408](https://github.com/yschimke/compose-ai-tools/issues/5408)) ([0587fb0](https://github.com/yschimke/compose-ai-tools/commit/0587fb02c6f07063b31a7c854bd08c638c721593))
+
+
+### Bug Fixes
+
+* **render-host:** preserve playground preview dimensions ([#5404](https://github.com/yschimke/compose-ai-tools/issues/5404)) ([46daa70](https://github.com/yschimke/compose-ai-tools/commit/46daa709efdb3158d9eaa2f977e75ad729a23e0b))
+
 ## [2.9.0](https://github.com/yschimke/compose-ai-tools/compare/v2.8.1...v2.9.0) (2026-09-11)
 
 
