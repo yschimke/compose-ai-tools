@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T08:05:38.041Z",
+  "generatedAt": "2026-09-11T08:31:59.260Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c33231df707d024235fb0a4c0787e7b9d048fb36",
+        "subject": "feat(design-artifacts): publish a generic `related` list on catalog components (#5399)",
+        "at": "2026-09-11T09:24:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fd1e5e92c9b9c7389e9a611d727b236e460844f8",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.8.1 (#5397)",
+        "at": "2026-09-11T09:11:11+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "70a486649af25ddc7411cf8f3ece842c41a3854e",
         "subject": "chore(main): release 2.8.1 (#5395)",
@@ -466,22 +482,6 @@
         "sha": "b416451cc6eafbda6ab5c48b92f419e286ce4b83",
         "subject": "chore: prune spent design evidence, and keep it pruned (#5331)",
         "at": "2026-09-09T08:24:37+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9f749eab34c06ea84e21e1ee19491f27baa959b8",
-        "subject": "docs: correct the gate's scope and the launcher split's state (#5330)",
-        "at": "2026-09-09T08:18:02+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "dffec1882e1dd043d505155db4b2e6cf8df001d2",
-        "subject": "docs: retire the extraction-prep record and split out the live gate (#5329)",
-        "at": "2026-09-09T08:12:15+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
