@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T08:52:23.249Z",
+  "generatedAt": "2026-09-11T12:26:10.875Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "45f5a01b9c4dd8b0bfb2af0b54a9d2abeec8c040",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.9.0 (#5403)",
+        "at": "2026-09-11T11:38:54Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "04ee6e5b50fe164102ae3de62e1df330c22aae21",
+        "subject": "chore(main): release 2.9.0 (#5400)",
+        "at": "2026-09-11T12:30:15+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a807df1968534f82eed81829293035bd2dffa5e3",
+        "subject": "feat(plugin): render one module's previews on another module's lane (#5402)",
+        "at": "2026-09-11T09:41:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "5ac79c477ecb2f1ee6eff5ce6147145815b2fb26",
         "subject": "feat(discovery): read `@CatalogComponent(related = ...)` into the catalog inventory (#5401)",
@@ -458,30 +482,6 @@
         "sha": "5844b3fca445a79adf8f0b31fc1379ac5ddbf497",
         "subject": "feat: fold identical sibling runs into one repeat in generated screens (#5337)",
         "at": "2026-09-09T13:37:19+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d28273785e19cfa3cf6736ec71e9bd92cee33752",
-        "subject": "perf(daemon): overlap sandbox worker boots and archive catalog daemon classes (#5335)",
-        "at": "2026-09-09T09:30:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "89ec0b2a611966aae00d32b7ac4edc2a10c546f8",
-        "subject": "docs: correct three stale claims about the CLI/server seam, and trim the runbook (#5333)",
-        "at": "2026-09-09T08:40:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d54b36186950bf711463a868d472c3f2830df2ed",
-        "subject": "docs: widen the evidence pruner, retire two spent specs, surface two lost ones (#5332)",
-        "at": "2026-09-09T08:35:23+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
