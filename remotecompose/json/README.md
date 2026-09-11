@@ -58,3 +58,22 @@ with package visibility in AndroidX alpha18/19. Dependency upgrades must run the
 Player support remains a separate requirement: compiling successfully is not a rendering claim.
 
 Run `./gradlew :remotecompose-json:test :remotecompose-json:checkKotlinAbi`.
+
+## Independent text state
+
+The explicit `compose-preview-state-v1` profile includes integer expressions and adds
+`{"type":"mutableString","name":"label","value":"Ready"}`. Every declaration allocates a
+distinct named string ID through AndroidX's `addNamedString` writer API. Two variables initialized
+to the same text cannot alias each other or a text literal. Names follow the integer expression
+identifier rules and must not already be declared. Values must be non-null strings; only `type`,
+`name` and `value` are accepted.
+
+Use `@label` in text content and as the target of a `valueStringChange` action. The stock action
+parser interprets values beginning with `@` or `$` as references. To assign such text literally,
+declare an ordinary string variable containing it, then reference that immutable literal's ID.
+String equality and StateLayout selection are not added by this profile.
+
+The unextended parser and the existing integer-expression profile keep their behavior. In
+particular, stock `variable` declarations of `vtype:string` still intern equal text; use the new
+declaration when independent mutable identity is required. The profile emits ordinary
+`NamedVariable` and `TextData` operations, with no binary rewriting or custom player opcode.
