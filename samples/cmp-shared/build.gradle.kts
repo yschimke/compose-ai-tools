@@ -78,6 +78,26 @@ kotlin {
       // multiplatform `preview-annotations` artifact exists for (mirrors meshcore's
       // `:meshcore-components`, whose tokens live in shared code). Exercised by `SharedTokens.kt`.
       implementation(libs.composeai.preview.annotations)
+
+      // The shared preview-source module, on the runtime classpath. Declaring it here is what
+      // makes its composables resolvable at render time; `composePreviewSource` below is what
+      // makes its `@Preview`s DISCOVERABLE. The two are separate on purpose — a module depends on
+      // plenty of libraries whose own sticker-sheet previews must not become this module's.
+      implementation(project(":samples:preview-source-shared"))
     }
   }
+}
+
+dependencies {
+  // Render `:samples:preview-source-shared`'s previews on THIS module's lane (Desktop). The same
+  // module is named by `:samples:cmp-android-robolectric`, which renders the same previews on
+  // Robolectric — one declaration, two lanes, which is the whole point of the configuration.
+  composePreviewSource(project(":samples:preview-source-shared"))
+}
+
+composePreview {
+  // Its sources, so the shared previews resolve back to the file that declares them and the
+  // `@file:CatalogGroup` on it still applies. Classes alone find a preview; only the source file
+  // places it.
+  previewSourceRoots.from(file("../preview-source-shared/src"))
 }

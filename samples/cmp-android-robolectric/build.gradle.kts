@@ -70,12 +70,29 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
       implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
+
+      // The shared preview-source module, on the runtime classpath so its composables resolve at
+      // render time. Its `android` variant is what an `androidJvm` consumer selects, so what
+      // Robolectric renders is Android-flavoured Compose — the same source, compiled for this
+      // lane.
+      implementation(project(":samples:preview-source-shared"))
     }
   }
+}
+
+dependencies {
+  // The SAME module `:samples:cmp-shared` names, rendered here on the OTHER lane. One set of
+  // preview declarations, two renderers: this is the case `composePreviewSource` exists for, and
+  // having both samples point at one module is what keeps CI honest about it.
+  composePreviewSource(project(":samples:preview-source-shared"))
 }
 
 composePreview {
   // The opt-in. Without it this module takes the Desktop lane like every other KMP-Android
   // module and its previews fail to render at all.
   kmpAndroidRobolectric = true
+
+  // Sources of the shared module above, so its previews resolve back to the file that declares
+  // them and its `@file:CatalogGroup` still applies — on this lane exactly as on Desktop.
+  previewSourceRoots.from(file("../preview-source-shared/src"))
 }

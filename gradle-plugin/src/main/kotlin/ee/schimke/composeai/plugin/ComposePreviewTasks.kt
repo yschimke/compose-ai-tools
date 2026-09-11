@@ -6,6 +6,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.repositories.ArtifactRepository
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
@@ -155,6 +156,43 @@ internal object ComposePreviewTasks {
    * ONLY for the `androidRuntimeClasspath` fallback (mirroring discovery) so a strict JVM classpath
    * still surfaces a genuinely missing dependency instead of silently dropping it.
    */
+  /**
+   * Resolvable view of the [PREVIEW_SOURCE_CONFIGURATION] bucket, wearing the attributes of the
+   * module's own runtime classpath ([runtimeConfigName]).
+   *
+   * The bucket itself carries declarations and nothing else. A shared preview-source module is
+   * normally Kotlin Multiplatform, so it publishes several variants; a configuration with no
+   * attributes cannot choose between them and resolves to nothing — no error, no previews, a green
+   * build with a silently shorter sticker sheet. Copying the lane's own attributes asks for exactly
+   * the variant this module already renders against: `androidJvm` on the Robolectric lane, `jvm` on
+   * Desktop. That is also what makes one shared module serve both lanes from one declaration.
+   *
+   * Returns null when nothing was declared, or when the runtime classpath is not resolvable yet —
+   * both meaning "no shared preview sources", which is every module that does not use the feature.
+   */
+  private fun previewSourceClasspath(project: Project, runtimeConfigName: String): Configuration? {
+    val bucket = project.configurations.findByName(PREVIEW_SOURCE_CONFIGURATION) ?: return null
+    if (bucket.dependencies.isEmpty()) return null
+    val runtime = project.configurations.findByName(runtimeConfigName) ?: return null
+    val name = "composePreviewSourceClasspath"
+    project.configurations.findByName(name)?.let {
+      return it
+    }
+    return project.configurations.create(name) {
+      isCanBeConsumed = false
+      isCanBeResolved = true
+      extendsFrom(bucket)
+      description =
+        "Resolvable view of $PREVIEW_SOURCE_CONFIGURATION, carrying the attributes of " +
+          "$runtimeConfigName so a multiplatform preview-source module selects the same variant " +
+          "this module renders against."
+      runtime.attributes.keySet().forEach { key ->
+        @Suppress("UNCHECKED_CAST") val typed = key as org.gradle.api.attributes.Attribute<Any>
+        runtime.attributes.getAttribute(typed)?.let { value -> attributes.attribute(typed, value) }
+      }
+    }
+  }
+
   private fun pinnedConsumerClasspath(
     project: Project,
     configName: String,
@@ -1764,8 +1802,42 @@ internal object ComposePreviewTasks {
       this.catalogRenderSupported.set(catalogRenderSupported)
       classDirs.from(sourceClassDirs)
       activeClassDirs.from(activeSourceClassDirs)
+
+      // Shared preview-source modules (`composePreviewSource(project(":catalog-shared"))`).
+      // Their classes go on `classDirs`, NOT `dependencyJars`: that is the whole point of the
+      // configuration. Discovery keeps the two apart deliberately — a dependency JAR stays on the
+      // ClassGraph classpath so a multi-preview annotation resolves, but is never method-walked,
+      // so its `@Preview` functions are invisible. Putting these on `classDirs` walks them as
+      // project classes, which is what makes the previews this module's to render. The task sorts
+      // dirs from jars: a jar put on `classDirs` is dropped silently, since discovery filters that
+      // list to existing DIRECTORIES.
+      //
+      // Not added to `activeClassDirs`: that set exists for the empty-compile integrity check,
+      // which asks whether THIS module's compilation produced output. A shared module's classes
+      // are not evidence about that, and letting them in would mask exactly the broken cache
+      // restore the check is there to catch.
+      previewSourceClasspath(project, dependencyConfigName())?.let { config ->
+        previewSourceClasses.from(
+          config.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
+        )
+        previewSourceClasses.from(
+          config.incoming
+            .artifactView { attributes.attribute(artifactType, "android-classes") }
+            .files
+        )
+      }
+
       sourceFiles.from(
         project.fileTree("src") {
+          include("**/*.kt")
+          include("**/*.java")
+        }
+      )
+      // …and their sources, so a shared preview still resolves back to the file that declares it
+      // and its `@file:CatalogGroup` default still applies. Classes alone find the preview; only
+      // the source file places it. See `composePreview.previewSourceRoots`.
+      sourceFiles.from(
+        extension.previewSourceRoots.asFileTree.matching {
           include("**/*.kt")
           include("**/*.java")
         }

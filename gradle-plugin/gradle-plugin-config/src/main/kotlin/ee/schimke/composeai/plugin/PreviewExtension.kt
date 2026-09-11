@@ -6,6 +6,7 @@ import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -378,6 +379,34 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val kmpAndroidRobolectric: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
+
+  /**
+   * Source roots of the modules named by the `composePreviewSource` dependency configuration, so
+   * their `@Preview`s are attributed to the file that declares them.
+   *
+   * `composePreviewSource` alone gets the *classes* scanned — enough to find the previews. It is
+   * not enough to place them: a Kotlin file's `@file:` annotations reach the bytecode on the `…Kt`
+   * facade class, but resolving that class back to `sections/Buttons.kt` is done by matching its
+   * package-qualified source name against real files. Without the shared module's sources on that
+   * list every `@file:CatalogGroup` default silently stops applying — a catalog whose previews all
+   * land ungrouped, with a green build.
+   *
+   * Point it at the directory, not the files:
+   * ```
+   * dependencies { composePreviewSource(project(":catalog-shared")) }
+   * composePreview { previewSourceRoots.from(file("../catalog-shared/src")) }
+   * ```
+   *
+   * Paths are reported relative to the *consuming* module, so a sibling module's previews carry a
+   * `../catalog-shared/…` source path. That is the honest answer — the file genuinely is not in
+   * this module — and every consumer that resolves a preview back to its source (the CLI, the VS
+   * Code extension) follows it.
+   *
+   * Two declarations rather than one on purpose. Reading another project's source tree through the
+   * dependency graph would mean a cross-project model lookup, which isolated projects forbids; a
+   * path is just a path, and stays legal in every configuration mode.
+   */
+  val previewSourceRoots: ConfigurableFileCollection = objects.fileCollection()
 
   /** Generic selector for preview extensions that produce data alongside preview PNGs. */
   val previewExtensions: PreviewExtensionsExtension =
