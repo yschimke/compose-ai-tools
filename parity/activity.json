@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T19:30:21.788Z",
+  "generatedAt": "2026-09-11T22:38:43.882Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "53812ae65cf8b2d5cab88ff41d43ffeba4d43222",
+        "subject": "chore(main): release 2.11.0 (#5414)",
+        "at": "2026-09-11T23:08:49+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ec4aa708303c756e9722105bb9a8208ba45fcd76",
+        "subject": "feat(screen-model): generate stateful loops and reusable composables (#5383)",
+        "at": "2026-09-11T23:03:11+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "74a8e0b1a2b9c2001de8a232549006f4c3aa9fdf",
+        "subject": "fix(deps): take the daemon line to 3.4.3 so `related` is readable (#5421)",
+        "at": "2026-09-11T22:53:52+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "aa8923d95a39ed1667d4b2914d0e56627ff3b649",
         "subject": "fix: generate Wear theme catalogs with daemon annotations (#5415)",
@@ -458,30 +482,6 @@
         "sha": "db6dcdd9ba199b988cdae1002d48b81a839e4dc8",
         "subject": "fix(ui-builder): name a component by what it is, in the record, in the id, and in the file (#5354)",
         "at": "2026-09-10T07:02:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8e797dde8fbd65618b02238005bdc8adef625a79",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.5.0 (#5353)",
-        "at": "2026-09-09T23:32:46Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d4b1824b1bfe1fed97eb1156ac2f46b30313d632",
-        "subject": "chore(main): release 2.5.0 (#5328)",
-        "at": "2026-09-09T23:54:41+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "56d533d6affd643d21b809a2d75a7eaa7ab4ec91",
-        "subject": "feat(ui-builder): let a catalog state a component's vocabulary in its policy file (#5351)",
-        "at": "2026-09-09T23:53:03+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
