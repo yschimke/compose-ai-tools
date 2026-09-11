@@ -50,6 +50,11 @@
             "type": "string",
             "description": "Default @ThemeCatalog group for every theme this entry expands to; themes sharing a group are catalogued together. Overridable per theme."
           },
+          "wear": {
+            "type": "boolean",
+            "default": false,
+            "description": "Emit @WearThemeCatalog instead of @ThemeCatalog for every provider this entry expands to. Required for a Wear theme: the annotation selects the Wear specimen and prevents a plausible-looking mobile Material 3 palette (or a missing androidx.compose.material3 class) from being rendered in its place."
+          },
           "composable": {
             "type": "string",
             "description": "FQN of the theme composable to call. Required by `enum`, `modes` and `arguments`. It may be `internal` to the module — the generated file compiles inside that same module, which is what makes an unexported theme (Twine's `AppTheme`) reachable at all."

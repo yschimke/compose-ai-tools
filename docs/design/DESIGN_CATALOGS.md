@@ -303,6 +303,20 @@ unit-tested without an `npm ci`:
 ]
 ```
 
+Wear entries set `"wear": true`, which emits `@WearThemeCatalog` and selects the Wear specimen
+instead of the mobile Material 3 specimen:
+
+```json
+{ "kind": "wrapper", "wear": true, "name": "Material",
+  "wrapper": "MaterialTheme { content() }",
+  "imports": ["androidx.wear.compose.material3.MaterialTheme"] }
+```
+
+The generated source needs `preview-annotations` on its compile classpath. That artifact ships on
+the compose-preview-daemon release line, so the workflow reads the daemon pin embedded in an
+installed CLI (or the driver's daemon pin when building the CLI from source); the CLI/plugin
+version is deliberately not used as its Maven version.
+
 Two decisions worth stating, because both look like omissions:
 
 - **The constants are listed, not reflected.** Generation runs before the upstream compiles, so

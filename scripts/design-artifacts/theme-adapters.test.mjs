@@ -276,6 +276,46 @@ test("a theme with no group omits the argument rather than passing an empty one"
   assert.match(kotlin, /@ThemeCatalog\(name = "Solo"\)\n/);
 });
 
+test("wear themes use WearThemeCatalog and carry the choice through expansion", () => {
+  const themes = ok({
+    themes: [
+      {
+        kind: "wrapper",
+        wear: true,
+        name: "Material",
+        wrapper: "MaterialTheme { content() }",
+        imports: ["androidx.wear.compose.material3.MaterialTheme"],
+      },
+    ],
+  });
+  assert.equal(themes[0].wear, true);
+  const kotlin = renderKotlin(themes);
+  assert.match(
+    kotlin,
+    /import ee\.schimke\.composeai\.preview\.WearThemeCatalog/,
+  );
+  assert.doesNotMatch(
+    kotlin,
+    /import ee\.schimke\.composeai\.preview\.ThemeCatalog/,
+  );
+  assert.match(kotlin, /@WearThemeCatalog\(name = "Material"\)/);
+});
+
+test("wear must be a boolean instead of a truthy string", () => {
+  const { themes, errors } = resolveThemes({
+    themes: [
+      {
+        kind: "wrapper",
+        wear: "true",
+        name: "Material",
+        wrapper: "MaterialTheme { content() }",
+      },
+    ],
+  });
+  assert.deepEqual(themes, []);
+  assert.deepEqual(errors, ["themes[0].wear: expected a boolean"]);
+});
+
 test("an entry's imports reach every theme it expands to", () => {
   const themes = ok({
     themes: [
