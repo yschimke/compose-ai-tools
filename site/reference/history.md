@@ -48,15 +48,14 @@ entries (e.g. base render vs. PR head, or before / after a code edit).
 ```jsonc
 // history/diff/regions
 {
-  "leftEntryId": "compose-preview/main@7a1c…",
-  "rightEntryId": "<head>",
+  "baselineHistoryId": "compose-preview/main@7a1c…",
+  "totalPixelsChanged": 9184,
+  "changedFraction": 0.0085,
   "regions": [
-    { "boundsInScreen": "48,200,144,232",
-      "changedPixels": 412, "totalPixels": 3072,
-      "deltaSummary": "color-shift" }
-  ],
-  "totalChangedPixels": 9184,
-  "totalPixels": 1080000
+    { "bounds": "48,200,144,232",
+      "pixelCount": 412,
+      "avgDelta": { "r": 18.2, "g": 4.1, "b": 2.0, "a": 0.0 } }
+  ]
 }
 ```
 
