@@ -5,6 +5,7 @@ import androidx.compose.remote.core.RemoteComposeBuffer
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.creation.RemoteComposeWriter
 import androidx.compose.remote.creation.json.ComposePreviewIntegerExpressions
+import androidx.compose.remote.creation.json.ComposePreviewMutableStrings
 import androidx.compose.remote.creation.json.RemoteComposeJsonParser
 import java.io.ByteArrayInputStream
 import java.io.IOException
@@ -91,6 +92,9 @@ public object RemoteComposeJson {
    */
   public const val INTEGER_EXPRESSIONS_PROFILE: String = "compose-preview-integer-expressions-v1"
 
+  /** Named integer expressions and independent mutable string declarations. */
+  public const val STATE_PROFILE: String = "compose-preview-state-v1"
+
   /**
    * Compile an **authoring JSON** document to binary `.rc` bytes.
    *
@@ -106,7 +110,7 @@ public object RemoteComposeJson {
       profile != null &&
         (profile !is JsonPrimitive ||
           !profile.isString ||
-          profile.content != INTEGER_EXPRESSIONS_PROFILE)
+          profile.content !in setOf(INTEGER_EXPRESSIONS_PROFILE, STATE_PROFILE))
     ) {
       throw RemoteComposeJsonException("Unsupported compilerProfile: $profile")
     }
@@ -120,6 +124,7 @@ public object RemoteComposeJson {
           )
         val parser = RemoteComposeJsonParser(writer)
         ComposePreviewIntegerExpressions.install(parser)
+        if (profile.content == STATE_PROFILE) ComposePreviewMutableStrings.install(parser)
         parser.parse(json)
         return writer.encodeToByteArray()
       }
