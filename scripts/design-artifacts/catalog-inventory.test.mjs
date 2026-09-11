@@ -5,6 +5,7 @@ import {
   applyGroupOrder,
   inventoryFromPreviews,
   mergeCatalogGroups,
+  parseRelated,
 } from "./catalog-inventory.mjs";
 
 // A preview record as it appears in previews.json: a function name plus the
@@ -612,4 +613,88 @@ test("a spec entry overrides an annotation-derived select", () => {
   ]);
   assert.deepEqual(merged[0].components[0].select, { size: "smallRound" });
   assert.equal(merged[0].components[0].preview, "ListLayout", "join key still comes from the annotation");
+});
+
+// --- parseRelated: @CatalogComponent(related = …) (issue #5398) ----------------
+
+test("parseRelated reads the three declared shapes", () => {
+  const { links, invalid } = parseRelated([
+    "m3-samples",
+    "m3-samples=Button/Filled",
+    "wear-m3-samples=Button/Filled=Wear samples",
+  ]);
+  assert.deepEqual(invalid, []);
+  assert.deepEqual(links, [
+    { system: "m3-samples" },
+    { system: "m3-samples", componentId: "Button/Filled" },
+    { system: "wear-m3-samples", componentId: "Button/Filled", label: "Wear samples" },
+  ]);
+});
+
+test("parseRelated omits a blank componentId, which is how a link says 'the same id as mine'", () => {
+  // `["m3-samples==Samples"]` is the COMMON spelling, not a typo: id parity is most of them.
+  const { links } = parseRelated(["m3-samples==Samples"]);
+  assert.deepEqual(links, [{ system: "m3-samples", label: "Samples" }]);
+});
+
+test("parseRelated keeps a label containing '=' intact", () => {
+  // `split` cuts it up; the label is the last field, so everything past the second `=` is it.
+  const { links } = parseRelated(["m3-samples=Button/Filled=a=b"]);
+  assert.deepEqual(links, [
+    { system: "m3-samples", componentId: "Button/Filled", label: "a=b" },
+  ]);
+});
+
+test("parseRelated trims each field", () => {
+  const { links } = parseRelated([" m3-samples = Button/Filled = Samples "]);
+  assert.deepEqual(links, [
+    { system: "m3-samples", componentId: "Button/Filled", label: "Samples" },
+  ]);
+});
+
+test("parseRelated reports an entry that names no system rather than dropping it silently", () => {
+  // The stamp would drop it, so the affordance would simply never appear with nothing pointing
+  // back at the annotation — the failure `parallel` already cost this repo once.
+  const { links, invalid } = parseRelated(["=Button/Filled=Samples", "  ", "", 7, null]);
+  assert.deepEqual(links, []);
+  assert.equal(invalid.length, 5);
+  assert.ok(invalid.includes("=Button/Filled=Samples"));
+});
+
+test("parseRelated tolerates a component that declares none", () => {
+  assert.deepEqual(parseRelated(undefined), { links: [], invalid: [] });
+  assert.deepEqual(parseRelated([]), { links: [], invalid: [] });
+  assert.deepEqual(parseRelated("m3-samples"), { links: [], invalid: [] });
+});
+
+test("inventoryFromPreviews carries related onto the component, parsed", () => {
+  const { groups, invalidRelated } = inventoryFromPreviews([
+    component("FilledButton", {
+      componentId: "Button/Filled",
+      group: "Buttons",
+      related: ["m3-samples==Samples"],
+    }),
+    component("OutlinedButton", { componentId: "Button/Outlined", group: "Buttons" }),
+  ]);
+  assert.deepEqual(invalidRelated, []);
+  assert.deepEqual(groups[0].components[0].related, [
+    { system: "m3-samples", label: "Samples" },
+  ]);
+  // Omitted entirely for a component that declares none, so an absent link never looks declared.
+  assert.equal("related" in groups[0].components[1], false);
+});
+
+test("inventoryFromPreviews reports an unpublishable related entry against its component", () => {
+  const { groups, invalidRelated } = inventoryFromPreviews([
+    component("FilledButton", {
+      componentId: "Button/Filled",
+      group: "Buttons",
+      related: ["=Button/Filled", "m3-samples"],
+    }),
+  ]);
+  assert.deepEqual(invalidRelated, [
+    { componentId: "Button/Filled", entry: "=Button/Filled" },
+  ]);
+  // The usable link still publishes: a malformed entry costs its own link, never the others.
+  assert.deepEqual(groups[0].components[0].related, [{ system: "m3-samples" }]);
 });

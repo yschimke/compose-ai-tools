@@ -1305,6 +1305,12 @@ object PreviewDiscovery {
       motionPreview = annStringOrNull(component, "motionPreview"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
       breakpointKit = annStringArray(component, "breakpointKit"),
+      // Read verbatim, exactly like `breakpointKit` above and for the same reason: the
+      // design-artifacts export's catalog inventory is the one parser of these entries, because
+      // two parsers is how two spellings come to disagree. An older `preview-annotations` on the
+      // consumer's classpath simply has no such attribute, and `annStringArray` records an empty
+      // list for it — the same thing declaring nothing produces.
+      related = annStringArray(component, "related"),
     )
   }
 
