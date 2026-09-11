@@ -4,6 +4,7 @@ import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.RemoteComposeBuffer
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.creation.RemoteComposeWriter
+import androidx.compose.remote.creation.json.ComposePreviewFloatEquals
 import androidx.compose.remote.creation.json.ComposePreviewIntegerExpressions
 import androidx.compose.remote.creation.json.ComposePreviewMutableStrings
 import androidx.compose.remote.creation.json.RemoteComposeJsonParser
@@ -92,7 +93,9 @@ public object RemoteComposeJson {
    */
   public const val INTEGER_EXPRESSIONS_PROFILE: String = "compose-preview-integer-expressions-v1"
 
-  /** Named integer expressions and independent mutable string declarations. */
+  /**
+   * Named integer expressions, exact Float equality and independent mutable string declarations.
+   */
   public const val STATE_PROFILE: String = "compose-preview-state-v1"
 
   /**
@@ -124,7 +127,10 @@ public object RemoteComposeJson {
           )
         val parser = RemoteComposeJsonParser(writer)
         ComposePreviewIntegerExpressions.install(parser)
-        if (profile.content == STATE_PROFILE) ComposePreviewMutableStrings.install(parser)
+        if (profile.content == STATE_PROFILE) {
+          ComposePreviewMutableStrings.install(parser)
+          ComposePreviewFloatEquals.install(parser)
+        }
         parser.parse(json)
         return writer.encodeToByteArray()
       }
