@@ -77,16 +77,24 @@ val daemonLaunchSchemaMetadata = daemonLaunchSchemaResourcesDir.map {
 }
 val generateDaemonLaunchSchemaMetadata =
   tasks.register("generateDaemonLaunchSchemaMetadata") {
-    inputs.property("schemaVersion", daemonDescriptorSchemaVersion)
+    // Both values are read into locals of this configuration block *before* `doLast` closes over
+    // them. A top-level `val` in a Kotlin build script compiles to a property of the script object,
+    // so referring to one directly from an execution-time action captures the script itself — which
+    // the configuration cache cannot serialize ("cannot serialize Gradle script object
+    // references"), failing the build for every task in this composite. Locals are captured by
+    // value, and a `Provider` is a type the cache knows how to store.
+    val schemaVersion = daemonDescriptorSchemaVersion
+    val outputFile = daemonLaunchSchemaMetadata
+    inputs.property("schemaVersion", schemaVersion)
     outputs.dir(daemonLaunchSchemaResourcesDir)
     doLast {
-      val output = daemonLaunchSchemaMetadata.get().asFile
+      val output = outputFile.get().asFile
       output.parentFile.mkdirs()
       output.writeText(
         """
         {
           "schema": "compose-preview-daemon-launch",
-          "schemaVersion": $daemonDescriptorSchemaVersion
+          "schemaVersion": $schemaVersion
         }
         """
           .trimIndent() + "\n"
