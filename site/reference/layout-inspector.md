@@ -56,7 +56,8 @@ question here is layout structure or stable test selectors.
 // layout/inspector
 {
   "nodes": [
-    { "id": 1, "name": "Column", "boundsInScreen": "0,0,1080,1920",
+    { "nodeId": "1", "component": "Column",
+      "bounds": { "left": 0, "top": 0, "right": 1080, "bottom": 1920 },
       "measuredSize": "1080x1920",
       "constraints": "minW=0, maxW=1080, minH=0, maxH=1920",
       "modifiers": [{ "name": "padding", "args": "16dp" }],
@@ -67,8 +68,8 @@ question here is layout structure or stable test selectors.
 // compose/semantics
 {
   "nodes": [
-    { "testTag": "submit-button", "role": "Button",
-      "mergeMode": "Merged", "boundsInScreen": "48,200,144,232" }
+    { "nodeId": "2", "testTag": "submit-button", "role": "Button",
+      "mergeMode": "mergeDescendants", "boundsInRoot": "48,200,144,232" }
   ]
 }
 ```

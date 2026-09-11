@@ -16,7 +16,7 @@ per node to formulate a UIAutomator-style `By.text(...)` /
 | | |
 |---|---|
 | Kind | `uia/hierarchy` |
-| Schema version | 1 |
+| Schema version | 2 |
 | Modules | `:data-uiautomator-core` (published) · `:data-uiautomator-hierarchy-android` (published) · `:data-uiautomator-connector` |
 | Render mode | default |
 | Cost | low |
@@ -28,7 +28,7 @@ per node to formulate a UIAutomator-style `By.text(...)` /
 
 - For each actionable node, what selector inputs are available — `text`, `contentDescription`, `testTag`, `role`?
 - Which `uia.*` actions does it support — `uia.click`, `uia.scrollForward`, `uia.inputText`, …?
-- What is the node's bounds in source-bitmap pixels (same shape as `AccessibilityNode`'s `boundsInScreen`)?
+- What are the node's root-relative bounds in source-bitmap pixels (`boundsInRoot`)?
 - Does the node have testTag ancestors that a `hasParent({testTag: …})` / `hasAncestor` selector chain could resolve?
 
 The default filter keeps only nodes that expose at least one of the
@@ -58,17 +58,21 @@ collapses into one node) or the unmerged tree.
 ```jsonc
 // uia/hierarchy
 {
-  "merged": true,
   "nodes": [
     { "text": "Submit", "contentDescription": null,
       "testTag": "submit-button",
       "testTagAncestors": ["checkout-screen"],
       "role": "Button",
-      "actions": ["uia.click"],
-      "boundsInScreen": "48,200,144,232" }
+      "actions": ["click"],
+      "boundsInRoot": "48,200,144,232",
+      "boundsInScreen": "48,200,144,232",
+      "merged": true }
   ]
 }
 ```
+
+`boundsInScreen` is a deprecated schema-v1 compatibility alias. Its value was always
+root-relative despite the name; schema v2 adds the accurately named `boundsInRoot` field.
 
 ## Enabling
 
