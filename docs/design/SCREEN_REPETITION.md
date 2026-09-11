@@ -40,7 +40,7 @@ After clicking Beta:
 
 ![The second row callback selects its value](../evidence/screen-repetition/density-2-Beta.png)
 
-Validation: 52 screen-model JVM tests, 574 preview-discovery tests, WASM compilation and the real
+Validation: 60 screen-model JVM tests, 575 preview-discovery tests, WASM compilation and the real
 compile/interaction functional test pass. Kotlin formatting passes. The two generator publications
 can be staged together with compose-preview-server's explicit local-dependency workflow; no release
 is required to integrate the browser/server consumer.
@@ -51,6 +51,7 @@ is required to integrate the browser/server consumer.
 ```
 
 The shared generator also supports [reusable composables with explicit parameters](SCREEN_FUNCTIONS.md),
-including calls from a loop that forward row values and callbacks. The consumer still needs its
-semantic-loop/component projection. These primitives do not claim the UI-builder Kotlin/MCP path
-is complete.
+including calls from a loop that forward row values and callbacks. The UI-builder consumer
+projects its semantic loops and components through this model in
+[compose-preview-server#708](https://github.com/yschimke/compose-preview-server/pull/708), behind a
+default-off build flag. Unsupported runtime lists and callback/slot types remain explicit limitations.

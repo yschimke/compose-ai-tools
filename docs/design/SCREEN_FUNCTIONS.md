@@ -37,7 +37,7 @@ After clicking Beta:
 
 ![The second function instance updates shared state](../evidence/screen-functions/density-2-Beta.png)
 
-All 60 screen-model tests and 574 discovery tests pass, as does WASM compilation. The direct-loop
+All 60 screen-model tests and 575 discovery tests pass, as does WASM compilation. The direct-loop
 and reusable-function functional tests both pass, each compiling generated source and running two
 density cases. Source and all captures are committed beside these images.
 
@@ -51,5 +51,7 @@ density cases. Source and all captures are committed beside these images.
 Value parameters currently use concrete non-generic, non-nullable types. Callbacks have no value
 parameters and return Unit. Composable slot parameters, receiver parameters, generic/nullable types,
 per-instance state and callbacks with event values need further model support. The UI-builder
-consumer still needs its semantic component/loop projection and browser/MCP source integration;
-these generator primitives do not claim that consumer work is finished.
+consumer now projects semantic components and authored loops through this model in
+[compose-preview-server#708](https://github.com/yschimke/compose-preview-server/pull/708), behind its
+default-off `uiBuilderRemoteCompose` build flag. The existing WASM Code pane and hosted MCP share
+that export path. This generator change is additive and remains usable without an editor or server.
