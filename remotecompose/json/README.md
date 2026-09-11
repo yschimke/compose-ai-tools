@@ -77,3 +77,17 @@ The unextended parser and the existing integer-expression profile keep their beh
 particular, stock `variable` declarations of `vtype:string` still intern equal text; use the new
 declaration when independent mutable identity is required. The profile emits ordinary
 `NamedVariable` and `TextData` operations, with no binary rewriting or custom player opcode.
+
+## Exact decimal comparisons
+
+The state profile also accepts `{"type":"floatEquals","name":"match","left":"@page","right":1.25}`.
+Each operand is a finite Float literal or a previously declared scalar Float reference; integer,
+text, collection, forward and expression-string operands are rejected. The output is an integer
+0/1 usable by subsequent `integerExpression` declarations and StateLayout index calculations.
+Only `type`, `name`, `left` and `right` are accepted, and output names must be unique identifiers.
+
+The compiler emits creation-compose's exact Float equality sequence followed by an integer
+expression reading its result. It does not use an epsilon or approximate equality, so adjacent
+finite Floats remain distinct. Literal values use Float precision. The player must publish the
+integer view of Float results as AndroidX does; older CMP player builds need rc-players#94.
+Host-supplied non-finite values are outside this finite-selector contract.
