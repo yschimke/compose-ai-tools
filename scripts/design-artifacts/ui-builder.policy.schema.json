@@ -220,6 +220,11 @@
                 "acceptedRoles": { "type": "array", "items": { "type": "string" } },
                 "acceptedTraits": { "type": "array", "items": { "type": "string" } },
                 "required": { "type": "boolean" },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The most children this slot admits. Absent is unbounded, which is what every builtin slot was before this field and what most of them still are. Present for a host that draws exactly one thing: `remote-m3`'s widget containers are `max: 1` on `content`, and with no way to say so the published shelf offered a container a design could put three children into while the launcher drew one. `required` sets the other end."
+                },
                 "role": {
                   "enum": ["screen-root", "list", "list-item", "overlay", "controlled", "decoration"],
                   "description": "The structural role each child of this slot is written with, when it is not the child's own. The same closed set the containing builtin's `role` uses, and closed for the same reason: a role the engine does not know selects no template, and a typo caught here is caught before a render rather than during an export."
