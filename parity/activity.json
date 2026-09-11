@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T05:53:12.930Z",
+  "generatedAt": "2026-09-11T08:05:38.041Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "70a486649af25ddc7411cf8f3ece842c41a3854e",
+        "subject": "chore(main): release 2.8.1 (#5395)",
+        "at": "2026-09-11T08:22:15+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6959b52717630f9500d5a440511745869854b396",
+        "subject": "feat(remote-json): compile named integer expressions with an explicit profile (#5396)",
+        "at": "2026-09-11T08:21:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8e74577d5cb66bdd7b733f3b0242c2af73b5ccc2",
+        "subject": "fix(deps): update compose-preview-daemon to v3.3.0 (#5394)",
+        "at": "2026-09-11T08:21:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1b32efdb80039be699c934a9776cc860f205a314",
+        "subject": "fix(usage-source-psi): register an extensions storage before parsing (#5393)",
+        "at": "2026-09-11T08:19:42+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "59077af3798c87f91ebb7dc388f1c0631208238e",
         "subject": "chore(ci): update the design-artifacts export driver to v2.8.0 (#5392)",
@@ -450,38 +482,6 @@
         "sha": "dffec1882e1dd043d505155db4b2e6cf8df001d2",
         "subject": "docs: retire the extraction-prep record and split out the live gate (#5329)",
         "at": "2026-09-09T08:12:15+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "12d5e4e4277ec926c5a937e0ca508b4d26d0869c",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.4.1 (#5326)",
-        "at": "2026-09-09T07:50:23+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "dc9a4a32a53a78139545597492f0d0f192d11c35",
-        "subject": "fix(serve): stop the theme cache file-name memo growing on unpersistable keys (#5327)",
-        "at": "2026-09-09T07:50:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a0f6ded825a7a3da77e8b3a533275ec95624c453",
-        "subject": "chore(main): release 2.4.1 (#5321)",
-        "at": "2026-09-09T07:45:56+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c85da11f76e8a633a76f5767fd013159d47524ec",
-        "subject": "perf(serve): stop re-hashing and re-formatting a theme cache file name (#5324)",
-        "at": "2026-09-09T07:45:26+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
