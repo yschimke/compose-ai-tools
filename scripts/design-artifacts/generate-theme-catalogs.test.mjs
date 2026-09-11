@@ -67,6 +67,16 @@ test("a Groovy build file gets Groovy syntax", () => {
   );
 });
 
+test("a version-catalog preview-annotations dependency is not duplicated", () => {
+  const root = scratch();
+  const build = join(root, "build.gradle.kts");
+  const original =
+    'dependencies { implementation(libs.composeai.preview.annotations) }\n';
+  writeFileSync(build, original);
+  assert.equal(ensureAnnotationsDependency(root, "9.9.9"), "present");
+  assert.equal(readFileSync(build, "utf8"), original);
+});
+
 test("end to end: a spec's themes become a compilable-looking file in the module", () => {
   const root = scratch();
   mkdirSync(join(root, "src/main/kotlin"), { recursive: true });
@@ -114,6 +124,46 @@ test("end to end: a spec's themes become a compilable-looking file in the module
     kotlin,
     /AppThemeWithBackground\(ThemeType\.ELECTRIC\) \{ content\(\) \}/,
   );
+});
+
+test("end to end: wear themes generate WearThemeCatalog providers", () => {
+  const root = scratch();
+  mkdirSync(join(root, "src/main/kotlin"), { recursive: true });
+  writeFileSync(join(root, "build.gradle.kts"), "plugins {}\n");
+  const spec = join(root, "catalog.spec.json");
+  writeFileSync(
+    spec,
+    JSON.stringify({
+      themes: [
+        {
+          kind: "wrapper",
+          wear: true,
+          name: "Material",
+          wrapper: "MaterialTheme { content() }",
+          imports: ["androidx.wear.compose.material3.MaterialTheme"],
+        },
+      ],
+    }),
+  );
+  assert.equal(
+    main([
+      "--spec",
+      spec,
+      "--module-dir",
+      root,
+      "--annotations-version",
+      "3.4.1",
+    ]),
+    0,
+  );
+  const kotlin = readFileSync(
+    join(
+      root,
+      "src/main/kotlin/ee/schimke/composeai/imported/themes/ImportedThemeCatalogs.kt",
+    ),
+    "utf8",
+  );
+  assert.match(kotlin, /@WearThemeCatalog\(name = "Material"\)/);
 });
 
 test("a spec with no themes is a successful no-op, so the pipeline can call it unconditionally", () => {

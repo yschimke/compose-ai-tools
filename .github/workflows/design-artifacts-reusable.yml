@@ -1778,6 +1778,7 @@ jobs:
           MODULE: ${{ inputs.module }}
           WORKDIR: ${{ inputs.working-directory }}
           SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
+          CLI_SOURCE: ${{ inputs.cli-source }}
         run: |
           set -euo pipefail
           if ! grep -q '"themes"' "$SPEC"; then
@@ -1823,11 +1824,26 @@ jobs:
           if [ -n "$remapped" ]; then derived="$remapped"; fi
           module_dir="${root}${derived}"
           [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
-          # The generated providers reference @ThemeCatalog, so the module needs the annotation
-          # artifact. Pinned to the CLI actually installed rather than written here a second time:
-          # the two ship from one release, and a hardcoded version would rot at the next one.
-          version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-          [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
+          # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
+          # A released CLI embeds the exact daemon pin it was built against. The source-build path
+          # has not built that CLI yet, so read the same pin from the driver's version catalog.
+          if [ "$CLI_SOURCE" = "released" ]; then
+            cli_bin="$(command -v compose-preview)"
+            cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
+            version=""
+            for archive in "$cli_home"/lib/*.jar; do
+              version="$(unzip -p "$archive" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null |
+                sed -n 's/^previewDaemonVersion=//p' | head -1 || true)"
+              [ -z "$version" ] || break
+            done
+          else
+            version="$(sed -n 's/^composeai-preview-daemon[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+              "$GITHUB_WORKSPACE/compose-ai-tools/gradle/libs.versions.toml" | head -1)"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::could not resolve preview-annotations' daemon-line version"
+            exit 1
+          }
           node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
@@ -2871,6 +2887,7 @@ jobs:
           MODULE: ${{ inputs.module }}
           WORKDIR: ${{ inputs.working-directory }}
           SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
+          CLI_SOURCE: ${{ inputs.cli-source }}
         run: |
           set -euo pipefail
           if ! grep -q '"themes"' "$SPEC"; then
@@ -2916,11 +2933,26 @@ jobs:
           if [ -n "$remapped" ]; then derived="$remapped"; fi
           module_dir="${root}${derived}"
           [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
-          # The generated providers reference @ThemeCatalog, so the module needs the annotation
-          # artifact. Pinned to the CLI actually installed rather than written here a second time:
-          # the two ship from one release, and a hardcoded version would rot at the next one.
-          version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-          [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
+          # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
+          # A released CLI embeds the exact daemon pin it was built against. The source-build path
+          # has not built that CLI yet, so read the same pin from the driver's version catalog.
+          if [ "$CLI_SOURCE" = "released" ]; then
+            cli_bin="$(command -v compose-preview)"
+            cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
+            version=""
+            for archive in "$cli_home"/lib/*.jar; do
+              version="$(unzip -p "$archive" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null |
+                sed -n 's/^previewDaemonVersion=//p' | head -1 || true)"
+              [ -z "$version" ] || break
+            done
+          else
+            version="$(sed -n 's/^composeai-preview-daemon[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+              "$GITHUB_WORKSPACE/compose-ai-tools/gradle/libs.versions.toml" | head -1)"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::could not resolve preview-annotations' daemon-line version"
+            exit 1
+          }
           node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       # ---- The two embedded player lanes' harness, when a caller asked for them ----------------
       #
