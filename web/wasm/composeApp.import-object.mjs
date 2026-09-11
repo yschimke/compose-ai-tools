@@ -8,12 +8,28 @@ const wasmTag = wasmJsTag ?? new WebAssembly.Tag({ parameters: ['externref'] });
 
 // Placed here to give access to it from externals (js_code)
 let wasmExports;
-let require;
 
 if (typeof process !== 'undefined' && process.release.name === 'node') {
-    const module = await import(/* webpackIgnore: true */'node:module');
-    const importMeta = import.meta;
-    require = module.default.createRequire(importMeta.url);
+    function doNotUseRequire() {
+        throw new Error("Do not use top-level require. Prefer to use JS import or define your own require instead. Read more: https://kotl.in/r9txlt")
+    }
+
+    var require = new Proxy((function() {}), {
+        apply(target, thisArg, argumentsList) {
+            if (globalThis.require != null) {
+                return globalThis.require.apply(thisArg, argumentsList);
+            } else {
+                doNotUseRequire();
+            }
+        },
+        get(target, prop, receiver) {
+            if (globalThis.require != null) {
+                return Reflect.get(globalThis.require, prop);
+            } else {
+                doNotUseRequire();
+            }
+        },
+    });
 }
 
 export function setWasmExports(exports) {
@@ -36,9 +52,28 @@ function getCachedJsObject(ref, ifNotCached) {
 const js_code = {
     'kotlin.createJsError' : (message, cause) => new Error(message, { cause }),
     'kotlin.wasm.internal.jsThrow' : wasmTag === wasmJsTag ? (e) => { throw e; } : () => {},
-    'kotlin.wasm.internal.getJsEmptyString' : () => '',
+    'kotlin.wasm.internal.newJsArray' : () => [],
+    'kotlin.wasm.internal.jsArrayPush' : (array, element) => { array.push(element); },
+    'kotlin.wasm.internal.isNullish' : (ref) => ref == null,
     'kotlin.wasm.internal.externrefToInt' : (ref) => Number(ref),
+    'kotlin.wasm.internal.externrefToBoolean' : (ref) => Boolean(ref),
+    'kotlin.wasm.internal.externrefToLong' : (ref) => BigInt(ref),
+    'kotlin.wasm.internal.externrefToFloat' : (ref) => Number(ref),
     'kotlin.wasm.internal.externrefToDouble' : (ref) => Number(ref),
+    'kotlin.wasm.internal.externrefToUByte' : (ref) => Number(ref),
+    'kotlin.wasm.internal.externrefToUShort' : (ref) => Number(ref),
+    'kotlin.wasm.internal.externrefToUInt' : (ref) => Number(ref),
+    'kotlin.wasm.internal.externrefToULong' : (ref) => BigInt(ref),
+    'kotlin.wasm.internal.intToExternref' : (x) => x,
+    'kotlin.wasm.internal.longToExternref' : (x) => x,
+    'kotlin.wasm.internal.floatToExternref' : (x) => x,
+    'kotlin.wasm.internal.doubleToExternref' : (x) => x,
+    'kotlin.wasm.internal.kotlinUByteToJsNumberUnsafe' : (x) => x & 0xFF,
+    'kotlin.wasm.internal.kotlinUShortToJsNumberUnsafe' : (x) => x & 0xFFFF,
+    'kotlin.wasm.internal.kotlinUIntToJsNumberUnsafe' : (x) => x >>> 0,
+    'kotlin.wasm.internal.kotlinULongToJsBigIntUnsafe' : (x) => x & 0xFFFFFFFFFFFFFFFFn,
+    'kotlin.wasm.internal.getJsTrue' : () => true,
+    'kotlin.wasm.internal.getJsFalse' : () => false,
     'kotlin.wasm.internal.externrefToString' : (ref) => String(ref),
     'kotlin.wasm.internal.externrefEquals' : (lhs, rhs) => lhs === rhs,
     'kotlin.wasm.internal.externrefHashCode' : 
@@ -91,31 +126,12 @@ const js_code = {
         }
     }
     })(),
-    'kotlin.wasm.internal.isNullish' : (ref) => ref == null,
-    'kotlin.wasm.internal.externrefToBoolean' : (ref) => Boolean(ref),
-    'kotlin.wasm.internal.externrefToLong' : (ref) => BigInt(ref),
-    'kotlin.wasm.internal.externrefToFloat' : (ref) => Number(ref),
-    'kotlin.wasm.internal.externrefToUByte' : (ref) => Number(ref),
-    'kotlin.wasm.internal.externrefToUShort' : (ref) => Number(ref),
-    'kotlin.wasm.internal.externrefToUInt' : (ref) => Number(ref),
-    'kotlin.wasm.internal.externrefToULong' : (ref) => BigInt(ref),
-    'kotlin.wasm.internal.intToExternref' : (x) => x,
-    'kotlin.wasm.internal.getJsTrue' : () => true,
-    'kotlin.wasm.internal.getJsFalse' : () => false,
-    'kotlin.wasm.internal.longToExternref' : (x) => x,
-    'kotlin.wasm.internal.floatToExternref' : (x) => x,
-    'kotlin.wasm.internal.doubleToExternref' : (x) => x,
-    'kotlin.wasm.internal.kotlinUByteToJsNumberUnsafe' : (x) => x & 0xFF,
-    'kotlin.wasm.internal.kotlinUShortToJsNumberUnsafe' : (x) => x & 0xFFFF,
-    'kotlin.wasm.internal.kotlinUIntToJsNumberUnsafe' : (x) => x >>> 0,
-    'kotlin.wasm.internal.kotlinULongToJsBigIntUnsafe' : (x) => x & 0xFFFFFFFFFFFFFFFFn,
-    'kotlin.wasm.internal.newJsArray' : () => [],
-    'kotlin.wasm.internal.jsArrayPush' : (array, element) => { array.push(element); },
+    'kotlin.wasm.internal.getJsEmptyString' : () => '',
     'kotlin.wasm.internal.getCachedJsObject_$external_fun' : (p0, p1) => getCachedJsObject(p0, p1),
+    'kotlin.wasm.internal.utoa32_$external_fun' : (p0) => String(p0),
+    'kotlin.wasm.internal.utoa64_$external_fun' : (p0) => String(p0),
     'kotlin.wasm.internal.itoa32_$external_fun' : (p0) => String(p0),
     'kotlin.wasm.internal.itoa64_$external_fun' : (p0) => String(p0),
-    'kotlin.wasm.internal.utoa64_$external_fun' : (p0) => String(p0),
-    'kotlin.wasm.internal.utoa32_$external_fun' : (p0) => String(p0),
     'kotlin.js.jsCatch' : (f) => { 
         let result = null;
         try { 
@@ -125,7 +141,7 @@ const js_code = {
         }
         return result;
          },
-    'kotlin.js.__convertKotlinClosureToJsClosure_(()->Unit)' : (f) => getCachedJsObject(f, () => wasmExports['__callFunction_(()->Unit)'](f, )),
+    'kotlin.js.__convertKotlinClosureToJsClosure_0' : (f, trampoline) => getCachedJsObject(f, () => trampoline(f, )),
     'kotlin.js.jsThrow' : (e) => { throw e; },
     'kotlin.io.printlnImpl' : (message) => console.log(message),
     'kotlin.io.printError' : (error) => console.error(error),
@@ -161,11 +177,10 @@ const js_code = {
     'kotlin.js.Promise_$external_fun' : (p0) => new Promise(p0),
     'kotlin.js.__callJsClosure_((Js?)->Unit)' : (f, p0) => f(p0),
     'kotlin.js.__callJsClosure_((Js)->Unit)' : (f, p0) => f(p0),
-    'kotlin.js.__convertKotlinClosureToJsClosure_((((Js?)->Unit),((Js)->Unit))->Unit)' : (f) => getCachedJsObject(f, (p0, p1) => wasmExports['__callFunction_((((Js?)->Unit),((Js)->Unit))->Unit)'](f, p0, p1)),
+    'kotlin.js.__convertKotlinClosureToJsClosure_2' : (f, trampoline) => getCachedJsObject(f, (p0, p1) => trampoline(f, p0, p1)),
     'kotlin.js.then_$external_fun' : (_this, p0) => _this.then(p0),
-    'kotlin.js.__convertKotlinClosureToJsClosure_((Js?)->Js?)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Js?)->Js?)'](f, p0)),
+    'kotlin.js.__convertKotlinClosureToJsClosure_1' : (f, trampoline) => getCachedJsObject(f, (p0) => trampoline(f, p0)),
     'kotlin.js.then_$external_fun_1' : (_this, p0, p1) => _this.then(p0, p1),
-    'kotlin.js.__convertKotlinClosureToJsClosure_((Js)->Js?)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Js)->Js?)'](f, p0)),
     'kotlin.js.catch_$external_fun' : (_this, p0) => _this.catch(p0),
     'kotlin.js.finally_$external_fun' : (_this, p0) => _this.finally(p0),
     'kotlin.js.Companion_$external_fun' : () => new Promise(),
@@ -194,6 +209,263 @@ const js_code = {
     'kotlin.time.dateNow' : () => Date.now(),
     'kotlin.uuid.cryptoGetRandomValues' : (size) => crypto.getRandomValues(new Int8Array(size)),
     'kotlin.uuid.get' : (array, index) => array[index],
+    'kotlin.wasm.unsafe.WebAssembly_$external_fun' : () => new WebAssembly(),
+    'kotlin.wasm.unsafe.WebAssembly_$external_object_getInstance' : () => WebAssembly,
+    'kotlin.wasm.unsafe.WebAssembly_$external_class_instanceof' : (x) => x instanceof WebAssembly,
+    'kotlin.wasm.unsafe.WebAssembly_$external_class_get' : () => WebAssembly,
+    'androidx.compose.material3.internal.weakMap_js_code' : () => (new WeakMap()),
+    'androidx.compose.material3.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
+    'androidx.compose.material3.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
+    'org.jetbrains.compose.resources.Intl_$external_fun' : () => new Intl(),
+    'org.jetbrains.compose.resources.Locale_$external_fun' : (p0) => new Intl.Locale(p0),
+    'org.jetbrains.compose.resources.language_$external_prop_getter' : (_this) => _this.language,
+    'org.jetbrains.compose.resources.region_$external_prop_getter' : (_this) => _this.region,
+    'org.jetbrains.compose.resources.Locale_$external_class_instanceof' : (x) => x instanceof Intl.Locale,
+    'org.jetbrains.compose.resources.Locale_$external_class_get' : () => Intl.Locale,
+    'org.jetbrains.compose.resources.Intl_$external_class_instanceof' : (x) => x instanceof Intl,
+    'org.jetbrains.compose.resources.Intl_$external_class_get' : () => Intl,
+    'org.jetbrains.compose.resources.isInTestEnvironment' : () => window.composeResourcesTesting == true,
+    'org.jetbrains.compose.resources.requestResponseAsByteArray' : (req) =>  {
+            var text = req.responseText;
+            var int8Arr = new Int8Array(text.length);
+            for (var i = 0; i < text.length; i++) {
+                int8Arr[i] = text.charCodeAt(i) & 0xFF;
+            }
+            return int8Arr;
+        },
+    'org.jetbrains.compose.resources.jsExportBlobAsArrayBuffer' : (blob) => blob.arrayBuffer(),
+    'org.jetbrains.compose.resources.copyArrayBufferToWasmMemory' : (ab, ptr) => {
+          const data = new Uint8Array(ab);
+          new Uint8Array(wasmExports.memory.buffer).set(data, ptr);
+    },
+    'org.jetbrains.compose.resources.supportsCacheApi' : () => Boolean(window.caches),
+    'androidx.compose.foundation.internal.isClipboardWriteSupported' : () => Boolean(window.navigator.clipboard && (window.navigator.clipboard.write || window.navigator.clipboard.writeText)),
+    'androidx.compose.foundation.internal.isClipboardReadSupported' : () => Boolean(window.navigator.clipboard && window.navigator.clipboard.read),
+    'androidx.compose.foundation.internal.getTextFromBlob' : (blob) => blob.text(),
+    'androidx.compose.foundation.internal.doesJsArrayContainValue' : (jsArray, value) => jsArray.includes(value),
+    'androidx.compose.foundation.text.EventListener' : (handler) => (event) => { handler(event) },
+    'androidx.compose.foundation.internal.weakMap_js_code' : () => (new WeakMap()),
+    'androidx.compose.foundation.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
+    'androidx.compose.foundation.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
+    'androidx.compose.ui.text.intl.getUserPreferredLanguagesAsArray' : () => window.navigator.languages,
+    'androidx.compose.ui.text.FinalizationRegistry_$external_fun' : (p0) => new FinalizationRegistry(p0),
+    'androidx.compose.ui.text.register_$external_fun' : (_this, p0, p1) => _this.register(p0, p1),
+    'androidx.compose.ui.text.FinalizationRegistry_$external_class_instanceof' : (x) => x instanceof FinalizationRegistry,
+    'androidx.compose.ui.text.FinalizationRegistry_$external_class_get' : () => FinalizationRegistry,
+    'androidx.compose.ui.text.WeakRef_$external_fun' : (p0) => new WeakRef(p0),
+    'androidx.compose.ui.text.deref_$external_fun' : (_this, ) => _this.deref(),
+    'androidx.compose.ui.text.WeakRef_$external_fun_1' : () => new WeakRef(),
+    'androidx.compose.ui.text.WeakRef_$external_class_instanceof' : (x) => x instanceof WeakRef,
+    'androidx.compose.ui.text.WeakRef_$external_class_get' : () => WeakRef,
+    'androidx.compose.ui.text.intl.parseLanguageTagToIntlLocale' : (languageTag) => new Intl.Locale(languageTag),
+    'androidx.compose.ui.text.intl.IntlLocale_$external_fun' : () => new IntlLocale(),
+    'androidx.compose.ui.text.intl._language_$external_prop_getter' : (_this) => _this.language,
+    'androidx.compose.ui.text.intl._script_$external_prop_getter' : (_this) => _this.script,
+    'androidx.compose.ui.text.intl._region_$external_prop_getter' : (_this) => _this.region,
+    'androidx.compose.ui.text.intl._baseName_$external_prop_getter' : (_this) => _this.baseName,
+    'androidx.compose.ui.text.intl.IntlLocale_$external_class_instanceof' : (x) => x instanceof IntlLocale,
+    'androidx.compose.ui.text.intl.IntlLocale_$external_class_get' : () => IntlLocale,
+    'androidx.compose.ui.text.platform.toLocaleUpperCase' : (text, locale) => text.toLocaleUpperCase(locale),
+    'androidx.compose.ui.text.platform.toLocaleLowerCase' : (text, locale) => text.toLocaleLowerCase(locale),
+    'androidx.compose.ui.internal.weakMap_js_code' : () => (new WeakMap()),
+    'androidx.compose.ui.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
+    'androidx.compose.ui.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
+    'androidx.compose.ui.platform.createClipboardItemWithPlainText' : (text) => [new ClipboardItem({'text/plain': new Blob([text], { type: 'text/plain' })})],
+    'androidx.compose.ui.platform.emptyClipboardItems' : () => [new ClipboardItem({'text/plain': new Blob([''], { type: 'text/plain' })})],
+    'androidx.compose.ui.platform.invalidClipboardItems' : () => [],
+    'androidx.compose.ui.platform.warn' : (text) => { console.warn(text) },
+    'androidx.compose.ui.draganddrop.setMethodImplForUint8ClampedArray' : (obj, index, value) => { obj[index] = value; },
+    'androidx.compose.ui.events.withSignal' : (signal) => ({signal: signal}),
+    'androidx.compose.ui.events.withSignalAndPassive' : (signal, passive) => ({signal: signal, passive: passive}),
+    'androidx.compose.ui.events.AbortController_$external_fun' : () => new AbortController(),
+    'androidx.compose.ui.events.signal_$external_prop_getter' : (_this) => _this.signal,
+    'androidx.compose.ui.events.abort_$external_fun' : (_this, ) => _this.abort(),
+    'androidx.compose.ui.events.AbortController_$external_class_instanceof' : (x) => x instanceof AbortController,
+    'androidx.compose.ui.events.AbortController_$external_class_get' : () => AbortController,
+    'androidx.compose.ui.internal.focusExt' : (element, _preventScroll) => element.focus({ preventScroll: _preventScroll }),
+    'androidx.compose.ui.node.WeakRef_$external_fun' : (p0) => new WeakRef(p0),
+    'androidx.compose.ui.node.deref_$external_fun' : (_this, ) => _this.deref(),
+    'androidx.compose.ui.node.WeakRef_$external_fun_1' : () => new WeakRef(),
+    'androidx.compose.ui.node.WeakRef_$external_class_instanceof' : (x) => x instanceof WeakRef,
+    'androidx.compose.ui.node.WeakRef_$external_class_get' : () => WeakRef,
+    'androidx.compose.ui.platform.setBackingInputBox' : (container, left, top, width, height) => { 
+        container.style.setProperty("--compose-internal-web-backing-input-left", left);
+        container.style.setProperty("--compose-internal-web-backing-input-top", top);
+        container.style.setProperty("--compose-internal-web-backing-input-width", width);
+        container.style.setProperty("--compose-internal-web-backing-input-height", height)
+     },
+    'androidx.compose.ui.platform.isTypedEvent' : (evt) => !evt.metaKey && !evt.ctrlKey && evt.key.charAt(0) === evt.key,
+    'androidx.compose.ui.platform.value_$external_prop_getter' : (_this) => _this.value,
+    'androidx.compose.ui.platform.value_$external_prop_setter' : (_this, v) => _this.value = v,
+    'androidx.compose.ui.platform.selectionStart_$external_prop_getter' : (_this) => _this.selectionStart,
+    'androidx.compose.ui.platform.selectionEnd_$external_prop_getter' : (_this) => _this.selectionEnd,
+    'androidx.compose.ui.platform.selectionDirection_$external_prop_getter' : (_this) => _this.selectionDirection,
+    'androidx.compose.ui.platform.setSelectionRange_$external_fun' : (_this, p0, p1, p2, isDefault0) => _this.setSelectionRange(p0, p1, isDefault0 ? undefined : p2, ),
+    'androidx.compose.ui.platform.data_$external_prop_getter' : (_this) => _this.data,
+    'androidx.compose.ui.platform.inputType_$external_prop_getter' : (_this) => _this.inputType,
+    'androidx.compose.ui.platform.textRangeStart_$external_prop_getter' : (_this) => _this.textRangeStart,
+    'androidx.compose.ui.platform.textRangeStart_$external_prop_setter' : (_this, v) => _this.textRangeStart = v,
+    'androidx.compose.ui.platform.textRangeEnd_$external_prop_getter' : (_this) => _this.textRangeEnd,
+    'androidx.compose.ui.platform.textRangeEnd_$external_prop_setter' : (_this, v) => _this.textRangeEnd = v,
+    'androidx.compose.ui.platform.InputEventExt_$external_fun' : (p0, p1, isDefault0) => new InputEvent(p0, isDefault0 ? undefined : p1, ),
+    'androidx.compose.ui.platform.InputEventExt_$external_fun_1' : () => new InputEvent(),
+    'androidx.compose.ui.platform.InputEventExt_$external_class_instanceof' : (x) => x instanceof InputEvent,
+    'androidx.compose.ui.platform.InputEventExt_$external_class_get' : () => InputEvent,
+    'androidx.compose.ui.platform.activeElement_$external_prop_getter' : (_this) => _this.activeElement,
+    'androidx.compose.ui.platform.getRootNode_$external_fun' : (_this, ) => _this.getRootNode(),
+    'androidx.compose.ui.platform.getW3CClipboard' : () => window.navigator.clipboard,
+    'androidx.compose.ui.platform.isSecureContext' : () => window.isSecureContext === true,
+    'androidx.compose.ui.platform.isFullClipboardApiSupported' : () => Boolean(
+            window.navigator.clipboard && 
+            window.navigator.clipboard.write && 
+            window.navigator.clipboard.read && 
+            typeof(ClipboardItem) !== 'undefined'
+            )
+        ,
+    'androidx.compose.ui.platform.isFallbackWriteTextApiAvailable' : () => Boolean(window.navigator.clipboard && window.navigator.clipboard.writeText),
+    'androidx.compose.ui.platform.types_$external_prop_getter' : (_this) => _this.types,
+    'androidx.compose.ui.platform.getType_$external_fun' : (_this, p0) => _this.getType(p0),
+    'androidx.compose.ui.platform.W3CTemporaryClipboard_$external_fun' : () => new Clipboard(),
+    'androidx.compose.ui.platform.read_$external_fun' : (_this, ) => _this.read(),
+    'androidx.compose.ui.platform.write_$external_fun' : (_this, p0) => _this.write(p0),
+    'androidx.compose.ui.platform.writeText_$external_fun' : (_this, p0) => _this.writeText(p0),
+    'androidx.compose.ui.platform.W3CTemporaryClipboard_$external_class_instanceof' : (x) => x instanceof Clipboard,
+    'androidx.compose.ui.platform.W3CTemporaryClipboard_$external_class_get' : () => Clipboard,
+    'androidx.compose.ui.platform.accessibility.removeAllChildrenOf' : (element) => { element.replaceChildren() },
+    'androidx.compose.ui.platform.accessibility.setA11YAriaRole' : (element, ariaRoleId) => { 
+            var roleValue = "";
+            switch (ariaRoleId) {
+                case 0: // Role.Button
+                    roleValue = "button";
+                    break;
+                case 1: // Role.Checkbox
+                    roleValue = "checkbox";
+                    break;
+                case 2: // Role.Switch
+                    roleValue = "switch";
+                    break;
+                case 3: // Role.RadioButton
+                    roleValue = "radio";
+                    break;
+                case 4: // Role.Tab
+                    roleValue = "tab";
+                    break;
+                case 5: // Role.Image
+                    roleValue = "img";
+                    break;
+                case 6: // Role.DropdownList
+                    roleValue = "menu";
+                    break;
+                case 7: // heading https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/heading_role
+                    roleValue = "heading";
+                    break;
+                case 8: // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/textbox_role
+                    roleValue = "textbox";
+                    break;
+                case 9: // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/list_role
+                    roleValue = "list";
+                    break;
+                case 10: // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/grid_role
+                    roleValue = "grid";
+                    break;
+                default:
+                    break;
+            }
+            if (roleValue.length > 0) { 
+                element.setAttribute("role", roleValue);
+            } else {
+                element.removeAttribute("role");
+            }
+         },
+    'androidx.compose.ui.platform.accessibility.setSizeAndPosition' : (element, left, top, width, height) => { 
+           element.style.left = "" + left + "px";
+           element.style.top = "" + top + "px";
+           element.style.width = "" + width + "px";
+           element.style.height = "" + height + "px";
+         },
+    'androidx.compose.ui.window.documentIsVisible' : () => document.visibilityState === 'visible',
+    'androidx.compose.ui.window.isMouseEvent' : (event) => event.pointerType === 'mouse',
+    'androidx.compose.ui.window.setPointerCapture' : (target, pointerId) => { try { target.setPointerCapture(pointerId) } catch (e) {} },
+    'androidx.compose.ui.window.getCoalescedEvents' : (pointerEvent) => pointerEvent.getCoalescedEvents ? pointerEvent.getCoalescedEvents() : [],
+    'androidx.compose.ui.window.getPointerEventCode' : (event) => {
+            switch (event.type) {
+              case 'pointerdown':
+                return 1; // PointerEventType.Press
+              case 'pointerup':
+              case 'pointercancel':
+                return 2; // PointerEventType.Release
+              case 'pointermove':
+                return 3; // PointerEventType.Move
+              case 'pointerenter':
+                return 4; //PointerEventType.Enter
+              case 'pointerleave':
+                return 5; //PointerEventType.Exit
+              default:
+                return 0; // PointerEventType.Unknown
+            } 
+        },
+    'androidx.compose.ui.window.activeElement_$external_prop_getter' : (_this) => _this.activeElement,
+    'androidx.compose.ui.window.isMatchMediaSupported' : () => window.matchMedia != undefined,
+    'androidx.compose.runtime.internal.weakMap_js_code' : () => (new WeakMap()),
+    'androidx.compose.runtime.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
+    'androidx.compose.runtime.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
+    'androidx.compose.runtime.internal.WeakRef_$external_fun' : (p0) => new WeakRef(p0),
+    'androidx.compose.runtime.internal.deref_$external_fun' : (_this, ) => _this.deref(),
+    'androidx.compose.runtime.internal.WeakRef_$external_fun_1' : () => new WeakRef(),
+    'androidx.compose.runtime.internal.WeakRef_$external_class_instanceof' : (x) => x instanceof WeakRef,
+    'androidx.compose.runtime.internal.WeakRef_$external_class_get' : () => WeakRef,
+    'org.jetbrains.skiko.GL_$external_prop_getter' : () => _ref_Li9za2lrby5tanM_.GL,
+    'org.jetbrains.skia.impl.FinalizationRegistry_$external_fun' : (p0) => new FinalizationRegistry(p0),
+    'org.jetbrains.skia.impl.register_$external_fun' : (_this, p0, p1, p2) => _this.register(p0, p1, p2),
+    'org.jetbrains.skia.impl.unregister_$external_fun' : (_this, p0) => _this.unregister(p0),
+    'org.jetbrains.skia.impl.FinalizationRegistry_$external_class_instanceof' : (x) => x instanceof FinalizationRegistry,
+    'org.jetbrains.skia.impl.FinalizationRegistry_$external_class_get' : () => FinalizationRegistry,
+    'org.jetbrains.skia.impl.crateCallbackObj' : () => { return {} },
+    'org.jetbrains.skia.impl.value_$external_prop_getter' : (_this) => _this.value,
+    'org.jetbrains.skia.impl.value_$external_prop_setter' : (_this, v) => _this.value = v,
+    'org.jetbrains.skia.impl.value_$external_prop_getter_1' : (_this) => _this.value,
+    'org.jetbrains.skia.impl.value_$external_prop_setter_1' : (_this, v) => _this.value = v,
+    'org.jetbrains.skia.impl.value_$external_prop_getter_2' : (_this) => _this.value,
+    'org.jetbrains.skia.impl.value_$external_prop_setter_2' : (_this, v) => _this.value = v,
+    'org.jetbrains.skia.impl.value_$external_prop_getter_3' : (_this) => _this.value,
+    'org.jetbrains.skia.impl.value_$external_prop_setter_3' : (_this, v) => _this.value = v,
+    'org.jetbrains.skia.impl._registerCallback_$external_fun' : (p0, p1, p2) => _ref_Li9za2lrby5tanM_c2tpa29BcGk._registerCallback(p0, p1, p2),
+    'org.jetbrains.skia.impl._createLocalCallbackScope_$external_fun' : () => _ref_Li9za2lrby5tanM_c2tpa29BcGk._createLocalCallbackScope(),
+    'org.jetbrains.skia.impl._releaseLocalCallbackScope_$external_fun' : () => _ref_Li9za2lrby5tanM_c2tpa29BcGk._releaseLocalCallbackScope(),
+    'org.jetbrains.skiko.wasm.createDefaultContextAttributes' : () => {
+        return {
+            alpha: 1,
+            depth: 1,
+            stencil: 8,
+            antialias: 0,
+            premultipliedAlpha: 1,
+            preserveDrawingBuffer: 0,
+            preferLowPowerToHighPerformance: 0,
+            failIfMajorPerformanceCaveat: 0,
+            enableExtensionsByDefault: 1,
+            explicitSwapControl: 0,
+            renderViaOffscreenBackBuffer: 0,
+            majorVersion: 2,
+        }
+    }
+    ,
+    'org.jetbrains.skiko.wasm.awaitSkiko_$external_prop_getter' : () => _ref_Li9za2lrby5tanM_.awaitSkiko,
+    'org.jetbrains.skiko.createContext_$external_fun' : (_this, p0, p1) => _this.createContext(p0, p1),
+    'org.jetbrains.skiko.makeContextCurrent_$external_fun' : (_this, p0) => _this.makeContextCurrent(p0),
+    'org.jetbrains.skiko.getNavigatorInfo' : () => navigator.userAgentData ? navigator.userAgentData.platform : navigator.platform,
+    'org.jetbrains.skiko.defaultFetchInit_js_code' : () => ({}),
+    'org.jetbrains.skiko.wasm.alpha_$external_prop_getter' : (_this) => _this.alpha,
+    'org.jetbrains.skiko.wasm.depth_$external_prop_getter' : (_this) => _this.depth,
+    'org.jetbrains.skiko.wasm.stencil_$external_prop_getter' : (_this) => _this.stencil,
+    'org.jetbrains.skiko.wasm.antialias_$external_prop_getter' : (_this) => _this.antialias,
+    'org.jetbrains.skiko.wasm.premultipliedAlpha_$external_prop_getter' : (_this) => _this.premultipliedAlpha,
+    'org.jetbrains.skiko.wasm.preserveDrawingBuffer_$external_prop_getter' : (_this) => _this.preserveDrawingBuffer,
+    'org.jetbrains.skiko.wasm.preferLowPowerToHighPerformance_$external_prop_getter' : (_this) => _this.preferLowPowerToHighPerformance,
+    'org.jetbrains.skiko.wasm.failIfMajorPerformanceCaveat_$external_prop_getter' : (_this) => _this.failIfMajorPerformanceCaveat,
+    'org.jetbrains.skiko.wasm.enableExtensionsByDefault_$external_prop_getter' : (_this) => _this.enableExtensionsByDefault,
+    'org.jetbrains.skiko.wasm.explicitSwapControl_$external_prop_getter' : (_this) => _this.explicitSwapControl,
+    'org.jetbrains.skiko.wasm.renderViaOffscreenBackBuffer_$external_prop_getter' : (_this) => _this.renderViaOffscreenBackBuffer,
+    'org.jetbrains.skiko.wasm.majorVersion_$external_prop_getter' : (_this) => _this.majorVersion,
     'kotlinx.coroutines.tryGetProcess' : () => (typeof(process) !== 'undefined' && typeof(process.nextTick) === 'function') ? process : null,
     'kotlinx.coroutines.tryGetWindow' : () => (typeof(window) !== 'undefined' && window != null && typeof(window.addEventListener) === 'function') ? window : null,
     'kotlinx.coroutines.nextTick_$external_fun' : (_this, p0) => _this.nextTick(p0),
@@ -891,7 +1163,6 @@ const js_code = {
     'org.w3c.dom.encryptedmedia.keyStatuses_$external_prop_getter' : (_this) => _this.keyStatuses,
     'org.w3c.dom.encryptedmedia.onkeystatuseschange_$external_prop_getter' : (_this) => _this.onkeystatuseschange,
     'org.w3c.dom.encryptedmedia.onkeystatuseschange_$external_prop_setter' : (_this, v) => _this.onkeystatuseschange = v,
-    'org.w3c.dom.encryptedmedia.__convertKotlinClosureToJsClosure_((Js)->Unit)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Js)->Unit)'](f, p0)),
     'org.w3c.dom.encryptedmedia.onmessage_$external_prop_getter' : (_this) => _this.onmessage,
     'org.w3c.dom.encryptedmedia.onmessage_$external_prop_setter' : (_this, v) => _this.onmessage = v,
     'org.w3c.dom.encryptedmedia.generateRequest_$external_fun' : (_this, p0, p1) => _this.generateRequest(p0, p1),
@@ -1218,7 +1489,6 @@ const js_code = {
     'org.w3c.dom.prompt_$external_fun' : (_this, p0, p1, isDefault0, isDefault1) => _this.prompt(isDefault0 ? undefined : p0, isDefault1 ? undefined : p1, ),
     'org.w3c.dom.print_$external_fun' : (_this, ) => _this.print(),
     'org.w3c.dom.requestAnimationFrame_$external_fun' : (_this, p0) => _this.requestAnimationFrame(p0),
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_((Double)->Unit)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Double)->Unit)'](f, p0)),
     'org.w3c.dom.cancelAnimationFrame_$external_fun' : (_this, p0) => _this.cancelAnimationFrame(p0),
     'org.w3c.dom.postMessage_$external_fun' : (_this, p0, p1, p2, isDefault0) => _this.postMessage(p0, p1, isDefault0 ? undefined : p2, ),
     'org.w3c.dom.captureEvents_$external_fun' : (_this, ) => _this.captureEvents(),
@@ -1429,7 +1699,7 @@ const js_code = {
     'org.w3c.dom.onerror_$external_prop_getter' : (_this) => _this.onerror,
     'org.w3c.dom.__callJsClosure_((Js?,String,Int,Int,Js?)->Js?)' : (f, p0, p1, p2, p3, p4) => f(p0, p1, p2, p3, p4),
     'org.w3c.dom.onerror_$external_prop_setter' : (_this, v) => _this.onerror = v,
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_((Js?,String,Int,Int,Js?)->Js?)' : (f) => getCachedJsObject(f, (p0, p1, p2, p3, p4) => wasmExports['__callFunction_((Js?,String,Int,Int,Js?)->Js?)'](f, p0, p1, p2, p3, p4)),
+    'org.w3c.dom.__convertKotlinClosureToJsClosure_5' : (f, trampoline) => getCachedJsObject(f, (p0, p1, p2, p3, p4) => trampoline(f, p0, p1, p2, p3, p4)),
     'org.w3c.dom.onfocus_$external_prop_getter' : (_this) => _this.onfocus,
     'org.w3c.dom.onfocus_$external_prop_setter' : (_this, v) => _this.onfocus = v,
     'org.w3c.dom.oninput_$external_prop_getter' : (_this) => _this.oninput,
@@ -1533,7 +1803,6 @@ const js_code = {
     'org.w3c.dom.onbeforeunload_$external_prop_getter' : (_this) => _this.onbeforeunload,
     'org.w3c.dom.__callJsClosure_((Js)->String?)' : (f, p0) => f(p0),
     'org.w3c.dom.onbeforeunload_$external_prop_setter' : (_this, v) => _this.onbeforeunload = v,
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_((Js)->String?)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Js)->String?)'](f, p0)),
     'org.w3c.dom.onhashchange_$external_prop_getter' : (_this) => _this.onhashchange,
     'org.w3c.dom.onhashchange_$external_prop_setter' : (_this, v) => _this.onhashchange = v,
     'org.w3c.dom.onlanguagechange_$external_prop_getter' : (_this) => _this.onlanguagechange,
@@ -1564,7 +1833,6 @@ const js_code = {
     'org.w3c.dom.atob_$external_fun' : (_this, p0) => _this.atob(p0),
     'org.w3c.dom.setTimeout_$external_fun' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.setTimeout(p0, isDefault0 ? undefined : p1, ...p2, ),
     'org.w3c.dom.setTimeout_$external_fun_1' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.setTimeout(p0, isDefault0 ? undefined : p1, ...p2, ),
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_(()->Js?)' : (f) => getCachedJsObject(f, () => wasmExports['__callFunction_(()->Js?)'](f, )),
     'org.w3c.dom.clearTimeout_$external_fun' : (_this, p0, isDefault0) => _this.clearTimeout(isDefault0 ? undefined : p0, ),
     'org.w3c.dom.setInterval_$external_fun' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.setInterval(p0, isDefault0 ? undefined : p1, ...p2, ),
     'org.w3c.dom.setInterval_$external_fun_1' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.setInterval(p0, isDefault0 ? undefined : p1, ...p2, ),
@@ -1808,7 +2076,6 @@ const js_code = {
     'org.w3c.dom.createRange_$external_fun' : (_this, ) => _this.createRange(),
     'org.w3c.dom.createNodeIterator_$external_fun' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.createNodeIterator(p0, isDefault0 ? undefined : p1, isDefault1 ? undefined : p2, ),
     'org.w3c.dom.createNodeIterator_$external_fun_1' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.createNodeIterator(p0, isDefault0 ? undefined : p1, isDefault1 ? undefined : p2, ),
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_((Js)->Short)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Js)->Short)'](f, p0)),
     'org.w3c.dom.createTreeWalker_$external_fun' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.createTreeWalker(p0, isDefault0 ? undefined : p1, isDefault1 ? undefined : p2, ),
     'org.w3c.dom.createTreeWalker_$external_fun_1' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.createTreeWalker(p0, isDefault0 ? undefined : p1, isDefault1 ? undefined : p2, ),
     'org.w3c.dom.getElementsByName_$external_fun' : (_this, p0) => _this.getElementsByName(p0),
@@ -2837,7 +3104,6 @@ const js_code = {
     'org.w3c.dom.kind_$external_prop_getter' : (_this) => _this.kind,
     'org.w3c.dom.type_$external_prop_getter_1' : (_this) => _this.type,
     'org.w3c.dom.getAsString_$external_fun' : (_this, p0) => _this.getAsString(p0),
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_((String)->Unit)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((String)->Unit)'](f, p0)),
     'org.w3c.dom.getAsFile_$external_fun' : (_this, ) => _this.getAsFile(),
     'org.w3c.dom.DataTransferItem_$external_class_instanceof' : (x) => x instanceof DataTransferItem,
     'org.w3c.dom.DataTransferItem_$external_class_get' : () => DataTransferItem,
@@ -3233,7 +3499,6 @@ const js_code = {
     'org.w3c.dom.getContext_$external_fun' : (_this, p0, p1) => _this.getContext(p0, ...p1),
     'org.w3c.dom.toDataURL_$external_fun' : (_this, p0, p1, isDefault0, isDefault1) => _this.toDataURL(isDefault0 ? undefined : p0, isDefault1 ? undefined : p1, ),
     'org.w3c.dom.toBlob_$external_fun' : (_this, p0, p1, p2, isDefault0, isDefault1) => _this.toBlob(p0, isDefault0 ? undefined : p1, isDefault1 ? undefined : p2, ),
-    'org.w3c.dom.__convertKotlinClosureToJsClosure_((Js?)->Unit)' : (f) => getCachedJsObject(f, (p0) => wasmExports['__callFunction_((Js?)->Unit)'](f, p0)),
     'org.w3c.dom.Companion_$external_fun_40' : () => new HTMLCanvasElement(),
     'org.w3c.dom.ELEMENT_NODE_$external_prop_getter_19' : (_this) => _this.ELEMENT_NODE,
     'org.w3c.dom.ATTRIBUTE_NODE_$external_prop_getter_19' : (_this) => _this.ATTRIBUTE_NODE,
@@ -4624,256 +4889,6 @@ const js_code = {
     'kotlinx.browser.document_$external_prop_getter' : () => document,
     'org.w3c.dom.length_$external_prop_getter_7' : (_this) => _this.length,
     'org.w3c.dom.item_$external_fun_9' : (_this, p0) => _this.item(p0),
-    'androidx.compose.runtime.internal.weakMap_js_code' : () => (new WeakMap()),
-    'androidx.compose.runtime.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
-    'androidx.compose.runtime.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
-    'androidx.compose.runtime.internal.WeakRef_$external_fun' : (p0) => new WeakRef(p0),
-    'androidx.compose.runtime.internal.deref_$external_fun' : (_this, ) => _this.deref(),
-    'androidx.compose.runtime.internal.WeakRef_$external_fun_1' : () => new WeakRef(),
-    'androidx.compose.runtime.internal.WeakRef_$external_class_instanceof' : (x) => x instanceof WeakRef,
-    'androidx.compose.runtime.internal.WeakRef_$external_class_get' : () => WeakRef,
-    'org.jetbrains.skiko.GL_$external_prop_getter' : () => _ref_Li9za2lrby5tanM_.GL,
-    'org.jetbrains.skia.impl.FinalizationRegistry_$external_fun' : (p0) => new FinalizationRegistry(p0),
-    'org.jetbrains.skia.impl.register_$external_fun' : (_this, p0, p1, p2) => _this.register(p0, p1, p2),
-    'org.jetbrains.skia.impl.unregister_$external_fun' : (_this, p0) => _this.unregister(p0),
-    'org.jetbrains.skia.impl.FinalizationRegistry_$external_class_instanceof' : (x) => x instanceof FinalizationRegistry,
-    'org.jetbrains.skia.impl.FinalizationRegistry_$external_class_get' : () => FinalizationRegistry,
-    'org.jetbrains.skia.impl.crateCallbackObj' : () => { return {} },
-    'org.jetbrains.skia.impl.value_$external_prop_getter' : (_this) => _this.value,
-    'org.jetbrains.skia.impl.value_$external_prop_setter' : (_this, v) => _this.value = v,
-    'org.jetbrains.skia.impl.value_$external_prop_getter_1' : (_this) => _this.value,
-    'org.jetbrains.skia.impl.value_$external_prop_setter_1' : (_this, v) => _this.value = v,
-    'org.jetbrains.skia.impl.value_$external_prop_getter_2' : (_this) => _this.value,
-    'org.jetbrains.skia.impl.value_$external_prop_setter_2' : (_this, v) => _this.value = v,
-    'org.jetbrains.skia.impl.value_$external_prop_getter_3' : (_this) => _this.value,
-    'org.jetbrains.skia.impl.value_$external_prop_setter_3' : (_this, v) => _this.value = v,
-    'org.jetbrains.skia.impl._registerCallback_$external_fun' : (p0, p1, p2) => _ref_Li9za2lrby5tanM_c2tpa29BcGk._registerCallback(p0, p1, p2),
-    'org.jetbrains.skia.impl._createLocalCallbackScope_$external_fun' : () => _ref_Li9za2lrby5tanM_c2tpa29BcGk._createLocalCallbackScope(),
-    'org.jetbrains.skia.impl._releaseLocalCallbackScope_$external_fun' : () => _ref_Li9za2lrby5tanM_c2tpa29BcGk._releaseLocalCallbackScope(),
-    'org.jetbrains.skiko.wasm.createDefaultContextAttributes' : () => {
-        return {
-            alpha: 1,
-            depth: 1,
-            stencil: 8,
-            antialias: 0,
-            premultipliedAlpha: 1,
-            preserveDrawingBuffer: 0,
-            preferLowPowerToHighPerformance: 0,
-            failIfMajorPerformanceCaveat: 0,
-            enableExtensionsByDefault: 1,
-            explicitSwapControl: 0,
-            renderViaOffscreenBackBuffer: 0,
-            majorVersion: 2,
-        }
-    }
-    ,
-    'org.jetbrains.skiko.wasm.awaitSkiko_$external_prop_getter' : () => _ref_Li9za2lrby5tanM_.awaitSkiko,
-    'org.jetbrains.skiko.createContext_$external_fun' : (_this, p0, p1) => _this.createContext(p0, p1),
-    'org.jetbrains.skiko.makeContextCurrent_$external_fun' : (_this, p0) => _this.makeContextCurrent(p0),
-    'org.jetbrains.skiko.getNavigatorInfo' : () => navigator.userAgentData ? navigator.userAgentData.platform : navigator.platform,
-    'org.jetbrains.skiko.defaultFetchInit_js_code' : () => ({}),
-    'org.jetbrains.skiko.wasm.alpha_$external_prop_getter' : (_this) => _this.alpha,
-    'org.jetbrains.skiko.wasm.depth_$external_prop_getter' : (_this) => _this.depth,
-    'org.jetbrains.skiko.wasm.stencil_$external_prop_getter' : (_this) => _this.stencil,
-    'org.jetbrains.skiko.wasm.antialias_$external_prop_getter' : (_this) => _this.antialias,
-    'org.jetbrains.skiko.wasm.premultipliedAlpha_$external_prop_getter' : (_this) => _this.premultipliedAlpha,
-    'org.jetbrains.skiko.wasm.preserveDrawingBuffer_$external_prop_getter' : (_this) => _this.preserveDrawingBuffer,
-    'org.jetbrains.skiko.wasm.preferLowPowerToHighPerformance_$external_prop_getter' : (_this) => _this.preferLowPowerToHighPerformance,
-    'org.jetbrains.skiko.wasm.failIfMajorPerformanceCaveat_$external_prop_getter' : (_this) => _this.failIfMajorPerformanceCaveat,
-    'org.jetbrains.skiko.wasm.enableExtensionsByDefault_$external_prop_getter' : (_this) => _this.enableExtensionsByDefault,
-    'org.jetbrains.skiko.wasm.explicitSwapControl_$external_prop_getter' : (_this) => _this.explicitSwapControl,
-    'org.jetbrains.skiko.wasm.renderViaOffscreenBackBuffer_$external_prop_getter' : (_this) => _this.renderViaOffscreenBackBuffer,
-    'org.jetbrains.skiko.wasm.majorVersion_$external_prop_getter' : (_this) => _this.majorVersion,
-    'androidx.compose.ui.text.intl.getUserPreferredLanguagesAsArray' : () => window.navigator.languages,
-    'androidx.compose.ui.text.FinalizationRegistry_$external_fun' : (p0) => new FinalizationRegistry(p0),
-    'androidx.compose.ui.text.register_$external_fun' : (_this, p0, p1) => _this.register(p0, p1),
-    'androidx.compose.ui.text.FinalizationRegistry_$external_class_instanceof' : (x) => x instanceof FinalizationRegistry,
-    'androidx.compose.ui.text.FinalizationRegistry_$external_class_get' : () => FinalizationRegistry,
-    'androidx.compose.ui.text.WeakRef_$external_fun' : (p0) => new WeakRef(p0),
-    'androidx.compose.ui.text.deref_$external_fun' : (_this, ) => _this.deref(),
-    'androidx.compose.ui.text.WeakRef_$external_fun_1' : () => new WeakRef(),
-    'androidx.compose.ui.text.WeakRef_$external_class_instanceof' : (x) => x instanceof WeakRef,
-    'androidx.compose.ui.text.WeakRef_$external_class_get' : () => WeakRef,
-    'androidx.compose.ui.text.intl.parseLanguageTagToIntlLocale' : (languageTag) => new Intl.Locale(languageTag),
-    'androidx.compose.ui.text.intl.IntlLocale_$external_fun' : () => new IntlLocale(),
-    'androidx.compose.ui.text.intl._language_$external_prop_getter' : (_this) => _this.language,
-    'androidx.compose.ui.text.intl._script_$external_prop_getter' : (_this) => _this.script,
-    'androidx.compose.ui.text.intl._region_$external_prop_getter' : (_this) => _this.region,
-    'androidx.compose.ui.text.intl._baseName_$external_prop_getter' : (_this) => _this.baseName,
-    'androidx.compose.ui.text.intl.IntlLocale_$external_class_instanceof' : (x) => x instanceof IntlLocale,
-    'androidx.compose.ui.text.intl.IntlLocale_$external_class_get' : () => IntlLocale,
-    'androidx.compose.ui.text.platform.toLocaleUpperCase' : (text, locale) => text.toLocaleUpperCase(locale),
-    'androidx.compose.ui.text.platform.toLocaleLowerCase' : (text, locale) => text.toLocaleLowerCase(locale),
-    'androidx.compose.ui.internal.weakMap_js_code' : () => (new WeakMap()),
-    'androidx.compose.ui.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
-    'androidx.compose.ui.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
-    'androidx.compose.ui.platform.createClipboardItemWithPlainText' : (text) => [new ClipboardItem({'text/plain': new Blob([text], { type: 'text/plain' })})],
-    'androidx.compose.ui.platform.emptyClipboardItems' : () => [new ClipboardItem({'text/plain': new Blob([''], { type: 'text/plain' })})],
-    'androidx.compose.ui.platform.invalidClipboardItems' : () => [],
-    'androidx.compose.ui.platform.warn' : (text) => { console.warn(text) },
-    'androidx.compose.ui.draganddrop.setMethodImplForUint8ClampedArray' : (obj, index, value) => { obj[index] = value; },
-    'androidx.compose.ui.events.withSignal' : (signal) => ({signal: signal}),
-    'androidx.compose.ui.events.withSignalAndPassive' : (signal, passive) => ({signal: signal, passive: passive}),
-    'androidx.compose.ui.events.AbortController_$external_fun' : () => new AbortController(),
-    'androidx.compose.ui.events.signal_$external_prop_getter' : (_this) => _this.signal,
-    'androidx.compose.ui.events.abort_$external_fun' : (_this, ) => _this.abort(),
-    'androidx.compose.ui.events.AbortController_$external_class_instanceof' : (x) => x instanceof AbortController,
-    'androidx.compose.ui.events.AbortController_$external_class_get' : () => AbortController,
-    'androidx.compose.ui.internal.focusExt' : (element, _preventScroll) => element.focus({ preventScroll: _preventScroll }),
-    'androidx.compose.ui.node.WeakRef_$external_fun' : (p0) => new WeakRef(p0),
-    'androidx.compose.ui.node.deref_$external_fun' : (_this, ) => _this.deref(),
-    'androidx.compose.ui.node.WeakRef_$external_fun_1' : () => new WeakRef(),
-    'androidx.compose.ui.node.WeakRef_$external_class_instanceof' : (x) => x instanceof WeakRef,
-    'androidx.compose.ui.node.WeakRef_$external_class_get' : () => WeakRef,
-    'androidx.compose.ui.platform.setBackingInputBox' : (container, left, top, width, height) => { 
-        container.style.setProperty("--compose-internal-web-backing-input-left", left);
-        container.style.setProperty("--compose-internal-web-backing-input-top", top);
-        container.style.setProperty("--compose-internal-web-backing-input-width", width);
-        container.style.setProperty("--compose-internal-web-backing-input-height", height)
-     },
-    'androidx.compose.ui.platform.isTypedEvent' : (evt) => !evt.metaKey && !evt.ctrlKey && evt.key.charAt(0) === evt.key,
-    'androidx.compose.ui.platform.value_$external_prop_getter' : (_this) => _this.value,
-    'androidx.compose.ui.platform.value_$external_prop_setter' : (_this, v) => _this.value = v,
-    'androidx.compose.ui.platform.selectionStart_$external_prop_getter' : (_this) => _this.selectionStart,
-    'androidx.compose.ui.platform.selectionEnd_$external_prop_getter' : (_this) => _this.selectionEnd,
-    'androidx.compose.ui.platform.selectionDirection_$external_prop_getter' : (_this) => _this.selectionDirection,
-    'androidx.compose.ui.platform.setSelectionRange_$external_fun' : (_this, p0, p1, p2, isDefault0) => _this.setSelectionRange(p0, p1, isDefault0 ? undefined : p2, ),
-    'androidx.compose.ui.platform.data_$external_prop_getter' : (_this) => _this.data,
-    'androidx.compose.ui.platform.inputType_$external_prop_getter' : (_this) => _this.inputType,
-    'androidx.compose.ui.platform.textRangeStart_$external_prop_getter' : (_this) => _this.textRangeStart,
-    'androidx.compose.ui.platform.textRangeStart_$external_prop_setter' : (_this, v) => _this.textRangeStart = v,
-    'androidx.compose.ui.platform.textRangeEnd_$external_prop_getter' : (_this) => _this.textRangeEnd,
-    'androidx.compose.ui.platform.textRangeEnd_$external_prop_setter' : (_this, v) => _this.textRangeEnd = v,
-    'androidx.compose.ui.platform.InputEventExt_$external_fun' : (p0, p1, isDefault0) => new InputEvent(p0, isDefault0 ? undefined : p1, ),
-    'androidx.compose.ui.platform.InputEventExt_$external_fun_1' : () => new InputEvent(),
-    'androidx.compose.ui.platform.InputEventExt_$external_class_instanceof' : (x) => x instanceof InputEvent,
-    'androidx.compose.ui.platform.InputEventExt_$external_class_get' : () => InputEvent,
-    'androidx.compose.ui.platform.activeElement_$external_prop_getter' : (_this) => _this.activeElement,
-    'androidx.compose.ui.platform.getRootNode_$external_fun' : (_this, ) => _this.getRootNode(),
-    'androidx.compose.ui.platform.getW3CClipboard' : () => window.navigator.clipboard,
-    'androidx.compose.ui.platform.isSecureContext' : () => window.isSecureContext === true,
-    'androidx.compose.ui.platform.isFullClipboardApiSupported' : () => Boolean(
-            window.navigator.clipboard && 
-            window.navigator.clipboard.write && 
-            window.navigator.clipboard.read && 
-            typeof(ClipboardItem) !== 'undefined'
-            )
-        ,
-    'androidx.compose.ui.platform.isFallbackWriteTextApiAvailable' : () => Boolean(window.navigator.clipboard && window.navigator.clipboard.writeText),
-    'androidx.compose.ui.platform.types_$external_prop_getter' : (_this) => _this.types,
-    'androidx.compose.ui.platform.getType_$external_fun' : (_this, p0) => _this.getType(p0),
-    'androidx.compose.ui.platform.W3CTemporaryClipboard_$external_fun' : () => new Clipboard(),
-    'androidx.compose.ui.platform.read_$external_fun' : (_this, ) => _this.read(),
-    'androidx.compose.ui.platform.write_$external_fun' : (_this, p0) => _this.write(p0),
-    'androidx.compose.ui.platform.writeText_$external_fun' : (_this, p0) => _this.writeText(p0),
-    'androidx.compose.ui.platform.W3CTemporaryClipboard_$external_class_instanceof' : (x) => x instanceof Clipboard,
-    'androidx.compose.ui.platform.W3CTemporaryClipboard_$external_class_get' : () => Clipboard,
-    'androidx.compose.ui.platform.accessibility.removeAllChildrenOf' : (element) => { element.replaceChildren() },
-    'androidx.compose.ui.platform.accessibility.setA11YAriaRole' : (element, ariaRoleId) => { 
-            var roleValue = "";
-            switch (ariaRoleId) {
-                case 0: // Role.Button
-                    roleValue = "button";
-                    break;
-                case 1: // Role.Checkbox
-                    roleValue = "checkbox";
-                    break;
-                case 2: // Role.Switch
-                    roleValue = "switch";
-                    break;
-                case 3: // Role.RadioButton
-                    roleValue = "radio";
-                    break;
-                case 4: // Role.Tab
-                    roleValue = "tab";
-                    break;
-                case 5: // Role.Image
-                    roleValue = "img";
-                    break;
-                case 6: // Role.DropdownList
-                    roleValue = "menu";
-                    break;
-                case 7: // heading https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/heading_role
-                    roleValue = "heading";
-                    break;
-                case 8: // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/textbox_role
-                    roleValue = "textbox";
-                    break;
-                case 9: // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/list_role
-                    roleValue = "list";
-                    break;
-                case 10: // https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/grid_role
-                    roleValue = "grid";
-                    break;
-                default:
-                    break;
-            }
-            if (roleValue.length > 0) { 
-                element.setAttribute("role", roleValue);
-            } else {
-                element.removeAttribute("role");
-            }
-         },
-    'androidx.compose.ui.platform.accessibility.setSizeAndPosition' : (element, left, top, width, height) => { 
-           element.style.left = "" + left + "px";
-           element.style.top = "" + top + "px";
-           element.style.width = "" + width + "px";
-           element.style.height = "" + height + "px";
-         },
-    'androidx.compose.ui.window.documentIsVisible' : () => document.visibilityState === 'visible',
-    'androidx.compose.ui.window.isMouseEvent' : (event) => event.pointerType === 'mouse',
-    'androidx.compose.ui.window.setPointerCapture' : (target, pointerId) => { try { target.setPointerCapture(pointerId) } catch (e) {} },
-    'androidx.compose.ui.window.getCoalescedEvents' : (pointerEvent) => pointerEvent.getCoalescedEvents ? pointerEvent.getCoalescedEvents() : [],
-    'androidx.compose.ui.window.getPointerEventCode' : (event) => {
-            switch (event.type) {
-              case 'pointerdown':
-                return 1; // PointerEventType.Press
-              case 'pointerup':
-              case 'pointercancel':
-                return 2; // PointerEventType.Release
-              case 'pointermove':
-                return 3; // PointerEventType.Move
-              case 'pointerenter':
-                return 4; //PointerEventType.Enter
-              case 'pointerleave':
-                return 5; //PointerEventType.Exit
-              default:
-                return 0; // PointerEventType.Unknown
-            } 
-        },
-    'androidx.compose.ui.window.activeElement_$external_prop_getter' : (_this) => _this.activeElement,
-    'androidx.compose.ui.window.isMatchMediaSupported' : () => window.matchMedia != undefined,
-    'androidx.compose.foundation.internal.isClipboardWriteSupported' : () => Boolean(window.navigator.clipboard && (window.navigator.clipboard.write || window.navigator.clipboard.writeText)),
-    'androidx.compose.foundation.internal.isClipboardReadSupported' : () => Boolean(window.navigator.clipboard && window.navigator.clipboard.read),
-    'androidx.compose.foundation.internal.getTextFromBlob' : (blob) => blob.text(),
-    'androidx.compose.foundation.internal.doesJsArrayContainValue' : (jsArray, value) => jsArray.includes(value),
-    'androidx.compose.foundation.text.EventListener' : (handler) => (event) => { handler(event) },
-    'androidx.compose.foundation.internal.weakMap_js_code' : () => (new WeakMap()),
-    'androidx.compose.foundation.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
-    'androidx.compose.foundation.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
-    'org.jetbrains.compose.resources.Intl_$external_fun' : () => new Intl(),
-    'org.jetbrains.compose.resources.Locale_$external_fun' : (p0) => new Intl.Locale(p0),
-    'org.jetbrains.compose.resources.language_$external_prop_getter' : (_this) => _this.language,
-    'org.jetbrains.compose.resources.region_$external_prop_getter' : (_this) => _this.region,
-    'org.jetbrains.compose.resources.Locale_$external_class_instanceof' : (x) => x instanceof Intl.Locale,
-    'org.jetbrains.compose.resources.Locale_$external_class_get' : () => Intl.Locale,
-    'org.jetbrains.compose.resources.Intl_$external_class_instanceof' : (x) => x instanceof Intl,
-    'org.jetbrains.compose.resources.Intl_$external_class_get' : () => Intl,
-    'org.jetbrains.compose.resources.isInTestEnvironment' : () => window.composeResourcesTesting == true,
-    'org.jetbrains.compose.resources.requestResponseAsByteArray' : (req) =>  {
-            var text = req.responseText;
-            var int8Arr = new Int8Array(text.length);
-            for (var i = 0; i < text.length; i++) {
-                int8Arr[i] = text.charCodeAt(i) & 0xFF;
-            }
-            return int8Arr;
-        },
-    'org.jetbrains.compose.resources.jsExportBlobAsArrayBuffer' : (blob) => blob.arrayBuffer(),
-    'org.jetbrains.compose.resources.copyArrayBufferToWasmMemory' : (ab, ptr) => {
-          const data = new Uint8Array(ab);
-          new Uint8Array(wasmExports.memory.buffer).set(data, ptr);
-    },
-    'org.jetbrains.compose.resources.supportsCacheApi' : () => Boolean(window.caches),
     'kotlinx.datetime.internal.JSJoda.ZoneRulesProvider_$external_fun' : () => new _ref_QGpzLWpvZGEvY29yZQ_.ZoneRulesProvider(),
     'kotlinx.datetime.internal.JSJoda.ZoneRulesProvider_$external_object_getInstance' : () => _ref_QGpzLWpvZGEvY29yZQ_.ZoneRulesProvider,
     'kotlinx.datetime.internal.JSJoda.ZoneRulesProvider_$external_class_instanceof' : (x) => x instanceof _ref_QGpzLWpvZGEvY29yZQ_.ZoneRulesProvider,
@@ -4889,9 +4904,6 @@ const js_code = {
     'kotlinx.datetime.internal.getExceptionMessage' : (jsException) => jsException.message,
     'kotlinx.datetime.internal.getZones' : (rulesProvider) => rulesProvider.getTzdbData().zones,
     'kotlinx.datetime.internal.getLinks' : (rulesProvider) => rulesProvider.getTzdbData().links,
-    'androidx.compose.material3.internal.weakMap_js_code' : () => (new WeakMap()),
-    'androidx.compose.material3.internal.set_$external_fun' : (_this, p0, p1) => _this.set(p0, p1),
-    'androidx.compose.material3.internal.get_$external_fun' : (_this, p0) => _this.get(p0),
     'com.example.cmpwasmcatalog.getTextPromise' : (url, timeoutMs) => fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }),
     'com.example.cmpwasmcatalog.postJsonPromise' : (url, body, timeoutMs) => fetch(url, {
@@ -4940,6 +4952,7 @@ export { wasmTag as __TAG };
 export const importObject = {
     js_code,
     intrinsics: {
+        memory: new WebAssembly.Memory({ initial: 0 }),
         tag: wasmTag
     },
     "'": StringConstantsProxy,

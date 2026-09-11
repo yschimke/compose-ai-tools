@@ -4,52 +4,32 @@ import { importObject, setWasmExports } from './composeApp.import-object.mjs'
 
 let wasmInstance;
 
-const isNodeJs = (typeof process !== 'undefined') && (process.release.name === 'node');
-const isDeno = !isNodeJs && (typeof Deno !== 'undefined')
-const isStandaloneJsVM =
-    !isDeno && !isNodeJs && (
-        typeof d8 !== 'undefined' // V8
-        || typeof inIon !== 'undefined' // SpiderMonkey
-        || typeof jscOptions !== 'undefined' // JavaScriptCore
-    );
-const isBrowser = !isNodeJs && !isDeno && !isStandaloneJsVM && (typeof window !== 'undefined' || typeof self !== 'undefined');
-
-if (!isNodeJs && !isDeno && !isStandaloneJsVM && !isBrowser) {
-  throw "Supported JS engine not detected";
-}
-
-const wasmFilePath = './composeApp.wasm';
 const wasmOptions = { builtins: ['js-string'], importedStringConstants: "'" }
 
 try {
-  if (isNodeJs) {
-    const module = await import(/* webpackIgnore: true */'node:module');
-    const importMeta = import.meta;
-    const require = module.default.createRequire(importMeta.url);
-    const fs = require('fs');
-    const url = require('url');
-    const filepath = import.meta.resolve(wasmFilePath);
+  if ((typeof process !== 'undefined') && (process.release.name === 'node')) {
+    const fs = await import(/* webpackIgnore: true */'node:fs');
+    const url = await import(/* webpackIgnore: true */'node:url');
+    const filepath = import.meta.resolve('./composeApp.wasm');
     const wasmBuffer = fs.readFileSync(url.fileURLToPath(filepath));
     const wasmModule = new WebAssembly.Module(wasmBuffer, wasmOptions);
     wasmInstance = new WebAssembly.Instance(wasmModule, importObject);
-  }
-
-  if (isDeno) {
+  } else if (typeof Deno !== 'undefined') {
     const path = await import(/* webpackIgnore: true */'https://deno.land/std/path/mod.ts');
-    const binary = Deno.readFileSync(path.fromFileUrl(import.meta.resolve(wasmFilePath)));
+    const binary = Deno.readFileSync(path.fromFileUrl(import.meta.resolve('./composeApp.wasm')));
     const module = await WebAssembly.compile(binary, wasmOptions);
     wasmInstance = await WebAssembly.instantiate(module, importObject);
-  }
-
-  if (isStandaloneJsVM) {
-    const importMeta = import.meta;
-    const filepath = importMeta.url.replace(/\.mjs$/, '.wasm');
+  } else if (
+    (typeof d8 !== 'undefined' // V8
+      || typeof inIon !== 'undefined' // SpiderMonkey
+      || typeof jscOptions !== 'undefined' // JavaScriptCore
+    )
+  ) {
+    const filepath = import.meta.url.replace(/\.mjs$/, '.wasm');
     const wasmBuffer = read(filepath, 'binary');
     const wasmModule = new WebAssembly.Module(wasmBuffer, wasmOptions);
     wasmInstance = new WebAssembly.Instance(wasmModule, importObject);
-  }
-
-  if (isBrowser) {
+  } else {
     wasmInstance = (await WebAssembly.instantiateStreaming(fetch(new URL('./composeApp.wasm',import.meta.url).href), importObject, wasmOptions)).instance;
   }
 } catch (e) {
@@ -57,7 +37,7 @@ try {
     let text = `Please make sure that your runtime environment supports the latest version of Wasm GC and Exception-Handling proposals.
 For more information, see https://kotl.in/wasm-help
 `;
-    if (isBrowser) {
+    if (typeof console !== "undefined" && console.error !== void 0) {
       console.error(text);
     } else {
       const t = "\n" + text;
@@ -71,12 +51,35 @@ For more information, see https://kotl.in/wasm-help
 }
 
 const exports = wasmInstance.exports
-setWasmExports(exports);
-exports._start();
+
+let memoryFirstTimeAccess = true;
+const memoryProxy = new Proxy(importObject.intrinsics.memory, {
+    get(target, prop, receiver) {
+        if (memoryFirstTimeAccess) {
+            memoryFirstTimeAccess = false;
+            console.error('Accessing `memory` via `wasmExports` is deprecated. Use `kotlin.wasm.unsafe.wasmMemory` or update dependencies. Read more: https://kotl.in/vr3szr');
+        }
+        return Reflect.get(target, prop);
+    }
+});
+const wasmExports = new Proxy(memoryProxy, {
+    get(target, prop, receiver) {
+        if (prop == 'memory') {
+            return target;
+        } else {
+            throw new Error('Accessing exports via `wasmExports` is no longer supported. Remove usages or update dependencies. Read more: https://kotl.in/vr3szr');
+        }
+    }
+});
+
+const wasmMemory = wasmExports.memory;
+export { wasmMemory as memory }
 
 export const {
     applyOverrides,
-    memory,
     _start
 } = exports
 
+setWasmExports(wasmExports);
+
+exports._start();
