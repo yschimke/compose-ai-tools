@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T16:22:26.875Z",
+  "generatedAt": "2026-09-11T18:41:36.258Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "b2d80e5eb9c44038c1bc3ef3ddbaa36581f7f6c8",
+        "subject": "chore(main): release 2.10.0 (#5405)",
+        "at": "2026-09-11T19:13:02+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "0587fb02c6f07063b31a7c854bd08c638c721593",
         "subject": "feat(ui-builder): let a builtin slot state how many children it admits (#5408)",
@@ -474,14 +482,6 @@
         "sha": "1fc3f1b12f0310b347324befe7ec2d47c9873dea",
         "subject": "docs(capture): specify device capture in two tiers (#5344)",
         "at": "2026-09-09T19:55:53+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2d30f01f67166acf440fa0c52fa3e6af3ba80b16",
-        "subject": "feat: fold siblings differing in one literal into the list of their values (#5343)",
-        "at": "2026-09-09T17:59:29+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
