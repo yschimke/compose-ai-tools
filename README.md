@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 292 preview(s) across 18 module(s) · 13 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 296 preview(s) across 18 module(s) · 13 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1165,6 +1165,18 @@ _No findings._
 
 _No findings._
 
+### `SharedSourceGreenBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-android-robolectric/SharedSourceGreenBoxPreview-7a08db87.a11y.png" width="400" />
+
+_No findings._
+
+### `SharedSourceMagentaBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-android-robolectric/SharedSourceMagentaBoxPreview_Magenta-1ff13d35.a11y.png" width="400" />
+
+_No findings._
+
 ## cmp-shared
 
 ### `SharedBlueBoxPreview`
@@ -1176,6 +1188,18 @@ _No findings._
 ### `SharedRedBoxPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-shared/SharedRedBoxPreview-67810834.a11y.png" width="400" />
+
+_No findings._
+
+### `SharedSourceGreenBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-shared/SharedSourceGreenBoxPreview-7a08db87.a11y.png" width="400" />
+
+_No findings._
+
+### `SharedSourceMagentaBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-shared/SharedSourceMagentaBoxPreview_Magenta-1ff13d35.a11y.png" width="400" />
 
 _No findings._
 

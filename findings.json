@@ -1684,6 +1684,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SharedSourceGreenBoxPreview-7a08db87.a11y.png",
+      "cleanBasename": "SharedSourceGreenBoxPreview-7a08db87.png",
+      "findings": [],
+      "functionName": "SharedSourceGreenBoxPreview",
+      "module": "cmp-android-robolectric",
+      "previewId": "com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceGreenBoxPreview",
+      "rendersDir": "cmp-android-robolectric",
+      "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SharedSourceMagentaBoxPreview_Magenta-1ff13d35.a11y.png",
+      "cleanBasename": "SharedSourceMagentaBoxPreview_Magenta-1ff13d35.png",
+      "findings": [],
+      "functionName": "SharedSourceMagentaBoxPreview",
+      "module": "cmp-android-robolectric",
+      "previewId": "com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceMagentaBoxPreview_Magenta",
+      "rendersDir": "cmp-android-robolectric",
+      "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SharedBlueBoxPreview_Blue-31ffdd83.a11y.png",
       "cleanBasename": "SharedBlueBoxPreview_Blue-31ffdd83.png",
       "findings": [],
@@ -1703,6 +1725,28 @@
       "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedRedBoxPreview",
       "rendersDir": "cmp-shared",
       "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SharedSourceGreenBoxPreview-7a08db87.a11y.png",
+      "cleanBasename": "SharedSourceGreenBoxPreview-7a08db87.png",
+      "findings": [],
+      "functionName": "SharedSourceGreenBoxPreview",
+      "module": "cmp-shared",
+      "previewId": "com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceGreenBoxPreview",
+      "rendersDir": "cmp-shared",
+      "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SharedSourceMagentaBoxPreview_Magenta-1ff13d35.a11y.png",
+      "cleanBasename": "SharedSourceMagentaBoxPreview_Magenta-1ff13d35.png",
+      "findings": [],
+      "functionName": "SharedSourceMagentaBoxPreview",
+      "module": "cmp-shared",
+      "previewId": "com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceMagentaBoxPreview_Magenta",
+      "rendersDir": "cmp-shared",
+      "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt",
       "variant": ""
     },
     {
