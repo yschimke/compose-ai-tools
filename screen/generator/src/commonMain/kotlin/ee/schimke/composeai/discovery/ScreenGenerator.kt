@@ -1233,6 +1233,7 @@ object ScreenGenerator {
           // A lambda returning a constant. Held to the parameter's *return* type rather than to
           // its `kotlin.Function0` classifier, which every zero-argument function type shares.
           is ScreenValue.Lambda -> lambda(value, parameter, owner)
+          is ScreenValue.ActionLambda -> lambda(value.actions, parameter, owner)
           // Every case with a claimed type left through the branch above.
           else -> null
         }
@@ -1292,6 +1293,12 @@ object ScreenGenerator {
         // makes `rememberCarouselState { 5 }` writable: the count is an `Int` because a nested
         // whole number always is.
         is ScreenValue.Lambda -> expression(value.result, where, depth + 1)?.let { "{ $it }" }
+        is ScreenValue.ActionLambda ->
+          lambda(
+            value.actions,
+            TargetParameter("callback", "() -> Unit", typeFqn = "kotlin.Function0"),
+            where,
+          )
         is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null

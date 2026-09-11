@@ -48,3 +48,17 @@ second and an unmatched value shows the fallback. Its evidence is written to
 The committed [generated source](../evidence/screen-selection/SelectedScreen.kt.txt),
 [initial branch](../evidence/screen-selection/first.png) and
 [branch after clicking](../evidence/screen-selection/second.png) come from that test.
+
+A selected branch can be a clickable layout. `ScreenValue.ActionLambda` carries the same ordered,
+validated `ScreenAction` list as a component handler, but can occupy a nested expression such as
+`ChainLink("androidx.compose.foundation.clickable", named = mapOf("onClick" to callback))`.
+The generated lambda writes declared state; it never accepts source text. Empty handlers,
+undeclared targets, assignment type mismatches, non-Boolean toggles and composable API reads retain
+the existing refusals. A direct parameter must be a non-composable zero-argument Unit callback.
+The expression package allowlist still applies to the surrounding modifier call.
+
+`ScreenActionLambdaTest` covers serialization, ordered writes and refusals. The server consumer's
+`LayoutClickExportTest` and hosted MCP test pin the generated Kotlin for a real saved state-layout
+design. Its `GeneratedLayoutClicksTest` compiles that exact source and clicks through both branches
+and the fallback at densities 1 and 2, including the authored 24 dp padding. This is verified against
+locally staged publications without waiting for a release.

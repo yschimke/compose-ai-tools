@@ -314,6 +314,13 @@ sealed interface ScreenValue {
   @Serializable data class Lambda(val result: ScreenValue) : ScreenValue
 
   /**
+   * A zero-argument event callback with the same checked, ordered writes as [ScreenNode.handlers].
+   * This can be nested in a call or modifier chain, such as `Modifier.clickable(onClick = …)`. It
+   * carries actions rather than source text; every target and assignment is validated.
+   */
+  @Serializable data class ActionLambda(val actions: List<ScreenAction>) : ScreenValue
+
+  /**
    * A read through a fully-qualified path — `androidx.compose.material3.MaterialTheme.colorScheme
    * .primary`, `androidx.compose.ui.text.style.TextAlign.Center`.
    *
