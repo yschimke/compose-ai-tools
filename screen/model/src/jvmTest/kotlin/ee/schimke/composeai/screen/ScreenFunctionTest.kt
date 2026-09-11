@@ -42,11 +42,12 @@ class ScreenFunctionTest {
         ),
     )
 
-  private fun generate(document: ScreenDocument) =
+  private fun generate(document: ScreenDocument, preview: ScreenGenerator.Preview? = null) =
     ScreenGenerator.generate(
       document,
       M3Palette.records,
       expressionPackages = M3Palette.expressionPackages,
+      preview = preview,
     )
 
   private fun emitted(document: ScreenDocument): String {
@@ -207,6 +208,38 @@ class ScreenFunctionTest {
       "zero-argument Unit callback",
     )
     refused(body(doc, text(read("choose", "kotlin.Function0"))), "zero-argument Unit callback")
+  }
+
+  @Test
+  fun `function names cannot collide with emitted preview declarations`() {
+    val doc = document()
+    val preview = ScreenGenerator.Preview(screenSizes = true, devices = listOf("id:pixel_5"))
+    assertTrue(generate(doc, preview) is ScreenGenerator.Result.Emitted)
+    for (name in
+      listOf(
+        "Preview",
+        "PreviewScreenSizes",
+        "FunctionScreenPreview",
+        "FunctionScreenPreviewScreenSizesPreview",
+        "FunctionScreenDevicesPreview",
+      )) {
+      val candidate =
+        doc.copy(
+          functions =
+            doc.functions + ScreenFunction(name, emptyList(), text(ScreenValue.Text("extra")))
+        )
+      assertTrue(
+        "Without a preview, $name is available",
+        generate(candidate) is ScreenGenerator.Result.Emitted,
+      )
+      val result = generate(candidate, preview)
+      assertTrue("$name: $result", result is ScreenGenerator.Result.Refused)
+      assertTrue(
+        (result as ScreenGenerator.Result.Refused).reasons.any {
+          name in it && "available Kotlin" in it
+        }
+      )
+    }
   }
 
   @Test

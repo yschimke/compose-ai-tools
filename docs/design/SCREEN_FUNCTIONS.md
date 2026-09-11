@@ -17,7 +17,9 @@ row, or its layout receiver. The caller passes current values and callbacks expl
 can forward those to another function. Direct and indirect recursive definitions are refused,
 including definitions that the root never calls. Names and value types are validated before source
 generation; generated row identifiers use bounded numeric suffixes to avoid capture and growing
-identifier lengths across many loops.
+identifier lengths across many loops. Function names also cannot collide with preview annotations
+or wrappers emitted for this export; those names remain available when the corresponding previews
+are absent.
 
 ## Real generated-source proof
 
@@ -37,7 +39,7 @@ After clicking Beta:
 
 ![The second function instance updates shared state](../evidence/screen-functions/density-2-Beta.png)
 
-All 60 screen-model tests and 575 discovery tests pass, as does WASM compilation. The direct-loop
+All 61 screen-model tests and 575 discovery tests pass, as does WASM compilation. The direct-loop
 and reusable-function functional tests both pass, each compiling generated source and running two
 density cases. Source and all captures are committed beside these images.
 

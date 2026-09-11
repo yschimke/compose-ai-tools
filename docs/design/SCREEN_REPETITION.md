@@ -40,10 +40,26 @@ After clicking Beta:
 
 ![The second row callback selects its value](../evidence/screen-repetition/density-2-Beta.png)
 
-Validation: 60 screen-model JVM tests, 575 preview-discovery tests, WASM compilation and the real
+Validation: 61 screen-model JVM tests, 575 preview-discovery tests, WASM compilation and the real
 compile/interaction functional test pass. Kotlin formatting passes. The two generator publications
 can be staged together with compose-preview-server's explicit local-dependency workflow; no release
 is required to integrate the browser/server consumer.
+
+The serializable document comes from the contracts `screen-document` artifact. To test unpublished
+contract changes, stage `:screen-document` with that same server script, then point both this build
+and its included plugin build at the generated manifest:
+
+```sh
+COMPOSE_AI_LOCAL_DEPENDENCIES=/absolute/path/to/local-dependencies.properties \
+  ./gradlew --no-configuration-cache --init-script scripts/local-dependencies.init.gradle \
+  :screen-model:jvmTest :screen-model:compileKotlinWasmJs \
+  :gradle-plugin:preview-discovery:test \
+  :gradle-plugin:functionalTest --tests '*ScreenGeneratorCompileFunctionalTest'
+```
+
+The init script overrides only coordinates listed in the manifest using actual Maven publications.
+The environment variable carries the selection into the included build's plugin classpath; it is
+not read by normal builds. No checkout substitution or `mavenLocal()` repository is involved.
 
 ```sh
 ./gradlew :screen-model:jvmTest :screen-model:compileKotlinWasmJs :gradle-plugin:preview-discovery:test
