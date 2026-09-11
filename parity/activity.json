@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T12:26:10.875Z",
+  "generatedAt": "2026-09-11T16:22:26.875Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "0587fb02c6f07063b31a7c854bd08c638c721593",
+        "subject": "feat(ui-builder): let a builtin slot state how many children it admits (#5408)",
+        "at": "2026-09-11T17:15:13+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bb83a9756ab530179b001be30bbf60ea241516a6",
+        "subject": "feat(remote-json): compile exact decimal comparisons (#5407)",
+        "at": "2026-09-11T15:41:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e114eb4ae2563a071cac4ff3948724ccb83beec0",
+        "subject": "feat(remote-json): preserve independent mutable string state (#5406)",
+        "at": "2026-09-11T15:20:34+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "46daa709efdb3158d9eaa2f977e75ad729a23e0b",
+        "subject": "fix(render-host): preserve playground preview dimensions (#5404)",
+        "at": "2026-09-11T13:48:43+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "45f5a01b9c4dd8b0bfb2af0b54a9d2abeec8c040",
         "subject": "chore(ci): update the design-artifacts export driver to v2.9.0 (#5403)",
@@ -450,38 +482,6 @@
         "sha": "2d30f01f67166acf440fa0c52fa3e6af3ba80b16",
         "subject": "feat: fold siblings differing in one literal into the list of their values (#5343)",
         "at": "2026-09-09T17:59:29+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4279c678165057d62faff7bc840fd9b9ce9f67a4",
-        "subject": "fix(deps): update compose-ai-tools to v2.13.0 (#5339)",
-        "at": "2026-09-09T13:01:16Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "25a3870a84753a0c614ed535b51c8a2635d2e39b",
-        "subject": "fix(deps): update compose-preview-contracts to v2.13.0 (#5340)",
-        "at": "2026-09-09T13:00:17Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1c678d7dcfbe19bf2b0baf606bbdff5f6684311c",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.20.0 (#5341)",
-        "at": "2026-09-09T12:59:05Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5844b3fca445a79adf8f0b31fc1379ac5ddbf497",
-        "subject": "feat: fold identical sibling runs into one repeat in generated screens (#5337)",
-        "at": "2026-09-09T13:37:19+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
