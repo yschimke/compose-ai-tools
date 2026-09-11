@@ -3,7 +3,7 @@
 # `Kotlin version too new`, which fails the `Analyze (java-kotlin)` job as a configuration error
 # and leaves the repo's main language unscanned. Bump once the CodeQL bundle catches up (the
 # alternative, disabling Kotlin extraction, would trade away the scan itself).
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
