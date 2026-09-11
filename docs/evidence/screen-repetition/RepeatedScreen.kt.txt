@@ -1,0 +1,20 @@
+package generated
+
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+
+@Composable
+fun RepeatedScreen() {
+    val selection = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<kotlin.String>("Nothing selected") }
+    Card(content = {
+        data class ScreenRow(val field0: kotlin.String, val field1: kotlin.String)
+        kotlin.collections.listOf<ScreenRow>(ScreenRow("Alpha", "Selected Alpha"), ScreenRow("Beta", "Selected Beta"), ScreenRow("Gamma", "Selected Gamma")).forEach { screenRow ->
+            Button(onClick = { selection.value = screenRow.field1 }, content = {
+                Text(text = screenRow.field0)
+            })
+        }
+        Text(text = selection.value)
+    })
+}

@@ -390,6 +390,13 @@ object ScreenGenerator {
         // generated with its siblings written out, exactly as before folding existed. Every other
         // way the name could enter the file is closed by never importing it — see [importedName].
         foldsRepeatedSiblings = document.state.none { it.name == "kotlin" },
+        allocatedNames =
+          (document.state.map(ScreenState::name) +
+              components.components.map { it.symbol.name } +
+              qualifiedRoots +
+              document.name +
+              RESERVED_BY_THE_WRAPPER)
+            .toMutableSet(),
       )
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
@@ -626,6 +633,7 @@ object ScreenGenerator {
     val state: Map<String, ScreenState> = emptyMap(),
     /** Whether [foldRepeats] may fold here — see the call that computes it. */
     val foldsRepeatedSiblings: Boolean = true,
+    val allocatedNames: MutableSet<String> = mutableSetOf(),
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -658,7 +666,27 @@ object ScreenGenerator {
      */
     private var slotScope: String? = null
 
+    private data class RowScope(val variable: String, val fields: Map<String, String>)
+
+    private var rowScope: RowScope? = null
+
+    private fun allocateLocal(base: String): String {
+      var candidate = base
+      while (
+        candidate in allocatedNames || imports.any { it.substringAfterLast('.') == candidate }
+      ) {
+        candidate += "_"
+      }
+      allocatedNames += candidate
+      return candidate
+    }
+
     fun node(node: ScreenNode, depth: Int): String {
+      if (depth > 128) {
+        reasons += "screen nesting exceeds 128 levels"
+        return ""
+      }
+      if (node.repetition != null) return repetition(node, depth)
       if (node.selection != null) return selection(node, depth)
       val pad = INDENT.repeat(depth)
       val record =
@@ -999,6 +1027,88 @@ object ScreenGenerator {
       return "{ ${statements.joinToString("; ")} }"
     }
 
+    private fun repetition(node: ScreenNode, depth: Int): String {
+      val repetition = requireNotNull(node.repetition)
+      val pad = INDENT.repeat(depth)
+      if (
+        node.componentId.isNotEmpty() ||
+          node.arguments.isNotEmpty() ||
+          node.handlers.isNotEmpty() ||
+          node.slotItems.isNotEmpty() ||
+          node.selection != null
+      ) {
+        reasons +=
+          "repetition cannot also call a component or carry arguments, handlers, slot items or selection"
+      }
+      if (node.slots.keys != setOf(repetition.templateSlot)) {
+        reasons += "repetition must have exactly its template slot `${repetition.templateSlot}`"
+      }
+      if (repetition.rows.size > 10_000) {
+        reasons += "repetition exceeds 10000 authored rows"
+        return ""
+      }
+      if (
+        repetition.fields.any { (key, type) ->
+          key.isEmpty() ||
+            !isQualifiedName(type) ||
+            type.split('.').any { !isUsableIdentifier(it) } ||
+            type.startsWith("kotlin.Function")
+        }
+      ) {
+        reasons += "repetition fields require nonempty keys and qualified non-function value types"
+        return ""
+      }
+      if ("kotlin" in state) {
+        reasons += "state `kotlin` shadows the package required by repetition"
+      }
+      repetition.fields.values
+        .map { it.substringBefore('.') }
+        .filter { it in state }
+        .forEach { reasons += "state `$it` shadows a repetition field type's package" }
+      allocatedNames += repetition.fields.values.map { it.substringBefore('.') }
+      val className = allocateLocal("ScreenRow")
+      val variable = allocateLocal("screenRow")
+      val fields = repetition.fields.entries.toList()
+      val parameters = fields.mapIndexed { index, (_, type) -> "val field$index: $type" }
+      // Evaluate initializers before entering the template's scope. Nested loops can forward a
+      // value from their enclosing row without accidentally reading their own not-yet-bound row.
+      val rows =
+        repetition.rows.mapIndexed { rowIndex, row ->
+          if (row.keys != repetition.fields.keys) {
+            reasons += "repetition row $rowIndex must supply exactly ${repetition.fields.keys}"
+          }
+          val arguments = fields.map { (key, type) ->
+            row[key]?.let {
+              argument(it, TargetParameter(key, type, typeFqn = type), "row $rowIndex")
+            }
+          }
+          "$className(${arguments.joinToString(", ")})"
+        }
+      val outer = rowScope
+      rowScope = RowScope(variable, repetition.fields)
+      val body =
+        try {
+          node.slots.values.flatten().joinToString("\n") { node(it, depth + 1) }
+        } finally {
+          rowScope = outer
+        }
+      val declaration =
+        if (parameters.isEmpty()) "class $className"
+        else "data class $className(${parameters.joinToString(", ")})"
+      return "$pad$declaration\n${pad}kotlin.collections.listOf<$className>(${rows.joinToString(", ")}).forEach { $variable ->\n$body\n$pad}"
+    }
+
+    private fun rowRead(value: ScreenValue.RowRead, where: String): String? {
+      val scope = rowScope
+      val type = scope?.fields?.get(value.field)
+      if (type == null || type != value.typeFqn) {
+        reasons +=
+          "$where reads row field `${value.field}` as ${value.typeFqn}, but its scope declares ${type ?: "no such field"}"
+        return null
+      }
+      return "${scope.variable}.field${scope.fields.keys.indexOf(value.field)}"
+    }
+
     private fun selection(node: ScreenNode, depth: Int): String {
       val selection = requireNotNull(node.selection)
       val pad = INDENT.repeat(depth)
@@ -1300,6 +1410,7 @@ object ScreenGenerator {
             where,
           )
         is ScreenValue.StateRead -> stateRead(value, where)
+        is ScreenValue.RowRead -> rowRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null
           val members = value.members.map { name(it, where) ?: return null }
@@ -1507,7 +1618,7 @@ object ScreenGenerator {
         // Nothing is imported, so the qualifier a folded run writes still means the package.
         return qualifiedName(fqn, where)
       }
-      if (simple == screenName) {
+      if (simple == screenName || simple in allocatedNames) {
         // The generated function shadows an import of its own name, so the expression would name
         // the screen rather than the declaration. The chain-link path refuses this already.
         reasons += "$where imports `$simple`, which is the screen's own name"

@@ -88,6 +88,23 @@ data class ScreenNode(
    * tree.
    */
   val selection: ScreenSelection? = null,
+  /** Repeats one template slot over typed authored rows; introduces no layout of its own. */
+  val repetition: ScreenRepetition? = null,
+)
+
+/**
+ * A typed row list and a template which reads its innermost row through [ScreenValue.RowRead].
+ *
+ * [fields] declares the row's value types even when [rows] is empty. Every row must supply exactly
+ * these fields. Row values are evaluated in the enclosing scope; template values see the new row.
+ * The generator allocates Kotlin identifiers, so field keys remain document data. Wrap this node in
+ * an ordinary Column to apply spacing or modifiers. This is eager composition, not lazy items.
+ */
+@Serializable
+data class ScreenRepetition(
+  val fields: Map<String, String>,
+  val rows: List<Map<String, ScreenValue>>,
+  val templateSlot: String = "body",
 )
 
 /**
@@ -403,6 +420,9 @@ sealed interface ScreenValue {
    */
   @Serializable
   data class StateRead(val variable: String, override val typeFqn: String) : ScreenValue
+
+  /** A checked read of a field in the innermost repetition's row. Never a source identifier. */
+  @Serializable data class RowRead(val field: String, override val typeFqn: String) : ScreenValue
 
   @Serializable
   data class Chain(

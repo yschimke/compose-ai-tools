@@ -8,6 +8,7 @@ import ee.schimke.composeai.discovery.ScreenAction
 import ee.schimke.composeai.discovery.ScreenDocument
 import ee.schimke.composeai.discovery.ScreenGenerator
 import ee.schimke.composeai.discovery.ScreenNode
+import ee.schimke.composeai.discovery.ScreenRepetition
 import ee.schimke.composeai.discovery.ScreenSelection
 import ee.schimke.composeai.discovery.ScreenState
 import ee.schimke.composeai.discovery.ScreenValue
@@ -431,6 +432,136 @@ class ScreenGeneratorCompileFunctionalTest {
     File(projectDir, "build/selection-evidence")
       .copyRecursively(File("build/selection-evidence"), overwrite = true)
     File("build/selection-evidence/SelectedScreen.kt.txt").writeText(result.source)
+  }
+
+  @Test
+  fun `typed repetition compiles and each row callback selects its own value`() {
+    val projectDir = createTestProject()
+    val buildFile = File(projectDir, "build.gradle.kts")
+    buildFile.writeText(
+      "@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)\n" +
+        buildFile.readText()
+    )
+    buildFile.appendText(
+      "\ndependencies { testImplementation(compose.uiTest); testImplementation(\"junit:junit:4.13.2\") }\n"
+    )
+    runGradle(projectDir, "composePreviewDiscover")
+    val components =
+      json.decodeFromString(
+        ComponentRecordFile.serializer(),
+        File(projectDir, "build/compose-previews/components.json").readText(),
+      )
+    fun label(value: ScreenValue) = ScreenNode(idOf(components, "Text"), mapOf("text" to value))
+    val loop =
+      ScreenNode(
+        "",
+        repetition =
+          ScreenRepetition(
+            linkedMapOf("label" to "kotlin.String", "selection" to "kotlin.String"),
+            listOf("Alpha", "Beta", "Gamma").map { name ->
+              mapOf(
+                "label" to ScreenValue.Text(name),
+                "selection" to ScreenValue.Text("Selected $name"),
+              )
+            },
+          ),
+        slots =
+          mapOf(
+            "body" to
+              listOf(
+                ScreenNode(
+                  idOf(components, "Button"),
+                  slots =
+                    mapOf(
+                      "content" to listOf(label(ScreenValue.RowRead("label", "kotlin.String")))
+                    ),
+                  handlers =
+                    mapOf(
+                      "onClick" to
+                        listOf(
+                          ScreenAction.Set(
+                            "selection",
+                            ScreenValue.RowRead("selection", "kotlin.String"),
+                          )
+                        )
+                    ),
+                )
+              )
+          ),
+      )
+    val screen =
+      ScreenDocument(
+        "RepeatedScreen",
+        ScreenNode(
+          idOf(components, "Card"),
+          slots =
+            mapOf(
+              "content" to listOf(loop, label(ScreenValue.StateRead("selection", "kotlin.String")))
+            ),
+        ),
+        listOf(ScreenState("selection", "kotlin.String", ScreenValue.Text("Nothing selected"))),
+      )
+    val result =
+      ScreenGenerator.generate(
+        screen,
+        components,
+        packageName = "generated",
+        expressionPackages = setOf("androidx.compose"),
+      )
+    assertWithMessage(result.toString())
+      .that(result)
+      .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
+    val source = (result as ScreenGenerator.Result.Emitted).source
+    assertThat(source).contains(".forEach { screenRow ->")
+    val generated = File(projectDir, "src/main/kotlin/generated").apply { mkdirs() }
+    File(generated, "RepeatedScreen.kt").writeText(source)
+    val tests = File(projectDir, "src/test/kotlin/generated").apply { mkdirs() }
+    File(tests, "RepetitionInteractionTest.kt")
+      .writeText(
+        """
+        package generated
+        import androidx.compose.ui.test.*
+        import androidx.compose.ui.graphics.asSkiaBitmap
+        import androidx.compose.runtime.CompositionLocalProvider
+        import androidx.compose.ui.platform.LocalDensity
+        import androidx.compose.ui.unit.Density
+        import org.junit.Test
+        @OptIn(ExperimentalTestApi::class)
+        class RepetitionInteractionTest {
+          @Test fun densityOne() = verify(1)
+          @Test fun densityTwo() = verify(2)
+          private fun verify(density: Int) = runDesktopComposeUiTest {
+            fun capture(name: String) {
+              val directory = java.io.File("build/repetition-evidence").apply { mkdirs() }
+              val bitmap = onRoot().captureToImage().asSkiaBitmap()
+              val png = org.jetbrains.skia.Image.makeFromBitmap(bitmap)
+                .encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!
+              java.io.File(directory, "density-" + density + "-" + name + ".png").writeBytes(png.bytes)
+            }
+            setContent {
+              CompositionLocalProvider(LocalDensity provides Density(density.toFloat())) {
+                androidx.compose.material3.MaterialTheme { RepeatedScreen() }
+              }
+            }
+            onNodeWithText("Nothing selected").assertExists()
+            capture("initial")
+            for (name in listOf("Alpha", "Beta", "Gamma", "Alpha")) {
+              onNodeWithText(name).performClick()
+              waitForIdle()
+              onNodeWithText("Selected " + name).assertExists()
+              onNodeWithText("Nothing selected").assertDoesNotExist()
+              capture(name)
+            }
+          }
+        }
+        """
+          .trimIndent()
+      )
+    val run = runGradle(projectDir, "test", "--tests", "generated.RepetitionInteractionTest")
+    assertThat(run.task(":test")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    File(projectDir, "build/repetition-evidence")
+      .copyRecursively(File("build/repetition-evidence"), overwrite = true)
+    File("build/repetition-evidence/RepeatedScreen.kt.txt").writeText(source)
   }
 
   @Test
