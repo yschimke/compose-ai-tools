@@ -62,6 +62,11 @@ dependencies {
   implementation(libs.okhttp)
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 
+  // Test-only, deliberately: `AndroidPreviewLaunchParityTest` compares this plugin's Robolectric
+  // launch inputs against the renderer's own `RobolectricLaunch`. A `testImplementation` keeps the
+  // daemon client, its core and their transitives off every consumer's buildscript classpath, which
+  // is the reason this module still holds its own copy of those values at all.
+  testImplementation(libs.composeai.daemon.client)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(gradleTestKit())
