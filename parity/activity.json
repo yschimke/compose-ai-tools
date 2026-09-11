@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T08:31:59.260Z",
+  "generatedAt": "2026-09-11T08:52:23.249Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "5ac79c477ecb2f1ee6eff5ce6147145815b2fb26",
+        "subject": "feat(discovery): read `@CatalogComponent(related = ...)` into the catalog inventory (#5401)",
+        "at": "2026-09-11T09:40:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c33231df707d024235fb0a4c0787e7b9d048fb36",
         "subject": "feat(design-artifacts): publish a generic `related` list on catalog components (#5399)",
@@ -474,14 +482,6 @@
         "sha": "d54b36186950bf711463a868d472c3f2830df2ed",
         "subject": "docs: widen the evidence pruner, retire two spent specs, surface two lost ones (#5332)",
         "at": "2026-09-09T08:35:23+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b416451cc6eafbda6ab5c48b92f419e286ce4b83",
-        "subject": "chore: prune spent design evidence, and keep it pruned (#5331)",
-        "at": "2026-09-09T08:24:37+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
