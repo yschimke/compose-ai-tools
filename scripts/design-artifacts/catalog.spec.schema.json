@@ -271,6 +271,32 @@
           "type": "string",
           "description": "Optional componentId of the counterpart in the `compareWith` sibling system, paired side-by-side on the cross-system compare page."
         },
+        "related": {
+          "type": "array",
+          "description": "Optional links to this component's counterparts in OTHER catalogs — a samples catalog demonstrating how it is called, a sibling platform's rendition. Unlike `parallel` this is a LIST and carries no parity semantics: `parallel` says two renders are pictures of one cell and should be diffed, `related` says only that another catalog is worth looking at from here. A list because a component can have more than one such neighbour and `compareWith` names exactly one sibling system — `remote-m3` spends its `compareWith` on the Wear kit catalog, so a second pairwise handle could never reach the samples. Presentation only: nothing scores, diffs or gates on it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["system"],
+            "properties": {
+              "system": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The other catalog's system slug, as it is served (e.g. \"m3-samples\"). Resolution is the consumer's: a preview server serving both catalogs already knows where it is, and one that does not serve it simply renders no link."
+              },
+              "componentId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The counterpart's componentId in that system. Omit when it is the same as this component's — the id-parity case, which is most of them."
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Display text for the link (e.g. \"Samples\"). Omit to let the consumer fall back to the other catalog's own title."
+              }
+            }
+          }
+        },
         "component": {
           "type": "string",
           "description": "Optional Code Connect override: the production composable name the sticker maps to (takes priority over the inferred target when building code-connect.json)."

@@ -1164,3 +1164,86 @@ test("validateSpec still rejects a hero that matches nothing at all", () => {
   );
   assert.ok(errors.some((e) => e.includes('display.hero "Nope/Missing" matches no componentId')));
 });
+
+// --- related links into other catalogs (issue #5398) -------------------------------------------
+
+/** A minimal, otherwise-valid spec whose single component carries the given `related`. */
+function relatedSpec(related) {
+  return {
+    system: "demo",
+    title: "Demo",
+    groups: [
+      {
+        name: "Components",
+        components: [{ componentId: "A", preview: "Alpha", related }],
+      },
+    ],
+  };
+}
+
+test("validateSpec accepts related links, with and without the optional fields", () => {
+  const { errors } = validateSpec(
+    relatedSpec([
+      { system: "m3-samples" },
+      { system: "m3-samples", componentId: "Button/Filled" },
+      { system: "wear-m3-samples", componentId: "Button/Filled", label: "Wear samples" },
+    ]),
+  );
+  assert.deepEqual(errors, []);
+});
+
+test("validateSpec rejects a related link that names no system", () => {
+  // `applyRelated` drops it, so without this the affordance would simply never appear and nothing
+  // would point back at the spec — the failure `parallel` already cost this repo once.
+  const { errors } = validateSpec(relatedSpec([{ label: "Samples" }]));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /related\[0\]\.system is required/);
+});
+
+test("validateSpec rejects a blank system", () => {
+  const { errors } = validateSpec(relatedSpec([{ system: "   " }]));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /related\[0\]\.system is required/);
+});
+
+test("validateSpec rejects a related that is not an array", () => {
+  const { errors } = validateSpec(relatedSpec("m3-samples"));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /\.related must be an array when present/);
+});
+
+test("validateSpec rejects a non-object entry in related", () => {
+  const { errors } = validateSpec(relatedSpec(["m3-samples"]));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /related\[0\] must be an object/);
+});
+
+test("validateSpec rejects an unknown key on a related link", () => {
+  const { errors } = validateSpec(
+    relatedSpec([{ system: "m3-samples", repo: "yschimke/m3-catalog" }]),
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /related\[0\]\.repo is not supported/);
+});
+
+test("validateSpec rejects a present-but-empty componentId or label", () => {
+  // Both MEAN something by their absence — "same id as mine", "use the other catalog's title" —
+  // so an empty string says neither and is a mistake rather than a shorthand.
+  assert.match(
+    validateSpec(relatedSpec([{ system: "m3-samples", componentId: "" }])).errors[0],
+    /related\[0\]\.componentId must be a non-empty string when present/,
+  );
+  assert.match(
+    validateSpec(relatedSpec([{ system: "m3-samples", label: "  " }])).errors[0],
+    /related\[0\]\.label must be a non-empty string when present/,
+  );
+});
+
+test("validateSpec is silent about a component that declares no related links", () => {
+  const { errors } = validateSpec({
+    system: "demo",
+    title: "Demo",
+    groups: [{ name: "Components", components: [{ componentId: "A", preview: "Alpha" }] }],
+  });
+  assert.deepEqual(errors, []);
+});
