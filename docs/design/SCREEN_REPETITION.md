@@ -21,7 +21,9 @@ artifact. Empty data still validates its template.
 
 The current row declaration carries concrete, qualified, non-function value types. Generic,
 nullable and function-valued row fields need further type-model support. Repetition is eager;
-lazy-list keys and per-instance retained state are not implied by this API.
+lazy-list keys and per-instance retained state are not implied by this API. Declaration-only
+experimental type opt-ins are not represented, so empty-row field types must be usable without
+additional type-level markers.
 
 ## Real compilation and interaction
 
@@ -40,7 +42,7 @@ After clicking Beta:
 
 ![The second row callback selects its value](../evidence/screen-repetition/density-2-Beta.png)
 
-Validation: 61 screen-model JVM tests, 575 preview-discovery tests, WASM compilation and the real
+Validation: 63 screen-model JVM tests, 575 preview-discovery tests, WASM compilation and the real
 compile/interaction functional test pass. Kotlin formatting passes. The two generator publications
 can be staged together with compose-preview-server's explicit local-dependency workflow; no release
 is required to integrate the browser/server consumer.

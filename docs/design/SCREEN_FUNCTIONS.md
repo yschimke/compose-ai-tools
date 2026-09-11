@@ -19,7 +19,8 @@ including definitions that the root never calls. Names and value types are valid
 generation; generated row identifiers use bounded numeric suffixes to avoid capture and growing
 identifier lengths across many loops. Function names also cannot collide with preview annotations
 or wrappers emitted for this export; those names remain available when the corresponding previews
-are absent.
+are absent. Parameter names also reserve `kotlin`, which generated loop and callback types use.
+Reusable-function opt-ins use `@kotlin.OptIn` so the chosen package cannot shadow the annotation.
 
 ## Real generated-source proof
 
@@ -39,7 +40,7 @@ After clicking Beta:
 
 ![The second function instance updates shared state](../evidence/screen-functions/density-2-Beta.png)
 
-All 61 screen-model tests and 575 discovery tests pass, as does WASM compilation. The direct-loop
+All 63 screen-model tests and 575 discovery tests pass, as does WASM compilation. The direct-loop
 and reusable-function functional tests both pass, each compiling generated source and running two
 density cases. Source and all captures are committed beside these images.
 
@@ -57,3 +58,7 @@ consumer now projects semantic components and authored loops through this model 
 [compose-preview-server#708](https://github.com/yschimke/compose-preview-server/pull/708), behind its
 default-off `uiBuilderRemoteCompose` build flag. The existing WASM Code pane and hosted MCP share
 that export path. This generator change is additive and remains usable without an editor or server.
+
+Declaration-only experimental type opt-ins are not represented yet. Value parameter and empty-row
+field types must be usable without additional type-level opt-ins; the generator collects markers
+from discovered component records and authored expressions, not arbitrary type-name reflection.

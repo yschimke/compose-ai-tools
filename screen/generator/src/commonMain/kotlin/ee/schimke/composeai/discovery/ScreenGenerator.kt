@@ -381,7 +381,10 @@ object ScreenGenerator {
     val shadowedRoots =
       document.state.map(ScreenState::name).filter { it in qualifiedRoots }.distinct()
     val capturedParameters = parameterNames.filter {
-      it in qualifiedRoots || it in functionNames || it == document.name
+      it in qualifiedRoots ||
+        it in functionNames ||
+        it == document.name ||
+        it in RESERVED_BY_THE_WRAPPER
     }
     if (capturedParameters.isNotEmpty())
       return Result.Refused(
@@ -578,7 +581,9 @@ object ScreenGenerator {
       functionBodies.forEach { function ->
         appendLine()
         if (optIns.isNotEmpty())
-          appendLine(optIns.joinToString(", ", "@OptIn(", ")") { "${markerReference(it)}::class" })
+          appendLine(
+            optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${markerReference(it)}::class" }
+          )
         if (androidxOptIns.isNotEmpty())
           appendLine(
             androidxOptIns.joinToString(", ", "@androidx.annotation.OptIn(markerClass = [", "])") {
@@ -1618,6 +1623,9 @@ object ScreenGenerator {
         // makes `rememberCarouselState { 5 }` writable: the count is an `Int` because a nested
         // whole number always is.
         is ScreenValue.Lambda -> expression(value.result, where, depth + 1)?.let { "{ $it }" }
+        // Like other nested expressions, the enclosing callable has no discovered signature
+        // here. This validates the actions and emits a body without authored parameters; the
+        // compiler still checks the enclosing factory/modifier overload.
         is ScreenValue.ActionLambda ->
           lambda(
             value.actions,

@@ -243,6 +243,65 @@ class ScreenFunctionTest {
   }
 
   @Test
+  fun `function opt ins stay qualified in the chosen output package`() {
+    val doc =
+      ScreenDocument(
+        "OptInScreen",
+        text(ScreenValue.Text("Root")),
+        functions =
+          listOf(
+            ScreenFunction(
+              "Gated",
+              emptyList(),
+              text(
+                ScreenValue.Reference(
+                  "example.caption",
+                  typeFqn = "kotlin.String",
+                  requiredOptIns = listOf("example.ExperimentalCaption"),
+                )
+              ),
+            )
+          ),
+      )
+    val result =
+      ScreenGenerator.generate(
+        doc,
+        M3Palette.records,
+        expressionPackages = M3Palette.expressionPackages + "example",
+      )
+    assertTrue(result.toString(), result is ScreenGenerator.Result.Emitted)
+    val source = (result as ScreenGenerator.Result.Emitted).source
+    assertFalse(source, "@OptIn(" in source)
+    assertEquals(source, 2, Regex("@kotlin\\.OptIn\\(").findAll(source).count())
+  }
+
+  @Test
+  fun `callback parameter cannot shadow kotlin in a repeated function body`() {
+    val doc =
+      ScreenDocument(
+        "CallbackScreen",
+        text(ScreenValue.Text("Root")),
+        functions =
+          listOf(
+            ScreenFunction(
+              "Repeated",
+              listOf(ScreenParameter.Callback("kotlin")),
+              ScreenNode(
+                "",
+                repetition =
+                  ScreenRepetition(
+                    mapOf("modifier" to "androidx.compose.ui.Modifier"),
+                    emptyList(),
+                  ),
+                slots = mapOf("body" to listOf(text(ScreenValue.Text("Row")))),
+              ),
+            )
+          ),
+      )
+    refused(doc, "shadow")
+  }
+
+  @Test
   fun `names and types cannot corrupt declarations or capture calls`() {
     val doc = document()
     refused(doc.copy(functions = doc.functions + doc.functions), "must be unique")
