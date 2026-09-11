@@ -81,6 +81,58 @@ function renderedBreakpoints(previews, functionName, breakpoints) {
 }
 
 /**
+ * Parse `@CatalogComponent.related` entries into the spec's object shape.
+ *
+ * The annotation carries `"<system>"`, `"<system>=<componentId>"` or
+ * `"<system>=<componentId>=<label>"` strings, because annotations cannot hold a `Map` — the same
+ * bargain `@CatalogComponent.breakpointKit` and `@CatalogVariant.props` strike. Discovery records
+ * them verbatim and never parses them, so this is the ONE parser: two parsers is how two spellings
+ * come to disagree.
+ *
+ * Split at most three ways, so a `label` containing `=` survives intact. An empty `<componentId>`
+ * is omitted rather than emitted blank, because its absence MEANS "the same id as mine" (the
+ * id-parity case, which is most of them) while an empty string would read as a declared id that
+ * resolves against nothing.
+ *
+ * An entry naming no system is unpublishable — `applyRelated` would drop it — so it is REPORTED
+ * rather than dropped in silence. A malformed entry otherwise costs only its own link and never
+ * the build, exactly as a malformed `breakpointKit` entry costs only its mapping.
+ *
+ * @param {unknown} entries the `catalog.related` list as discovery recorded it.
+ * @returns {{links: Array<{system: string, componentId?: string, label?: string}>,
+ *   invalid: string[]}}
+ */
+export function parseRelated(entries) {
+  const links = [];
+  const invalid = [];
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (typeof entry !== "string" || entry.trim() === "") {
+      // An empty or non-string entry says nothing at all, so there is nothing to report about it
+      // beyond its own uselessness — but it IS reported, since writing one was an attempt to
+      // declare a link.
+      invalid.push(String(entry ?? ""));
+      continue;
+    }
+    const [rawSystem = "", rawComponentId = "", ...rest] = entry.split("=");
+    const system = rawSystem.trim();
+    if (!system) {
+      invalid.push(entry);
+      continue;
+    }
+    const componentId = rawComponentId.trim();
+    // Re-joined rather than taken as `rest[0]`: `split` has already cut a label containing `=`
+    // into pieces, and the label is the last field, so everything after the second `=` is it.
+    const label = rest.join("=").trim();
+    links.push({
+      system,
+      ...(componentId ? { componentId } : {}),
+      ...(label ? { label } : {}),
+    });
+  }
+  return { links, invalid };
+}
+
+/**
  * Build a catalog-spec-shaped inventory (`{ groups, orphanVariants }`) from a
  * list of preview records carrying `catalog` identity.
  *
@@ -107,7 +159,8 @@ function renderedBreakpoints(previews, functionName, breakpoints) {
  * @param {Array<{functionName?: string, id?: string, catalog?: object, params?: object}>} previews
  * @param {{breakpoints?: Array<{size: string, widthDp?: number, device?: string}>}} [opts]
  * @returns {{ groups: Array<object>, orphanVariants: Array<{parentId: string, preview: string}>,
- *   withoutBreakpoints: string[] }}
+ *   withoutBreakpoints: string[],
+ *   invalidRelated: Array<{componentId: string, entry: string}> }}
  */
 export function inventoryFromPreviews(previews, opts = {}) {
   const list = Array.isArray(previews) ? previews : [];
@@ -117,6 +170,7 @@ export function inventoryFromPreviews(previews, opts = {}) {
   const seenVariant = new Set(); // `${parentId}\0${preview}`
   const orphanVariants = [];
   const withoutBreakpoints = [];
+  const invalidRelated = [];
 
   // Components first, so a variant can attach even when its parent appears later.
   for (const preview of list) {
@@ -140,6 +194,10 @@ export function inventoryFromPreviews(previews, opts = {}) {
     if (cat.referenceSet != null) base.referenceSet = cat.referenceSet;
     if (cat.noReference != null) base.noReference = cat.noReference;
     if (cat.parallel != null) base.parallel = cat.parallel;
+    // Links into OTHER catalogs. Parsed here and nowhere else; see `parseRelated`.
+    const related = parseRelated(cat.related);
+    if (related.links.length > 0) base.related = related.links;
+    for (const entry of related.invalid) invalidRelated.push({ componentId: id, entry });
     // The function the component's recordings live on, when they are not beside its sticker. Read
     // by `motionPreviewFor` in catalog-motion.mjs exactly like the spec field of the same name — a
     // spec entry still wins, via `mergeComponent`'s field merge.
@@ -204,7 +262,7 @@ export function inventoryFromPreviews(previews, opts = {}) {
     if (group.section !== undefined) out.section = group.section;
     return out;
   });
-  return { groups, orphanVariants, withoutBreakpoints };
+  return { groups, orphanVariants, withoutBreakpoints, invalidRelated };
 }
 
 /**

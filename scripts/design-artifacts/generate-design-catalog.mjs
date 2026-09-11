@@ -1147,6 +1147,7 @@ const {
   groups: annotationGroups,
   orphanVariants,
   withoutBreakpoints,
+  invalidRelated,
 } = inventoryFromPreviews(inventoryPreviews, {
   breakpoints: catalogBreakpoints(spec),
 });
@@ -1160,6 +1161,18 @@ if (withoutBreakpoints.length > 0) {
       `component(s) resolved no breakpoint, so each stays a single card: ` +
       `${withoutBreakpoints.join(", ")}. Declare the devices they render at in the spec's ` +
       `\`breakpoints\`.`,
+  );
+}
+if (invalidRelated.length > 0) {
+  // An `@CatalogComponent(related = …)` entry that names no system is unpublishable — the stamp
+  // drops it — so it is said out loud rather than costing the link in silence. A warning and not a
+  // failure, matching how a malformed `breakpointKit` entry is handled: it costs that one link,
+  // never the build.
+  console.warn(
+    `[${spec.system}] ${invalidRelated.length} @CatalogComponent(related = …) entr(ies) name no ` +
+      `system and publish no link: ` +
+      invalidRelated.map((r) => `${r.componentId}→${JSON.stringify(r.entry)}`).join(", ") +
+      `. Expected "<system>", "<system>=<componentId>" or "<system>=<componentId>=<label>".`,
   );
 }
 if (orphanVariants.length > 0) {
