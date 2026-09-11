@@ -1,5 +1,6 @@
 package ee.schimke.composeai.usagepsi
 
+import org.jetbrains.kotlin.CoreEnvironmentDeprecation
 import org.jetbrains.kotlin.K1Deprecation
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
@@ -42,7 +43,16 @@ import org.jetbrains.kotlin.psi.KtValueArgument
  * This hands over the receiver as an exact string so the caller can look it up, which is precisely
  * what the regex it replaces could not do.
  */
-@OptIn(CompilerConfiguration.Internals::class, K1Deprecation::class)
+// `CoreEnvironmentDeprecation` arrived with Kotlin 2.4.20:
+// `KotlinCoreEnvironment.createForProduction`
+// now carries an opt-in marker ("planned to be reworked"), which is a hard compile error without
+// this. The call is still the supported way to stand up a parse-only frontend — see
+// `docs/design/PSI_PARSE_SPIKE.md` — so this opts in rather than changing how the parser is built.
+@OptIn(
+  CompilerConfiguration.Internals::class,
+  K1Deprecation::class,
+  CoreEnvironmentDeprecation::class,
+)
 class UsageSourceAnalyzer : AutoCloseable {
 
   private val disposable: Disposable = Disposer.newDisposable("usage-source-psi")
