@@ -3,12 +3,15 @@ package ee.schimke.composeai.remotecompose.json
 import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.RemoteComposeBuffer
 import androidx.compose.remote.core.operations.Header
+import androidx.compose.remote.creation.RemoteComposeWriter
+import androidx.compose.remote.creation.json.ComposePreviewIntegerExpressions
 import androidx.compose.remote.creation.json.RemoteComposeJsonParser
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.json.JSONException
@@ -82,6 +85,13 @@ import org.json.JSONException
 public object RemoteComposeJson {
 
   /**
+   * Opt-in authoring profile for named integer expressions. Put this value in the document's
+   * top-level `compilerProfile` field. The resulting bytes use standard Remote Compose operations;
+   * the source requires this compiler, rather than AndroidX's unextended JSON parser.
+   */
+  public const val INTEGER_EXPRESSIONS_PROFILE: String = "compose-preview-integer-expressions-v1"
+
+  /**
    * Compile an **authoring JSON** document to binary `.rc` bytes.
    *
    * @throws RemoteComposeJsonException if [json] is not valid JSON, or is valid JSON that the
@@ -90,8 +100,29 @@ public object RemoteComposeJson {
    *   path it gave up on, which is the only thing that makes a 200-line document debuggable.
    */
   public fun compile(json: String): ByteArray {
-    requireRoot(json)
+    val document = requireRoot(json)
+    val profile = document["compilerProfile"]
+    if (
+      profile != null &&
+        (profile !is JsonPrimitive ||
+          !profile.isString ||
+          profile.content != INTEGER_EXPRESSIONS_PROFILE)
+    ) {
+      throw RemoteComposeJsonException("Unsupported compilerProfile: $profile")
+    }
     return try {
+      if (profile != null) {
+        val writer =
+          RemoteComposeWriter(
+            RemoteComposeJsonParser.DEFAULT_PLATFORM,
+            RemoteComposeJsonParser.parseApiLevel(json),
+            *RemoteComposeJsonParser.parseHeaderOnly(json).sortedBy { it.tag }.toTypedArray(),
+          )
+        val parser = RemoteComposeJsonParser(writer)
+        ComposePreviewIntegerExpressions.install(parser)
+        parser.parse(json)
+        return writer.encodeToByteArray()
+      }
       val buffer = RemoteComposeJsonParser.parseToByteBuffer(json)
       ByteArray(buffer.remaining()).also { buffer.get(it) }
     } catch (e: JSONException) {
@@ -117,7 +148,7 @@ public object RemoteComposeJson {
    * gets its own sentence in the message because unwrapping is the fix and "missing root" alone
    * does not suggest it.
    */
-  private fun requireRoot(json: String) {
+  private fun requireRoot(json: String): JsonObject {
     val parsed =
       try {
         Json.parseToJsonElement(json)
@@ -130,7 +161,7 @@ public object RemoteComposeJson {
           "Not a RemoteCompose JSON document: the top level is ${parsed::class.simpleName}, " +
             "expected an object with a \"root\""
         )
-    if ("root" in obj) return
+    if ("root" in obj) return obj
     val wrapped =
       if ("json" in obj)
         " It looks like a generation-library entry — compile its \"json\" value, not the wrapper."

@@ -43,6 +43,7 @@ public final class ee/schimke/composeai/remotecompose/json/RemoteComposeDocument
 
 public final class ee/schimke/composeai/remotecompose/json/RemoteComposeJson {
 	public static final field INSTANCE Lee/schimke/composeai/remotecompose/json/RemoteComposeJson;
+	public static final field INTEGER_EXPRESSIONS_PROFILE Ljava/lang/String;
 	public final fun compile (Ljava/lang/String;)[B
 	public final fun dump ([BZ)Ljava/lang/String;
 	public static synthetic fun dump$default (Lee/schimke/composeai/remotecompose/json/RemoteComposeJson;[BZILjava/lang/Object;)Ljava/lang/String;
