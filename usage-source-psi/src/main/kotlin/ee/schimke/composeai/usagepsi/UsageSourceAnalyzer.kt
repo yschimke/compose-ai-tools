@@ -2,12 +2,15 @@ package ee.schimke.composeai.usagepsi
 
 import org.jetbrains.kotlin.CoreEnvironmentDeprecation
 import org.jetbrains.kotlin.K1Deprecation
+import org.jetbrains.kotlin.cli.extensionsStorage
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.com.intellij.openapi.Disposable
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
 import org.jetbrains.kotlin.com.intellij.psi.PsiFileFactory
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
+import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
+import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.psi.KtCallExpression
@@ -52,6 +55,7 @@ import org.jetbrains.kotlin.psi.KtValueArgument
   CompilerConfiguration.Internals::class,
   K1Deprecation::class,
   CoreEnvironmentDeprecation::class,
+  ExperimentalCompilerApi::class,
 )
 class UsageSourceAnalyzer : AutoCloseable {
 
@@ -61,7 +65,14 @@ class UsageSourceAnalyzer : AutoCloseable {
     val env =
       KotlinCoreEnvironment.createForProduction(
         disposable,
-        CompilerConfiguration(),
+        // Kotlin 2.4.20 reads `configuration.extensionsStorage` while wiring compiler-plugin
+        // extension points, and a bare `CompilerConfiguration()` carries none — every parse dies
+        // on `IllegalStateException: Extensions storage is not registered`. Parsing needs no
+        // plugins, so an empty storage is the whole fix. The property exists in 2.4.10 too, so
+        // this is not a version-gated branch.
+        CompilerConfiguration().apply {
+          extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
+        },
         EnvironmentConfigFiles.JVM_CONFIG_FILES,
       )
     PsiFileFactory.getInstance(env.project)
