@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.11.0](https://github.com/yschimke/compose-ai-tools/compare/v2.10.0...v2.11.0) (2026-09-11)
+
+
+### Features
+
+* **screen-model:** generate stateful loops and reusable composables ([#5383](https://github.com/yschimke/compose-ai-tools/issues/5383)) ([ec4aa70](https://github.com/yschimke/compose-ai-tools/commit/ec4aa708303c756e9722105bb9a8208ba45fcd76))
+
+
+### Bug Fixes
+
+* **deps:** take the daemon line to 3.4.3 so `related` is readable ([#5421](https://github.com/yschimke/compose-ai-tools/issues/5421)) ([74a8e0b](https://github.com/yschimke/compose-ai-tools/commit/74a8e0b1a2b9c2001de8a232549006f4c3aa9fdf))
+* **deps:** update compose-preview-contracts to v2.17.0 ([#5412](https://github.com/yschimke/compose-ai-tools/issues/5412)) ([3ee5414](https://github.com/yschimke/compose-ai-tools/commit/3ee5414438056755ad99a9971167180ca3925c2f))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.24.0 ([#5413](https://github.com/yschimke/compose-ai-tools/issues/5413)) ([8ae3f85](https://github.com/yschimke/compose-ai-tools/commit/8ae3f8545e84d42620bbc14f23ed8c57b737539a))
+* generate Wear theme catalogs with daemon annotations ([#5415](https://github.com/yschimke/compose-ai-tools/issues/5415)) ([aa8923d](https://github.com/yschimke/compose-ai-tools/commit/aa8923d95a39ed1667d4b2914d0e56627ff3b649))
+
 ## [2.10.0](https://github.com/yschimke/compose-ai-tools/compare/v2.9.0...v2.10.0) (2026-09-11)
 
 
