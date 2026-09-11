@@ -1,11 +1,51 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T18:41:36.258Z",
+  "generatedAt": "2026-09-11T19:30:21.788Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "aa8923d95a39ed1667d4b2914d0e56627ff3b649",
+        "subject": "fix: generate Wear theme catalogs with daemon annotations (#5415)",
+        "at": "2026-09-11T20:22:59+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "59ed53b82adaa98f2d78e9422cf62a74d6a41cea",
+        "subject": "docs: correct data product wire examples (#5417)",
+        "at": "2026-09-11T20:21:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8ae3f8545e84d42620bbc14f23ed8c57b737539a",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.24.0 (#5413)",
+        "at": "2026-09-11T18:40:33Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3ee5414438056755ad99a9971167180ca3925c2f",
+        "subject": "fix(deps): update compose-preview-contracts to v2.17.0 (#5412)",
+        "at": "2026-09-11T18:39:26Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "152cf879c48f5dda37ff6883619d16387123683e",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.10.0 (#5411)",
+        "at": "2026-09-11T18:36:57Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "b2d80e5eb9c44038c1bc3ef3ddbaa36581f7f6c8",
         "subject": "chore(main): release 2.10.0 (#5405)",
@@ -442,46 +482,6 @@
         "sha": "56d533d6affd643d21b809a2d75a7eaa7ab4ec91",
         "subject": "feat(ui-builder): let a catalog state a component's vocabulary in its policy file (#5351)",
         "at": "2026-09-09T23:53:03+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8d7208450023d9e5a202ebfc2269afa4233a4285",
-        "subject": "fix(discovery): follow the project's own composables to the component a preview renders (#5350)",
-        "at": "2026-09-09T23:44:40+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7ad45448643ad2549f023fa1d502a7a196b37a73",
-        "subject": "fix(deps): update rc-players to v1.60.1 (#5342)",
-        "at": "2026-09-09T21:53:24Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "77c1c6c3ec6f165400e8cb10b75e4159a6cf8a0d",
-        "subject": "refactor: consume the renderers, data extractors and daemon from compose-preview-daemon (#5346)",
-        "at": "2026-09-09T22:11:46+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6fab72e0949ba6ef7867ea81be8bfac9fd60777a",
-        "subject": "test(samples): score a UI-builder design against the captured app daily (#5347)",
-        "at": "2026-09-09T21:49:21+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1fc3f1b12f0310b347324befe7ec2d47c9873dea",
-        "subject": "docs(capture): specify device capture in two tiers (#5344)",
-        "at": "2026-09-09T19:55:53+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
