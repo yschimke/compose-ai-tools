@@ -110,6 +110,29 @@ internal object ComposePreviewTasks {
     configName != "androidRuntimeClasspath"
 
   /**
+   * Whether `composePreviewBundle` has something to pack, for the registration identified by
+   * [backendId].
+   *
+   * The renderability question is a DESKTOP question, and asking it on the Android registration is
+   * what broke wear-m3-catalog's catalog: [isDesktopRenderableConfig] rejects exactly the literal
+   * string `androidRuntimeClasspath`, and that is not only the desktop path's last-resort fallback
+   * — it is also the real, correct runtime configuration of every
+   * `com.android.kotlin.multiplatform.library` module (see [AndroidVariantNaming.kmpAndroid], which
+   * derives `<targetName>RuntimeClasspath` from the KMP target, named `android` unless the consumer
+   * renamed it). So a KMP-Android module on the Robolectric lane registered its bundle task with
+   * `backendId = "android"` and then skipped it forever, and `compose-preview bundle pack` failed
+   * with "Bundle task reported success but bundle.png is missing" after a render that had just
+   * succeeded — no error naming the task, because a skipped task is a successful build.
+   *
+   * On the Android registration the module's renderability is not in question: AGP handed us a
+   * variant and the Robolectric lane rendered against it. Only the desktop registration, which can
+   * fall through to `androidRuntimeClasspath` when a module has no JVM-flavoured runtime at all,
+   * needs the gate.
+   */
+  internal fun bundleRenderable(backendId: String, configName: String): Boolean =
+    backendId == "android" || isDesktopRenderableConfig(configName)
+
+  /**
    * The consumer runtime configuration the desktop pipeline resolves against, in preference order.
    * `androidRuntimeClasspath` is the LAST-RESORT KMP-Android fallback — it carries `*-android`
    * Compose AARs the JVM renderer can't load, so anything with a real JVM-flavoured runtime must
@@ -709,14 +732,11 @@ internal object ComposePreviewTasks {
       // though composePreviewRender itself no-ops (Codex review on #1863). Computed lazily at task
       // realization (so a cmp-shared module whose `jvm("desktop")` target configures after
       // registerDesktopTasks isn't mis-skipped) and captured as a Boolean so `onlyIf` doesn't pin
-      // `project` into the configuration cache. `isDesktopRenderableConfig` only trips on the
-      // literal
-      // `androidRuntimeClasspath` fallback, so this is a no-op on the Android bundle path and on
-      // real desktop modules.
+      // `project` into the configuration cache.
       // ONE lazy resolution feeds both the renderability gate and the classpath the bundle carries,
       // so the two can no longer disagree about which consumer runtime config this module has.
       val deps = depBinding()
-      val bundleRenderable = isDesktopRenderableConfig(deps.configName)
+      val bundleRenderable = bundleRenderable(backendId, deps.configName)
       onlyIf { extension.enabled.get() && bundleRenderable }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)

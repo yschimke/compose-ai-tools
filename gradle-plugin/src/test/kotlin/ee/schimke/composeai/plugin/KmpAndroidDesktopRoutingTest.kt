@@ -143,6 +143,30 @@ class KmpAndroidDesktopRoutingTest {
   }
 
   @Test
+  fun `the bundle renderability gate does not apply to the Android registration`() {
+    // `androidRuntimeClasspath` means two different things depending on who is asking. On the
+    // desktop registration it is the last-resort fallback of `desktopDependencyConfigName`, and a
+    // module that lands there has no JVM runtime to render against — the case above. On the
+    // ANDROID registration it is the ordinary, correct runtime configuration of every
+    // `com.android.kotlin.multiplatform.library` module, because `AndroidVariantNaming.kmpAndroid`
+    // derives it from the KMP target name.
+    //
+    // Reusing the desktop test for both is what made `composePreviewBundle` SKIPPED on every
+    // KMP-Android module: the render succeeded, the bundle task never ran, and `compose-preview
+    // bundle pack` failed with "Bundle task reported success but bundle.png is missing" — a
+    // skipped task being, to Gradle, a successful build. wear-m3-catalog's `:catalog` stopped
+    // publishing the moment it moved to that module shape.
+    assertThat(ComposePreviewTasks.bundleRenderable("android", "androidRuntimeClasspath")).isTrue()
+    assertThat(ComposePreviewTasks.bundleRenderable("android", "debugRuntimeClasspath")).isTrue()
+
+    // The desktop registration keeps the gate exactly as it was.
+    assertThat(ComposePreviewTasks.bundleRenderable("desktop", "androidRuntimeClasspath")).isFalse()
+    assertThat(ComposePreviewTasks.bundleRenderable("desktop", "desktopRuntimeClasspath")).isTrue()
+    assertThat(ComposePreviewTasks.bundleRenderable("desktop", "jvmRuntimeClasspath")).isTrue()
+    assertThat(ComposePreviewTasks.bundleRenderable("desktop", "runtimeClasspath")).isTrue()
+  }
+
+  @Test
   fun `non-renderable module skips only the guard and daemon, never discover or render`() {
     // Issue #1855: the desktop-render classpath guard and the daemon-start task are skipped for a
     // pure KMP-Android module (they'd otherwise hard-fail on its androidRuntimeClasspath), but

@@ -371,6 +371,30 @@ jobs:
       # failed while I was building it, so a gate that cannot see that is no gate.
       - name: Render the KMP-Android Robolectric sample
         run: ./gradlew :samples:cmp-android-robolectric:composePreviewRenderAll
+      # And PACK it, asserting the file exists. `composePreviewBundle` carries an `onlyIf`
+      # renderability gate, and a gate that says no is — to Gradle — a successful build: the task
+      # reports SKIPPED, the invocation exits 0, and nothing in the log names it. So `./gradlew
+      # :…:composePreviewBundle` passing proves nothing; only the bundle on disk does.
+      #
+      # This is not hypothetical. The gate was the desktop path's `isDesktopRenderableConfig`,
+      # which rejects the literal string `androidRuntimeClasspath` — the last-resort fallback
+      # there, but the ORDINARY runtime configuration of every
+      # `com.android.kotlin.multiplatform.library` module. Applied to the Android registration it
+      # skipped the bundle task on every KMP-Android module, and the only symptom was
+      # `compose-preview bundle pack` failing with "Bundle task reported success but bundle.png is
+      # missing" after a render that had just succeeded. wear-m3-catalog's `:catalog` stopped
+      # publishing for weeks on exactly that, because no CI job here ever packed this module shape
+      # — the two bundles CI did pack (`:samples:wear`, `:samples:remotecompose`) are classic AGP.
+      - name: Pack the KMP-Android Robolectric sample into a bundle
+        run: |
+          set -euo pipefail
+          ./gradlew :samples:cmp-android-robolectric:composePreviewBundle
+          out=samples/cmp-android-robolectric/build/compose-previews/bundle.png
+          if [ ! -s "$out" ]; then
+            echo "::error title=KMP-Android bundle missing::composePreviewBundle exited 0 but wrote no $out — the task was almost certainly SKIPPED by its onlyIf gate."
+            exit 1
+          fi
+          echo "packed $out ($(stat -c %s "$out") bytes)"
       # The other side of the same fix: a KMP-Android module WITHOUT the opt-in must still take
       # the Desktop lane it has taken since #248. `:samples:cmp-shared` is that shape.
       - name: Discover previews on the default (Desktop) KMP-Android lane
