@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.8.1](https://github.com/yschimke/compose-ai-tools/compare/v2.8.0...v2.8.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to v3.3.0 ([#5394](https://github.com/yschimke/compose-ai-tools/issues/5394)) ([8e74577](https://github.com/yschimke/compose-ai-tools/commit/8e74577d5cb66bdd7b733f3b0242c2af73b5ccc2))
+* **usage-source-psi:** register an extensions storage before parsing ([#5393](https://github.com/yschimke/compose-ai-tools/issues/5393)) ([1b32efd](https://github.com/yschimke/compose-ai-tools/commit/1b32efdb80039be699c934a9776cc860f205a314))
+
 ## [2.8.0](https://github.com/yschimke/compose-ai-tools/compare/v2.7.0...v2.8.0) (2026-09-11)
 
 
