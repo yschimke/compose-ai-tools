@@ -34,7 +34,7 @@ tapmoc = "0.4.2"
 # `:daemon:android` draws held frames with those timestamps untranslated, which restores beta-2
 # behaviour inside the daemon sandbox; those two tests are the acceptance check for any bump here,
 # not just a green build.
-robolectric = "4.17-beta-4"
+robolectric = "4.17"
 roborazzi = "1.74.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
