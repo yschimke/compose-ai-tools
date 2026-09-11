@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.8.0](https://github.com/yschimke/compose-ai-tools/compare/v2.7.0...v2.8.0) (2026-09-11)
+
+
+### Features
+
+* **plugin:** give com.android.kotlin.multiplatform.library the Robolectric lane ([#5375](https://github.com/yschimke/compose-ai-tools/issues/5375)) ([8e3eddc](https://github.com/yschimke/compose-ai-tools/commit/8e3eddcbada3a90d888b461a74cdf7afdd4d554e))
+
+
+### Bug Fixes
+
+* **build:** stop the schema-metadata task capturing the build script ([#5391](https://github.com/yschimke/compose-ai-tools/issues/5391)) ([bf48803](https://github.com/yschimke/compose-ai-tools/commit/bf48803e8c6660087bf76dc43a7c9874f3646b1d))
+* **bundle:** forward the font and svg opt-outs to the Android child JVM ([#5371](https://github.com/yschimke/compose-ai-tools/issues/5371)) ([5694b4a](https://github.com/yschimke/compose-ai-tools/commit/5694b4a6a51520710bfc12f49fd7de1531288a95))
+* **deps:** update compose-ai-tools to v2.16.0 ([#5387](https://github.com/yschimke/compose-ai-tools/issues/5387)) ([08124df](https://github.com/yschimke/compose-ai-tools/commit/08124dfe139f0ed7e80a3c9d045eb1f0b34b6d91))
+* **deps:** update compose-preview-contracts to v2.16.0 ([#5388](https://github.com/yschimke/compose-ai-tools/issues/5388)) ([c9c7942](https://github.com/yschimke/compose-ai-tools/commit/c9c794237ce74d0a13a8cc5d9f0d9eb5bdbb731f))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.23.0 ([#5389](https://github.com/yschimke/compose-ai-tools/issues/5389)) ([413e603](https://github.com/yschimke/compose-ai-tools/commit/413e60369220936c6903ce7b011cc4141aaf0445))
+* **deps:** update dependency org.robolectric:robolectric to v4.17 ([#5384](https://github.com/yschimke/compose-ai-tools/issues/5384)) ([f34f700](https://github.com/yschimke/compose-ai-tools/commit/f34f700dde6e0a36dd77ac775c4764b8a37e5f95))
+* **deps:** update kotlin to v2.4.20 ([#5385](https://github.com/yschimke/compose-ai-tools/issues/5385)) ([3a97978](https://github.com/yschimke/compose-ai-tools/commit/3a97978bb6c32f7291f9f72d097c6856029cc1a3))
+* **deps:** update rc-players to v1.60.2 ([#5386](https://github.com/yschimke/compose-ai-tools/issues/5386)) ([bd9903d](https://github.com/yschimke/compose-ai-tools/commit/bd9903d734e6af8791d495d99284a415837fac73))
+* **design-artifacts:** report the CMP/Wasm first-frame budget, stop gating on it ([#5381](https://github.com/yschimke/compose-ai-tools/issues/5381)) ([99b81ce](https://github.com/yschimke/compose-ai-tools/commit/99b81cebaa1085056a00364c57e788ebc26c4762))
+* **plugin:** decide the KMP-Android lane after the plugins block, not during it ([#5380](https://github.com/yschimke/compose-ai-tools/issues/5380)) ([c5a8d18](https://github.com/yschimke/compose-ai-tools/commit/c5a8d1852a70dc2a8343dc105cd4c0b23196dd70))
+* **plugin:** read the doctor's lane from the task graph, not the request ([#5377](https://github.com/yschimke/compose-ai-tools/issues/5377)) ([4037147](https://github.com/yschimke/compose-ai-tools/commit/4037147903b78796bf69bc18e5a9f45ce7acea8f))
+* **plugin:** stop the KMP-Android lane leaking into modules that didn't ask ([#5376](https://github.com/yschimke/compose-ai-tools/issues/5376)) ([123eb39](https://github.com/yschimke/compose-ai-tools/commit/123eb39620c7f3ba7063258137fceb1a08ef26eb))
+* publish design reference match scores ([#5374](https://github.com/yschimke/compose-ai-tools/issues/5374)) ([59eb6da](https://github.com/yschimke/compose-ai-tools/commit/59eb6da9e161d76b3942e181b7ac9c7889b0f17c))
+* **ui-builder:** keep an excluded component off the shelf ([#5378](https://github.com/yschimke/compose-ai-tools/issues/5378)) ([502fb1c](https://github.com/yschimke/compose-ai-tools/commit/502fb1c721d8052d39aa50a62872fe5969887e0b))
+
 ## [2.7.0](https://github.com/yschimke/compose-ai-tools/compare/v2.6.0...v2.7.0) (2026-09-10)
 
 
