@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "c4b9876c81e53ce380fe776d13990b4f23684e14",
+    "generatedFrom": "4a216f4c96790091896dac73fc01fb5b6560ad22",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -418,6 +418,13 @@
             "path": "renders/samples:android/activity__MainActivity.png",
             "versions": [
                 {
+                    "blob": "0e5ce33dea54d606d11f82c66acf8885beda29d9",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
+                {
                     "blob": "e9868c2ee341c5f9c23cb53e287ffbef95791035",
                     "commit": "e8b05e533d8d0f76adf618699077375d1327ea46",
                     "date": "2026-07-25T11:07:46Z",
@@ -425,7 +432,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -433,6 +440,13 @@
             "path": "renders/samples:android/activity__NowPlayingActivity.png",
             "versions": [
                 {
+                    "blob": "b99e5fc2689ec89517b7eb337e483beaabe225e2",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
+                {
                     "blob": "f99bb20781757afdd61cc2689de3ef6da5d3d675",
                     "commit": "e8b05e533d8d0f76adf618699077375d1327ea46",
                     "date": "2026-07-25T11:07:46Z",
@@ -440,7 +454,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -448,6 +462,13 @@
             "path": "renders/samples:android/apptour__getting-started_step00_launch.png",
             "versions": [
                 {
+                    "blob": "0e5ce33dea54d606d11f82c66acf8885beda29d9",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
+                {
                     "blob": "e9868c2ee341c5f9c23cb53e287ffbef95791035",
                     "commit": "e8b05e533d8d0f76adf618699077375d1327ea46",
                     "date": "2026-07-25T11:07:46Z",
@@ -455,7 +476,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -463,6 +484,13 @@
             "path": "renders/samples:android/apptour__getting-started_step01_open_now_playing.png",
             "versions": [
                 {
+                    "blob": "b99e5fc2689ec89517b7eb337e483beaabe225e2",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
+                {
                     "blob": "f99bb20781757afdd61cc2689de3ef6da5d3d675",
                     "commit": "e8b05e533d8d0f76adf618699077375d1327ea46",
                     "date": "2026-07-25T11:07:46Z",
@@ -470,13 +498,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:android/apptour__getting-started#2": {
             "path": "renders/samples:android/apptour__getting-started_step02_back_home.png",
             "versions": [
+                {
+                    "blob": "0e5ce33dea54d606d11f82c66acf8885beda29d9",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
                 {
                     "blob": "e9868c2ee341c5f9c23cb53e287ffbef95791035",
                     "commit": "e8b05e533d8d0f76adf618699077375d1327ea46",
@@ -485,13 +520,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:android/apptour__getting-started#3": {
             "path": "renders/samples:android/apptour__getting-started_step03_deep_link.png",
             "versions": [
+                {
+                    "blob": "b99e5fc2689ec89517b7eb337e483beaabe225e2",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
                 {
                     "blob": "f99bb20781757afdd61cc2689de3ef6da5d3d675",
                     "commit": "e8b05e533d8d0f76adf618699077375d1327ea46",
@@ -500,7 +542,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -1120,6 +1162,13 @@
             "path": "renders/samples:android/ScaffoldedInboxFramePreview_Inbox_Frame-65f5b2f0.png",
             "versions": [
                 {
+                    "blob": "d3d76fdd9e121b8729293f03406742a8de42b630",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
+                {
                     "blob": "d628d851eabd58e128b2d3baeaa8e92b08a75740",
                     "commit": "2d820a5ff19cddb1e84ea30e9e419a1057bb8091",
                     "date": "2026-09-06T15:54:53Z",
@@ -1127,13 +1176,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:android/com.example.sampleandroid.InboxScrollPreviewsKt.ScaffoldedInboxLongPreview_Inbox Long": {
             "path": "renders/samples:android/ScaffoldedInboxLongPreview_Inbox_Long-7261c0ed.png",
             "versions": [
+                {
+                    "blob": "7f00e8bcb7e08c07b6dd822c33c399f367f375fe",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
                 {
                     "blob": "ea106a0c5cc0ac18475b7db6f025e22985415842",
                     "commit": "2d820a5ff19cddb1e84ea30e9e419a1057bb8091",
@@ -1142,7 +1198,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7201,6 +7257,13 @@
             "path": "renders/samples:remotecompose/activity__MainActivity.png",
             "versions": [
                 {
+                    "blob": "4b3f25f1a9117b7c1b79e8111026b546b7abbaf9",
+                    "commit": "4a216f4c96790091896dac73fc01fb5b6560ad22",
+                    "date": "2026-09-11T22:13:01Z",
+                    "sourceSha": "74a8e0b1",
+                    "commits": 1
+                },
+                {
                     "blob": "66a941042b3106b96741fc330869b226d076e259",
                     "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
                     "date": "2026-08-19T00:34:21Z",
@@ -7215,7 +7278,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
