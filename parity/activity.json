@@ -1,11 +1,99 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-10T22:11:44.684Z",
+  "generatedAt": "2026-09-11T05:53:12.930Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "59077af3798c87f91ebb7dc388f1c0631208238e",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.8.0 (#5392)",
+        "at": "2026-09-11T05:39:06Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2b11fa95b42527dc65a60c40c20aff50ed559ce3",
+        "subject": "chore(main): release 2.8.0 (#5373)",
+        "at": "2026-09-11T06:28:02+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bf48803e8c6660087bf76dc43a7c9874f3646b1d",
+        "subject": "fix(build): stop the schema-metadata task capturing the build script (#5391)",
+        "at": "2026-09-11T06:18:57+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3a97978bb6c32f7291f9f72d097c6856029cc1a3",
+        "subject": "fix(deps): update kotlin to v2.4.20 (#5385)",
+        "at": "2026-09-11T05:44:54+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bd9903d734e6af8791d495d99284a415837fac73",
+        "subject": "fix(deps): update rc-players to v1.60.2 (#5386)",
+        "at": "2026-09-11T05:44:23+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "08124dfe139f0ed7e80a3c9d045eb1f0b34b6d91",
+        "subject": "fix(deps): update compose-ai-tools to v2.16.0 (#5387)",
+        "at": "2026-09-11T05:43:53+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "c9c794237ce74d0a13a8cc5d9f0d9eb5bdbb731f",
+        "subject": "fix(deps): update compose-preview-contracts to v2.16.0 (#5388)",
+        "at": "2026-09-11T05:43:13+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "413e60369220936c6903ce7b011cc4141aaf0445",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.23.0 (#5389)",
+        "at": "2026-09-11T05:42:46+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e502f15b60075614d1d83b32d19b97ce8fbdbc62",
+        "subject": "test(plugin): fail the build when the gradle lane's robolectric inputs drift (#5390)",
+        "at": "2026-09-11T05:42:26+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f34f700dde6e0a36dd77ac775c4764b8a37e5f95",
+        "subject": "fix(deps): update dependency org.robolectric:robolectric to v4.17 (#5384)",
+        "at": "2026-09-11T04:39:10Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fe84aca52017c5e8dcc6b9546d8ac899d3064199",
+        "subject": "refactor(bundle): take the robolectric flags and font properties from the daemon (#5382)",
+        "at": "2026-09-10T23:25:28+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "99b81cebaa1085056a00364c57e788ebc26c4762",
         "subject": "fix(design-artifacts): report the CMP/Wasm first-frame budget, stop gating on it (#5381)",
@@ -394,94 +482,6 @@
         "sha": "c85da11f76e8a633a76f5767fd013159d47524ec",
         "subject": "perf(serve): stop re-hashing and re-formatting a theme cache file name (#5324)",
         "at": "2026-09-09T07:45:26+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2160ecaf10efab386b51d4708c25455a5ae0251f",
-        "subject": "fix(plugin): keep build outputs out of the ui-builder template tree (#5325)",
-        "at": "2026-09-09T07:45:10+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "85280a3b2a8a06c6201f02131eded1babac307d8",
-        "subject": "fix(ci): decide root-policy reachability from the modules being rendered (#5323)",
-        "at": "2026-09-09T07:19:07+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e4e59660078556adbf51db2b62de1e8116cc0a22",
-        "subject": "fix(ci): keep the root builder policy in all-module pre-flight validation (#5320)",
-        "at": "2026-09-09T07:07:34+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7285ad689a62f37e8ff882d037c936a1da928f55",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.4.0 (#5317)",
-        "at": "2026-09-09T06:53:57+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "461d1881cea160394872a63beecb05ca7d04a7d5",
-        "subject": "docs: check a commit exists before reporting it for attribution (#5319)",
-        "at": "2026-09-09T06:53:37+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8a3ff97cae244d98a1b9559b6074f98a336ba05f",
-        "subject": "test(wear-widget): regenerate the fixture with its round preview (#5318)",
-        "at": "2026-09-09T06:43:00+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3fa2244446c67a9262706129fec4608718b988ab",
-        "subject": "chore(main): release 2.4.0 (#5309)",
-        "at": "2026-09-09T05:57:33+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "909bfb6e96d5b5c6681f03200fc28db86301529e",
-        "subject": "build: extend ktfmtCheckAll into the gradle-plugin included build's subprojects (#5316)",
-        "at": "2026-09-09T05:52:52+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ca7b0b1ece67d2123f541f0518a54d07970146c4",
-        "subject": "test(cli): widen the semantics inactivity test's stall margin (#5315)",
-        "at": "2026-09-09T05:52:44+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "57811aa75b865b7128894e98f1aedc64fdc87349",
-        "subject": "fix(ui-builder): apply four fixes to the places they were left out of (#5314)",
-        "at": "2026-09-09T05:43:03+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "b12ee694379086f1cb752360875088c7378f5a5b",
-        "subject": "feat(discovery): publish a catalog's ui-builder.json from @BuilderComponent and a policy file (#5312)",
-        "at": "2026-09-09T05:30:58+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
