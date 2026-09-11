@@ -1791,6 +1791,22 @@
     "sha256": "e032e9511ec264a70e01675c652368a81b0c13796d1bbaff03f0084c2ecbcad3",
     "sourceFile": "src/androidMain/kotlin/com/example/cmpandroidrobolectric/AndroidOnlyPreviews.kt"
   },
+  "samples:cmp-android-robolectric/com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceGreenBoxPreview": {
+    "captureLabel": "",
+    "functionName": "SharedSourceGreenBoxPreview",
+    "module": "samples:cmp-android-robolectric",
+    "renderBasename": "SharedSourceGreenBoxPreview-7a08db87.png",
+    "sha256": "a2c7647c90d7c5a14e32c97eb036817328ededf5814ffdc9a221bf0ac8af9557",
+    "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt"
+  },
+  "samples:cmp-android-robolectric/com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceMagentaBoxPreview_Magenta": {
+    "captureLabel": "",
+    "functionName": "SharedSourceMagentaBoxPreview",
+    "module": "samples:cmp-android-robolectric",
+    "renderBasename": "SharedSourceMagentaBoxPreview_Magenta-1ff13d35.png",
+    "sha256": "6fa09f2e60c9f852758c165e7340d63ea7289d30b9c8a25cbc23615b309c5430",
+    "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt"
+  },
   "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
     "captureLabel": "",
     "functionName": "SharedBlueBoxPreview",
@@ -1806,6 +1822,22 @@
     "renderBasename": "SharedRedBoxPreview-67810834.png",
     "sha256": "70afa24f0e257bb7adddc922b875bbb4611e7ed07e6067a081ea62ceea643b2c",
     "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt"
+  },
+  "samples:cmp-shared/com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceGreenBoxPreview": {
+    "captureLabel": "",
+    "functionName": "SharedSourceGreenBoxPreview",
+    "module": "samples:cmp-shared",
+    "renderBasename": "SharedSourceGreenBoxPreview-7a08db87.png",
+    "sha256": "a5db7114d1d26f26ab9d9688b2d454f1b1641ba2c7305db8ebe84d6c5be0574e",
+    "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt"
+  },
+  "samples:cmp-shared/com.example.previewsourceshared.SharedSourcePreviewsKt.SharedSourceMagentaBoxPreview_Magenta": {
+    "captureLabel": "",
+    "functionName": "SharedSourceMagentaBoxPreview",
+    "module": "samples:cmp-shared",
+    "renderBasename": "SharedSourceMagentaBoxPreview_Magenta-1ff13d35.png",
+    "sha256": "4bc8e9d187745098097e837254ba8ce39a59ff44b827bfdd8ed2801fa3e4e3cb",
+    "sourceFile": "../preview-source-shared/src/commonMain/kotlin/com/example/previewsourceshared/SharedSourcePreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.AnimatedPreviewsKt.AutoDetectDurationAnimatedPreview_Animated \u2014 Auto-Detect Duration": {
     "captureLabel": "",

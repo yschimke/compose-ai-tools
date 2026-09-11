@@ -348,6 +348,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `ApiLevelBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-android-robolectric/ApiLevelBadgePreview-d9e149b8.png" width="150" /> |
+| `SharedSourceGreenBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-android-robolectric/SharedSourceGreenBoxPreview-7a08db87.png" width="150" /> |
+| `SharedSourceMagentaBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-android-robolectric/SharedSourceMagentaBoxPreview_Magenta-1ff13d35.png" width="150" /> |
 
 ## samples:cmp-shared
 
@@ -355,6 +357,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 |---------|-------|
 | `SharedBlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-shared/SharedBlueBoxPreview_Blue-31ffdd83.png" width="150" /> |
 | `SharedRedBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-shared/SharedRedBoxPreview-67810834.png" width="150" /> |
+| `SharedSourceGreenBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-shared/SharedSourceGreenBoxPreview-7a08db87.png" width="150" /> |
+| `SharedSourceMagentaBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp-shared/SharedSourceMagentaBoxPreview_Magenta-1ff13d35.png" width="150" /> |
 
 ## samples:design-catalog-m3
 
