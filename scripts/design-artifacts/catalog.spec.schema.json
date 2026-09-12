@@ -177,6 +177,10 @@
         "hero": {
           "type": "string",
           "description": "The representative preview to feature as the system's hero — a componentId (e.g. \"Template/TimeText\") or a flattened preview id. Absent ⇒ the server picks one (prefer a screen, else a canonical component)."
+        },
+        "role": {
+          "type": "string",
+          "description": "What KIND of catalog this is, and through that what shape its component pages take. `samples` is a catalog of CALL SITES rather than of a design system's own components: the preview server drops every comparison lane (there is no reference a sample is meant to match, so a difference is not a defect) and stands the source beside the render instead of behind a chip. It also names the catalog in a reader's back-links — a component points at \"Samples\" rather than at a catalog title. Declared by the catalog because only it knows; a server that inferred this from a system name would be holding catalog knowledge it must not. Deliberately an open string rather than an enum: a consumer that does not recognise a role must degrade to the ordinary page, and an enum here would instead fail a newer producer's spec at validation."
         }
       }
     },
