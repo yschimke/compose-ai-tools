@@ -123,12 +123,6 @@ compose-multiplatform-material3 = "1.11.0-alpha07"
 # would pass while covering nothing. `m3-catalog` pins this exact version.
 compose-multiplatform-material3-forward = "1.12.0-alpha03"
 graphics-shapes = "1.1.0"
-# Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Tracks the same Compose
-# minor as `compose-multiplatform`: 2.2.x is built against JetBrains Compose foundation 1.11.0, which
-# is what the 1.11 line above now ships. (On the old 1.10.3 floor this was held at 2.1.0 precisely so
-# it could not drag a *newer* Compose onto the renderer classpath — the failure direction
-# `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`.)
-compottie = "2.2.4"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's
@@ -310,20 +304,6 @@ android-compose-screenshot = "0.0.1-alpha16"
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
 checker-qual = "4.2.3"
-# KMP port of Google's Material Color Utilities. Powers the wallpaper data
-# extension's seed → ColorScheme derivation (HCT tonal palettes, palette
-# styles, contrast level) so the result matches what Android's wallpaper-
-# derived dynamic theming actually produces.
-# Pinned to the 4.0.x line: `:data-wallpaper-connector` is a published
-# module and its consumers live on the renderer-android Compose floor
-# (`compose-bom-compat`, Compose 1.9.5). 4.1.0 rebuilt against Compose
-# Multiplatform 1.10.0 + Kotlin 2.3.0 and switched from an Android library
-# to a "Multiplatform Android library" — both move the transitive floor
-# above what our published surface targets. Renovate is constrained to
-# 4.0.x in `.github/renovate.json`; bumping the supported floor is a
-# manual decision (re-check `:data-wallpaper-connector:compileKotlin`
-# against `compose-bom-compat` when raising it).
-material-kolor = "4.0.5"
 # Metro — Zac Sweers' compile-time DI framework, used only by the JDK 21+
 # `:samples:sdk21:android-metro-viewmodel` module to demonstrate that
 # constructor-injected ViewModels render under the renderer's @Preview
@@ -601,7 +581,6 @@ jetbrains-forward-compose-material3 = { module = "org.jetbrains.compose.material
 graphics-shapes = { module = "androidx.graphics:graphics-shapes", version.ref = "graphics-shapes" }
 jetbrains-compose-components-ui-tooling-preview = { module = "org.jetbrains.compose.components:components-ui-tooling-preview", version.ref = "compose-multiplatform" }
 jetbrains-compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
-compottie = { module = "io.github.alexzhirkevich:compottie", version.ref = "compottie" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance-appwidget" }
@@ -697,7 +676,6 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # files the test can't differentiate "stale" from "fresh".
 asm = { module = "org.ow2.asm:asm", version = "9.10.1" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10.1" }
-material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
 metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }
