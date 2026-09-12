@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-12T10:19:25.973Z",
+  "generatedAt": "2026-09-12T13:39:38.241Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "61adcd6bad6f116e0803f9cea0dcf94f4ad4d8c1",
+        "subject": "fix(ci): retry the CLI download on connection resets, not just refusals (#5433)",
+        "at": "2026-09-12T14:15:43+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "85b26aa09a97d0bf53563f671a9ea80f14870701",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.12.0 (#5431)",
+        "at": "2026-09-12T12:43:10Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f652e7a1b4f838938c65e71c3893eca06d632e32",
+        "subject": "chore(main): release 2.12.0 (#5430)",
+        "at": "2026-09-12T13:33:14+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "8ad4227005c9ab30b001a1e624e29971958fd914",
         "subject": "feat(design-artifacts): let a spec declare where a component's source lives (#5429)",
@@ -458,30 +482,6 @@
         "sha": "ffd2bf97e1e33522d277c994893984741e563faa",
         "subject": "chore(ci): update the design-artifacts export driver to v2.6.0 (#5366)",
         "at": "2026-09-10T08:46:43Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7e3550a3127d410f3fb3176c7b69e08753ac4551",
-        "subject": "chore(main): release 2.6.0 (#5355)",
-        "at": "2026-09-10T08:31:42+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bcb0b1a0f8be3c13b4162bc6407c4e885c193d14",
-        "subject": "feat(release): publish the whole project every release (#5365)",
-        "at": "2026-09-10T08:29:38+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "9b17cb808d7b9501f01fb8498148fc7d3e54ced0",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.22.0 (#5362)",
-        "at": "2026-09-10T07:26:38Z",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
