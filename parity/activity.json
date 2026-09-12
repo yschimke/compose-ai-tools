@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-12T13:39:38.241Z",
+  "generatedAt": "2026-09-12T16:40:21.397Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "dd936737bf47c930f783727852e598aa2b205819",
+        "subject": "feat(cli): install the newest preview server rather than a pinned one, and stop consuming its Maven jar (breaking) (#5436)",
+        "at": "2026-09-12T17:30:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "39ca29713d2f7123039e3b7c70b00f5cd95b9167",
+        "subject": "feat(discovery): measure Glimmer stickers against the glasses display (#5435)",
+        "at": "2026-09-12T15:04:16+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "61adcd6bad6f116e0803f9cea0dcf94f4ad4d8c1",
         "subject": "fix(ci): retry the CLI download on connection resets, not just refusals (#5433)",
@@ -467,22 +483,6 @@
         "subject": "docs(ui-builder): stop the policy schema telling authors not to use it (#5369)",
         "at": "2026-09-10T10:32:02+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "7272f259a670aa81063a8bc187ff33a9fa92f30c",
-        "subject": "fix(ui-builder): let the policy schema describe the block catalogs use (#5367)",
-        "at": "2026-09-10T10:06:18+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ffd2bf97e1e33522d277c994893984741e563faa",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.6.0 (#5366)",
-        "at": "2026-09-10T08:46:43Z",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
