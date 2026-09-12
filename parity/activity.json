@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-12T07:58:31.181Z",
+  "generatedAt": "2026-09-12T10:19:25.973Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "8ad4227005c9ab30b001a1e624e29971958fd914",
+        "subject": "feat(design-artifacts): let a spec declare where a component's source lives (#5429)",
+        "at": "2026-09-12T11:12:35+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c7d947fe87228f8c6aefcd94e25bd2567d96cf63",
         "subject": "docs(spec): document `display.role`, the catalog's own kind (#5428)",
@@ -474,14 +482,6 @@
         "sha": "9b17cb808d7b9501f01fb8498148fc7d3e54ced0",
         "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.22.0 (#5362)",
         "at": "2026-09-10T07:26:38Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "615933aa57b180872bb57d01fcb80747c0b4e2c8",
-        "subject": "fix(deps): update compose-ai-tools to v2.14.0 (#5360)",
-        "at": "2026-09-10T07:26:28Z",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
