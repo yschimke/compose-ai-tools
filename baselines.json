@@ -4,7 +4,7 @@
     "functionName": "InstallActivity",
     "module": "jetstream",
     "renderBasename": "activity__InstallActivity.png",
-    "sha256": "ed620e8125202dcb1cfd3501c3e6f43a1502ae4591f0ee2fed8f8f0208ad3b91",
+    "sha256": "6d63bf597da49075a10d936f1c41506bbaf13c06369e4df8566f0592fc981bfa",
     "sourceFile": null
   },
   "jetstream/activity__MainActivity": {
@@ -12,7 +12,7 @@
     "functionName": "MainActivity",
     "module": "jetstream",
     "renderBasename": "activity__MainActivity.png",
-    "sha256": "d50bfec20fd63a55d6ba1bb569e8e588a734fda7db0d0f4fc18c18fa0ecff373",
+    "sha256": "32dbb985bbd7d3ba8513c968a6f9a20cd02d027c495531dedfe86d67ec09061f",
     "sourceFile": null
   },
   "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.BackButtonScreenshot": {
