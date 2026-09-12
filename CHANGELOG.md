@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.13.0](https://github.com/yschimke/compose-ai-tools/compare/v2.12.0...v2.13.0) (2026-09-12)
+
+
+### Features
+
+* **cli:** install the newest preview server rather than a pinned one, and stop consuming its Maven jar (breaking) ([#5436](https://github.com/yschimke/compose-ai-tools/issues/5436)) ([dd93673](https://github.com/yschimke/compose-ai-tools/commit/dd936737bf47c930f783727852e598aa2b205819))
+* **discovery:** measure Glimmer stickers against the glasses display ([#5435](https://github.com/yschimke/compose-ai-tools/issues/5435)) ([39ca297](https://github.com/yschimke/compose-ai-tools/commit/39ca29713d2f7123039e3b7c70b00f5cd95b9167))
+
+
+### Bug Fixes
+
+* **ci:** retry the CLI download on connection resets, not just refusals ([#5433](https://github.com/yschimke/compose-ai-tools/issues/5433)) ([61adcd6](https://github.com/yschimke/compose-ai-tools/commit/61adcd6bad6f116e0803f9cea0dcf94f4ad4d8c1))
+
 ## [2.12.0](https://github.com/yschimke/compose-ai-tools/compare/v2.11.1...v2.12.0) (2026-09-12)
 
 
