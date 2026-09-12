@@ -318,6 +318,15 @@
           "type": "string",
           "description": "Optional Code Connect override: the source location (path or URL) for `component`."
         },
+        "sourceFile": {
+          "type": "string",
+          "description": "Optional override for where a reader should be sent for this component's source, as a module-relative path. Takes precedence over the path discovery recorded for the `preview` function. For a catalog of call sites whose previews are generated wrappers, the wrapper is where the @Preview is and the thing it delegates to is what a reader came for — and only the catalog knows which. Leave it out on an ordinary catalog, where the two are the same file."
+        },
+        "bodyLine": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional line inside `sourceFile` to anchor the source panel on, meaningful only alongside `sourceFile`. Without it the whole file is shown, which is right for a file holding one declaration and poor for a file holding several."
+        },
         "priority": { "$ref": "#/definitions/priority" },
         "variants": {
           "type": "array",
