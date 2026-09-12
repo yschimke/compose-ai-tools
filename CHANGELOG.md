@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.0](https://github.com/yschimke/compose-ai-tools/compare/v2.11.1...v2.12.0) (2026-09-12)
+
+
+### Features
+
+* **design-artifacts:** let a spec declare where a component's source lives ([#5429](https://github.com/yschimke/compose-ai-tools/issues/5429)) ([8ad4227](https://github.com/yschimke/compose-ai-tools/commit/8ad4227005c9ab30b001a1e624e29971958fd914))
+
 ## [2.11.1](https://github.com/yschimke/compose-ai-tools/compare/v2.11.0...v2.11.1) (2026-09-12)
 
 
