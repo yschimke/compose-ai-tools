@@ -12,9 +12,8 @@
   "prConcurrentLimit": 10,
   "minimumReleaseAge": "7 days",
   "github-actions": {
-    "description": "Every `uses:` in this repository is SHA-pinned with a `# vX.Y.Z` comment \u2014 183 of them \u2014 and with the manager off not one of those digests could ever move: a fixed or security-patched action never reached CI, and nothing else in the repo bumps them. Renovate rewrites the digest and the version comment together, and `pinDigests` keeps a newly added tag-only `uses:` from staying unpinned. The shared preset batches every action into ONE weekly `github-actions` PR, so this costs a single PR a week rather than one per action; the `yschimke/compose-ai-tools` self-reference moves with it. Same setting as compose-preview-daemon.",
-    "enabled": true,
-    "pinDigests": true
+    "description": "Deliberately OFF, and it must stay off: `.github/dependabot.yml` already runs the `github-actions` ecosystem for this repository, weekly with a 7-day cooldown and minor/patch grouping, and it rewrites the digest and the trailing `# vX.Y.Z` comment together. Turning this manager on gives the same `uses:` lines two weekly updaters that propose overlapping edits on the same Monday. This repository is the only one in the family carrying Dependabot \u2014 compose-preview-daemon, compose-preview-server, m3-catalog, wear-m3-catalog and rc-players have none, which is why Renovate owns their actions and not this one's.\n\nEnabling it would also break the release train: the six tag-based self-references in the composite actions (`.github/actions/apply/action.yml`, `preview-baselines`, `preview-comment`, `notification-previews`, `a11y-report`) are pinned `@vX.Y.Z # x-release-please-version` on purpose, and release-please rewrites that version TEXT. `pinDigests` would replace each with a commit SHA that release-please cannot recompute, so every later release would keep invoking the previous release's helpers.",
+    "enabled": false
   },
   "packageRules": [
     {
