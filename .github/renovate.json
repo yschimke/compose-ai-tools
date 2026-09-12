@@ -70,28 +70,6 @@
       "allowedVersions": "/^2025\\.11\\./"
     },
     {
-      "description": "material-kolor: pin to the 4.0.x line. `:data-wallpaper-connector` is published against the renderer-android Compose floor (`compose-bom-compat`, Compose 1.9.5); 4.1.0 rebuilt against Compose Multiplatform 1.10.0 + Kotlin 2.3.0 and migrated to a Multiplatform Android library, raising the transitive floor above our published surface. See gradle/libs.versions.toml for the full rationale — bumping the floor is a manual decision.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "com.materialkolor:material-kolor"
-      ],
-      "matchCurrentValue": "/^4\\.0\\./",
-      "allowedVersions": "/^4\\.0\\./"
-    },
-    {
-      "description": "androidx.core:core: pin to the 1.13.x line. `:data-keyboard-connector` declares this as a `compileOnly` compat floor so the published AAR's bytecode stays binary-backward-compatible with consumers on older `androidx.core` lines (same rationale as `compose-foundation` via `compose-bom-compat`). Raising the floor is a manual decision.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "androidx.core:core"
-      ],
-      "matchCurrentValue": "/^1\\.13\\./",
-      "allowedVersions": "/^1\\.13\\./"
-    },
-    {
       "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
       "matchManagers": [
         "gradle"
@@ -124,17 +102,6 @@
       ],
       "matchCurrentValue": "/^2\\.0\\.17$/",
       "allowedVersions": "/^2\\.0\\.17$/"
-    },
-    {
-      "description": "compottie: pin to the 2.2.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.11.0 (matching `compose-multiplatform = 1.11.x`); a compottie line built against a newer foundation drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "io.github.alexzhirkevich:compottie"
-      ],
-      "matchCurrentValue": "/^2\\.2\\./",
-      "allowedVersions": "/^2\\.2\\./"
     },
     {
       "description": "coil3: pin to the 3.5.x line. 3.6.0 depends on `org.jetbrains.compose.foundation:foundation-android:1.12.0`, which resolves `androidx.compose.foundation`/`ui` 1.12.0 — the Compose line this repo deliberately does not sit on (see the compose-multiplatform rule above). coil3 is `compileOnly` in `:renderer-android` but `testImplementation` for that module's own unit tests, so the upgrade lands on a test classpath compiled against `compose-bom-compat` and `FigmaSvgRasterizedTextFieldRenderTest` fails with `AbstractMethodError` (#4503). 3.5.0 resolves foundation 1.11.2 and is green. Bump in lockstep with the Compose floor, not on its own.",
