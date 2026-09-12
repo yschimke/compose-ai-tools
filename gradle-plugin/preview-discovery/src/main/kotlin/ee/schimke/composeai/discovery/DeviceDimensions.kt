@@ -151,6 +151,26 @@ object DeviceDimensions {
   val DEFAULT = DeviceSpec(400, 800, DEFAULT_DENSITY)
   val DEFAULT_WEAR = DeviceSpec(227, 227, 2.0f, isRound = true)
 
+  /**
+   * The AI-glasses display `androidx.xr.glimmer` draws for: 960x720 at **density 1.0**.
+   *
+   * The density is the load-bearing half and is not a phone-style guess. Glimmer sizes UI in
+   * **visual angle**, not dp: at ~30 pixels per degree the library's own type and touch targets
+   * land on the angular sizes it is calibrated for (18dp text -> 18px -> 0.6 degrees) and that
+   * identity holds **only at density 1.0**. At 1.5 the same text measures 27px -> 0.9 degrees and
+   * contrast and legibility read optimistically; at the renderer's 2.625 phone default it is worse
+   * again. `samples/xr-glimmer` pinned dpi=160 for exactly this reason and states the arithmetic.
+   *
+   * 960x720 at 30 PPD spans 32 x 24 degrees of field of view — a plausible 4:3 HUD. Re-pin all
+   * three numbers here if Google publishes the AI Glasses AVD's exact resolution, FoV and
+   * densityDpi; the 30-PPD identity is the anchor to preserve.
+   *
+   * Used as a **wrap sandbox** rather than a pinned canvas — see
+   * [PreviewDiscovery.retargetGlimmerStickers], which is where the difference between "measure
+   * against the glasses display" and "occupy the glasses display" is spelled out.
+   */
+  val DEFAULT_GLASSES = DeviceSpec(960, 720, 1.0f)
+
   fun resolve(device: String?, widthDp: Int? = null, heightDp: Int? = null): DeviceSpec {
     // Explicit widthDp/heightDp on the @Preview annotation — no device info,
     // so fall back to the AS default density (xxhdpi-ish, matching Studio's
