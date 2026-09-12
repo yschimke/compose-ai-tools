@@ -1,13 +1,9 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.agentgrants.AgentGrantScope
-import ee.schimke.composeai.cli.serve.ServeAgentGrantStore
-import ee.schimke.composeai.cli.serve.ServeBundleHost
-import ee.schimke.composeai.cli.serve.ServeHttpServer
-import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -17,38 +13,58 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The CLI's grant client against a **real** `ServeHttpServer`, so the two halves of the wire
- * protocol are checked against each other rather than each against its own idea of the other.
+ * The CLI's grant client against a **real** preview server, so the two halves of the wire protocol
+ * are checked against each other rather than each against its own idea of the other.
  *
  * They are deliberately separate declarations — the CLI ships and versions independently of any
  * host it talks to, so its request/response types are its own with every field defaulted. That
  * independence is exactly what lets them drift silently, which is what this test exists to stop.
+ *
+ * The server is the **distribution**, launched as a process, rather than a `ServeHttpServer` built
+ * in this JVM: compose-preview-server publishes no jar to link, and `serve` is a launcher over a
+ * process boundary anyway, so this is the artifact a user actually runs. The operator half of the
+ * flow — approving and denying — goes through the real HTML form rather than a store reference,
+ * which means the CSRF seal, the token query and the page itself are all exercised here too.
+ * [ServeDistributionHarness] has the arrangement, including why these skip without one.
  */
 class AgentAccessClientIntegrationTest {
 
-  private val registry = ServeSessionRegistry(open = { null })
+  private var session: ServeDistributionHarness.Session? = null
 
-  private val grants =
-    ServeAgentGrantStore(maxScope = AgentGrantScope.PLAYGROUND, maxGrantTtlSeconds = 3600)
-
-  private val server: ServeHttpServer by lazy {
-    val dir = Files.createTempDirectory("client-grants").toFile().also { it.deleteOnExit() }
-    File(dir, "index.html").writeText("<html></html>")
-    File(dir, "previews").mkdirs()
-    registry.register("demo", host = ServeBundleHost(dir, label = "demo"), pinned = true)
-    ServeHttpServer(
-        host = "127.0.0.1",
-        requestedPort = 0,
-        token = "operator-secret",
-        sessions = registry,
-        defaultSessionId = "demo",
-        isPublic = false,
-        agentGrants = grants,
-      )
-      .also { it.start() }
+  /** The running server, or a skipped test. */
+  private fun serve(): ServeDistributionHarness.Session {
+    val live = session
+    if (live != null) return live
+    val started = ServeDistributionHarness.start()
+    if (started == null) {
+      check(!ServeDistributionHarness.required) { ServeDistributionHarness.skipReason() }
+      org.junit.jupiter.api.Assumptions.assumeTrue(false, ServeDistributionHarness.skipReason())
+      error("unreachable")
+    }
+    session = started
+    return started
   }
 
-  private fun client() = AgentAccessClient("http://127.0.0.1:${server.port}")
+  @BeforeTest
+  fun requireServer() {
+    // Skip decided once, before any case does work, so a machine with no server reports one clear
+    // reason per test rather than a failure part-way through a flow.
+    if (ServeDistributionHarness.binary == null) {
+      check(!ServeDistributionHarness.required) { ServeDistributionHarness.skipReason() }
+      org.junit.jupiter.api.Assumptions.assumeTrue(false, ServeDistributionHarness.skipReason())
+    }
+  }
+
+  private fun client() = AgentAccessClient(serve().origin)
+
+  /**
+   * The wire header the server names its bearer in, as a literal.
+   *
+   * It used to be read off `ServeHttpServer.TOKEN_HEADER` from the published jar. With no jar to
+   * link it has to be written down — which is the drift this whole file exists to catch, so it is
+   * asserted against what the running server actually answers rather than merely declared.
+   */
+  private val tokenHeader = "X-Compose-Preview-Token"
 
   /**
    * A store that reads and remembers normally but cannot save a *grant*. Stands in for a full disk
@@ -86,8 +102,8 @@ class AgentAccessClientIntegrationTest {
 
   @AfterTest
   fun tearDown() {
-    server.stop()
-    registry.close()
+    session?.close()
+    session = null
   }
 
   @Test
@@ -99,11 +115,12 @@ class AgentAccessClientIntegrationTest {
     assertEquals("live", opened.requestedScope)
     assertEquals(1800, opened.requestedTtlSeconds)
     assertEquals("playground", opened.maxScope)
-    assertTrue(opened.approveUrl.startsWith("http://127.0.0.1:${server.port}/agent-access/"))
+    assertTrue(opened.approveUrl.startsWith("${serve().origin}/agent-access/"))
     assertTrue(opened.pollUrl.endsWith("/agent-access/poll"))
     assertTrue(opened.pollIntervalSeconds > 0)
-    // The label the human will read is the one the client sent.
-    assertEquals("fix #1", grants.request(opened.requestId)?.label)
+    // The label the human will read is the one the client sent — read off the page they read it
+    // from, which is also the check that `approveUrl` points somewhere real.
+    assertTrue(serve().approvalPage(opened.requestId).contains("fix #1"))
   }
 
   @Test
@@ -112,14 +129,15 @@ class AgentAccessClientIntegrationTest {
     val opened = ok(c.open(label = "fix #2", scope = "live", ttlSeconds = 900))
     assertEquals("pending", ok(c.poll(opened.requestId, opened.deviceSecret)).status)
 
-    // The human's half, driven directly — the browser flow itself is covered by the routing test.
-    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
+    // The human's half, through the real approval form.
+    serve().approve(opened.requestId, scope = "live", ttlSeconds = 900)
 
     val approved = ok(c.poll(opened.requestId, opened.deviceSecret))
     assertEquals("approved", approved.status)
-    assertEquals("@yuri", approved.approvedBy)
     assertEquals(listOf("preview", "live"), approved.scopes)
-    assertEquals(ServeHttpServer.TOKEN_HEADER, approved.tokenHeader)
+    // The drift this file is for, at its sharpest: the header name is written down on both sides
+    // and nothing but this comparison holds them together.
+    assertEquals(tokenHeader, approved.tokenHeader)
     val token = approved.token!!
 
     val who = ok(c.whoami(token))
@@ -135,7 +153,7 @@ class AgentAccessClientIntegrationTest {
   fun `a denied request reads as denied on the client`() {
     val c = client()
     val opened = ok(c.open(label = "", scope = "", ttlSeconds = 600))
-    grants.deny(opened.requestId, "@yuri")
+    serve().deny(opened.requestId)
     assertEquals("denied", ok(c.poll(opened.requestId, opened.deviceSecret)).status)
   }
 
@@ -143,7 +161,7 @@ class AgentAccessClientIntegrationTest {
   fun `a wrong device secret reads as unknown and carries no token`() {
     val c = client()
     val opened = ok(c.open(label = "", scope = "preview", ttlSeconds = 600))
-    grants.approve(opened.requestId, "@yuri", AgentGrantScope.PREVIEW, 600)
+    serve().approve(opened.requestId, scope = "preview", ttlSeconds = 600)
     val polled = ok(c.poll(opened.requestId, "not-the-secret"))
     assertEquals("unknown", polled.status)
     assertEquals(null, polled.token)
@@ -172,7 +190,7 @@ class AgentAccessClientIntegrationTest {
     assertNull(store.tokenFor(c.origin))
     assertNotNull(store.pendingFor(c.origin))
 
-    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
+    serve().approve(opened.requestId, scope = "live", ttlSeconds = 900)
 
     AuthCommand(listOf("status", "--server", c.origin), store).run()
     assertNotNull(store.tokenFor(c.origin), "the approved token should have been collected")
@@ -184,7 +202,7 @@ class AgentAccessClientIntegrationTest {
   fun `auth status drops a grant the server no longer honours`() {
     val c = client()
     val opened = ok(c.open(label = "revoked soon", scope = "live", ttlSeconds = 900))
-    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
+    serve().approve(opened.requestId, scope = "live", ttlSeconds = 900)
     val token = ok(c.poll(opened.requestId, opened.deviceSecret)).token!!
     val store = tempStore()
     store.save(
@@ -199,8 +217,11 @@ class AgentAccessClientIntegrationTest {
     AuthCommand(listOf("status", "--server", c.origin), store).run()
     assertNotNull(store.tokenFor(c.origin))
 
-    // The operator revokes. Local expiry has not moved, so only asking the server can tell.
-    grants.revokeToken(token, "@yuri")
+    // The grant is revoked server-side. Local expiry has not moved, so only asking the server can
+    // tell — which is the property under test. It is revoked through the agent's own route rather
+    // than the operator page: who pulled the plug is not what `status` is being asked about, and
+    // the operator route needs a grant id the client is never told.
+    ok(c.revoke(token))
     AuthCommand(listOf("status", "--server", c.origin), store).run()
     assertNull(store.tokenFor(c.origin), "a revoked grant should not still be reported as held")
   }
@@ -222,7 +243,7 @@ class AgentAccessClientIntegrationTest {
       )
     )
     assertNotNull(wedged.pendingFor(c.origin))
-    grants.approve(opened.requestId, "@yuri", AgentGrantScope.LIVE, 900)
+    serve().approve(opened.requestId, scope = "live", ttlSeconds = 900)
 
     // The store cannot write, so collection fails — and must not take the secret down with it.
     AuthCommand(listOf("status", "--server", c.origin), wedged).run()

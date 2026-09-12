@@ -38,18 +38,27 @@ import kotlinx.coroutines.runBlocking
  *
  * # Which server
  *
- * [SERVE_VERSION] — the `composeai-preview-server-dist` pin in `gradle/libs.versions.toml`, baked
- * into the jar at build time. That pin, not `composeai-preview-serve`: the latter names the
- * published jar the wire-drift tests compile against, and compose-preview-server can release the
- * distributions without republishing the library, so the two move independently. A **point pin, not
- * "latest"**: the two repositories release on separate cadences, so resolving `latest` at run time
- * would let a server the CLI has never been built against arrive under it without a pull request,
- * which is the skew #5183 names. Moving the pin is a reviewed change, and
- * `.github/ci/check_preview_server_pin.py` fails a PR whose pin names a release with no
- * distribution attached — a pin that 404s is a `serve` that cannot start.
+ * **The newest published release**, resolved at run time from [LATEST_RELEASE_API] and cached under
+ * the version it resolves to. There is no pin in this repository any more.
  *
- * `COMPOSE_PREVIEW_SERVER_VERSION` overrides it, for testing a release the pin has not moved to
- * yet. Pointing at a server you already have is [ServerBinaryDiscovery]'s job, not this one.
+ * That is a deliberate reversal, and it is worth stating what it gives up. This used to be a point
+ * pin — `composeai-preview-server-dist`, baked into the jar — on the grounds that the two
+ * repositories release on separate cadences and `latest` lets a server this CLI has never been
+ * built against arrive without a pull request. That risk is real and is now accepted: `serve` is a
+ * launcher over a process boundary rather than a linkage, so what the two have to agree on is the
+ * wire, and a pin only ever delayed a skew rather than preventing one — an installed CLI kept
+ * whatever release it was built against until someone upgraded it, which is its own kind of stale.
+ * What replaces the pin as a check is `:cli`'s wire-drift suite, which drives the distribution it
+ * would actually fetch.
+ *
+ * `COMPOSE_PREVIEW_SERVER_VERSION` names a specific release instead, which is how you pin a machine
+ * (or a CI job) that must not move, and how you test a release before it is newest. Pointing at a
+ * server you already have is [ServerBinaryDiscovery]'s job, not this one.
+ *
+ * Resolution needs the network, so it is confined to [ensure]. Everything that merely *asks* what
+ * is installed — [cached], [ServerBinaryDiscovery], `doctor` — reads the cache and never resolves,
+ * and when resolution fails [ensure] falls back to the newest complete copy already on the machine
+ * rather than to a number compiled into the jar.
  *
  * # Where it lands
  *
@@ -61,8 +70,45 @@ import kotlinx.coroutines.runBlocking
  */
 internal object ServerDistributionProvision {
 
-  /** Overrides [SERVE_VERSION] for the release fetched. See the class note. */
+  /** Names the release fetched, instead of the newest. See the class note. */
   const val VERSION_ENV: String = "COMPOSE_PREVIEW_SERVER_VERSION"
+
+  /** The document [latestVersion] reads the newest release's tag out of. */
+  const val LATEST_RELEASE_API: String =
+    "https://api.github.com/repos/$PREVIEW_SERVER_REPO/releases/latest"
+
+  /**
+   * The tag in that document. Matched rather than parsed as JSON: this module has no JSON reader on
+   * its classpath, the field is one string, and a body that does not contain it is a failure either
+   * way.
+   */
+  private val LATEST_TAG = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"")
+
+  /**
+   * Dotted-numeric order, with anything non-numeric sorting below anything numeric.
+   *
+   * Cache directory names are release versions, but the cache is a directory on someone's machine:
+   * it can hold whatever a hand-edit or a future format left there, and that must not throw while
+   * answering "which server do I have".
+   */
+  private val VERSION_ORDER: Comparator<String> = Comparator { a, b ->
+    val left = a.split('.').map { it.toIntOrNull() }
+    val right = b.split('.').map { it.toIntOrNull() }
+    var result = 0
+    for (i in 0 until maxOf(left.size, right.size)) {
+      val l = left.getOrNull(i)
+      val r = right.getOrNull(i)
+      result =
+        when {
+          l == r -> continue
+          l == null -> -1
+          r == null -> 1
+          else -> l.compareTo(r)
+        }
+      break
+    }
+    if (result != 0) result else a.compareTo(b)
+  }
 
   /**
    * Fetch seam, faked in tests. Downloads [url] to [dest], throwing on a non-2xx or transport
@@ -86,9 +132,63 @@ internal object ServerDistributionProvision {
   /** The default HTTP fetch, shared with [DaemonSidecarProvision] so the two cannot differ. */
   internal fun fetch(url: String, dest: File) = defaultFetcher.fetchTo(url, dest)
 
-  /** The release this CLI fetches: the environment override, else the pin it was built against. */
-  fun version(env: (String) -> String? = System::getenv): String =
-    env(VERSION_ENV)?.trim()?.takeIf { it.isNotBlank() } ?: SERVE_VERSION
+  /**
+   * The release [VERSION_ENV] asks for, or null when it asks for nothing and the newest wins.
+   *
+   * Null rather than a default, because "no answer yet" and "this exact release" are different
+   * states and every caller treats them differently: [cached] reads the cache, [ensure] resolves.
+   */
+  fun requestedVersion(env: (String) -> String? = System::getenv): String? =
+    env(VERSION_ENV)?.trim()?.takeIf { it.isNotBlank() }
+
+  /**
+   * The newest published release's version, or null when it cannot be resolved.
+   *
+   * Never throws: a rate-limited API, a proxy, a transport error and an unrecognisable body are all
+   * the same answer here — "not resolved" — and [ensure] has a cache to fall back to. The tag is
+   * `v<version>`, and the leading `v` is dropped because every other function here takes the bare
+   * version.
+   */
+  fun latestVersion(
+    fetcher: Fetcher = defaultFetcher,
+    log: (String) -> Unit = {},
+  ): String? {
+    val body = File.createTempFile("preview-server-latest", ".json")
+    return try {
+      fetcher.fetchTo(LATEST_RELEASE_API, body)
+      val tag = LATEST_TAG.find(body.readText())?.groupValues?.get(1)
+      if (tag == null) {
+        log("compose-preview: $LATEST_RELEASE_API named no release tag")
+        null
+      } else tag.removePrefix("v").takeIf { it.isNotBlank() }
+    } catch (e: Exception) {
+      log(
+        "compose-preview: could not ask $LATEST_RELEASE_API for the newest release (${e.message ?: e})"
+      )
+      null
+    } finally {
+      body.delete()
+    }
+  }
+
+  /**
+   * Every complete distribution already unpacked under [cacheRoot], newest first.
+   *
+   * Newest by version rather than by mtime: a re-fetch of an older release touches its directory,
+   * and "the one that was written last" is not the one a caller means by "the server I have".
+   */
+  fun cachedVersions(
+    distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
+    cacheRoot: File = defaultCacheRoot(distribution),
+    osName: String = System.getProperty("os.name") ?: "",
+  ): List<String> =
+    cacheRoot
+      .listFiles()
+      .orEmpty()
+      .filter { it.isDirectory && !it.name.startsWith(".") }
+      .map { it.name }
+      .filter { isComplete(cacheBinary(it, distribution, cacheRoot, osName)) }
+      .sortedWith(VERSION_ORDER.reversed())
 
   /**
    * The launcher script name inside the distribution's `bin/`. Gradle's application plugin writes
@@ -147,7 +247,13 @@ internal object ServerDistributionProvision {
     env: (String) -> String? = System::getenv,
     cacheRoot: File = defaultCacheRoot(distribution),
     osName: String = System.getProperty("os.name") ?: "",
-  ): File? = cacheBinary(version(env), distribution, cacheRoot, osName).takeIf { isComplete(it) }
+  ): File? {
+    val requested = requestedVersion(env)
+    val version = requested ?: cachedVersions(distribution, cacheRoot, osName).firstOrNull()
+    return version
+      ?.let { cacheBinary(it, distribution, cacheRoot, osName) }
+      ?.takeIf { isComplete(it) }
+  }
 
   /**
    * Whether [binary] is a launcher from a *complete* distribution — the script itself, plus a
@@ -164,36 +270,67 @@ internal object ServerDistributionProvision {
   }
 
   /**
-   * Ensure the cache holds [version]'s distribution, fetching it when it does not, and return its
-   * launcher. Returns null — never throws — on any failure, having explained it through [log]; the
-   * caller reports [ServerBinaryDiscovery.installationHint] and exits, since `serve` has nothing to
+   * Ensure the cache holds a distribution, fetching it when it does not, and return its launcher.
+   * Returns null — never throws — on any failure, having explained it through [log]; the caller
+   * reports [ServerBinaryDiscovery.installationHint] and exits, since `serve` has nothing to
    * degrade to.
    *
+   * This is the only function here that resolves [latestVersion], because it is the only one whose
+   * job includes a download. [requested] short-circuits that: asking for a release means taking it,
+   * not comparing it against the newest.
+   *
    * Offline (`COMPOSE_PREVIEW_OFFLINE=1` / `-Dcomposeai.bundle.offline=true`, the same gate the
-   * bundle resolver and the Skiko provisioner read) never reaches the network: an air-gapped
-   * machine gets the hint, not a hung download.
+   * bundle resolver and the Skiko provisioner read) never reaches the network — not for the
+   * archive, and not for the API call that would name it either. An air-gapped machine gets the
+   * newest copy it already has, or the hint; never a hung download.
    */
   fun ensure(
     distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
-    version: String = version(),
+    requested: String? = requestedVersion(),
     cacheRoot: File = defaultCacheRoot(distribution),
     osName: String = System.getProperty("os.name") ?: "",
     offline: Boolean = defaultOffline(),
     fetcher: Fetcher = defaultFetcher,
     log: (String) -> Unit = { System.err.println(it) },
   ): File? {
+    val cached = cachedVersions(distribution, cacheRoot, osName)
+
+    // Offline never resolves and never fetches: an air-gapped machine gets whatever it already has,
+    // or the hint. Asking the API first would hang exactly the command that cannot afford it.
+    if (offline) {
+      val have = requested ?: cached.firstOrNull()
+      val binary = have?.let { cacheBinary(it, distribution, cacheRoot, osName) }
+      if (binary != null && isComplete(binary)) return binary
+      log(
+        "compose-preview: no cached ${distribution.label} under ${cacheRoot.absolutePath}" +
+          (requested?.let { " at $it" } ?: "") +
+          ", and offline mode is enabled. Fetch one while online, or point at one you already have."
+      )
+      return null
+    }
+
+    // A requested release is taken as given — that is what asking for one means, and resolving the
+    // newest as well would make the override advisory.
+    val version =
+      requested
+        ?: latestVersion(fetcher, log)
+        ?: cached.firstOrNull()?.also {
+          log(
+            "compose-preview: could not resolve the newest ${distribution.label}; using the cached $it"
+          )
+        }
+    if (version == null) {
+      log(
+        "compose-preview: could not resolve the newest ${distribution.label}, and this machine has " +
+          "none cached. Set ${VERSION_ENV} to a release, or point at one you already have."
+      )
+      return null
+    }
+
     val binary = cacheBinary(version, distribution, cacheRoot, osName)
     if (isComplete(binary)) return binary
 
     val url = assetUrl(version, distribution)
-    if (offline) {
-      log(
-        "compose-preview: ${distribution.label} $version is not cached at " +
-          "${cacheDir(version, distribution, cacheRoot).absolutePath}, and offline mode is " +
-          "enabled. Fetch $url while online, or point at one you already have."
-      )
-      return null
-    }
 
     val dir = cacheDir(version, distribution, cacheRoot)
     val parent = dir.parentFile

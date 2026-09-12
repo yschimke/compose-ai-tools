@@ -4289,11 +4289,17 @@ jobs:
             exit 0
           fi
           # The scorer moved with the server repository (#4732). The export driver deliberately
-          # does not carry a copy, so materialise the asset from the server release this driver is
-          # pinned to before asking it to score. Using the version catalog's server pin keeps the
-          # baked number on the same scorer contract as the released server, while a failed fetch
-          # retains the reference lane's fail-soft behaviour (references still publish unscored).
-          server_version="$(sed -n 's/^composeai-preview-serve = "\(.*\)"$/\1/p' compose-ai-tools/gradle/libs.versions.toml)"
+          # does not carry a copy, so materialise the asset from the NEWEST server release before
+          # asking it to score — there is no server pin in the version catalog any more, and the
+          # newest release is what an installed CLI runs, so it is the scorer contract to match. A
+          # failed fetch retains the reference lane's fail-soft behaviour (references publish
+          # unscored).
+          # `|| true` is load-bearing under `set -euo pipefail`. This step promises to publish
+          # references UNSCORED when the scorer cannot be fetched, and a rate-limited or unreachable
+          # API would otherwise take `-e` straight out of the step before the fail-soft branch below
+          # ever runs. The old shape read a local catalog file, which could not fail this way.
+          server_tag="$(curl -fsSL https://api.github.com/repos/yschimke/compose-preview-server/releases/latest 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)"
+          server_version="${server_tag#v}"
           server_root="$RUNNER_TEMP/compose-preview-server"
           server_asset="server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js"
           if [ -n "$server_version" ]; then
@@ -4306,7 +4312,7 @@ jobs:
               echo "::warning title=Preview scorer fetch failed::Design references will publish without a match score."
             fi
           else
-            echo "::warning title=Preview scorer version missing::Could not read composeai-preview-serve from the pinned driver's version catalog; design references will publish without a match score."
+            echo "::warning title=Preview scorer version missing::Could not resolve the newest compose-preview-server release; design references will publish without a match score."
           fi
           # Chromium rasterises committed HTML mocks AND scores every published reference against
           # its sticker — the driver drives the viewer's own `format-compare.js` in a headless page
