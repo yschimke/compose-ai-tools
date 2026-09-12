@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-12T16:40:21.397Z",
+  "generatedAt": "2026-09-12T17:38:12.719Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "23b01c4219825408fd8d7efecf369587a06a8461",
+        "subject": "chore(main): release 2.13.0 (#5434)",
+        "at": "2026-09-12T17:34:44+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "dd936737bf47c930f783727852e598aa2b205819",
         "subject": "feat(cli): install the newest preview server rather than a pinned one, and stop consuming its Maven jar (breaking) (#5436)",
@@ -474,14 +482,6 @@
         "sha": "c26092bc6017d38c3735f8673fb78778f87eec2e",
         "subject": "feat: add Remote Compose JSON support (`:remotecompose-json`, `compose-preview rc`) (#5370)",
         "at": "2026-09-10T20:11:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4ba305be56c0a286a20789744efbcf10a7152746",
-        "subject": "docs(ui-builder): stop the policy schema telling authors not to use it (#5369)",
-        "at": "2026-09-10T10:32:02+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
