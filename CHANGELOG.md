@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.1](https://github.com/yschimke/compose-ai-tools/compare/v2.11.0...v2.11.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **plugin:** let a KMP-Android module pack a bundle ([#5423](https://github.com/yschimke/compose-ai-tools/issues/5423)) ([fe81c1c](https://github.com/yschimke/compose-ai-tools/commit/fe81c1ceadd9bce106e640d01b02ce36fccc208c))
+
 ## [2.11.0](https://github.com/yschimke/compose-ai-tools/compare/v2.10.0...v2.11.0) (2026-09-11)
 
 
