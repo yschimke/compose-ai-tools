@@ -1,11 +1,67 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-11T22:38:43.882Z",
+  "generatedAt": "2026-09-12T07:58:31.181Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c7d947fe87228f8c6aefcd94e25bd2567d96cf63",
+        "subject": "docs(spec): document `display.role`, the catalog's own kind (#5428)",
+        "at": "2026-09-12T08:51:20+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1f4cfcccaf576537800a631834fd8cd2d5e732e2",
+        "subject": "chore: drop the catalog entries and Renovate pins the daemon split orphaned (#5427)",
+        "at": "2026-09-12T08:33:59+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d1310ee002be1c882ba5c6deef71b22040a069ff",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.11.1 (#5426)",
+        "at": "2026-09-12T07:10:42Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a92508a0bd0ba89817e7d0a95ad5d5cb2d68fdf8",
+        "subject": "ci: filter -SNAPSHOT out of Gradle candidates, and record why github-actions is off (#5425)",
+        "at": "2026-09-12T08:09:04+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "58a5b3cb7e92ea0afd83ec0e303eb995b8469c1c",
+        "subject": "chore(main): release 2.11.1 (#5424)",
+        "at": "2026-09-12T07:06:37+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "fe81c1ceadd9bce106e640d01b02ce36fccc208c",
+        "subject": "fix(plugin): let a KMP-Android module pack a bundle (#5423)",
+        "at": "2026-09-12T06:51:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "db76d0fece766851542e403c271efe223b4e0b97",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.11.0 (#5422)",
+        "at": "2026-09-11T22:47:50Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "53812ae65cf8b2d5cab88ff41d43ffeba4d43222",
         "subject": "chore(main): release 2.11.0 (#5414)",
@@ -427,62 +483,6 @@
         "subject": "fix(deps): update compose-ai-tools to v2.14.0 (#5360)",
         "at": "2026-09-10T07:26:28Z",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a1379fc2f4086cca47608081daaf7cc931b2d3ac",
-        "subject": "fix(deps): update androidx (#5357)",
-        "at": "2026-09-10T07:26:22Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "655f7fec45d8eb9fb50b83fa1c68d824711cc09c",
-        "subject": "fix(deps): update compose-preview-contracts to v2.14.0 (#5361)",
-        "at": "2026-09-10T07:24:54Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "876dd6000155780db13c6930b15eb7d0448fd8bf",
-        "subject": "fix(deps): update androidx-compose (#5358)",
-        "at": "2026-09-10T07:20:40Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f829a7e8e89c909f3223f0992bba5ec40c66c57c",
-        "subject": "fix(deps): update androidx-wear to v1.7.0-rc01 (#5359)",
-        "at": "2026-09-10T07:19:25Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "93e56ecb19226df1d5a9783cb3db12410447c989",
-        "subject": "fix(deps): regenerate Gradle lockfiles for compose-preview-daemon 3.0.1 (#5363)",
-        "at": "2026-09-10T08:03:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c140216f78438a9b8645697590037e9136e368c5",
-        "subject": "fix(deps): take compose-preview-daemon 3.0.1 (#5356)",
-        "at": "2026-09-10T07:35:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "db6dcdd9ba199b988cdae1002d48b81a839e4dc8",
-        "subject": "fix(ui-builder): name a component by what it is, in the record, in the id, and in the file (#5354)",
-        "at": "2026-09-10T07:02:10+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
