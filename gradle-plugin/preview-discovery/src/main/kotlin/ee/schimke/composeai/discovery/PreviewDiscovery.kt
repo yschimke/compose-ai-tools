@@ -789,10 +789,13 @@ object PreviewDiscovery {
     // Lottie asset previews are appended after normalization with their render outputs already
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
     val normalized =
-      retargetWearStickers(
-        input.isWear,
-        pinWearCanvas = input.retargetWearPreviews,
-        normalizeRenderOutputs(deduped),
+      retargetGlimmerStickers(
+        isGlimmerModule(input),
+        retargetWearStickers(
+          input.isWear,
+          pinWearCanvas = input.retargetWearPreviews,
+          normalizeRenderOutputs(deduped),
+        ),
       ) +
         discoverLottieAssets(input) +
         discoverSvgAssets(input) +
@@ -4968,6 +4971,78 @@ object PreviewDiscovery {
           }
         }
       } else {
+        info
+      }
+    }
+  }
+
+  /**
+   * Maven group of the Glimmer UI toolkit, matched against [Input.dependencyJarCoordinates].
+   *
+   * Detection is by DEPENDENCY rather than by manifest, which is the difference from [Input.isWear]
+   * and not an inconsistency: a Wear module announces itself with `<uses-feature
+   * android:name="android.hardware.type.watch">`, and glasses have no such feature to declare. What
+   * makes a module a Glimmer module is that it draws with Glimmer, and the classpath is where that
+   * is written down.
+   *
+   * Group prefix rather than an exact artifact so `glimmer`, `glimmer-google-fonts` and whatever
+   * the line adds next all count, and so an alpha repackaging does not silently stop matching.
+   */
+  private const val GLIMMER_COORDINATE_PREFIX = "androidx.xr.glimmer:"
+
+  /**
+   * True when this module compiles against `androidx.xr.glimmer` — see [GLIMMER_COORDINATE_PREFIX].
+   */
+  internal fun isGlimmerModule(input: Input): Boolean =
+    input.dependencyJarCoordinates.values.any { it.startsWith(GLIMMER_COORDINATE_PREFIX) }
+
+  /**
+   * Measure a Glimmer module's device-less previews against the AI-glasses display
+   * ([DeviceDimensions.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the renderer's 400dp phone
+   * sandbox at 2.625x. A no-op off Glimmer, and on any preview that pins its own canvas.
+   *
+   * This is [retargetWearStickers]'s argument applied to a second form factor, and the reason is
+   * the same twice over: a module drawing for a screen that is not a phone should measure against
+   * that screen, and export at that screen's density. What is Glimmer-specific is how much the
+   * density matters — Glimmer sizes UI in visual angle, so density 1.0 is a calibration rather than
+   * a scale factor (see [DeviceDimensions.DEFAULT_GLASSES]).
+   *
+   * As with Wear, this sets [PreviewParams.wrapSandboxWidthDp] /
+   * [PreviewParams.wrapSandboxHeightDp] and NOT `widthDp` / `heightDp`. The distinction is the
+   * whole point, and both halves of it were observed in the field before this existed:
+   * - Pinning the axes is what #2373 did on Wear, and yschimke/m3-catalog#367 is the same fault
+   *   arrived at from the other direction: `glimmer-catalog` wrote `device =
+   *   "spec:width=960,height=720,dpi=160"` on all 19 stickers, and every one of them became a
+   *   component adrift in a 691,200-pixel frame — a 118x48 toggle button at 0.8% coverage, 4.1% on
+   *   average across the sheet.
+   * - Leaving the sandbox alone is what gives a fill-width `Card` a 400dp phone bound it has no
+   *   relationship to.
+   *
+   * Sandboxing gets both: `fillMaxWidth` resolves against 960dp so a Card sizes to the display, a
+   * Button still wraps tight, and the renderer crops every sticker to its measured bounds.
+   */
+  internal fun retargetGlimmerStickers(
+    isGlimmer: Boolean,
+    previews: List<PreviewInfo>,
+  ): List<PreviewInfo> {
+    if (!isGlimmer) return previews
+    val glasses = DeviceDimensions.DEFAULT_GLASSES
+    return previews.map { info ->
+      val p = info.params
+      if (
+        p.kind == PreviewKind.COMPOSE && p.device == null && p.widthDp == null && p.heightDp == null
+      ) {
+        info.copy(
+          params =
+            p.copy(
+              wrapSandboxWidthDp = glasses.widthDp,
+              wrapSandboxHeightDp = glasses.heightDp,
+              density = glasses.density,
+            )
+        )
+      } else {
+        // A preview that names its own device or size is asking for exactly that, and a specimen
+        // pinned to a measured width is the usual reason. Left untouched, same as on Wear.
         info
       }
     }
