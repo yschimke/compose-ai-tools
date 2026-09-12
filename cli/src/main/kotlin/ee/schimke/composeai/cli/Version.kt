@@ -31,26 +31,6 @@ internal val BUNDLE_VERSION: String by lazy { cliVersionProperty("version") }
 internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompositeVersion") }
 
 /**
- * Release of the preview server `serve` and `browse` launch — see [ServerDistributionProvision].
- *
- * The `composeai-preview-server-dist` pin from `gradle/libs.versions.toml`, baked in at build time
- * for the same reason [XR_COMPOSITE_VERSION] is: the installed CLI cannot read the version catalog,
- * and the writer of the cache and any later reader of it must derive one directory.
- *
- * Deliberately NOT [BUNDLE_VERSION]. compose-preview-server releases on its own cadence and its
- * version line is independent — it went to 2.0.0 when it left this repository while this one was
- * still on 1.x — so the CLI's own version names no server at all. Deliberately not "latest" either:
- * resolving that at run time would let a server this CLI has never been built against arrive under
- * it without a pull request. Moving the pin is the reviewed act, and `check_preview_server_pin.py`
- * fails a PR whose pin names a release with no distribution attached.
- *
- * Deliberately NOT `composeai-preview-serve` either, since the pin split: that one names the
- * published jar `:cli`'s wire-drift tests compile against, and the server can cut a release that
- * carries the distributions without republishing the library. This names the release fetched.
- */
-internal val SERVE_VERSION: String by lazy { cliVersionProperty("serveVersion") }
-
-/**
  * Version of THIS repository's Maven artifacts the CLI resolves — the Gradle plugin it
  * auto-injects, and the coordinate `doctor` recommends putting in a build.
  *
@@ -133,10 +113,11 @@ internal const val PREVIEW_SERVER_REPO = "yschimke/compose-preview-server"
  * (`lib-daemon-android/`). See [DaemonSidecarProvision].
  *
  * The `composeai-preview-daemon` pin from `gradle/libs.versions.toml`, baked in at build time for
- * the same reason [SERVE_VERSION] is. Deliberately NOT [BUNDLE_VERSION]: those modules left this
- * repository in #5336 and release on their own line from [PREVIEW_DAEMON_REPO], so the CLI's own
- * version names no daemon at all. The Gradle plugin bakes the same pin as `PreviewDaemonVersion`,
- * so the daemon a plugin-driven render resolves and the one the CLI fetches are one release.
+ * the same reason [XR_COMPOSITE_VERSION] is. Deliberately NOT [BUNDLE_VERSION]: those modules left
+ * this repository in #5336 and release on their own line from [PREVIEW_DAEMON_REPO], so the CLI's
+ * own version names no daemon at all. The Gradle plugin bakes the same pin as
+ * `PreviewDaemonVersion`, so the daemon a plugin-driven render resolves and the one the CLI fetches
+ * are one release.
  */
 internal val PREVIEW_DAEMON_VERSION: String by lazy { cliVersionProperty("previewDaemonVersion") }
 

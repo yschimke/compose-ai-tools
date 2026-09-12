@@ -1082,10 +1082,14 @@ jobs:
       # Actions Script Tests, which errors on the word "skipped"), so CI supplies one — the same
       # arrangement the contracts and VS Code readers get.
       #
-      # PINNED to the release `:cli` actually consumes, read from the version catalog, not the
-      # server's head. `v2.0.0` is the tree the published `compose-preview-serve:2.0.0` was built
-      # from, so the mirror compares against the artifact on the classpath. Against head, a change
-      # merged there but not yet released would fail this PR for a drift that does not exist yet.
+      # The NEWEST RELEASE, resolved from the releases API, not the server's head and not a pin.
+      #
+      # It was pinned to `composeai-preview-serve` while that named a jar on this build's classpath:
+      # the mirror then compared against the artifact actually being compiled against. There is no
+      # such jar now — compose-preview-server publishes no Maven artifacts — and an installed CLI
+      # tracks the newest release, so the newest release is what these mirrors owe a comparison to.
+      # Against head instead, a change merged there but not yet released would fail this PR for a
+      # drift that has not reached anybody.
       #
       # FETCHED, not checked out, and only the four files the mirrors read. `actions/checkout` of
       # another repository at a ref that comes from `gradle/libs.versions.toml` is a ref a fork's
@@ -1095,15 +1099,25 @@ jobs:
       # are only ever `readFileSync`-d removes the premise rather than suppressing the finding.
       # Nothing from that repository is executed here, and the worst a rewritten catalog line can
       # do is point the mirrors at a different published tag, which fails loudly.
-      - name: Fetch the pinned preview-server mirror sources
+      - name: Fetch the preview-server mirror sources
+        env:
+          # Authenticated so the releases API answers from a shared runner IP rather than
+          # rate-limiting. Read-only; the token needs nothing else.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^composeai-preview-serve = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
-          if [ -z "$version" ]; then
-            echo "::error::could not read composeai-preview-serve from gradle/libs.versions.toml"
+          # `|| true` so a rate-limited API reaches the error below rather than exiting the step
+          # bare under `set -euo pipefail`. This one is a hard failure either way; the difference is
+          # whether the log says why.
+          tag=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            https://api.github.com/repos/yschimke/compose-preview-server/releases/latest \
+            | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)
+          if [ -z "$tag" ]; then
+            echo "::error::could not read the newest compose-preview-server release tag"
             exit 1
           fi
-          base="https://raw.githubusercontent.com/yschimke/compose-preview-server/v$version"
+          echo "mirroring against compose-preview-server $tag"
+          base="https://raw.githubusercontent.com/yschimke/compose-preview-server/$tag"
           # Each path is the other half of a mirror asserted in scripts/design-artifacts. Adding a
           # mirror means adding its file here, or the test self-skips and the guard below fires.
           for rel in \
@@ -1185,13 +1199,12 @@ jobs:
   # composite. Deliberately NOT behind a `changes` path filter: a gate that can be scheduled away
   # is not a gate, and this one costs a second.
   #
-  # The preview-server pin rides the same job, for the same reason and against the same hazard
-  # one degree louder: since #5183 `compose-preview serve` fetches its server from the release
-  # `composeai-preview-server-dist` names, so a pin naming a release with no distribution attached
-  # is not a degraded render but a command that cannot start at all. That pin and not
-  # `composeai-preview-serve`, which names the published jar `:cli` compiles against and needs no
-  # GitHub Release to exist — see the split in docs/VERSIONING.md § 8.1. The job keeps its name — it is
-  # a required check, and renaming a required check blocks every PR until the ruleset catches up.
+  # The preview-server pin used to ride this job. There is no such pin any more: `serve` resolves
+  # the newest compose-preview-server release at run time rather than fetching one named here, so
+  # there is nothing to gate against the Releases API. What replaced it is the `preview-server-wire`
+  # job, which drives that newest release rather than checking a number — see docs/VERSIONING.md
+  # § 8.1. The job keeps its name — it is a required check, and renaming a required check blocks
+  # every PR until the ruleset catches up.
   xr-composite-pin:
     name: XR Composite Pin
     if: ${{ github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
@@ -1213,14 +1226,63 @@ jobs:
         run: python3 .github/ci/check_xr_composite_pin.py
       - name: Check the renderer pin resolves on Maven Central
         run: python3 .github/ci/check_xr_renderer_pin.py
-      - name: Run preview-server pin gate tests
-        run: python3 .github/ci/test_check_preview_server_pin.py -v
-      - name: Check the preview-server pin resolves to a release carrying the distribution
+
+  # The wire between this CLI and the preview server it launches, checked against the real server.
+  #
+  # `AgentAccessClientIntegrationTest` and `SharePreviewServeUploadTest` drive the CLI's own HTTP
+  # clients against a `compose-preview-server` process. They used to build one in-JVM from the
+  # published `compose-preview-serve` jar; that repository publishes no Maven artifacts any more, and
+  # `serve` is a launcher over a process boundary anyway, so what they drive now is the distribution
+  # — the artifact a user actually runs.
+  #
+  # A job of its own because it is the one test lane that downloads 135 MB. `:cli:test` in the main
+  # job SKIPS these when no server is present, which keeps it offline and fast;
+  # `COMPOSE_PREVIEW_SERVE_TESTS_REQUIRE=1` here turns that skip into a failure, so the coverage is
+  # binding in exactly one place rather than silently absent everywhere.
+  #
+  # The NEWEST release, not a pin: that is what an installed CLI fetches, so it is what the wire has
+  # to agree with. A server release that breaks this wire reddens this job, which is the point — it
+  # is the check that replaced the pin, and it is allowed to go red without a change here.
+  preview-server-wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+      - name: Fetch the newest preview-server distribution
         env:
-          # Same reason as above: authenticated so the releases API answers from a shared runner IP
-          # rather than rate-limiting into a warn-and-pass. Read-only.
+          # Authenticated so the releases API answers from a shared runner IP rather than
+          # rate-limiting. Read-only.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 .github/ci/check_preview_server_pin.py
+        run: |
+          set -euo pipefail
+          tag=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            https://api.github.com/repos/yschimke/compose-preview-server/releases/latest \
+            | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)
+          test -n "$tag" || { echo "::error::no newest compose-preview-server release"; exit 1; }
+          version="${tag#v}"
+          echo "driving compose-preview-server $version"
+          curl -fsSL --retry 3 -o server.tar.gz \
+            "https://github.com/yschimke/compose-preview-server/releases/download/$tag/compose-preview-server-$version.tar.gz"
+          mkdir -p .preview-server && tar xzf server.tar.gz -C .preview-server
+          binary="$PWD/.preview-server/compose-preview-server-$version/bin/compose-preview-server"
+          test -x "$binary" || { echo "::error::$tag carries no server launcher"; exit 1; }
+          echo "COMPOSE_PREVIEW_SERVER=$binary" >> "$GITHUB_ENV"
+      - name: Run the wire tests against it
+        env:
+          # A skip is a failure here: this job exists to run them.
+          COMPOSE_PREVIEW_SERVE_TESTS_REQUIRE: "1"
+        run: >-
+          ./gradlew :cli:test
+          --tests '*AgentAccessClientIntegrationTest*'
+          --tests '*SharePreviewServeUploadTest*'
 
   # `cli/serve-wasm` and compose-preview-server's `wasm-ui` are the same Compose/Wasm frontend
   # compiled twice — each repository against its own M3 catalog, which is why neither can consume

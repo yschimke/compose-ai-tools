@@ -204,12 +204,12 @@ dependencies {
   // whichever server release this module happened to pin.
   api(project(":render-host"))
 
-  // The preview server is NO LONGER on this module's compile or runtime classpath.
+  // The preview server is NOT on this module's compile, runtime OR test classpath.
   //
-  // `serve` and `browse` were the last things holding it there, and they are launchers now: they
-  // exec the published `compose-preview-server` binary instead of linking `ServeRunner`. That
-  // removes the forward edge of the dependency cycle in yschimke/compose-preview-server#180, and it
-  // is why `CheckLayerBoundary`'s allowlist of known layer-2 edges is now empty.
+  // `serve` and `browse` were the last things holding it on the first two, and they are launchers
+  // now: they exec the published `compose-preview-server` binary instead of linking `ServeRunner`.
+  // That removes the forward edge of the dependency cycle in yschimke/compose-preview-server#180,
+  // and it is why `CheckLayerBoundary`'s allowlist of known layer-2 edges is now empty.
   //
   // What that actually removes from the distribution, measured rather than claimed: the
   // `compose-preview-serve` jar itself, `jmdns` (the `serve --lan` advertiser), and two Ktor
@@ -222,28 +222,14 @@ dependencies {
   // Ktor floor left with `serve`. It did not — checked against the built distribution, which is the
   // only way that claim was ever checkable. They leave with `:mcp` instead, below (#5176).
   //
-  // It survives as a TEST dependency, deliberately and narrowly. Two tests drive the CLI's own
-  // HTTP clients against a real `ServeHttpServer`, and their whole purpose is to catch the two
-  // repositories' independently-declared wire types drifting apart:
-  //
-  //   * `AgentAccessClientIntegrationTest` — the device-grant flow. Five of its cases approve or
-  //     deny a grant by reaching into the server's store, which is only possible in-process.
-  //   * `SharePreviewServeUploadTest` — one case, `a real serve host and this client agree`. The
-  //     rest of that file drives a bare JDK `HttpServer` and needs nothing from here.
-  //
-  // A stub would make both tests pass while testing nothing they exist for: the point is checking
-  // the halves against *each other*, not each against its own idea of the other. So the edge stays
-  // where it earns its keep, and nowhere else.
-  //
-  // The exclusion is not optional. Today's `compose-preview-serve` POM still names the server's old
-  // `compose-preview-render-host`, whose classes are the same classes, in the same package, as
-  // `:render-host` above — two copies on one test classpath. Gradle substitutes a published
-  // coordinate for a workspace project only when `<group>:<projectName>` matches, and
-  // `compose-preview-render-host` does not match `render-host`, so it has to be said explicitly.
-  // Once a server release names the new coordinate this becomes a no-op that can go.
-  testImplementation(libs.composeai.preview.serve) {
-    exclude(group = "ee.schimke.composeai", module = "compose-preview-render-host")
-  }
+  // It survived as a TEST dependency until compose-preview-server stopped publishing to Maven
+  // Central. Two tests drove the CLI's own HTTP clients against an in-process `ServeHttpServer`,
+  // and their whole purpose is to catch the two repositories' independently-declared wire types
+  // drifting apart — `AgentAccessClientIntegrationTest` and `SharePreviewServeUploadTest`. That
+  // purpose is unchanged and the tests are still here; what changed is the server they drive. They
+  // launch the real distribution now, which is the same artifact `serve` launches, so the drift
+  // they can see is drift against what a user actually runs rather than against a jar nobody does.
+  // `ServeDistributionHarness` is the seam; see its note for why they skip rather than fetch.
 
   // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
   implementation(libs.composeai.common.io)
@@ -770,18 +756,10 @@ val generateCliVersionResource =
     // shared cache and the plugin-side reader resolve the same directory; the plugin bakes the
     // same value through `generatePluginVersionResource`. See `XrCompositeProvision`.
     val xrCompositeVersion = libs.versions.xr.composite.get()
-    // The preview-server release `serve`/`browse` launch, and which `ServerDistributionProvision`
-    // fetches on first use. The catalog pin, NOT this CLI's version: the server releases on its own
-    // cadence from its own repository, and an installed CLI cannot read the catalog. See
-    // `SERVE_VERSION`.
-    //
-    // `composeai-preview-server-dist`, NOT `composeai-preview-serve`. The latter names the jar the
-    // wire-drift tests compile against; this names the release an installed CLI downloads, and a
-    // server-only release moves one without the other.
-    val serveVersion = libs.versions.composeai.preview.server.dist.get()
     // The version of THIS repository's Maven artifacts the CLI should ask Gradle for — the plugin
     // coordinate it auto-injects, and the coordinate `doctor` recommends. Deliberately a separate
-    // value from `cliVersion`, for the same reason `serveVersion` is: what the CLI IS and what it
+    // value from `cliVersion`, for the same reason `xrCompositeVersion` is: what the CLI IS and
+    // what it
     // RESOLVES stop being the same number the moment a release does not publish to Central.
     //
     // Today they are identical, because every release publishes and nothing sets the override, so
@@ -802,12 +780,12 @@ val generateCliVersionResource =
         ?: cliVersion
     // The compose-preview-daemon release whose sidecar archives `DaemonSidecarProvision` fetches
     // — the desktop renderer + daemon and the Android daemon, which left this build in #5336. The
-    // catalog pin, NOT this CLI's version, for the same reason as `serveVersion`: that repository
+    // catalog pin, NOT this CLI's version, for the same reason as `xrCompositeVersion`: that
+    // repository
     // releases on its own line, and an installed CLI cannot read the catalog.
     val previewDaemonVersion = libs.versions.composeai.preview.daemon.get()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
-    inputs.property("serveVersion", serveVersion)
     inputs.property("mavenLineVersion", mavenLineVersion)
     inputs.property("previewDaemonVersion", previewDaemonVersion)
     outputs.dir(outputDir)
@@ -817,7 +795,6 @@ val generateCliVersionResource =
       file.writeText(
         "version=$cliVersion\n" +
           "xrCompositeVersion=$xrCompositeVersion\n" +
-          "serveVersion=$serveVersion\n" +
           "mavenLineVersion=$mavenLineVersion\n" +
           "previewDaemonVersion=$previewDaemonVersion\n"
       )

@@ -2,10 +2,6 @@ package ee.schimke.composeai.cli
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import ee.schimke.composeai.cli.serve.ServeHttpServer
-import ee.schimke.composeai.cli.serve.ServeImageStore
-import ee.schimke.composeai.cli.serve.ServeImageUploadAuth
-import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import java.io.File
 import java.net.InetSocketAddress
 import kotlin.test.Test
@@ -233,46 +229,64 @@ class SharePreviewServeUploadTest {
   }
 
   @Test
-  fun `a real serve host and this client agree`() {
-    // The round trip the mechanism actually performs, against the real endpoint rather than a
-    // stand-in: the client's request shape is what the route reads, and the route's `201` is what
-    // the client parses.
-    val registry = ServeSessionRegistry(open = { null })
-    val server =
-      ServeHttpServer(
-          host = "127.0.0.1",
-          requestedPort = 0,
-          token = "unused-in-public",
-          sessions = registry,
-          defaultSessionId = "none",
-          isPublic = true,
-          imageStore = ServeImageStore(),
-          imageUploadAuth = AcceptingAuth,
-        )
-        .also { it.start() }
-    try {
-      val file = File.createTempFile("shot", ".png").apply { writeBytes(realPng()) }
-      val result =
-        ServeImageUploader("http://127.0.0.1:${server.port}", "gho_collaborator")
-          .upload(file, label = "after.png")
-      val url = (result as ServeImageUploader.Result.Ok).url
-      assertTrue(url.startsWith("http://127.0.0.1:${server.port}/i/"), url)
-      assertTrue(url.endsWith(".png"), url)
-      assertNotNull(result.expiresIn)
-      file.delete()
-    } finally {
-      runCatching { server.stop() }
-      runCatching { registry.close() }
+  fun `the real serve host has the route this client posts to`() {
+    // What survives of the old round trip, and why it is less.
+    //
+    // This used to build a `ServeHttpServer` in this JVM with an `imageUploadAuth` stub that
+    // admitted one token, so the whole upload completed and the client parsed a real `201`. The
+    // server is a launched distribution now (compose-preview-server publishes no jar), and that
+    // seam is in-process only: a real host authenticates an uploader against GitHub, which a test
+    // cannot stand in for from outside the process.
+    //
+    // So the assertion narrows to the half that can still be checked against the real thing, and
+    // it is the half that actually drifts: an unknown bearer is REFUSED, with the server's own
+    // words about repository access, rather than 404ed. That is only true if four things line up —
+    // the path (`/images`), the method, the host-token query this client puts the operator
+    // credential in, and the `Authorization: Bearer` the route reads. The response *parsing* —
+    // `201`, the `url` field, `expiresIn` — is covered by the stubbed cases above, which can answer
+    // anything including answers a real host would not.
+    //
+    // The host token is load-bearing and is the trap this test exists to keep sprung: a caller that
+    // omits it gets **404**, not 401, because the server hides a token-gated surface rather than
+    // advertising it. So "the route is missing" and "I forgot the credential" look identical from
+    // outside, and only sending it correctly tells them apart.
+    val session = ServeDistributionHarness.start()
+    if (session == null) {
+      org.junit.jupiter.api.Assumptions.assumeTrue(false, ServeDistributionHarness.skipReason())
+      return
     }
-  }
-
-  /** Admits one token, so the round trip exercises the route rather than GitHub. */
-  private object AcceptingAuth : ServeImageUploadAuth {
-    override val repository = "yschimke/compose-ai-tools"
-
-    override fun identify(bearerToken: String?): ServeImageUploadAuth.Identity =
-      if (bearerToken == "gho_collaborator") ServeImageUploadAuth.Identity.Ok("octocat")
-      else ServeImageUploadAuth.Identity.Missing
+    session.use {
+      val file = File.createTempFile("shot", ".png").apply { writeBytes(realPng()) }
+      try {
+        val result =
+          ServeImageUploader(
+              it.origin,
+              "gho_not_a_real_token",
+              hostToken = ServeDistributionHarness.OPERATOR_TOKEN,
+            )
+            .upload(file, label = "after.png")
+        // Not `Ok`, and not the shape a missing route produces either. `refused` carries the
+        // server's own words, so a 404 would read as one here and fail.
+        val refused = result as? ServeImageUploader.Result.Failed
+        assertNotNull(refused, "an unknown bearer should be refused, not accepted: $result")
+        assertFalse(
+          refused.reason.contains("404"),
+          "the upload route is missing, or the host token did not reach it — either way this " +
+            "client is posting somewhere the server does not serve: " +
+            refused.reason,
+        )
+        // Deliberately NOT asserted: the refusal's wording. It depends on how far the bearer got,
+        // which is not a property of this repository — a token GitHub rejects outright and one it
+        // resolves to a user without access produce different sentences, and which of those a bogus
+        // string lands on differs between a CI runner and a developer's box behind a proxy that
+        // supplies an identity. The first version of this test asserted "collaborator" or "access"
+        // and passed locally for exactly that reason before failing on a clean runner.
+        //
+        // The status is the part that belongs to this wire, and it is checked above.
+      } finally {
+        file.delete()
+      }
+    }
   }
 
   // ---- harness ------------------------------------------------------------------------------
