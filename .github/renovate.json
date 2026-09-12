@@ -12,7 +12,9 @@
   "prConcurrentLimit": 10,
   "minimumReleaseAge": "7 days",
   "github-actions": {
-    "enabled": false
+    "description": "Every `uses:` in this repository is SHA-pinned with a `# vX.Y.Z` comment \u2014 183 of them \u2014 and with the manager off not one of those digests could ever move: a fixed or security-patched action never reached CI, and nothing else in the repo bumps them. Renovate rewrites the digest and the version comment together, and `pinDigests` keeps a newly added tag-only `uses:` from staying unpinned. The shared preset batches every action into ONE weekly `github-actions` PR, so this costs a single PR a week rather than one per action; the `yschimke/compose-ai-tools` self-reference moves with it. Same setting as compose-preview-daemon.",
+    "enabled": true,
+    "pinDigests": true
   },
   "packageRules": [
     {
@@ -31,11 +33,11 @@
       "groupName": "design-parity export toolchain"
     },
     {
-      "description": "Never take a `…-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list — rather than disabling the update — keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps.",
+      "description": "Never take a `…-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list — rather than disabling the update — keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps. Also carries the `-SNAPSHOT` filter the shared preset applies across the gradle manager: both rules set `allowedVersions` and the last match wins, so naming only `-compat` here would hand every Gradle dependency in this repository its snapshots back (Renovate ranks `1.0.0-SNAPSHOT` above `1.0.0-alpha18`).",
       "matchManagers": [
         "gradle"
       ],
-      "allowedVersions": "!/-compat$/"
+      "allowedVersions": "!/(-compat|-SNAPSHOT)$/"
     },
     {
       "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) — a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
