@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-13T10:02:12.673Z",
+  "generatedAt": "2026-09-13T10:29:07.105Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "508d1dc6699d733e1068c81589c1d4fb73b35e24",
+        "subject": "chore(main): release 2.13.1 (#5440)",
+        "at": "2026-09-13T10:55:20+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "c34581b4dbe45abce63d9740130f9e7246a2841a",
         "subject": "fix(design-artifacts): publish a system's design pages only for the kit it reproduces (#5439)",
@@ -475,14 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v2.7.0 (#5372)",
         "at": "2026-09-10T19:56:53Z",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5694b4a6a51520710bfc12f49fd7de1531288a95",
-        "subject": "fix(bundle): forward the font and svg opt-outs to the Android child JVM (#5371)",
-        "at": "2026-09-10T20:47:41+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
