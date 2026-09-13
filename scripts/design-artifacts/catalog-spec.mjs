@@ -419,6 +419,26 @@ export function specPreviewRefs(spec) {
   return refs;
 }
 
+/**
+ * The Figma file keys a spec names in `referenceKits` — the kit or kits this system is compared
+ * against.
+ *
+ * An entry is a Figma URL (`https://www.figma.com/design/<key>/<slug>`) and this returns the keys,
+ * so a caller can ask "is this the kit that sheet reproduces?" without re-parsing URLs. A spec that
+ * names no kits returns an empty list, which is a meaningful answer rather than a missing one: it
+ * says this system reproduces nothing, and so has no design pages of its own.
+ *
+ * The same parse as `publish-code-connect.mjs`'s `fileKeyFromArg`, spelled here so the spec module
+ * does not depend on a CLI: a bare key passes through, and anything that is neither is dropped.
+ */
+export function referenceKitFileKeys(spec) {
+  const kits = Array.isArray(spec?.referenceKits) ? spec.referenceKits : [];
+  return kits
+    .filter((kit) => typeof kit === "string" && kit !== "")
+    .map((kit) => kit.match(/\/design\/([A-Za-z0-9]+)/)?.[1] ?? kit)
+    .filter((key) => /^[A-Za-z0-9]+$/.test(key));
+}
+
 /** Levenshtein distance, for "did you mean" suggestions on a mismatched name. */
 export function editDistance(a, b) {
   const m = a.length;

@@ -7,6 +7,7 @@ import {
   discoverPreviews,
   discoverComponentIds,
   specPreviewRefs,
+  referenceKitFileKeys,
   editDistance,
   closest,
   validateSpec,
@@ -1246,4 +1247,34 @@ test("validateSpec is silent about a component that declares no related links", 
     groups: [{ name: "Components", components: [{ componentId: "A", preview: "Alpha" }] }],
   });
   assert.deepEqual(errors, []);
+});
+
+/** `referenceKits` is written as Figma URLs; the file key is what a caller compares against. */
+test("referenceKitFileKeys reads the file key out of each reference kit URL", () => {
+  assert.deepEqual(
+    referenceKitFileKeys({
+      referenceKits: [
+        "https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb/Material-3-Design-Kit--Community-",
+      ],
+    }),
+    ["ocdacdEsnHipMJD3egzxKb"],
+  );
+  // A bare key is already the answer.
+  assert.deepEqual(referenceKitFileKeys({ referenceKits: ["HKfLClZDLRyMhf4IQQLna8"] }), [
+    "HKfLClZDLRyMhf4IQQLna8",
+  ]);
+});
+
+test("referenceKitFileKeys answers empty for a spec that names no kits", () => {
+  // Meaningful rather than missing: this system reproduces nothing.
+  assert.deepEqual(referenceKitFileKeys({}), []);
+  assert.deepEqual(referenceKitFileKeys({ referenceKits: [] }), []);
+  assert.deepEqual(referenceKitFileKeys(undefined), []);
+});
+
+test("referenceKitFileKeys drops an entry that is neither a key nor a Figma design URL", () => {
+  assert.deepEqual(
+    referenceKitFileKeys({ referenceKits: ["", "not a url", 42, null] }),
+    [],
+  );
 });
