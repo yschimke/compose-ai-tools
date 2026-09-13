@@ -57,6 +57,36 @@ The bootstrap installer's canonical home is now [`yschimke/skills/scripts/instal
 - **The render JVM starts with package-store directories pruned from `LD_LIBRARY_PATH`** when it is not itself a Nix/Guix store JVM ([`RenderNativeEnv`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/RenderNativeEnv.kt), applied to both the pooled worker and the per-capture fork). Store libraries carry the store's own glibc, so a hybrid sandbox — a store JDK running the daemon, a system JDK 21 picked by `jvmToolchain(21)` running the render — otherwise loses *every* preview to ``libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found`` (issue #3690). A store render JVM keeps everything it inherited, because `LD_LIBRARY_PATH` is the only channel its loader reads. Opt out with `-Dcomposeai.render.nativeEnv=inherit`; the failure mode and its diagnosis are in [DESKTOP_NATIVE_DEPS.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/DESKTOP_NATIVE_DEPS.md).
 - **`java.awt.headless` is deliberately left unset on the render JVM.** Forcing `headless=true` breaks Skiko's font/graphics init; the plugin only sets the macOS-scoped `apple.awt.UIElement` (Dock/focus suppression) and relies on Skiko's own offscreen path on Linux. See the comment block in [RenderPreviewsTask.kt](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/RenderPreviewsTask.kt) (`invokeRenderer`). Don't add `-Djava.awt.headless=true` "to make it work in the cloud" — it does the opposite.
 
+### Run Gradle through `build-brief`
+
+[`build-brief`](https://bb.staticvar.dev) ([`static-var/build-brief`](https://github.com/static-var/build-brief),
+MIT, a single Go binary with no runtime dependencies) sits in front of Gradle, writes every line
+Gradle emits to a log file, and prints only what changes your next move: status, failed tasks, failed
+tests, warnings, build scan URLs, generated output paths and artifacts. The Gradle exit code passes
+through unchanged, so it is safe anywhere a bare `./gradlew` was.
+
+```
+brew install static-var/tap/build-brief      # or: curl -fsSL https://bb.staticvar.dev/install.sh | bash
+build-brief doctor                            # read-only; never runs Gradle
+```
+
+Then wrap the commands below — `build-brief ./gradlew check`, `build-brief ./gradlew
+:samples:cmp:composePreviewRenderAll`. `AGENTS.md` carries the per-command rules, in a block
+`build-brief --install` regenerates.
+
+Worth knowing here specifically:
+
+- **The renders are the case it pays for.** `composePreviewRenderAll` emits a line per preview per
+  device; the brief keeps the artifact paths and the failures and drops the rest. When a render *is*
+  the thing you are debugging, the raw log path is printed — open that.
+- **Report-style commands keep their bodies.** `tasks`, `help`, `projects`, `dependencies` and
+  `dependencyInsight` are passed through, so dependency debugging is unaffected.
+- **Don't reach for `--ci`.** It is never inferred from the environment and is opt-in per job; this
+  repository's workflows call Gradle directly and nothing here depends on the reduced form.
+- **`.build-brief.json` is available but unused.** It surfaces project-specific matches by regex
+  (result URLs and the like). Add one when there is a line worth pulling out, rather than ahead of
+  time.
+
 Build / test everything:
 ```
 ./gradlew check                   # plugin unit + functional tests, CLI tests
