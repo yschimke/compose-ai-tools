@@ -122,22 +122,6 @@ if (!fs.existsSync(specPath)) {
 const catalog = readJson(catalogPath);
 const spec = fs.existsSync(specPath) ? readJson(specPath, { comments: true }) : {};
 
-// Whose kit are these pages? `design-pages.json` is repo-global and names one Figma file, while a
-// repository can ship several systems reproducing different kits — so publishing unconditionally
-// hands every system the one kit's sheets (yschimke/m3-catalog#398). The spec says which kit this
-// system is compared against; publish only on a positive match.
-//
-// A plain log rather than `warn()`, deliberately: on a system that reproduces a different kit this
-// skip is the CORRECT outcome, so it must not trip `--strict` and fail a build that is behaving.
-const kitSkip = designPagesKitSkip({
-  fileKey: PAGES_FILE_KEY,
-  kitKeys: referenceKitFileKeys(spec),
-});
-if (kitSkip) {
-  console.log(`design-pages: not publishing ${PAGES} — ${kitSkip}`);
-  process.exit(0);
-}
-
 // Fail-soft on the one input this lane owns. A truncated `pages.json` — a killed import, a bad
 // committed edit — would otherwise throw out of this script, and the workflow's `set -e` would take
 // the whole catalog publish down with it. The page view is an enhancement; it must never cost a
@@ -148,6 +132,29 @@ try {
 } catch (error) {
   warn(`${PAGES}/pages.json is not readable JSON (${error.message}); publishing without pages`);
   process.exit(STRICT ? 1 : 0);
+}
+
+// Whose kit are these pages? `design-pages.json` is repo-global and names one Figma file, while a
+// repository can ship several systems reproducing different kits — so publishing unconditionally
+// hands every system the one kit's sheets (yschimke/m3-catalog#398). The spec says which kit this
+// system is compared against; publish only on a positive match.
+//
+// Keyed on the MANIFEST's own `fileKey`, not the config's. The manifest is the import's record of
+// where its pixels actually came from, and the two can disagree: `--pages` may select a directory
+// the config does not name, and a config edited without regenerating the import drifts from it.
+// Trusting the config there would let a matching config authorise another kit's pages, and the
+// reverse mismatch would suppress correct ones. The config is the fallback for an older manifest
+// that carries no key.
+//
+// A plain log rather than `warn()`, deliberately: on a system that reproduces a different kit this
+// skip is the CORRECT outcome, so it must not trip `--strict` and fail a build that is behaving.
+const kitSkip = designPagesKitSkip({
+  fileKey: typeof manifest?.fileKey === "string" ? manifest.fileKey : PAGES_FILE_KEY,
+  kitKeys: referenceKitFileKeys(spec),
+});
+if (kitSkip) {
+  console.log(`design-pages: not publishing ${PAGES} — ${kitSkip}`);
+  process.exit(0);
 }
 
 // Planning is inside the guard too. The parse above catches a *syntax* error, but a structurally

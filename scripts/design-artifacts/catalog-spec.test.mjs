@@ -1272,6 +1272,38 @@ test("referenceKitFileKeys answers empty for a spec that names no kits", () => {
   assert.deepEqual(referenceKitFileKeys(undefined), []);
 });
 
+/**
+ * The Community form, which this repository's OWN sample specs use.
+ *
+ * `samples/design-catalog-m3` and `samples/design-catalog-wear-m3` both name their kits as
+ * `figma.com/community/file/<key>/<slug>`. Matching only `/design/` returned an empty list for
+ * them, which -- once a positive match gates publishing -- reads as "reproduces no kit" and takes
+ * the pages away. Community keys are numeric where editor keys are alphanumeric; both are keys.
+ */
+test("referenceKitFileKeys reads a Community file URL too", () => {
+  assert.deepEqual(
+    referenceKitFileKeys({
+      referenceKits: [
+        "https://www.figma.com/community/file/1035203688168086460/material-3-design-kit",
+        "https://www.figma.com/community/file/1506418396052412186/m3-wear-os-apps-design-kit",
+      ],
+    }),
+    ["1035203688168086460", "1506418396052412186"],
+  );
+});
+
+test("referenceKitFileKeys reads both URL forms in one spec", () => {
+  assert.deepEqual(
+    referenceKitFileKeys({
+      referenceKits: [
+        "https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb/Material-3-Design-Kit--Community-",
+        "https://www.figma.com/community/file/1035203688168086460/material-3-design-kit",
+      ],
+    }),
+    ["ocdacdEsnHipMJD3egzxKb", "1035203688168086460"],
+  );
+});
+
 test("referenceKitFileKeys drops an entry that is neither a key nor a Figma design URL", () => {
   assert.deepEqual(
     referenceKitFileKeys({ referenceKits: ["", "not a url", 42, null] }),
