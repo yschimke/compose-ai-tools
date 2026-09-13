@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.1](https://github.com/yschimke/compose-ai-tools/compare/v2.13.0...v2.13.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **design-artifacts:** publish a system's design pages only for the kit it reproduces ([#5439](https://github.com/yschimke/compose-ai-tools/issues/5439)) ([c34581b](https://github.com/yschimke/compose-ai-tools/commit/c34581b4dbe45abce63d9740130f9e7246a2841a))
+
 ## [2.13.0](https://github.com/yschimke/compose-ai-tools/compare/v2.12.0...v2.13.0) (2026-09-12)
 
 
