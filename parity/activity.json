@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-12T17:38:12.719Z",
+  "generatedAt": "2026-09-13T10:02:12.673Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "c34581b4dbe45abce63d9740130f9e7246a2841a",
+        "subject": "fix(design-artifacts): publish a system's design pages only for the kit it reproduces (#5439)",
+        "at": "2026-09-13T10:53:51+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "367bf1748dfafe7202c7ec6c0157878da9fb95ab",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.13.0 (#5437)",
+        "at": "2026-09-12T17:46:42Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "23b01c4219825408fd8d7efecf369587a06a8461",
         "subject": "chore(main): release 2.13.0 (#5434)",
@@ -466,22 +482,6 @@
         "sha": "5694b4a6a51520710bfc12f49fd7de1531288a95",
         "subject": "fix(bundle): forward the font and svg opt-outs to the Android child JVM (#5371)",
         "at": "2026-09-10T20:47:41+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f904410c8ce2968fb86f1a8c1c6ee0fb10e4e7ba",
-        "subject": "chore(main): release 2.7.0 (#5368)",
-        "at": "2026-09-10T20:13:59+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c26092bc6017d38c3735f8673fb78778f87eec2e",
-        "subject": "feat: add Remote Compose JSON support (`:remotecompose-json`, `compose-preview rc`) (#5370)",
-        "at": "2026-09-10T20:11:57+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
