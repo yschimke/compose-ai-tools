@@ -457,6 +457,51 @@ function isCellNode(node) {
  * pairs the caller must copy (`from` is the producer's own export path, relative to its manifest),
  * and human-readable warnings for anything dropped or left unrenderable.
  */
+/**
+ * Why this system must NOT publish the imported design pages, or null when it may.
+ *
+ * A repository's `design-pages.json` is repo-GLOBAL and names one Figma file, but a repository can
+ * ship several systems reproducing different kits. Without this, every system published the one
+ * kit's sheets: m3-catalog's four systems all served the Material 3 Design Kit's 30 pages and 3,014
+ * nodes, and on the two that reproduce a different kit not one node resolved to anything — the
+ * re-keying worked perfectly and found nothing, because there was nothing to find
+ * (yschimke/m3-catalog#398).
+ *
+ * The spec already knows the answer: `referenceKits` names the kit this system is compared against.
+ * So the rule is a positive match — publish only when the imported pages are keyed to a kit this
+ * system actually reproduces — and every other case is a skip:
+ *
+ * - **no `referenceKits`** — the system reproduces nothing and has no pages of its own. This is the
+ *   samples sheets, which map no components at all.
+ * - **a different kit** — the wrong sheets, which is the bug this exists to stop.
+ * - **no `fileKey`** — the import does not say which kit it came from, so no match can be proven.
+ *   A skip rather than a guess: publishing the wrong kit's pages is the failure being fixed, and it
+ *   is silent, while a skip says so in the log.
+ *
+ * Deliberately NOT a `--strict` failure at the call site: on a system that correctly reproduces a
+ * different kit, skipping IS the right outcome, and failing the build for it would break exactly
+ * the repositories this fixes.
+ */
+export function designPagesKitSkip({ fileKey, kitKeys }) {
+  const keys = Array.isArray(kitKeys) ? kitKeys : [];
+  if (keys.length === 0) {
+    return "this system's spec names no referenceKits, so it reproduces no kit of its own";
+  }
+  if (typeof fileKey !== "string" || fileKey === "") {
+    return (
+      "design-pages.json names no fileKey, so the import cannot be matched against this " +
+      `system's kit (${keys.join(", ")})`
+    );
+  }
+  if (!keys.includes(fileKey)) {
+    return (
+      `the imported pages are Figma file ${fileKey}, which this system does not reproduce ` +
+      `(its referenceKits are ${keys.join(", ")})`
+    );
+  }
+  return null;
+}
+
 export function planDesignPages({ manifest, spec, catalog }) {
   const warnings = [];
   if (!manifest || typeof manifest !== "object") {

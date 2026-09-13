@@ -6,6 +6,7 @@ import {
   PAGES_VERSION,
   catalogOwnsNode,
   declaringClassOf,
+  designPagesKitSkip,
   declaringClasses,
   publishingSourcePaths,
   pageImageName,
@@ -1361,5 +1362,60 @@ test("the root project's empty directory is a usable answer, not a missing one",
       planDesignPages({ manifest: sharedImport, spec: {}, catalog: root }),
     ).code,
     "app/src/main/kotlin/app/Preview.kt#Sticker",
+  );
+});
+
+/**
+ * The kit guard, on the four systems m3-catalog actually ships.
+ *
+ * `design-pages.json` is repo-global and names one Figma file; this repository has four systems and
+ * two kits, so before this guard every system published the Material 3 kit's 30 sheets — and on the
+ * two that reproduce a different kit, not one of the 3,014 nodes resolved to anything
+ * (yschimke/m3-catalog#398).
+ */
+const MATERIAL_3_KIT = "ocdacdEsnHipMJD3egzxKb";
+const GLIMMER_KIT = "HKfLClZDLRyMhf4IQQLna8";
+
+test("the pages publish for the system whose kit the import came from", () => {
+  assert.equal(
+    designPagesKitSkip({ fileKey: MATERIAL_3_KIT, kitKeys: [MATERIAL_3_KIT] }),
+    null,
+  );
+});
+
+test("a system that reproduces a different kit gets none, and is told which", () => {
+  const skip = designPagesKitSkip({ fileKey: MATERIAL_3_KIT, kitKeys: [GLIMMER_KIT] });
+  assert.match(skip, /does not reproduce/);
+  // Both keys named: the reader has to be able to see WHICH import met WHICH system.
+  assert.match(skip, new RegExp(MATERIAL_3_KIT));
+  assert.match(skip, new RegExp(GLIMMER_KIT));
+});
+
+test("a system that names no reference kit gets none", () => {
+  // The samples sheets, which map no components at all.
+  assert.match(
+    designPagesKitSkip({ fileKey: MATERIAL_3_KIT, kitKeys: [] }),
+    /names no referenceKits/,
+  );
+  assert.match(
+    designPagesKitSkip({ fileKey: MATERIAL_3_KIT, kitKeys: undefined }),
+    /names no referenceKits/,
+  );
+});
+
+test("an import that names no file key is skipped rather than guessed at", () => {
+  // Publishing the wrong kit's pages is the silent failure being fixed; a skip says so in the log.
+  for (const fileKey of [undefined, "", null]) {
+    assert.match(
+      designPagesKitSkip({ fileKey, kitKeys: [MATERIAL_3_KIT] }),
+      /names no fileKey/,
+    );
+  }
+});
+
+test("one of several reference kits is enough to match", () => {
+  assert.equal(
+    designPagesKitSkip({ fileKey: GLIMMER_KIT, kitKeys: [MATERIAL_3_KIT, GLIMMER_KIT] }),
+    null,
   );
 });

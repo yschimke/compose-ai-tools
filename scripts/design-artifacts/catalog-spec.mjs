@@ -419,6 +419,33 @@ export function specPreviewRefs(spec) {
   return refs;
 }
 
+/**
+ * The Figma file keys a spec names in `referenceKits` — the kit or kits this system is compared
+ * against.
+ *
+ * An entry is a Figma URL and this returns the keys, so a caller can ask "is this the kit that sheet
+ * reproduces?" without re-parsing URLs. A spec that names no kits returns an empty list, which is a
+ * meaningful answer rather than a missing one: it says this system reproduces nothing, and so has no
+ * design pages of its own.
+ *
+ * BOTH URL forms, because this repository's own specs use both. `/design/<key>/<slug>` is what a
+ * kit opened from the editor gives you; `/community/file/<key>/<slug>` is the Community channel
+ * Google publishes its kits through, and `samples/design-catalog-m3` and
+ * `samples/design-catalog-wear-m3` are written that way. Matching only the first silently returned
+ * an empty list for those, which — once a positive match gates publishing — reads as "this system
+ * reproduces no kit" and takes its pages away.
+ *
+ * A bare key passes through, and anything that is neither is dropped. Community keys are numeric
+ * and editor keys alphanumeric, so the filter admits both.
+ */
+export function referenceKitFileKeys(spec) {
+  const kits = Array.isArray(spec?.referenceKits) ? spec.referenceKits : [];
+  return kits
+    .filter((kit) => typeof kit === "string" && kit !== "")
+    .map((kit) => kit.match(/\/(?:design|community\/file)\/([A-Za-z0-9]+)/)?.[1] ?? kit)
+    .filter((key) => /^[A-Za-z0-9]+$/.test(key));
+}
+
 /** Levenshtein distance, for "did you mean" suggestions on a mismatched name. */
 export function editDistance(a, b) {
   const m = a.length;

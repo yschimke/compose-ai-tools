@@ -31,8 +31,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { stripComments } from "./catalog-spec.mjs";
-import { PAGES_DIR, PAGES_INDEX, pageImageName, planDesignPages } from "./design-pages.mjs";
+import { referenceKitFileKeys, stripComments } from "./catalog-spec.mjs";
+import {
+  PAGES_DIR,
+  PAGES_INDEX,
+  designPagesKitSkip,
+  pageImageName,
+  planDesignPages,
+} from "./design-pages.mjs";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -45,25 +51,35 @@ const SPEC = arg("spec", "catalog.spec.json");
 const STRICT = process.argv.includes("--strict");
 
 /**
- * Where the importer put its output. `design-pages.json` is the producer's own config and already
- * names it, so read that rather than assuming the default: a repo that set `outDir` elsewhere would
- * otherwise publish nothing, silently, while the import step reported success.
+ * What the producer's own config says about its import: where it put its output, and which Figma
+ * file it came from.
+ *
+ * `design-pages.json` already names the output directory, so read that rather than assuming the
+ * default: a repo that set `outDir` elsewhere would otherwise publish nothing, silently, while the
+ * import step reported success. It also names the `fileKey`, which is the only record of WHICH kit
+ * the pages are — the question the guard below turns on.
  */
-function importerOutDir() {
-  const explicit = arg("pages");
-  if (explicit) return explicit;
+function importerConfig() {
   const configPath = path.resolve(REPO, "design-pages.json");
-  if (!fs.existsSync(configPath)) return "design/pages";
-  try {
-    const config = JSON.parse(stripComments(fs.readFileSync(configPath, "utf8")));
-    const dir = config?.outDir;
-    return typeof dir === "string" && dir !== "" ? dir : "design/pages";
-  } catch {
-    return "design/pages";
+  let config = {};
+  if (fs.existsSync(configPath)) {
+    try {
+      config = JSON.parse(stripComments(fs.readFileSync(configPath, "utf8")));
+    } catch {
+      config = {};
+    }
   }
+  const dir = config?.outDir;
+  return {
+    // `--pages` still wins, for a caller pointing this at a directory the config does not name.
+    outDir: arg("pages") || (typeof dir === "string" && dir !== "" ? dir : "design/pages"),
+    // Which Figma file the import came from. Read even when `--pages` overrode the directory: the
+    // kit a set of pages belongs to is a property of the import, not of where it was written.
+    fileKey: typeof config?.fileKey === "string" ? config.fileKey : undefined,
+  };
 }
 
-const PAGES = importerOutDir();
+const { outDir: PAGES, fileKey: PAGES_FILE_KEY } = importerConfig();
 
 if (!OUT) {
   console.error("emit-design-pages: --out <bundle dir> is required");
@@ -116,6 +132,29 @@ try {
 } catch (error) {
   warn(`${PAGES}/pages.json is not readable JSON (${error.message}); publishing without pages`);
   process.exit(STRICT ? 1 : 0);
+}
+
+// Whose kit are these pages? `design-pages.json` is repo-global and names one Figma file, while a
+// repository can ship several systems reproducing different kits — so publishing unconditionally
+// hands every system the one kit's sheets (yschimke/m3-catalog#398). The spec says which kit this
+// system is compared against; publish only on a positive match.
+//
+// Keyed on the MANIFEST's own `fileKey`, not the config's. The manifest is the import's record of
+// where its pixels actually came from, and the two can disagree: `--pages` may select a directory
+// the config does not name, and a config edited without regenerating the import drifts from it.
+// Trusting the config there would let a matching config authorise another kit's pages, and the
+// reverse mismatch would suppress correct ones. The config is the fallback for an older manifest
+// that carries no key.
+//
+// A plain log rather than `warn()`, deliberately: on a system that reproduces a different kit this
+// skip is the CORRECT outcome, so it must not trip `--strict` and fail a build that is behaving.
+const kitSkip = designPagesKitSkip({
+  fileKey: typeof manifest?.fileKey === "string" ? manifest.fileKey : PAGES_FILE_KEY,
+  kitKeys: referenceKitFileKeys(spec),
+});
+if (kitSkip) {
+  console.log(`design-pages: not publishing ${PAGES} — ${kitSkip}`);
+  process.exit(0);
 }
 
 // Planning is inside the guard too. The parse above catches a *syntax* error, but a structurally
