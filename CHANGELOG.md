@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.14.0](https://github.com/yschimke/compose-ai-tools/compare/v2.13.1...v2.14.0) (2026-09-14)
+
+
+### Features
+
+* expose Glimmer environments as a catalog axis ([#5449](https://github.com/yschimke/compose-ai-tools/issues/5449)) ([495cbf6](https://github.com/yschimke/compose-ai-tools/commit/495cbf62063c42ac04e1bf95a265dbacb22aa46b))
+* **ui-builder:** publish catalog evolution metadata ([#5447](https://github.com/yschimke/compose-ai-tools/issues/5447)) ([b7c26b7](https://github.com/yschimke/compose-ai-tools/commit/b7c26b721dd7a6f65eb119c4f41fe85ee5496f45))
+
 ## [2.13.1](https://github.com/yschimke/compose-ai-tools/compare/v2.13.0...v2.13.1) (2026-09-13)
 
 
