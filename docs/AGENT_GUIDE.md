@@ -74,6 +74,12 @@ Then wrap the commands below — `build-brief ./gradlew check`, `build-brief ./g
 :samples:cmp:composePreviewRenderAll`. `AGENTS.md` carries the per-command rules, in a block
 `build-brief --install` regenerates.
 
+On a shared developer host, agents use `scripts/agent-gradle.sh` in place of that direct wrapper.
+It retains `build-brief` while capping automated work at four low-priority workers. Add
+`--exclusive` before the Gradle arguments for `check`, broad render pipelines and other heavyweight
+task graphs; the exclusive profile shares one machine lock with compose-preview-daemon and
+compose-preview-server. Interactive commands and hosted CI deliberately bypass that profile.
+
 Worth knowing here specifically:
 
 - **The renders are the case it pays for.** `composePreviewRenderAll` emits a line per preview per
@@ -87,9 +93,10 @@ Worth knowing here specifically:
   (result URLs and the like). Add one when there is a line worth pulling out, rather than ahead of
   time.
 
-Build / test everything:
+Build / test everything (use the exclusive agent profile on a shared host):
 ```
 ./gradlew check                   # plugin unit + functional tests, CLI tests
+scripts/agent-gradle.sh --exclusive check
 ```
 
 Render the sample previews (end-to-end smoke test of the full pipeline):

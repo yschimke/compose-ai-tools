@@ -177,6 +177,22 @@ Install it once (`brew install static-var/tap/build-brief`, or the script instal
 per-command detail and the cases where you still want the raw log are in
 [`docs/AGENT_GUIDE.md` → Common commands](docs/AGENT_GUIDE.md#common-commands).
 
+On a shared developer host, automated builds use [`scripts/agent-gradle.sh`](scripts/agent-gradle.sh)
+instead of invoking `build-brief` directly:
+
+```
+scripts/agent-gradle.sh :gradle-plugin:test --tests '*DeviceDimensionsTest*'
+scripts/agent-gradle.sh --exclusive check
+```
+
+The launcher keeps `build-brief` while limiting automation to four low-priority workers,
+non-interactive input and a ten-minute Gradle-daemon idle timeout. Use the normal profile for focused
+compilation, formatting, tests and renders. Use `--exclusive` for `check`, broad render pipelines and
+other heavyweight task graphs: it takes the same per-user machine lock as the Compose Preview daemon
+and server repositories, so automated builds cannot peak together. Direct Gradle and `build-brief`
+invocations remain unrestricted for interactive development, and hosted CI keeps its runner's full
+capacity. Do not copy these limits into `gradle.properties`.
+
 The per-command rules live in the managed `build-brief` block at the end of this file;
 `build-brief --install` regenerates it, so edit it there rather than by hand.
 
