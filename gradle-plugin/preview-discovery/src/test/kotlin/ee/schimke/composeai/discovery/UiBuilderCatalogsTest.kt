@@ -114,6 +114,55 @@ class UiBuilderCatalogsTest {
   }
 
   /**
+   * A catalog's stable public noun need not be the current callable's noun.
+   *
+   * Material 3's sticker currently declares `progress-indicator`, while the catalog policy
+   * publishes `linear-progress-indicator`. The explicit record join is what makes the reviewed
+   * catalog vocabulary authoritative instead of silently publishing the annotation's second
+   * identity and leaving successor rules aimed at an id that does not exist.
+   */
+  @Test
+  fun `an authored record join preserves a builder id that differs from the derived id`() {
+    val canonicalId =
+      ":catalog/androidx.wear.compose.material3.LinearProgressIndicatorKt.LinearProgressIndicator"
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "LinearProgressIndicator",
+            catalogId = "Progress/Linear",
+            group = "Progress",
+            builder = BuilderPolicy(id = "wear-m3/progress-indicator"),
+          )
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf(
+              "wear-m3/linear-progress-indicator" to
+                UiBuilderAuthoredComponent(
+                  record = canonicalId,
+                  group = "Progress",
+                  displayName = "Linear progress indicator",
+                )
+            ),
+        ),
+      )!!
+
+    assertThat(generated.statusSemantics.components.keys)
+      .containsExactly("wear-m3/linear-progress-indicator")
+    assertThat(
+        generated.statusSemantics.components.getValue("wear-m3/linear-progress-indicator").record
+      )
+      .isEqualTo(canonicalId)
+    assertThat(generated.statusSemantics.componentMenu.components.keys)
+      .containsExactly("wear-m3/linear-progress-indicator")
+    assertThat(generated.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED)
+  }
+
+  /**
    * "Not stated" and "stated as empty" are different questions.
    *
    * A catalog declaring `modifierCapabilities: []` means the component accepts none; one omitting
@@ -176,7 +225,7 @@ class UiBuilderCatalogsTest {
     val orphan =
       file!!.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED }
     assertThat(orphan.subject).isEqualTo("wear-m3/buton")
-    assertThat(orphan.message).contains("no component in this record derives")
+    assertThat(orphan.message).contains("joins no component in this record")
   }
 
   @Test
