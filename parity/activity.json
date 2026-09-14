@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T18:48:40.047Z",
+  "generatedAt": "2026-09-14T19:37:47.438Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "495cbf62063c42ac04e1bf95a265dbacb22aa46b",
+        "subject": "feat: expose Glimmer environments as a catalog axis (#5449)",
+        "at": "2026-09-14T20:30:27+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "69de8718819fadc5df893caa6d9da6cda42d5c55",
+        "subject": "build: throttle automated Gradle runs (#5446)",
+        "at": "2026-09-14T20:12:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "02a976cf0876b6b87ffd6a85e35ece008aeb90ea",
+        "subject": "chore(deps): bump the actions-minor group with 4 updates (#5443)",
+        "at": "2026-09-14T19:35:11+01:00",
+        "author": "dependabot[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "bfa6ae0742ccd70b3cf50886cb5548c2e0e6718b",
         "subject": "chore(deps): bump actions/setup-java from 5.7.0 to 6.0.1 (#5444)",
@@ -458,30 +482,6 @@
         "sha": "0db83ded32ab38a846e90966b8d9ce5cae29a2d5",
         "subject": "refactor(bundle): take the robolectric config facts from the daemon (#5379)",
         "at": "2026-09-10T22:34:32+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c5a8d1852a70dc2a8343dc105cd4c0b23196dd70",
-        "subject": "fix(plugin): decide the KMP-Android lane after the plugins block, not during it (#5380)",
-        "at": "2026-09-10T22:20:19+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "502fb1c721d8052d39aa50a62872fe5969887e0b",
-        "subject": "fix(ui-builder): keep an excluded component off the shelf (#5378)",
-        "at": "2026-09-10T22:02:52+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4037147903b78796bf69bc18e5a9f45ce7acea8f",
-        "subject": "fix(plugin): read the doctor's lane from the task graph, not the request (#5377)",
-        "at": "2026-09-10T21:57:04+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
