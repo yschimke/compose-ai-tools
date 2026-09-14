@@ -283,6 +283,8 @@ object PreviewDiscovery {
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
   private const val GLIMMER_ENVIRONMENT_PREVIEW_FQN =
     "ee.schimke.composeai.preview.GlimmerEnvironmentPreview"
+  private const val GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN =
+    "ee.schimke.composeai.preview.GlimmerEnvironmentPreview.Container"
   // Capture-bounds gutter — a per-edge dp margin the RENDERER adds outside the composable so a
   // shadow / focus ring drawn past the component's own bounds isn't cropped at the image edge.
   // Same FQN-match policy as the sibling annotations. See `CaptureGutter.kt` and m3-catalog#179.
@@ -2211,7 +2213,7 @@ object PreviewDiscovery {
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
-    val glimmerEnvironmentSpec = extractGlimmerEnvironmentSpec(annotations)
+    val glimmerEnvironmentSpecs = extractGlimmerEnvironmentSpecs(annotations)
     // `@SettledPreview` and a motion capture on ONE function want opposite things from the shared
     // paused clock — the GIF records the timeline from its start, the settled still needs a
     // coordinate near the end, and virtual time does not rewind. That used to be resolved here, by
@@ -2417,7 +2419,7 @@ object PreviewDiscovery {
             focusSpecs,
             focusGifSpec,
             ambientSpec,
-            glimmerEnvironmentSpec,
+            glimmerEnvironmentSpecs,
             settleSpec,
             gestureHintSpec,
             permissionSpec,
@@ -2450,7 +2452,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
-          glimmerEnvironmentSpec,
+          glimmerEnvironmentSpecs,
           settleSpec,
           gestureHintSpec,
           permissionSpec,
@@ -2483,7 +2485,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
-          glimmerEnvironmentSpec,
+          glimmerEnvironmentSpecs,
           settleSpec,
           gestureHintSpec,
           permissionSpec,
@@ -3288,7 +3290,68 @@ object PreviewDiscovery {
     val dataProducts: List<PreviewDataProduct>,
   )
 
+  private fun glimmerEnvironmentOutput(
+    output: String,
+    environment: GlimmerEnvironmentCapture,
+  ): String {
+    val dot = output.lastIndexOf('.')
+    val suffix = "_GLIMMER_${environment.name.lowercase()}"
+    return if (dot < 0) "$output$suffix"
+    else output.substring(0, dot) + suffix + output.substring(dot)
+  }
+
   private fun buildOutputPlan(
+    kind: PreviewKind,
+    previewId: String,
+    scrolls: List<ScrollCapture>,
+    animation: AnimationCapture?,
+    interaction: InteractionCapture?,
+    focuses: List<FocusCapture>,
+    focusGif: FocusGifCapture?,
+    ambient: AmbientCapture?,
+    glimmerEnvironments: List<GlimmerEnvironmentCapture>,
+    settle: SettleCapture?,
+    gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
+    launcherWidget: LauncherWidgetCapture?,
+    launcherWidgetResize: LauncherWidgetResizeSpec?,
+    timings: List<Long>,
+  ): PreviewOutputPlan {
+    val environments: List<GlimmerEnvironmentCapture?> = glimmerEnvironments.ifEmpty {
+      listOf(null)
+    }
+    val plans = environments.map { environment ->
+      buildOutputPlanForEnvironment(
+        kind,
+        previewId,
+        scrolls,
+        animation,
+        interaction,
+        focuses,
+        focusGif,
+        ambient,
+        environment,
+        settle,
+        gestureHint,
+        permissions,
+        launcherWidget,
+        launcherWidgetResize,
+        timings,
+      )
+    }
+    if (plans.size == 1) return plans.single()
+    return PreviewOutputPlan(
+      captures =
+        plans.zip(glimmerEnvironments).flatMap { (plan, environment) ->
+          plan.captures.map { capture ->
+            capture.copy(renderOutput = glimmerEnvironmentOutput(capture.renderOutput, environment))
+          }
+        },
+      dataProducts = plans.first().dataProducts,
+    )
+  }
+
+  private fun buildOutputPlanForEnvironment(
     kind: PreviewKind,
     previewId: String,
     scrolls: List<ScrollCapture>,
@@ -3974,15 +4037,38 @@ object PreviewDiscovery {
     )
   }
 
-  /** Reads `@GlimmerEnvironmentPreview(environment)` into post-capture metadata. */
-  private fun extractGlimmerEnvironmentSpec(
+  /** Reads repeatable `@GlimmerEnvironmentPreview(environment)` post-capture metadata. */
+  private fun extractGlimmerEnvironmentSpecs(
     annotations: List<AnnotationInfo>
-  ): GlimmerEnvironmentCapture? {
-    val ann = annotations.firstOrNull { it.name == GLIMMER_ENVIRONMENT_PREVIEW_FQN } ?: return null
-    val environmentName =
-      (ann.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
-        ?: return null
-    return runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
+  ): List<GlimmerEnvironmentCapture> {
+    val infos = mutableListOf<AnnotationInfo>()
+    for (ann in annotations) {
+      when (ann.name) {
+        GLIMMER_ENVIRONMENT_PREVIEW_FQN -> infos += ann
+        GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN ->
+          when (val value = ann.parameterValues.getValue("value")) {
+            is Array<*> -> infos += value.filterIsInstance<AnnotationInfo>()
+            is AnnotationInfo -> infos += value
+            else -> {
+              val length = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
+              for (index in 0 until length) {
+                (java.lang.reflect.Array.get(value, index) as? AnnotationInfo)?.let(infos::add)
+              }
+            }
+          }
+      }
+    }
+    return infos
+      .mapNotNull { info ->
+        val environmentName =
+          (info.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
+            ?: return@mapNotNull null
+        runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
+      }
+      .distinct()
+      // JVM annotation-table order is not a source-order contract (ClassGraph can expose repeated
+      // entries in reverse). Keep capture names and manifests stable across compilers/scanners.
+      .sortedBy { it.ordinal }
   }
 
   /**
@@ -4422,6 +4508,8 @@ object PreviewDiscovery {
       ANIMATED_PREVIEW_FQN,
       FOCUSED_PREVIEW_FQN,
       AMBIENT_PREVIEW_FQN,
+      GLIMMER_ENVIRONMENT_PREVIEW_FQN,
+      GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN,
       GESTURE_HINT_PREVIEW_FQN,
       PERMISSION_PREVIEW_FQN,
       LAUNCHER_WIDGET_PREVIEW_FQN,
@@ -4675,7 +4763,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
-    glimmerEnvironment: GlimmerEnvironmentCapture?,
+    glimmerEnvironments: List<GlimmerEnvironmentCapture>,
     settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
@@ -4699,7 +4787,7 @@ object PreviewDiscovery {
       focuses,
       focusGif,
       ambient,
-      glimmerEnvironment,
+      glimmerEnvironments,
       settle,
       gestureHint,
       permissions,
@@ -4731,7 +4819,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
-    glimmerEnvironment: GlimmerEnvironmentCapture?,
+    glimmerEnvironments: List<GlimmerEnvironmentCapture>,
     settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
@@ -4754,7 +4842,7 @@ object PreviewDiscovery {
         focuses,
         focusGif,
         ambient,
-        glimmerEnvironment,
+        glimmerEnvironments,
         settle,
         gestureHint,
         permissions,

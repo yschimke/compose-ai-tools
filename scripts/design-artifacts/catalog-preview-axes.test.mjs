@@ -30,6 +30,31 @@ test("Wear font-scale previews become distinct catalog props axes", () => {
   assert.deepEqual(candidates[0].images[0].props, { fontScale: "1.24" });
 });
 
+test("repeatable Glimmer environments become a selectable catalog axis", () => {
+  const candidates = [candidate("ButtonEnvironment", [{}, {}])];
+  const previews = [
+    {
+      id: "ButtonEnvironment",
+      captures: [
+        { glimmerEnvironment: "Light" },
+        { glimmerEnvironment: "VeniceCanalCats" },
+      ],
+    },
+  ];
+
+  const result = applyCatalogPreviewAxes(candidates, previews);
+
+  assert.equal(result.duplicates, 0);
+  assert.deepEqual(
+    candidates[0].images.map((image) => image.props),
+    [{ environment: "Light" }, { environment: "VeniceCanalCats" }],
+  );
+  assert.notEqual(
+    outputAxisKey(candidates[0].images[0]),
+    outputAxisKey(candidates[0].images[1]),
+  );
+});
+
 test("overlapping Wear multi-previews keep scaled/device renders and dedupe only small/default", () => {
   const candidates = [
     candidate("Home_Devices_Large"),
@@ -242,4 +267,3 @@ test("the locale axis rides through to the sticker path, so the arms get separat
     "images/language-toggle/ideal__default__locale-ja.png",
   );
 });
-

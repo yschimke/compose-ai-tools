@@ -179,6 +179,35 @@ class PreviewDiscoveryProjectJarTest {
     assertThat(catalog?.kitValue).isEqualTo("Full-screen (range)")
   }
 
+  @Test
+  fun `repeatable Glimmer environments fan out named captures`() {
+    val jar = File(tempDir.root, "glimmer-environment-classes.jar")
+    writeRepeatableGlimmerEnvironmentClassJar(jar)
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = emptyList(),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":glimmer-catalog",
+          variantName = "debug",
+          projectDirectory = tempDir.root,
+          failOnEmpty = true,
+          projectClassJars = listOf(jar),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    val captures = outcome.manifest.previews.single().captures
+    assertThat(captures.map { it.glimmerEnvironment })
+      .containsExactly(GlimmerEnvironmentCapture.Light, GlimmerEnvironmentCapture.Busy)
+      .inOrder()
+    assertThat(captures[0].renderOutput).endsWith("_GLIMMER_light.png")
+    assertThat(captures[1].renderOutput).endsWith("_GLIMMER_busy.png")
+    assertThat(captures[0].renderOutput.removeSuffix("_GLIMMER_light.png"))
+      .isEqualTo(captures[1].renderOutput.removeSuffix("_GLIMMER_busy.png"))
+  }
+
   /**
    * Writes a JAR containing a single class with one parameterless `public static` method annotated
    * with `androidx.compose.ui.tooling.preview.Preview`. The annotation is emitted as a
@@ -207,6 +236,41 @@ class PreviewDiscoveryProjectJarTest {
     cw.visitEnd()
 
     jar.parentFile.mkdirs()
+    JarOutputStream(jar.outputStream()).use { jos ->
+      jos.putNextEntry(JarEntry("$internalName.class"))
+      jos.write(cw.toByteArray())
+      jos.closeEntry()
+    }
+  }
+
+  /** Writes the flattened repeatable-annotation shape ClassGraph exposes to discovery. */
+  private fun writeRepeatableGlimmerEnvironmentClassJar(jar: File) {
+    val internalName = "test/RepeatableGlimmerEnvironmentKt"
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    val mv = cw.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "Preview", "()V", null, null)
+    mv.visitAnnotation("Landroidx/compose/ui/tooling/preview/Preview;", false).visitEnd()
+    mv.visitAnnotation("Lee/schimke/composeai/preview/GlimmerEnvironmentPreview;", false).apply {
+      visitEnum("environment", "Lee/schimke/composeai/preview/GlimmerEnvironment;", "Light")
+      visitEnd()
+    }
+    mv.visitAnnotation("Lee/schimke/composeai/preview/GlimmerEnvironmentPreview;", false).apply {
+      visitEnum("environment", "Lee/schimke/composeai/preview/GlimmerEnvironment;", "Busy")
+      visitEnd()
+    }
+    mv.visitCode()
+    mv.visitInsn(Opcodes.RETURN)
+    mv.visitMaxs(0, 0)
+    mv.visitEnd()
+    cw.visitEnd()
+
     JarOutputStream(jar.outputStream()).use { jos ->
       jos.putNextEntry(JarEntry("$internalName.class"))
       jos.write(cw.toByteArray())
