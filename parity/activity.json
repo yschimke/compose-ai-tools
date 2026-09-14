@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T21:08:49.469Z",
+  "generatedAt": "2026-09-14T22:23:43.598Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "9ca1db8d95efb08b25299f085e70b2a80815ca94",
+        "subject": "chore(main): release 2.14.1 (#5453)",
+        "at": "2026-09-14T22:56:43+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "95dfe025e885904542a32fb8352a2b1b11058ce5",
+        "subject": "fix(ui-builder): honor authored record identities (#5452)",
+        "at": "2026-09-14T22:55:13+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e83bacf433bfb3f079ae3d839a89c2ec062467a1",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.14.0 (#5451)",
+        "at": "2026-09-14T21:16:27Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "4523277c376498283d5e1574119b23b21f5c6d22",
         "subject": "chore(main): release 2.14.0 (#5450)",
@@ -458,30 +482,6 @@
         "sha": "c9c794237ce74d0a13a8cc5d9f0d9eb5bdbb731f",
         "subject": "fix(deps): update compose-preview-contracts to v2.16.0 (#5388)",
         "at": "2026-09-11T05:43:13+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "413e60369220936c6903ce7b011cc4141aaf0445",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.23.0 (#5389)",
-        "at": "2026-09-11T05:42:46+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e502f15b60075614d1d83b32d19b97ce8fbdbc62",
-        "subject": "test(plugin): fail the build when the gradle lane's robolectric inputs drift (#5390)",
-        "at": "2026-09-11T05:42:26+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f34f700dde6e0a36dd77ac775c4764b8a37e5f95",
-        "subject": "fix(deps): update dependency org.robolectric:robolectric to v4.17 (#5384)",
-        "at": "2026-09-11T04:39:10Z",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
