@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.1](https://github.com/yschimke/compose-ai-tools/compare/v2.14.0...v2.14.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **ui-builder:** honor authored record identities ([#5452](https://github.com/yschimke/compose-ai-tools/issues/5452)) ([95dfe02](https://github.com/yschimke/compose-ai-tools/commit/95dfe025e885904542a32fb8352a2b1b11058ce5))
+
 ## [2.14.0](https://github.com/yschimke/compose-ai-tools/compare/v2.13.1...v2.14.0) (2026-09-14)
 
 
