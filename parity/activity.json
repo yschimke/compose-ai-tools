@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T19:37:47.438Z",
+  "generatedAt": "2026-09-14T19:49:49.998Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "b7c26b721dd7a6f65eb119c4f41fe85ee5496f45",
+        "subject": "feat(ui-builder): publish catalog evolution metadata (#5447)",
+        "at": "2026-09-14T20:31:41+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "aa9fb2496c35008c32960f895d028ddea6499fb7",
+        "subject": "build: make automated Gradle lock portable (#5448)",
+        "at": "2026-09-14T20:31:14+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "495cbf62063c42ac04e1bf95a265dbacb22aa46b",
         "subject": "feat: expose Glimmer environments as a catalog axis (#5449)",
@@ -466,22 +482,6 @@
         "sha": "fe84aca52017c5e8dcc6b9546d8ac899d3064199",
         "subject": "refactor(bundle): take the robolectric flags and font properties from the daemon (#5382)",
         "at": "2026-09-10T23:25:28+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "99b81cebaa1085056a00364c57e788ebc26c4762",
-        "subject": "fix(design-artifacts): report the CMP/Wasm first-frame budget, stop gating on it (#5381)",
-        "at": "2026-09-10T23:04:45+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "0db83ded32ab38a846e90966b8d9ce5cae29a2d5",
-        "subject": "refactor(bundle): take the robolectric config facts from the daemon (#5379)",
-        "at": "2026-09-10T22:34:32+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
