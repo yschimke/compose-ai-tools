@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T19:49:49.998Z",
+  "generatedAt": "2026-09-14T21:08:49.469Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "4523277c376498283d5e1574119b23b21f5c6d22",
+        "subject": "chore(main): release 2.14.0 (#5450)",
+        "at": "2026-09-14T21:41:41+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "b7c26b721dd7a6f65eb119c4f41fe85ee5496f45",
         "subject": "feat(ui-builder): publish catalog evolution metadata (#5447)",
@@ -475,14 +483,6 @@
         "subject": "fix(deps): update dependency org.robolectric:robolectric to v4.17 (#5384)",
         "at": "2026-09-11T04:39:10Z",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fe84aca52017c5e8dcc6b9546d8ac899d3064199",
-        "subject": "refactor(bundle): take the robolectric flags and font properties from the daemon (#5382)",
-        "at": "2026-09-10T23:25:28+01:00",
-        "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
       }
