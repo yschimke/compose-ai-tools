@@ -114,6 +114,8 @@ data class UiBuilderStatusSemantics(
   val templates: List<String> = emptyList(),
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
+  /** Successor rules interpreted by a catalog-upgrade-aware builder. */
+  val supersedes: JsonElement? = null,
   val builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
   /** Per-component policy, keyed by builder id. The record beside this file is the inventory. */
   val components: Map<String, UiBuilderComponentPolicy> = emptyMap(),
@@ -527,6 +529,7 @@ object UiBuilderCatalogs {
           templates = policy.templates,
           colorTokens = policy.colorTokens,
           assetRegistry = policy.assetRegistry,
+          supersedes = policy.supersedes,
           builtins = policy.builtins,
           components = components,
         ),

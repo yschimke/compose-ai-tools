@@ -1259,8 +1259,12 @@ class UiBuilderCatalogsTest {
             "displayName": "Screen",
             "group": "Layout",
             "canvas": "frame/round-screen",
+            "implementation": ":catalog/androidx.wear.compose.material3.CardKt.Card",
             "slots": { "content": { "required": true, "role": "list" } }
           }
+        },
+        "supersedes": {
+          "m3/card": { "componentId": "wear-m3/card", "properties": { "title": "headline" } }
         },
         "menu": {
           "${'$'}comment": "the catalog's own @CatalogGroup sections, in reaching order",
@@ -1277,6 +1281,8 @@ class UiBuilderCatalogsTest {
     assertThat(policy.platform).isEqualTo("wear")
     assertThat(policy.builtins.keys).containsExactly("wear-m3/screen-scaffold")
     assertThat(policy.builtins.getValue("wear-m3/screen-scaffold").role).isEqualTo("screen-root")
+    assertThat(policy.builtins.getValue("wear-m3/screen-scaffold").implementation)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
     assertThat(policy.menu?.groupOrder).containsExactly("Layout", "Navigation", "Actions").inOrder()
     assertThat(policy.code).isNull()
 
@@ -1290,6 +1296,7 @@ class UiBuilderCatalogsTest {
     // The declared id wins over the cover sheet's `system`, and the frame rides through verbatim.
     assertThat(generated.catalog.id).isEqualTo("wear-m3")
     assertThat(generated.statusSemantics.frame).isEqualTo(policy.frame)
+    assertThat(generated.statusSemantics.supersedes).isEqualTo(policy.supersedes)
     assertThat(generated.statusSemantics.builtins).isEqualTo(policy.builtins)
     assertThat(generated.diagnostics.map { it.code })
       .containsNoneOf(
