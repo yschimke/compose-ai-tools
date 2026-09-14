@@ -158,10 +158,12 @@ data class UiBuilderPolicyFile(
    * `@BuilderComponent` annotations, and the vocabulary it needs to publish is the one its frozen
    * capability document already states.
    *
-   * Merged onto the annotation-derived entry for the same id, so the two can be used together and
-   * neither has to carry the other's concerns. An entry naming an id no component derives is
-   * reported rather than dropped — see `Diagnostics.POLICY_ORPHANED`'s sibling for the annotation
-   * case, and the same argument: a policy naming nothing is a rename that got away.
+   * Joined by [UiBuilderAuthoredComponent.record] when present, which lets the map key preserve the
+   * published builder id across a source rename. Otherwise it is merged onto the annotation-derived
+   * entry for the same id, so the two can be used together and neither has to carry the other's
+   * concerns. An entry joining no record component is reported rather than dropped — see
+   * `Diagnostics.POLICY_ORPHANED`'s sibling for the annotation case, and the same argument: a
+   * policy naming nothing is a rename that got away.
    */
   val components: Map<String, UiBuilderAuthoredComponent> = emptyMap(),
 )
