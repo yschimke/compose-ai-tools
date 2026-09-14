@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T18:38:54.229Z",
+  "generatedAt": "2026-09-14T18:48:40.047Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "bfa6ae0742ccd70b3cf50886cb5548c2e0e6718b",
+        "subject": "chore(deps): bump actions/setup-java from 5.7.0 to 6.0.1 (#5444)",
+        "at": "2026-09-14T19:29:38+01:00",
+        "author": "dependabot[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "6b73752799ef30b2810bc474ad3a004fbdaeeb83",
         "subject": "chore(deps): bump yschimke/compose-ai-tools/.github/actions/install from 1.74.0 to 2.11.0 (#5445)",
@@ -474,14 +482,6 @@
         "sha": "4037147903b78796bf69bc18e5a9f45ce7acea8f",
         "subject": "fix(plugin): read the doctor's lane from the task graph, not the request (#5377)",
         "at": "2026-09-10T21:57:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "123eb39620c7f3ba7063258137fceb1a08ef26eb",
-        "subject": "fix(plugin): stop the KMP-Android lane leaking into modules that didn't ask (#5376)",
-        "at": "2026-09-10T21:47:22+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
