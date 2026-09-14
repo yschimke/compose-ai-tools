@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-13T10:29:07.105Z",
+  "generatedAt": "2026-09-14T12:04:41.393Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "4e07c0752905aa479c3ed10c54f2ea894600e189",
+        "subject": "docs(agents): run Gradle through build-brief (#5442)",
+        "at": "2026-09-13T11:58:39+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ce6f315a6d78ca5ba12a4321513c4d72ffe68dda",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.13.1 (#5441)",
+        "at": "2026-09-13T10:37:23Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "508d1dc6699d733e1068c81589c1d4fb73b35e24",
         "subject": "chore(main): release 2.13.1 (#5440)",
@@ -467,22 +483,6 @@
         "subject": "feat(plugin): give com.android.kotlin.multiplatform.library the Robolectric lane (#5375)",
         "at": "2026-09-10T21:19:08+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "59eb6da9e161d76b3942e181b7ac9c7889b0f17c",
-        "subject": "fix: publish design reference match scores (#5374)",
-        "at": "2026-09-10T21:03:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "f275f5c424664f950f7d54013e2888cb9a40f770",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.7.0 (#5372)",
-        "at": "2026-09-10T19:56:53Z",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
