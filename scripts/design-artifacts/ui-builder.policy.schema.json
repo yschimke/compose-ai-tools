@@ -187,6 +187,31 @@
         }
       }
     },
+    "supersedes": {
+      "type": "object",
+      "description": "How this catalog explicitly succeeds component ids a saved design may carry. The target component must be present in this catalog. Unlisted properties and slots keep their names; a target that no longer declares one reports it during upgrade preview rather than silently dropping it.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["componentId"],
+        "properties": {
+          "componentId": { "type": "string", "minLength": 1 },
+          "properties": { "type": "object", "additionalProperties": { "type": "string" } },
+          "slots": { "type": "object", "additionalProperties": { "type": "string" } },
+          "modifiers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "variants": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["property", "components"],
+            "description": "A legacy selector whose value chooses a concrete successor component. The selector property is removed from the upgraded node because its meaning is now carried by componentId; componentId above is the fallback when the property is absent or has an unknown value.",
+            "properties": {
+              "property": { "type": "string", "minLength": 1 },
+              "components": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
     "builtins": {
       "type": "object",
       "description": "The components this file may declare that are NOT in the record, and the reason the restriction exists: a builtin has no call site and therefore cannot be in the record — a screen scaffold the catalog structures around, a shape or an image asset that is not a composable at all. A component that HAS a call site belongs in the record, with `@BuilderComponent` on its sticker or an entry under `components` for anything the signature cannot say. A builtin must name a structural role, so the template engine knows which template writes it.",
@@ -252,6 +277,11 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "The modifiers this builtin accepts. Omit for the consumer's structural default — the leaf or container set — and state `[]` to accept none. It cannot be inferred: whether `fillMaxWidth` means anything on a host frame is editorial rather than structural."
+          },
+          "implementation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Canonical id of a wrapper callable in this catalog's component record. A capable builder uses that record for generic native export; an older builder or a missing record entry keeps the declaration and draws the ordinary placeholder. The catalog ships data, not executable browser code."
           }
         }
       }

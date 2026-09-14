@@ -145,6 +145,8 @@ data class UiBuilderPolicyFile(
   val templates: List<String> = emptyList(),
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
+  /** Component/property/slot successor rules, carried verbatim for catalog-upgrade previews. */
+  val supersedes: JsonElement? = null,
   /**
    * Per-component policy the catalog states here rather than on a sticker, keyed by builder id.
    *
@@ -221,6 +223,8 @@ data class UiBuilderBuiltin(
   val properties: List<JsonElement> = emptyList(),
   /** The modifiers this builtin accepts, or null for the consumer's structural default. */
   val modifierCapabilities: List<String>? = null,
+  /** Canonical id of the wrapper call site this catalog ships in its component record. */
+  val implementation: String? = null,
 )
 
 /**

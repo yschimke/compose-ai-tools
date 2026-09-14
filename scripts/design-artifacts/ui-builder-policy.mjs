@@ -167,7 +167,7 @@ function validateTypedShapes(policy, errors) {
   if (isObject(policy.builtins)) {
     for (const [id, builtin] of Object.entries(policy.builtins)) {
       if (!isObject(builtin)) continue;
-      for (const field of ["displayName", "group", "canvas"]) {
+      for (const field of ["displayName", "group", "canvas", "implementation"]) {
         const value = builtin[field];
         if (value !== undefined && typeof value !== "string") {
           errors.push(
