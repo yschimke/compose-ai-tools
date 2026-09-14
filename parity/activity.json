@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T12:04:41.393Z",
+  "generatedAt": "2026-09-14T18:38:54.229Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "6b73752799ef30b2810bc474ad3a004fbdaeeb83",
+        "subject": "chore(deps): bump yschimke/compose-ai-tools/.github/actions/install from 1.74.0 to 2.11.0 (#5445)",
+        "at": "2026-09-14T19:29:31+01:00",
+        "author": "dependabot[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "4e07c0752905aa479c3ed10c54f2ea894600e189",
         "subject": "docs(agents): run Gradle through build-brief (#5442)",
@@ -474,14 +482,6 @@
         "sha": "123eb39620c7f3ba7063258137fceb1a08ef26eb",
         "subject": "fix(plugin): stop the KMP-Android lane leaking into modules that didn't ask (#5376)",
         "at": "2026-09-10T21:47:22+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8e3eddcbada3a90d888b461a74cdf7afdd4d554e",
-        "subject": "feat(plugin): give com.android.kotlin.multiplatform.library the Robolectric lane (#5375)",
-        "at": "2026-09-10T21:19:08+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
