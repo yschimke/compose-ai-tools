@@ -29,11 +29,18 @@ if ! command -v build-brief >/dev/null 2>&1; then
   exit 1
 fi
 
+worker_limit=(--max-workers=4)
+for argument in "$@"; do
+  case "${argument}" in
+    --max-workers|--max-workers=*|-Dorg.gradle.workers.max=*) worker_limit=(); break ;;
+  esac
+done
+
 command=(
   build-brief
   "${repo_root}/gradlew"
   --priority=low
-  --max-workers=4
+  "${worker_limit[@]}"
   -Dorg.gradle.daemon.idletimeout=600000
   --non-interactive
   "$@"
@@ -45,8 +52,8 @@ if [ "${exclusive}" = false ]; then
   exec "${command[@]}"
 fi
 
-if ! command -v flock >/dev/null 2>&1; then
-  echo "the --exclusive profile requires flock (util-linux)." >&2
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "the --exclusive profile requires Python 3 for its portable file lock." >&2
   exit 1
 fi
 
@@ -55,4 +62,15 @@ if [ ! -d "${lock_directory}" ] || [ ! -w "${lock_directory}" ]; then
   lock_directory=/tmp
 fi
 lock_path="${lock_directory}/compose-preview-gradle-${UID}.lock"
-exec flock "${lock_path}" "${command[@]}"
+exec python3 - "${lock_path}" "${command[@]}" <<'PY'
+import fcntl
+import os
+import sys
+
+lock_path = sys.argv[1]
+command = sys.argv[2:]
+lock_file = open(lock_path, "a+", encoding="utf-8")
+fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+os.set_inheritable(lock_file.fileno(), True)
+os.execvp(command[0], command)
+PY
