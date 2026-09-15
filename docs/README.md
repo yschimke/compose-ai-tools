@@ -29,6 +29,7 @@ this index as the map of everything else.
 - [SDK_COMPATIBILITY.md](SDK_COMPATIBILITY.md) — JDK × Android SDK support matrix.
 - [RENDER_LANE_PARITY.md](RENDER_LANE_PARITY.md) — measured snapshot / live / Wasm / SVG parity for the `compose-m3` + `wear-m3` catalogs.
 - [DATA_PRODUCTS.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/DATA_PRODUCTS.md) — the two senses of "data product" and the single-producer model. In compose-preview-daemon, with the extractors.
+- [RENDER_ASSERTIONS.md](RENDER_ASSERTIONS.md) — declaring properties a render must hold to (a font, a required role) and checking them against the data-product sidecars a render already writes.
 - [DEVICE_FRAMES.md](DEVICE_FRAMES.md) · [LOTTIE_PREVIEWS.md](LOTTIE_PREVIEWS.md) · [notifications.md](notifications.md) — shipped feature guides.
 - [APP_TOURS.md](APP_TOURS.md) — app-level previews: real activities (hero image), intents, scripted multi-step tours.
 
