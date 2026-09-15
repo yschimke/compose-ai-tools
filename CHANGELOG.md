@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.15.0](https://github.com/yschimke/compose-ai-tools/compare/v2.14.1...v2.15.0) (2026-09-15)
+
+
+### Features
+
+* **design-pages:** support per-catalog importer configs ([#5456](https://github.com/yschimke/compose-ai-tools/issues/5456)) ([9506974](https://github.com/yschimke/compose-ai-tools/commit/9506974550ca95c5c2a6c61bb9bfa65a87e32ff0))
+
 ## [2.14.1](https://github.com/yschimke/compose-ai-tools/compare/v2.14.0...v2.14.1) (2026-09-14)
 
 
