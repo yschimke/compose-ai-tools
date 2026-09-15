@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-15T08:21:13.819Z",
+  "generatedAt": "2026-09-15T09:04:21.457Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "38d8fe0c034933c390786d4779cb11c48cd79d40",
+        "subject": "chore(main): release 2.15.0 (#5457)",
+        "at": "2026-09-15T09:37:38+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "9506974550ca95c5c2a6c61bb9bfa65a87e32ff0",
         "subject": "feat(design-pages): support per-catalog importer configs (#5456)",
@@ -474,14 +482,6 @@
         "sha": "3a97978bb6c32f7291f9f72d097c6856029cc1a3",
         "subject": "fix(deps): update kotlin to v2.4.20 (#5385)",
         "at": "2026-09-11T05:44:54+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bd9903d734e6af8791d495d99284a415837fac73",
-        "subject": "fix(deps): update rc-players to v1.60.2 (#5386)",
-        "at": "2026-09-11T05:44:23+01:00",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
