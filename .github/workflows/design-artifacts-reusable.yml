@@ -33,6 +33,40 @@ name: Design Artifacts (reusable)
 # tier) are intentionally out of scope — a caller that needs them keeps its own
 # workflow. This covers single-module (± one extra module) catalogs and repository-wide static or
 # multi-live-bundle catalogs spanning every preview-enabled module.
+#
+# ## Scoping a multi-lane caller (issue #5438) — READ THIS IF YOU PUBLISH MORE THAN ONE LANE
+#
+# A caller that publishes several catalogs from one repository usually narrows a push run with its
+# own `Scope` job, diffing `github.event.before..$GITHUB_SHA` and lighting up only the lanes whose
+# inputs moved. That premise — "the diff of one push is the whole truth" — is false in one specific
+# way, and it drops a lane's republish permanently and silently when it fails:
+#
+#   concurrency:
+#     group: design-artifacts-${{ github.ref }}    # ← one bucket for EVERY lane
+#     cancel-in-progress: false
+#
+# `cancel-in-progress: false` protects the IN-PROGRESS run, not the PENDING one. GitHub keeps at
+# most one pending run per concurrency group, so a newly queued run cancels the one already waiting.
+# The cancelled run's lanes are then never re-rendered, because the run that replaced it scopes to
+# its own push — which touched something else. Every byte of the change is on `main`; the delivery
+# branch just never regenerates, until the weekly cron.
+#
+# Two things fix it, and the second is the one that matters:
+#
+#  1. **Split the concurrency group per lane** — `design-artifacts-${{ github.ref }}-<system>` on the
+#     JOB rather than the workflow, so the lanes queue independently instead of evicting one
+#     another. Worth doing regardless (a config-only push has no business queueing behind a 15–30
+#     minute render), but it is not sufficient: a genuine cancellation or a failed run still drops
+#     that lane silently.
+#  2. **Make the scope self-healing** — diff each lane from the commit it was last RENDERED FROM,
+#     not from `github.event.before`. This workflow records that commit for you, on every successful
+#     publish, as the ref `refs/design-artifacts/source/<system>` (see the catalog publish step).
+#     `scripts/design-artifacts/scope-step.sh` in this repository is the whole Scope job against
+#     that baseline, generic over the lane table: point `SCOPE_MAPPER` at your own path→lane mapping
+#     and it needs no other change. A dropped run is then picked up by the next push whatever that
+#     push touched, and the failure above cannot persist.
+#
+# `design-artifacts.yml` here is the reference caller for both.
 
 on:
   workflow_call:
@@ -2255,6 +2289,8 @@ jobs:
       # The commit the bundle was rendered from. Published here so the publish job does not have to
       # check the calling repository out merely to read one SHA — the only thing it wanted it for.
       source-sha: ${{ steps.source-sha.outputs.sha }}
+      # The same revision unabbreviated, for the source marker ref. See the step.
+      source-sha-full: ${{ steps.source-sha.outputs.full }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -4491,7 +4527,13 @@ jobs:
       # step carried when it computed this itself.
       - name: Record the rendered source revision
         id: source-sha
-        run: echo "sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          # The same revision, unabbreviated. The short form is for the commit subject a human
+          # reads; the source MARKER the next run's Scope job resolves is a git ref, and a ref can
+          # only point at a full object id (issue #5438).
+          echo "full=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # Reads the emitter's environment export and re-publishes it as a step output, because the
       # step that consumes it now lives in another job. Deliberately unconditional: when the emitter
@@ -5043,6 +5085,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
           SOURCE_SHA: ${{ needs.generate.outputs.source-sha }}
+          SOURCE_SHA_FULL: ${{ needs.generate.outputs.source-sha-full }}
           PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
         run: |
           set -euo pipefail
@@ -5122,6 +5165,27 @@ jobs:
           GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
             bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"
+
+          # Record what this lane was rendered from, so the NEXT run's Scope job can diff from it
+          # rather than from the one push that started that run (issue #5438). A run cancelled while
+          # pending — which is what happens whenever a caller buckets every lane into one
+          # concurrency group — otherwise strands its catalogs until the weekly cron, because the
+          # run that replaced it scopes to its own push.
+          #
+          # Unconditional on what the push above did, deliberately: SKIP_IF_UNCHANGED commits
+          # nothing when the render is byte-identical, and that lane is still not stale.
+          #
+          # Guarded on the file existing for the same reason push-history.sh is below: these helpers
+          # come from the pinned export-driver checkout, which for an external caller is an immutable
+          # release commit that predates anything this workflow adds. A missing helper is a notice,
+          # not a failed publish — the scope degrades to the delivery branch subject, which
+          # over-renders rather than under-renders.
+          MARKER="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/mark-published-source.sh"
+          if [ -f "$MARKER" ]; then
+            bash "$MARKER" --system "$SYSTEM" --repo "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA_FULL"
+          else
+            echo "::notice::design-artifacts source marker: the pinned export driver has no mark-published-source.sh; skipping. It resumes once the driver pin advances."
+          fi
 
       - name: Publish render history to design-artifacts/${{ inputs.system }}
         if: ${{ inputs.publish }}

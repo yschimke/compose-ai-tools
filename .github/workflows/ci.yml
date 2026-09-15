@@ -981,6 +981,12 @@ jobs:
       # fail silently in production (a delivery branch just stops regenerating).
       - name: Run design-artifacts scope-step tests
         run: scripts/design-artifacts/test-scope-step.sh
+
+      # Guards the per-lane baseline the scope diffs from. A grammar that quietly
+      # stops matching fails nothing by itself — it just sends every lane back to
+      # the push range and restores the defect issue #5438 describes.
+      - name: Run design-artifacts published-source tests
+        run: scripts/design-artifacts/test-published-source.sh
       # The `Package.swift` rewriter self-test moved to yschimke/rc-players with the iOS framework
       # it describes.
       - name: Run snapshot-version tests
