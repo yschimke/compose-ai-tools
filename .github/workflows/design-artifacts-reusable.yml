@@ -45,6 +45,14 @@ on:
         description: 'Path to catalog.spec.json in the caller repo.'
         required: true
         type: string
+      design-pages-config:
+        description: >-
+          Path to the caller repository's committed design-page importer config. The config names
+          the page cache directory and its Figma file key. Defaults to design-pages.json; set this
+          per system when one repository publishes catalogs backed by different design kits.
+        required: false
+        type: string
+        default: 'design-pages.json'
       module:
         description: 'Gradle module path to render (e.g. ":app"). Omit to discover and publish every module with the preview plugin applied.'
         required: false
@@ -511,6 +519,7 @@ env:
   INPUT_EMBED_DEPS: ${{ inputs.embed-deps }}
   INPUT_RENDER_TIMEOUT: ${{ inputs.render-timeout }}
   INPUT_SPEC: ${{ inputs.spec }}
+  INPUT_DESIGN_PAGES_CONFIG: ${{ inputs.design-pages-config }}
   # Where the rendered Gradle BUILD sits in the checkout. The plugin records each project's
   # directory relative to its own `rootDir`, which for a separate-build monorepo is the sample's
   # root — so the catalog step lifts those to repository-relative paths with this.
@@ -4499,7 +4508,8 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/emit-design-pages.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
-            --spec "$INPUT_SPEC"
+            --spec "$INPUT_SPEC" \
+            --config "$INPUT_DESIGN_PAGES_CONFIG"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored

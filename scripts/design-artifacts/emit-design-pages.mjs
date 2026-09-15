@@ -3,7 +3,7 @@
  * `/{system}/pages/` surface.
  *
  *     node emit-design-pages.mjs --out <bundle dir> --repo <repo root> \
- *       [--pages design/pages] [--spec catalog.spec.json] [--strict]
+ *       [--config design-pages.json] [--pages design/pages] [--spec catalog.spec.json] [--strict]
  *
  * `--out` is the staged bundle the workflow is about to publish to `design-artifacts/<system>`;
  * this adds `pages/index.json` plus one cached SVG per page and leaves the rest of it alone. Absent
@@ -54,13 +54,15 @@ const STRICT = process.argv.includes("--strict");
  * What the producer's own config says about its import: where it put its output, and which Figma
  * file it came from.
  *
- * `design-pages.json` already names the output directory, so read that rather than assuming the
+ * The importer config already names the output directory, so read that rather than assuming the
  * default: a repo that set `outDir` elsewhere would otherwise publish nothing, silently, while the
  * import step reported success. It also names the `fileKey`, which is the only record of WHICH kit
- * the pages are — the question the guard below turns on.
+ * the pages are — the question the guard below turns on. `--config` lets a multi-system repository
+ * select a different committed cache for each kit; its default preserves the original
+ * `design-pages.json` convention.
  */
 function importerConfig() {
-  const configPath = path.resolve(REPO, "design-pages.json");
+  const configPath = path.resolve(REPO, arg("config", "design-pages.json"));
   let config = {};
   if (fs.existsSync(configPath)) {
     try {
