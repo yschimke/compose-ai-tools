@@ -13,6 +13,7 @@ import {
   SUPPORTED,
   evaluate,
   formatResult,
+  mergeProducts,
   observe,
   predicateFor,
   previewMatches,
@@ -400,4 +401,71 @@ test("runAssertions fails on a failure, a no-data preview, or a stale exception 
     { "fonts-used": { LegacyBanner: fontsGood } },
   );
   assert.equal(stale.ok, false);
+});
+
+test("a non-array exceptions value is a validation error, not a crash", () => {
+  // A valid-JSON but wrong-shaped value used to throw out of `validateAssertions`, so the CLI
+  // printed a stack trace — including under `--json` — instead of the invalid-document result it
+  // promises. Every non-array shape has to come back as an error.
+  for (const exceptions of [{}, "none", 3, true]) {
+    const errors = validateAssertions({ assertions: [{ ...assertFamily, exceptions }] });
+    assert.ok(
+      errors.some((e) => /"exceptions" must be an array/.test(e)),
+      `exceptions: ${JSON.stringify(exceptions)} produced ${JSON.stringify(errors)}`,
+    );
+  }
+  // `undefined` stays legal — exceptions are optional.
+  assert.deepEqual(validateAssertions({ assertions: [assertFamily] }), []);
+});
+
+test("runAssertions reports a malformed exceptions value rather than throwing", () => {
+  const { ok, report } = runAssertions(
+    { assertions: [{ ...assertFamily, exceptions: {} }] },
+    { "fonts-used": { S: fontsGood } },
+  );
+  assert.equal(ok, false);
+  assert.match(report, /"exceptions" must be an array/);
+});
+
+// ---------------------------------------------------------------- merging sources
+
+test("distinct preview ids across sources merge into one render set", () => {
+  const { products, collisions } = mergeProducts([
+    { source: "a.zip", products: { "fonts-used": { A: fontsGood }, "compose-semantics": {} } },
+    { source: "b.zip", products: { "fonts-used": { B: fontsGood }, "compose-semantics": {} } },
+  ]);
+  assert.deepEqual(collisions, []);
+  assert.deepEqual(Object.keys(products["fonts-used"]).sort(), ["A", "B"]);
+});
+
+test("a preview id supplied by two sources is a collision, not a last-one-wins overwrite", () => {
+  // The regression this guards: module a violates the assertion, module b passes with the same id.
+  // Overwriting would evaluate only b's record and exit 0 on a violation that was read and thrown
+  // away — a false pass, which is the one outcome this whole check exists to prevent.
+  const { products, collisions } = mergeProducts([
+    { source: "a.zip", products: { "fonts-used": { "pkg.Screen": fontsFellBack } } },
+    { source: "b.zip", products: { "fonts-used": { "pkg.Screen": fontsGood } } },
+  ]);
+  assert.equal(collisions.length, 1);
+  assert.match(collisions[0], /"pkg\.Screen" supplied by both a\.zip and b\.zip/);
+  // The first contributor's data is kept, so the violation is still reported alongside it.
+  assert.deepEqual(products["fonts-used"]["pkg.Screen"], fontsFellBack);
+  assert.equal(evaluate(assertFamily, products["fonts-used"]).failures.length, 1);
+});
+
+test("the same id in different products is not a collision", () => {
+  const { collisions } = mergeProducts([
+    { source: "a.zip", products: { "fonts-used": { S: fontsGood } } },
+    { source: "b.zip", products: { "compose-semantics": { S: semantics([]) } } },
+  ]);
+  assert.deepEqual(collisions, []);
+});
+
+test("mergeProducts tolerates a source that indexed nothing", () => {
+  const { products, collisions } = mergeProducts([
+    { source: "empty.zip", products: {} },
+    { source: "a.zip", products: { "fonts-used": { A: fontsGood } } },
+  ]);
+  assert.deepEqual(collisions, []);
+  assert.deepEqual(Object.keys(products["fonts-used"]), ["A"]);
 });

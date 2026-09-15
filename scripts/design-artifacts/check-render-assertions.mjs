@@ -17,7 +17,12 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { zipOffset } from "./zip-offset.mjs";
-import { SUPPORTED, productsFromEntries, runAssertions } from "./render-assertions.mjs";
+import {
+  SUPPORTED,
+  mergeProducts,
+  productsFromEntries,
+  runAssertions,
+} from "./render-assertions.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -59,7 +64,7 @@ try {
 // Sidecars from every source are merged into one `{product: {preview: data}}` before evaluating,
 // so a multi-module catalog asserts across its whole render rather than once per bundle — an
 // `appliesTo` naming a preview from another module would otherwise report a bogus no-data.
-const products = { "fonts-used": {}, "compose-semantics": {} };
+const indexed = [];
 const unreadable = [];
 
 // `fflate` is imported only when a bundle is actually passed. Reading an unpacked `--previews-dir`
@@ -93,18 +98,19 @@ for (const dir of values["previews-dir"]) {
   absorb(productsFromEntries(entries), dir);
 }
 
-function absorb({ products: found, unreadable: bad }, source) {
-  for (const product of Object.keys(products)) Object.assign(products[product], found[product]);
+function absorb({ products, unreadable: bad }, source) {
+  indexed.push({ source, products });
   for (const message of bad) unreadable.push(`${source} — ${message}`);
 }
 
+const { products, collisions } = mergeProducts(indexed);
 const { ok, results, report } = runAssertions(doc, products);
 // An unreadable sidecar is a failure, not a warning: it is indistinguishable from an assertion
 // that had nothing to check, and that is the whole failure mode being guarded against.
-const passed = ok && unreadable.length === 0;
+const passed = ok && unreadable.length === 0 && collisions.length === 0;
 
 if (values.json) {
-  console.log(JSON.stringify({ ok: passed, results, unreadable }, null, 2));
+  console.log(JSON.stringify({ ok: passed, results, unreadable, collisions }, null, 2));
 } else {
   const counts = Object.fromEntries(
     Object.entries(products).map(([p, byPreview]) => [p, Object.keys(byPreview).length]),
@@ -115,6 +121,7 @@ if (values.json) {
   );
   if (report) console.log(report);
   for (const message of unreadable) reportFinding("error", "Unreadable render sidecar", message);
+  for (const message of collisions) reportFinding("error", "Duplicate preview id", message);
   // The report is already on stdout; re-emitting each FAIL line is only useful as a workflow
   // annotation, so it is skipped outside Actions rather than printing every failure twice.
   if (process.env.GITHUB_ACTIONS === "true")

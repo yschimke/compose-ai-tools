@@ -73,6 +73,10 @@ export function validateAssertions(doc) {
         errors.push(`${at}: unknown path "${path}" for ${a.product} (known: ${paths.join(", ")})`);
     }
 
+    if (a.exceptions !== undefined && !Array.isArray(a.exceptions)) {
+      errors.push(`${at}: "exceptions" must be an array`);
+      return;
+    }
     for (const [j, ex] of (a.exceptions ?? []).entries()) {
       const et = `${at}.exceptions[${j}]`;
       if (typeof ex?.preview !== "string") errors.push(`${et}: needs a "preview"`);
@@ -284,4 +288,34 @@ export function runAssertions(doc, products) {
   );
   const report = doc.assertions.map((a, i) => formatResult(a, results[i])).join("\n");
   return { ok, results, report };
+}
+
+/**
+ * Merge several sources' indexed products into one `{product: {preview: data}}`.
+ *
+ * [indexed] is `[{source, products}]` in the order the caller supplied them. A preview id that two
+ * sources both contribute is a named collision, NOT a last-one-wins overwrite: if the first source
+ * violated an assertion and the second passes, overwriting exits 0 on a violation that was read
+ * and discarded — the exact false pass this file exists to prevent. The first contributor's data
+ * is kept so the violation is still reported alongside the collision. Two modules that genuinely
+ * share a preview id need namespacing at the render (`modulePreviewId`), not a merge rule here.
+ */
+export function mergeProducts(indexed) {
+  const products = { "fonts-used": {}, "compose-semantics": {} };
+  const sourceOf = { "fonts-used": {}, "compose-semantics": {} };
+  const collisions = [];
+  for (const { source, products: found } of indexed) {
+    for (const product of Object.keys(products)) {
+      for (const [id, data] of Object.entries(found?.[product] ?? {})) {
+        const seen = sourceOf[product][id];
+        if (seen !== undefined) {
+          collisions.push(`${product} "${id}" supplied by both ${seen} and ${source}`);
+          continue;
+        }
+        sourceOf[product][id] = source;
+        products[product][id] = data;
+      }
+    }
+  }
+  return { products, collisions };
 }
