@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
+    "generatedFrom": "114fd20a4479458693898d856a53d0b39ea63390",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -8239,6 +8239,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png",
             "versions": [
                 {
+                    "blob": "116efe52e03ec6dfb3c651a194a452b85e68d1f8",
+                    "commit": "114fd20a4479458693898d856a53d0b39ea63390",
+                    "date": "2026-09-15T21:19:15Z",
+                    "sourceSha": "a5bbe21f",
+                    "commits": 1
+                },
+                {
                     "blob": "db45f9d7cca9990b587cadcec36a862a95db4436",
                     "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
                     "date": "2026-09-14T22:37:48Z",
@@ -8246,13 +8253,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer · Pressed": {
             "path": "renders/samples:xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed-2221a813.png",
             "versions": [
+                {
+                    "blob": "4d2e5f1d156eb52350964b275d70024f2201d4e0",
+                    "commit": "114fd20a4479458693898d856a53d0b39ea63390",
+                    "date": "2026-09-15T21:19:15Z",
+                    "sourceSha": "a5bbe21f",
+                    "commits": 1
+                },
                 {
                     "blob": "1885ccd76268bed8a40dc89066be954ada56af50",
                     "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
@@ -8261,7 +8275,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8299,6 +8313,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
             "versions": [
                 {
+                    "blob": "d87f2e66a6679a4d035839ae7e0f3b90dfc578a2",
+                    "commit": "114fd20a4479458693898d856a53d0b39ea63390",
+                    "date": "2026-09-15T21:19:15Z",
+                    "sourceSha": "a5bbe21f",
+                    "commits": 1
+                },
+                {
                     "blob": "ad705bd410126193249cfe5494d3aae9a38b1ca6",
                     "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
                     "date": "2026-09-14T22:37:48Z",
@@ -8306,7 +8327,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8374,6 +8395,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.png",
             "versions": [
                 {
+                    "blob": "3cde63528d2cc05e535c3f0948fd927b10ff3cf6",
+                    "commit": "114fd20a4479458693898d856a53d0b39ea63390",
+                    "date": "2026-09-15T21:19:15Z",
+                    "sourceSha": "a5bbe21f",
+                    "commits": 1
+                },
+                {
                     "blob": "94fc42f37cf440301a4b53c26506f484125d7d4a",
                     "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
                     "date": "2026-09-14T22:37:48Z",
@@ -8381,7 +8409,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
