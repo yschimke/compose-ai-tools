@@ -351,7 +351,7 @@ composeai-contracts = "2.18.0"
 # for the same reason as the contracts above. The Gradle plugin bakes this value in as
 # `PreviewDaemonVersion` and resolves `renderer-*` / `daemon-*` for external consumers at it, and
 # the CLI fetches that release's sidecar archives (`DaemonSidecarProvision`) at it.
-composeai-preview-daemon = "3.4.8"
+composeai-preview-daemon = "3.4.9"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
