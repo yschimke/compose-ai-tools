@@ -4140,7 +4140,7 @@
     "functionName": "GlimmerListItemFocused",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png",
-    "sha256": "5b2d9fdaa0d398e143ccc27959c5c7d73cb8771311869b7692784cbb5cd65c62",
+    "sha256": "c7d448bf73cd818a3b43c2ab3baff9a19910dc045f5bf38c4c46a19ff7c85093",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed": {
@@ -4148,7 +4148,7 @@
     "functionName": "GlimmerListItemPressed",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListItemPressed_Glimmer_Pressed-2221a813.png",
-    "sha256": "64979b70ba6d63e2cfdacff1f829f827910b6ce519f670d13c31159547ae1519",
+    "sha256": "1733433c6e5e8673643b76492a4c91b1bca87a66f80d8a9959bdf93404a2f39a",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk": {
@@ -4172,7 +4172,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
-    "sha256": "7e8a83fa6df6b0af2dab472b5da3de9635d6ffd78e3dfd32ac9b19aa7a72b3af",
+    "sha256": "0e4fc9da8ec70bd3b850ea729c91bc95188706f31e05434738c20b13ff27713c",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuAnimated_Animated Light": {
@@ -4212,7 +4212,7 @@
     "functionName": "GlimmerXrMenuOverlay",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.png",
-    "sha256": "719b362db0148db583db7a998d68595790999f0105ce1e94b5b227860e53ab38",
+    "sha256": "0b58a503226ff19dfe69c3c4ddb9a7c7ff5268377c3a43db10ae4e8d54f94eb3",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuVeniceCanalCats_VeniceCanalCats": {
