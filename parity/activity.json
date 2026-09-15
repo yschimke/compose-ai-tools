@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-14T22:23:43.598Z",
+  "generatedAt": "2026-09-15T08:21:13.819Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "9506974550ca95c5c2a6c61bb9bfa65a87e32ff0",
+        "subject": "feat(design-pages): support per-catalog importer configs (#5456)",
+        "at": "2026-09-15T09:15:00+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "2e72ad0be02fba6a0ed10171a7184eac09caed4a",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.14.1 (#5454)",
+        "at": "2026-09-14T22:31:50Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "9ca1db8d95efb08b25299f085e70b2a80815ca94",
         "subject": "chore(main): release 2.14.1 (#5453)",
@@ -466,22 +482,6 @@
         "sha": "bd9903d734e6af8791d495d99284a415837fac73",
         "subject": "fix(deps): update rc-players to v1.60.2 (#5386)",
         "at": "2026-09-11T05:44:23+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "08124dfe139f0ed7e80a3c9d045eb1f0b34b6d91",
-        "subject": "fix(deps): update compose-ai-tools to v2.16.0 (#5387)",
-        "at": "2026-09-11T05:43:53+01:00",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c9c794237ce74d0a13a8cc5d9f0d9eb5bdbb731f",
-        "subject": "fix(deps): update compose-preview-contracts to v2.16.0 (#5388)",
-        "at": "2026-09-11T05:43:13+01:00",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
