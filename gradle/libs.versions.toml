@@ -387,7 +387,7 @@ composeai-preview-daemon = "3.4.3"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "1.60.2"
+rcplayers = "1.61.1"
 
 [libraries]
 
