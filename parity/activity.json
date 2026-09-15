@@ -1,11 +1,35 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-15T09:04:21.457Z",
+  "generatedAt": "2026-09-15T20:47:20.176Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "3a6b0b7274ee33b16ae6fe4ea00e8968dd75eeb3",
+        "subject": "chore(deps): update dependency yschimke/rc-players to v1.63.0 (#5461)",
+        "at": "2026-09-15T21:40:54+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "47f4e63fd0f488f2ed89db4b28a807f4d7db3544",
+        "subject": "fix(deps): update rc-players to v1.61.1 (#5462)",
+        "at": "2026-09-15T21:40:09+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "caf56075df51c074ff383de849f96aa61f7f7e1e",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.15.0 (#5458)",
+        "at": "2026-09-15T09:15:10Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "38d8fe0c034933c390786d4779cb11c48cd79d40",
         "subject": "chore(main): release 2.15.0 (#5457)",
@@ -458,30 +482,6 @@
         "sha": "59077af3798c87f91ebb7dc388f1c0631208238e",
         "subject": "chore(ci): update the design-artifacts export driver to v2.8.0 (#5392)",
         "at": "2026-09-11T05:39:06Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "2b11fa95b42527dc65a60c40c20aff50ed559ce3",
-        "subject": "chore(main): release 2.8.0 (#5373)",
-        "at": "2026-09-11T06:28:02+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bf48803e8c6660087bf76dc43a7c9874f3646b1d",
-        "subject": "fix(build): stop the schema-metadata task capturing the build script (#5391)",
-        "at": "2026-09-11T06:18:57+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3a97978bb6c32f7291f9f72d097c6856029cc1a3",
-        "subject": "fix(deps): update kotlin to v2.4.20 (#5385)",
-        "at": "2026-09-11T05:44:54+01:00",
         "author": "renovate[bot]",
         "previewIds": [],
         "components": []
