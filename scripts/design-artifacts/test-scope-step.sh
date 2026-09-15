@@ -192,6 +192,9 @@ run_case 'dispatch' "$ALL" '{}' EVENT=workflow_dispatch
 # --- the dispatch lane selector ---------------------------------------------
 run_case 'dispatch: one lane'  'wear-m3' '{}' EVENT=workflow_dispatch ONLY=wear-m3
 run_case 'dispatch: two lanes' "$ALL"    '{}' EVENT=workflow_dispatch ONLY=compose-m3,wear-m3
+# The form a human types, and the one the workflow input's own description shows.
+# It used to scope away every lane after the first, silently.
+run_case 'dispatch: comma-space' "$ALL" '{}' EVENT=workflow_dispatch 'ONLY=compose-m3, wear-m3'
 # The selector outranks the everything-regenerates rule a dispatch would otherwise
 # hit, which is the entire reason it exists.
 run_case 'selector beats force-all' 'compose-m3' '{}' FORCE_ALL=true ONLY=compose-m3

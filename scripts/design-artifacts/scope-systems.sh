@@ -89,14 +89,32 @@ case "${1:-}" in
     # false — so a stale `wear-m3` costs one render rather than every catalog here.
     # An unknown name is a typo that would otherwise read as "regenerate nothing
     # unusual" and silently do the wrong thing, so it is rejected loudly.
-    only=",${2:-},"
-    if [ "$only" = ",," ]; then
+    #
+    # Tokens are NORMALISED before they are validated OR matched, and both halves
+    # matter. `compose-m3, wear-m3` is the form a human types — it is the form this
+    # input's own description shows — and an earlier cut validated the split tokens
+    # (where word splitting had already eaten the space) while matching against the
+    # raw string (where it had not). Every name after the first then validated fine
+    # and quietly reported `false`: a lane the operator explicitly asked for,
+    # silently left stale. That is the exact failure this selector exists to end,
+    # reintroduced inside the fix for it.
+    #
+    # Unquoted command substitution does the trimming: it word-splits on whitespace,
+    # so surrounding spaces, tabs and newlines are gone before `system_pattern` sees
+    # a name. A token with whitespace INSIDE it splits into two names and is
+    # rejected, which is the right answer for `wear m3`.
+    only=','
+    for name in $(tr ',' '\n' <<<"${2:-}"); do
+      system_pattern "$name" > /dev/null
+      only="$only$name,"
+    done
+    # Empty, blank, or nothing but separators. Falling through would report every
+    # system false and regenerate nothing at all — a dispatch that silently does
+    # less than the default it replaced.
+    if [ "$only" = ',' ]; then
       echo "--only needs a comma-separated system list" >&2
       exit 2
     fi
-    for name in $(tr ',' ' ' <<<"${2:-}"); do
-      system_pattern "$name" > /dev/null
-    done
     for system in "${SYSTEMS[@]}"; do
       case "$only" in
         *",$system,"*) echo "$system=true" ;;
