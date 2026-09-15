@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.15.1](https://github.com/yschimke/compose-ai-tools/compare/v2.15.0...v2.15.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to v3.4.8 ([#5460](https://github.com/yschimke/compose-ai-tools/issues/5460)) ([bb586d4](https://github.com/yschimke/compose-ai-tools/commit/bb586d4d1fa267df3e4bf1ba48ea5bb06218e0fc))
+* **deps:** update compose-preview-daemon to v3.4.9 ([#5466](https://github.com/yschimke/compose-ai-tools/issues/5466)) ([0705e99](https://github.com/yschimke/compose-ai-tools/commit/0705e991873a0858eadb0cae73edb61e4aa9c7a5))
+* **deps:** update rc-players to v1.61.1 ([#5462](https://github.com/yschimke/compose-ai-tools/issues/5462)) ([47f4e63](https://github.com/yschimke/compose-ai-tools/commit/47f4e63fd0f488f2ed89db4b28a807f4d7db3544))
+* **deps:** update rc-players to v1.63.0 ([#5464](https://github.com/yschimke/compose-ai-tools/issues/5464)) ([a5bbe21](https://github.com/yschimke/compose-ai-tools/commit/a5bbe21ff0d3269abefcc898222a57e5282b771a))
+
 ## [2.15.0](https://github.com/yschimke/compose-ai-tools/compare/v2.14.1...v2.15.0) (2026-09-15)
 
 
