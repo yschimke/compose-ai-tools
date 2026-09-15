@@ -91,6 +91,56 @@ branch rather than paying for every system. Measured over the last 25 successful
 runs: a scoped push-triggered render is 8–29 min (median ~14); a full all-systems
 `workflow_dispatch` is 31–38 min.
 
+### Each lane is scoped against what it last rendered, not against one push
+
+The scope decision itself lives in
+[`scope-step.sh`](../../scripts/design-artifacts/scope-step.sh), with
+`scope-systems.sh` supplying only this repository's path→lane table. It diffs each
+lane from **the commit that lane was last rendered from**, and that is not a detail:
+scoping every lane to `github.event.before..$GITHUB_SHA` drops a lane's republish
+permanently, silently, with every byte of the change committed on `main`.
+
+The mechanism is the concurrency group. `cancel-in-progress: false` protects the
+*in-progress* run, not the *pending* one — GitHub keeps at most one pending run per
+group, so a newly queued run cancels the one already waiting. The cancelled run's
+lanes are never re-rendered, because the run that replaced it scopes to its own
+push, which touched something else. That is not hypothetical: it is why
+`design-artifacts/wear-m3-catalog` served a pre-correction `ui-builder.json` for
+four days in September 2026 (issue #5438).
+
+Two changes close it:
+
+- **Per-lane concurrency groups.** Each render job takes
+  `design-artifacts-<ref>-<system>` rather than the workflow taking one bucket for
+  the whole repository, so the lanes queue independently and none can evict
+  another. Necessary, not sufficient — a genuine cancellation or a failed run still
+  drops that lane.
+- **A self-healing baseline.** Every successful publish records the rendered commit
+  as the ref `refs/design-artifacts/source/<system>`
+  ([`mark-published-source.sh`](../../scripts/design-artifacts/mark-published-source.sh)),
+  and the next run's scope resolves it
+  ([`published-source.sh`](../../scripts/design-artifacts/published-source.sh))
+  and diffs from there. A dropped run is picked up by the *next* push whatever that
+  push touched. A ref rather than the delivery branch's own history because the
+  publish runs `SKIP_IF_UNCHANGED=1`: a render whose output is byte-identical
+  commits nothing, and reading the baseline off the branch would leave it pinned at
+  the last commit that changed bytes — so a shared-input edit that moves no pixel
+  would re-scope every later push to every lane, forever.
+
+Every unresolvable answer regenerates: a compare the API truncates at its 300-file
+cap, a baseline that is not an ancestor of `HEAD`, a lane that has never published.
+Publishing a fresh bundle is never wrong; skipping a stale one is.
+
+A `workflow_dispatch` takes a **`systems`** input (comma-separated, empty ⇒ all), so
+the manual remedy for one stale lane costs one render rather than every catalog in
+the repository.
+
+Callers in other repositories get the marker ref for free — the reusable workflow
+writes it — and can adopt the same scope by pointing `scope-step.sh`'s
+`SCOPE_MAPPER` at their own lane table. The header of
+[`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml)
+carries the recipe.
+
 Renderer / plugin / CLI changes are deliberately **not** in that push trigger:
 they do change the rendered output, but they're touched by most merges, so the
 weekly cron and the release chain absorb that drift instead. Dispatch manually if
