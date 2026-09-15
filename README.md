@@ -56,7 +56,7 @@ dark scheme.
 | Library | `org.jetbrains.compose.material3:material3`<br>`androidx.compose.material3.adaptive:adaptive (planned)` |
 | Renderer | compose-preview 2.14.2-SNAPSHOT |
 | Schema | `design-parity-catalog/v1` |
-| Generated | 2026-09-14 |
+| Generated | 2026-09-15 |
 
 ## Components by group
 
