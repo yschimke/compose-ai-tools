@@ -63,12 +63,12 @@ jobs:
     # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
     # remains buildable from source, but its per-OS packages are no longer core release artifacts.
     needs: [build-applications]
-    # Every release publishes the whole project. There is no selective-publish guard any more:
-    # the repository is one version line of ~27 modules that move together, and deciding per
-    # release which of them "really" changed cost more in machinery and failure modes than the
-    # upload quota it saved. A release publishes all of them at the release's own version, so a
+    # A release publishes only the modules it changed, computed by
+    # `.github/scripts/maven-publish-plan.sh`; skipped modules keep their recorded version, so a
     # POM never names a sibling version that was never uploaded.
     runs-on: ubuntu-latest
+    outputs:
+      publish-set: ${{ steps.plan.outputs.publish-set }}
     permissions:
       contents: read
     env:
@@ -79,6 +79,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG_NAME }}
+          # The publish plan compares each module against the tag IT last published at, so the
+          # checkout needs the tags and the history to diff. `actions/checkout` is shallow by
+          # default: without this the plan finds no tag, takes its fail-safe "publish everything"
+          # path, and the saving silently becomes zero.
+          fetch-depth: 0
           persist-credentials: false
       - name: Derive plugin version from tag
         # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
@@ -109,9 +114,91 @@ jobs:
           # as public GitHub Releases with no artifacts on Central (#4845 deleted this task
           # list along with the `-x :rc-player-*` exclusions that used to follow it).
           #
-          ./gradlew \
-            :gradle-plugin:publishAndReleaseToMavenCentral \
-            publishAndReleaseToMavenCentral
+          # Which modules this release actually uploads. `maven-publish-plan.sh` compares each
+          # module against the tag IT last published at, propagates to dependents, and resolves
+          # every uncertainty to "publish" — Central refuses a second upload of a version, so an
+          # unnecessary publish costs quota while a wrongly-skipped one is unrepairable.
+          #
+          # A `workflow_dispatch` recovery run gets no plan: the checkout may not carry the history
+          # the baseline needs, and publishing everything is the safe answer there.
+          PUBLISH_SET=""
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            PUBLISH_SET="$(.github/scripts/maven-publish-plan.sh --head "$TAG_NAME" | paste -sd, -)"
+            echo "publish set: ${PUBLISH_SET:-<empty>}"
+          fi
+
+          # Ask Gradle for the task paths rather than deriving them here: the plan enumerates
+          # modules by artifact id, Gradle addresses them by project path, and `:gradle-plugin` is
+          # an includeBuild addressed through its own root task. A hand-kept mapping is exactly the
+          # artefact that goes stale silently, and stale here means publishing a module twice or
+          # dropping one out of a release.
+          if [ -n "$PUBLISH_SET" ]; then
+            TASKS="$(./gradlew -q printPublishTasks -Pcomposeai.publishSet="$PUBLISH_SET" \
+              | cut -f1 | tr '\n' ' ')"
+          else
+            TASKS="$(./gradlew -q printPublishTasks -Pcomposeai.publishSet= | cut -f1 | tr '\n' ' ')"
+          fi
+          echo "publishing: $TASKS"
+
+          # Name the tasks explicitly. A bare `./gradlew` is not a no-op that fails loudly — there
+          # is no `defaultTasks` in this build, so it runs `help` and exits 0, and the job goes
+          # green having published nothing. That is how v1.56.0 and v1.56.1 shipped as public
+          # GitHub Releases with no artifacts on Central.
+          [ -n "$TASKS" ] || { echo "no publish tasks resolved" >&2; exit 1; }
+          # shellcheck disable=SC2086
+          ./gradlew $TASKS -Pcomposeai.publishSet="$PUBLISH_SET"
+          echo "PUBLISH_SET=$PUBLISH_SET" >> "$GITHUB_ENV"
+      - name: Expose the publish set
+        id: plan
+        run: echo "publish-set=$PUBLISH_SET" >> "$GITHUB_OUTPUT"
+
+  # Write back what actually published, so the next release's plan has a per-module baseline.
+  #
+  # Its own job, and `continue-on-error`, deliberately. In compose-preview-daemon this started as a
+  # step inside the publish job that pushed straight to `main`; the branch ruleset rejected the push
+  # (`GH013: changes must be made through a pull request`) and took the whole release down with it
+  # AFTER the artifacts were already on Central — unrepairable, because Central refuses a second
+  # upload of a version (its #127). Recording is bookkeeping: it must never be able to fail a
+  # release that succeeded.
+  #
+  # It opens a pull request rather than pushing. That needs `pull-requests: write`, which
+  # release-please.yml must ALSO grant on its `uses:` — a called workflow cannot elevate what its
+  # caller granted, and asking for more is not a job failure but a startup failure of the entire
+  # run, with no jobs at all. That is the daemon's #131, where release-please silently stopped
+  # running for two pushes; both halves land in this change together.
+  record-published:
+    needs: publish-gradle-plugin
+    if: ${{ !cancelled() && needs.publish-gradle-plugin.result == 'success' }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Record the published versions
+        run: |
+          set -euo pipefail
+          .github/scripts/record-published.py \
+            --manifest publishing-manifest.json \
+            --version "${TAG_NAME#v}" \
+            --modules "${{ needs.publish-gradle-plugin.outputs.publish-set }}"
+      - name: Open a pull request with the updated manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- publishing-manifest.json; then
+            echo "manifest unchanged"; exit 0
+          fi
+          BRANCH="chore/record-published-${TAG_NAME}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add publishing-manifest.json
+          git commit -m "chore: record published versions for ${TAG_NAME}"
+          git push -u origin "$BRANCH"
+          gh pr create --fill --base main --head "$BRANCH"
 
   # The Remote Compose player stack used to be published from here — a macOS job for its Apple
   # klibs, plus an XCFramework job that rewrote `Package.swift` and cut a bare SwiftPM version tag.
