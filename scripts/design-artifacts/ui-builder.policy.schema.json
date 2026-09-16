@@ -221,8 +221,12 @@
         "required": ["role"],
         "properties": {
           "role": {
-            "enum": ["screen-root", "list", "list-item", "overlay", "controlled", "decoration"],
-            "description": "Which structural template writes this builtin. The set is closed on purpose: a catalog that needs a seventh role means the engine grows one, once, with a test — not that every catalog ships a compiler. The test that a new role is general is that two catalogs use it."
+            "enum": ["screen-root", "list", "list-item", "container", "overlay", "controlled", "decoration"],
+            "description": "Which structural template writes this builtin. The set is closed on purpose: a catalog that needs an eighth role means the engine grows one, once, with a test — not that every catalog ships a compiler. The test that a new role is general is that two catalogs use it. `container` is the newest, and the one that is not about a screen's decomposition: it holds children in a fixed arrangement and writes no repetition, which is what a box, a column and a row do — and what `list`, the role whose template is handed a list state and an items hole, says they do not."
+          },
+          "shelfRole": {
+            "enum": ["Scaffold", "Container", "Leaf"],
+            "description": "What this builtin IS on the shelf, which decides what the editor calls it and which slots will take it. Not the `role` above: that one says which template WRITES the component, this one says what SHAPE it is, and a capability document publishes this one as `role`. Omit it and the consumer derives it from whether there are slots at all — right for most components, and it turns a design root into an ordinary container."
           },
           "displayName": { "type": "string" },
           "group": { "type": "string" },
@@ -245,13 +249,17 @@
                 "acceptedRoles": { "type": "array", "items": { "type": "string" } },
                 "acceptedTraits": { "type": "array", "items": { "type": "string" } },
                 "required": { "type": "boolean" },
+                "ordered": {
+                  "type": "boolean",
+                  "description": "Whether the order of this slot's children is meaningful. A column's is; a box's overlay stack reads as a set. The consumer composed every builtin slot as ordered because there was no way to say otherwise, and the packaged vocabulary this contract is measured against has six of its fifteen slots unordered — so the shelf stated an editorial fact about six slots that their own catalog denies. Absent is the consumer's default."
+                },
                 "max": {
                   "type": "integer",
                   "minimum": 1,
                   "description": "The most children this slot admits. Absent is unbounded, which is what every builtin slot was before this field and what most of them still are. Present for a host that draws exactly one thing: `remote-m3`'s widget containers are `max: 1` on `content`, and with no way to say so the published shelf offered a container a design could put three children into while the launcher drew one. `required` sets the other end."
                 },
                 "role": {
-                  "enum": ["screen-root", "list", "list-item", "overlay", "controlled", "decoration"],
+                  "enum": ["screen-root", "list", "list-item", "container", "overlay", "controlled", "decoration"],
                   "description": "The structural role each child of this slot is written with, when it is not the child's own. The same closed set the containing builtin's `role` uses, and closed for the same reason: a role the engine does not know selects no template, and a typo caught here is caught before a render rather than during an export."
                 }
               }
@@ -282,6 +290,44 @@
             "type": "string",
             "minLength": 1,
             "description": "Canonical id of a wrapper callable in this catalog's component record. A capable builder uses that record for generic native export; an older builder or a missing record entry keeps the declaration and draws the ordinary placeholder. The catalog ships data, not executable browser code."
+          },
+          "wasm": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "What the canvas lane says about this builtin, overriding what `canvas` implies. A consumer computes the block from the adapter id, which can only say supported or unsupported with a sentence about the adapter; a catalog knows when an adapter is `planned` rather than absent, and knows WHY a component draws the way it does. Every field is optional and overrides only itself, so stating a note keeps the derived support and status.",
+            "properties": {
+              "platformSupported": { "description": "Usually a boolean; carried as written." },
+              "adapterStatus": {
+                "enum": ["supported", "planned", "unsupported"],
+                "description": "`planned` is the one the derivation cannot produce: an adapter that is coming is not the same claim as one that will never exist, and a shelf that conflates them tells an author to design around something that lands next week."
+              },
+              "notes": { "type": "string" }
+            }
+          },
+          "code": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["symbol"],
+            "description": "The call this builtin exports as, for a component with no call site anywhere in this catalog. `implementation` above answers the same question by pointing at a record entry, and is the better answer when there is one, because the record is discovered and so cannot drift from the source. This is for the rest: `layout/box` writes `Box` and imports `androidx.compose.foundation.layout.Box`, and nothing in a foundation catalog's record can say so, because discovery scopes library components to material3/material/wear.",
+            "properties": {
+              "symbol": {
+                "type": "string",
+                "description": "The callable a design exports as. Not `minLength: 1`, deliberately: the packaged vocabulary publishes `{\"symbol\": \"\", \"imports\": []}` for `layout/for-each`, which has no callable to name, and refusing a faithful copy of a declaration is worse than carrying one that says nothing. The pre-flight warns about it instead."
+              },
+              "imports": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "svg": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "fallback"],
+            "description": "What a structured-SVG export makes of this builtin. Not derivable from anything else in the declaration — whether the recorder has a vector for a radial gradient is a fact about the recorder, and whether a raster fallback is acceptable is editorial — so a catalog that could not state it published every component claiming nothing, which reads as unverified rather than as the `verified` most of them are.",
+            "properties": {
+              "status": { "type": "string", "minLength": 1 },
+              "fallback": { "type": "string", "minLength": 1 },
+              "blocksExport": { "type": "boolean" },
+              "notes": { "type": "string" }
+            }
           }
         }
       }
@@ -326,6 +372,7 @@
               "screen-root",
               "list",
               "list-item",
+              "container",
               "overlay",
               "controlled",
               "decoration",

@@ -2,6 +2,9 @@ package ee.schimke.composeai.discovery
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 /**
@@ -494,6 +497,96 @@ class UiBuilderCatalogsTest {
     val builtin = generated.statusSemantics.builtins.getValue("wear-m3/widget-host")
     assertThat(builtin.traits).containsExactly("WearWidgetHost", "ScreenContent").inOrder()
     assertThat(builtin.modifierCapabilities).containsExactly("padding")
+  }
+
+  @Test
+  fun `a builtin publishes the shelf role, the lanes and the call a catalog states`() {
+    // Five fields the packaged vocabulary carries and a policy could not say, so every republished
+    // declaration dropped them: what the component IS on the shelf, what the canvas lane makes of
+    // it, what it exports as, what a structured-SVG export makes of it — and, one level down, a
+    // slot's `ordered`. A consumer DERIVES each of them when they are absent, so silence here is
+    // not silence: it is the derived answer published as if the catalog had agreed with it.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", catalogId = "Containment/Card", group = "Containment")),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "compose-foundation/box" to
+                UiBuilderBuiltin(
+                  role = "container",
+                  shelfRole = "Container",
+                  wasm =
+                    UiBuilderBuiltinWasm(
+                      platformSupported = JsonPrimitive(true),
+                      adapterStatus = "planned",
+                    ),
+                  code =
+                    UiBuilderBuiltinCode(
+                      symbol = "Box",
+                      imports = listOf("androidx.compose.foundation.layout.Box"),
+                    ),
+                  svg = UiBuilderBuiltinSvg(status = "verified", fallback = "none"),
+                  slots = mapOf("children" to Json.parseToJsonElement("{\"ordered\": false}")),
+                )
+            )
+        ),
+      )!!
+
+    // Nothing about the builtin is reported: every one of the five is a field the schema now
+    // admits, so a catalog stating them is a catalog saying more rather than a catalog in error.
+    // (The record component's unclaimed canvas is reported, and is not this test's subject.)
+    assertThat(generated.diagnostics.filter { it.subject.startsWith("compose-foundation/") })
+      .isEmpty()
+    val builtin = generated.statusSemantics.builtins.getValue("compose-foundation/box")
+    assertThat(builtin.shelfRole).isEqualTo("Container")
+    assertThat(builtin.wasm?.adapterStatus).isEqualTo("planned")
+    assertThat(builtin.code?.symbol).isEqualTo("Box")
+    assertThat(builtin.svg?.status).isEqualTo("verified")
+    // The slot is carried verbatim — its shape is the loader's business — so `ordered` reaching the
+    // published file is the whole claim, and it is the claim that failed before the schema allowed
+    // the key at all.
+    assertThat(builtin.slots.getValue("children").jsonObject["ordered"]?.jsonPrimitive?.content)
+      .isEqualTo("false")
+  }
+
+  @Test
+  fun `the two role vocabularies in one declaration reject each other's words`() {
+    // `role` says which template WRITES the component; `shelfRole` says what SHAPE it is. Both are
+    // spelled `role` in the document a consumer reads, which is exactly why crossing them is easy
+    // and why each has to refuse the other's vocabulary rather than publish a word nothing decodes.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "m3/card", canvas = "p"))),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "compose-foundation/box" to
+                UiBuilderBuiltin(role = "container", shelfRole = "container"),
+              "compose-foundation/column" to
+                UiBuilderBuiltin(
+                  role = "container",
+                  wasm = UiBuilderBuiltinWasm(adapterStatus = "soon"),
+                  code = UiBuilderBuiltinCode(symbol = " "),
+                ),
+            )
+        ),
+      )!!
+
+    val codes = generated.diagnostics.map { it.code to it.subject }
+    assertThat(codes)
+      .containsAtLeast(
+        UiBuilderCatalogs.Diagnostics.BUILTIN_SHELF_ROLE_UNKNOWN to "compose-foundation/box",
+        UiBuilderCatalogs.Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN to "compose-foundation/column",
+        UiBuilderCatalogs.Diagnostics.BUILTIN_CODE_EMPTY to "compose-foundation/column",
+      )
+    // `container` IS a structural role now, so the thing this test crosses must not also be
+    // reported as an unknown template role — that would make the assertion above pass for the
+    // wrong reason.
+    assertThat(codes.map { it.first })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN)
   }
 
   @Test

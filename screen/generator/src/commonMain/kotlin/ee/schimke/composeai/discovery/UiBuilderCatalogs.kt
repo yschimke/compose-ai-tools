@@ -243,6 +243,9 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_ARITY = "component.stateCallback.arity"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
     const val BUILTIN_SLOT_ROLE_UNKNOWN = "policy.builtin.slot.role.unknown"
+    const val BUILTIN_SHELF_ROLE_UNKNOWN = "policy.builtin.shelfRole.unknown"
+    const val BUILTIN_WASM_STATUS_UNKNOWN = "policy.builtin.wasm.adapterStatus.unknown"
+    const val BUILTIN_CODE_EMPTY = "policy.builtin.code.symbol.empty"
     const val STRATEGY_UNKNOWN = "policy.code.strategy.unknown"
   }
 
@@ -1174,6 +1177,52 @@ object UiBuilderCatalogs {
             message =
               "role '${builtin.role}' is not one the template engine knows. Known roles: " +
                 UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
+          )
+      }
+      // The shelf role is the OTHER vocabulary — `Scaffold` / `Container` / `Leaf` — and a word
+      // outside it names no shelf at all, so the component is filed nowhere and the editor has no
+      // name for it. Null is not an error: it is how a catalog asks for the consumer's derivation.
+      if (builtin.shelfRole != null && builtin.shelfRole !in UI_BUILDER_SHELF_ROLES) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.BUILTIN_SHELF_ROLE_UNKNOWN,
+            subject = id,
+            message =
+              "shelfRole '${builtin.shelfRole}' is not a shelf role. It is one of " +
+                UI_BUILDER_SHELF_ROLES.sorted().joinToString() +
+                ", and it is not the structural `role` beside it — that one says which template " +
+                "writes this component.",
+          )
+      }
+      val adapterStatus = builtin.wasm?.adapterStatus
+      if (adapterStatus != null && adapterStatus !in UI_BUILDER_WASM_ADAPTER_STATUSES) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN,
+            subject = id,
+            message =
+              "wasm.adapterStatus is '$adapterStatus', which no consumer decodes. It is " +
+                UI_BUILDER_WASM_ADAPTER_STATUSES.sorted().joinToString() +
+                ". A status the consumer cannot read fails the whole capability document, not " +
+                "one field.",
+          )
+      }
+      // A `code` block whose symbol is blank publishes an export that calls nothing, and a
+      // consumer reads the presence of the block as "this catalog knows the call" — so it stops
+      // falling back to the placeholder it would otherwise draw.
+      //
+      // Reported rather than refused, because the packaged builder vocabulary publishes exactly
+      // this for `layout/for-each`, which has no callable to name. A catalog republishing those
+      // declarations faithfully is doing the thing this field was added for; what it needs is to
+      // be told, not to be turned away.
+      if (builtin.code != null && builtin.code.symbol.isBlank()) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.BUILTIN_CODE_EMPTY,
+            subject = id,
+            message =
+              "declares a `code` block with no symbol, so an export through it writes a call to " +
+                "nothing. State the callable, or omit the block and keep the placeholder.",
           )
       }
       // A slot's role selects a template exactly as the builtin's own role does, and it was checked
