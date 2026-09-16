@@ -656,3 +656,71 @@ test("a module exporting nothing usable is a structural error, not an empty run"
   assert.equal(ok, false);
   assert.match(report, /`assertions` must be an array/);
 });
+
+// ---------------------------------------------------------------- the axes the render dropped
+
+/** The pre-#114 render: the family resolved, nothing fell back, every axis was silently filtered. */
+const fontsAxesDropped = {
+  fonts: [
+    { requestedFamily: "Google Sans Flex", resolvedFamily: "Google Sans Flex", weight: 400 },
+    {
+      requestedFamily: "Google Sans Flex",
+      resolvedFamily: "Google Sans Flex",
+      weight: 400,
+      droppedVariationSettings: "'wght' 750",
+    },
+  ],
+};
+
+const assertNoDroppedAxes = {
+  id: "axis-bearing-requests-get-a-variable-face",
+  product: "fonts-used",
+  because: "a static instance has no fvar table, so every axis on it is dropped with no error",
+  require: { "noFont.droppedVariationSettings": null },
+};
+
+test("the dropped-axes path catches what every other field calls clean", () => {
+  // THE POINT OF THE FIELD. On this exact payload the other three fonts-used assertions pass —
+  // `resolvedFamily` is right because the FAMILY resolved and only the FACE did not, and nothing
+  // fell back — which is why the weight collapse survived a render, `failOnFallback` and a visual
+  // diff at once. This is the one path that reports it.
+  assert.deepEqual(evaluate(assertFamily, { Sheet: fontsAxesDropped }).failures, []);
+  const caught = evaluate(assertNoDroppedAxes, { Sheet: fontsAxesDropped });
+  assert.equal(caught.failures.length, 1);
+  assert.match(caught.failures[0].detail, /'wght' 750/);
+});
+
+test("a render whose axes all applied passes", () => {
+  assert.deepEqual(evaluate(assertNoDroppedAxes, { Sheet: fontsGood }).failures, []);
+});
+
+test("one bad face in a sheet fails it — the path is universal, not existential", () => {
+  // `noFont.*` reads as "no font did X". The first face in the fixture dropped nothing; the second
+  // did. An existential reading would pass the sheet on the strength of the first.
+  assert.equal(evaluate(assertNoDroppedAxes, { Sheet: fontsAxesDropped }).failures.length, 1);
+});
+
+test("a bundle predating the field passes rather than failing closed", () => {
+  // Deliberate, and the opposite of this file's usual bias. Every other silent-pass here is a
+  // failure, but an archived bundle cannot retroactively prove its axes applied: the field is
+  // simply absent. Failing it would make every pre-#124 bundle unassertable, which buys nothing —
+  // the render it describes is already over.
+  const old = { fonts: [{ requestedFamily: "Lato", resolvedFamily: "Lato", weight: 400 }] };
+  assert.deepEqual(evaluate(assertNoDroppedAxes, { Sheet: old }).failures, []);
+});
+
+test("an empty string is treated as no dropped axes", () => {
+  // `predicateFor`'s `noFont` branch accepts null or empty, so a recorder that writes "" for
+  // "nothing dropped" does not read as a failure naming nothing.
+  const empty = {
+    fonts: [
+      {
+        requestedFamily: "Lato",
+        resolvedFamily: "Lato",
+        weight: 400,
+        droppedVariationSettings: "",
+      },
+    ],
+  };
+  assert.deepEqual(evaluate(assertNoDroppedAxes, { Sheet: empty }).failures, []);
+});

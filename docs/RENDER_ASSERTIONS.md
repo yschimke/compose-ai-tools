@@ -54,9 +54,20 @@ Design, open questions and the roadmap beyond this first slice:
 
 Paths available in the declarative form today:
 
-- `fonts-used` — `everyFont.resolvedFamily`, `everyFont.requestedFamily`, `noFont.fellBackFrom`
+- `fonts-used` — `everyFont.resolvedFamily`, `everyFont.requestedFamily`, `noFont.fellBackFrom`,
+  `noFont.droppedVariationSettings`
 - `compose-semantics` — `everyTextNode.typography.fontFamily`,
   `everyTextNode.typography.fontVariationSettings`, `anyNode.role`
+
+`noFont.droppedVariationSettings` is the one that catches the weight collapse this feature came
+from, and it needs compose-preview-daemon ≥ the release carrying the field
+([#124](https://github.com/yschimke/compose-preview-daemon/issues/124)). It is worth knowing why no
+other path can: `Paint.setFontVariationSettings` filters each requested axis against
+`Typeface.isSupportedAxes` and, when nothing survives, returns `false` and leaves the typeface
+untouched. `resolvedFamily` is still right — the *family* resolved, only the *face* did not — and
+`fellBackFrom` is still empty, because nothing fell back. Against an older bundle the field is
+absent, which reads as null and **passes**: an archived render cannot retroactively prove its axes
+applied, and failing it would buy nothing.
 
 `every*` and `noFont.*` are universal (one bad observation fails the preview); `anyNode.*` is
 existential (one match satisfies it). An unknown product or path is a hard error, never a
