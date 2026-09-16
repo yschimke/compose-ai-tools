@@ -21,7 +21,12 @@
 
 /** Products this version knows how to read, and the named paths each one exposes. */
 export const SUPPORTED = {
-  "fonts-used": ["everyFont.resolvedFamily", "everyFont.requestedFamily", "noFont.fellBackFrom"],
+  "fonts-used": [
+    "everyFont.resolvedFamily",
+    "everyFont.requestedFamily",
+    "noFont.fellBackFrom",
+    "noFont.droppedVariationSettings",
+  ],
   "compose-semantics": [
     "everyTextNode.typography.fontFamily",
     "everyTextNode.typography.fontVariationSettings",
@@ -111,7 +116,17 @@ export function observe(product, path, data) {
   const out = [];
   if (product === "fonts-used") {
     for (const f of data?.fonts ?? []) {
-      if (path === "everyFont.resolvedFamily")
+      // The one path that catches the weight collapse this whole file came from. Requires
+      // compose-preview-daemon >= the release carrying `droppedVariationSettings` (issue #124);
+      // against an older bundle the field is absent, which reads as null and PASSES — old data
+      // cannot retroactively prove itself, and a `noFont.*` absence check is the right shape for
+      // saying so.
+      if (path === "noFont.droppedVariationSettings")
+        out.push({
+          value: f.droppedVariationSettings ?? null,
+          where: `${f.requestedFamily} ${f.weight}`,
+        });
+      else if (path === "everyFont.resolvedFamily")
         out.push({ value: f.resolvedFamily, where: `${f.requestedFamily} ${f.weight}` });
       else if (path === "everyFont.requestedFamily")
         out.push({ value: f.requestedFamily, where: `${f.weight}` });
