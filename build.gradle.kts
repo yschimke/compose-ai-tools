@@ -266,9 +266,36 @@ val printPublishTasks by
     description = "Print the publish task path for each module this build publishes."
     notCompatibleWithConfigurationCache("Inspects the project tree at execution time")
     val rootDirPath = rootDir
+    // `-Pcomposeai.publishSet` names the modules this release actually has to upload, computed by
+    // `.github/scripts/maven-publish-plan.sh`. Absent, every module publishes — the old behaviour,
+    // and the right default for a `workflow_dispatch` recovery run where the plan's baseline may
+    // not be trustworthy.
+    //
+    // Absent and empty mean different things and must not be collapsed: absent is "no plan ran,
+    // publish everything", empty is "the plan ran and found nothing". Deliberately mirrors
+    // `PublishedVersions.parsePublishSet`, which the modules and `:bom` use — the root build script
+    // cannot see build-logic's classes, so this is the one place the rule is restated.
+    val publishSet =
+      providers
+        .gradleProperty("composeai.publishSet")
+        .orNull
+        ?.split(",")
+        ?.map(String::trim)
+        ?.filter(String::isNotEmpty)
+        ?.toSet()
     val rows =
       subprojects
-        .filter { it.plugins.hasPlugin("composeai.maven-publishing") }
+        .filter {
+          it.plugins.hasPlugin("composeai.maven-publishing") ||
+            it.plugins.hasPlugin("composeai.maven-publishing-platform")
+        }
+        .filter { p ->
+          // `:bom` is never filtered out. It is the index of the release: a consumer resolving the
+          // BOM at the tag must find it there whether or not any module changed.
+          publishSet == null ||
+            p.path == ":bom" ||
+            p.path.removePrefix(":").replace(':', '-') in publishSet
+        }
         .map { p ->
           val dir = p.projectDir.relativeTo(rootDirPath).invariantSeparatorsPath
           "${p.path}:publishAndReleaseToMavenCentral" to dir
@@ -280,7 +307,22 @@ val printPublishTasks by
       // all on the `core` train, being the plugin itself and its helpers. Emitted here rather
       // than left for the caller to remember: a task list that silently omits the Gradle plugin
       // is a release that publishes everything except the artifact consumers actually apply.
-      val all = rows + (":gradle-plugin:publishAndReleaseToMavenCentral" to "gradle-plugin")
+      // The included build's root task publishes all four of its coordinates in one go, so it is
+      // included whenever any of them is in the set — which the plan script guarantees is all four
+      // or none. Absent a set, it is always included, exactly as before.
+      val includedBuildIds =
+        setOf(
+          "compose-preview-config",
+          "compose-preview-plugin",
+          "daemon-launch-builder",
+          "preview-discovery",
+        )
+      val all =
+        if (publishSet == null || publishSet.any { it in includedBuildIds }) {
+          rows + (":gradle-plugin:publishAndReleaseToMavenCentral" to "gradle-plugin")
+        } else {
+          rows
+        }
       all.sortedBy { (task, _) -> task }.forEach { (task, dir) -> println("$task\t$dir") }
     }
   }
