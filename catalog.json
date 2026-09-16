@@ -4231,8 +4231,8 @@
   "library": [
     "androidx.wear.compose:compose-material3"
   ],
-  "renderer": "compose-preview 2.15.1-SNAPSHOT",
-  "generatedAt": "2026-09-16T05:06:10.610Z",
+  "renderer": "compose-preview 2.16.1-SNAPSHOT",
+  "generatedAt": "2026-09-16T05:26:30.147Z",
   "display": {
     "surface": "dark",
     "hero": "Template/TimeText/largeRound"

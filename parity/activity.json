@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-16T05:06:18.136Z",
+  "generatedAt": "2026-09-16T05:26:36.452Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "78fda46b136e2605af01d7795fbb959303a69e12",
+        "subject": "feat: let a render assertion be a function, not only a declared path (#5471)",
+        "at": "2026-09-16T06:18:59+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "81da47e47c4541055bdf48dbc2eeec7dedba9fbf",
+        "subject": "chore(main): release 2.16.0 (#5463)",
+        "at": "2026-09-16T06:13:03+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "ef5aa566a8e24da876e1cbe90f20c5ec02f6ea1e",
+        "subject": "fix(deps): update compose-preview-contracts to v2.20.0 (#5470)",
+        "at": "2026-09-16T06:12:47+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "017e0633e64c9fa8c0ef3857eb549971d663ff15",
+        "subject": "fix(deps): update compose-preview-contracts to v2.19.0 (#5469)",
+        "at": "2026-09-16T05:08:51Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "33032d4b278c3a4050ae32e282586db65177f310",
         "subject": "feat: assert declared render properties against the data products a render writes (#5468)",
@@ -451,38 +483,6 @@
         "subject": "chore(main): release 2.9.0 (#5400)",
         "at": "2026-09-11T12:30:15+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a807df1968534f82eed81829293035bd2dffa5e3",
-        "subject": "feat(plugin): render one module's previews on another module's lane (#5402)",
-        "at": "2026-09-11T09:41:24+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "5ac79c477ecb2f1ee6eff5ce6147145815b2fb26",
-        "subject": "feat(discovery): read `@CatalogComponent(related = ...)` into the catalog inventory (#5401)",
-        "at": "2026-09-11T09:40:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c33231df707d024235fb0a4c0787e7b9d048fb36",
-        "subject": "feat(design-artifacts): publish a generic `related` list on catalog components (#5399)",
-        "at": "2026-09-11T09:24:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fd1e5e92c9b9c7389e9a611d727b236e460844f8",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.8.1 (#5397)",
-        "at": "2026-09-11T09:11:11+01:00",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
