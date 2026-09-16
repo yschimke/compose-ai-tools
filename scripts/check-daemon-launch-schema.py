@@ -238,10 +238,30 @@ def split_params(body: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def data_class_header(text: str, name: str) -> re.Match[str] | None:
+    """The `data class <name>(` declaration, however its constructor visibility is spelled.
+
+    `data class X(`, and also `data class X internal constructor(`. contracts 3.0.0 made these
+    cross-repo DTO constructors non-public so that adding a property can no longer REMOVE an
+    `<init>` or `copy$default` a precompiled consumer already calls (contracts#76) -- the
+    `NoSuchMethodError` this whole mirror exists downstream of. The declaration a `data class`
+    makes is the same either way, and every reader here wants the declaration.
+
+    One function because four callers had the same literal regex, and a spelling this gate does
+    not know makes each of them raise `LookupError` on a file that is sitting right there.
+    """
+    return re.search(
+        r"\bdata class\s+"
+        + re.escape(name)
+        + r"\s*(?:@\w+\s*)*(?:(?:internal|private|protected|public)\s+constructor\s*)?\(",
+        text,
+    )
+
+
 def serial_name_renames(rel: str, name: str) -> list[str]:
     """Fields of `name` carrying `@SerialName`, whose wire key differs from their identifier."""
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         return []
     found = []
@@ -274,7 +294,7 @@ def body_properties(rel: str, name: str) -> list[str]:
     absent from the structural comparison, the annotation check and the fingerprint at once.
     """
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         return []
     after = text[m.end() - 1 :]
@@ -288,7 +308,7 @@ def body_properties(rel: str, name: str) -> list[str]:
 def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
     """`(field, annotation)` for every annotation on a property of `name` that is not allowed."""
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         return []
     found = []
@@ -305,7 +325,7 @@ def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
 def kotlin_data_class(rel: str, name: str) -> dict[str, tuple[str, bool]]:
     """`{field: (type, has_default)}` for a Kotlin `data class` primary constructor."""
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         raise LookupError(f"{name} not found in {rel}")
     fields: dict[str, tuple[str, bool]] = {}
@@ -631,7 +651,21 @@ def is_test_source(rel: str) -> bool:
 # that looks exactly like a construction, and counting them made the checker report the two files
 # that DEFINE the descriptor as constructing one without naming its version.
 DESCRIPTOR_CTOR = re.compile(
-    r"(?<!class )\b(?:DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\("
+    r"(?<!class )\b(DaemonLaunchDescriptor|DaemonClasspathDescriptor)\s*\("
+)
+
+# The file that DECLARES a descriptor also constructs it, once, out of its own builder's
+# `build()`. That is the constructor, not a mirror: the version it passes through is whatever
+# the caller stamped.
+#
+# The `(?<!class )` lookbehind used to keep the declarations out on its own, because
+# `data class X(` put the name hard against the paren. contracts 3.0.0 writes
+# `data class X internal constructor(` and adds `X.Builder.build()`, so the lookbehind stopped
+# covering it and the declaring file began reporting ITSELF as a positional construction site.
+# Excusing a type's own declaration is what `the_dto_declarations_are_not_mistaken_for_
+# constructions` has always meant; it is explicit now rather than a side effect of spelling.
+DESCRIPTOR_DECL = re.compile(
+    r"\bdata class\s+(DaemonLaunchDescriptor|DaemonClasspathDescriptor)\b"
 )
 
 # `descriptor.copy(schemaVersion = …)` re-stamps an existing instance without naming a class, so
@@ -683,7 +717,10 @@ def discover_version_stamps() -> list[tuple[str, str]]:
     for rel, text in walk_sources():
         if is_test_source(rel):
             continue
+        declares = {d.group(1) for d in DESCRIPTOR_DECL.finditer(text)}
         for m in DESCRIPTOR_CTOR.finditer(text):
+            if m.group(1) in declares:
+                continue
             try:
                 body = balanced(text, m.end() - 1, "(", ")")
             except IndexError:
