@@ -347,56 +347,62 @@ public object ServeBundleDaemon {
     )
 
     val descriptor =
-      DaemonLaunchDescriptor(
-        schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
-        modulePath = ":catalog",
-        variant = backendLaunch.variant,
-        enabled = true,
-        // Both backends speak the same JSON-RPC over stdio via the same `DaemonMain`; only the
-        // classpath / JVM args / sysprops differ (see [BackendDaemonLaunch]).
-        mainClass = DAEMON_MAIN_CLASS,
-        javaLauncher = null,
-        classpath = classpaths.daemonClasspath,
-        // Catalog daemons only: the playground descriptor below runs a stranger's snippet and
-        // keeps bytecode verification, and its per-session classpath would never hit an archive.
-        jvmArgs =
-          backendLaunch.jvmArgs +
-            (if (backendLaunch.variant == "android")
-              androidDaemonStartupJvmArgs(classpaths.daemonClasspath)
-            else emptyList()),
-        systemProperties =
-          buildMap {
-            put("composeai.daemon.userClassDirs", classpaths.userClassPath)
-            put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
-            irDir?.let { put(IR_DIR_PROPERTY, it.absolutePath) }
-            bundleManifestFile?.let { put(BUNDLE_MANIFEST_PATH_PROPERTY, it.absolutePath) }
-            // Point the daemon's render output at `<destDir>/renders`. This is what makes
-            // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that *registers*
-            // the file-based data products — including `compose/figma-svg` (+ `-long`). Without it
-            // `dataRoot` is null, the figma-svg producer still writes its SVG (it has an
-            // independent
-            // fallback dir) but the product is never advertised, so an override-bearing `.svg`
-            // render fails `-32020 kind not advertised` and the SVG lane 404s (ServeRenderHost's
-            // `enableExtensions` gets it back in `unknown`). `RenderEngine.dataDir` resolves to the
-            // SAME `<destDir>/data` (`outputDir.parent/data`), so the registry reads exactly where
-            // the render wrote. Keep the key literal to avoid a `:daemon:desktop` compile dep.
-            put("composeai.render.outputDir", File(destDir, "renders").absolutePath)
-            // Opt in to the missing-resource placeholder fallback: this is the live/serve viewer,
-            // so
-            // an app-resource lookup absent from a stale or incompletely-packed bundle degrades to
-            // an
-            // obvious placeholder rather than throwing and showing a broken image. The pack-time
-            // semantics daemon leaves this off so a miss fails loudly instead of baking a
-            // placeholder
-            // into a published catalog sticker. Key kept literal to avoid a `:daemon:android` dep.
-            put("composeai.render.placeholderMissingResources", "true")
-            // Backend extras: the Robolectric `robolectric.*` flags for `android`; none for
-            // desktop.
-            putAll(backendLaunch.extraSystemProperties)
-          },
-        workingDirectory = destDir.absolutePath,
-        manifestPath = previewsJson.absolutePath,
-      )
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
+          modulePath = ":catalog",
+          variant = backendLaunch.variant,
+          enabled = true,
+          // Both backends speak the same JSON-RPC over stdio via the same `DaemonMain`; only the
+          // classpath / JVM args / sysprops differ (see [BackendDaemonLaunch]).
+          mainClass = DAEMON_MAIN_CLASS,
+          classpath = classpaths.daemonClasspath,
+          // Catalog daemons only: the playground descriptor below runs a stranger's snippet and
+          // keeps bytecode verification, and its per-session classpath would never hit an archive.
+          jvmArgs =
+            backendLaunch.jvmArgs +
+              (if (backendLaunch.variant == "android")
+                androidDaemonStartupJvmArgs(classpaths.daemonClasspath)
+              else emptyList()),
+          systemProperties =
+            buildMap {
+              put("composeai.daemon.userClassDirs", classpaths.userClassPath)
+              put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
+              irDir?.let { put(IR_DIR_PROPERTY, it.absolutePath) }
+              bundleManifestFile?.let { put(BUNDLE_MANIFEST_PATH_PROPERTY, it.absolutePath) }
+              // Point the daemon's render output at `<destDir>/renders`. This is what makes
+              // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that
+              // *registers*
+              // the file-based data products — including `compose/figma-svg` (+ `-long`). Without
+              // it
+              // `dataRoot` is null, the figma-svg producer still writes its SVG (it has an
+              // independent
+              // fallback dir) but the product is never advertised, so an override-bearing `.svg`
+              // render fails `-32020 kind not advertised` and the SVG lane 404s (ServeRenderHost's
+              // `enableExtensions` gets it back in `unknown`). `RenderEngine.dataDir` resolves to
+              // the
+              // SAME `<destDir>/data` (`outputDir.parent/data`), so the registry reads exactly
+              // where
+              // the render wrote. Keep the key literal to avoid a `:daemon:desktop` compile dep.
+              put("composeai.render.outputDir", File(destDir, "renders").absolutePath)
+              // Opt in to the missing-resource placeholder fallback: this is the live/serve viewer,
+              // so
+              // an app-resource lookup absent from a stale or incompletely-packed bundle degrades
+              // to
+              // an
+              // obvious placeholder rather than throwing and showing a broken image. The pack-time
+              // semantics daemon leaves this off so a miss fails loudly instead of baking a
+              // placeholder
+              // into a published catalog sticker. Key kept literal to avoid a `:daemon:android`
+              // dep.
+              put("composeai.render.placeholderMissingResources", "true")
+              // Backend extras: the Robolectric `robolectric.*` flags for `android`; none for
+              // desktop.
+              putAll(backendLaunch.extraSystemProperties)
+            },
+          workingDirectory = destDir.absolutePath,
+          manifestPath = previewsJson.absolutePath,
+        )
+        .build()
     val descriptorFile = File(destDir, "daemon-launch.json")
     try {
       fileSystem.write(descriptorFile.path.toPath()) {
@@ -506,46 +512,50 @@ public object ServeBundleDaemon {
         hasIr = false,
       )
     val descriptor =
-      DaemonLaunchDescriptor(
-        schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
-        modulePath = ":playground",
-        variant = backendLaunch.variant,
-        enabled = true,
-        mainClass = DAEMON_MAIN_CLASS,
-        javaLauncher = null,
-        classpath = classpaths.daemonClasspath,
-        // The sandbox's JVM caps come last so they win over any backend default: a snippet's daemon
-        // is bounded in heap and CPU even on a jail with no cgroup behind it.
-        jvmArgs = backendLaunch.jvmArgs + sandbox.jvmArgs(workDir),
-        systemProperties =
-          buildMap {
-            put("composeai.daemon.userClassDirs", classpaths.userClassPath)
-            put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
-            put("composeai.render.outputDir", File(workDir, "renders").absolutePath)
-            put("composeai.render.placeholderMissingResources", "true")
-            putAll(
-              if (android) sandbox.robolectricSystemProperties(backendLaunch.extraSystemProperties)
-              else backendLaunch.extraSystemProperties
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
+          modulePath = ":playground",
+          variant = backendLaunch.variant,
+          enabled = true,
+          mainClass = DAEMON_MAIN_CLASS,
+          classpath = classpaths.daemonClasspath,
+          // The sandbox's JVM caps come last so they win over any backend default: a snippet's
+          // daemon
+          // is bounded in heap and CPU even on a jail with no cgroup behind it.
+          jvmArgs = backendLaunch.jvmArgs + sandbox.jvmArgs(workDir),
+          systemProperties =
+            buildMap {
+              put("composeai.daemon.userClassDirs", classpaths.userClassPath)
+              put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
+              put("composeai.render.outputDir", File(workDir, "renders").absolutePath)
+              put("composeai.render.placeholderMissingResources", "true")
+              putAll(
+                if (android)
+                  sandbox.robolectricSystemProperties(backendLaunch.extraSystemProperties)
+                else backendLaunch.extraSystemProperties
+              )
+            },
+          workingDirectory = workDir.absolutePath,
+          manifestPath = previewsJson.absolutePath,
+        )
+        .also {
+          it.jailCommand =
+            sandbox.command(
+              PlaygroundSandbox.Paths(
+                workDir = workDir,
+                // Everything the daemon reads: its own sidecar jars, the catalog classpath, and the
+                // snippet's compiled classes. Bound read-only; only workDir is writable.
+                readOnly =
+                  (classpaths.daemonClasspath.map { File(it) } +
+                      snippet.classpath.map { File(it.toString()) } +
+                      classesDir)
+                    .distinct(),
+                javaHome = File(System.getProperty("java.home")),
+              )
             )
-          },
-        workingDirectory = workDir.absolutePath,
-        manifestPath = previewsJson.absolutePath,
-        jailCommand =
-          sandbox.command(
-            PlaygroundSandbox.Paths(
-              workDir = workDir,
-              // Everything the daemon reads: its own sidecar jars, the catalog classpath, and the
-              // snippet's compiled classes. Bound read-only; only workDir is writable.
-              readOnly =
-                (classpaths.daemonClasspath.map { File(it) } +
-                    snippet.classpath.map { File(it.toString()) } +
-                    classesDir)
-                  .distinct(),
-              javaHome = File(System.getProperty("java.home")),
-            )
-          ),
-        hardTtlSeconds = sandbox.ttlSeconds.takeIf { sandbox.isActive },
-      )
+          it.hardTtlSeconds = sandbox.ttlSeconds.takeIf { sandbox.isActive }
+        }
+        .build()
     val descriptorFile = File(workDir, "daemon-launch.json")
     try {
       fileSystem.write(descriptorFile.path.toPath()) {

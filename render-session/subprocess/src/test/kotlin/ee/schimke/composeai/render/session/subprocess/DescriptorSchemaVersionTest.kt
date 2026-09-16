@@ -89,17 +89,18 @@ class DescriptorSchemaVersionTest {
   private fun descriptor(schemaVersion: Int): String =
     json.encodeToString(
       DaemonLaunchDescriptor.serializer(),
-      DaemonLaunchDescriptor(
-        schemaVersion = schemaVersion,
-        modulePath = ":module",
-        variant = "desktop",
-        enabled = true,
-        mainClass = "ee.schimke.composeai.daemon.DaemonMain",
-        classpath = listOf("/lib/daemon.jar"),
-        jvmArgs = listOf("-Xmx512m"),
-        systemProperties = mapOf("composeai.daemon.userClassDirs" to "/workspace/module/classes"),
-        workingDirectory = "/workspace/module",
-        manifestPath = "/workspace/module/build/compose-previews/previews.json",
-      ),
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = schemaVersion,
+          modulePath = ":module",
+          variant = "desktop",
+          enabled = true,
+          mainClass = "ee.schimke.composeai.daemon.DaemonMain",
+          classpath = listOf("/lib/daemon.jar"),
+          jvmArgs = listOf("-Xmx512m"),
+          systemProperties = mapOf("composeai.daemon.userClassDirs" to "/workspace/module/classes"),
+          workingDirectory = "/workspace/module",
+          manifestPath = "/workspace/module/build/compose-previews/previews.json",
+        )
+        .build(),
     )
 }

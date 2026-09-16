@@ -342,7 +342,7 @@ coil3 = "3.5.0"
 # here. This repository consumes them; it no longer owns these coordinates. A change to a contract
 # reaches this build only through a release there — see that repository's docs/VERSIONING.md.
 # A point pin, deliberately: a range would let a contract change arrive without a pull request.
-composeai-contracts = "2.20.0"
+composeai-contracts = "3.0.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -364,7 +364,7 @@ composeai-contracts = "2.20.0"
 # pages document carries. compose-preview-daemon#128 reverted it and 3.6.1 is that revert. Pinning
 # 3.6.0 here would publish the leniency back out to every consumer of these POMs, including the
 # server that just restored the strict assertion (compose-preview-server#893).
-composeai-preview-daemon = "3.6.1"
+composeai-preview-daemon = "3.8.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #

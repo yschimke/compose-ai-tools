@@ -498,7 +498,12 @@ public object ServeOverrides {
               ?: return OverrideParse.Invalid(
                 "focus must be a non-negative integer tab index, got '$it'"
               )
-          FocusOverride(tabIndex = tabIndex, overlay = true)
+          FocusOverride.Builder()
+            .also {
+              it.tabIndex = tabIndex
+              it.overlay = true
+            }
+            .build()
         }
 
     // Detected-feature: one-handed gesture hints. `gestures=true` (or `1`) force-shows the gesture
@@ -543,7 +548,13 @@ public object ServeOverrides {
     // one.
     val gestures: GestureOverride? =
       if (showGestureHints == null && invokeGesture == null) null
-      else GestureOverride(showHints = showGestureHints, invoke = invokeGesture)
+      else
+        GestureOverride.Builder()
+          .also {
+            it.showHints = showGestureHints
+            it.invoke = invokeGesture
+          }
+          .build()
 
     // Cleared background ("crisp outline"). Two spellings: the friendly `background=clear`
     // (aliases `transparent` / `none` / `off`; `default` / `show` mean "keep the preview's
@@ -717,7 +728,13 @@ public object ServeOverrides {
     val remoteCompose: RemoteComposeOverride? =
       if (rcProfile == null && rcNamedValues.isEmpty() && rcPlayer == null) null
       else
-        RemoteComposeOverride(profile = rcProfile, namedValues = rcNamedValues, player = rcPlayer)
+        RemoteComposeOverride.Builder()
+          .also {
+            it.profile = rcProfile
+            it.namedValues = rcNamedValues
+            it.player = rcPlayer
+          }
+          .build()
 
     return OverrideParse.Ok(
       PreviewOverrides(
