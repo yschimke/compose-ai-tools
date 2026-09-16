@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-16T04:58:25.673Z",
+  "generatedAt": "2026-09-16T05:06:18.136Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "33032d4b278c3a4050ae32e282586db65177f310",
+        "subject": "feat: assert declared render properties against the data products a render writes (#5468)",
+        "at": "2026-09-16T05:53:09+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "5a8a99c42e498aba9d7164449cd869442b6f60f4",
         "subject": "fix(ci): scope each design-artifacts lane against what it last rendered (#5465)",
@@ -475,14 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v2.8.1 (#5397)",
         "at": "2026-09-11T09:11:11+01:00",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "70a486649af25ddc7411cf8f3ece842c41a3854e",
-        "subject": "chore(main): release 2.8.1 (#5395)",
-        "at": "2026-09-11T08:22:15+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
