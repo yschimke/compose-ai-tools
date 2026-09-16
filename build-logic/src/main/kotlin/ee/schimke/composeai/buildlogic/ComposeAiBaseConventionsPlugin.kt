@@ -125,6 +125,20 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
           IllegalStateException("libs.composeai.daemon.bom is missing from the version catalog")
         }
 
+    // A `java-platform` rejects dependencies outright ("Adding dependencies to platforms is not
+    // allowed by default"), and would have nothing to do with one anyway: a platform has no compile
+    // classpath, so there is no resolution for the daemon BOM to constrain. Skipped rather than
+    // worked around with `allowDependencies()`, which would let a real dependency slip into the BOM
+    // unnoticed.
+    //
+    // This relies on `:bom` applying `composeai.maven-publishing-platform` BEFORE
+    // `composeai.base-conventions`, which its `plugins {}` block does and says why. The check
+    // cannot be moved inside `configurations.all` to avoid that ordering requirement: the callback
+    // fires for `api` while `JavaPlatformPlugin.apply` is still running, and a plugin is not marked
+    // applied until its `apply` returns — so `hasPlugin` reads false in exactly the window that
+    // matters.
+    if (project.pluginManager.hasPlugin("java-platform")) return
+
     project.configurations.all {
       if (name == "api" || name == "implementation" || isKotlinSourceSetBucket(name)) {
         project.dependencies.add(name, project.dependencies.platform(bom))

@@ -429,6 +429,33 @@ providers.gradleProperty("composeai.previewDaemonDir").orNull?.let { dir ->
   }
 }
 
+include(":bom")
+
+// Project paths whose build script applies `composeai.maven-publishing`, handed to `:bom` through a
+// system property so its constraints are derived from the build rather than kept as a second list
+// that goes stale. Same closure-free channel, and the same Isolated Projects reason, as the ktfmt
+// paths below.
+//
+// Matched with its closing quote (`composeai.maven-publishing")`) rather than as a bare substring:
+// `composeai.maven-publishing-platform` starts with the same 26 characters, so a prefix match pulls
+// `:bom` into the list of things the BOM constrains and it ends up constraining itself.
+//
+// The root build script is deliberately not visited — it *mentions* the plugin id, in
+// `printPublishTasks`'s `hasPlugin(...)` filter, without applying it.
+val publishedProjectPaths = buildList {
+  fun visit(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+    if (
+      descriptor.buildFile.exists() &&
+        descriptor.buildFile.readText().contains("composeai.maven-publishing\")")
+    ) {
+      add(descriptor.path)
+    }
+    descriptor.children.forEach(::visit)
+  }
+  rootProject.children.forEach(::visit)
+}
+System.setProperty("composeai.publishedProjectPaths", publishedProjectPaths.joinToString(","))
+
 // Project paths carrying ktfmt, handed to the root build's `ktfmtCheckAll` / `ktfmtFormatAll`
 // aggregate tasks through a system property. The channel must stay closure-free under Isolated
 // Projects. docs/build-scripts/SETTINGS.md#ktfmt-project-paths
