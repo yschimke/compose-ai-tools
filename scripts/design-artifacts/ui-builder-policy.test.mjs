@@ -6,7 +6,9 @@ import { dirname, join } from "node:path";
 
 import {
   FILE_TEMPLATES,
+  SHELF_ROLES,
   STRUCTURAL_ROLES,
+  WASM_ADAPTER_STATUSES,
   TEMPLATE_DIR,
   UI_BUILDER_POLICY_SCHEMA,
   validatePolicy,
@@ -173,6 +175,116 @@ test("the role vocabulary matches the Kotlin the generator actually reads", asyn
   // reader of the validator will see it.
   assert.deepEqual(FILE_TEMPLATES, ["previews", "file"]);
   for (const name of FILE_TEMPLATES) assert.ok(!STRUCTURAL_ROLES.includes(name));
+});
+
+test("the shelf role and the structural role are checked as the two vocabularies they are", () => {
+  // They are spelled `role` and `shelfRole` in one declaration and neither word is the other's:
+  // `container` is a template, `Container` is a shape on a shelf. Crossing them is the mistake the
+  // two-vocabulary design makes easy, so each must reject the other's words.
+  const crossed = wellFormed();
+  crossed.builtins = {
+    "compose-foundation/box": { role: "container", shelfRole: "list" },
+    "compose-foundation/column": { role: "Container", shelfRole: "Container" },
+  };
+
+  const { errors } = codes(crossed);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /"compose-foundation\/box" names shelfRole "list"/);
+  assert.match(errors[1], /"compose-foundation\/column" names role "Container"/);
+
+  // And a builtin stating neither is not an error: absent asks the consumer to derive it, which is
+  // what every builtin published before the field did.
+  const derived = wellFormed();
+  derived.builtins = { "compose-foundation/box": { role: "container" } };
+  assert.deepEqual(codes(derived).errors, []);
+
+  for (const shelfRole of SHELF_ROLES) {
+    const stated = wellFormed();
+    stated.builtins = { "compose-foundation/box": { role: "container", shelfRole } };
+    assert.deepEqual(codes(stated).errors, [], shelfRole);
+  }
+});
+
+test("a container is a role the engine knows, and a box is what it is for", () => {
+  // The catalogs this role was grown for, named: three components whose only honest structural
+  // role was `list` until there was a seventh word.
+  assert.ok(STRUCTURAL_ROLES.includes("container"));
+  const foundation = wellFormed();
+  foundation.builtins = {
+    "compose-foundation/box": { role: "container" },
+    "compose-foundation/column": { role: "container" },
+    "compose-foundation/row": { role: "container" },
+  };
+  assert.deepEqual(codes(foundation).errors, []);
+});
+
+test("the blocks a builtin states about its lanes have to be readable", () => {
+  // Each of these is a field a consumer reads INSTEAD of deriving one, so a malformed block is
+  // worse than an absent one: the consumer stops falling back and publishes the broken answer.
+  const wasm = wellFormed();
+  wasm.builtins = {
+    "compose-foundation/box": { role: "container", wasm: { adapterStatus: "soon" } },
+  };
+  assert.match(codes(wasm).errors[0], /wasm.adapterStatus "soon"/);
+
+  for (const adapterStatus of WASM_ADAPTER_STATUSES) {
+    const stated = wellFormed();
+    stated.builtins = {
+      "compose-foundation/box": { role: "container", wasm: { adapterStatus, notes: "Planned." } },
+    };
+    assert.deepEqual(codes(stated).errors, [], adapterStatus);
+  }
+
+  // An empty symbol is a warning, not an error: the packaged vocabulary publishes exactly that for
+  // `layout/for-each`, and a catalog republishing those declarations faithfully must not be
+  // refused for copying them.
+  const code = wellFormed();
+  code.builtins = {
+    "compose-foundation/for-each": { role: "list", code: { symbol: "", imports: [] } },
+  };
+  const codeResult = codes(code);
+  assert.deepEqual(codeResult.errors, []);
+  assert.match(codeResult.warnings[0], /"code" block with an empty symbol/);
+
+  // A symbol that is not a string at all is still an error — nothing can copy that faithfully.
+  const typed = wellFormed();
+  typed.builtins = { "compose-foundation/box": { role: "container", code: { symbol: 7 } } };
+  assert.match(codes(typed).errors[0], /symbol that is not a string/);
+
+  const svg = wellFormed();
+  svg.builtins = { "compose-foundation/box": { role: "container", svg: { status: "verified" } } };
+  assert.match(codes(svg).errors[0], /"svg" block with no fallback/);
+
+  const whole = wellFormed();
+  whole.builtins = {
+    "compose-foundation/box": {
+      role: "container",
+      shelfRole: "Container",
+      wasm: { platformSupported: true, adapterStatus: "planned" },
+      code: { symbol: "Box", imports: ["androidx.compose.foundation.layout.Box"] },
+      svg: { status: "verified", fallback: "none", blocksExport: false },
+      slots: { children: { ordered: true, acceptedTraits: ["AnyContent"] } },
+    },
+  };
+  assert.deepEqual(codes(whole), { errors: [], warnings: [] });
+});
+
+test("a slot says whether its children's order means anything", () => {
+  // Six of the packaged vocabulary's fifteen slots are unordered, and a consumer with no field to
+  // read composed all fifteen as ordered. A non-boolean here is a claim nothing can act on.
+  const policy = wellFormed();
+  policy.builtins = {
+    "compose-foundation/box": { role: "container", slots: { children: { ordered: "yes" } } },
+  };
+  assert.match(codes(policy).errors[0], /slot "children" has an "ordered" that is not a boolean/);
+
+  for (const ordered of [true, false]) {
+    const stated = wellFormed();
+    stated.builtins = {
+      "compose-foundation/box": { role: "container", slots: { children: { ordered } } },
+    };
+    assert.deepEqual(codes(stated).errors, [], String(ordered));
+  }
 });
 
 test("a templates path outside ui-builder is an error, not a shrug", async () => {

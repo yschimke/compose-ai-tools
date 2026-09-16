@@ -141,11 +141,51 @@ copies of these numbers today, transcribed out of `ScreenScaffoldContentPaddingT
 wear-m3-catalog; a Wear Compose bump moves the number where it is measured and nowhere else. A
 hand-edited block is a failing test, which is the whole reason the block lives here.
 
-**The structural roles are a closed set.** `screen-root`, `list`, `list-item`, `overlay`,
-`controlled`, `decoration` — the roles the Wear screen emitter's 1,406 lines decompose into. A
-catalog that needs a seventh means the template engine grows one, once, with a test; it does not
-mean every catalog ships a compiler. The test that a new role is general is that two catalogs use
-it.
+**The structural roles are a closed set.** `screen-root`, `list`, `list-item`, `container`,
+`overlay`, `controlled`, `decoration`. Six of the seven are the roles the Wear screen emitter's
+1,406 lines decompose into; `container` is the one that is not about a screen's decomposition at
+all, and it is the worked example of how the set grows. A catalog that needs an eighth means the
+template engine grows one, once, with a test; it does not mean every catalog ships a compiler. The
+test that a new role is general is that two catalogs use it.
+
+### Why `container` exists
+
+A box, a column and a row hold children in a fixed arrangement and write no repetition. Before
+this word the only role that admitted children in sequence was `list`, whose template is handed
+`${listState}`, `${contentPadding}` and `${items}` — so declaring `layout/box` as a `list` says a
+box is a scrolling list, and it is not. `container`'s template gets `${children}` and nothing else,
+because there is no shared list state to thread and no measured padding to pass.
+
+The generality bar was met from two directions at once: `compose-foundation`
+([yschimke/m3-catalog](https://github.com/yschimke/m3-catalog/blob/main/docs/design/FOUNDATION_CATALOG.md))
+declares the three, and the packaged builder vocabulary it was copied from carries the same three
+for every platform that borrows them.
+
+### What a builtin may state about itself
+
+A builtin has no call site, so its declaration is the only source there is — and five things a
+consumer otherwise **derives** were unstateable, which is not the same as unstated: the derived
+answer was published as though the catalog had agreed with it.
+
+| field | what it says | what the absence meant |
+| --- | --- | --- |
+| `shelfRole` | `Scaffold` / `Container` / `Leaf`, the shape the editor names and slots accept | derived from whether there were slots at all, so a design root arrived as an ordinary container |
+| `wasm` | the canvas lane: `platformSupported`, `adapterStatus`, `notes` | derived from the adapter id, which can say supported or unsupported and never `planned` |
+| `code` | the callable a design exports as, and its imports | a builtin with no record entry published no code capability at all |
+| `svg` | what a structured-SVG export makes of it | every republished component claimed nothing, which reads as unverified rather than as the `verified` most are |
+| `slots.*.ordered` | whether the order of a slot's children is meaningful | every slot composed as ordered; six of the packaged vocabulary's fifteen are not |
+
+`shelfRole` and `role` are two vocabularies in one declaration, and the capability document a
+consumer serves publishes `shelfRole` under the name `role`. `role` says which template **writes**
+the component; `shelfRole` says what **shape** it is. Each refuses the other's words, because
+crossing them is the mistake this design makes easy.
+
+`code` and `implementation` answer the same question, and `implementation` is the better answer
+when there is one: it points at a record entry, and the record is discovered, so it cannot drift
+from the source. `code` is for the component that has no call site anywhere in the catalog and
+still exports as a known callable — `layout/box` writes `Box`, and nothing in a foundation
+catalog's record can say so, because inference scopes library components to
+`material3`/`material`/`wear` ([`COMPONENT_RECORD.md`](COMPONENT_RECORD.md)).
 
 ## What a consumer may assume
 

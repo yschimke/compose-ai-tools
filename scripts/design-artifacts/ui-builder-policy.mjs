@@ -32,10 +32,27 @@ export const STRUCTURAL_ROLES = [
   "screen-root",
   "list",
   "list-item",
+  // Children in a fixed arrangement, writing no repetition — a box, a column, a row. The other
+  // six roles say how a node takes part in a SCREEN's decomposition; this one does not, and
+  // without it those three had to publish as `list`, whose template is handed a list state and an
+  // items hole. A box is not a scrolling list.
+  "container",
   "overlay",
   "controlled",
   "decoration",
 ];
+
+/**
+ * What a builtin may claim to BE on the shelf, as distinct from which template writes it.
+ *
+ * Mirrors `UI_BUILDER_SHELF_ROLES` in the same Kotlin file the role set above is pinned to. This is
+ * the UI builder's vocabulary rather than the template engine's, and the two are spelled `role` in
+ * the same declaration, which is exactly why a typo here is worth catching early.
+ */
+export const SHELF_ROLES = ["Scaffold", "Container", "Leaf"];
+
+/** What a builtin may claim about the canvas adapter, mirroring the consumer's wasm block. */
+export const WASM_ADAPTER_STATUSES = ["supported", "planned", "unsupported"];
 
 /**
  * The one directory a `templates` path may live under.
@@ -273,11 +290,70 @@ function validateBuiltins(builtins, errors, warnings) {
         `builtin ${JSON.stringify(id)} names role ${JSON.stringify(builtin.role)}; known roles are ${STRUCTURAL_ROLES.join(", ")}`,
       );
     }
+    // The shelf role is the OTHER vocabulary in the same declaration: `role` says which template
+    // writes the component, `shelfRole` says what shape it is on the shelf. Absent is not an
+    // error — it asks the consumer to derive it — but a word outside the set names no shelf.
+    if (builtin.shelfRole !== undefined && !SHELF_ROLES.includes(builtin.shelfRole)) {
+      errors.push(
+        `builtin ${JSON.stringify(id)} names shelfRole ${JSON.stringify(builtin.shelfRole)}; it is one of ${SHELF_ROLES.join(", ")}, and it is not the structural "role" beside it`,
+      );
+    }
+    if (builtin.wasm !== undefined && !isObject(builtin.wasm)) {
+      errors.push(`builtin ${JSON.stringify(id)} has a "wasm" that is not an object`);
+    } else if (
+      isObject(builtin.wasm) &&
+      builtin.wasm.adapterStatus !== undefined &&
+      !WASM_ADAPTER_STATUSES.includes(builtin.wasm.adapterStatus)
+    ) {
+      errors.push(
+        `builtin ${JSON.stringify(id)} names wasm.adapterStatus ${JSON.stringify(builtin.wasm.adapterStatus)}; it is one of ${WASM_ADAPTER_STATUSES.join(", ")}`,
+      );
+    }
+    // A `code` block a consumer can see but not call is worse than no block: the block's presence
+    // is what stops it falling back to the placeholder it would otherwise draw.
+    if (builtin.code !== undefined) {
+      if (!isObject(builtin.code)) {
+        errors.push(`builtin ${JSON.stringify(id)} has a "code" that is not an object`);
+      } else if (typeof builtin.code.symbol !== "string") {
+        errors.push(`builtin ${JSON.stringify(id)} has a "code" with a symbol that is not a string`);
+      } else if (builtin.code.symbol.length === 0) {
+        // A WARNING and not an error, measured rather than decided: the packaged builder
+        // vocabulary publishes `{"symbol": "", "imports": []}` for `layout/for-each`, which has no
+        // callable to name. A catalog republishing those declarations faithfully — the whole point
+        // of being able to state this block — would be refused by a rule that called it an error,
+        // and refusing a faithful copy is worse than reporting a block that says nothing.
+        warnings.push(
+          `builtin ${JSON.stringify(id)} declares a "code" block with an empty symbol, so an export through it writes a call to nothing. Omit the block and keep the placeholder.`,
+        );
+      }
+    }
+    // `status` and `fallback` are free words rather than a closed set — the recorder owns what
+    // they mean — so what is checked is that both are there. A block stating one of the two says
+    // less than no block, because a consumer reads its presence as an answer.
+    if (builtin.svg !== undefined) {
+      if (!isObject(builtin.svg)) {
+        errors.push(`builtin ${JSON.stringify(id)} has an "svg" that is not an object`);
+      } else {
+        for (const field of ["status", "fallback"]) {
+          if (typeof builtin.svg[field] !== "string" || builtin.svg[field].length === 0) {
+            errors.push(
+              `builtin ${JSON.stringify(id)} declares an "svg" block with no ${field}; a block missing one of the two says less than no block at all`,
+            );
+          }
+        }
+      }
+    }
     if (builtin.slots !== undefined && !isObject(builtin.slots)) {
       errors.push(`builtin ${JSON.stringify(id)} has a "slots" that is not an object`);
     } else if (isObject(builtin.slots)) {
       for (const [slot, spec] of Object.entries(builtin.slots)) {
-        if (!isObject(spec) || spec.role === undefined) continue;
+        if (!isObject(spec)) continue;
+        if (spec.ordered !== undefined && typeof spec.ordered !== "boolean") {
+          errors.push(
+            `builtin ${JSON.stringify(id)} slot ${JSON.stringify(slot)} has an "ordered" that is not a boolean`,
+          );
+        }
+        if (spec.role === undefined) continue;
         // The same closed set the builtin's own role uses. A role the engine does not know selects
         // no template, and it should fail where somebody is editing the policy rather than during
         // an export weeks later.

@@ -39,8 +39,23 @@ val STATE_TYPE_CLASSIFIERS: Map<String, Set<String>> =
     "number" to setOf("Int", "Long", "Short", "Byte", "Float", "Double", "Number"),
   )
 
+/**
+ * The structural roles the template engine knows, and the whole set of them.
+ *
+ * `container` is the one that is not about a screen's decomposition. The other six say how a node
+ * is WRITTEN as part of a screen — a scrolling list, one of its items, an overlay hoisted beside
+ * it. A box, a column and a row are none of those: they hold children in a fixed arrangement and
+ * write no repetition at all. Without this word they had to publish as `list`, which is the role
+ * whose template is handed `${'$'}{listState}`, `${'$'}{contentPadding}` and `${'$'}{items}` — so
+ * the honest reading of a `layout/box` declared as a `list` is that a box is a scrolling list, and
+ * it is not.
+ *
+ * The bar for a seventh role is that two catalogs need it, and it is met: `compose-foundation`
+ * (yschimke/m3-catalog) declares `layout/box`, `layout/column` and `layout/row`, and the packaged
+ * vocabulary those were copied from carries the same three for every platform that borrows them.
+ */
 val UI_BUILDER_STRUCTURAL_ROLES: Set<String> =
-  setOf("screen-root", "list", "list-item", "overlay", "controlled", "decoration")
+  setOf("screen-root", "list", "list-item", "container", "overlay", "controlled", "decoration")
 
 /**
  * How a catalog's designs are written as source. Closed, and stated here beside the role set for
@@ -76,6 +91,10 @@ val UI_BUILDER_TEMPLATE_HOLES: Map<String, Set<String>> =
     "list" to setOf("listState", "contentPadding", "items"),
     // One item, wrapped in whatever scope its parent requires. `${'$'}{call(...)}` does the work.
     "list-item" to setOf("index", "children"),
+    // Children in a fixed arrangement, and nothing else. Deliberately NOT `list`'s holes: a
+    // container writes no repetition, so there is no list state to share and no measured padding
+    // to thread. A template asking for one is asking for a value this role will never have.
+    "container" to setOf("children"),
     // A sibling of the screen rather than a child, shown by a hoisted state.
     "overlay" to setOf("state", "children"),
     // The hoisted `remember` a state callback needs; see BuilderComponent.stateCallbacks.
@@ -227,7 +246,102 @@ data class UiBuilderBuiltin(
   val modifierCapabilities: List<String>? = null,
   /** Canonical id of the wrapper call site this catalog ships in its component record. */
   val implementation: String? = null,
+  /**
+   * What this builtin IS on the shelf — `Scaffold`, `Container` or `Leaf` — or null to let the
+   * consumer derive it.
+   *
+   * Two different words are spelled `role` in this contract and they are not the same vocabulary.
+   * [role] above is the STRUCTURAL one: which template writes this component. This is the shelf's,
+   * which decides what the editor calls it and which slots will take it, and it is the one a
+   * capability document publishes as `role`.
+   *
+   * There was no way to state it, so a consumer derived it from whether the builtin had slots at
+   * all — and a design ROOT with slots arrives as an ordinary `Container` rather than a `Scaffold`.
+   * `screen-root` is the only structural role that implies the answer; `list` and `container` say
+   * how a thing is WRITTEN and not what shape it is. Null keeps the derivation, which is right for
+   * everything the derivation gets right.
+   */
+  val shelfRole: String? = null,
+  /**
+   * What the canvas lane says about this builtin, overriding what [canvas] implies.
+   *
+   * A consumer computes the block from the adapter id, which can only produce "supported" or
+   * "unsupported" with a sentence about the adapter. Two things a catalog knows and that cannot
+   * say: an adapter that is `planned` rather than absent, and WHY a component draws the way it
+   * does. The packaged vocabulary this contract is measured against carries both — `layout/box` is
+   * `planned`, and `asset/image`'s note is four sentences about where the bytes come from — and a
+   * catalog republishing those declarations had to drop them.
+   *
+   * It also matters per platform: a Wear palette rewrites every borrowed foundation component's
+   * note to say that `androidx.compose.foundation` publishes one of these and not two, which says
+   * the opposite of what a borrowed Material component's note said.
+   */
+  val wasm: UiBuilderBuiltinWasm? = null,
+  /**
+   * The call this builtin exports as, when the catalog states it outright.
+   *
+   * [implementation] answers the same question by pointing at a record entry, and is the better
+   * answer when there IS one: the record is discovered, so it cannot drift from the source. This is
+   * for the component that has no call site anywhere in this catalog and still exports as a known
+   * callable — `layout/box` writes `Box` and imports `androidx.compose.foundation.layout.Box`, and
+   * nothing in a foundation catalog's record can say so, because discovery does not scope to
+   * foundation symbols. Without it such a builtin published with no code capability at all.
+   */
+  val code: UiBuilderBuiltinCode? = null,
+  /**
+   * Whether a structured-SVG export can draw this builtin, and what happens when it cannot.
+   *
+   * Not derivable from anything else in the declaration: whether the recorder has a vector for a
+   * radial gradient is a fact about the recorder, and whether falling back to a raster is
+   * acceptable is editorial. The packaged vocabulary states it for all seventeen components and a
+   * catalog could not, so every republished declaration claimed nothing — which a consumer reads as
+   * unverified rather than as the `verified` most of them are.
+   */
+  val svg: UiBuilderBuiltinSvg? = null,
 )
+
+/**
+ * The canvas-lane block, mirroring the consumer's `WasmCapabilityV1`.
+ *
+ * Every field nullable so "not stated" and "stated" stay different questions: a catalog overriding
+ * only [notes] keeps the platform support and adapter status the consumer derived from `canvas`.
+ */
+@Serializable
+data class UiBuilderBuiltinWasm(
+  val platformSupported: JsonElement? = null,
+  /** `supported`, `planned` or `unsupported`. */
+  val adapterStatus: String? = null,
+  val notes: String? = null,
+)
+
+/**
+ * The export call for a builtin with no record entry. Mirrors the consumer's `CodeCapabilityV1`.
+ */
+@Serializable
+data class UiBuilderBuiltinCode(val symbol: String, val imports: List<String> = emptyList())
+
+/** What a structured-SVG export makes of this builtin. Mirrors the consumer's `SvgCapabilityV1`. */
+@Serializable
+data class UiBuilderBuiltinSvg(
+  val status: String,
+  val fallback: String,
+  val blocksExport: Boolean = false,
+  val notes: String? = null,
+)
+
+/**
+ * The values [UiBuilderBuiltin.shelfRole] may take.
+ *
+ * The UI builder's own vocabulary, not this generator's, and closed there: a word outside it names
+ * no shelf, so the component is filed nowhere and the editor has no name for it.
+ */
+val UI_BUILDER_SHELF_ROLES: Set<String> = setOf("Scaffold", "Container", "Leaf")
+
+/**
+ * The values [UiBuilderBuiltinWasm.adapterStatus] may take, mirroring the consumer's
+ * `WasmAdapterStatusV1`.
+ */
+val UI_BUILDER_WASM_ADAPTER_STATUSES: Set<String> = setOf("supported", "planned", "unsupported")
 
 /**
  * How the builder shelves this catalog. Only the group ORDER is authored: the shelves themselves
