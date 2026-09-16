@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-16T08:08:48.906Z",
+  "generatedAt": "2026-09-16T09:49:57.472Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "93d8735069168fe3670ab754f0301f94a97ee17d",
+        "subject": "feat: a container structural role, and the five things a builtin could not say (#5476)",
+        "at": "2026-09-16T10:42:24+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8432a6b886da4f83b8f55ebe61c8b3febca23330",
+        "subject": "fix: regenerate the render-host ABI dump for the design-pages accessors (#5477)",
+        "at": "2026-09-16T09:37:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "875c00215a99e1576e8a594f5a07aa4be88495fa",
         "subject": "feat: let a catalog assert that no face lost its variation axes (#5478)",
@@ -466,22 +482,6 @@
         "sha": "0587fb02c6f07063b31a7c854bd08c638c721593",
         "subject": "feat(ui-builder): let a builtin slot state how many children it admits (#5408)",
         "at": "2026-09-11T17:15:13+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bb83a9756ab530179b001be30bbf60ea241516a6",
-        "subject": "feat(remote-json): compile exact decimal comparisons (#5407)",
-        "at": "2026-09-11T15:41:09+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "e114eb4ae2563a071cac4ff3948724ccb83beec0",
-        "subject": "feat(remote-json): preserve independent mutable string state (#5406)",
-        "at": "2026-09-11T15:20:34+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
