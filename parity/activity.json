@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-16T05:26:36.452Z",
+  "generatedAt": "2026-09-16T05:46:24.358Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "e30281c0fe7043ca80cd5889a8a1c0f9751bd476",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.16.0 (#5472)",
+        "at": "2026-09-16T05:31:45Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "78fda46b136e2605af01d7795fbb959303a69e12",
         "subject": "feat: let a render assertion be a function, not only a declared path (#5471)",
@@ -475,14 +483,6 @@
         "subject": "chore(ci): update the design-artifacts export driver to v2.9.0 (#5403)",
         "at": "2026-09-11T11:38:54Z",
         "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "04ee6e5b50fe164102ae3de62e1df330c22aae21",
-        "subject": "chore(main): release 2.9.0 (#5400)",
-        "at": "2026-09-11T12:30:15+01:00",
-        "author": "github-actions[bot]",
         "previewIds": [],
         "components": []
       }
