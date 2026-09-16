@@ -1419,3 +1419,150 @@ test("one of several reference kits is enough to match", () => {
     null,
   );
 });
+
+// ---------------------------------------------------------------------------
+// Shared background plates and allowlisted blend modes.
+//
+// A page is a stack: plates underneath, the sanitized export over them, the catalog's renders in
+// the holes it leaves. The planner's job is to publish only what can actually be drawn — and to
+// never let a manifest's own string reach a renderer as CSS.
+// ---------------------------------------------------------------------------
+
+const PLATE = "a".repeat(64);
+const OTHER_PLATE = "b".repeat(64);
+
+const plateAsset = (over = {}) => ({
+  id: PLATE,
+  uri: "raw/backplate.png",
+  format: "png",
+  width: 2048,
+  height: 1024,
+  bytes: 524288,
+  ...over,
+});
+
+const platePlacement = (over = {}) => ({
+  asset: PLATE,
+  x: 0,
+  y: 0,
+  width: 2048,
+  height: 1024,
+  ...over,
+});
+
+const pageWithPlates = (over = {}) => ({
+  id: "buttons",
+  name: "Buttons",
+  nodeId: "1:2",
+  frame: { width: 2048, height: 1024 },
+  image: { uri: "buttons.svg", format: "svg" },
+  nodes: [],
+  background: [platePlacement()],
+  ...over,
+});
+
+const planPlates = ({ assets = [plateAsset()], page = pageWithPlates() } = {}) =>
+  planDesignPages({
+    manifest: { version: PAGES_VERSION, fileKey: "k", assets, pages: [page] },
+    spec: {},
+    catalog: { components: [] },
+  });
+
+test("a placed plate is published once and pointed at by content hash", () => {
+  const plan = planPlates();
+  assert.deepEqual(plan.manifest.assets, [
+    { id: PLATE, uri: `assets/${PLATE}.png`, format: "png", width: 2048, height: 1024, bytes: 524288 },
+  ]);
+  // The emitter needs the source path from the import as well as the published one.
+  assert.deepEqual(plan.assets.map((a) => a.from), ["raw/backplate.png"]);
+  assert.deepEqual(plan.manifest.pages[0].background, [
+    { asset: PLATE, x: 0, y: 0, width: 2048, height: 1024 },
+  ]);
+});
+
+test("one plate serves many placements", () => {
+  const five = Array.from({ length: 5 }, (_, i) => platePlacement({ x: i * 100 }));
+  const plan = planPlates({ page: pageWithPlates({ background: five }) });
+  assert.equal(plan.manifest.assets.length, 1);
+  assert.equal(plan.manifest.pages[0].background.length, 5);
+});
+
+// A delivery branch is append-only, so a plate that stops being placed would be carried forever.
+test("a plate no page places is not republished", () => {
+  const plan = planPlates({ assets: [plateAsset(), plateAsset({ id: OTHER_PLATE })] });
+  assert.deepEqual(plan.manifest.assets.map((a) => a.id), [PLATE]);
+  assert.ok(plan.warnings.some((w) => w.includes("placed on no published page")));
+});
+
+// Publishing the reference would put a hole in the bundle the server has to fail soft around.
+test("a placement naming a plate the import does not carry is dropped", () => {
+  const plan = planPlates({
+    page: pageWithPlates({ background: [platePlacement({ asset: OTHER_PLATE })] }),
+  });
+  assert.equal(plan.manifest.pages[0].background, undefined);
+  assert.ok(plan.warnings.some((w) => w.includes("this import does not carry")));
+});
+
+test("a plate declaring a decompression bomb is refused before anything opens it", () => {
+  const plan = planPlates({ assets: [plateAsset({ width: 40000, height: 40000 })] });
+  assert.equal(plan.manifest.assets, undefined);
+  assert.ok(plan.warnings.some((w) => w.includes("unusable dimensions")));
+});
+
+test("only inert raster formats are carried", () => {
+  for (const format of ["svg", "svg+xml", "html", ""]) {
+    const plan = planPlates({ assets: [plateAsset({ format })] });
+    assert.equal(plan.manifest.assets, undefined, `format ${format} should not publish`);
+  }
+});
+
+test("a plate that is not content-addressed is refused", () => {
+  const plan = planPlates({ assets: [plateAsset({ id: "backplate" })] });
+  assert.equal(plan.manifest.assets, undefined);
+  assert.ok(plan.warnings.some((w) => w.includes("content-addressed")));
+});
+
+// The whole point of the enum. The value becomes a CSS `mix-blend-mode` on markup inlined into a
+// served page, so an unvetted string here is a style-injection route, not a styling hint.
+test("an unvetted blend never reaches the published manifest", () => {
+  const plan = planPlates({
+    page: pageWithPlates({
+      designBlend: "url(javascript:alert(1))",
+      renderBlend: "hue",
+      background: [platePlacement({ blend: "expression(x)" })],
+    }),
+  });
+  const page = plan.manifest.pages[0];
+  assert.equal(page.designBlend, undefined);
+  assert.equal(page.renderBlend, undefined);
+  assert.equal(page.background[0].blend, undefined);
+});
+
+test("allowlisted blends are carried, and the default is omitted", () => {
+  const plan = planPlates({
+    page: pageWithPlates({
+      designBlend: "screen",
+      renderBlend: "plus-lighter",
+      background: [platePlacement({ blend: "multiply" })],
+    }),
+  });
+  const page = plan.manifest.pages[0];
+  assert.equal(page.designBlend, "screen");
+  assert.equal(page.renderBlend, "plus-lighter");
+  assert.equal(page.background[0].blend, "multiply");
+
+  // `source-over` is the default everywhere, so stating it changes no bytes.
+  const plain = planPlates({
+    page: pageWithPlates({ designBlend: "source-over", renderBlend: "source-over" }),
+  });
+  assert.equal(plain.manifest.pages[0].designBlend, undefined);
+  assert.equal(plain.manifest.pages[0].renderBlend, undefined);
+});
+
+// An import written before any of this existed must publish exactly the bytes it always did.
+test("a page with no plates is unchanged", () => {
+  const plan = planPlates({ assets: [], page: pageWithPlates({ background: undefined }) });
+  assert.equal(plan.manifest.assets, undefined);
+  assert.equal(plan.manifest.pages[0].background, undefined);
+  assert.equal(plan.manifest.pages[0].designBlend, undefined);
+});

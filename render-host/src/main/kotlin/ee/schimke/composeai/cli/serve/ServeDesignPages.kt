@@ -3,7 +3,9 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.DesignPagesJson
 import ee.schimke.composeai.designpages.DesignPagesManifest
+import ee.schimke.composeai.designpages.PageAsset
 import ee.schimke.composeai.designpages.PageImage
+import ee.schimke.composeai.designpages.PageLayerPlacement
 import ee.schimke.composeai.designpages.PageNode
 import ee.schimke.composeai.designpages.PageNodeLink
 import ee.schimke.composeai.io.SystemFileSystem
@@ -51,6 +53,13 @@ private constructor(
   /** Sanitized markup per page id, ready to inline. Built at load; see the class comment. */
   private val markup: Map<String, String>,
   private val manifest: DesignPagesManifest? = null,
+  /**
+   * Shared backplates that survived verification, by content hash.
+   *
+   * Only the assets whose FILES were checked — not merely the records the manifest declared. See
+   * [verifiedAssets].
+   */
+  private val assets: Map<String, PageAsset> = emptyMap(),
 ) {
   private val byId: Map<String, DesignPage> = pages.associateBy { it.id }
 
@@ -68,6 +77,23 @@ private constructor(
    * inline, and shipping two different answers for one URL is how a check gets bypassed.
    */
   public fun svg(pageId: String): String? = markup[pageId]
+
+  /**
+   * The backplates to paint beneath [page]'s export, in paint order.
+   *
+   * Placements naming an asset that did not survive verification are dropped, so a caller can draw
+   * this list without re-checking anything. A page whose backdrop went missing still draws — the
+   * same fail-soft posture the rest of this surface takes, and the right one: a sheet missing a
+   * plate is worth showing, a sheet that refuses to render because a plate is missing is not.
+   */
+  public fun background(page: DesignPage): List<PageLayerPlacement> =
+    page.background.filter { it.isWellFormed && assets.containsKey(it.asset) }
+
+  /** A verified backplate by its content hash, or null. The asset route's only entry point. */
+  public fun asset(id: String): PageAsset? = assets[id]
+
+  /** Every verified backplate, for a caller staging or enumerating the bundle. */
+  public fun assets(): Collection<PageAsset> = assets.values
 
   /**
    * The design ref for [node] — the producer's own, or the one it would have written.
@@ -129,8 +155,88 @@ private constructor(
         pages = drawablePages(manifest).filter { markup.containsKey(it.id) },
         markup = markup,
         manifest = manifest,
+        assets = verifiedAssets(root, manifest, fileSystem),
       )
     }
+
+    /**
+     * The manifest's shared backplates whose FILES are what the records claim, by content hash.
+     *
+     * Three checks, and the order is the point — each one is cheaper than the next and refuses more
+     * than it costs:
+     *
+     * 1. **The declaration** ([PageAsset.isWellFormed]) and the path, before any I/O. A record
+     *    claiming 40000x40000, or naming `../../etc/passwd`, never reaches the filesystem.
+     * 2. **The signature**, from the first bytes. A file that does not open as the format it claims
+     *    is refused without being decoded — which is what keeps a mislabelled payload out of the
+     *    image decoder rather than trusting it to cope.
+     * 3. **The size**, against the declaration. Cheap, and it catches the truncated download that
+     *    would otherwise reach a decoder as a malformed image.
+     *
+     * The content hash is deliberately NOT recomputed here. It is verified at publish time, where
+     * the bytes are written, and hashing every backplate on every catalog load would cost megabytes
+     * of I/O per page for a check that protects against a delivery branch disagreeing with itself
+     * rather than against anything a reader can act on. The path, signature and size checks are
+     * what stop this lane serving something it should not; see the class comment on where the trust
+     * boundary sits.
+     *
+     * Fail-soft per asset, like everything else here: one bad plate costs its own placements, never
+     * the page and never the manifest.
+     */
+    private fun verifiedAssets(
+      root: Path,
+      manifest: DesignPagesManifest,
+      fileSystem: FileSystem,
+    ): Map<String, PageAsset> {
+      val verified = LinkedHashMap<String, PageAsset>()
+      for (asset in manifest.assetsById.values) {
+        if (!ServeDesignReferenceStore.isSafeRelativePath(asset.uri)) continue
+        val path = root / DIRECTORY / asset.uri.toPath()
+        if (!fileSystem.exists(path)) continue
+        val head =
+          runCatching { fileSystem.read(path) { readByteArray(SIGNATURE_BYTES.toLong()) } }
+            .getOrNull() ?: continue
+        if (!opensAs(asset.format, head)) continue
+        val size = runCatching { fileSystem.metadata(path).size }.getOrNull() ?: continue
+        if (size != asset.bytes) continue
+        verified[asset.id] = asset
+      }
+      return verified
+    }
+
+    /** Enough bytes for every signature below; a WEBP header needs twelve. */
+    private const val SIGNATURE_BYTES: Int = 12
+
+    /**
+     * Whether [head] opens as [format].
+     *
+     * Only the inert raster formats the contract admits. An unknown format is refused rather than
+     * waved through — the same posture [isDrawable] takes on a page's own image format, and for the
+     * same reason: a consumer that cannot verify what it is about to serve should not serve it.
+     */
+    private fun opensAs(format: String, head: ByteArray): Boolean =
+      when (format.lowercase()) {
+        PageAsset.PNG ->
+          head.size >= 8 &&
+            head[0] == 0x89.toByte() &&
+            head[1] == 'P'.code.toByte() &&
+            head[2] == 'N'.code.toByte() &&
+            head[3] == 'G'.code.toByte() &&
+            head[4] == 0x0D.toByte() &&
+            head[5] == 0x0A.toByte() &&
+            head[6] == 0x1A.toByte() &&
+            head[7] == 0x0A.toByte()
+        PageAsset.JPEG ->
+          head.size >= 3 &&
+            head[0] == 0xFF.toByte() &&
+            head[1] == 0xD8.toByte() &&
+            head[2] == 0xFF.toByte()
+        PageAsset.WEBP ->
+          head.size >= 12 &&
+            String(head, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+            String(head, 8, 4, Charsets.US_ASCII) == "WEBP"
+        else -> false
+      }
 
     private fun readSvg(root: Path, page: DesignPage, fileSystem: FileSystem): String? {
       if (!ServeDesignReferenceStore.isSafeRelativePath(page.image.uri)) return null
