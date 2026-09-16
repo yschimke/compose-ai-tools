@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.17.0](https://github.com/yschimke/compose-ai-tools/compare/v2.16.0...v2.17.0) (2026-09-16)
+
+
+### Features
+
+* a container structural role, and the five things a builtin could not say ([#5476](https://github.com/yschimke/compose-ai-tools/issues/5476)) ([93d8735](https://github.com/yschimke/compose-ai-tools/commit/93d8735069168fe3670ab754f0301f94a97ee17d))
+* **design-pages:** carry and verify shared background plates ([#5474](https://github.com/yschimke/compose-ai-tools/issues/5474)) ([28e9c68](https://github.com/yschimke/compose-ai-tools/commit/28e9c68de45e67077d3903d5c641f23c17424982))
+* let a catalog assert that no face lost its variation axes ([#5478](https://github.com/yschimke/compose-ai-tools/issues/5478)) ([875c002](https://github.com/yschimke/compose-ai-tools/commit/875c00215a99e1576e8a594f5a07aa4be88495fa))
+* let a render assertion be a function, not only a declared path ([#5471](https://github.com/yschimke/compose-ai-tools/issues/5471)) ([78fda46](https://github.com/yschimke/compose-ai-tools/commit/78fda46b136e2605af01d7795fbb959303a69e12))
+
+
+### Bug Fixes
+
+* regenerate the render-host ABI dump for the design-pages accessors ([#5477](https://github.com/yschimke/compose-ai-tools/issues/5477)) ([8432a6b](https://github.com/yschimke/compose-ai-tools/commit/8432a6b886da4f83b8f55ebe61c8b3febca23330))
+
 ## [2.16.0](https://github.com/yschimke/compose-ai-tools/compare/v2.15.0...v2.16.0) (2026-09-16)
 
 
