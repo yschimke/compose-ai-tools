@@ -3,9 +3,11 @@ package ee.schimke.composeai.buildlogic
 import com.ncorti.ktfmt.gradle.KtfmtExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.register
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
@@ -65,6 +67,69 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
 
     registerLayerBoundaryCheck(project)
     registerHttpServerFloorCheck(project)
+    applyDaemonBom(project)
+  }
+
+  /**
+   * Puts the compose-preview-daemon BOM on every module, so the daemon coordinates in the catalog
+   * need not -- and must not -- name versions of their own.
+   *
+   * That repository publishes only the modules a release changes
+   * (yschimke/compose-preview-daemon#123), so its coordinates no longer all sit at one version.
+   * This catalog used to pin all nineteen of them to a single shared version ref, which resolves
+   * right up until the first reduced release and then fails on whichever module did not publish at
+   * the new version -- a build break arriving from a repository we did not change, on a version
+   * bump that looks routine. The BOM is the published record of which versions belong together, so
+   * it is the only coordinate that names one.
+   *
+   * `api` and `implementation` are the two buckets that declare these dependencies here, 67 of the
+   * 69 declarations. `testImplementation` extends `implementation`, as do the Android variant
+   * configurations, so both are carried. The two `daemonBench` configurations in the sample
+   * benchmarks are resolvable configurations of their own and add the platform themselves.
+   *
+   * Kotlin Multiplatform modules do not use `api` and `implementation` at all: each source set
+   * gets its own bucket, named `commonMainApi`, `desktopMainImplementation`, `jvmMainApi` and so
+   * on. Matching only the two plain names left every KMP module without the platform, and CI found
+   * it where a local check on a plain JVM module could not:
+   * `:samples:design-catalog-m3-shared:desktopMainCompileClasspath` failed with
+   * `Could not find ee.schimke.composeai:slot-preview-runtime:` -- note the empty version, which is
+   * the signature of a catalog entry with no version and no platform to supply one.
+   *
+   * `configurations.all`, not a one-shot lookup: this plugin is applied from the `plugins {}` block
+   * before the Java, Kotlin or Android plugin has created `api` and `implementation`, so checking
+   * for them here finds nothing and silently adds nothing. The first attempt at this did exactly
+   * that -- `:bundle-format:dependencies` then reported `preview-data-api FAILED` and
+   * `daemon-client FAILED`, because the catalog entries carry no version and no platform had
+   * arrived to supply one. `all` fires for configurations created later too, which is what makes
+   * it work regardless of plugin ordering, and covers projects that have neither configuration by
+   * simply never matching.
+   */
+  /**
+   * A Kotlin source-set dependency bucket, such as `commonMainApi` or `desktopMainImplementation`.
+   *
+   * Matched by suffix because the source-set names are open-ended -- every target and every custom
+   * source set adds a pair -- so enumerating them would go stale the moment a target is added. The
+   * cost of matching too widely is only that a platform lands on a bucket with nothing from this
+   * BOM in it, which constrains nothing and resolves to nothing.
+   */
+  private fun isKotlinSourceSetBucket(name: String): Boolean =
+    name.endsWith("Api") || name.endsWith("Implementation")
+
+  private fun applyDaemonBom(project: Project) {
+    val bom =
+      project.extensions
+        .getByType<VersionCatalogsExtension>()
+        .named("libs")
+        .findLibrary("composeai-daemon-bom")
+        .orElseThrow {
+          IllegalStateException("libs.composeai.daemon.bom is missing from the version catalog")
+        }
+
+    project.configurations.all {
+      if (name == "api" || name == "implementation" || isKotlinSourceSetBucket(name)) {
+        project.dependencies.add(name, project.dependencies.platform(bom))
+      }
+    }
   }
 
   /**

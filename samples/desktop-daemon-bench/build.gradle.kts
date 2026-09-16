@@ -940,7 +940,13 @@ configurations.create("daemonBench") {
   isCanBeConsumed = false
 }
 
-dependencies { add("daemonBench", libs.composeai.daemon.core) }
+dependencies {
+  // `daemonBench` is a resolvable configuration of its own, so it does not inherit the daemon BOM
+  // that `ComposeAiBaseConventionsPlugin` puts on `api` and `implementation`. Without the platform
+  // here, `daemon-core` has no version at all -- the catalog entry deliberately carries none.
+  add("daemonBench", platform(libs.composeai.daemon.bom))
+  add("daemonBench", libs.composeai.daemon.core)
+}
 
 tasks.register<BenchCompileStagesTask>("benchCompileStages") {
   group = "verification"

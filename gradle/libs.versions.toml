@@ -351,7 +351,7 @@ composeai-contracts = "2.20.0"
 # for the same reason as the contracts above. The Gradle plugin bakes this value in as
 # `PreviewDaemonVersion` and resolves `renderer-*` / `daemon-*` for external consumers at it, and
 # the CLI fetches that release's sidecar archives (`DaemonSidecarProvision`) at it.
-composeai-preview-daemon = "3.5.0"
+composeai-preview-daemon = "3.6.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
@@ -392,6 +392,18 @@ rcplayers = "1.63.0"
 [libraries]
 
 # Wire contracts consumed from compose-preview-contracts (see `composeai-contracts`).
+# The daemon BOM. THE one coordinate carrying a version for the whole daemon stack: every
+# `ee.schimke.composeai` module published by yschimke/compose-preview-daemon takes its version from
+# this platform, which `ComposeAiBaseConventionsPlugin` puts on every module's `api` and
+# `implementation`.
+#
+# Why the entries below carry no version of their own: that repository publishes only the modules a
+# release changes (compose-preview-daemon#123), so its coordinates no longer all sit at the same
+# version. Pinning them to one shared ref -- which is what this catalog used to do -- resolves fine
+# until the first reduced release, and then fails on whichever module did not publish at the new
+# version. The BOM is the published record of which versions actually belong together, so it is the
+# only thing that should name one.
+composeai-daemon-bom = { module = "ee.schimke.composeai:compose-preview-daemon-bom", version.ref = "composeai-preview-daemon" }
 composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol", version.ref = "composeai-contracts" }
 composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices", version.ref = "composeai-contracts" }
 composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta", version.ref = "composeai-contracts" }
@@ -408,25 +420,25 @@ composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref =
 composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol", version.ref = "composeai-contracts" }
 
 # The daemon line, consumed from compose-preview-daemon (see `composeai-preview-daemon`).
-composeai-daemon-core = { module = "ee.schimke.composeai:daemon-core", version.ref = "composeai-preview-daemon" }
-composeai-daemon-client = { module = "ee.schimke.composeai:daemon-client", version.ref = "composeai-preview-daemon" }
-composeai-daemon-android = { module = "ee.schimke.composeai:daemon-android", version.ref = "composeai-preview-daemon" }
-composeai-daemon-desktop = { module = "ee.schimke.composeai:daemon-desktop", version.ref = "composeai-preview-daemon" }
-composeai-renderer-desktop = { module = "ee.schimke.composeai:renderer-desktop", version.ref = "composeai-preview-daemon" }
-composeai-preview-data-api = { module = "ee.schimke.composeai:preview-data-api", version.ref = "composeai-preview-daemon" }
-composeai-preview-annotations = { module = "ee.schimke.composeai:preview-annotations", version.ref = "composeai-preview-daemon" }
-composeai-data-fonts-core = { module = "ee.schimke.composeai:data-fonts-core", version.ref = "composeai-preview-daemon" }
-composeai-data-pseudolocale-core = { module = "ee.schimke.composeai:data-pseudolocale-core", version.ref = "composeai-preview-daemon" }
-composeai-data-remotecompose-core = { module = "ee.schimke.composeai:data-remotecompose-core", version.ref = "composeai-preview-daemon" }
-composeai-data-remotecompose-connector = { module = "ee.schimke.composeai:data-remotecompose-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-keyboard-connector = { module = "ee.schimke.composeai:data-keyboard-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-ambient-connector = { module = "ee.schimke.composeai:data-ambient-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-glimmer-environment-connector = { module = "ee.schimke.composeai:data-glimmer-environment-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-launcher-widget-connector = { module = "ee.schimke.composeai:data-launcher-widget-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-preview-overrides-runtime = { module = "ee.schimke.composeai:data-preview-overrides-runtime", version.ref = "composeai-preview-daemon" }
-composeai-slot-preview-runtime = { module = "ee.schimke.composeai:slot-preview-runtime", version.ref = "composeai-preview-daemon" }
-composeai-lottie-preview-runtime = { module = "ee.schimke.composeai:lottie-preview-runtime", version.ref = "composeai-preview-daemon" }
-composeai-svg-preview-runtime = { module = "ee.schimke.composeai:svg-preview-runtime", version.ref = "composeai-preview-daemon" }
+composeai-daemon-core = { module = "ee.schimke.composeai:daemon-core" }
+composeai-daemon-client = { module = "ee.schimke.composeai:daemon-client" }
+composeai-daemon-android = { module = "ee.schimke.composeai:daemon-android" }
+composeai-daemon-desktop = { module = "ee.schimke.composeai:daemon-desktop" }
+composeai-renderer-desktop = { module = "ee.schimke.composeai:renderer-desktop" }
+composeai-preview-data-api = { module = "ee.schimke.composeai:preview-data-api" }
+composeai-preview-annotations = { module = "ee.schimke.composeai:preview-annotations" }
+composeai-data-fonts-core = { module = "ee.schimke.composeai:data-fonts-core" }
+composeai-data-pseudolocale-core = { module = "ee.schimke.composeai:data-pseudolocale-core" }
+composeai-data-remotecompose-core = { module = "ee.schimke.composeai:data-remotecompose-core" }
+composeai-data-remotecompose-connector = { module = "ee.schimke.composeai:data-remotecompose-connector" }
+composeai-data-keyboard-connector = { module = "ee.schimke.composeai:data-keyboard-connector" }
+composeai-data-ambient-connector = { module = "ee.schimke.composeai:data-ambient-connector" }
+composeai-data-glimmer-environment-connector = { module = "ee.schimke.composeai:data-glimmer-environment-connector" }
+composeai-data-launcher-widget-connector = { module = "ee.schimke.composeai:data-launcher-widget-connector" }
+composeai-data-preview-overrides-runtime = { module = "ee.schimke.composeai:data-preview-overrides-runtime" }
+composeai-slot-preview-runtime = { module = "ee.schimke.composeai:slot-preview-runtime" }
+composeai-lottie-preview-runtime = { module = "ee.schimke.composeai:lottie-preview-runtime" }
+composeai-svg-preview-runtime = { module = "ee.schimke.composeai:svg-preview-runtime" }
 
 # The Remote Compose players (see `rcplayers`).
 rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace", version.ref = "rcplayers" }
