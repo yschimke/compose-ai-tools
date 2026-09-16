@@ -5,7 +5,10 @@ import java.io.File
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.junit.Test
 
@@ -48,6 +51,57 @@ class UiBuilderPolicySchemaTest {
     assertThat(schemaKeys("builtins"))
       .containsExactlyElementsIn(UiBuilderBuiltin.serializer().descriptor.elementNames)
   }
+
+  @Test
+  fun `every role enum in the schema is the role set, and there are three of them`() {
+    // `container` was added to the builtin's `role` and to a slot's, and MISSED on the template
+    // keys — so a catalog declaring `code.templates.container`, which both the pre-flight and this
+    // generator accept, was rejected by the schema an editor validates against. Enumerating the
+    // enums instead of naming them is the point: a fourth one added later is covered the day it
+    // lands, which is the property the first three did not have.
+    val enums = roleEnums(schema, "")
+    assertThat(enums.keys)
+      .containsExactly(
+        "/properties/builtins/additionalProperties/properties/role",
+        "/properties/builtins/additionalProperties/properties/slots/additionalProperties/properties/role",
+        "/properties/code/properties/templates/propertyNames",
+      )
+    for ((path, values) in enums) {
+      // `previews` and `file` are whole-file templates rather than node roles, so they are legal
+      // template KEYS and illegal roles. Everything else must be the role set exactly.
+      assertThat(values - setOf("previews", "file"))
+        .containsExactlyElementsIn(UI_BUILDER_STRUCTURAL_ROLES)
+        .inOrder()
+      assertThat(values.containsAll(listOf("previews", "file")))
+        .isEqualTo(path.endsWith("propertyNames"))
+    }
+  }
+
+  /**
+   * Every `enum` in the schema that names a structural role, by JSON pointer.
+   *
+   * Found by walking rather than listed, so an enum added to the schema later is checked without
+   * anybody remembering this test exists. `screen-root` is the marker: it is in every role enum and
+   * in no other one.
+   */
+  private fun roleEnums(node: JsonElement, path: String): Map<String, List<String>> =
+    when (node) {
+      is JsonObject -> {
+        val here =
+          (node["enum"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { value -> value.isString }?.content }
+            ?.takeIf { "screen-root" in it }
+        buildMap {
+          if (here != null) put(path, here)
+          for ((key, value) in node) putAll(roleEnums(value, "$path/$key"))
+        }
+      }
+      is JsonArray ->
+        buildMap {
+          node.forEachIndexed { index, value -> putAll(roleEnums(value, "$path[$index]")) }
+        }
+      else -> emptyMap()
+    }
 
   /** The property names the schema allows under one map-valued top-level block. */
   private fun schemaKeys(block: String): Set<String> =

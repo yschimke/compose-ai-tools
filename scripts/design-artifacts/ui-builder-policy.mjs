@@ -202,9 +202,66 @@ function validateTypedShapes(policy, errors) {
           `builtin ${JSON.stringify(id)} has a "properties" of ${JSON.stringify(builtin.properties)}; the reader decodes it as a list`,
         );
       }
+      validateBuiltinBlocks(id, builtin, errors);
+      validateBuiltinSlotShapes(id, builtin, errors);
     }
   }
   validateMenu(policy.menu, errors);
+}
+
+/**
+ * The typed shape of every field inside a builtin's `wasm`, `code` and `svg` blocks.
+ *
+ * Their children are TYPED in the reader — `UiBuilderBuiltinWasm`, `UiBuilderBuiltinCode`,
+ * `UiBuilderBuiltinSvg` — unlike `properties` and `slots`, whose elements are `JsonElement` and
+ * therefore the consumer's business rather than this validator's. A `code.imports` written as a
+ * bare string decodes into none of them, so the discovery task refuses the whole file and withdraws
+ * `ui-builder.json` — after a render, for a mistake a build-free pre-flight can see in a
+ * millisecond. That is exactly the failure this sweep exists to prevent, so the blocks are
+ * enumerated here rather than in the checks that read their MEANING.
+ */
+const BUILTIN_BLOCK_FIELDS = {
+  // `platformSupported` is absent on purpose: it is a `JsonElement` in the reader, so any JSON
+  // decodes and there is nothing to be wrong about.
+  wasm: { adapterStatus: "string", notes: "string" },
+  code: { symbol: "string", imports: "string[]" },
+  svg: { status: "string", fallback: "string", blocksExport: "boolean", notes: "string" },
+};
+
+const shapeOf = (value) =>
+  Array.isArray(value) ? (value.every((entry) => typeof entry === "string") ? "string[]" : "array") : typeof value;
+
+function validateBuiltinBlocks(id, builtin, errors) {
+  for (const [block, fields] of Object.entries(BUILTIN_BLOCK_FIELDS)) {
+    const value = builtin[block];
+    if (value === undefined) continue;
+    if (!isObject(value)) {
+      errors.push(
+        `builtin ${JSON.stringify(id)} has a "${block}" of ${JSON.stringify(value)}; the reader decodes it as an object`,
+      );
+      continue;
+    }
+    for (const [field, shape] of Object.entries(fields)) {
+      const child = value[field];
+      if (child === undefined || shapeOf(child) === shape) continue;
+      errors.push(
+        `builtin ${JSON.stringify(id)} has a "${block}.${field}" of ${JSON.stringify(child)}; the reader decodes it as ${shape === "string[]" ? "a list of strings" : `a ${shape}`}`,
+      );
+    }
+  }
+}
+
+/** The typed fields of a builtin's slot. The rest of a slot's shape belongs to the consumer. */
+function validateBuiltinSlotShapes(id, builtin, errors) {
+  if (!isObject(builtin.slots)) return;
+  for (const [slot, spec] of Object.entries(builtin.slots)) {
+    if (!isObject(spec)) continue;
+    if (spec.ordered !== undefined && typeof spec.ordered !== "boolean") {
+      errors.push(
+        `builtin ${JSON.stringify(id)} slot ${JSON.stringify(slot)} has an "ordered" of ${JSON.stringify(spec.ordered)}; the reader decodes it as a boolean`,
+      );
+    }
+  }
 }
 
 function validateMenu(menu, errors) {
@@ -298,11 +355,11 @@ function validateBuiltins(builtins, errors, warnings) {
         `builtin ${JSON.stringify(id)} names shelfRole ${JSON.stringify(builtin.shelfRole)}; it is one of ${SHELF_ROLES.join(", ")}, and it is not the structural "role" beside it`,
       );
     }
-    if (builtin.wasm !== undefined && !isObject(builtin.wasm)) {
-      errors.push(`builtin ${JSON.stringify(id)} has a "wasm" that is not an object`);
-    } else if (
+    // The SHAPE of these three blocks is swept in validateTypedShapes; what is read here is what
+    // they MEAN — a word no consumer decodes, a block that answers half a question.
+    if (
       isObject(builtin.wasm) &&
-      builtin.wasm.adapterStatus !== undefined &&
+      typeof builtin.wasm.adapterStatus === "string" &&
       !WASM_ADAPTER_STATUSES.includes(builtin.wasm.adapterStatus)
     ) {
       errors.push(
@@ -311,12 +368,12 @@ function validateBuiltins(builtins, errors, warnings) {
     }
     // A `code` block a consumer can see but not call is worse than no block: the block's presence
     // is what stops it falling back to the placeholder it would otherwise draw.
-    if (builtin.code !== undefined) {
-      if (!isObject(builtin.code)) {
-        errors.push(`builtin ${JSON.stringify(id)} has a "code" that is not an object`);
-      } else if (typeof builtin.code.symbol !== "string") {
-        errors.push(`builtin ${JSON.stringify(id)} has a "code" with a symbol that is not a string`);
-      } else if (builtin.code.symbol.length === 0) {
+    if (isObject(builtin.code)) {
+      if (builtin.code.symbol === undefined) {
+        errors.push(
+          `builtin ${JSON.stringify(id)} declares a "code" block with no symbol, so an export through it writes a call to nothing`,
+        );
+      } else if (builtin.code.symbol === "") {
         // A WARNING and not an error, measured rather than decided: the packaged builder
         // vocabulary publishes `{"symbol": "", "imports": []}` for `layout/for-each`, which has no
         // callable to name. A catalog republishing those declarations faithfully — the whole point
@@ -330,16 +387,12 @@ function validateBuiltins(builtins, errors, warnings) {
     // `status` and `fallback` are free words rather than a closed set — the recorder owns what
     // they mean — so what is checked is that both are there. A block stating one of the two says
     // less than no block, because a consumer reads its presence as an answer.
-    if (builtin.svg !== undefined) {
-      if (!isObject(builtin.svg)) {
-        errors.push(`builtin ${JSON.stringify(id)} has an "svg" that is not an object`);
-      } else {
-        for (const field of ["status", "fallback"]) {
-          if (typeof builtin.svg[field] !== "string" || builtin.svg[field].length === 0) {
-            errors.push(
-              `builtin ${JSON.stringify(id)} declares an "svg" block with no ${field}; a block missing one of the two says less than no block at all`,
-            );
-          }
+    if (isObject(builtin.svg)) {
+      for (const field of ["status", "fallback"]) {
+        if (builtin.svg[field] === undefined || builtin.svg[field] === "") {
+          errors.push(
+            `builtin ${JSON.stringify(id)} declares an "svg" block with no ${field}; a block missing one of the two says less than no block at all`,
+          );
         }
       }
     }
@@ -347,13 +400,7 @@ function validateBuiltins(builtins, errors, warnings) {
       errors.push(`builtin ${JSON.stringify(id)} has a "slots" that is not an object`);
     } else if (isObject(builtin.slots)) {
       for (const [slot, spec] of Object.entries(builtin.slots)) {
-        if (!isObject(spec)) continue;
-        if (spec.ordered !== undefined && typeof spec.ordered !== "boolean") {
-          errors.push(
-            `builtin ${JSON.stringify(id)} slot ${JSON.stringify(slot)} has an "ordered" that is not a boolean`,
-          );
-        }
-        if (spec.role === undefined) continue;
+        if (!isObject(spec) || spec.role === undefined) continue;
         // The same closed set the builtin's own role uses. A role the engine does not know selects
         // no template, and it should fail where somebody is editing the policy rather than during
         // an export weeks later.

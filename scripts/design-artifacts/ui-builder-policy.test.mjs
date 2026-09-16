@@ -246,10 +246,11 @@ test("the blocks a builtin states about its lanes have to be readable", () => {
   assert.deepEqual(codeResult.errors, []);
   assert.match(codeResult.warnings[0], /"code" block with an empty symbol/);
 
-  // A symbol that is not a string at all is still an error — nothing can copy that faithfully.
-  const typed = wellFormed();
-  typed.builtins = { "compose-foundation/box": { role: "container", code: { symbol: 7 } } };
-  assert.match(codes(typed).errors[0], /symbol that is not a string/);
+  // A block that states neither half is a block that says nothing, and its presence is read as an
+  // answer.
+  const bare = wellFormed();
+  bare.builtins = { "compose-foundation/box": { role: "container", code: { imports: ["x"] } } };
+  assert.match(codes(bare).errors[0], /"code" block with no symbol/);
 
   const svg = wellFormed();
   svg.builtins = { "compose-foundation/box": { role: "container", svg: { status: "verified" } } };
@@ -271,19 +272,58 @@ test("the blocks a builtin states about its lanes have to be readable", () => {
 
 test("a slot says whether its children's order means anything", () => {
   // Six of the packaged vocabulary's fifteen slots are unordered, and a consumer with no field to
-  // read composed all fifteen as ordered. A non-boolean here is a claim nothing can act on.
-  const policy = wellFormed();
-  policy.builtins = {
-    "compose-foundation/box": { role: "container", slots: { children: { ordered: "yes" } } },
-  };
-  assert.match(codes(policy).errors[0], /slot "children" has an "ordered" that is not a boolean/);
-
+  // read composed all fifteen as ordered.
   for (const ordered of [true, false]) {
     const stated = wellFormed();
     stated.builtins = {
       "compose-foundation/box": { role: "container", slots: { children: { ordered } } },
     };
     assert.deepEqual(codes(stated).errors, [], String(ordered));
+  }
+});
+
+test("every typed field inside a builtin's blocks is swept, not just the ones read for meaning", () => {
+  // The children of `wasm`, `code` and `svg` are TYPED in the reader, so a wrong type there does
+  // not decode — the discovery task refuses the whole file and withdraws `ui-builder.json`, after
+  // a ninety-minute render, for something a build-free pre-flight can see instantly. The checks
+  // that read these blocks for MEANING look at three fields; enumerating only those is the same
+  // "covers most of them" this sweep already exists to replace.
+  const cases = [
+    [{ wasm: { notes: 7 } }, /"wasm.notes" of 7; the reader decodes it as a string/],
+    [{ wasm: "supported" }, /"wasm" of "supported"; the reader decodes it as an object/],
+    [
+      { code: { symbol: "Box", imports: "androidx.compose.foundation.layout.Box" } },
+      /"code.imports" of "androidx[^"]*"; the reader decodes it as a list of strings/,
+    ],
+    [{ code: { symbol: "Box", imports: [7] } }, /"code.imports" of \[7\]/],
+    [{ code: { symbol: 7 } }, /"code.symbol" of 7; the reader decodes it as a string/],
+    [
+      { svg: { status: "verified", fallback: "none", blocksExport: "no" } },
+      /"svg.blocksExport" of "no"; the reader decodes it as a boolean/,
+    ],
+    [
+      { slots: { children: { ordered: "yes" } } },
+      /slot "children" has an "ordered" of "yes"; the reader decodes it as a boolean/,
+    ],
+  ];
+  for (const [fields, expected] of cases) {
+    const policy = wellFormed();
+    policy.builtins = { "compose-foundation/box": { role: "container", ...fields } };
+    const { errors } = codes(policy);
+    assert.ok(
+      errors.some((error) => expected.test(error)),
+      `${JSON.stringify(fields)} produced ${JSON.stringify(errors)}`,
+    );
+  }
+
+  // `wasm.platformSupported` is deliberately unchecked: the reader holds it as a raw JSON element,
+  // so every shape decodes and there is nothing to be wrong about.
+  for (const platformSupported of [true, "partly", { android: true }]) {
+    const policy = wellFormed();
+    policy.builtins = {
+      "compose-foundation/box": { role: "container", wasm: { platformSupported } },
+    };
+    assert.deepEqual(codes(policy).errors, [], JSON.stringify(platformSupported));
   }
 });
 
