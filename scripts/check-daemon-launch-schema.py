@@ -238,10 +238,34 @@ def split_params(body: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def data_class_header(text: str, name: str) -> re.Match | None:
+    """The `data class <name> … (` match whose end sits on the primary constructor's `(`.
+
+    The modifier clause between the name and the parameter list is not optional decoration: the
+    contracts 3.0.0 cutover put these DTOs behind builders, so the reader now declares
+
+        public data class DaemonLaunchDescriptor
+        internal constructor(
+
+    — `@ConsistentCopyVisibility` plus an internal constructor is how that repository keeps
+    `<init>` and `copy$default` off its published ABI, because adding a property to a data class
+    removes both signatures and kills a consumer compiled against the previous release with
+    `NoSuchMethodError`. This used to require the parameter list immediately after the name, and
+    stopped matching the moment the modifier appeared — which surfaced as a `LookupError` from the
+    parsers rather than as a drift report.
+    """
+    return re.search(
+        r"\bdata class\s+"
+        + re.escape(name)
+        + r"\s*(?:(?:public|internal|private|protected)\s+)?(?:constructor\s*)?\(",
+        text,
+    )
+
+
 def serial_name_renames(rel: str, name: str) -> list[str]:
     """Fields of `name` carrying `@SerialName`, whose wire key differs from their identifier."""
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         return []
     found = []
@@ -274,7 +298,7 @@ def body_properties(rel: str, name: str) -> list[str]:
     absent from the structural comparison, the annotation check and the fingerprint at once.
     """
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         return []
     after = text[m.end() - 1 :]
@@ -288,7 +312,7 @@ def body_properties(rel: str, name: str) -> list[str]:
 def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
     """`(field, annotation)` for every annotation on a property of `name` that is not allowed."""
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         return []
     found = []
@@ -305,7 +329,7 @@ def annotated_properties(rel: str, name: str) -> list[tuple[str, str]]:
 def kotlin_data_class(rel: str, name: str) -> dict[str, tuple[str, bool]]:
     """`{field: (type, has_default)}` for a Kotlin `data class` primary constructor."""
     text = stripped(rel)
-    m = re.search(r"\bdata class\s+" + re.escape(name) + r"\s*\(", text)
+    m = data_class_header(text, name)
     if not m:
         raise LookupError(f"{name} not found in {rel}")
     fields: dict[str, tuple[str, bool]] = {}
@@ -681,7 +705,7 @@ def discover_version_stamps() -> list[tuple[str, str]]:
     """
     stamps: list[tuple[str, str]] = []
     for rel, text in walk_sources():
-        if is_test_source(rel):
+        if is_test_source(rel) or rel in DECLARING:
             continue
         for m in DESCRIPTOR_CTOR.finditer(text):
             try:
@@ -699,6 +723,14 @@ def discover_version_stamps() -> list[tuple[str, str]]:
         for m in COPY_STAMP.finditer(text):
             stamps.append((rel, m.group(1)))
     return stamps
+
+
+# The two files that DECLARE a descriptor. Their own construction of one is the type's
+# construction API, not a site that stamps a version: the contracts 3.0.0 builder passes the
+# caller's `schemaVersion` through positionally in `Builder.build()`, inside the very file the
+# reader is parsed from. `(?<!class )` used to keep the declarations out on its own, and stopped
+# doing so the moment a declaration grew a builder that constructs the type by name.
+DECLARING = {WRITER, JVM_READER_REL}
 
 
 PRUNE = {"build", "node_modules", ".git", ".gradle", "out", "dist", "scripts"}

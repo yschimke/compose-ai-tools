@@ -105,6 +105,94 @@ class Parsers(unittest.TestCase):
         self.assertFalse(w["schemaVersion"][1], "schemaVersion must have no default")
         self.assertTrue(w["btaCompile"][1], "btaCompile must default to null")
 
+
+class BuilderShapedDeclarations(unittest.TestCase):
+    """The shape contracts 3.0.0 gave these DTOs, which broke both halves of the parser.
+
+    `feat!: put the cross-repo protocol types behind builders` made the reader's primary
+    constructor `internal` and added a `Builder` beside it, so the declaration reads
+    `data class DaemonLaunchDescriptor` / `internal constructor(`. Two things followed, and the
+    gate reported neither as drift: every parser raised `LookupError` because the header no longer
+    matched, and `Builder.build()` — a construction of the type by name, in the file that declares
+    it — became an unstamped positional construction site.
+    """
+
+    BUILDER_SHAPED = (
+        "@Serializable\n"
+        "@ConsistentCopyVisibility\n"
+        "public data class D\n"
+        "internal constructor(\n"
+        "  val schemaVersion: Int,\n"
+        "  val variant: String = \"debug\",\n"
+        ") {\n"
+        "  public class Builder(schemaVersion: Int) {\n"
+        "    public var schemaVersion: Int = schemaVersion\n"
+        "    public fun build(): D = D(schemaVersion, \"debug\")\n"
+        "  }\n"
+        "}\n"
+    )
+
+    def test_a_plain_declaration_still_parses(self):
+        m = mod.data_class_header("data class D(\n  val a: Int,\n)", "D")
+        self.assertIsNotNone(m)
+        self.assertEqual("(", m.group(0)[-1])
+
+    def test_a_declaration_behind_a_constructor_modifier_parses(self):
+        for header in (
+            "public data class D\ninternal constructor(\n  val a: Int,\n)",
+            "data class D private constructor(val a: Int)",
+            "data class D constructor(val a: Int)",
+        ):
+            with self.subTest(header=header):
+                m = mod.data_class_header(header, "D")
+                self.assertIsNotNone(m)
+                self.assertEqual("(", m.group(0)[-1])
+
+    def test_the_fields_read_through_the_modifier(self):
+        tree = tempfile.TemporaryDirectory()
+        self.addCleanup(tree.cleanup)
+        root, repo_root = Path(tree.name), mod.REPO_ROOT
+        mod.REPO_ROOT = root
+        self.addCleanup(lambda: setattr(mod, "REPO_ROOT", repo_root))
+        rel = "a/src/main/kotlin/D.kt"
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(self.BUILDER_SHAPED, encoding="utf-8")
+        fields = mod.kotlin_data_class(rel, "D")
+        self.assertEqual({"schemaVersion", "variant"}, set(fields))
+        self.assertFalse(fields["schemaVersion"][1])
+        self.assertTrue(fields["variant"][1], "variant has a default")
+
+    def test_a_declaring_file_is_not_a_construction_site(self):
+        """`Builder.build()` constructs the type by name, positionally, where it is declared."""
+        tree = tempfile.TemporaryDirectory()
+        self.addCleanup(tree.cleanup)
+        root, repo_root = Path(tree.name), mod.REPO_ROOT
+        mod.REPO_ROOT = root
+        self.addCleanup(lambda: setattr(mod, "REPO_ROOT", repo_root))
+        src = self.BUILDER_SHAPED.replace("class D", "class DaemonClasspathDescriptor").replace(
+            "D(schemaVersion", "DaemonClasspathDescriptor(schemaVersion"
+        )
+        (root / mod.WRITER).parent.mkdir(parents=True, exist_ok=True)
+        (root / mod.WRITER).write_text(src, encoding="utf-8")
+        self.assertEqual([], [s for s in mod.discover_version_stamps() if s[0] == mod.WRITER])
+
+    def test_a_consumer_constructing_positionally_is_still_reported(self):
+        """The skip is the declaring file, not the shape — an ordinary caller stays covered."""
+        tree = tempfile.TemporaryDirectory()
+        self.addCleanup(tree.cleanup)
+        root, repo_root = Path(tree.name), mod.REPO_ROOT
+        mod.REPO_ROOT = root
+        self.addCleanup(lambda: setattr(mod, "REPO_ROOT", repo_root))
+        rel = "cli/src/main/kotlin/Caller.kt"
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(
+            "fun make() = DaemonClasspathDescriptor(2, \"debug\")\n", encoding="utf-8"
+        )
+        self.assertIn(
+            (rel, mod.POSITIONAL), [s for s in mod.discover_version_stamps() if s[0] == rel]
+        )
+
+
 class TestSourceSets(unittest.TestCase):
     """Excluding only `src/test` and `src/functionalTest` missed most of this repo's test trees."""
 
