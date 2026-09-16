@@ -1,0 +1,31 @@
+{
+  "_comment": "The version each coordinate was LAST PUBLISHED at. Written by the release job; see .github/scripts/maven-publish-plan.sh. Seeded from Maven Central, not from the tag: every coordinate was verified to resolve at 2.17.0 before this file was committed.",
+  "modules": {
+    "appwidget-preview-runtime": "2.17.0",
+    "build-host-protocol": "2.17.0",
+    "bundle-coordinates": "2.17.0",
+    "bundle-format": "2.17.0",
+    "color-preview-runtime": "2.17.0",
+    "common-image-crop": "2.17.0",
+    "common-web-escaping": "2.17.0",
+    "compose-preview-config": "2.17.0",
+    "compose-preview-plugin": "2.17.0",
+    "daemon-launch-builder": "2.17.0",
+    "data-shared-element-core": "2.17.0",
+    "glance-preview-runtime": "2.17.0",
+    "gradle-preview-driver": "2.17.0",
+    "notification-preview-runtime": "2.17.0",
+    "preview-discovery": "2.17.0",
+    "remotecompose-json": "2.17.0",
+    "render-cli": "2.17.0",
+    "render-host": "2.17.0",
+    "render-matrix": "2.17.0",
+    "render-session-api": "2.17.0",
+    "render-session-embedded-desktop": "2.17.0",
+    "render-session-subprocess": "2.17.0",
+    "screen-model": "2.17.0",
+    "splash-preview-runtime": "2.17.0",
+    "typography-preview-runtime": "2.17.0",
+    "wear-preview-runtime": "2.17.0"
+  }
+}
