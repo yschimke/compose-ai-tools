@@ -261,7 +261,12 @@ private constructor(
       val seen = HashSet<String>()
       return manifest.pages
         .filter { page -> isDrawable(page) && seen.add(page.id) }
-        .map { page -> page.copy(nodes = page.nodes.filter(::isDrawable).take(MAX_NODES_PER_PAGE)) }
+        .map { page ->
+          page
+            .newBuilder()
+            .also { it.nodes = page.nodes.filter(::isDrawable).take(MAX_NODES_PER_PAGE) }
+            .build()
+        }
     }
 
     /** A Figma file key is URL-safe alphanumerics; anything else is not a key we will link to. */

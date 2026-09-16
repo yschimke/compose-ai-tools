@@ -227,18 +227,19 @@ class SkikoNativePairingTest {
     file.writeText(
       Json.encodeToString(
         DaemonLaunchDescriptor.serializer(),
-        DaemonLaunchDescriptor(
-          schemaVersion = 2,
-          modulePath = ":catalog",
-          variant = "desktop",
-          enabled = true,
-          mainClass = "ee.schimke.composeai.daemon.DaemonMain",
-          classpath = classpath,
-          jvmArgs = emptyList(),
-          systemProperties = emptyMap(),
-          workingDirectory = dir.absolutePath,
-          manifestPath = File(dir, "previews.json").absolutePath,
-        ),
+        DaemonLaunchDescriptor.Builder(
+            schemaVersion = 2,
+            modulePath = ":catalog",
+            variant = "desktop",
+            enabled = true,
+            mainClass = "ee.schimke.composeai.daemon.DaemonMain",
+            classpath = classpath,
+            jvmArgs = emptyList(),
+            systemProperties = emptyMap(),
+            workingDirectory = dir.absolutePath,
+            manifestPath = File(dir, "previews.json").absolutePath,
+          )
+          .build(),
       )
     )
     return file

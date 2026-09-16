@@ -60,9 +60,12 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
       }
     if (config.systemPropertyOverrides.isNotEmpty()) {
       descriptor =
-        descriptor.copy(
-          systemProperties = descriptor.systemProperties + config.systemPropertyOverrides
-        )
+        descriptor
+          .newBuilder()
+          .also {
+            it.systemProperties = descriptor.systemProperties + config.systemPropertyOverrides
+          }
+          .build()
     }
 
     // Apply the descriptor's system properties to the calling JVM. These drive PreviewIndex

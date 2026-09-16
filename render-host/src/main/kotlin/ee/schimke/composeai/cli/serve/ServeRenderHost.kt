@@ -760,18 +760,20 @@ internal constructor(
     }
       .getOrElse { e ->
         onLog("export and inspection data unavailable: enable failed: ${e.message}")
-        ExtensionsEnableResult(
-          unknown =
-            listOf(
-              ComposeFigmaSvgProduct.KIND,
-              ComposeFigmaSvgProduct.KIND_LONG,
-              SCROLL_EXTENSION_ID,
-              A11Y_EXTENSION_ID,
-              ComposeSemanticsProduct.KIND,
-              LayoutInspectorProduct.KIND,
-              THEME_EXTENSION_ID,
-            )
-        )
+        ExtensionsEnableResult.Builder()
+          .also {
+            it.unknown =
+              listOf(
+                ComposeFigmaSvgProduct.KIND,
+                ComposeFigmaSvgProduct.KIND_LONG,
+                SCROLL_EXTENSION_ID,
+                A11Y_EXTENSION_ID,
+                ComposeSemanticsProduct.KIND,
+                LayoutInspectorProduct.KIND,
+                THEME_EXTENSION_ID,
+              )
+          }
+          .build()
       }
   }
 
@@ -1449,7 +1451,10 @@ internal constructor(
       val slots = PreviewSlots.extractSlots(payload)
       val json =
         dataJson
-          .encodeToString(PreviewSlotsPayload.serializer(), PreviewSlotsPayload(previewId, slots))
+          .encodeToString(
+            PreviewSlotsPayload.serializer(),
+            PreviewSlotsPayload.Builder(previewId, slots).build(),
+          )
           .encodeToByteArray()
       slotsCache.put(key, json)
       SlotsOutcome.Ok(json)

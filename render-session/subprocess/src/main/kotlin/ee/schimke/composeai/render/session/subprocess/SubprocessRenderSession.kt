@@ -73,13 +73,18 @@ public object SubprocessRenderSessions : RenderSessionFactory {
       }
     checkSchemaVersion(descriptor, descriptorFile.path)
     var effectiveDescriptor =
-      if (config.forceEnabled && !descriptor.enabled) descriptor.copy(enabled = true)
+      if (config.forceEnabled && !descriptor.enabled)
+        descriptor.newBuilder().also { it.enabled = true }.build()
       else descriptor
     if (config.systemPropertyOverrides.isNotEmpty()) {
       effectiveDescriptor =
-        effectiveDescriptor.copy(
-          systemProperties = effectiveDescriptor.systemProperties + config.systemPropertyOverrides
-        )
+        effectiveDescriptor
+          .newBuilder()
+          .also {
+            it.systemProperties =
+              effectiveDescriptor.systemProperties + config.systemPropertyOverrides
+          }
+          .build()
     }
     val workspaceRoot = config.workspaceRoot
     val canonicalRoot = runCatching {
@@ -154,31 +159,38 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     }
       .getOrDefault(workspaceRoot.absoluteFile)
     val descriptor =
-      DaemonLaunchDescriptor(
-        schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,
-        modulePath = modulePath,
-        variant = "",
-        enabled = true,
-        mainClass = DESKTOP_DAEMON_MAIN_CLASS,
-        javaLauncher = null,
-        classpath = daemonClasspath,
-        jvmArgs = jvmArgs,
-        systemProperties =
-          mapOf(
-            "composeai.daemon.userClassDirs" to userClasspath.joinToString(File.pathSeparator),
-            "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
-            // Set the render-output dir so DaemonMain.dataRoot is non-null and the file-based data
-            // products (compose/figma-svg + -long, semantics, wireframe, …) register — otherwise a
-            // data/fetch(compose/figma-svg) on a bundle daemon fails "-32020 kind not advertised".
-            // `<root>/data` (where the registry + the RenderEngine producer both resolve) then sits
-            // inside this session's tree. Mirrors ServeBundleDaemon.materialize.
-            "composeai.render.outputDir" to File(canonicalRoot, "renders").absolutePath,
-          ) + extraSystemProperties,
-        workingDirectory = canonicalRoot.absolutePath,
-        manifestPath = previewsJson.absolutePath,
-        jailCommand = jailCommand,
-        hardTtlSeconds = hardTtlSeconds,
-      )
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,
+          modulePath = modulePath,
+          variant = "",
+          enabled = true,
+          mainClass = DESKTOP_DAEMON_MAIN_CLASS,
+          classpath = daemonClasspath,
+          jvmArgs = jvmArgs,
+          systemProperties =
+            mapOf(
+              "composeai.daemon.userClassDirs" to userClasspath.joinToString(File.pathSeparator),
+              "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
+              // Set the render-output dir so DaemonMain.dataRoot is non-null and the file-based
+              // data
+              // products (compose/figma-svg + -long, semantics, wireframe, …) register — otherwise
+              // a
+              // data/fetch(compose/figma-svg) on a bundle daemon fails "-32020 kind not
+              // advertised".
+              // `<root>/data` (where the registry + the RenderEngine producer both resolve) then
+              // sits
+              // inside this session's tree. Mirrors ServeBundleDaemon.materialize.
+              "composeai.render.outputDir" to File(canonicalRoot, "renders").absolutePath,
+            ) + extraSystemProperties,
+          workingDirectory = canonicalRoot.absolutePath,
+          manifestPath = previewsJson.absolutePath,
+        )
+        .also {
+          it.javaLauncher = null
+          it.jailCommand = jailCommand
+          it.hardTtlSeconds = hardTtlSeconds
+        }
+        .build()
     return spawnAndInitialize(
       descriptor = descriptor,
       workspaceName = canonicalRoot.name.ifBlank { "bundle" },
