@@ -30,8 +30,10 @@ object PublishedVersions {
     if (publishSet == null || artifactId in publishSet) return tagVersion
     return recordedVersion(artifactId, manifestText)
       ?: error(
-        "$artifactId is not in the publish set and has no entry in publishing-manifest.json, " +
-          "so there is no version it can safely carry. Add it to the manifest, or publish it."
+        "'$artifactId' is not in the publish set and has no entry in publishing-manifest.json, " +
+          "so there is no version it can safely carry. That file is not committed: the release " +
+          "plan writes it from Maven Central (maven-publish-plan.sh --write-manifest). An empty " +
+          "name here means a project path that resolves to no artifact id."
       )
   }
 
