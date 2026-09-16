@@ -30,7 +30,7 @@ object PublishedVersions {
     if (publishSet == null || artifactId in publishSet) return tagVersion
     return recordedVersion(artifactId, manifestText)
       ?: error(
-        "$artifactId is not in the publish set and has no entry in publishing-manifest.json, " +
+        "'$artifactId' is not in the publish set and has no entry in publishing-manifest.json, " +
           "so there is no version it can safely carry. Add it to the manifest, or publish it."
       )
   }

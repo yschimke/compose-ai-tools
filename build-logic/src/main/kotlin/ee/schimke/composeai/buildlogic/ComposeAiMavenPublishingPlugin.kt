@@ -179,12 +179,15 @@ private fun Project.publishedVersion(): String {
 }
 
 /**
- * The artifact id this project publishes as: its path with the separators flattened.
+ * The artifact id this project publishes as.
  *
  * Pinned against the build files by `PublishedArtifactIdTest`, because `:bom` and the publish set
  * both address modules this way while the modules themselves declare an id in their build script.
+ * The derivation, and the two places in the `gradle-plugin` included build where it is not simply
+ * the flattened path, live in [PublishedArtifactIds].
  */
-internal fun Project.publishedArtifactId(): String = path.removePrefix(":").replace(':', '-')
+internal fun Project.publishedArtifactId(): String =
+  PublishedArtifactIds.forProject(rootProject.name, path)
 
 /** The committed `publishing-manifest.json`, or an empty document when there is none. */
 internal fun Project.publishingManifestText(): String =

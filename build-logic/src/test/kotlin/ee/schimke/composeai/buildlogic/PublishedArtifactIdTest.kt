@@ -80,6 +80,44 @@ class PublishedArtifactIdTest {
     )
   }
 
+  /**
+   * Every published project in the included build resolves to the coordinate it declares.
+   *
+   * The test above pins the *main* build's path-flattening assumption and the one below it pins
+   * which four coordinates the included build carries — neither noticed that two of those four do
+   * not follow from their project path at all. That gap took the v2.18.0 release job down: the
+   * included build's root project flattens to the empty string, `:gradle-plugin-config` flattens
+   * to `gradle-plugin-config`, and a publish set naming all 26 real coordinates contains neither.
+   * See [PublishedArtifactIds].
+   */
+  @Test
+  fun `every published included-build project resolves to its declared artifact id`() {
+    val pluginDir = repoRoot.resolve("gradle-plugin")
+    val mismatches = mutableListOf<String>()
+    pluginDir
+      .walkTopDown()
+      .onEnter { it.name != "build" && it.name != ".git" }
+      .filter { it.name == "build.gradle.kts" }
+      .forEach { buildFile ->
+        val text = buildFile.readText()
+        if (!text.contains("""composeai.maven-publishing")""")) return@forEach
+        val declared =
+          Regex("""artifactId\s*=\s*"([^"]+)"""").find(text)?.groupValues?.get(1) ?: return@forEach
+        val relative = buildFile.parentFile.relativeTo(pluginDir).invariantSeparatorsPath
+        val path = if (relative.isEmpty()) ":" else ":" + relative.replace('/', ':')
+        val resolved = PublishedArtifactIds.forProject("gradle-plugin", path)
+        if (declared != resolved) {
+          mismatches += "$path declares $declared, the publish set would look up '$resolved'"
+        }
+      }
+
+    assertEquals(
+      emptyList(),
+      mismatches,
+      "PublishedArtifactIds no longer agrees with the included build's declared coordinates",
+    )
+  }
+
   private fun findRepoRoot(): File =
     generateSequence(File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
       .first { it.resolve("settings.gradle.kts").isFile && it.resolve("gradle-plugin").isDirectory }
