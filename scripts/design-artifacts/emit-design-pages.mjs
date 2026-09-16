@@ -28,11 +28,13 @@
  * enhancement and must never cost a catalog its render. `--strict` turns any warning into a
  * non-zero exit, for a repo that wants its page coverage gated.
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
 import { referenceKitFileKeys, stripComments } from "./catalog-spec.mjs";
 import {
+  ASSETS_DIR,
   PAGES_DIR,
   PAGES_INDEX,
   designPagesKitSkip,
@@ -199,32 +201,60 @@ function isSvg(file) {
   }
 }
 
-const copied = new Set();
-for (const { pageId, from } of plan.images) {
-  // Contain the read to the producer's own directory. The manifest is generated, but it is still an
-  // input: `../..` in an image uri must not pull arbitrary files into a published bundle.
-  //
-  // Resolved with `realpathSync`, not a lexical prefix test — a *symlink* sitting inside
-  // `design/pages` passes a lexical check while `copyFileSync` follows it out of the directory, so
-  // a repo could publish checkout metadata or another workspace file as `<pageId>.svg`. Comparing
-  // real paths closes that, and the regular-file + SVG checks make the published bytes what the
-  // server will actually accept.
+/**
+ * Resolve [from] inside the import directory, or null with a warning.
+ *
+ * Shared by the export lane and the shared-asset lane so the containment rule cannot drift between
+ * them — an asset path is exactly as much of an input as an image path, and a plate escaping the
+ * directory would publish an arbitrary file under a content-addressed name that claims to be
+ * verified.
+ */
+function containedSource(from, label) {
   const realRoot = fs.realpathSync(pagesDir);
   let source;
   try {
     source = fs.realpathSync(path.resolve(pagesDir, from));
   } catch {
-    warn(`page ${pageId}: export ${from} is missing; skipped`);
-    continue;
+    warn(`${label}: ${from} is missing; skipped`);
+    return null;
   }
   if (source !== realRoot && !source.startsWith(realRoot + path.sep)) {
-    warn(`page ${pageId}: export path ${from} resolves outside ${PAGES}; skipped`);
-    continue;
+    warn(`${label}: path ${from} resolves outside ${PAGES}; skipped`);
+    return null;
   }
   if (!fs.statSync(source).isFile()) {
-    warn(`page ${pageId}: export ${from} is not a regular file; skipped`);
-    continue;
+    warn(`${label}: ${from} is not a regular file; skipped`);
+    return null;
   }
+  return source;
+}
+
+/**
+ * The magic bytes each inert raster format opens with.
+ *
+ * Checked because the manifest's `format` is a CLAIM and the consumer refuses anything that is not
+ * the format it says it is. Publishing a mislabelled file would advertise a plate the server then
+ * drops, which reads as a server bug rather than a broken import — the same reasoning as [isSvg].
+ */
+const ASSET_SIGNATURES = new Map([
+  ["png", (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
+  ["jpeg", (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  [
+    "webp",
+    (b) =>
+      b.length > 12 &&
+      b.subarray(0, 4).toString("latin1") === "RIFF" &&
+      b.subarray(8, 12).toString("latin1") === "WEBP",
+  ],
+]);
+
+const copied = new Set();
+for (const { pageId, from } of plan.images) {
+  // Contain the read to the producer's own directory. The manifest is generated, but it is still an
+  // input: `../..` in an image uri must not pull arbitrary files into a published bundle. Resolved
+  // with `realpathSync`, not a lexical prefix test — see [containedSource].
+  const source = containedSource(from, `page ${pageId}: export`);
+  if (source === null) continue;
   if (!isSvg(source)) {
     warn(`page ${pageId}: export ${from} is not an SVG; skipped`);
     continue;
@@ -233,15 +263,85 @@ for (const { pageId, from } of plan.images) {
   copied.add(pageId);
 }
 
+/**
+ * Copy the shared backplates, verifying the bytes rather than trusting the record.
+ *
+ * Content addressing is only worth anything if someone checks it, and this is the only place that
+ * can: the consumer sees a file and a manifest that agree with each other by construction. Three
+ * things are proven here — the file opens as the format it claims, its length is the declared one,
+ * and its SHA-256 IS its id. An asset failing any of them is dropped rather than published, because
+ * a plate whose id does not address its bytes makes every downstream cache key a lie.
+ */
+const publishedAssets = [];
+if (plan.assets.length > 0) {
+  fs.mkdirSync(path.join(outDir, ASSETS_DIR), { recursive: true });
+}
+for (const { id, from, record } of plan.assets) {
+  const label = `shared asset ${id}`;
+  const source = containedSource(from, label);
+  if (source === null) continue;
+
+  const bytes = fs.readFileSync(source);
+  const signature = ASSET_SIGNATURES.get(record.format);
+  if (!signature || !signature(bytes)) {
+    warn(`${label}: ${from} does not open as ${record.format}; skipped`);
+    continue;
+  }
+  if (bytes.length !== record.bytes) {
+    warn(
+      `${label}: declares ${record.bytes} bytes but ${from} is ${bytes.length}; skipped`,
+    );
+    continue;
+  }
+  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  if (digest !== id) {
+    // The id is the content address. A mismatch means the import's table and its files have drifted
+    // — a hand-edited manifest, a half-finished re-import — and republishing it would hand the
+    // server an immutable URL that does not name its own bytes.
+    warn(`${label}: ${from} hashes to ${digest.slice(0, 12)}…; skipped`);
+    continue;
+  }
+  fs.writeFileSync(path.join(outDir, record.uri), bytes);
+  publishedAssets.push(record);
+}
+
 const published = plan.manifest.pages.filter((page) => copied.has(page.id));
 if (published.length === 0) {
   console.log("design-pages: no page export could be published");
   process.exit(STRICT && warnings.length > 0 ? 1 : 0);
 }
 
+// Drop any placement whose plate did not survive the byte checks above, so the published manifest
+// never names bytes the bundle does not carry. Without this the server would fail soft around a
+// hole nobody could explain from the branch alone.
+const availableAssets = new Set(publishedAssets.map((asset) => asset.id));
+const pagesToPublish = published.map((page) => {
+  if (!Array.isArray(page.background)) return page;
+  const background = page.background.filter((layer) => availableAssets.has(layer.asset));
+  if (background.length === page.background.length) return page;
+  warn(
+    `page ${page.id}: ${page.background.length - background.length} background layer(s) name a ` +
+      `plate that could not be published; dropped`,
+  );
+  const { background: _dropped, ...rest } = page;
+  return background.length > 0 ? { ...rest, background } : rest;
+});
+
+// Rebuilt rather than spread-over, so a plate the planner reached but the byte checks rejected
+// cannot survive in the published table. `assets` is omitted entirely when empty: a catalog with no
+// backplates publishes the manifest it always did, not one that says it has nothing.
+const { assets: _planned, ...manifestRest } = plan.manifest;
 fs.writeFileSync(
   path.join(outDir, PAGES_INDEX),
-  `${JSON.stringify({ ...plan.manifest, pages: published }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      ...manifestRest,
+      pages: pagesToPublish,
+      ...(publishedAssets.length > 0 ? { assets: publishedAssets } : {}),
+    },
+    null,
+    2,
+  )}\n`,
 );
 
 const linked = published.reduce(
@@ -255,7 +355,8 @@ const renderable = published.reduce(
 );
 console.log(
   `design-pages: published ${published.length} page(s), ${linked}/${nodes} nodes linked, ` +
-    `${renderable} renderable on the server`,
+    `${renderable} renderable on the server` +
+    (publishedAssets.length > 0 ? `, ${publishedAssets.length} shared backplate(s)` : ""),
 );
 
 if (STRICT && warnings.length > 0) process.exit(1);

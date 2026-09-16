@@ -85,6 +85,175 @@ function isPositive(value) {
 }
 
 /**
+ * Directory (under [PAGES_DIR]) the shared raster backplates are published into.
+ *
+ * A page's heavy imagery and its addressable drawing pull in opposite directions: the drawing has
+ * to stay an SVG, because the node ids are the whole join, while a photographic backplate inlines
+ * into that SVG as base64 and blows past the size cap. Storing the plate beside the export rather
+ * than inside it keeps the page interactive AND small, and — because the plates are content
+ * addressed — carries imagery repeated across sections and pages exactly once.
+ */
+export const ASSETS_DIR = "assets";
+
+/** Inert raster only; mirrors `PageAsset.FORMATS`. An SVG here would be markup nobody walked. */
+const ASSET_EXTENSIONS = new Map([
+  ["png", "png"],
+  ["jpeg", "jpg"],
+  ["webp", "webp"],
+]);
+
+/** Mirrors `PageAsset.MAX_ASSET_BYTES` / `MAX_ASSET_DIMENSION` / `MAX_ASSET_PIXELS`. */
+const MAX_ASSET_BYTES = 24 * 1024 * 1024;
+const MAX_ASSET_DIMENSION = 16384;
+const MAX_ASSET_PIXELS = 64 * 1024 * 1024;
+
+/** The content address. Lowercase hex only — the consumer's own regex is anchored and lowercase. */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/** Mirrors `PageBlendMode`'s serial names. A value outside it never reaches a renderer. */
+const BLEND_MODES = new Set(["source-over", "screen", "multiply", "plus-lighter"]);
+
+/** Mirrors `PageLayerPlacement.FITS`. */
+const FITS = new Set(["cover", "contain", "fill"]);
+
+/** The published path for a shared asset: `assets/<sha256>.<ext>`, relative to the manifest. */
+export function assetFileName(id, format) {
+  return `${ASSETS_DIR}/${id}.${ASSET_EXTENSIONS.get(String(format).toLowerCase())}`;
+}
+
+/** A finite number at or above zero — an offset or a radius, which may legitimately be 0. */
+function isNonNegative(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * The import's shared-asset table, keyed by content hash, with the unusable records dropped.
+ *
+ * Validated on the DECLARATION here, exactly as the consumer does, so a record that could never be
+ * drawn is never published: the emitter still verifies the bytes it copies (signature and hash),
+ * but a declared 40000x40000 plate should not survive far enough to be opened at all.
+ */
+function planAssets(manifest, warnings) {
+  const byId = new Map();
+  const declared = Array.isArray(manifest?.assets) ? manifest.assets : [];
+  for (const asset of declared) {
+    const id = typeof asset?.id === "string" ? asset.id : "";
+    if (!SHA256_HEX.test(id)) {
+      warnings.push(
+        `shared asset ${JSON.stringify(asset?.id ?? null)} is not content-addressed by a ` +
+          `sha256; skipped`,
+      );
+      continue;
+    }
+    // Ids are content hashes, so two records under one id disagree about bytes that cannot
+    // differ. Keep the first rather than letting a malformed trailing entry mask a good one.
+    if (byId.has(id)) {
+      warnings.push(`shared asset ${id} is declared twice; keeping the first`);
+      continue;
+    }
+    const format = String(asset?.format ?? "").toLowerCase();
+    if (!ASSET_EXTENSIONS.has(format)) {
+      warnings.push(`shared asset ${id} declares format ${format || "(none)"}; skipped`);
+      continue;
+    }
+    const { width, height, bytes } = asset ?? {};
+    if (
+      !Number.isInteger(width) ||
+      !Number.isInteger(height) ||
+      width < 1 ||
+      height < 1 ||
+      width > MAX_ASSET_DIMENSION ||
+      height > MAX_ASSET_DIMENSION ||
+      width * height > MAX_ASSET_PIXELS
+    ) {
+      warnings.push(`shared asset ${id} declares unusable dimensions ${width}x${height}; skipped`);
+      continue;
+    }
+    if (!Number.isInteger(bytes) || bytes < 1 || bytes > MAX_ASSET_BYTES) {
+      warnings.push(`shared asset ${id} declares an unusable size of ${bytes} bytes; skipped`);
+      continue;
+    }
+    const from = typeof asset?.uri === "string" ? asset.uri : "";
+    if (from === "") {
+      warnings.push(`shared asset ${id} names no file; skipped`);
+      continue;
+    }
+    byId.set(id, {
+      id,
+      from,
+      record: { id, uri: assetFileName(id, format), format, width, height, bytes },
+    });
+  }
+  return byId;
+}
+
+/**
+ * One page's background placements, dropping any that cannot be drawn.
+ *
+ * A placement naming an asset the table does not carry is dropped HERE rather than published as a
+ * dangling reference: the emitter only copies what some page places, so publishing the reference
+ * would put a hole in the bundle the server then has to fail soft around.
+ */
+function planBackground(page, assetsById, warnings) {
+  const declared = Array.isArray(page?.background) ? page.background : [];
+  const placements = [];
+  for (const layer of declared) {
+    const asset = typeof layer?.asset === "string" ? layer.asset : "";
+    if (!assetsById.has(asset)) {
+      warnings.push(
+        `page ${page.id}: background layer names ${JSON.stringify(asset || null)}, which this ` +
+          `import does not carry; skipped`,
+      );
+      continue;
+    }
+    if (!isPositive(layer?.width) || !isPositive(layer?.height)) {
+      warnings.push(`page ${page.id}: background layer has no drawable box; skipped`);
+      continue;
+    }
+    const x = isNonNegative(layer?.x) || (typeof layer?.x === "number" && Number.isFinite(layer.x))
+      ? layer.x
+      : 0;
+    const y = isNonNegative(layer?.y) || (typeof layer?.y === "number" && Number.isFinite(layer.y))
+      ? layer.y
+      : 0;
+    const opacity =
+      typeof layer?.opacity === "number" && Number.isFinite(layer.opacity) &&
+      layer.opacity >= 0 && layer.opacity <= 1
+        ? layer.opacity
+        : 1;
+    const fit = FITS.has(String(layer?.fit).toLowerCase())
+      ? String(layer.fit).toLowerCase()
+      : "cover";
+    const radius = isNonNegative(layer?.radius) ? layer.radius : 0;
+    placements.push({
+      asset,
+      x,
+      y,
+      width: layer.width,
+      height: layer.height,
+      ...(opacity !== 1 ? { opacity } : {}),
+      ...(fit !== "cover" ? { fit } : {}),
+      ...(radius !== 0 ? { radius } : {}),
+      ...(layer?.clip === false ? { clip: false } : {}),
+      // Validated, never passed through. This decodes into a closed enum on the consumer, and the
+      // value ends up as a CSS `mix-blend-mode` on markup inlined into a served page — so an
+      // unvetted string here is a style-injection route, not a styling hint. An unknown one becomes
+      // the backward-compatible default rather than failing the page.
+      ...(blendMode(layer?.blend, "source-over") !== "source-over"
+        ? { blend: blendMode(layer?.blend, "source-over") }
+        : {}),
+    });
+  }
+  return placements;
+}
+
+/** An allowlisted compositing mode, or [fallback]. Never the manifest's own string. */
+function blendMode(value, fallback) {
+  const mode = String(value ?? "").toLowerCase();
+  return BLEND_MODES.has(mode) ? mode : fallback;
+}
+
+/**
  * The published export path for a page: always `<id>.svg`, never the producer's own file name.
  *
  * The server re-paths these again when it stages a catalog, so this is belt-and-braces — but it
@@ -505,7 +674,7 @@ export function designPagesKitSkip({ fileKey, kitKeys }) {
 export function planDesignPages({ manifest, spec, catalog }) {
   const warnings = [];
   if (!manifest || typeof manifest !== "object") {
-    return { manifest: null, images: [], warnings };
+    return { manifest: null, images: [], assets: [], warnings };
   }
   const version = manifest.version;
   if (version !== PAGES_VERSION) {
@@ -513,7 +682,7 @@ export function planDesignPages({ manifest, spec, catalog }) {
       `design-pages manifest version ${String(version)} is not one this catalog can publish ` +
         `(supported: ${PAGES_VERSION})`,
     );
-    return { manifest: null, images: [], warnings };
+    return { manifest: null, images: [], assets: [], warnings };
   }
 
   const byFunction = imagesByPreviewFunction(spec, catalog);
@@ -532,13 +701,17 @@ export function planDesignPages({ manifest, spec, catalog }) {
   const images = [];
   const seen = new Set();
   const pages = [];
+  // The shared backplate table, built once: placements on every page resolve against it, and the
+  // reachable subset is what gets published and copied.
+  const assetsById = planAssets(manifest, warnings);
+  const usedAssets = new Set();
   // `Array.isArray`, not `?? []`: a structurally malformed manifest — `"pages": {}` from a bad
   // edit — is syntactically valid JSON, so it survives the parse and would throw "object is not
   // iterable" here, out of the emitter and into the workflow's `set -e`. The whole point of this
   // lane is that it cannot cost a catalog its publish.
   if (!Array.isArray(manifest.pages)) {
     warnings.push("design-pages manifest declares no usable pages array");
-    return { manifest: null, images: [], warnings };
+    return { manifest: null, images: [], assets: [], warnings };
   }
   for (const page of manifest.pages) {
     const id = typeof page?.id === "string" ? page.id : "";
@@ -714,6 +887,9 @@ export function planDesignPages({ manifest, spec, catalog }) {
       );
     }
 
+    const background = planBackground({ ...page, id }, assetsById, warnings);
+    for (const layer of background) usedAssets.add(layer.asset);
+
     images.push({ pageId: id, from });
     pages.push({
       id,
@@ -726,18 +902,48 @@ export function planDesignPages({ manifest, spec, catalog }) {
       // `false` rule as the node field: absent means `true`, which is what every page published
       // before this field existed means.
       ...(page?.inventory === false ? { inventory: false } : {}),
+      // Shared plates painted beneath the export, in paint order. Omitted when there are none, so
+      // a page that needs no backdrop publishes exactly the bytes it always did.
+      ...(background.length > 0 ? { background } : {}),
+      // How each layer composites. Emitted only when it is not the backward-compatible default,
+      // for the same reason: an import with no blend authored anywhere produces a byte-identical
+      // manifest to the one that shipped before any of this existed.
+      ...(blendMode(page?.designBlend, "source-over") !== "source-over"
+        ? { designBlend: blendMode(page?.designBlend, "source-over") }
+        : {}),
+      ...(blendMode(page?.renderBlend, "source-over") !== "source-over"
+        ? { renderBlend: blendMode(page?.renderBlend, "source-over") }
+        : {}),
     });
   }
 
-  if (pages.length === 0) return { manifest: null, images: [], warnings };
+  if (pages.length === 0) return { manifest: null, images: [], warnings, assets: [] };
+
+  // Garbage collection, and the reason it is done HERE rather than by a sweep later: a delivery
+  // branch is append-only, so a plate that stops being placed would otherwise be carried by every
+  // future publish forever. Only what some published page actually places survives.
+  const assets = [...assetsById.values()].filter((asset) => usedAssets.has(asset.id));
+  const orphans = assetsById.size - assets.length;
+  if (orphans > 0) {
+    warnings.push(
+      `${orphans} shared asset(s) are carried by the import but placed on no published page; ` +
+        `not republished`,
+    );
+  }
+
   return {
     manifest: {
       version: PAGES_VERSION,
       source: "figma",
       fileKey: String(manifest.fileKey ?? ""),
       pages,
+      // Omitted entirely when empty, so a catalog with no backplates publishes the manifest it
+      // always did rather than one that merely says it has nothing.
+      ...(assets.length > 0 ? { assets: assets.map((asset) => asset.record) } : {}),
     },
     images,
+    // What the emitter has to copy: the source path from the import, and the published path.
+    assets,
     warnings,
   };
 }
