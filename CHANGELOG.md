@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.18.0](https://github.com/yschimke/compose-ai-tools/compare/v2.17.0...v2.18.0) (2026-09-16)
+
+
+### Features
+
+* **build:** publish a BOM for every coordinate this repository ships ([#5483](https://github.com/yschimke/compose-ai-tools/issues/5483)) ([d21ef62](https://github.com/yschimke/compose-ai-tools/commit/d21ef6200adf93f5acab50264d73b79852a8aba4))
+* **build:** publish only the modules a release changes ([#5485](https://github.com/yschimke/compose-ai-tools/issues/5485)) ([35748fd](https://github.com/yschimke/compose-ai-tools/commit/35748fd875f460bddd1488b83667f7c03a6bd264))
+* **deps:** take daemon 3.8.0 and contracts 3.0.0, and their builders ([#5484](https://github.com/yschimke/compose-ai-tools/issues/5484)) ([6651e4b](https://github.com/yschimke/compose-ai-tools/commit/6651e4b4d37bb7160765d9455ad019aec329cfbd))
+
+
+### Bug Fixes
+
+* **ci:** repair the publish plan's history and the daemon-launch schema gate ([#5486](https://github.com/yschimke/compose-ai-tools/issues/5486)) ([0d93b1c](https://github.com/yschimke/compose-ai-tools/commit/0d93b1c54e5a276a93351a199bd49c5d0bc6dc2a))
+* **deps:** pin the daemon at 3.6.1, the revert consumers actually need ([#5481](https://github.com/yschimke/compose-ai-tools/issues/5481)) ([cbe28bc](https://github.com/yschimke/compose-ai-tools/commit/cbe28bcbe6291d0cbc9cca04c4753c8af8ddc466))
+
 ## [2.17.0](https://github.com/yschimke/compose-ai-tools/compare/v2.16.0...v2.17.0) (2026-09-16)
 
 
