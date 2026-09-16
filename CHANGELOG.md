@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.16.0](https://github.com/yschimke/compose-ai-tools/compare/v2.15.0...v2.16.0) (2026-09-16)
+
+
+### Features
+
+* assert declared render properties against the data products a render writes ([#5468](https://github.com/yschimke/compose-ai-tools/issues/5468)) ([33032d4](https://github.com/yschimke/compose-ai-tools/commit/33032d4b278c3a4050ae32e282586db65177f310))
+
+
+### Bug Fixes
+
+* **ci:** scope each design-artifacts lane against what it last rendered ([#5465](https://github.com/yschimke/compose-ai-tools/issues/5465)) ([5a8a99c](https://github.com/yschimke/compose-ai-tools/commit/5a8a99c42e498aba9d7164449cd869442b6f60f4))
+* **deps:** update compose-preview-contracts to v2.19.0 ([#5469](https://github.com/yschimke/compose-ai-tools/issues/5469)) ([017e063](https://github.com/yschimke/compose-ai-tools/commit/017e0633e64c9fa8c0ef3857eb549971d663ff15))
+* **deps:** update compose-preview-daemon to v3.4.8 ([#5460](https://github.com/yschimke/compose-ai-tools/issues/5460)) ([bb586d4](https://github.com/yschimke/compose-ai-tools/commit/bb586d4d1fa267df3e4bf1ba48ea5bb06218e0fc))
+* **deps:** update compose-preview-daemon to v3.4.9 ([#5466](https://github.com/yschimke/compose-ai-tools/issues/5466)) ([0705e99](https://github.com/yschimke/compose-ai-tools/commit/0705e991873a0858eadb0cae73edb61e4aa9c7a5))
+* **deps:** update rc-players to v1.61.1 ([#5462](https://github.com/yschimke/compose-ai-tools/issues/5462)) ([47f4e63](https://github.com/yschimke/compose-ai-tools/commit/47f4e63fd0f488f2ed89db4b28a807f4d7db3544))
+* **deps:** update rc-players to v1.63.0 ([#5464](https://github.com/yschimke/compose-ai-tools/issues/5464)) ([a5bbe21](https://github.com/yschimke/compose-ai-tools/commit/a5bbe21ff0d3269abefcc898222a57e5282b771a))
+
 ## [2.15.0](https://github.com/yschimke/compose-ai-tools/compare/v2.14.1...v2.15.0) (2026-09-15)
 
 
