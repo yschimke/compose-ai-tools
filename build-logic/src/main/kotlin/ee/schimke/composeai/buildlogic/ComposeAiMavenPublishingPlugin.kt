@@ -169,6 +169,19 @@ private fun Project.publishedVersion(): String {
     providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
       ?: return nextPatchSnapshotVersion()
 
+  // The `gradle-plugin` included build always publishes, so its four coordinates always carry the
+  // tag and never consult the publish set. `maven-publish-plan.sh` does `dirty.update(
+  // INCLUDED_BUILD_IDS)` unconditionally — the CLI bakes the plugin coordinate for the version it
+  // ships at, so a skipped plugin is a user-facing break on the first command anyone runs.
+  //
+  // Bypassing the lookup is not a shortcut around a rule; it is the only correct answer, because
+  // [publishedArtifactId] CANNOT name these projects. An included build's paths are its own: its
+  // root project is `:`, which flattens to the EMPTY STRING, and `:gradle-plugin-config` flattens
+  // to `gradle-plugin-config` while it publishes as `compose-preview-config`. Neither is in the
+  // publish set or the manifest, so the `error(...)` below fired while the plugin was being
+  // applied — killing v2.18.0's release job during configuration, before anything was uploaded.
+  if (gradle.parent != null) return pluginVersion
+
   return PublishedVersions.resolve(
     artifactId = publishedArtifactId(),
     tagVersion = pluginVersion,

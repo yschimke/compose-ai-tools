@@ -80,6 +80,35 @@ class PublishedArtifactIdTest {
     )
   }
 
+  @Test
+  fun `the path convention cannot name the included build's coordinates`() {
+    // Why `publishedVersion()` returns the tag outright for an included build instead of looking
+    // the module up. This is not a style preference: v2.18.0's release job died during Gradle
+    // configuration on `:` -> "" — the included build's ROOT project flattens to the empty string,
+    // which is in neither the publish set nor the manifest, so the plugin's own `error(...)` fired
+    // while it was being applied. `:gradle-plugin-config` -> "gradle-plugin-config" is the same
+    // trap one project along, and would have fired the moment the first was fixed by hand.
+    //
+    // Pinned as a fact rather than as a rule, so that anyone tempted to "unify" the two paths sees
+    // what the unification costs. The included build is safe to stamp with the tag for an
+    // independent reason: `maven-publish-plan.sh` marks all four of its ids dirty unconditionally,
+    // so they publish at every release.
+    val derivedFromRootPath = ":".removePrefix(":").replace(':', '-')
+    assertEquals("", derivedFromRootPath, "an included build's root project has no derivable id")
+
+    val configDir = repoRoot.resolve("gradle-plugin/gradle-plugin-config")
+    val declared =
+      Regex("""artifactId\s*=\s*"([^"]+)"""")
+        .find(configDir.resolve("build.gradle.kts").readText())!!
+        .groupValues[1]
+    assertEquals("compose-preview-config", declared)
+    assertEquals(
+      false,
+      declared == "gradle-plugin-config",
+      "if this ever matches the project path, re-read the comment above before simplifying",
+    )
+  }
+
   private fun findRepoRoot(): File =
     generateSequence(File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
       .first { it.resolve("settings.gradle.kts").isFile && it.resolve("gradle-plugin").isDirectory }

@@ -108,6 +108,23 @@ jobs:
   # too. On a saturated queue that is another 40-70 min in front of post-merge
   # module coverage: the exact cost this split exists to remove. Non-PR events
   # skip the job and the consumer defaults to `full` directly.
+  # build-logic's own tests, which decide what a release publishes and at which version.
+  #
+  # Unconditional and ungated: `build-logic` is an `includeBuild`, so Gradle's task-name matching
+  # never descends into it and nothing else in this repository runs these. `PublishedArtifactIdTest`
+  # existed and was green on a laptop while v2.18.0's release died during configuration — a test
+  # nothing runs is not a safety net. Seconds, no SDK, no cache.
+  build-logic-tests:
+    name: Build Logic Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run build-logic's tests
+        run: ./gradlew -p build-logic test
+
   plugin-tests:
     name: Plugin Unit Tests
     needs: changes
