@@ -351,7 +351,20 @@ composeai-contracts = "2.20.0"
 # for the same reason as the contracts above. The Gradle plugin bakes this value in as
 # `PreviewDaemonVersion` and resolves `renderer-*` / `daemon-*` for external consumers at it, and
 # the CLI fetches that release's sidecar archives (`DaemonSidecarProvision`) at it.
-composeai-preview-daemon = "3.6.0"
+#
+# This value is not private to this build. Since #5480 every published POM here imports
+# `compose-preview-daemon-bom` at it and declares the daemon coordinates with no version of their
+# own, so what is written here is the daemon version every downstream consumer resolves. That is
+# the point: a consumer that names no daemon version cannot skew from the one this repository's
+# binaries were compiled against, which is what `NoSuchMethodError: DesignPage.copy$default(...)`
+# was (compose-preview-server#889). Treat a change to this line as a change to a published API.
+#
+# 3.6.1, not 3.6.0. 3.5.0 put `coerceInputValues` on `DesignPagesJson`, and that flag is Json-wide
+# rather than per-field, so it disabled the contract's unknown-enum rule for EVERY enum the design
+# pages document carries. compose-preview-daemon#128 reverted it and 3.6.1 is that revert. Pinning
+# 3.6.0 here would publish the leniency back out to every consumer of these POMs, including the
+# server that just restored the strict assertion (compose-preview-server#893).
+composeai-preview-daemon = "3.6.1"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
