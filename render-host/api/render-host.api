@@ -3524,6 +3524,9 @@ public final class ee/schimke/composeai/cli/serve/ServeDesignPageStore {
 	public static final field DIRECTORY Ljava/lang/String;
 	public static final field INDEX_FILE Ljava/lang/String;
 	public static final field MAX_NODES_PER_PAGE I
+	public final fun asset (Ljava/lang/String;)Lee/schimke/composeai/designpages/PageAsset;
+	public final fun assets ()Ljava/util/Collection;
+	public final fun background (Lee/schimke/composeai/designpages/DesignPage;)Ljava/util/List;
 	public final fun getFileKey ()Ljava/lang/String;
 	public final fun getPages ()Ljava/util/List;
 	public final fun page (Ljava/lang/String;)Lee/schimke/composeai/designpages/DesignPage;
