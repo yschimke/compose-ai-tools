@@ -63,10 +63,8 @@ jobs:
     # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
     # remains buildable from source, but its per-OS packages are no longer core release artifacts.
     needs: [build-applications]
-    # Every release publishes the whole project. There is no selective-publish guard any more:
-    # the repository is one version line of ~27 modules that move together, and deciding per
-    # release which of them "really" changed cost more in machinery and failure modes than the
-    # upload quota it saved. A release publishes all of them at the release's own version, so a
+    # A release publishes only the modules it changed, computed by
+    # `.github/scripts/maven-publish-plan.sh`; skipped modules keep their recorded version, so a
     # POM never names a sibling version that was never uploaded.
     runs-on: ubuntu-latest
     outputs:
@@ -81,6 +79,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG_NAME }}
+          # The publish plan compares each module against the tag IT last published at, so the
+          # checkout needs the tags and the history to diff. `actions/checkout` is shallow by
+          # default: without this the plan finds no tag, takes its fail-safe "publish everything"
+          # path, and the saving silently becomes zero.
+          fetch-depth: 0
           persist-credentials: false
       - name: Derive plugin version from tag
         # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
