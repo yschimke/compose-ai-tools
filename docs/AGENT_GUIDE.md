@@ -428,12 +428,19 @@ the preview pipeline, don't auto-merge — is stated once in
   BuildFetch cache warm. The Monday cron and the release chain pick that drift up on
   their own; if a renderer change needs to reach the delivery branches sooner,
   dispatch manually (`actions_run_trigger` → `run_workflow` on
-  `design-artifacts.yml`, ref `main`) and confirm the run succeeded. The
-  path→system mapping lives in
+  `design-artifacts.yml`, ref `main`) and confirm the run succeeded — the dispatch
+  takes a `systems` input, so one stale lane costs one render rather than all of
+  them. The path→system mapping lives in
   [`scripts/design-artifacts/scope-systems.sh`](../scripts/design-artifacts/scope-systems.sh)
   with its own self-test (`test-scope-systems.sh`, run by CI) — change it only with
   those passing, since a wrong mapping silently strands a published catalog on stale
-  renders.
+  renders. The scope DECISION around that mapping lives in
+  [`scope-step.sh`](../scripts/design-artifacts/scope-step.sh) (self-test
+  `test-scope-step.sh`): it diffs each lane from the commit that lane was last
+  rendered from rather than from the one push that started the run, which is what
+  keeps a run cancelled while pending from stranding its catalog until Monday. The
+  reasoning is in
+  [`docs/design/DESIGN_CATALOGS.md`](design/DESIGN_CATALOGS.md#each-lane-is-scoped-against-what-it-last-rendered-not-against-one-push).
 
 - **Claude Code sessions carry the reactive half of this workflow in
   [`.claude/skills/steward`](../.claude/skills/steward/SKILL.md)**, which loads when
