@@ -1,11 +1,43 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-15T20:47:20.176Z",
+  "generatedAt": "2026-09-16T04:58:25.673Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "5a8a99c42e498aba9d7164449cd869442b6f60f4",
+        "subject": "fix(ci): scope each design-artifacts lane against what it last rendered (#5465)",
+        "at": "2026-09-16T05:51:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0705e991873a0858eadb0cae73edb61e4aa9c7a5",
+        "subject": "fix(deps): update compose-preview-daemon to v3.4.9 (#5466)",
+        "at": "2026-09-15T22:58:59+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "a5bbe21ff0d3269abefcc898222a57e5282b771a",
+        "subject": "fix(deps): update rc-players to v1.63.0 (#5464)",
+        "at": "2026-09-15T21:53:25+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "bb586d4d1fa267df3e4bf1ba48ea5bb06218e0fc",
+        "subject": "fix(deps): update compose-preview-daemon to v3.4.8 (#5460)",
+        "at": "2026-09-15T20:47:06Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3a6b0b7274ee33b16ae6fe4ea00e8968dd75eeb3",
         "subject": "chore(deps): update dependency yschimke/rc-players to v1.63.0 (#5461)",
@@ -451,38 +483,6 @@
         "subject": "chore(main): release 2.8.1 (#5395)",
         "at": "2026-09-11T08:22:15+01:00",
         "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6959b52717630f9500d5a440511745869854b396",
-        "subject": "feat(remote-json): compile named integer expressions with an explicit profile (#5396)",
-        "at": "2026-09-11T08:21:54+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8e74577d5cb66bdd7b733f3b0242c2af73b5ccc2",
-        "subject": "fix(deps): update compose-preview-daemon to v3.3.0 (#5394)",
-        "at": "2026-09-11T08:21:04+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "1b32efdb80039be699c934a9776cc860f205a314",
-        "subject": "fix(usage-source-psi): register an extensions storage before parsing (#5393)",
-        "at": "2026-09-11T08:19:42+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "59077af3798c87f91ebb7dc388f1c0631208238e",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.8.0 (#5392)",
-        "at": "2026-09-11T05:39:06Z",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }
