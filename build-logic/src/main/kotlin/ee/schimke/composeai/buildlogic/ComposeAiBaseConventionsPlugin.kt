@@ -87,6 +87,14 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
    * configurations, so both are carried. The two `daemonBench` configurations in the sample
    * benchmarks are resolvable configurations of their own and add the platform themselves.
    *
+   * Kotlin Multiplatform modules do not use `api` and `implementation` at all: each source set
+   * gets its own bucket, named `commonMainApi`, `desktopMainImplementation`, `jvmMainApi` and so
+   * on. Matching only the two plain names left every KMP module without the platform, and CI found
+   * it where a local check on a plain JVM module could not:
+   * `:samples:design-catalog-m3-shared:desktopMainCompileClasspath` failed with
+   * `Could not find ee.schimke.composeai:slot-preview-runtime:` -- note the empty version, which is
+   * the signature of a catalog entry with no version and no platform to supply one.
+   *
    * `configurations.all`, not a one-shot lookup: this plugin is applied from the `plugins {}` block
    * before the Java, Kotlin or Android plugin has created `api` and `implementation`, so checking
    * for them here finds nothing and silently adds nothing. The first attempt at this did exactly
@@ -96,6 +104,17 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
    * it work regardless of plugin ordering, and covers projects that have neither configuration by
    * simply never matching.
    */
+  /**
+   * A Kotlin source-set dependency bucket, such as `commonMainApi` or `desktopMainImplementation`.
+   *
+   * Matched by suffix because the source-set names are open-ended -- every target and every custom
+   * source set adds a pair -- so enumerating them would go stale the moment a target is added. The
+   * cost of matching too widely is only that a platform lands on a bucket with nothing from this
+   * BOM in it, which constrains nothing and resolves to nothing.
+   */
+  private fun isKotlinSourceSetBucket(name: String): Boolean =
+    name.endsWith("Api") || name.endsWith("Implementation")
+
   private fun applyDaemonBom(project: Project) {
     val bom =
       project.extensions
@@ -107,7 +126,7 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
         }
 
     project.configurations.all {
-      if (name == "api" || name == "implementation") {
+      if (name == "api" || name == "implementation" || isKotlinSourceSetBucket(name)) {
         project.dependencies.add(name, project.dependencies.platform(bom))
       }
     }
