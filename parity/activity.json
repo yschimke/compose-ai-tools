@@ -1,11 +1,19 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-16T06:10:24.441Z",
+  "generatedAt": "2026-09-16T08:08:48.906Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "875c00215a99e1576e8a594f5a07aa4be88495fa",
+        "subject": "feat: let a catalog assert that no face lost its variation axes (#5478)",
+        "at": "2026-09-16T09:02:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "28e9c68de45e67077d3903d5c641f23c17424982",
         "subject": "feat(design-pages): carry and verify shared background plates (#5474)",
@@ -474,14 +482,6 @@
         "sha": "e114eb4ae2563a071cac4ff3948724ccb83beec0",
         "subject": "feat(remote-json): preserve independent mutable string state (#5406)",
         "at": "2026-09-11T15:20:34+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "46daa709efdb3158d9eaa2f977e75ad729a23e0b",
-        "subject": "fix(render-host): preserve playground preview dimensions (#5404)",
-        "at": "2026-09-11T13:48:43+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
