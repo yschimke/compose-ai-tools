@@ -64,13 +64,25 @@ export function validateAssertions(doc) {
         `${at}: unknown product "${a.product}" (known: ${Object.keys(SUPPORTED).join(", ")})`,
       );
     }
-    const require = a.require;
-    if (!require || typeof require !== "object" || Object.keys(require).length !== 1) {
-      errors.push(`${at}: "require" must name exactly one path`);
-    } else if (paths) {
-      const [path] = Object.keys(require);
-      if (!paths.includes(path))
-        errors.push(`${at}: unknown path "${path}" for ${a.product} (known: ${paths.join(", ")})`);
+    // An assertion states its predicate EITHER declaratively (`require`) or as code (`check`).
+    // Never both: two sources of truth for one verdict is a bug waiting for the day they disagree.
+    const hasCheck = typeof a.check === "function";
+    const hasRequire = a.require !== undefined;
+    if (hasCheck && hasRequire) {
+      errors.push(`${at}: give either "require" or "check", not both`);
+    } else if (!hasCheck && !hasRequire) {
+      errors.push(`${at}: needs a "require" path or a "check" function`);
+    } else if (hasRequire) {
+      const require = a.require;
+      if (!require || typeof require !== "object" || Object.keys(require).length !== 1) {
+        errors.push(`${at}: "require" must name exactly one path`);
+      } else if (paths) {
+        const [path] = Object.keys(require);
+        if (!paths.includes(path))
+          errors.push(
+            `${at}: unknown path "${path}" for ${a.product} (known: ${paths.join(", ")})`,
+          );
+      }
     }
 
     if (a.exceptions !== undefined && !Array.isArray(a.exceptions)) {
@@ -143,23 +155,94 @@ export function predicateFor(path, expected) {
 }
 
 /**
- * Evaluate one assertion over `{preview -> product data}`.
+ * Whether a product carried nothing for one preview.
  *
- * `anyNode.*` paths hold when ONE observation matches; every other path holds when EVERY
- * observation does. A preview that produced no observations at all is not a pass: it is reported
- * as `no-data`, because an assertion silently matching nothing is the failure mode this whole file
- * exists to prevent.
+ * Framework-owned on purpose. "The render produced no data" must not be a judgement a `check`
+ * makes, because a `check` that forgets the empty case returns "holds" and reports a pass over
+ * nothing — the exact silent-coverage hole this file exists to close. A `check` never sees an
+ * empty product.
  */
-export function evaluate(assertion, byPreview) {
-  const { product, require: req, exceptions = [], appliesTo } = assertion;
-  const [path, expected] = Object.entries(req)[0];
-  // Only `anyNode.*` is an existence check. `noFont.*` reads as "no font did X", which is a
-  // universal over the negated predicate — `predicateFor` already negates, so it stays an
-  // every-check. Treating it as an any-check would pass a sheet where one font of twenty resolved.
+export function productIsEmpty(product, data) {
+  if (data == null) return true;
+  if (product === "fonts-used") return !(data.fonts?.length > 0);
+  if (product === "compose-semantics") {
+    let seen = 0;
+    const walk = (node) => {
+      if (!node || typeof node !== "object") return;
+      seen++;
+      for (const child of node.children ?? []) walk(child);
+    };
+    walk(data.root ?? data);
+    return seen === 0;
+  }
+  return false;
+}
+
+/**
+ * Compile one declarative `require` into the same `check(data)` contract a code assertion supplies.
+ *
+ * The declarative form is sugar, not a second engine: it lowers to a function and is then evaluated
+ * by exactly the code path a hand-written `check` takes. Two evaluators is how the two forms would
+ * start disagreeing about what "stale exception" means.
+ *
+ * Returns null when the assertion holds, or a string naming what was observed.
+ */
+export function compileRequire(product, path, expected) {
+  // Only `anyNode.*` is an existence check. `noFont.*` reads as "no font did X", a universal over
+  // the negated predicate — `predicateFor` already negates, so it stays an every-check.
   const anyOf = path.startsWith("anyNode");
   const holds = predicateFor(path, expected);
+  return (data) => {
+    const observations = observe(product, path, data);
+    if (observations.length === 0) return `${path} selected no value`;
+    if (anyOf) {
+      if (observations.some(holds)) return null;
+      return `no node matched (saw ${observations
+        .map((o) => o.value)
+        .slice(0, 4)
+        .join(", ")})`;
+    }
+    const bad = observations.filter((o) => !holds(o));
+    if (bad.length === 0) return null;
+    return bad
+      .slice(0, 4)
+      .map((o) => `${o.value} (${o.where})`)
+      .join(", ");
+  };
+}
+
+/** The `check(data)` an assertion means, whether it supplied one or declared a `require`. */
+export function checkFor(assertion) {
+  if (typeof assertion.check === "function") return assertion.check;
+  const [path, expected] = Object.entries(assertion.require)[0];
+  return compileRequire(assertion.product, path, expected);
+}
+
+/**
+ * Evaluate one assertion over `{preview -> product data}`.
+ *
+ * The predicate is a `check(data)` returning null when it holds or a string naming what was
+ * observed; a declarative `require` is compiled into one. Everything a `check` must NOT be trusted
+ * with stays here: a preview whose product is empty is `no-data` rather than a pass, an assertion
+ * matching no preview at all is not a pass, an exception that no longer excuses anything fails, and
+ * a `check` that THROWS fails rather than being skipped. Fail-closed has to cover the escape hatch,
+ * or the escape hatch is the hole.
+ */
+export function evaluate(assertion, byPreview) {
+  const { product, exceptions = [], appliesTo } = assertion;
+  const check = checkFor(assertion);
   const patterns = appliesTo?.previews ?? ["*"];
   const excused = new Set(exceptions.map((e) => e.preview));
+
+  // A throwing check is a failing check. Returning "holds" on a crash would let a typo in a
+  // catalog's assertion read as green forever.
+  const verdict = (data) => {
+    try {
+      return check(data) ?? null;
+    } catch (e) {
+      return `check threw: ${e.message}`;
+    }
+  };
 
   const failures = [];
   const noData = [];
@@ -170,30 +253,23 @@ export function evaluate(assertion, byPreview) {
     if (excused.has(preview)) continue;
     checked++;
 
-    const observations = observe(product, path, data);
-    if (observations.length === 0) {
+    if (productIsEmpty(product, data)) {
       noData.push(preview);
       continue;
     }
-    if (anyOf) {
-      if (!observations.some(holds))
-        failures.push({ preview, observed: observations.map((o) => o.value) });
-    } else {
-      const bad = observations.filter((o) => !holds(o));
-      if (bad.length > 0)
-        failures.push({ preview, observed: bad.map((o) => `${o.value} (${o.where})`) });
-    }
+    const detail = verdict(data);
+    if (detail !== null) failures.push({ preview, detail });
   }
 
   // An exception naming a preview that now passes, or that no longer exists, is a lie about the
-  // codebase — so it fails too, rather than accumulating quietly.
+  // codebase — so it fails too, rather than accumulating quietly. A preview whose product is empty
+  // is not evidence either way, so it does not make the exception stale.
   const stale = exceptions
     .filter((e) => {
       const data = byPreview[e.preview];
       if (data === undefined) return true;
-      const observations = observe(product, path, data);
-      if (observations.length === 0) return false;
-      return anyOf ? observations.some(holds) : observations.every(holds);
+      if (productIsEmpty(product, data)) return false;
+      return verdict(data) === null;
     })
     .map((e) => e.preview);
 
@@ -203,14 +279,21 @@ export function evaluate(assertion, byPreview) {
 /** A human-readable report. A failure that does not name the observed value is half a failure. */
 export function formatResult(assertion, result) {
   const lines = [];
-  const [path, expected] = Object.entries(assertion.require)[0];
+  // A declarative assertion can say what it expected; a code one can only be named. Both still
+  // name the observed value per preview, which is the half of a failure report that costs a
+  // reader a round trip when it is missing.
+  const expectation = assertion.require
+    ? (([path, expected]) => `expected ${path} ${JSON.stringify(expected)}`)(
+        Object.entries(assertion.require)[0],
+      )
+    : "check did not hold";
   if (result.failures.length > 0) {
     lines.push(
-      `FAIL ${result.id}: expected ${path} ${JSON.stringify(expected)} — ` +
+      `FAIL ${result.id}: ${expectation} — ` +
         `${result.failures.length} of ${result.checked} previews differ`,
     );
     for (const f of result.failures.slice(0, 10))
-      lines.push(`       ${f.preview}: observed ${f.observed.slice(0, 4).join(", ")}`);
+      lines.push(`       ${f.preview}: observed ${f.detail}`);
     lines.push(`       because: ${assertion.because}`);
   }
   // Zero previews checked is not a pass. An `appliesTo` whose pattern no longer matches anything,
@@ -318,4 +401,22 @@ export function mergeProducts(indexed) {
     }
   }
   return { products, collisions };
+}
+
+/**
+ * Normalise what a `.json` document or a `.mjs` module exported into one `{assertions}` document.
+ *
+ * A module exports `assertions` (an array) — either as a named export or as the default — so the
+ * code form and the declarative form reach the runner as the same shape. Anything else is a
+ * structural error rather than an empty list: a module whose export name is a typo would otherwise
+ * contribute nothing and read as coverage.
+ */
+export function asAssertionsDocument(loaded) {
+  if (Array.isArray(loaded)) return { assertions: loaded };
+  if (loaded && typeof loaded === "object") {
+    if (Array.isArray(loaded.assertions)) return { assertions: loaded.assertions };
+    if (Array.isArray(loaded.default)) return { assertions: loaded.default };
+    if (Array.isArray(loaded.default?.assertions)) return { assertions: loaded.default.assertions };
+  }
+  return { assertions: undefined };
 }

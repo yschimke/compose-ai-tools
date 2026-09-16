@@ -8,17 +8,25 @@
 // (`previews/<id>.fonts.json`, `previews/<id>.semantics.json`) and asserts over them.
 //
 //   node check-render-assertions.mjs --assertions render-assertions.json --bundle build/previews.zip
-//   node check-render-assertions.mjs --assertions render-assertions.json --previews-dir build/previews
+//   node check-render-assertions.mjs --assertions render-assertions.mjs  --previews-dir build/previews
+//
+// `--assertions` takes a `.json` document or a `.mjs` module exporting `assertions`. The module
+// form exists because the declarative vocabulary is closed: without it, a catalog stating a new
+// property about its OWN design system needs a change in this repository, which is the wrong
+// direction across a layer boundary. The module is imported from the catalog's checkout — the same
+// checkout whose Gradle build and Kotlin this pipeline already runs, so it is not a new posture.
 //
 // Exit 0 when every assertion holds; 1 on a failure, an unreadable sidecar, or bad args.
 
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { zipOffset } from "./zip-offset.mjs";
 import {
   SUPPORTED,
+  asAssertionsDocument,
   mergeProducts,
   productsFromEntries,
   runAssertions,
@@ -41,6 +49,10 @@ if (values.help) {
     [
       "Usage: check-render-assertions.mjs --assertions <file> (--bundle <zip> | --previews-dir <dir>)...",
       "",
+      "--assertions takes a .json document, or a .mjs module exporting `assertions` whose entries",
+      "may carry a check(data) function returning null when it holds or a string naming what was",
+      "observed. A check that throws fails; it is never skipped.",
+      "",
       "Products and paths this version can assert over:",
       ...Object.entries(SUPPORTED).map(([p, paths]) => `  ${p}: ${paths.join(", ")}`),
     ].join("\n"),
@@ -54,9 +66,14 @@ if (values.bundle.length === 0 && values["previews-dir"].length === 0)
     "pass at least one --bundle or --previews-dir; with no render data there is nothing to check",
   );
 
+// A `.mjs` is imported and a `.json` parsed; both normalise to one `{assertions}` document, so the
+// two forms meet before anything is evaluated rather than running down separate paths.
 let doc;
 try {
-  doc = JSON.parse(await readFile(values.assertions, "utf8"));
+  const path = resolve(values.assertions);
+  doc = /\.m?js$/.test(path)
+    ? asAssertionsDocument(await import(pathToFileURL(path).href))
+    : asAssertionsDocument(JSON.parse(await readFile(path, "utf8")));
 } catch (e) {
   fail(`could not read ${values.assertions}: ${e.message}`);
 }

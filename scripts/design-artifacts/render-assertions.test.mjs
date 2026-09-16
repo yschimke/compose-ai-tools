@@ -11,6 +11,10 @@ import assert from "node:assert/strict";
 
 import {
   SUPPORTED,
+  asAssertionsDocument,
+  checkFor,
+  compileRequire,
+  productIsEmpty,
   evaluate,
   formatResult,
   mergeProducts,
@@ -158,7 +162,7 @@ test("a preview whose resolved family fell back to Roboto fails", () => {
   const result = evaluate(assertFamily, { GlimmerStickerSheet: fontsFellBack });
   assert.equal(result.failures.length, 1);
   assert.equal(result.failures[0].preview, "GlimmerStickerSheet");
-  assert.match(result.failures[0].observed.join(" "), /Roboto/);
+  assert.match(result.failures[0].detail, /Roboto/);
 });
 
 test("a preview that resolved the family it asked for passes", () => {
@@ -195,7 +199,7 @@ test("text nodes that lost their variation axes fail even though the family is r
   ]);
   const result = evaluate(assertAxes, { GlimmerTypeScale: collapsed });
   assert.equal(result.failures.length, 1);
-  assert.match(result.failures[0].observed.join(" "), /Display/);
+  assert.match(result.failures[0].detail, /Display/);
 });
 
 test("text nodes carrying their axes pass, and nested children are walked", () => {
@@ -468,4 +472,187 @@ test("mergeProducts tolerates a source that indexed nothing", () => {
   ]);
   assert.deepEqual(collisions, []);
   assert.deepEqual(Object.keys(products["fonts-used"]), ["A"]);
+});
+
+// ---------------------------------------------------------------- code assertions
+
+/** The Glimmer rule written as code rather than as a `require` path. */
+const assertFamilyAsCode = {
+  id: "glimmer-types-in-google-sans-flex",
+  product: "fonts-used",
+  because: "a sticker sheet that silently types in Roboto is not the design system it claims",
+  check: (data) => {
+    const wrong = data.fonts.filter((f) => f.resolvedFamily !== "Google Sans Flex");
+    return wrong.length === 0 ? null : wrong.map((f) => f.resolvedFamily).join(", ");
+  },
+};
+
+test("a code assertion catches the Glimmer case the declarative one does", () => {
+  assert.equal(evaluate(assertFamilyAsCode, { Sheet: fontsGood }).failures.length, 0);
+  const bad = evaluate(assertFamilyAsCode, { Sheet: fontsFellBack });
+  assert.equal(bad.failures.length, 1);
+  assert.match(bad.failures[0].detail, /Roboto/);
+});
+
+test("a code assertion expresses what the closed vocabulary cannot", () => {
+  // The point of the escape hatch: a conditional rule over two fields at once, which no
+  // `path: value` pair can state.
+  const boldFacesAreVariable = {
+    id: "bold-faces-come-from-a-variable-file",
+    product: "fonts-used",
+    because: "a static instance at weight 750 is the silent fallback this whole check exists for",
+    check: (data) => {
+      const bad = data.fonts.filter((f) => f.weight > 500 && f.variable !== true);
+      return bad.length === 0 ? null : bad.map((f) => `${f.resolvedFamily} ${f.weight}`).join(", ");
+    },
+  };
+  const ok = { fonts: [{ resolvedFamily: "GSF", weight: 750, variable: true }] };
+  const notOk = { fonts: [{ resolvedFamily: "GSF", weight: 750, variable: false }] };
+  assert.deepEqual(evaluate(boldFacesAreVariable, { A: ok }).failures, []);
+  assert.equal(evaluate(boldFacesAreVariable, { A: notOk }).failures.length, 1);
+});
+
+test("a check that throws FAILS — it is never skipped or counted as holding", () => {
+  const exploding = {
+    id: "boom",
+    product: "fonts-used",
+    because: "a typo in a catalog assertion must not read as green forever",
+    check: () => {
+      throw new TypeError("cannot read properties of undefined");
+    },
+  };
+  const result = evaluate(exploding, { Sheet: fontsGood });
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0].detail, /check threw: cannot read properties/);
+  assert.match(formatResult(exploding, result), /^FAIL boom/m);
+});
+
+test("a throwing check does not make its exception look stale", () => {
+  // Stale means "this passes now". A crash is not a pass, so the exception is still doing work.
+  const exploding = {
+    id: "boom",
+    product: "fonts-used",
+    because: "x",
+    check: () => {
+      throw new Error("nope");
+    },
+    exceptions: [{ preview: "Legacy", reason: "tracked in #5467" }],
+  };
+  assert.deepEqual(evaluate(exploding, { Legacy: fontsGood }).staleExceptions, []);
+});
+
+test("a check returning undefined is treated as holding, not as a crash", () => {
+  const lenient = { id: "u", product: "fonts-used", because: "x", check: () => undefined };
+  assert.deepEqual(evaluate(lenient, { S: fontsGood }).failures, []);
+});
+
+test("a code assertion still obeys every framework rule it cannot opt out of", () => {
+  const always = { id: "c", product: "fonts-used", because: "x", check: () => null };
+  // no-data: the check is never even consulted on an empty product.
+  assert.deepEqual(evaluate(always, { S: { fonts: [] } }).noData, ["S"]);
+  // matched nothing.
+  assert.equal(
+    evaluate({ ...always, appliesTo: { previews: ["Gone*"] } }, { S: fontsGood }).checked,
+    0,
+  );
+  // stale exception.
+  assert.deepEqual(
+    evaluate({ ...always, exceptions: [{ preview: "S", reason: "r" }] }, { S: fontsGood })
+      .staleExceptions,
+    ["S"],
+  );
+});
+
+test("a check is never consulted for a product that carried nothing", () => {
+  let calls = 0;
+  const counting = {
+    id: "c",
+    product: "fonts-used",
+    because: "x",
+    check: () => {
+      calls++;
+      return null;
+    },
+  };
+  evaluate(counting, { Empty: { fonts: [] }, Missing: undefined, Real: fontsGood });
+  assert.equal(calls, 1, "only the preview with real data reaches the check");
+});
+
+// ---------------------------------------------------------------- the two forms are one engine
+
+test("a declarative require compiles to a check with identical verdicts", () => {
+  const compiled = checkFor(assertFamily);
+  assert.equal(compiled(fontsGood), null);
+  assert.match(compiled(fontsFellBack), /Roboto/);
+  // checkFor returns a supplied function untouched.
+  assert.equal(checkFor(assertFamilyAsCode), assertFamilyAsCode.check);
+});
+
+test("compileRequire keeps anyNode existential and everyFont universal", () => {
+  const any = compileRequire("compose-semantics", "anyNode.role", "Indicator");
+  assert.equal(any(semantics([{ nodeId: "a", role: "Indicator" }, { nodeId: "b" }])), null);
+  assert.match(any(semantics([{ nodeId: "b", role: "List" }])), /no node matched/);
+
+  const every = compileRequire("fonts-used", "everyFont.resolvedFamily", "Google Sans Flex");
+  assert.equal(every(fontsGood), null);
+  assert.match(every(fontsFellBack), /Roboto/);
+});
+
+test("a compiled check whose path selects nothing does not report holding", () => {
+  const axes = compileRequire(
+    "compose-semantics",
+    "everyTextNode.typography.fontFamily",
+    "Google Sans Flex",
+  );
+  assert.match(axes(semantics([{ nodeId: "box" }])), /selected no value/);
+});
+
+test("validateAssertions accepts a check and rejects both or neither", () => {
+  assert.deepEqual(validateAssertions({ assertions: [assertFamilyAsCode] }), []);
+  assert.ok(
+    validateAssertions({
+      assertions: [{ ...assertFamily, check: () => null }],
+    }).some((e) => /not both/.test(e)),
+  );
+  const neither = { id: "n", product: "fonts-used", because: "x" };
+  assert.ok(
+    validateAssertions({ assertions: [neither] }).some((e) =>
+      /needs a "require" path or a "check"/.test(e),
+    ),
+  );
+});
+
+test("a code assertion needs a because like any other", () => {
+  assert.ok(
+    validateAssertions({ assertions: [{ ...assertFamilyAsCode, because: "" }] }).some((e) =>
+      /needs a "because"/.test(e),
+    ),
+  );
+});
+
+// ---------------------------------------------------------------- product emptiness
+
+test("productIsEmpty is what decides no-data, not the check", () => {
+  assert.equal(productIsEmpty("fonts-used", undefined), true);
+  assert.equal(productIsEmpty("fonts-used", { fonts: [] }), true);
+  assert.equal(productIsEmpty("fonts-used", fontsGood), false);
+  assert.equal(productIsEmpty("compose-semantics", null), true);
+  assert.equal(productIsEmpty("compose-semantics", semantics([])), false);
+});
+
+// ---------------------------------------------------------------- module loading
+
+test("asAssertionsDocument accepts every shape a module can export", () => {
+  const list = [assertFamilyAsCode];
+  assert.deepEqual(asAssertionsDocument({ assertions: list }).assertions, list);
+  assert.deepEqual(asAssertionsDocument({ default: list }).assertions, list);
+  assert.deepEqual(asAssertionsDocument({ default: { assertions: list } }).assertions, list);
+  assert.deepEqual(asAssertionsDocument(list).assertions, list);
+});
+
+test("a module exporting nothing usable is a structural error, not an empty run", () => {
+  // A typo in the export name would otherwise contribute no assertions and report green.
+  const { ok, report } = runAssertions(asAssertionsDocument({ assertion: [] }), {});
+  assert.equal(ok, false);
+  assert.match(report, /`assertions` must be an array/);
 });

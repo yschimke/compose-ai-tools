@@ -52,7 +52,7 @@ Design, open questions and the roadmap beyond this first slice:
 | `appliesTo.previews` | Optional `*` globs. Defaults to every preview. |
 | `exceptions[]` | Each needs a `preview` and a `reason`. A silent allowlist rots. |
 
-Paths available today:
+Paths available in the declarative form today:
 
 - `fonts-used` — `everyFont.resolvedFamily`, `everyFont.requestedFamily`, `noFont.fellBackFrom`
 - `compose-semantics` — `everyTextNode.typography.fontFamily`,
@@ -62,6 +62,47 @@ Paths available today:
 existential (one match satisfies it). An unknown product or path is a hard error, never a
 silently-skipped assertion.
 
+## Assertions as code
+
+That vocabulary is closed, and it is closed in the *wrong repository*: "Glimmer types in Google Sans
+Flex" is a fact about `m3-catalog`, a consumer, so needing a change here to state it is backwards
+across a layer boundary. And `"contains 'wght'"` is already a string-encoded predicate — the next
+asks are `not`, `oneOf`, `matches`, `>`, and the sum of those is a programming language with no
+types and no debugger.
+
+So an assertion may instead supply a **`check(data)`** returning `null` when it holds, or a string
+naming what was observed. Point `--assertions` at a `.mjs` next to the catalog's spec:
+
+```js
+// m3-catalog/render-assertions.mjs
+export const assertions = [
+  {
+    id: "bold-faces-come-from-a-variable-file",
+    product: "fonts-used",
+    because: "a static instance at weight 750 is the silent fallback this check exists for",
+    // Two fields at once, conditionally — no `path: value` pair can state this.
+    check: (data) => {
+      const bad = data.fonts.filter((f) => f.weight > 500 && f.variable !== true);
+      return bad.length === 0 ? null : bad.map((f) => `${f.resolvedFamily} ${f.weight}`).join(", ");
+    },
+  },
+];
+```
+
+An assertion gives **either** `require` **or** `check`, never both — two sources of truth for one
+verdict is a bug waiting for the day they disagree. `id`, `because`, `product`, `appliesTo` and
+`exceptions` are unchanged and still belong to the framework.
+
+**The declarative form is sugar, not a second engine.** A `require` is compiled by `compileRequire`
+into exactly the `check` contract above and then evaluated by the same code path a hand-written one
+takes. Two evaluators is how the two forms would start disagreeing about what "stale exception"
+means.
+
+Prefer `require` where it fits. JSON is enumerable — you can list every assertion, generate docs,
+compute coverage and audit exceptions across catalogs — and code is opaque to all of that. `check`
+is the escape hatch; if everything reaches for it, the vocabulary is wrong and that is the signal to
+widen it rather than to keep writing code.
+
 ## Running them
 
 ```
@@ -69,7 +110,7 @@ node scripts/design-artifacts/check-render-assertions.mjs \
   --assertions render-assertions.json --bundle build/previews.zip
 
 node scripts/design-artifacts/check-render-assertions.mjs \
-  --assertions render-assertions.json --previews-dir build/previews
+  --assertions render-assertions.mjs --previews-dir build/previews
 ```
 
 Both flags are repeatable and merge into one render set, so a multi-module catalog asserts across
@@ -85,8 +126,15 @@ it reads as coverage that is not there. So these all fail, not just a mismatched
 - an assertion that **matched no preview at all** — a renamed preview, a dropped module, an
   `appliesTo` pattern that no longer hits anything;
 - an **exception that is stale** — the preview it excuses now passes, or no longer exists;
-- a **sidecar that could not be parsed**, which is indistinguishable from having nothing to check.
+- a **sidecar that could not be parsed**, which is indistinguishable from having nothing to check;
+- a **`check` that throws**, which fails rather than being skipped — fail-closed has to cover the
+  escape hatch, or the escape hatch is the hole;
+- a **module that exports no usable `assertions`**, so a typo in the export name cannot report green.
 
-The last three are the ones that make a rule outlive the thing it was protecting. They are failures
+A `check` is never even consulted for a preview whose product came back empty: whether a render
+produced data is the framework's judgement, not the assertion's, because a `check` that forgets the
+empty case would return "holds" and report a pass over nothing.
+
+The staleness cases are the ones that make a rule outlive the thing it was protecting. They are failures
 by design; empty is a real state and the one to aim for, the same bar `glimmer-samples/quarantine.json`
 sets for its entries.
