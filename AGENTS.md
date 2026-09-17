@@ -208,6 +208,7 @@ formatter rule means, just run through `build-brief`.
 | Why `settings.gradle.kts` is shaped the way it is | [`docs/build-scripts/SETTINGS.md`](docs/build-scripts/SETTINGS.md) |
 | The contributor doc index | [`docs/README.md`](docs/README.md) |
 | Releasing, versioning | [`docs/RELEASING.md`](docs/RELEASING.md), [`docs/VERSIONING.md`](docs/VERSIONING.md) |
+| Releasing ACROSS the five repositories, in order | [`docs/design/CROSS_REPO_RELEASES.md`](docs/design/CROSS_REPO_RELEASES.md) |
 | Invoking an agent from an issue or PR | [`docs/AGENT_INVOCATION.md`](docs/AGENT_INVOCATION.md) |
 | Which agent reads which file, and what it costs | [`docs/AGENT_ENTRYPOINTS.md`](docs/AGENT_ENTRYPOINTS.md) |
 | Consumer docs for the published plugin and CLI | [`yschimke/skills`](https://github.com/yschimke/skills) |
