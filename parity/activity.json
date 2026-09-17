@@ -1,11 +1,27 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-17T06:01:05.180Z",
+  "generatedAt": "2026-09-17T16:40:05.181Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "0fb7b1b6ae1b2e976e9066edf73db62f2f3ff493",
+        "subject": "chore(deps): update dependency yschimke/rc-players to v1.65.0 (#5493)",
+        "at": "2026-09-17T16:30:33Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "46ef5168fd9c6b37f55ad0416b4480657f1de514",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.18.1 (#5492)",
+        "at": "2026-09-17T05:57:36Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3fb83fae843de971de9c7ea8b77af15277659f2b",
         "subject": "chore(main): release 2.18.1 (#5491)",
@@ -466,22 +482,6 @@
         "sha": "1f4cfcccaf576537800a631834fd8cd2d5e732e2",
         "subject": "chore: drop the catalog entries and Renovate pins the daemon split orphaned (#5427)",
         "at": "2026-09-12T08:33:59+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "d1310ee002be1c882ba5c6deef71b22040a069ff",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.11.1 (#5426)",
-        "at": "2026-09-12T07:10:42Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "a92508a0bd0ba89817e7d0a95ad5d5cb2d68fdf8",
-        "subject": "ci: filter -SNAPSHOT out of Gradle candidates, and record why github-actions is off (#5425)",
-        "at": "2026-09-12T08:09:04+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
