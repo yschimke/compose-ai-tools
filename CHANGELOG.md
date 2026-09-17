@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.18.1](https://github.com/yschimke/compose-ai-tools/compare/v2.18.0...v2.18.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **build:** read the publish baseline from Central, and fix the recovery path ([#5490](https://github.com/yschimke/compose-ai-tools/issues/5490)) ([206ba98](https://github.com/yschimke/compose-ai-tools/commit/206ba9865ce37e42348c570f92236b7b195ed585))
+* **build:** stop the publish plan killing the release from the included build ([#5487](https://github.com/yschimke/compose-ai-tools/issues/5487)) ([1ce35f7](https://github.com/yschimke/compose-ai-tools/commit/1ce35f745509fedd761803cde18d31cf3e0712c7))
+
 ## [2.18.0](https://github.com/yschimke/compose-ai-tools/compare/v2.17.0...v2.18.0) (2026-09-16)
 
 
