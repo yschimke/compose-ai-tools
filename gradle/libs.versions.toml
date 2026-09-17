@@ -364,7 +364,7 @@ composeai-contracts = "3.0.0"
 # pages document carries. compose-preview-daemon#128 reverted it and 3.6.1 is that revert. Pinning
 # 3.6.0 here would publish the leniency back out to every consumer of these POMs, including the
 # server that just restored the strict assertion (compose-preview-server#893).
-composeai-preview-daemon = "3.8.0"
+composeai-preview-daemon = "3.8.3"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
