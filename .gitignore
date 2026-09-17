@@ -79,3 +79,7 @@ site/vendor/
 # there, and dependency-locks.yml only regenerates `**/gradle.lockfile`, so a committed copy
 # would go stale with nothing to refresh it.
 settings-gradle.lockfile
+
+# Resolved from Maven Central by .github/scripts/maven-publish-plan.sh at release time and read by
+# the Gradle build; never committed, because Central is the source of truth for what is published.
+publishing-manifest.json
