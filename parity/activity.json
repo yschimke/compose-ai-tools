@@ -1,11 +1,99 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-16T11:16:35.721Z",
+  "generatedAt": "2026-09-17T06:01:05.180Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "3fb83fae843de971de9c7ea8b77af15277659f2b",
+        "subject": "chore(main): release 2.18.1 (#5491)",
+        "at": "2026-09-17T06:37:04+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "206ba9865ce37e42348c570f92236b7b195ed585",
+        "subject": "fix(build): read the publish baseline from Central, and fix the recovery path (#5490)",
+        "at": "2026-09-17T06:22:27+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8656f772b6ec47d385f206687109bff270d6adbb",
+        "subject": "chore(ci): update the design-artifacts export driver to v2.18.0 (#5489)",
+        "at": "2026-09-16T22:39:36Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "1ce35f745509fedd761803cde18d31cf3e0712c7",
+        "subject": "fix(build): stop the publish plan killing the release from the included build (#5487)",
+        "at": "2026-09-16T23:18:54+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "39ad1f76aa0d8bc525a9b0a0bfc4acb5ac11cdc0",
+        "subject": "chore(main): release 2.18.0 (#5482)",
+        "at": "2026-09-16T23:02:19+01:00",
+        "author": "github-actions[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "0d93b1c54e5a276a93351a199bd49c5d0bc6dc2a",
+        "subject": "fix(ci): repair the publish plan's history and the daemon-launch schema gate (#5486)",
+        "at": "2026-09-16T22:55:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "35748fd875f460bddd1488b83667f7c03a6bd264",
+        "subject": "feat(build): publish only the modules a release changes (#5485)",
+        "at": "2026-09-16T22:25:18+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "6651e4b4d37bb7160765d9455ad019aec329cfbd",
+        "subject": "feat(deps): take daemon 3.8.0 and contracts 3.0.0, and their builders (#5484)",
+        "at": "2026-09-16T22:11:39+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "d21ef6200adf93f5acab50264d73b79852a8aba4",
+        "subject": "feat(build): publish a BOM for every coordinate this repository ships (#5483)",
+        "at": "2026-09-16T21:59:37+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "cbe28bcbe6291d0cbc9cca04c4753c8af8ddc466",
+        "subject": "fix(deps): pin the daemon at 3.6.1, the revert consumers actually need (#5481)",
+        "at": "2026-09-16T19:35:58+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "7c2abdcd410dadb95f3d7a663c6966a68bab02df",
+        "subject": "build: take daemon versions from the published BOM (#5480)",
+        "at": "2026-09-16T13:40:31+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "3104979fe85f240dfaa163250f7df8025ac303df",
         "subject": "chore(ci): update the design-artifacts export driver to v2.17.0 (#5479)",
@@ -395,94 +483,6 @@
         "subject": "ci: filter -SNAPSHOT out of Gradle candidates, and record why github-actions is off (#5425)",
         "at": "2026-09-12T08:09:04+01:00",
         "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "58a5b3cb7e92ea0afd83ec0e303eb995b8469c1c",
-        "subject": "chore(main): release 2.11.1 (#5424)",
-        "at": "2026-09-12T07:06:37+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "fe81c1ceadd9bce106e640d01b02ce36fccc208c",
-        "subject": "fix(plugin): let a KMP-Android module pack a bundle (#5423)",
-        "at": "2026-09-12T06:51:29+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "db76d0fece766851542e403c271efe223b4e0b97",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.11.0 (#5422)",
-        "at": "2026-09-11T22:47:50Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "53812ae65cf8b2d5cab88ff41d43ffeba4d43222",
-        "subject": "chore(main): release 2.11.0 (#5414)",
-        "at": "2026-09-11T23:08:49+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ec4aa708303c756e9722105bb9a8208ba45fcd76",
-        "subject": "feat(screen-model): generate stateful loops and reusable composables (#5383)",
-        "at": "2026-09-11T23:03:11+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "74a8e0b1a2b9c2001de8a232549006f4c3aa9fdf",
-        "subject": "fix(deps): take the daemon line to 3.4.3 so `related` is readable (#5421)",
-        "at": "2026-09-11T22:53:52+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "aa8923d95a39ed1667d4b2914d0e56627ff3b649",
-        "subject": "fix: generate Wear theme catalogs with daemon annotations (#5415)",
-        "at": "2026-09-11T20:22:59+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "59ed53b82adaa98f2d78e9422cf62a74d6a41cea",
-        "subject": "docs: correct data product wire examples (#5417)",
-        "at": "2026-09-11T20:21:03+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "8ae3f8545e84d42620bbc14f23ed8c57b737539a",
-        "subject": "fix(deps): update dependency ee.schimke.composeai:compose-preview-serve to v3.24.0 (#5413)",
-        "at": "2026-09-11T18:40:33Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "3ee5414438056755ad99a9971167180ca3925c2f",
-        "subject": "fix(deps): update compose-preview-contracts to v2.17.0 (#5412)",
-        "at": "2026-09-11T18:39:26Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "152cf879c48f5dda37ff6883619d16387123683e",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.10.0 (#5411)",
-        "at": "2026-09-11T18:36:57Z",
-        "author": "renovate[bot]",
         "previewIds": [],
         "components": []
       }

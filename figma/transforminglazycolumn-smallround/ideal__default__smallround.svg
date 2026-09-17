@@ -9,29 +9,29 @@
         <g id="ReusableComposeNode">
           <g id="ReusableComposeNode">
             <g id="Row">
-              <image href="ideal__default__smallround.figma-raster/125.png" x="110" y="41" width="165" height="94"/>
+              <image href="ideal__default__smallround.figma-raster/454.png" x="110" y="41" width="165" height="94"/>
             </g>
             <g id="Column">
               <rect x="20" y="144" width="344" height="128" rx="52" ry="52" fill="#332E3C"/>
               <g id="Empty">
-                <text x="44" y="197.76" font-size="32" font-family="Roboto Flex" font-weight="550" letter-spacing="0.8" fill="#F6EDFF">Morning run</text>
+                <text x="44" y="197.76" font-size="32" font-family="Roboto Flex" font-weight="550" letter-spacing="0.8" style="font-variation-settings:&apos;wdth&apos; 110.0,&apos;wght&apos; 550.0" fill="#F6EDFF">Morning run</text>
               </g>
               <g id="Spacer">
               </g>
               <g id="Empty">
-                <text x="44" y="238.35" font-size="30" font-family="Roboto Flex" font-weight="500" letter-spacing="0.8" fill="#FFDCC2">5.2 km · 28 min</text>
+                <text x="44" y="238.35" font-size="30" font-family="Roboto Flex" font-weight="500" letter-spacing="0.8" style="font-variation-settings:&apos;wdth&apos; 110.0,&apos;wght&apos; 500.0" fill="#FFDCC2">5.2 km · 28 min</text>
               </g>
             </g>
             <g id="Column" opacity="0.85">
               <rect x="35" y="280" width="314" height="117" rx="47.46" ry="47.46" fill="#332E3C"/>
               <g opacity="0.85">
                 <g id="Empty">
-                  <text x="57" y="329.16" font-size="29.2" font-family="Roboto Flex" font-weight="550" letter-spacing="0.73" fill="#F6EDFF">Heart rate</text>
+                  <text x="57" y="329.16" font-size="29.2" font-family="Roboto Flex" font-weight="550" letter-spacing="0.73" style="font-variation-settings:&apos;wdth&apos; 110.0,&apos;wght&apos; 550.0" fill="#F6EDFF">Heart rate</text>
                 </g>
                 <g id="Spacer">
                 </g>
                 <g id="Empty">
-                  <text x="57" y="365.87" font-size="27.38" font-family="Roboto Flex" font-weight="500" letter-spacing="0.73" fill="#FFDCC2">72 bpm</text>
+                  <text x="57" y="365.87" font-size="27.38" font-family="Roboto Flex" font-weight="500" letter-spacing="0.73" style="font-variation-settings:&apos;wdth&apos; 110.0,&apos;wght&apos; 500.0" fill="#FFDCC2">72 bpm</text>
                 </g>
               </g>
             </g>
