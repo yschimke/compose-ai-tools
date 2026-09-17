@@ -1,0 +1,465 @@
+name: UI Builder Design Renders (reusable)
+
+# Renders the UI-builder DESIGN DOCUMENTS a repository commits, on every pull request that touches
+# one, and posts a sticky before/after comment. The baseline refreshes on every push to the
+# development branch. Callable from any repo that commits designs:
+#
+#   jobs:
+#     designs:
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       uses: yschimke/compose-ai-tools/.github/workflows/ui-builder-designs-reusable.yml@main
+#       with:
+#         catalog-bundle: https://raw.githubusercontent.com/yschimke/m3-catalog/design-artifacts/m3-catalog/bundle/bundle.png
+#         components: |
+#           m3-catalog=docs/design/fixtures/ui-builder/m3-catalog-components-v1.json
+#
+# ## Why this is not `apply`
+#
+# `.github/actions/apply` renders `@Preview` composables: it needs the compose-preview Gradle plugin
+# applied, a module to discover, and `compose-preview show --json` to enumerate. A UI-builder design
+# has none of those — it is a committed JSON document, and the thing that draws it is
+# `compose-preview-server design render --local`, which compiles the design's generated Kotlin and
+# rasterises it in-process. Same *shape* of answer (renders on a branch, comment with
+# `raw.githubusercontent` images), deliberately different pipeline. `design-renders.py` holds the
+# manifest and the comment for the same reason.
+#
+# ## The container is the point
+#
+# A local render needs four sidecars beside the install — `lib-bta/` (the Kotlin compiler),
+# `lib-daemon-desktop/` + `lib-renderer/`, and the Skiko **native** for the host — and the released
+# `compose-preview-server` tarball carries neither the first nor the last
+# (docs/UI_BUILDER_GETTING_STARTED.md in that repository says so, and a render without the Skiko
+# native dies inside `Library`'s static initialiser and reaches the lane as a frame that drew
+# nothing). `ghcr.io/<owner>/compose-preview-host` is the image that already assembles all of them,
+# with `compose-preview-server` on PATH. Rendering in it is what makes this lane a workflow rather
+# than a week of sidecar archaeology. Override `host-image` to pin a version; `latest` tracks the
+# deployment.
+#
+# ## Three jobs, and the split is about write access
+#
+# `stage` runs the CALLER's `design-sync.mjs` over the caller's fixtures, `render` runs the caller's
+# designs through a compiler, and neither can write: they hold `contents: read` and hand their work
+# on as artifacts. Only `publish`, which runs none of the caller's code, pushes the render branch and
+# posts the comment. Same argument as `design-artifacts-reusable.yml`, which splits its publish job
+# for the same reason.
+
+on:
+  workflow_call:
+    inputs:
+      designs-dir:
+        description: >-
+          Directory of committed design fixtures, relative to the caller's checkout. Read as the
+          `compose-ui-builder-operations/v1-candidate` logs `design-sync.mjs publish` expects unless
+          `documents` is true.
+        required: false
+        type: string
+        default: 'docs/design/fixtures/ui-builder/designs'
+      documents:
+        description: >-
+          true when `designs-dir` already holds `DesignDocumentV1` JSON rather than operation logs,
+          which skips the staging step and its Node install entirely. A frozen template document is
+          this case; the editor's chrome fixtures are not.
+        required: false
+        type: boolean
+        default: false
+      sync-script:
+        description: >-
+          Path to `design-sync.mjs` in the caller's checkout, which replays an operations fixture
+          into a document. Ignored when `documents` is true.
+        required: false
+        type: string
+        default: 'scripts/ui-builder/design-sync.mjs'
+      catalog-bundle:
+        description: >-
+          The catalog bundle `design render --local` compiles against: an `https://` URL (a
+          `design-artifacts/<system>` branch's `bundle/bundle.png` is the usual one) or a path in the
+          caller's checkout. A design only compiles against ITS OWN catalog's bundle — a Wear design
+          against a desktop m3 bundle fails at `Unresolved reference 'wear'` — so a repository whose
+          designs span catalogs calls this workflow once per catalog with its own `designs-dir`.
+        required: true
+        type: string
+      components:
+        description: >-
+          Newline-separated `catalogId=path` pairs naming each catalog's `components.json`, the
+          record the generator proves every call site against. A record-free catalog (`wear-m3`,
+          `remote-m3`) needs none, so this may be empty.
+        required: false
+        type: string
+        default: ''
+      assets-dir:
+        description: >-
+          Uploaded asset bytes by storage key, as `serve` keeps them. Only a design that inlines a
+          picture needs them.
+        required: false
+        type: string
+        default: ''
+      host-image:
+        description: 'The image that carries compose-preview-server and its render sidecars.'
+        required: false
+        type: string
+        default: 'ghcr.io/yschimke/compose-preview-host:latest'
+      format:
+        description: 'png (default) or svg. Both embed in a comment; svg diffs as text.'
+        required: false
+        type: string
+        default: 'png'
+      changed-only:
+        description: >-
+          On a pull request, render only the designs the pull request touches. false renders every
+          design in `designs-dir`, which is what a baseline push does regardless.
+        required: false
+        type: boolean
+        default: true
+      development-branch:
+        description: 'A push to this branch refreshes the baseline. Pull requests comment.'
+        required: false
+        type: string
+        default: 'main'
+      baseline-branch:
+        description: 'Branch the baseline renders live on.'
+        required: false
+        type: string
+        default: 'ui-builder-designs/main'
+      render-branch-prefix:
+        description: "Pull-request renders go to <prefix>-<number>."
+        required: false
+        type: string
+        default: 'ui-builder-designs/pr'
+      node-version:
+        description: 'Node for the staging step.'
+        required: false
+        type: string
+        default: '24.21.0'
+      render-timeout-minutes:
+        description: 'Budget for the render job. A design compiles before it draws.'
+        required: false
+        type: number
+        default: 30
+
+permissions: {}
+
+jobs:
+  # ── Which designs, and as documents ───────────────────────────────────────────────────────────
+  #
+  # Separate from the render because the two want different environments: this one needs Node for
+  # the caller's `design-sync.mjs`, and the render needs a container that has a Kotlin compiler and
+  # a Skiko native but no reason to carry Node.
+  stage:
+    name: Stage design documents
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      count: ${{ steps.select.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The changed-file diff needs the base commit, which a shallow checkout does not have.
+          fetch-depth: 0
+
+      - name: Select the designs this run renders
+        id: select
+        env:
+          DESIGNS_DIR: ${{ inputs.designs-dir }}
+          CHANGED_ONLY: ${{ inputs.changed-only }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "$DESIGNS_DIR" ]; then
+            echo "::error::designs-dir does not exist: $DESIGNS_DIR"
+            exit 1
+          fi
+          mkdir -p selected
+          if [ "$EVENT" = "pull_request" ] && [ "$CHANGED_ONLY" = "true" ]; then
+            # `...` rather than `..`: the merge base, so a design untouched by this branch does not
+            # read as changed merely because main moved.
+            git diff --name-only --diff-filter=d "$BASE_SHA...HEAD" -- "$DESIGNS_DIR" \
+              | grep '\.json$' > selected/paths.txt || true
+          else
+            find "$DESIGNS_DIR" -maxdepth 1 -name '*.json' | sort > selected/paths.txt
+          fi
+          count=$(wc -l < selected/paths.txt | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Selected $count design(s):"
+          cat selected/paths.txt
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ steps.select.outputs.count != '0' && !inputs.documents }}
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Replay the fixtures into documents
+        if: ${{ steps.select.outputs.count != '0' }}
+        env:
+          SYNC_SCRIPT: ${{ inputs.sync-script }}
+          DOCUMENTS: ${{ inputs.documents }}
+        run: |
+          set -euo pipefail
+          mkdir -p documents
+          if [ "$DOCUMENTS" = "true" ]; then
+            # Already documents: copied rather than replayed, so the render job's input is one
+            # shape whichever way the caller stores its designs.
+            while IFS= read -r path; do cp "$path" documents/; done < selected/paths.txt
+          else
+            if [ ! -f "$SYNC_SCRIPT" ]; then
+              echo "::error::sync-script does not exist: $SYNC_SCRIPT"
+              exit 1
+            fi
+            mkdir -p fixtures
+            while IFS= read -r path; do cp "$path" fixtures/; done < selected/paths.txt
+            node "$SYNC_SCRIPT" publish fixtures --out documents
+          fi
+          ls -la documents
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ steps.select.outputs.count != '0' }}
+        with:
+          name: ui-builder-design-documents
+          path: documents/
+          retention-days: 1
+
+  # ── The render ────────────────────────────────────────────────────────────────────────────────
+  render:
+    name: Render designs
+    needs: stage
+    if: ${{ needs.stage.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: ${{ inputs.render-timeout-minutes }}
+    container:
+      image: ${{ inputs.host-image }}
+    steps:
+      # The caller's checkout, for `--components` records and `--assets` bytes, which are paths in
+      # it. The documents themselves arrive as an artifact.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ui-builder-design-documents
+          path: documents
+
+      - name: Resolve the catalog bundle
+        env:
+          CATALOG_BUNDLE: ${{ inputs.catalog-bundle }}
+        run: |
+          set -euo pipefail
+          case "$CATALOG_BUNDLE" in
+            https://*)
+              curl -fsSL --retry 3 -o catalog.bundle "$CATALOG_BUNDLE"
+              ;;
+            *)
+              if [ ! -f "$CATALOG_BUNDLE" ]; then
+                echo "::error::catalog-bundle is neither an https URL nor a file: $CATALOG_BUNDLE"
+                exit 1
+              fi
+              cp "$CATALOG_BUNDLE" catalog.bundle
+              ;;
+          esac
+          ls -l catalog.bundle
+
+      - name: Render every staged design
+        env:
+          COMPONENTS: ${{ inputs.components }}
+          ASSETS_DIR: ${{ inputs.assets-dir }}
+          FORMAT: ${{ inputs.format }}
+        run: |
+          set -uo pipefail
+          mkdir -p renders
+          # Beside the renders, so one artifact carries the whole answer: what drew, and what did
+          # not and why. The manifest is built in `publish`, which is where the script lives.
+          : > renders/_refusals.txt
+
+          args=()
+          while IFS= read -r pair; do
+            [ -n "$pair" ] || continue
+            args+=(--components "$pair")
+          done <<< "$COMPONENTS"
+          if [ -n "$ASSETS_DIR" ]; then args+=(--assets "$ASSETS_DIR"); fi
+
+          for document in documents/*.json; do
+            design=$(basename "$document" .json)
+            # `design-sync.mjs publish` writes `index.json` beside the documents — the design
+            # library's own table of contents, not a design. Rendering it would publish a picture
+            # of nothing, or a refusal against a design id that does not exist.
+            [ "$design" = "index" ] && continue
+            echo "::group::design render $design"
+            # `--no-authorize` because nobody is here to approve a grant, and `--local` never asks a
+            # server for one anyway; passing it keeps a misconfiguration a failure rather than a
+            # hang. A refusal is CAPTURED, not fatal: the comment reports it, which is the whole
+            # reason a refusal is interesting.
+            if compose-preview-server design render \
+                 --local \
+                 --document "$document" \
+                 --catalog catalog.bundle \
+                 --format "$FORMAT" \
+                 --no-authorize \
+                 "${args[@]}" \
+                 -o "renders/$design.$FORMAT" 2> "renders/$design.log"; then
+              echo "rendered $design"
+            else
+              reason=$(tr '\n' ' ' < "renders/$design.log" | tail -c 300)
+              echo "$design=${reason:-the render refused and said nothing}" >> renders/_refusals.txt
+              echo "::warning title=design render refused::$design: $reason"
+            fi
+            cat "renders/$design.log" || true
+            echo "::endgroup::"
+          done
+
+          # A frame the daemon never drew lands as a zero-byte file rather than an error, so an
+          # empty render is a refusal too. Without this the lane publishes blank pictures.
+          for file in renders/*."$FORMAT"; do
+            [ -e "$file" ] || continue
+            if [ ! -s "$file" ]; then
+              design=$(basename "$file" ".$FORMAT")
+              echo "$design=the render wrote no bytes; check the sidecars in the host image" \
+                >> renders/_refusals.txt
+              rm -f "$file"
+            fi
+          done
+          rm -f renders/*.log
+          ls -la renders
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-builder-design-renders
+          path: renders/
+          retention-days: 7
+
+  # ── Publish and comment ───────────────────────────────────────────────────────────────────────
+  #
+  # The only job that can write, and it runs none of the caller's code: it moves an artifact onto a
+  # branch and posts markdown built from a manifest.
+  publish:
+    name: Publish renders
+    needs: [stage, render]
+    if: ${{ needs.stage.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # This workflow's own repository, for `design-renders.py`. The caller's checkout is not here
+      # on purpose — nothing of the caller's is executed in a job that holds write access.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-ai-tools
+          persist-credentials: false
+          path: .compose-ai-tools
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ui-builder-design-renders
+          path: renders
+
+      - name: Manifest
+        run: |
+          set -euo pipefail
+          args=()
+          # `_refusals.txt` rode in with the renders rather than being recomputed here: the render
+          # job is the only place that saw the compiler's own words.
+          if [ -f renders/_refusals.txt ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              args+=(--refusal "$line")
+            done < renders/_refusals.txt
+            rm -f renders/_refusals.txt
+          fi
+          python3 .compose-ai-tools/.github/actions/lib/design-renders.py manifest renders \
+            --out renders/_designs.json ${args[@]+"${args[@]}"}
+          cat renders/_designs.json
+
+      - name: Fetch the baseline manifest
+        env:
+          BASELINE_BRANCH: ${{ inputs.baseline-branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Best effort: the first run on a repository has no baseline branch, and a lane that
+          # failed here would fail on the very run that would create it.
+          if curl -fsSL --retry 2 \
+               -o baseline.json \
+               "https://raw.githubusercontent.com/$REPO/$BASELINE_BRANCH/_designs.json"; then
+            echo "baseline: $(python3 -c 'import json,sys;print(len(json.load(open("baseline.json"))["designs"]))')"
+          else
+            echo "no baseline at $BASELINE_BRANCH yet"
+            rm -f baseline.json
+          fi
+
+      - name: Push the renders
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          BASELINE_BRANCH: ${{ inputs.baseline-branch }}
+          RENDER_BRANCH: ${{ inputs.render-branch-prefix }}-${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            branch="$RENDER_BRANCH"
+          else
+            branch="$BASELINE_BRANCH"
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+          # An orphan branch: these are renders, not history. Force-pushed, so the branch is always
+          # exactly this run's output and never grows a log of every picture ever drawn.
+          work=$(mktemp -d)
+          cp -R renders/. "$work/"
+          cd "$work"
+          git init -q -b "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "UI-builder design renders for ${GITHUB_SHA}"
+          git push -q --force \
+            "https://x-access-token:${GH_TOKEN}@${SERVER_URL#https://}/${REPO}.git" \
+            "HEAD:refs/heads/$branch"
+          echo "pushed $(ls | wc -l) file(s) to $branch"
+
+      - name: Build the comment
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ steps.push.outputs.branch }}
+          BASELINE_BRANCH: ${{ inputs.baseline-branch }}
+        run: |
+          set -euo pipefail
+          baseline=()
+          if [ -f baseline.json ]; then baseline=(--baseline baseline.json); fi
+          python3 .compose-ai-tools/.github/actions/lib/design-renders.py comment \
+            --head renders/_designs.json \
+            ${baseline[@]+"${baseline[@]}"} \
+            --repo "$REPO" \
+            --head-branch "$HEAD_BRANCH" \
+            --baseline-branch "$BASELINE_BRANCH" \
+            --out comment.md
+          cat comment.md
+
+      - name: Post or update the sticky comment
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker='<!-- ui-builder-design-renders -->'
+          existing=$(gh api "repos/$REPO/issues/$NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))] | first | .id // empty")
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@comment.md >/dev/null
+            echo "updated comment $existing"
+          else
+            gh api -X POST "repos/$REPO/issues/$NUMBER/comments" -F body=@comment.md >/dev/null
+            echo "posted a new comment"
+          fi

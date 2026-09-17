@@ -928,6 +928,10 @@ jobs:
         run: python3 .github/actions/lib/test_notification_previews.py -v
       - name: Run xr-gallery tests
         run: python3 .github/actions/lib/test_xr_gallery.py -v
+      # The UI-builder design lane's manifest and comment. No perceptual diff to install: a design
+      # render is compared by the sha256 its manifest carries, so nothing here opens an image.
+      - name: Run design-renders tests
+        run: python3 .github/actions/lib/test_design_renders.py -v
       - name: Run install version-resolver tests
         run: python3 .github/actions/install/test_resolve_version.py -v
       - name: Run install plugin-readiness tests
