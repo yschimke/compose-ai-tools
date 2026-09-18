@@ -51,6 +51,34 @@ class CliRouterTest {
   }
 
   @Test
+  fun `the note for an unknown flag is accurate about where it lands`() {
+    // A launcher forwards its argv; "(ignored)" would be false, because the server accepts the
+    // flag and it takes effect there. A non-launcher really does ignore it.
+    assertTrue(
+      CliFlagValidation.unknownFlagNote("ui-builder", "--no-project")
+        .contains("forwarded to the compose-preview-server binary")
+    )
+    assertTrue(
+      CliFlagValidation.unknownFlagNote("design", "--bogus")
+        .contains("forwarded to the compose-preview-server binary")
+    )
+    assertTrue(CliFlagValidation.unknownFlagNote("render", "--fitler").contains("(ignored)"))
+  }
+
+  @Test
+  fun `flags the ui-builder help advertises are on its allowlist`() {
+    // `--no-project` is the server's packaged-catalogs mode, documented in the `ui-builder
+    // --help` the server answers with — a warning on it read as a failure to launch the mode.
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags("ui-builder", listOf("--no-project", "--no-open")),
+    )
+    assertTrue(
+      CliFlagValidation.FORWARDED_TO_SERVER == setOf("serve", "browse", "ui-builder", "design")
+    )
+  }
+
+  @Test
   fun `groups are disjoint and don't collide with core, meta, or group names`() {
     val grouped = CliRouter.GROUPS.values.flatten()
     assertEquals(grouped.size, grouped.toSet().size, "a command appears in two groups")

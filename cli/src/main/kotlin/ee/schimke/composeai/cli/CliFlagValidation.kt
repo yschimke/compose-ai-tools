@@ -226,7 +226,8 @@ internal object CliFlagValidation {
       // A launcher for the server's `ui` command, so the flags are that command's: the selectors
       // a build needs, the network knobs any local server takes, and the builder's own options.
       // `--no-open` belongs to the lane rather than the server (it suppresses `--open-browser`),
-      // which is why it is listed here and not among serve's.
+      // which is why it is listed here and not among serve's. `--no-project` is the server's
+      // packaged-catalogs mode, named in the `ui-builder --help` the server answers with.
       "ui-builder" to
         commandBase +
           setOf(
@@ -237,6 +238,7 @@ internal object CliFlagValidation {
             "--host",
             "--lan",
             "--no-open",
+            "--no-project",
             "--open-path",
             "--port",
             "--public",
@@ -384,6 +386,25 @@ internal object CliFlagValidation {
 
   /** Every distinct option registered for at least one command, for the source drift guard. */
   val ALL: Set<String> = BY_COMMAND.values.flatten().toSet()
+
+  /**
+   * Commands whose argv is forwarded to the compose-preview-server binary essentially untouched.
+   *
+   * For these, an option outside the allowlist is not "ignored" — the launcher passes it through
+   * and the server, which owns the flag surface, accepts or refuses it by name. The note that names
+   * an unknown option must say that, because "(ignored)" would be false: the option reaches the
+   * server and takes effect there.
+   */
+  internal val FORWARDED_TO_SERVER: Set<String> = setOf("serve", "browse", "ui-builder", "design")
+
+  /** The stderr line [Main] prints for one unknown option — accurate about where it lands. */
+  fun unknownFlagNote(command: String, flag: String): String =
+    if (command in FORWARDED_TO_SERVER) {
+      "compose-preview: note: option '$flag' is not one the '$command' launcher reads; it is " +
+        "forwarded to the compose-preview-server binary, which validates its own flags"
+    } else {
+      "compose-preview: warning: unrecognised option '$flag' for '$command' (ignored)"
+    }
 
   /** Unknown option spellings, de-duplicated in argv order. */
   fun unknownFlags(command: String, args: List<String>): List<String> {
