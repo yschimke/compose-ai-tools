@@ -35,6 +35,14 @@ class ServeCommand(
    * them here would be a second copy of a surface that already exists.
    */
   private val serverCommand: String = "serve",
+  /**
+   * Extra environment for the server process, applied on top of what this process inherited.
+   *
+   * Empty by default — a launcher adds nothing the caller did not ask for. [DesignCommand] is the
+   * one consumer: it bridges a grant this CLI holds in its own store to the server-side verb
+   * runner, which can only see environment variables.
+   */
+  private val childEnvironment: Map<String, String> = emptyMap(),
 ) {
 
   fun run() {
@@ -53,7 +61,11 @@ class ServeCommand(
     val command = launchCommand(choice.binary)
     val exit =
       try {
-        ProcessBuilder(command).inheritIO().start().waitFor()
+        ProcessBuilder(command)
+          .apply { environment().putAll(childEnvironment) }
+          .inheritIO()
+          .start()
+          .waitFor()
       } catch (t: Throwable) {
         System.err.println(
           "could not start ${choice.binary} (from ${choice.source}): " +
