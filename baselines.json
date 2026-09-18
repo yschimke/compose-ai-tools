@@ -1487,14 +1487,6 @@
     "sha256": "eea0d88fc3e039c507711f6868d6c6f4910eb9177b95c07ac8131736bc3eec83",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
   },
-  "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchAnimatedPreview_Shader Gallery \u2014 Raymarch SDF (animated, AGSL)": {
-    "captureLabel": "",
-    "functionName": "ShaderRaymarchAnimatedPreview",
-    "module": "samples:android",
-    "renderBasename": "ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated_AGSL-04c1eeef.gif",
-    "sha256": "92080b25a43fc1adb0ab54092f922bd44867d0a08302b777945a2bcb70a3d572",
-    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt"
-  },
   "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF (AGSL)": {
     "captureLabel": "",
     "functionName": "ShaderRaymarchPreview",
