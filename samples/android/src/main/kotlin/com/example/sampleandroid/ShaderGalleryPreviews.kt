@@ -240,11 +240,18 @@ fun ShaderJuliaPreview() = ShaderCard(JULIA_AGSL)
 // Animated companions — looped as GIFs via @AnimatedPreview. Each program is periodic in iTime
 // (raymarch light + wobble, Julia c-orbit, fBm domain orbit), so a 0..2π ramp is a seamless 2s
 // loop.
-@Preview(name = "Shader Gallery — Raymarch SDF (animated, AGSL)")
-@AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@Composable
-fun ShaderRaymarchAnimatedPreview() = AnimatedShaderCard(RAYMARCH_AGSL)
+//
+// The raymarch companion is DISABLED for now: it is the preview CI blamed for an intermittent
+// daemon OutOfMemoryError (1 of 172 previews; the stack was in the framework's PaletteBuilder, so
+// the attribution may be a concurrent render rather than this one). Tracked in
+// yschimke/compose-preview-daemon#154 — re-enable it there, not here. The static
+// `ShaderRaymarchPreview` above still renders this shader as a PNG.
+//
+// @Preview(name = "Shader Gallery — Raymarch SDF (animated, AGSL)")
+// @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
+// @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+// @Composable
+// fun ShaderRaymarchAnimatedPreview() = AnimatedShaderCard(RAYMARCH_AGSL)
 
 @Preview(name = "Shader Gallery — fBm Clouds (animated, AGSL)")
 @AnimatedPreview(durationMs = 2000, frameIntervalMs = 50, showCurves = false)
