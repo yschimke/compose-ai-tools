@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "114fd20a4479458693898d856a53d0b39ea63390",
+    "generatedFrom": "48ebe5513e8bac9220fbfa2ccc0b2f408dd9a49a",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -2984,28 +2984,6 @@
                 }
             ],
             "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchAnimatedPreview_Shader Gallery — Raymarch SDF (animated, AGSL)": {
-            "path": "renders/samples:android/ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated_AGSL-04c1eeef.gif",
-            "versions": [
-                {
-                    "blob": "bebb746de10d5e97d380646d4d7fb93b9e4817b5",
-                    "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
-                    "date": "2026-08-20T15:03:15Z",
-                    "sourceSha": "ab7b7e0f",
-                    "commits": 1
-                },
-                {
-                    "blob": "2da2e057efe587d34e8a4268a125c4f383718215",
-                    "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
-                    "date": "2026-08-14T10:40:34Z",
-                    "sourceSha": "5b91ca7c",
-                    "commits": 1
-                }
-            ],
-            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
