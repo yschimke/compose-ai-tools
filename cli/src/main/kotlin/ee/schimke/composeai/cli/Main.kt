@@ -58,10 +58,7 @@ fun main(args: Array<String>) {
   when (val route = CliRouter.route(args)) {
     is CliRouter.Route.Run -> {
       for (flag in CliFlagValidation.unknownFlags(route.command, route.args)) {
-        System.err.println(
-          "compose-preview: warning: unrecognised option '$flag' for '${route.command}' " +
-            "(ignored)"
-        )
+        System.err.println(CliFlagValidation.unknownFlagNote(route.command, flag))
       }
       try {
         COMMANDS.getValue(route.command).invoke(route.args)
