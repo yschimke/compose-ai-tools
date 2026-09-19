@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "48ebe5513e8bac9220fbfa2ccc0b2f408dd9a49a",
+    "generatedFrom": "c1d535fc054f0b17b16ec6ca68735f5e2aa0429b",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8.png",
@@ -7017,20 +7017,12 @@
             "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview-53123345.gif",
             "versions": [
                 {
-                    "blob": "ffeab2a25ee8c1b3346721565ee220d5cbd464c7",
-                    "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
-                    "date": "2026-09-14T22:37:48Z",
-                    "sourceSha": "9ca1db8d",
+                    "blob": "6cf54a81a573252fc4c468eb5bbbcf8dbf7ee298",
+                    "commit": "c1d535fc054f0b17b16ec6ca68735f5e2aa0429b",
+                    "date": "2026-09-19T14:11:05Z",
+                    "sourceSha": "90da07f2",
                     "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
-            "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif",
-            "versions": [
+                },
                 {
                     "blob": "ffeab2a25ee8c1b3346721565ee220d5cbd464c7",
                     "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
@@ -7039,7 +7031,29 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
+            "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif",
+            "versions": [
+                {
+                    "blob": "6cf54a81a573252fc4c468eb5bbbcf8dbf7ee298",
+                    "commit": "c1d535fc054f0b17b16ec6ca68735f5e2aa0429b",
+                    "date": "2026-09-19T14:11:05Z",
+                    "sourceSha": "90da07f2",
+                    "commits": 1
+                },
+                {
+                    "blob": "ffeab2a25ee8c1b3346721565ee220d5cbd464c7",
+                    "commit": "57c557fa40f0a076e733f6fd2a573787061bb7e8",
+                    "date": "2026-09-14T22:37:48Z",
+                    "sourceSha": "9ca1db8d",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
