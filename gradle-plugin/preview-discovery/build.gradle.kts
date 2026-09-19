@@ -38,6 +38,14 @@ sourceSets.named("main") {
 
 dependencies {
   api(libs.kotlinx.serialization.json)
+  // The contracts BOM supplies every version for the line (the coordinate below names none), and
+  // it is declared here rather than left to `composeai.base-conventions` because this module does
+  // not apply that plugin — it is a plain published library, not a module of this build's
+  // conventions. `api`, not `implementation`: this module's own consumers, including the sample
+  // buildscript classpath that resolves it as a Gradle plugin implementation, need the constraint
+  // too. A platform only constrains the configuration it is declared on, and `implementation`
+  // constraints are not exported.
+  api(platform(libs.composeai.contracts.bom))
   api(libs.composeai.screen.document)
   // ClassGraph drives `PreviewDiscovery.discover(...)`: scans class dirs + dependency jars for
   // `@Preview`-annotated methods, fans out multi-preview meta-annotations via

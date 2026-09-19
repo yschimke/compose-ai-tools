@@ -68,19 +68,40 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
     registerLayerBoundaryCheck(project)
     registerHttpServerFloorCheck(project)
     applyDaemonBom(project)
+    applyContractsBom(project)
   }
 
   /**
-   * Puts the compose-preview-daemon BOM on every module, so the daemon coordinates in the catalog
-   * need not -- and must not -- name versions of their own.
+   * A Kotlin source-set dependency bucket, such as `commonMainApi` or `desktopMainImplementation`.
    *
-   * That repository publishes only the modules a release changes
-   * (yschimke/compose-preview-daemon#123), so its coordinates no longer all sit at one version.
-   * This catalog used to pin all nineteen of them to a single shared version ref, which resolves
-   * right up until the first reduced release and then fails on whichever module did not publish at
-   * the new version -- a build break arriving from a repository we did not change, on a version
-   * bump that looks routine. The BOM is the published record of which versions belong together, so
-   * it is the only coordinate that names one.
+   * Matched by suffix because the source-set names are open-ended -- every target and every custom
+   * source set adds a pair -- so enumerating them would go stale the moment a target is added. The
+   * cost of matching too widely is only that a platform lands on a bucket with nothing from this
+   * BOM in it, which constrains nothing and resolves to nothing.
+   */
+  private fun isKotlinSourceSetBucket(name: String): Boolean =
+    name.endsWith("Api") || name.endsWith("Implementation")
+
+  private fun applyDaemonBom(project: Project) =
+    applyPlatformBom(project, "composeai-daemon-bom", "compose-preview-daemon")
+
+  private fun applyContractsBom(project: Project) =
+    applyPlatformBom(project, "composeai-contracts-bom", "compose-preview-contracts")
+
+  /**
+   * Puts a published BOM on every module, so the coordinates it constrains need not -- and must not
+   * -- name versions of their own.
+   *
+   * Both lines this build consumes learned the same lesson the hard way: they publish only the
+   * modules a release changes (yschimke/compose-preview-daemon#123 for the daemon line), so their
+   * coordinates no longer all sit at one version. This catalog used to pin each line's coordinates
+   * to a single shared version ref, which resolves right up until the first reduced release and
+   * then fails on whichever module did not publish at the new version -- a build break arriving
+   * from a repository we did not change, on a version bump that looks routine. The daemon line
+   * moved to its BOM first; the contracts line broke exactly as predicted when Renovate raised
+   * `composeai-contracts` to 3.1.1 because `data-layoutinspector-core` had published one while
+   * `screen-document` and the rest had not. The BOM is the published record of which versions
+   * belong together, so it is the only coordinate that names one.
    *
    * `api` and `implementation` are the two buckets that declare these dependencies here, 67 of the
    * 69 declarations. `testImplementation` extends `implementation`, as do the Android variant
@@ -104,31 +125,22 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
    * it work regardless of plugin ordering, and covers projects that have neither configuration by
    * simply never matching.
    */
-  /**
-   * A Kotlin source-set dependency bucket, such as `commonMainApi` or `desktopMainImplementation`.
-   *
-   * Matched by suffix because the source-set names are open-ended -- every target and every custom
-   * source set adds a pair -- so enumerating them would go stale the moment a target is added. The
-   * cost of matching too widely is only that a platform lands on a bucket with nothing from this
-   * BOM in it, which constrains nothing and resolves to nothing.
-   */
-  private fun isKotlinSourceSetBucket(name: String): Boolean =
-    name.endsWith("Api") || name.endsWith("Implementation")
-
-  private fun applyDaemonBom(project: Project) {
+  private fun applyPlatformBom(project: Project, alias: String, line: String) {
     val bom =
       project.extensions
         .getByType<VersionCatalogsExtension>()
         .named("libs")
-        .findLibrary("composeai-daemon-bom")
+        .findLibrary(alias)
         .orElseThrow {
-          IllegalStateException("libs.composeai.daemon.bom is missing from the version catalog")
+          IllegalStateException(
+            "libs.${alias.replace('-', '.')} is missing from the version catalog"
+          )
         }
 
     // A `java-platform` rejects dependencies outright ("Adding dependencies to platforms is not
     // allowed by default"), and would have nothing to do with one anyway: a platform has no compile
-    // classpath, so there is no resolution for the daemon BOM to constrain. Skipped rather than
-    // worked around with `allowDependencies()`, which would let a real dependency slip into the BOM
+    // classpath, so there is no resolution for the BOM to constrain. Skipped rather than worked
+    // around with `allowDependencies()`, which would let a real dependency slip into the BOM
     // unnoticed.
     //
     // This relies on `:bom` applying `composeai.maven-publishing-platform` BEFORE
