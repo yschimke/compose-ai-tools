@@ -23,6 +23,13 @@
       "minimumReleaseAge": "14 days"
     },
     {
+      "description": "The contracts BOM belongs to the contracts train, not the broad `ee.schimke.composeai` group the shared preset puts it in until its own exact-artifact list carries it. Grouping it here keeps a BOM bump out of a compose-ai-tools PR: the two lines release independently, and the one-shared-ref mistake this catalog just paid for was a contracts coordinate riding a bump computed for another train. The BOM is also the only contracts coordinate that names a version at all now, so this is the only entry that can be bumped. Remove this rule once yschimke/renovate-config lists compose-preview-contracts-bom in its compose-preview-contracts group.",
+      "matchPackageNames": [
+        "ee.schimke.composeai:compose-preview-contracts-bom"
+      ],
+      "groupName": "compose-preview-contracts"
+    },
+    {
       "description": "Keep the design-parity export toolchain on one release line.",
       "matchDepNames": [
         "@design-parity/adapter-figma",
