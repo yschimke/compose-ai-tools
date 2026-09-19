@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.19.0](https://github.com/yschimke/compose-ai-tools/compare/v2.18.1...v2.19.0) (2026-09-19)
+
+
+### Features
+
+* carry a catalog's editing-canvas mock into ui-builder.json ([#5514](https://github.com/yschimke/compose-ai-tools/issues/5514)) ([1b9f3fe](https://github.com/yschimke/compose-ai-tools/commit/1b9f3feb836a0c1ccdfbee29aa6470b73e109002))
+* house model lineup doc, leaderboard refresh and opencode bootstrap ([#5511](https://github.com/yschimke/compose-ai-tools/issues/5511)) ([8b76e0c](https://github.com/yschimke/compose-ai-tools/commit/8b76e0c3bc61b5c8162c0f2f2a330317e24bc69c))
+
+
+### Bug Fixes
+
+* **cli:** accurate launcher flag notes, and design verbs pick up the stored grant ([#5501](https://github.com/yschimke/compose-ai-tools/issues/5501)) ([52fb869](https://github.com/yschimke/compose-ai-tools/commit/52fb8693039bc77fc65609e7fbe9cd75b9ff5631))
+* **cli:** launcher allowlists cover the server's documented flags ([#5508](https://github.com/yschimke/compose-ai-tools/issues/5508)) ([34e087f](https://github.com/yschimke/compose-ai-tools/commit/34e087f80af38c669e3bc65a620293f5a13a78f6))
+* **deps:** consume the contracts line through its published BOM ([#5509](https://github.com/yschimke/compose-ai-tools/issues/5509)) ([f1e5c3f](https://github.com/yschimke/compose-ai-tools/commit/f1e5c3f109cdee3968d7dcaa7d66d1afb37d7679))
+* **deps:** update compose-preview-contracts ([#5498](https://github.com/yschimke/compose-ai-tools/issues/5498)) ([c48744c](https://github.com/yschimke/compose-ai-tools/commit/c48744c941ee2e30f1eea728b5afba9a950a35ee))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.8.3 ([#5497](https://github.com/yschimke/compose-ai-tools/issues/5497)) ([a96fcb5](https://github.com/yschimke/compose-ai-tools/commit/a96fcb5ac84202246e4361f42dc288fd2df2b573))
+* **deps:** update dependency ee.schimke.composeai:data-layoutinspector-core to v3.1.1 ([#5505](https://github.com/yschimke/compose-ai-tools/issues/5505)) ([5d46535](https://github.com/yschimke/compose-ai-tools/commit/5d46535239d5a830adcb4226acd43eeeddd26777))
+* **deps:** update dependency ee.schimke.composeai:rc-player-compose to v1.67.0 ([#5515](https://github.com/yschimke/compose-ai-tools/issues/5515)) ([90da07f](https://github.com/yschimke/compose-ai-tools/commit/90da07f2168e4f75931b69c8b000be6d8b49b9e4))
+* **deps:** update ktor to v3.6.0 ([#5494](https://github.com/yschimke/compose-ai-tools/issues/5494)) ([dc515b5](https://github.com/yschimke/compose-ai-tools/commit/dc515b5e9644b32e5a4cc112f7555bcf6fcdae4b))
+* **deps:** update rc-players to v1.65.0 ([#5499](https://github.com/yschimke/compose-ai-tools/issues/5499)) ([60538c3](https://github.com/yschimke/compose-ai-tools/commit/60538c380790825a226f146e61eafa1f7fc7052b))
+* **deps:** update rc-players to v1.66.0 ([#5507](https://github.com/yschimke/compose-ai-tools/issues/5507)) ([69b1fd7](https://github.com/yschimke/compose-ai-tools/commit/69b1fd7ee028693998d97b1f6b2512d524153ae0))
+* model-board bootstrap installs and requires opencode V2 ([#5512](https://github.com/yschimke/compose-ai-tools/issues/5512)) ([3f7809e](https://github.com/yschimke/compose-ai-tools/commit/3f7809e628e93d4c5fb0be3f1a1fae121c9ee4c6))
+
 ## [2.18.1](https://github.com/yschimke/compose-ai-tools/compare/v2.18.0...v2.18.1) (2026-09-17)
 
 
