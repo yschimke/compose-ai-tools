@@ -12,6 +12,7 @@
   "prConcurrentLimit": 10,
   "minimumReleaseAge": "7 days",
   "github-actions": {
+    "description": "Deliberately OFF, and it must stay off: `.github/dependabot.yml` already runs the `github-actions` ecosystem for this repository, weekly with a 7-day cooldown and minor/patch grouping, and it rewrites the digest and the trailing `# vX.Y.Z` comment together. Turning this manager on gives the same `uses:` lines two weekly updaters that propose overlapping edits on the same Monday. This repository is the only one in the family carrying Dependabot \u2014 compose-preview-daemon, compose-preview-server, m3-catalog, wear-m3-catalog and rc-players have none, which is why Renovate owns their actions and not this one's.\n\nEnabling it would also break the release train: the six tag-based self-references in the composite actions (`.github/actions/apply/action.yml`, `preview-baselines`, `preview-comment`, `notification-previews`, `a11y-report`) are pinned `@vX.Y.Z # x-release-please-version` on purpose, and release-please rewrites that version TEXT. `pinDigests` would replace each with a commit SHA that release-please cannot recompute, so every later release would keep invoking the previous release's helpers.",
     "enabled": false
   },
   "packageRules": [
@@ -20,6 +21,13 @@
         "major"
       ],
       "minimumReleaseAge": "14 days"
+    },
+    {
+      "description": "The contracts BOM belongs to the contracts train, not the broad `ee.schimke.composeai` group the shared preset puts it in until its own exact-artifact list carries it. Grouping it here keeps a BOM bump out of a compose-ai-tools PR: the two lines release independently, and the one-shared-ref mistake this catalog just paid for was a contracts coordinate riding a bump computed for another train. The BOM is also the only contracts coordinate that names a version at all now, so this is the only entry that can be bumped. Remove this rule once yschimke/renovate-config lists compose-preview-contracts-bom in its compose-preview-contracts group.",
+      "matchPackageNames": [
+        "ee.schimke.composeai:compose-preview-contracts-bom"
+      ],
+      "groupName": "compose-preview-contracts"
     },
     {
       "description": "Keep the design-parity export toolchain on one release line.",
@@ -31,11 +39,11 @@
       "groupName": "design-parity export toolchain"
     },
     {
-      "description": "Never take a `…-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list — rather than disabling the update — keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps.",
+      "description": "Never take a `…-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list — rather than disabling the update — keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps. Also carries the `-SNAPSHOT` filter the shared preset applies across the gradle manager: both rules set `allowedVersions` and the last match wins, so naming only `-compat` here would hand every Gradle dependency in this repository its snapshots back (Renovate ranks `1.0.0-SNAPSHOT` above `1.0.0-alpha18`).",
       "matchManagers": [
         "gradle"
       ],
-      "allowedVersions": "!/-compat$/"
+      "allowedVersions": "!/(-compat|-SNAPSHOT)$/"
     },
     {
       "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) — a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
@@ -67,28 +75,6 @@
       ],
       "matchCurrentValue": "/^2025\\.11\\./",
       "allowedVersions": "/^2025\\.11\\./"
-    },
-    {
-      "description": "material-kolor: pin to the 4.0.x line. `:data-wallpaper-connector` is published against the renderer-android Compose floor (`compose-bom-compat`, Compose 1.9.5); 4.1.0 rebuilt against Compose Multiplatform 1.10.0 + Kotlin 2.3.0 and migrated to a Multiplatform Android library, raising the transitive floor above our published surface. See gradle/libs.versions.toml for the full rationale — bumping the floor is a manual decision.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "com.materialkolor:material-kolor"
-      ],
-      "matchCurrentValue": "/^4\\.0\\./",
-      "allowedVersions": "/^4\\.0\\./"
-    },
-    {
-      "description": "androidx.core:core: pin to the 1.13.x line. `:data-keyboard-connector` declares this as a `compileOnly` compat floor so the published AAR's bytecode stays binary-backward-compatible with consumers on older `androidx.core` lines (same rationale as `compose-foundation` via `compose-bom-compat`). Raising the floor is a manual decision.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "androidx.core:core"
-      ],
-      "matchCurrentValue": "/^1\\.13\\./",
-      "allowedVersions": "/^1\\.13\\./"
     },
     {
       "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
@@ -123,17 +109,6 @@
       ],
       "matchCurrentValue": "/^2\\.0\\.17$/",
       "allowedVersions": "/^2\\.0\\.17$/"
-    },
-    {
-      "description": "compottie: pin to the 2.2.x line. `:lottie-preview-runtime` is built against JetBrains Compose foundation 1.11.0 (matching `compose-multiplatform = 1.11.x`); a compottie line built against a newer foundation drags a newer Compose onto the renderer classpath — the skew `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`; see gradle/libs.versions.toml.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "io.github.alexzhirkevich:compottie"
-      ],
-      "matchCurrentValue": "/^2\\.2\\./",
-      "allowedVersions": "/^2\\.2\\./"
     },
     {
       "description": "coil3: pin to the 3.5.x line. 3.6.0 depends on `org.jetbrains.compose.foundation:foundation-android:1.12.0`, which resolves `androidx.compose.foundation`/`ui` 1.12.0 — the Compose line this repo deliberately does not sit on (see the compose-multiplatform rule above). coil3 is `compileOnly` in `:renderer-android` but `testImplementation` for that module's own unit tests, so the upgrade lands on a test classpath compiled against `compose-bom-compat` and `FigmaSvgRasterizedTextFieldRenderTest` fails with `AbstractMethodError` (#4503). 3.5.0 resolves foundation 1.11.2 and is green. Bump in lockstep with the Compose floor, not on its own.",

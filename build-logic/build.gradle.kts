@@ -16,7 +16,10 @@ dependencies {
   implementation(
     "com.ncorti.ktfmt.gradle:com.ncorti.ktfmt.gradle.gradle.plugin:${libs.versions.ktfmt.get()}"
   )
+  testImplementation(kotlin("test-junit5"))
 }
+
+tasks.test { useJUnitPlatform() }
 
 gradlePlugin {
   plugins {
@@ -39,6 +42,10 @@ gradlePlugin {
     register("composeAiMavenPublishing") {
       id = "composeai.maven-publishing"
       implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiMavenPublishingPlugin"
+    }
+    register("composeAiPlatformPublishing") {
+      id = "composeai.maven-publishing-platform"
+      implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiPlatformPublishingPlugin"
     }
   }
 }

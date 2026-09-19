@@ -4,7 +4,6 @@ import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import com.vanniktech.maven.publish.SourcesJar
-import org.gradle.api.artifacts.dsl.LockMode
 import java.io.File
 import javax.inject.Inject
 import org.gradle.api.Plugin
@@ -46,49 +45,66 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
     project.version = project.publishedVersion()
 
     project.configureAndroidLibraryPublication()
-    project.configureDependencyLocking()
 
     project.afterEvaluate {
-      val artifactId =
-        extension.artifactId.orNull ?: error("composeAiMavenPublishing.artifactId is required")
-      val displayName =
-        extension.displayName.orNull ?: error("composeAiMavenPublishing.displayName is required")
-      val artifactDescription =
-        extension.description.orNull ?: error("composeAiMavenPublishing.description is required")
+      project.configureComposeAiPublication(
+        artifactId =
+          extension.artifactId.orNull ?: error("composeAiMavenPublishing.artifactId is required"),
+        displayName =
+          extension.displayName.orNull
+            ?: error("composeAiMavenPublishing.displayName is required"),
+        artifactDescription =
+          extension.description.orNull
+            ?: error("composeAiMavenPublishing.description is required"),
+        inceptionYear = extension.inceptionYear,
+      )
+    }
+  }
+}
 
-      project.extensions.configure<MavenPublishBaseExtension> {
-        publishToMavenCentral(automaticRelease = true)
-        if (!project.version.toString().endsWith("SNAPSHOT")) {
-          signAllPublications()
+/**
+ * The coordinates, signing and POM metadata every artifact this repository publishes carries.
+ *
+ * Shared by [ComposeAiMavenPublishingPlugin] and [ComposeAiPlatformPublishingPlugin] rather than
+ * duplicated: the BOM describes the same release as the modules it constrains, so if the two ever
+ * disagreed about the group, the licence or the SCM block, the index and the things it indexes
+ * would be published under different metadata.
+ */
+internal fun Project.configureComposeAiPublication(
+  artifactId: String,
+  displayName: String,
+  artifactDescription: String,
+  inceptionYear: Property<String>,
+) {
+  extensions.configure<MavenPublishBaseExtension> {
+    publishToMavenCentral(automaticRelease = true)
+    if (!version.toString().endsWith("SNAPSHOT")) {
+      signAllPublications()
+    }
+    coordinates("ee.schimke.composeai", artifactId, version.toString())
+    pom {
+      name.set(displayName)
+      description.set(artifactDescription)
+      url.set("https://github.com/yschimke/compose-ai-tools")
+      this.inceptionYear.set(inceptionYear)
+      licenses {
+        license {
+          name.set("The Apache License, Version 2.0")
+          url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+          distribution.set("repo")
         }
-        coordinates("ee.schimke.composeai", artifactId, project.version.toString())
-        pom {
-          name.set(displayName)
-          description.set(artifactDescription)
-          url.set("https://github.com/yschimke/compose-ai-tools")
-          inceptionYear.set(extension.inceptionYear)
-          licenses {
-            license {
-              name.set("The Apache License, Version 2.0")
-              url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
-              distribution.set("repo")
-            }
-          }
-          developers {
-            developer {
-              id.set("yschimke")
-              name.set("Yuri Schimke")
-              url.set("https://github.com/yschimke")
-            }
-          }
-          scm {
-            url.set("https://github.com/yschimke/compose-ai-tools")
-            connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
-            developerConnection.set(
-              "scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git"
-            )
-          }
+      }
+      developers {
+        developer {
+          id.set("yschimke")
+          name.set("Yuri Schimke")
+          url.set("https://github.com/yschimke")
         }
+      }
+      scm {
+        url.set("https://github.com/yschimke/compose-ai-tools")
+        connection.set("scm:git:https://github.com/yschimke/compose-ai-tools.git")
+        developerConnection.set("scm:git:ssh://git@github.com/yschimke/compose-ai-tools.git")
       }
     }
   }
@@ -127,28 +143,91 @@ private fun Project.configureAndroidLibraryPublication() {
 /**
  * The version this module publishes at.
  *
- * `CORE_LINE_VERSION` when the release sets it — the release tag when this release publishes, and
- * the last version the modules actually reached Central at when the guard skipped the publish —
- * else `PLUGIN_VERSION`. Kept apart from the tag so a skipped release never stamps a never-uploaded
- * version onto a POM: v2.2.1 shipped `data-remotecompose-connector:2.2.1` requiring
- * `daemon-core:2.2.1` with the core line held at 2.2.0, which resolved for nobody
+ * Outside a release (`PLUGIN_VERSION` unset) everything is the next-patch snapshot.
+ *
+ * During a release the module takes the tag's version **if it is in the publish set**, and
+ * otherwise the version it last published at, read from `publishing-manifest.json`. The set is
+ * computed by `.github/scripts/maven-publish-plan.sh` and handed over as
+ * `-Pcomposeai.publishSet=<comma separated artifact ids>`; a release that omits the property
+ * publishes everything at the tag, which is the old behaviour and the safe default for a
+ * `workflow_dispatch` recovery run.
+ *
+ * Giving a skipped module its *recorded* version rather than the tag is the whole mechanism. A
+ * published POM names its project dependencies at their `project.version`, so a module built at
+ * the tag names its skipped dependencies at the versions those are actually on Central, and a
+ * consumer resolving it gets artifacts that exist. Stamping the tag onto a module that did not
+ * publish is precisely the break this repository shipped in v2.2.1 —
+ * `data-remotecompose-connector:2.2.1` requiring a `daemon-core:2.2.1` that was never uploaded
  * (yschimke/wear-m3-catalog#350).
  *
- * That failure came from the two-train split, where `data/…` versioned on a line of its own and
- * each module took its train's version. The data modules publish from compose-preview-daemon since
- * #5336 and the split went with them; one line is left, and the variable keeps its name.
- *
- * **The line version is ignored unless `PLUGIN_VERSION` is set.** Outside a release both are
- * absent and everything falls to the snapshot version; a stray `CORE_LINE_VERSION` in a developer
- * shell must not silently version the build.
+ * This replaces `CORE_LINE_VERSION`, which was the two-train split's answer to the same problem at
+ * a much coarser grain: one held-back version for a whole train. The trains went to
+ * compose-preview-daemon with the data modules (#5336); the per-module manifest is what is left.
  */
 private fun Project.publishedVersion(): String {
   val pluginVersion =
     providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
       ?: return nextPatchSnapshotVersion()
-  return providers.environmentVariable("CORE_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
-    ?: pluginVersion
+
+  // The `gradle-plugin` included build always publishes, so its four coordinates always carry the
+  // tag and never consult the publish set. `maven-publish-plan.sh` does `dirty.update(
+  // INCLUDED_BUILD_IDS)` unconditionally — the CLI bakes the plugin coordinate for the version it
+  // ships at, so a skipped plugin is a user-facing break on the first command anyone runs.
+  //
+  // Bypassing the lookup is not a shortcut around a rule; it is the only correct answer, because
+  // [publishedArtifactId] CANNOT name these projects. An included build's paths are its own: its
+  // root project is `:`, which flattens to the EMPTY STRING, and `:gradle-plugin-config` flattens
+  // to `gradle-plugin-config` while it publishes as `compose-preview-config`. Neither is in the
+  // publish set or the manifest, so the `error(...)` below fired while the plugin was being
+  // applied — killing v2.18.0's release job during configuration, before anything was uploaded.
+  if (gradle.parent != null) return pluginVersion
+
+  return PublishedVersions.resolve(
+    artifactId = publishedArtifactId(),
+    tagVersion = pluginVersion,
+    publishSet =
+      PublishedVersions.parsePublishSet(providers.gradleProperty("composeai.publishSet").orNull),
+    manifestText = publishingManifestText(),
+  )
 }
+
+/**
+ * The artifact id this project publishes as: its path with the separators flattened.
+ *
+ * Pinned against the build files by `PublishedArtifactIdTest`, because `:bom` and the publish set
+ * both address modules this way while the modules themselves declare an id in their build script.
+ */
+internal fun Project.publishedArtifactId(): String = path.removePrefix(":").replace(':', '-')
+
+/**
+ * `publishing-manifest.json`, or an empty document when there is none.
+ *
+ * NOT a committed file. The release job's publish plan resolves each coordinate's published version
+ * from Maven Central and writes it here (`--write-manifest`) before Gradle runs, so a module the
+ * release skips can name the version it is already published at. Outside a release the file is
+ * absent and nothing reads it: `publishedVersion` only consults it when `PLUGIN_VERSION` is set.
+ */
+internal fun Project.publishingManifestText(): String =
+  generateSequence(rootDir) { it.parentFile }
+    .map { it.resolve("publishing-manifest.json") }
+    .firstOrNull(File::isFile)
+    ?.readText() ?: "{}"
+
+/**
+ * The version a *platform* publishes at: always the tag, never a line version.
+ *
+ * `:bom` is the index of a release, not a member of it. A consumer resolving the BOM at the tag has
+ * to find it there whether or not any given module published, so it never takes a recorded or
+ * held-back version.
+ *
+ * Kept apart from [publishedVersion] rather than special-cased inside it — routing the BOM through
+ * the module path is what broke the equivalent change in compose-preview-daemon, where its derived
+ * artifact id was absent from both the publish set and the manifest and every reduced-publish
+ * release died during Gradle configuration.
+ */
+internal fun Project.platformPublishedVersion(): String =
+  providers.environmentVariable("PLUGIN_VERSION").orNull?.takeIf { it.isNotBlank() }
+    ?: nextPatchSnapshotVersion()
 
 private fun Project.nextPatchSnapshotVersion(): String {
   val manifest =
@@ -160,99 +239,3 @@ private fun Project.nextPatchSnapshotVersion(): String {
   val (major, minor, patch) = current.split(".").map { it.toInt() }
   return "$major.$minor.${patch + 1}-SNAPSHOT"
 }
-
-/**
- * Record each published module's resolved dependency graph in a committed `gradle.lockfile`.
- *
- * ## Why this module and not the whole build
- *
- * The release guard ([.github/scripts/maven-publish-needed.sh]) has to answer "could this
- * artifact's bytes differ from the last published release?". Its crudest rule is that ANY change
- * to `gradle/libs.versions.toml` dirties all 94 published modules, because a path diff cannot tell
- * which of them actually resolve the bumped coordinate. Measured over v1.57.0..v1.84.0, that one
- * rule accounts for ~97% of the publishing the guard cannot eliminate: 16 of 38 release windows
- * touched a shared build input, 9 of them the version catalog alone.
- *
- * A lock state answers the question exactly instead of approximating it. Gradle records what each
- * module actually resolved, the file is committed, and the guard diffs it — no parsing of catalog
- * aliases, no upward closure, no guessing. It also catches a case alias-matching would miss: the
- * POM carries *declared* versions (there is no `versionMapping` here), so a bump to a purely
- * transitive dependency does not change a consumer's POM — but Kotlin inlines `inline` functions
- * from the compile classpath into the caller, so the consumer's jar bytes can still move.
- *
- * ## LockMode.DEFAULT, deliberately
- *
- * DEFAULT does not fail a locked configuration that has no lock state; STRICT does. That is what
- * makes this safe to land before a single lockfile exists — every module resolves exactly as it
- * did, and the files arrive when `dependency-locks.yml` first writes them. STRICT is also a known
- * source of false failures on configurations that are not really resolvable (gradle#12010), which
- * is the second reason not to reach for it.
- *
- * ## Only the configurations that decide a published artifact
- *
- * NOT `lockAllConfigurations()`. Locking the test classpaths would mean a test-only dependency
- * bump rewrote a lockfile and so dirtied a module whose published bytes cannot have changed —
- * re-introducing, one layer down, exactly the over-reporting this exists to remove. The names
- * below are the resolvable compile/runtime classpaths of the variants we actually publish: the
- * plain JVM pair, the Android `release` pair (we publish `AndroidSingleVariantLibrary("release")`),
- * and the KMP `jvm` pair.
- *
- * Known gap, stated rather than discovered later: a KMP module publishing targets beyond `jvm`
- * has classpaths not named here, so its lock state is incomplete and the guard learns nothing
- * about those targets' dependencies. The guard fails open on a module with no lock state, so this
- * is safe — it just does not save anything for those modules yet.
- */
-private fun Project.configureDependencyLocking() {
-  dependencyLocking { lockMode.set(LockMode.DEFAULT) }
-
-  configurations.configureEach {
-    if (name in LOCKED_CONFIGURATIONS) {
-      resolutionStrategy.activateDependencyLocking()
-    }
-  }
-
-  // `./gradlew resolveAndLockAll --write-locks` regenerates every lockfile in one invocation.
-  // Resolving inside the task (rather than relying on some other task to touch the configuration)
-  // is what makes a module with no consumers still get a lockfile written.
-  tasks.register("resolveAndLockAll") {
-    group = "help"
-    description = "Resolves the published configurations so --write-locks can record them."
-    notCompatibleWithConfigurationCache("Resolves configurations at execution time")
-    doFirst {
-      require(project.gradle.startParameter.isWriteDependencyLocks) {
-        "resolveAndLockAll must be run with --write-locks"
-      }
-    }
-    doLast {
-      configurations
-        .filter { it.isCanBeResolved && it.name in LOCKED_CONFIGURATIONS }
-        // GRAPH resolution, not `resolve()`. `resolve()` asks for the configuration's *files*,
-        // which forces artifact-variant selection — and on an Android `releaseCompileClasspath`
-        // that fails outright, because AGP normally supplies `artifactType` through its own
-        // ArtifactViews and a raw request cannot choose between `android-classes-jar`,
-        // `android-lint`, `android-manifest`, `jar`, `r-class-jar` and the rest
-        // ("cannot choose between the following variants of project ':data-a11y-core'").
-        //
-        // Lock state records module versions, so the graph is all it needs and no file has to be
-        // selected or downloaded. This is the same path Gradle's own `dependencies` report takes —
-        // which is what the generated lockfile header tells you to run to regenerate it.
-        .forEach { it.incoming.resolutionResult.root }
-    }
-  }
-}
-
-/**
- * The resolvable classpaths that determine a published artifact's POM and bytecode. Explicit names
- * rather than a pattern: `^(release)?(compile|runtime)Classpath$` would read as if it excluded the
- * test classpaths by luck of anchoring, and the cost of it one day not doing so is a lockfile that
- * churns on test-only bumps.
- */
-private val LOCKED_CONFIGURATIONS =
-  setOf(
-    "compileClasspath",
-    "runtimeClasspath",
-    "releaseCompileClasspath",
-    "releaseRuntimeClasspath",
-    "jvmCompileClasspath",
-    "jvmRuntimeClasspath",
-  )

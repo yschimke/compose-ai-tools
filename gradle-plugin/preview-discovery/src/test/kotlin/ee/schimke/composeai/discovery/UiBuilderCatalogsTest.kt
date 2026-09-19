@@ -2,6 +2,9 @@ package ee.schimke.composeai.discovery
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 /**
@@ -114,6 +117,55 @@ class UiBuilderCatalogsTest {
   }
 
   /**
+   * A catalog's stable public noun need not be the current callable's noun.
+   *
+   * Material 3's sticker currently declares `progress-indicator`, while the catalog policy
+   * publishes `linear-progress-indicator`. The explicit record join is what makes the reviewed
+   * catalog vocabulary authoritative instead of silently publishing the annotation's second
+   * identity and leaving successor rules aimed at an id that does not exist.
+   */
+  @Test
+  fun `an authored record join preserves a builder id that differs from the derived id`() {
+    val canonicalId =
+      ":catalog/androidx.wear.compose.material3.LinearProgressIndicatorKt.LinearProgressIndicator"
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component(
+            "LinearProgressIndicator",
+            catalogId = "Progress/Linear",
+            group = "Progress",
+            builder = BuilderPolicy(id = "wear-m3/progress-indicator"),
+          )
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf(
+              "wear-m3/linear-progress-indicator" to
+                UiBuilderAuthoredComponent(
+                  record = canonicalId,
+                  group = "Progress",
+                  displayName = "Linear progress indicator",
+                )
+            ),
+        ),
+      )!!
+
+    assertThat(generated.statusSemantics.components.keys)
+      .containsExactly("wear-m3/linear-progress-indicator")
+    assertThat(
+        generated.statusSemantics.components.getValue("wear-m3/linear-progress-indicator").record
+      )
+      .isEqualTo(canonicalId)
+    assertThat(generated.statusSemantics.componentMenu.components.keys)
+      .containsExactly("wear-m3/linear-progress-indicator")
+    assertThat(generated.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED)
+  }
+
+  /**
    * "Not stated" and "stated as empty" are different questions.
    *
    * A catalog declaring `modifierCapabilities: []` means the component accepts none; one omitting
@@ -176,7 +228,7 @@ class UiBuilderCatalogsTest {
     val orphan =
       file!!.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.POLICY_ORPHANED }
     assertThat(orphan.subject).isEqualTo("wear-m3/buton")
-    assertThat(orphan.message).contains("no component in this record derives")
+    assertThat(orphan.message).contains("joins no component in this record")
   }
 
   @Test
@@ -385,6 +437,44 @@ class UiBuilderCatalogsTest {
    * forbade both — so every builtin a schema-valid catalog could publish arrived on the shelf
    * claiming no traits, which the slot-acceptance rules read as "accepted nowhere".
    */
+  /**
+   * An excluded component gets no shelf entry.
+   *
+   * `excluded` means the consumer refuses to serve it — `PublishedUiBuilderCatalog` skips it and
+   * reports the reason — so a menu entry naming it offers a shelf item that disappears between the
+   * palette and the design. m3-catalog excluding its own `Sticker` and `MaterialExpressiveTheme`
+   * published both under "Badges" anyway, which is how this was found.
+   *
+   * The reason still ships in `statusSemantics.components`, so a component missing from the shelf
+   * can say why rather than looking lost. Only the menu drops it.
+   */
+  @Test
+  fun `an excluded component is not on the menu`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("Card", catalogId = "Containment/Card", group = "Containment"),
+          component("Sticker", catalogId = "Containment/Sticker", group = "Containment"),
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "wear-m3/",
+          components =
+            mapOf(
+              "wear-m3/sticker" to
+                UiBuilderAuthoredComponent(excluded = "the catalog's own preview frame")
+            ),
+        ),
+      )!!
+
+    val menu = generated.statusSemantics.componentMenu.components
+    assertThat(menu.keys).contains("wear-m3/card")
+    assertThat(menu.keys).doesNotContain("wear-m3/sticker")
+    // The reason is still published, so the shelf's absence is explained rather than silent.
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/sticker").excluded)
+      .isEqualTo("the catalog's own preview frame")
+  }
+
   @Test
   fun `a builtin publishes the traits and modifiers a catalog states`() {
     val generated =
@@ -407,6 +497,96 @@ class UiBuilderCatalogsTest {
     val builtin = generated.statusSemantics.builtins.getValue("wear-m3/widget-host")
     assertThat(builtin.traits).containsExactly("WearWidgetHost", "ScreenContent").inOrder()
     assertThat(builtin.modifierCapabilities).containsExactly("padding")
+  }
+
+  @Test
+  fun `a builtin publishes the shelf role, the lanes and the call a catalog states`() {
+    // Five fields the packaged vocabulary carries and a policy could not say, so every republished
+    // declaration dropped them: what the component IS on the shelf, what the canvas lane makes of
+    // it, what it exports as, what a structured-SVG export makes of it — and, one level down, a
+    // slot's `ordered`. A consumer DERIVES each of them when they are absent, so silence here is
+    // not silence: it is the derived answer published as if the catalog had agreed with it.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", catalogId = "Containment/Card", group = "Containment")),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "compose-foundation/box" to
+                UiBuilderBuiltin(
+                  role = "container",
+                  shelfRole = "Container",
+                  wasm =
+                    UiBuilderBuiltinWasm(
+                      platformSupported = JsonPrimitive(true),
+                      adapterStatus = "planned",
+                    ),
+                  code =
+                    UiBuilderBuiltinCode(
+                      symbol = "Box",
+                      imports = listOf("androidx.compose.foundation.layout.Box"),
+                    ),
+                  svg = UiBuilderBuiltinSvg(status = "verified", fallback = "none"),
+                  slots = mapOf("children" to Json.parseToJsonElement("{\"ordered\": false}")),
+                )
+            )
+        ),
+      )!!
+
+    // Nothing about the builtin is reported: every one of the five is a field the schema now
+    // admits, so a catalog stating them is a catalog saying more rather than a catalog in error.
+    // (The record component's unclaimed canvas is reported, and is not this test's subject.)
+    assertThat(generated.diagnostics.filter { it.subject.startsWith("compose-foundation/") })
+      .isEmpty()
+    val builtin = generated.statusSemantics.builtins.getValue("compose-foundation/box")
+    assertThat(builtin.shelfRole).isEqualTo("Container")
+    assertThat(builtin.wasm?.adapterStatus).isEqualTo("planned")
+    assertThat(builtin.code?.symbol).isEqualTo("Box")
+    assertThat(builtin.svg?.status).isEqualTo("verified")
+    // The slot is carried verbatim — its shape is the loader's business — so `ordered` reaching the
+    // published file is the whole claim, and it is the claim that failed before the schema allowed
+    // the key at all.
+    assertThat(builtin.slots.getValue("children").jsonObject["ordered"]?.jsonPrimitive?.content)
+      .isEqualTo("false")
+  }
+
+  @Test
+  fun `the two role vocabularies in one declaration reject each other's words`() {
+    // `role` says which template WRITES the component; `shelfRole` says what SHAPE it is. Both are
+    // spelled `role` in the document a consumer reads, which is exactly why crossing them is easy
+    // and why each has to refuse the other's vocabulary rather than publish a word nothing decodes.
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy(id = "m3/card", canvas = "p"))),
+        cover,
+        policy(
+          builtins =
+            mapOf(
+              "compose-foundation/box" to
+                UiBuilderBuiltin(role = "container", shelfRole = "container"),
+              "compose-foundation/column" to
+                UiBuilderBuiltin(
+                  role = "container",
+                  wasm = UiBuilderBuiltinWasm(adapterStatus = "soon"),
+                  code = UiBuilderBuiltinCode(symbol = " "),
+                ),
+            )
+        ),
+      )!!
+
+    val codes = generated.diagnostics.map { it.code to it.subject }
+    assertThat(codes)
+      .containsAtLeast(
+        UiBuilderCatalogs.Diagnostics.BUILTIN_SHELF_ROLE_UNKNOWN to "compose-foundation/box",
+        UiBuilderCatalogs.Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN to "compose-foundation/column",
+        UiBuilderCatalogs.Diagnostics.BUILTIN_CODE_EMPTY to "compose-foundation/column",
+      )
+    // `container` IS a structural role now, so the thing this test crosses must not also be
+    // reported as an unknown template role — that would make the assertion above pass for the
+    // wrong reason.
+    assertThat(codes.map { it.first })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.BUILTIN_ROLE_UNKNOWN)
   }
 
   @Test
@@ -1221,8 +1401,12 @@ class UiBuilderCatalogsTest {
             "displayName": "Screen",
             "group": "Layout",
             "canvas": "frame/round-screen",
+            "implementation": ":catalog/androidx.wear.compose.material3.CardKt.Card",
             "slots": { "content": { "required": true, "role": "list" } }
           }
+        },
+        "supersedes": {
+          "m3/card": { "componentId": "wear-m3/card", "properties": { "title": "headline" } }
         },
         "menu": {
           "${'$'}comment": "the catalog's own @CatalogGroup sections, in reaching order",
@@ -1239,6 +1423,8 @@ class UiBuilderCatalogsTest {
     assertThat(policy.platform).isEqualTo("wear")
     assertThat(policy.builtins.keys).containsExactly("wear-m3/screen-scaffold")
     assertThat(policy.builtins.getValue("wear-m3/screen-scaffold").role).isEqualTo("screen-root")
+    assertThat(policy.builtins.getValue("wear-m3/screen-scaffold").implementation)
+      .isEqualTo(":catalog/androidx.wear.compose.material3.CardKt.Card")
     assertThat(policy.menu?.groupOrder).containsExactly("Layout", "Navigation", "Actions").inOrder()
     assertThat(policy.code).isNull()
 
@@ -1252,6 +1438,7 @@ class UiBuilderCatalogsTest {
     // The declared id wins over the cover sheet's `system`, and the frame rides through verbatim.
     assertThat(generated.catalog.id).isEqualTo("wear-m3")
     assertThat(generated.statusSemantics.frame).isEqualTo(policy.frame)
+    assertThat(generated.statusSemantics.supersedes).isEqualTo(policy.supersedes)
     assertThat(generated.statusSemantics.builtins).isEqualTo(policy.builtins)
     assertThat(generated.diagnostics.map { it.code })
       .containsNoneOf(

@@ -36,6 +36,11 @@ bytes.
 Cheap to publish and safe for everyone to depend on, which is what makes it the right home for a
 seam that would otherwise become a library edge between layers 1 and 2.
 
+`ScreenDocument`, its nodes, values, actions and scoped function/row declarations are an example:
+`screen-document` in contracts owns those serializable inputs. This repository's `screen-model`
+and `preview-discovery` both consume that artifact; generation, validation, editing and discovery
+remain here. Keeping their existing Kotlin package does not change which repository owns them.
+
 ### 1 — `compose-ai-tools`
 
 **Behaviour that opens no socket.** Preview discovery, the Gradle plugin and the Tooling-API driver,
@@ -126,10 +131,17 @@ release train of its own — a daemon change that cannot wait for a plugin relea
 release that need not republish 70 modules — are in that repository's
 `docs/design/DAEMON_SPLIT.md`; the switch-over here was compose-ai-tools#5336.
 
-**`rc-players` is placed by this rule too.** compose-ai-tools consumes `rc-player-*` and rc-players
-consumes `data-fonts-google` and `data-layoutinspector-connector` back. Both are layer 1: at module
-granularity neither direction is a cycle, and the repository split between them is a publishing
-convenience rather than a layer.
+**`rc-players` is placed by this rule too.** compose-ai-tools consumes `rc-player-*`, and
+rc-players once consumed `data-fonts-google` and `data-layoutinspector-connector` back. Both are
+layer 1: at module granularity neither direction was a cycle, and the repository split between them
+is a publishing convenience rather than a layer.
+
+That back-edge is gone. Those two extractors moved to `compose-preview-daemon` with the rest of
+them (compose-ai-tools#5336), and rc-players resolves them from **there** now — its catalog names
+no compose-ai-tools coordinate at all, so the mutual dependency this paragraph tolerated at module
+granularity no longer exists at repository granularity either. The five repositories form a plain
+DAG, and the release order that follows from it is
+[`CROSS_REPO_RELEASES.md`](CROSS_REPO_RELEASES.md).
 
 ## What enforces it
 

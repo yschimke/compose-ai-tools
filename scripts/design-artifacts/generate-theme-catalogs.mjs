@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Write the `@ThemeCatalog` providers a spec's `themes[]` declares into a module's source set, and
- * put the annotation artifact on that module's compile classpath.
+ * Write the `@ThemeCatalog` / `@WearThemeCatalog` providers a spec's `themes[]` declares into a
+ * module's source set, and put the annotation artifact on that module's compile classpath.
  *
  * The I/O half of `theme-adapters.mjs` (which is pure and holds the shapes). Runs against a
  * THROWAWAY checkout — the import pipeline's clone of somebody else's repository — before
@@ -80,7 +80,12 @@ export function ensureAnnotationsDependency(
   );
   if (!buildFile) return "no-build-file";
   const text = readFileSync(buildFile, "utf8");
-  if (text.includes("ee.schimke.composeai:preview-annotations"))
+  const catalogAlias =
+    /\b(?:api|implementation|compileOnly)\s*\(\s*libs(?:\.[A-Za-z0-9_]+)*\.preview(?:\.[A-Za-z0-9_]+)*\.annotations\b/i;
+  if (
+    text.includes("ee.schimke.composeai:preview-annotations") ||
+    catalogAlias.test(text)
+  )
     return "present";
   const kts = buildFile.endsWith(".kts");
   const coordinate = `ee.schimke.composeai:preview-annotations:${version}`;
@@ -89,7 +94,7 @@ export function ensureAnnotationsDependency(
     : `  ${configuration} '${coordinate}'`;
   writeFileSync(
     buildFile,
-    `${text}\n\n// compose-preview import: @ThemeCatalog, for the generated theme providers under\n` +
+    `${text}\n\n// compose-preview import: catalog annotations for the generated theme providers under\n` +
       `// ${GENERATED_PACKAGE}. Added to a throwaway checkout only.\ndependencies {\n${line}\n}\n`,
   );
   return "added";

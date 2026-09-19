@@ -36,7 +36,7 @@ Two audiences, two doc trees. Don't conflate them:
     - [`a11y.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/a11y.md) — ATF accessibility checks
     - [`display-filters.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/display-filters.md) — post-process colour-matrix variants (bedtime grayscale, invert, daltonizer simulations)
     - [`agent-cloud.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md) — running in Claude/Codex/Gemini cloud environments (network allowlist, Setup script with `install.sh --android-sdk`, JVM-proxy gotcha)
-    - [`cmp-shared.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/cmp-shared.md) — applying the plugin to a CMP `:shared` (`com.android.kotlin.multiplatform.library`) module: previews go in `commonMain`, JVM target gives the Desktop renderer something to attach to (issue #248)
+    - [`cmp-shared.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/cmp-shared.md) — applying the plugin to a CMP `:shared` (`com.android.kotlin.multiplatform.library`) module: previews go in `commonMain`, JVM target gives the Desktop renderer something to attach to (issue #248). A module whose UI is Android-only takes the other lane instead — `composePreview { kmpAndroidRobolectric = true }`, see Architecture below
     - [`wear-ui.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/wear-ui.md) — Material 3 Expressive design language for Wear OS
     - [`wear-tiles.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/wear-tiles.md) — Wear Tiles (protolayout-based, not Compose)
     - [`remote-compose.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/remote-compose.md) — Remote Compose (RemoteDocument byte stream for watch faces, tiles, widgets)
@@ -57,9 +57,46 @@ The bootstrap installer's canonical home is now [`yschimke/skills/scripts/instal
 - **The render JVM starts with package-store directories pruned from `LD_LIBRARY_PATH`** when it is not itself a Nix/Guix store JVM ([`RenderNativeEnv`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/RenderNativeEnv.kt), applied to both the pooled worker and the per-capture fork). Store libraries carry the store's own glibc, so a hybrid sandbox — a store JDK running the daemon, a system JDK 21 picked by `jvmToolchain(21)` running the render — otherwise loses *every* preview to ``libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found`` (issue #3690). A store render JVM keeps everything it inherited, because `LD_LIBRARY_PATH` is the only channel its loader reads. Opt out with `-Dcomposeai.render.nativeEnv=inherit`; the failure mode and its diagnosis are in [DESKTOP_NATIVE_DEPS.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/DESKTOP_NATIVE_DEPS.md).
 - **`java.awt.headless` is deliberately left unset on the render JVM.** Forcing `headless=true` breaks Skiko's font/graphics init; the plugin only sets the macOS-scoped `apple.awt.UIElement` (Dock/focus suppression) and relies on Skiko's own offscreen path on Linux. See the comment block in [RenderPreviewsTask.kt](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/RenderPreviewsTask.kt) (`invokeRenderer`). Don't add `-Djava.awt.headless=true` "to make it work in the cloud" — it does the opposite.
 
-Build / test everything:
+### Run Gradle through `build-brief`
+
+[`build-brief`](https://bb.staticvar.dev) ([`static-var/build-brief`](https://github.com/static-var/build-brief),
+MIT, a single Go binary with no runtime dependencies) sits in front of Gradle, writes every line
+Gradle emits to a log file, and prints only what changes your next move: status, failed tasks, failed
+tests, warnings, build scan URLs, generated output paths and artifacts. The Gradle exit code passes
+through unchanged, so it is safe anywhere a bare `./gradlew` was.
+
+```
+brew install static-var/tap/build-brief      # or: curl -fsSL https://bb.staticvar.dev/install.sh | bash
+build-brief doctor                            # read-only; never runs Gradle
+```
+
+Then wrap the commands below — `build-brief ./gradlew check`, `build-brief ./gradlew
+:samples:cmp:composePreviewRenderAll`. `AGENTS.md` carries the per-command rules, in a block
+`build-brief --install` regenerates.
+
+On a shared developer host, agents use `scripts/agent-gradle.sh` in place of that direct wrapper.
+It retains `build-brief` while capping automated work at four low-priority workers. Add
+`--exclusive` before the Gradle arguments for `check`, broad render pipelines and other heavyweight
+task graphs; the exclusive profile shares one machine lock with compose-preview-daemon and
+compose-preview-server. Interactive commands and hosted CI deliberately bypass that profile.
+
+Worth knowing here specifically:
+
+- **The renders are the case it pays for.** `composePreviewRenderAll` emits a line per preview per
+  device; the brief keeps the artifact paths and the failures and drops the rest. When a render *is*
+  the thing you are debugging, the raw log path is printed — open that.
+- **Report-style commands keep their bodies.** `tasks`, `help`, `projects`, `dependencies` and
+  `dependencyInsight` are passed through, so dependency debugging is unaffected.
+- **Don't reach for `--ci`.** It is never inferred from the environment and is opt-in per job; this
+  repository's workflows call Gradle directly and nothing here depends on the reduced form.
+- **`.build-brief.json` is available but unused.** It surfaces project-specific matches by regex
+  (result URLs and the like). Add one when there is a line worth pulling out, rather than ahead of
+  time.
+
+Build / test everything (use the exclusive agent profile on a shared host):
 ```
 ./gradlew check                   # plugin unit + functional tests, CLI tests
+scripts/agent-gradle.sh --exclusive check
 ```
 
 Render the sample previews (end-to-end smoke test of the full pipeline):
@@ -104,6 +141,14 @@ Four-stage pipeline, spread across the modules:
 
    - **Android:** uses AGP `artifactView` filters (`artifactType=jar`, `android-classes`) to resolve AAR-extracted class jars, copies JVM args from AGP's `test<Variant>UnitTest` task, and launches a Gradle `Test` task that runs [RobolectricRenderTest.kt](https://github.com/yschimke/compose-preview-daemon/blob/main/renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt) inside a Robolectric sandbox with `graphicsMode=NATIVE`. `android.jar` is added so the Robolectric runner classes load before the sandbox classloader takes over.
    - **Desktop/JVM:** creates a `composePreviewRenderer` configuration pointing at `:renderer-desktop`, then launches [DesktopRendererMain.kt](https://github.com/yschimke/compose-preview-daemon/blob/main/renderers/desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt) as a subprocess with the module's runtime classpath plus the renderer.
+
+   **`com.android.kotlin.multiplatform.library` can take either lane, and the default is Desktop.** AGP 9's replacement for nesting `com.android.library` inside KMP publishes ONE variant, named after its main source set (`androidMain`) rather than a build type. Since issue #248 such a module has rendered on Desktop, which is right for a `:shared` module whose UI is multiplatform — `commonMain` previews are pure-Compose composables `ImageComposeScene` captures on the host JVM with no Android infrastructure at all. It is wrong for a module whose UI is Android-only (a Wear Compose catalog: `androidx.wear.compose:compose-material3` publishes for Android and nothing else), and those previews cannot be rendered off-device by Desktop at any price. `composePreview { kmpAndroidRobolectric = true }` sends them through Robolectric instead.
+
+   Two things make that lane cost more than a flag. **The AGP names don't follow the variant.** `androidMain` is addressed by `androidRuntimeClasspath`, `androidHostTestRuntimeClasspath`, `generateAndroidHostTestConfig` and `testAndroidHostTest` — named after the KMP *target* and the host-test *compilation* — so the `"${variant}RuntimeClasspath"` derivations classic AGP relies on all miss. [`AndroidVariantNaming`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidVariantNaming.kt) is the mapping, and it matters more than it looks: every one of those lookups is a `findByName`, so a wrong name returns null and the render loses the merged R classes or the resource APK **silently**, surfacing only as a `NoClassDefFoundError` inside the sandbox. `:samples:cmp-android-robolectric` renders on every CI run for exactly that reason.
+
+   **Apply order is the consumer's, so the lane decision waits for it.** A convention plugin can apply `org.jetbrains.compose` before `com.android.kotlin.multiplatform.library`, and committing to Desktop the moment compose lands would lose the module its lane — by the time the KMP-Android hook fires, `composePreviewDiscover` / `composePreviewRender` already exist and registering them again fails configuration outright. When the KMP-Android plugin could still be coming (`org.jetbrains.kotlin.multiplatform` applied, KMP-Android not yet), the compose hook records the intent and the commit happens in `afterEvaluate`, once the whole `plugins { }` block has been applied. Deliberately narrow: a `kotlin("jvm")` + compose module, or one that already has KMP-Android when compose lands — which is every shape where the plugin is applied last — registers immediately exactly as before. `:samples:cmp-android-robolectric` is pinned in the hostile order and rendered by CI so the awkward case is exercised on every run; the nested `afterEvaluate` this relies on (`registerDesktopTasks` schedules three of its own) is pinned by `KmpAndroidDesktopRoutingTest`.
+
+   **And two DSL settings are the consumer's, not the plugin's.** `withHostTest { }` both creates and configures the host-test compilation, and AGP rejects a second call with "Android host tests have already been enabled" — so unlike `testOptions.unitTests.isIncludeAndroidResources` on a classic module, the plugin cannot turn it on from `finalizeDsl` for someone who wrote a bare `withHostTest { }`, and calling it on someone who wrote none would conjure a compilation they never asked for. Asking for the lane without it warns and falls back to Desktop. `androidResources.enable` the plugin *does* set (it is an ordinary property AGP accepts there), and must: KMP-Android leaves resources off, so AGP generates no R classes for the variant's AAR dependencies and the first `setContent` dies on `androidx/lifecycle/runtime/R$id`.
 
 3. **Rendering** — both backends reflect the target composable function, invoke it inside a background fill, and capture to PNG.
 
@@ -383,12 +428,19 @@ the preview pipeline, don't auto-merge — is stated once in
   BuildFetch cache warm. The Monday cron and the release chain pick that drift up on
   their own; if a renderer change needs to reach the delivery branches sooner,
   dispatch manually (`actions_run_trigger` → `run_workflow` on
-  `design-artifacts.yml`, ref `main`) and confirm the run succeeded. The
-  path→system mapping lives in
+  `design-artifacts.yml`, ref `main`) and confirm the run succeeded — the dispatch
+  takes a `systems` input, so one stale lane costs one render rather than all of
+  them. The path→system mapping lives in
   [`scripts/design-artifacts/scope-systems.sh`](../scripts/design-artifacts/scope-systems.sh)
   with its own self-test (`test-scope-systems.sh`, run by CI) — change it only with
   those passing, since a wrong mapping silently strands a published catalog on stale
-  renders.
+  renders. The scope DECISION around that mapping lives in
+  [`scope-step.sh`](../scripts/design-artifacts/scope-step.sh) (self-test
+  `test-scope-step.sh`): it diffs each lane from the commit that lane was last
+  rendered from rather than from the one push that started the run, which is what
+  keeps a run cancelled while pending from stranding its catalog until Monday. The
+  reasoning is in
+  [`docs/design/DESIGN_CATALOGS.md`](design/DESIGN_CATALOGS.md#each-lane-is-scoped-against-what-it-last-rendered-not-against-one-push).
 
 - **Claude Code sessions carry the reactive half of this workflow in
   [`.claude/skills/steward`](../.claude/skills/steward/SKILL.md)**, which loads when

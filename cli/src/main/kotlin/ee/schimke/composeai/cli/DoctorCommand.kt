@@ -31,7 +31,8 @@ import okio.Path.Companion.toPath
  *   set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1` to skip.
  * - `env.preview-server` — which `compose-preview-server` `serve` / `browse` would exec (the
  *   `--server-binary` flag, `COMPOSE_PREVIEW_SERVER`, `PATH`, then the CLI's own fetched copy), and
- *   the server release this CLI is pinned to. Never fetches one; see [ServerDistributionProvision].
+ *   which server release this CLI would fetch. Never fetches one, and never asks the network which
+ *   release is newest either; see [ServerDistributionProvision].
  * - `env.desktop-natives` — only when the project has a CMP Desktop module: resolves skiko's four
  *   native dependencies the way the *render JVM's* loader would, catching the
  *   `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` class of failure before a
@@ -237,12 +238,22 @@ class DoctorCommand(
    * environment check is neither.
    */
   private fun checkServerBinary() {
-    val pinned = ServerDistributionProvision.version()
+    // The cache, never the API. Doctor's contract is cheap and offline, and "which release is
+    // newest" is a network question — `serve` asks it, at the one moment it is about to download.
+    val requested = ServerDistributionProvision.requestedVersion()
+    val cached = ServerDistributionProvision.cachedVersions().firstOrNull()
+    val tracking =
+      when {
+        requested != null ->
+          "pinned to server $requested by ${ServerDistributionProvision.VERSION_ENV}"
+        cached != null -> "tracking the newest server release; $cached is cached"
+        else -> "tracking the newest server release"
+      }
     val choice = ServerBinaryDiscovery.choose(emptyList())
     if (choice != null) {
       val pin =
-        if (choice.source == ServerBinaryDiscovery.CACHE) "This CLI is pinned to server $pinned"
-        else "This CLI is pinned to server $pinned, which it fetches when it finds none"
+        if (choice.source == ServerBinaryDiscovery.CACHE) "This CLI is $tracking"
+        else "This CLI is $tracking, and fetches one when it finds none"
       // The same question `serve` asks immediately before the exec, asked here where someone is
       // already looking for what is wrong. Finding a binary is not the same as being able to run
       // it: the start script resolves its own `java`, and doctor's own JVM (reported by
@@ -280,10 +291,14 @@ class DoctorCommand(
         status = if (offline) "warning" else "ok",
         message =
           if (offline) "no preview server, and offline mode is set"
-          else "no preview server yet; `serve` fetches $pinned on first use",
+          else if (requested != null)
+            "no preview server yet; `serve` fetches $requested on first use"
+          else "no preview server yet; `serve` fetches the newest release on first use",
+        // The cache ROOT rather than one version's directory: with no release resolved there is no
+        // directory to name, and the root is the honest answer to "where did you look".
         detail =
           "checked ${ServerBinaryDiscovery.FLAG}, ${ServerBinaryDiscovery.ENV}, PATH and " +
-            "${ServerDistributionProvision.cacheDir(pinned).absolutePath}",
+            "${ServerDistributionProvision.defaultCacheRoot().absolutePath}",
         remediation =
           if (!offline) null
           else
@@ -292,7 +307,9 @@ class DoctorCommand(
                 "run `compose-preview serve` once with network access to cache the server, or " +
                   "unpack the distribution yourself and set ${ServerBinaryDiscovery.ENV}",
               commands =
-                listOf("curl -L -o server.tar.gz ${ServerDistributionProvision.assetUrl(pinned)}"),
+                listOf(
+                  "curl -L -o server.tar.gz ${ServerDistributionProvision.assetUrl(requested ?: "<version>")}"
+                ),
             ),
       )
     )

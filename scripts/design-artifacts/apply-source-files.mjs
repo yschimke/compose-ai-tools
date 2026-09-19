@@ -15,6 +15,29 @@
  * function carried no path (discovery didn't record one, or an older bundle) is left
  * untouched — the server then simply renders no link for it.
  *
+ * ## A spec may declare the path itself, and then it wins
+ *
+ * The join above answers "where is the `@Preview` function?", and for almost every catalog that is
+ * also "where should a reader be sent". A catalog of **call sites** breaks the two apart. The
+ * AndroidX samples catalogs generate one `@Preview` wrapper per sample —
+ * `fun ButtonSamplePreview() = androidx.wear.compose.material3.samples.ButtonSample()` — because
+ * only 34 of 170 Wear samples carry `@Preview` upstream. Discovery is right that the preview lives
+ * in the generated file; a reader opening the Source panel wants the sample, and three lines of
+ * generated delegation is the one thing on that page nobody came for.
+ *
+ * So a spec component may carry its own `sourceFile` (and `bodyLine`), and it takes precedence over
+ * both the discovery join and anything a newer exporter preserved. Precedence rather than fallback
+ * is the whole point: the catalog is not filling a gap the join left, it is overriding an answer the
+ * join got right for a different question. Nothing else changes — the identity fields still describe
+ * the producing module, because that is still where the preview was compiled from.
+ *
+ * Inference was considered and rejected. Discovery's target inference does not fire on these
+ * previews at all (`PreviewTargetInference` filters the sample's own package as library code, since
+ * `androidx.wear.compose.material3.samples` sits under the `androidx.wear.compose.material3.`
+ * wrapper prefix), and widening that heuristic to serve one catalog would change the target of
+ * previews in every other. A catalog that generates its own wrappers knows exactly what each one
+ * delegates to; saying so is cheaper and truer than asking a scorer to guess it back.
+ *
  * Additive and idempotent:
  *  - only components whose spec function resolves to a `sourceFile` are touched;
  *  - a component that already carries a `sourceFile` is left as-is (never clobbered).
@@ -31,8 +54,10 @@
  *
  * @param {{components?: Array<{componentId: string, sourceFile?: string, sourceModule?: string, bodyLine?: number}>}} manifest
  *   The parsed `catalog.json`, mutated in place.
- * @param {{groups?: Array<{components?: Array<{componentId: string, preview?: string}>}>}} spec
- *   The catalog spec the manifest was built from.
+ * @param {{groups?: Array<{components?: Array<{componentId: string, preview?: string,
+ *   sourceFile?: string, bodyLine?: number}>}>}} spec
+ *   The catalog spec the manifest was built from. A component's own `sourceFile` / `bodyLine`, when
+ *   it declares them, override the join for that component.
  * @param {Map<string, {sourceFile?: string, bodyLine?: number, module?: string}>} sourceByFn
  *   Function-name → source lookup (the generator's `sourceByFunction(bundle)`).
  * @returns {number} how many components had a `sourceFile` newly stamped.
@@ -41,10 +66,23 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
   if (!sourceByFn || sourceByFn.size === 0) return 0;
 
   const previewByComponentId = new Map();
+  // What the SPEC says about a component's source, as opposed to what discovery found. Only
+  // components that declare a path are here, so the ordinary catalog's map is empty and the join
+  // below behaves exactly as it did.
+  const declaredByComponentId = new Map();
   for (const group of spec?.groups ?? []) {
     for (const component of group.components ?? []) {
       if (component.preview) {
         previewByComponentId.set(component.componentId, component.preview);
+      }
+      if (typeof component.sourceFile === "string" && component.sourceFile.length > 0) {
+        declaredByComponentId.set(component.componentId, {
+          sourceFile: component.sourceFile,
+          bodyLine:
+            typeof component.bodyLine === "number" && component.bodyLine > 0
+              ? component.bodyLine
+              : undefined,
+        });
       }
     }
   }
@@ -53,6 +91,26 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
   for (const component of manifest?.components ?? []) {
     const fn = previewByComponentId.get(component.componentId);
     const source = fn ? sourceByFn.get(fn) : undefined;
+    const declared = declaredByComponentId.get(component.componentId);
+    if (declared) {
+      // Before every other branch, and unconditionally: a declared path is an override, so it must
+      // win over a value the exporter preserved as surely as over the join. `bodyLine` is cleared
+      // rather than left when the declaration carries none — a line from the OTHER file would slice
+      // the panel at an arbitrary point of this one, which reads as a rendering bug rather than a
+      // missing field.
+      const changed = component.sourceFile !== declared.sourceFile;
+      component.sourceFile = declared.sourceFile;
+      if (declared.bodyLine === undefined) delete component.bodyLine;
+      else component.bodyLine = declared.bodyLine;
+      // The identity fields still describe where the preview was COMPILED from, which the override
+      // does not change — the module and directory are the samples module either way.
+      stampIdentity(component, source);
+      if (typeof source?.module === "string" && source.module.length > 0) {
+        component.sourceModule ??= source.module;
+      }
+      if (changed) stamped += 1;
+      continue;
+    }
     if (component.sourceFile !== undefined) {
       // A newer exporter may already preserve sourceFile. Add the matching module identity without
       // replacing the path; never pair a module with a different pre-existing file.

@@ -201,51 +201,47 @@ on its own cadence — it went to `2.0.0` when it left, while this repository wa
 **the two version lines mean nothing to each other**. A CLI version does not name a server version
 and never will.
 
-What names one is a pin in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml) — **two of
-them since the split**, because "which server does an installed CLI run" and "which jar do we
-compile against" turned out to be different questions:
+What names one is **the newest release**, resolved at run time. There is no pin in
+[`gradle/libs.versions.toml`](../gradle/libs.versions.toml) any more, and no coordinate either.
 
-| Pin | Answers | Consumers |
-|---|---|---|
-| `composeai-preview-server-dist` | Which **release** an installed CLI downloads | `SERVE_VERSION` in the jar; `ServerDistributionProvision`; `check_preview_server_pin.py` |
-| `composeai-preview-serve` | Which **published jar and sources** this repository builds and tests against | `testImplementation` in `:cli`; the `v<pin>` tag ci.yml reads mirror sources from |
+`ServerDistributionProvision` asks
+`https://api.github.com/repos/yschimke/compose-preview-server/releases/latest` for the newest tag on
+the first `serve` that finds no server, fetches that release's
+`compose-preview-server-<version>.tar.gz`, and caches it under
+`<cache>/composeai/preview-server/<version>/` — keyed on the server's version, so a CLI upgrade does
+not orphan an unchanged server. `compose-preview mcp serve` takes
+`compose-preview-mcp-<version>.tar.gz` from the **same** release, so one resolution still governs
+that pair: the two archives ride one release and there is no cadence on which they would skew
+usefully.
 
-The distribution pin is the one with user impact:
+**Why there is no pin.** There used to be two — `composeai-preview-server-dist` for the release an
+installed CLI downloads, `composeai-preview-serve` for the published jar this repository compiled
+against — and both are gone, for different reasons.
 
-- it is baked into the CLI jar at build time as `SERVE_VERSION`, so the installed CLI carries it;
-- `ServerDistributionProvision` fetches exactly that release's distribution
-  (`compose-preview-server-<pin>.tar.gz`) on the first `serve` that finds no server, and caches it
-  under `<cache>/composeai/preview-server/<pin>/` — keyed on the server's version, so a CLI upgrade
-  does not orphan an unchanged server;
-- `compose-preview mcp serve` fetches `compose-preview-mcp-<pin>.tar.gz` from the **same** release,
-  so this one pin still governs that pair — the two archives ride one release and there is no
-  cadence on which they would skew usefully;
-- `compose-preview doctor` reports it, beside whichever binary it actually found (`env.preview-server`).
+The library pin went because compose-preview-server stopped publishing to Maven Central. Its
+artifacts are the `.tar.gz` distributions on each GitHub release; there is no jar to compile
+against. `:cli`'s wire-drift tests drive the distribution instead, through
+`ServeDistributionHarness`.
 
-**Why they are separate.** compose-preview-server's release workflow has two lanes and can cut a
-release that carries the distributions without publishing anything to Maven Central (its
-`release:no-maven` label). A single pin could not name such a release at all: pointing at it would
-break `:cli`'s `testImplementation` even though the thing `serve` launches is exactly what changed.
-Conversely a library-only concern — a wire-drift test, a mirrored source file — has no reason to
-push a new server onto every installed CLI.
+The distribution pin went because it was buying less than it cost. The argument for it was that
+resolving at run time lets a server this CLI has never been built against arrive without a pull
+request. That is true, and it is now accepted: `serve` is a **launcher over a process boundary**, so
+what the two halves must agree on is the wire rather than a linkage, and a pin only ever *delayed* a
+skew rather than preventing one — an installed CLI kept whatever release it was built against until
+someone upgraded the CLI, which is its own kind of stale. What replaces the pin as a check is the
+wire-drift suite, which drives the distribution it would actually fetch.
 
-They may differ, and when they do the distribution pin is normally the newer. Neither is allowed to
-drift on its own: moving either is a reviewed act in a pull request, and only
-`composeai-preview-server-dist` is gated against the server's Releases, because it is the only one
-that needs a Release to exist. The library pin is checked the ordinary way — by the build failing to
-resolve it.
+`doctor` reports what it found and what it would fetch, without asking the network: it reads the
+cache, because "cheap and works offline" is doctor's contract and "which release is newest" is a
+network question.
 
-Both are **point pins, never a range or `latest`**, for the reason every other cross-repository pin
-here is one: resolving at run time would let a server this CLI has never been built against arrive
-under it without a pull request. Moving either is the reviewed act, and the `XR Composite Pin` CI
-job fails a PR whose **distribution** pin names a release that does not exist or carries no
-distribution — a pin that 404s is a `serve` that cannot start, which is what
-[#5183](https://github.com/yschimke/compose-ai-tools/issues/5183) reported.
+Skew is bounded rather than prevented, and the escape hatches are unchanged: an operator may point
+at any server with `COMPOSE_PREVIEW_SERVER` or `--server-binary` (that choice always wins over the
+fetched copy), and `COMPOSE_PREVIEW_SERVER_VERSION` names a release instead of the newest — which is
+how a machine or a CI job pins itself. `doctor` is where you see which one is in effect.
 
-Skew is still possible and is bounded rather than prevented: an operator may point at any server
-they like with `COMPOSE_PREVIEW_SERVER` or `--server-binary` (that choice always wins over the
-fetched copy), and `COMPOSE_PREVIEW_SERVER_VERSION` overrides which release is fetched. Both are
-deliberate escape hatches; `doctor` is where you see which one is in effect.
+Offline never resolves and never fetches: an air-gapped machine gets the newest copy it already has,
+or the installation hint. It never gets a hung download, and it never gets an API call either.
 
 ## 9. Compatibility testing
 

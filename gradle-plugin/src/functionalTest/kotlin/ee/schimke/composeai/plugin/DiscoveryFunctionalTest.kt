@@ -1171,6 +1171,7 @@ class DiscoveryFunctionalTest {
           val referenceSet: String = "",
           val noReference: String = "",
           val referenceContentsOnly: Boolean = true,
+          val related: Array<String> = [],
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -1215,6 +1216,7 @@ class DiscoveryFunctionalTest {
           referenceSet = "figma:AbCdEf/10:1",
           referenceContentsOnly = false,
           parallel = "FilledButton",
+          related = ["m3-samples==Samples", "wear-m3-catalog=Button/Filled"],
         )
         @Preview @Composable fun FilledButton() {}
 
@@ -1296,6 +1298,11 @@ class DiscoveryFunctionalTest {
     assertThat(filled.reference).isEqualTo("figma:AbCdEf/10:5")
     assertThat(filled.referenceSet).isEqualTo("figma:AbCdEf/10:1")
     assertThat(filled.referenceContentsOnly).isFalse()
+    // Links into OTHER catalogs, carried VERBATIM: discovery does not parse these, because the
+    // export's catalog inventory is the one parser. A LIST, unlike `parallel` above, because a
+    // component can have more than one such neighbour and `compareWith` names exactly one sibling.
+    assertThat(filled.related)
+      .containsExactly("m3-samples==Samples", "wear-m3-catalog=Button/Filled")
 
     // Variant: parent id on componentId, state + parsed `key=value` prop, own caption.
     val pressed = byFn.getValue("FilledButtonPressed").catalog
@@ -1309,6 +1316,10 @@ class DiscoveryFunctionalTest {
     assertThat(pressed.reference).isNull()
     assertThat(pressed.noReference).isNull()
     assertThat(pressed.referenceContentsOnly).isTrue()
+
+    // A component that declares no `related` records an empty list, never null -- the same thing
+    // an older `preview-annotations` with no such attribute produces.
+    assertThat(byFn.getValue("PlainSticker").catalog!!.related).isEmpty()
 
     // Variant kit correspondence: read off the variant annotation, not inherited from the parent.
     // Without this a render folded under a parent would lose its cross-system pairing and the

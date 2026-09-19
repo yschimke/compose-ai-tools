@@ -46,26 +46,31 @@ bounding box on top of the captured PNG.
 - Dialog focus restoration: verify focus comes back to the trigger button after a dialog dismisses.
 - Form regression: catch a refactor that accidentally makes a `TextField` non-focusable.
 
-## Payload shape
+## Override shape
 
 `Material3FocusProduct.KIND` /  `FocusOverride` and `FocusDirection`
 in [`:data-focus-core`](https://github.com/yschimke/compose-ai-tools/tree/main/data/focus/core)
 and `daemon:core`.
 
+`compose/focus` is an override capability, not a focused-node snapshot payload. A
+`renderNow` request carries the focus instruction under `overrides.focus`:
+
 ```jsonc
-// compose/focus
 {
-  "focused": {
-    "testTag": "submit-button",
-    "role": "Button",
-    "label": "Submit",
-    "boundsInScreen": "48,200,144,232"
-  },
-  "history": [
-    { "direction": "Down", "from": "name-field", "to": "submit-button" }
-  ]
+  "overrides": {
+    "focus": {
+      "tabIndex": 1,
+      "direction": "Down",
+      "step": 1,
+      "overlay": true,
+      "pressed": false
+    }
+  }
 }
 ```
+
+Use [`compose/semantics`](../layout-inspector) to identify the resulting focused node and
+its `boundsInRoot`.
 
 ## Enabling
 

@@ -1,5 +1,219 @@
 # Changelog
 
+## [2.18.1](https://github.com/yschimke/compose-ai-tools/compare/v2.18.0...v2.18.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **build:** read the publish baseline from Central, and fix the recovery path ([#5490](https://github.com/yschimke/compose-ai-tools/issues/5490)) ([206ba98](https://github.com/yschimke/compose-ai-tools/commit/206ba9865ce37e42348c570f92236b7b195ed585))
+* **build:** stop the publish plan killing the release from the included build ([#5487](https://github.com/yschimke/compose-ai-tools/issues/5487)) ([1ce35f7](https://github.com/yschimke/compose-ai-tools/commit/1ce35f745509fedd761803cde18d31cf3e0712c7))
+
+## [2.18.0](https://github.com/yschimke/compose-ai-tools/compare/v2.17.0...v2.18.0) (2026-09-16)
+
+
+### Features
+
+* **build:** publish a BOM for every coordinate this repository ships ([#5483](https://github.com/yschimke/compose-ai-tools/issues/5483)) ([d21ef62](https://github.com/yschimke/compose-ai-tools/commit/d21ef6200adf93f5acab50264d73b79852a8aba4))
+* **build:** publish only the modules a release changes ([#5485](https://github.com/yschimke/compose-ai-tools/issues/5485)) ([35748fd](https://github.com/yschimke/compose-ai-tools/commit/35748fd875f460bddd1488b83667f7c03a6bd264))
+* **deps:** take daemon 3.8.0 and contracts 3.0.0, and their builders ([#5484](https://github.com/yschimke/compose-ai-tools/issues/5484)) ([6651e4b](https://github.com/yschimke/compose-ai-tools/commit/6651e4b4d37bb7160765d9455ad019aec329cfbd))
+
+
+### Bug Fixes
+
+* **ci:** repair the publish plan's history and the daemon-launch schema gate ([#5486](https://github.com/yschimke/compose-ai-tools/issues/5486)) ([0d93b1c](https://github.com/yschimke/compose-ai-tools/commit/0d93b1c54e5a276a93351a199bd49c5d0bc6dc2a))
+* **deps:** pin the daemon at 3.6.1, the revert consumers actually need ([#5481](https://github.com/yschimke/compose-ai-tools/issues/5481)) ([cbe28bc](https://github.com/yschimke/compose-ai-tools/commit/cbe28bcbe6291d0cbc9cca04c4753c8af8ddc466))
+
+## [2.17.0](https://github.com/yschimke/compose-ai-tools/compare/v2.16.0...v2.17.0) (2026-09-16)
+
+
+### Features
+
+* a container structural role, and the five things a builtin could not say ([#5476](https://github.com/yschimke/compose-ai-tools/issues/5476)) ([93d8735](https://github.com/yschimke/compose-ai-tools/commit/93d8735069168fe3670ab754f0301f94a97ee17d))
+* **design-pages:** carry and verify shared background plates ([#5474](https://github.com/yschimke/compose-ai-tools/issues/5474)) ([28e9c68](https://github.com/yschimke/compose-ai-tools/commit/28e9c68de45e67077d3903d5c641f23c17424982))
+* let a catalog assert that no face lost its variation axes ([#5478](https://github.com/yschimke/compose-ai-tools/issues/5478)) ([875c002](https://github.com/yschimke/compose-ai-tools/commit/875c00215a99e1576e8a594f5a07aa4be88495fa))
+* let a render assertion be a function, not only a declared path ([#5471](https://github.com/yschimke/compose-ai-tools/issues/5471)) ([78fda46](https://github.com/yschimke/compose-ai-tools/commit/78fda46b136e2605af01d7795fbb959303a69e12))
+
+
+### Bug Fixes
+
+* regenerate the render-host ABI dump for the design-pages accessors ([#5477](https://github.com/yschimke/compose-ai-tools/issues/5477)) ([8432a6b](https://github.com/yschimke/compose-ai-tools/commit/8432a6b886da4f83b8f55ebe61c8b3febca23330))
+
+## [2.16.0](https://github.com/yschimke/compose-ai-tools/compare/v2.15.0...v2.16.0) (2026-09-16)
+
+
+### Features
+
+* assert declared render properties against the data products a render writes ([#5468](https://github.com/yschimke/compose-ai-tools/issues/5468)) ([33032d4](https://github.com/yschimke/compose-ai-tools/commit/33032d4b278c3a4050ae32e282586db65177f310))
+
+
+### Bug Fixes
+
+* **ci:** scope each design-artifacts lane against what it last rendered ([#5465](https://github.com/yschimke/compose-ai-tools/issues/5465)) ([5a8a99c](https://github.com/yschimke/compose-ai-tools/commit/5a8a99c42e498aba9d7164449cd869442b6f60f4))
+* **deps:** update compose-preview-contracts to v2.19.0 ([#5469](https://github.com/yschimke/compose-ai-tools/issues/5469)) ([017e063](https://github.com/yschimke/compose-ai-tools/commit/017e0633e64c9fa8c0ef3857eb549971d663ff15))
+* **deps:** update compose-preview-daemon to v3.4.8 ([#5460](https://github.com/yschimke/compose-ai-tools/issues/5460)) ([bb586d4](https://github.com/yschimke/compose-ai-tools/commit/bb586d4d1fa267df3e4bf1ba48ea5bb06218e0fc))
+* **deps:** update compose-preview-daemon to v3.4.9 ([#5466](https://github.com/yschimke/compose-ai-tools/issues/5466)) ([0705e99](https://github.com/yschimke/compose-ai-tools/commit/0705e991873a0858eadb0cae73edb61e4aa9c7a5))
+* **deps:** update rc-players to v1.61.1 ([#5462](https://github.com/yschimke/compose-ai-tools/issues/5462)) ([47f4e63](https://github.com/yschimke/compose-ai-tools/commit/47f4e63fd0f488f2ed89db4b28a807f4d7db3544))
+* **deps:** update rc-players to v1.63.0 ([#5464](https://github.com/yschimke/compose-ai-tools/issues/5464)) ([a5bbe21](https://github.com/yschimke/compose-ai-tools/commit/a5bbe21ff0d3269abefcc898222a57e5282b771a))
+
+## [2.15.0](https://github.com/yschimke/compose-ai-tools/compare/v2.14.1...v2.15.0) (2026-09-15)
+
+
+### Features
+
+* **design-pages:** support per-catalog importer configs ([#5456](https://github.com/yschimke/compose-ai-tools/issues/5456)) ([9506974](https://github.com/yschimke/compose-ai-tools/commit/9506974550ca95c5c2a6c61bb9bfa65a87e32ff0))
+
+## [2.14.1](https://github.com/yschimke/compose-ai-tools/compare/v2.14.0...v2.14.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **ui-builder:** honor authored record identities ([#5452](https://github.com/yschimke/compose-ai-tools/issues/5452)) ([95dfe02](https://github.com/yschimke/compose-ai-tools/commit/95dfe025e885904542a32fb8352a2b1b11058ce5))
+
+## [2.14.0](https://github.com/yschimke/compose-ai-tools/compare/v2.13.1...v2.14.0) (2026-09-14)
+
+
+### Features
+
+* expose Glimmer environments as a catalog axis ([#5449](https://github.com/yschimke/compose-ai-tools/issues/5449)) ([495cbf6](https://github.com/yschimke/compose-ai-tools/commit/495cbf62063c42ac04e1bf95a265dbacb22aa46b))
+* **ui-builder:** publish catalog evolution metadata ([#5447](https://github.com/yschimke/compose-ai-tools/issues/5447)) ([b7c26b7](https://github.com/yschimke/compose-ai-tools/commit/b7c26b721dd7a6f65eb119c4f41fe85ee5496f45))
+
+## [2.13.1](https://github.com/yschimke/compose-ai-tools/compare/v2.13.0...v2.13.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **design-artifacts:** publish a system's design pages only for the kit it reproduces ([#5439](https://github.com/yschimke/compose-ai-tools/issues/5439)) ([c34581b](https://github.com/yschimke/compose-ai-tools/commit/c34581b4dbe45abce63d9740130f9e7246a2841a))
+
+## [2.13.0](https://github.com/yschimke/compose-ai-tools/compare/v2.12.0...v2.13.0) (2026-09-12)
+
+
+### Features
+
+* **cli:** install the newest preview server rather than a pinned one, and stop consuming its Maven jar (breaking) ([#5436](https://github.com/yschimke/compose-ai-tools/issues/5436)) ([dd93673](https://github.com/yschimke/compose-ai-tools/commit/dd936737bf47c930f783727852e598aa2b205819))
+* **discovery:** measure Glimmer stickers against the glasses display ([#5435](https://github.com/yschimke/compose-ai-tools/issues/5435)) ([39ca297](https://github.com/yschimke/compose-ai-tools/commit/39ca29713d2f7123039e3b7c70b00f5cd95b9167))
+
+
+### Bug Fixes
+
+* **ci:** retry the CLI download on connection resets, not just refusals ([#5433](https://github.com/yschimke/compose-ai-tools/issues/5433)) ([61adcd6](https://github.com/yschimke/compose-ai-tools/commit/61adcd6bad6f116e0803f9cea0dcf94f4ad4d8c1))
+
+## [2.12.0](https://github.com/yschimke/compose-ai-tools/compare/v2.11.1...v2.12.0) (2026-09-12)
+
+
+### Features
+
+* **design-artifacts:** let a spec declare where a component's source lives ([#5429](https://github.com/yschimke/compose-ai-tools/issues/5429)) ([8ad4227](https://github.com/yschimke/compose-ai-tools/commit/8ad4227005c9ab30b001a1e624e29971958fd914))
+
+## [2.11.1](https://github.com/yschimke/compose-ai-tools/compare/v2.11.0...v2.11.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **plugin:** let a KMP-Android module pack a bundle ([#5423](https://github.com/yschimke/compose-ai-tools/issues/5423)) ([fe81c1c](https://github.com/yschimke/compose-ai-tools/commit/fe81c1ceadd9bce106e640d01b02ce36fccc208c))
+
+## [2.11.0](https://github.com/yschimke/compose-ai-tools/compare/v2.10.0...v2.11.0) (2026-09-11)
+
+
+### Features
+
+* **screen-model:** generate stateful loops and reusable composables ([#5383](https://github.com/yschimke/compose-ai-tools/issues/5383)) ([ec4aa70](https://github.com/yschimke/compose-ai-tools/commit/ec4aa708303c756e9722105bb9a8208ba45fcd76))
+
+
+### Bug Fixes
+
+* **deps:** take the daemon line to 3.4.3 so `related` is readable ([#5421](https://github.com/yschimke/compose-ai-tools/issues/5421)) ([74a8e0b](https://github.com/yschimke/compose-ai-tools/commit/74a8e0b1a2b9c2001de8a232549006f4c3aa9fdf))
+* **deps:** update compose-preview-contracts to v2.17.0 ([#5412](https://github.com/yschimke/compose-ai-tools/issues/5412)) ([3ee5414](https://github.com/yschimke/compose-ai-tools/commit/3ee5414438056755ad99a9971167180ca3925c2f))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.24.0 ([#5413](https://github.com/yschimke/compose-ai-tools/issues/5413)) ([8ae3f85](https://github.com/yschimke/compose-ai-tools/commit/8ae3f8545e84d42620bbc14f23ed8c57b737539a))
+* generate Wear theme catalogs with daemon annotations ([#5415](https://github.com/yschimke/compose-ai-tools/issues/5415)) ([aa8923d](https://github.com/yschimke/compose-ai-tools/commit/aa8923d95a39ed1667d4b2914d0e56627ff3b649))
+
+## [2.10.0](https://github.com/yschimke/compose-ai-tools/compare/v2.9.0...v2.10.0) (2026-09-11)
+
+
+### Features
+
+* **remote-json:** compile exact decimal comparisons ([#5407](https://github.com/yschimke/compose-ai-tools/issues/5407)) ([bb83a97](https://github.com/yschimke/compose-ai-tools/commit/bb83a9756ab530179b001be30bbf60ea241516a6))
+* **remote-json:** preserve independent mutable string state ([#5406](https://github.com/yschimke/compose-ai-tools/issues/5406)) ([e114eb4](https://github.com/yschimke/compose-ai-tools/commit/e114eb4ae2563a071cac4ff3948724ccb83beec0))
+* **ui-builder:** let a builtin slot state how many children it admits ([#5408](https://github.com/yschimke/compose-ai-tools/issues/5408)) ([0587fb0](https://github.com/yschimke/compose-ai-tools/commit/0587fb02c6f07063b31a7c854bd08c638c721593))
+
+
+### Bug Fixes
+
+* **render-host:** preserve playground preview dimensions ([#5404](https://github.com/yschimke/compose-ai-tools/issues/5404)) ([46daa70](https://github.com/yschimke/compose-ai-tools/commit/46daa709efdb3158d9eaa2f977e75ad729a23e0b))
+
+## [2.9.0](https://github.com/yschimke/compose-ai-tools/compare/v2.8.1...v2.9.0) (2026-09-11)
+
+
+### Features
+
+* **design-artifacts:** publish a generic `related` list on catalog components ([#5399](https://github.com/yschimke/compose-ai-tools/issues/5399)) ([c33231d](https://github.com/yschimke/compose-ai-tools/commit/c33231df707d024235fb0a4c0787e7b9d048fb36))
+* **discovery:** read `@CatalogComponent(related = ...)` into the catalog inventory ([#5401](https://github.com/yschimke/compose-ai-tools/issues/5401)) ([5ac79c4](https://github.com/yschimke/compose-ai-tools/commit/5ac79c477ecb2f1ee6eff5ce6147145815b2fb26))
+* **plugin:** render one module's previews on another module's lane ([#5402](https://github.com/yschimke/compose-ai-tools/issues/5402)) ([a807df1](https://github.com/yschimke/compose-ai-tools/commit/a807df1968534f82eed81829293035bd2dffa5e3))
+
+## [2.8.1](https://github.com/yschimke/compose-ai-tools/compare/v2.8.0...v2.8.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to v3.3.0 ([#5394](https://github.com/yschimke/compose-ai-tools/issues/5394)) ([8e74577](https://github.com/yschimke/compose-ai-tools/commit/8e74577d5cb66bdd7b733f3b0242c2af73b5ccc2))
+* **usage-source-psi:** register an extensions storage before parsing ([#5393](https://github.com/yschimke/compose-ai-tools/issues/5393)) ([1b32efd](https://github.com/yschimke/compose-ai-tools/commit/1b32efdb80039be699c934a9776cc860f205a314))
+
+## [2.8.0](https://github.com/yschimke/compose-ai-tools/compare/v2.7.0...v2.8.0) (2026-09-11)
+
+
+### Features
+
+* **plugin:** give com.android.kotlin.multiplatform.library the Robolectric lane ([#5375](https://github.com/yschimke/compose-ai-tools/issues/5375)) ([8e3eddc](https://github.com/yschimke/compose-ai-tools/commit/8e3eddcbada3a90d888b461a74cdf7afdd4d554e))
+
+
+### Bug Fixes
+
+* **build:** stop the schema-metadata task capturing the build script ([#5391](https://github.com/yschimke/compose-ai-tools/issues/5391)) ([bf48803](https://github.com/yschimke/compose-ai-tools/commit/bf48803e8c6660087bf76dc43a7c9874f3646b1d))
+* **bundle:** forward the font and svg opt-outs to the Android child JVM ([#5371](https://github.com/yschimke/compose-ai-tools/issues/5371)) ([5694b4a](https://github.com/yschimke/compose-ai-tools/commit/5694b4a6a51520710bfc12f49fd7de1531288a95))
+* **deps:** update compose-ai-tools to v2.16.0 ([#5387](https://github.com/yschimke/compose-ai-tools/issues/5387)) ([08124df](https://github.com/yschimke/compose-ai-tools/commit/08124dfe139f0ed7e80a3c9d045eb1f0b34b6d91))
+* **deps:** update compose-preview-contracts to v2.16.0 ([#5388](https://github.com/yschimke/compose-ai-tools/issues/5388)) ([c9c7942](https://github.com/yschimke/compose-ai-tools/commit/c9c794237ce74d0a13a8cc5d9f0d9eb5bdbb731f))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.23.0 ([#5389](https://github.com/yschimke/compose-ai-tools/issues/5389)) ([413e603](https://github.com/yschimke/compose-ai-tools/commit/413e60369220936c6903ce7b011cc4141aaf0445))
+* **deps:** update dependency org.robolectric:robolectric to v4.17 ([#5384](https://github.com/yschimke/compose-ai-tools/issues/5384)) ([f34f700](https://github.com/yschimke/compose-ai-tools/commit/f34f700dde6e0a36dd77ac775c4764b8a37e5f95))
+* **deps:** update kotlin to v2.4.20 ([#5385](https://github.com/yschimke/compose-ai-tools/issues/5385)) ([3a97978](https://github.com/yschimke/compose-ai-tools/commit/3a97978bb6c32f7291f9f72d097c6856029cc1a3))
+* **deps:** update rc-players to v1.60.2 ([#5386](https://github.com/yschimke/compose-ai-tools/issues/5386)) ([bd9903d](https://github.com/yschimke/compose-ai-tools/commit/bd9903d734e6af8791d495d99284a415837fac73))
+* **design-artifacts:** report the CMP/Wasm first-frame budget, stop gating on it ([#5381](https://github.com/yschimke/compose-ai-tools/issues/5381)) ([99b81ce](https://github.com/yschimke/compose-ai-tools/commit/99b81cebaa1085056a00364c57e788ebc26c4762))
+* **plugin:** decide the KMP-Android lane after the plugins block, not during it ([#5380](https://github.com/yschimke/compose-ai-tools/issues/5380)) ([c5a8d18](https://github.com/yschimke/compose-ai-tools/commit/c5a8d1852a70dc2a8343dc105cd4c0b23196dd70))
+* **plugin:** read the doctor's lane from the task graph, not the request ([#5377](https://github.com/yschimke/compose-ai-tools/issues/5377)) ([4037147](https://github.com/yschimke/compose-ai-tools/commit/4037147903b78796bf69bc18e5a9f45ce7acea8f))
+* **plugin:** stop the KMP-Android lane leaking into modules that didn't ask ([#5376](https://github.com/yschimke/compose-ai-tools/issues/5376)) ([123eb39](https://github.com/yschimke/compose-ai-tools/commit/123eb39620c7f3ba7063258137fceb1a08ef26eb))
+* publish design reference match scores ([#5374](https://github.com/yschimke/compose-ai-tools/issues/5374)) ([59eb6da](https://github.com/yschimke/compose-ai-tools/commit/59eb6da9e161d76b3942e181b7ac9c7889b0f17c))
+* **ui-builder:** keep an excluded component off the shelf ([#5378](https://github.com/yschimke/compose-ai-tools/issues/5378)) ([502fb1c](https://github.com/yschimke/compose-ai-tools/commit/502fb1c721d8052d39aa50a62872fe5969887e0b))
+
+## [2.7.0](https://github.com/yschimke/compose-ai-tools/compare/v2.6.0...v2.7.0) (2026-09-10)
+
+
+### Features
+
+* add Remote Compose JSON support (`:remotecompose-json`, `compose-preview rc`) ([#5370](https://github.com/yschimke/compose-ai-tools/issues/5370)) ([c26092b](https://github.com/yschimke/compose-ai-tools/commit/c26092bc6017d38c3735f8673fb78778f87eec2e))
+
+
+### Bug Fixes
+
+* **ui-builder:** let the policy schema describe the block catalogs use ([#5367](https://github.com/yschimke/compose-ai-tools/issues/5367)) ([7272f25](https://github.com/yschimke/compose-ai-tools/commit/7272f259a670aa81063a8bc187ff33a9fa92f30c))
+
+## [2.6.0](https://github.com/yschimke/compose-ai-tools/compare/v2.5.0...v2.6.0) (2026-09-10)
+
+
+### Features
+
+* **release:** publish the whole project every release ([#5365](https://github.com/yschimke/compose-ai-tools/issues/5365)) ([bcb0b1a](https://github.com/yschimke/compose-ai-tools/commit/bcb0b1a0f8be3c13b4162bc6407c4e885c193d14))
+
+
+### Bug Fixes
+
+* **deps:** regenerate Gradle lockfiles for compose-preview-daemon 3.0.1 ([#5363](https://github.com/yschimke/compose-ai-tools/issues/5363)) ([93e56ec](https://github.com/yschimke/compose-ai-tools/commit/93e56ecb19226df1d5a9783cb3db12410447c989))
+* **deps:** take compose-preview-daemon 3.0.1 ([#5356](https://github.com/yschimke/compose-ai-tools/issues/5356)) ([c140216](https://github.com/yschimke/compose-ai-tools/commit/c140216f78438a9b8645697590037e9136e368c5))
+* **deps:** update androidx ([#5357](https://github.com/yschimke/compose-ai-tools/issues/5357)) ([a1379fc](https://github.com/yschimke/compose-ai-tools/commit/a1379fc2f4086cca47608081daaf7cc931b2d3ac))
+* **deps:** update androidx-compose ([#5358](https://github.com/yschimke/compose-ai-tools/issues/5358)) ([876dd60](https://github.com/yschimke/compose-ai-tools/commit/876dd6000155780db13c6930b15eb7d0448fd8bf))
+* **deps:** update androidx-wear to v1.7.0-rc01 ([#5359](https://github.com/yschimke/compose-ai-tools/issues/5359)) ([f829a7e](https://github.com/yschimke/compose-ai-tools/commit/f829a7e8e89c909f3223f0992bba5ec40c66c57c))
+* **deps:** update compose-ai-tools to v2.14.0 ([#5360](https://github.com/yschimke/compose-ai-tools/issues/5360)) ([615933a](https://github.com/yschimke/compose-ai-tools/commit/615933aa57b180872bb57d01fcb80747c0b4e2c8))
+* **deps:** update compose-preview-contracts to v2.14.0 ([#5361](https://github.com/yschimke/compose-ai-tools/issues/5361)) ([655f7fe](https://github.com/yschimke/compose-ai-tools/commit/655f7fec45d8eb9fb50b83fa1c68d824711cc09c))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-serve to v3.22.0 ([#5362](https://github.com/yschimke/compose-ai-tools/issues/5362)) ([9b17cb8](https://github.com/yschimke/compose-ai-tools/commit/9b17cb808d7b9501f01fb8498148fc7d3e54ced0))
+* **ui-builder:** name a component by what it is, in the record, in the id, and in the file ([#5354](https://github.com/yschimke/compose-ai-tools/issues/5354)) ([db6dcdd](https://github.com/yschimke/compose-ai-tools/commit/db6dcdd9ba199b988cdae1002d48b81a839e4dc8))
+
 ## [2.5.0](https://github.com/yschimke/compose-ai-tools/compare/v2.4.1...v2.5.0) (2026-09-09)
 
 

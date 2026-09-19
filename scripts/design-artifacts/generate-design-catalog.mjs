@@ -177,6 +177,7 @@ import {
   unbridgeableFunctions,
 } from "./extra-render-fold.mjs";
 import { applyParallels, parallelIndex } from "./apply-parallels.mjs";
+import { applyRelated, relatedIndex } from "./apply-related.mjs";
 import { applyVariantParity } from "./apply-variant-parity.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
@@ -1146,6 +1147,7 @@ const {
   groups: annotationGroups,
   orphanVariants,
   withoutBreakpoints,
+  invalidRelated,
 } = inventoryFromPreviews(inventoryPreviews, {
   breakpoints: catalogBreakpoints(spec),
 });
@@ -1159,6 +1161,18 @@ if (withoutBreakpoints.length > 0) {
       `component(s) resolved no breakpoint, so each stays a single card: ` +
       `${withoutBreakpoints.join(", ")}. Declare the devices they render at in the spec's ` +
       `\`breakpoints\`.`,
+  );
+}
+if (invalidRelated.length > 0) {
+  // An `@CatalogComponent(related = …)` entry that names no system is unpublishable — the stamp
+  // drops it — so it is said out loud rather than costing the link in silence. A warning and not a
+  // failure, matching how a malformed `breakpointKit` entry is handled: it costs that one link,
+  // never the build.
+  console.warn(
+    `[${spec.system}] ${invalidRelated.length} @CatalogComponent(related = …) entr(ies) name no ` +
+      `system and publish no link: ` +
+      invalidRelated.map((r) => `${r.componentId}→${JSON.stringify(r.entry)}`).join(", ") +
+      `. Expected "<system>", "<system>=<componentId>" or "<system>=<componentId>=<label>".`,
   );
 }
 if (orphanVariants.length > 0) {
@@ -1857,6 +1871,17 @@ if (uiBuilderCatalog) {
       `[${spec.system}] stamped parallel on ${stampedParallels} component(s) from spec components`,
     );
   }
+  // Links into OTHER catalogs, dropped by the same allow-list as `parallel` and stamped the same
+  // way. Not a second `parallel`: that one names the counterpart a render is DIFFED against, in the
+  // single `compareWith` sibling, while this is a presentation-only LIST with no parity semantics —
+  // which is what lets `remote-m3`, whose `compareWith` is already spent on the Wear kit catalog,
+  // point at a samples catalog as well (issue #5398).
+  const stampedRelated = applyRelated(manifest, spec);
+  if (stampedRelated > 0) {
+    console.log(
+      `[${spec.system}] stamped related on ${stampedRelated} component(s) from spec components`,
+    );
+  }
   // The same gap, one level down: a variant's pixels reach the manifest (folded onto the parent's
   // `images[]`) but its identity does not, so the compare page cannot tell that one of those tagged
   // images is a distinct render with a counterpart of its own. Only variants declaring kit
@@ -1923,9 +1948,14 @@ if (uiBuilderCatalog) {
     // even though the catalog publishes `compareWith`. Read from one index rather than a second
     // reader, so the two cannot disagree about the blank-means-none rule.
     const deferredParallels = parallelIndex(spec);
+    // And its `related` links, for exactly the same reason: a wholly deferred component never
+    // reaches `manifest.components`, so stamping only there would drop the links a server needs to
+    // reconstruct the card.
+    const deferredRelated = relatedIndex(spec);
     manifest.deferred = records.map((record) => {
       const ids = idsByFunction.get(record.preview) ?? [];
       const parallel = deferredParallels.get(record.componentId);
+      const related = deferredRelated.get(record.componentId);
       return {
         ...record,
         ...(mismatches.length === 0
@@ -1935,6 +1965,10 @@ if (uiBuilderCatalog) {
         // Never clobber a record that already carries one, matching `applyParallels`.
         ...(parallel !== undefined && record.parallel === undefined
           ? { parallel }
+          : {}),
+        // Never clobber a record that already carries them, matching `applyRelated`.
+        ...(related !== undefined && record.related === undefined
+          ? { related }
           : {}),
       };
     });

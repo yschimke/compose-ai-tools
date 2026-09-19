@@ -1,8 +1,11 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.previewdata.PreviewManifest
+import java.nio.file.Files
+import javax.tools.ToolProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlinx.serialization.json.Json
 import okio.Path.Companion.toPath
 
@@ -13,6 +16,72 @@ import okio.Path.Companion.toPath
  * unreachable, which is exactly the single-preview limit this manifest used to impose.
  */
 class PlaygroundPreviewsTest {
+
+  @Test
+  fun `compiled preview dimensions survive manifest synthesis without executing the snippet`() {
+    val directory = Files.createTempDirectory("playground-preview-dimensions").toFile()
+    try {
+      val annotation =
+        directory.resolve("Preview.java").apply {
+          writeText(
+            """
+            package androidx.compose.ui.tooling.preview;
+            @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
+            public @interface Preview { int widthDp() default -1; int heightDp() default -1; }
+            """
+              .trimIndent()
+          )
+        }
+      val source =
+        directory.resolve("Snippet.java").apply {
+          writeText(
+            """
+            package sample;
+            import androidx.compose.ui.tooling.preview.Preview;
+            public class Snippet {
+              static { if (true) throw new AssertionError("Do not execute preview code during discovery"); }
+              @Preview(widthDp=360, heightDp=216) public static void Fixed() {}
+              @Preview(widthDp=120) public static void WidthOnly() {}
+              @Preview public static void Wrapped() {}
+              @Preview(widthDp=800, heightDp=800) public static void NotSelected() {}
+            }
+            """
+              .trimIndent()
+          )
+        }
+      assertEquals(
+        0,
+        ToolProvider.getSystemJavaCompiler()
+          .run(
+            null,
+            null,
+            null,
+            "-d",
+            directory.path,
+            annotation.path,
+            source.path,
+          ),
+      )
+      val manifest =
+        json.decodeFromString<PreviewManifest>(
+          PlaygroundPreviews.previewManifestJson(
+            snippet(
+                listOf("sample.Snippet.Fixed", "sample.Snippet.WidthOnly", "sample.Snippet.Wrapped")
+              )
+              .copy(classesDir = directory.path.toPath())
+          )
+        )
+      assertEquals(3, manifest.previews.size)
+      assertEquals(360, manifest.previews[0].params.widthDp)
+      assertEquals(216, manifest.previews[0].params.heightDp)
+      assertEquals(120, manifest.previews[1].params.widthDp)
+      assertNull(manifest.previews[1].params.heightDp)
+      assertNull(manifest.previews[2].params.widthDp)
+      assertNull(manifest.previews[2].params.heightDp)
+    } finally {
+      directory.deleteRecursively()
+    }
+  }
 
   private val json = Json { ignoreUnknownKeys = true }
 

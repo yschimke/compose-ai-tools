@@ -84,6 +84,44 @@ class AndroidBundleLaunchTest {
     }
   }
 
+  /**
+   * The three the Android renderer and the figma-svg connector read off system properties.
+   *
+   * A `-D` on this process does not reach a spawned JVM, so anything the child reads has to be
+   * named in the map explicitly. These were not, so `-Dcomposeai.fonts.offline=true` took effect
+   * under the Gradle render task and on the desktop serve daemon but on no Android lane — an
+   * air-gapped Android render still tried to fetch Google Fonts.
+   *
+   * Table-driven because the failure is per-property and silent: a fourth one added to the child's
+   * read set and forgotten here looks exactly like this did.
+   */
+  @Test
+  fun `font and svg opt-outs are forwarded to the android child when set on this process`() {
+    for (prop in
+      listOf(
+        "composeai.fonts.offline",
+        "composeai.svg.embedFonts",
+        "composeai.svg.background",
+      )) {
+      val saved = System.getProperty(prop)
+      try {
+        System.clearProperty(prop)
+        assertTrue(
+          !AndroidBundleLaunch().robolectricSystemProperties().containsKey(prop),
+          "$prop must be absent when this process does not set it",
+        )
+        System.setProperty(prop, "true")
+        assertEquals(
+          "true",
+          AndroidBundleLaunch().robolectricSystemProperties()[prop],
+          "$prop must reach the child when set here",
+        )
+      } finally {
+        if (saved == null) System.clearProperty(prop) else System.setProperty(prop, saved)
+      }
+    }
+  }
+
   @Test
   fun `robolectric properties pin the sdk, graphics mode, stub application and font shadow`() {
     val body = AndroidBundleLaunch(sdkLevel = 34).robolectricPropertiesBody()

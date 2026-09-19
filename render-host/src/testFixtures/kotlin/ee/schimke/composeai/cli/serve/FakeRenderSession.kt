@@ -466,11 +466,13 @@ public class FakeRenderSession(
       } else {
         emptyList()
       }
-    return ExtensionsEnableResult(
-      newlyEnabled = enabled,
-      unknown = unknown,
-      dataProducts = dataProducts,
-    )
+    return ExtensionsEnableResult.Builder()
+      .also {
+        it.newlyEnabled = enabled
+        it.unknown = unknown
+        it.dataProducts = dataProducts
+      }
+      .build()
   }
 
   override fun disableExtensions(

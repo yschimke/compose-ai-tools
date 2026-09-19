@@ -51,6 +51,90 @@ class CliRouterTest {
   }
 
   @Test
+  fun `the note for an unknown flag is accurate about where it lands`() {
+    // A launcher forwards its argv; "(ignored)" would be false, because the server accepts the
+    // flag and it takes effect there. A non-launcher really does ignore it.
+    assertTrue(
+      CliFlagValidation.unknownFlagNote("ui-builder", "--no-project")
+        .contains("forwarded to the compose-preview-server binary")
+    )
+    assertTrue(
+      CliFlagValidation.unknownFlagNote("design", "--bogus")
+        .contains("forwarded to the compose-preview-server binary")
+    )
+    assertTrue(CliFlagValidation.unknownFlagNote("render", "--fitler").contains("(ignored)"))
+  }
+
+  @Test
+  fun `flags the ui-builder help advertises are on its allowlist`() {
+    // `--no-project` is the server's packaged-catalogs mode, documented in the `ui-builder
+    // --help` the server answers with — a warning on it read as a failure to launch the mode.
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags("ui-builder", listOf("--no-project", "--no-open")),
+    )
+    assertTrue(
+      CliFlagValidation.FORWARDED_TO_SERVER == setOf("serve", "browse", "ui-builder", "design")
+    )
+  }
+
+  @Test
+  fun `ui-builder accepts every flag serve accepts`() {
+    // The server's `ui` command takes every `serve` flag, so a launcher that listed a hand-picked
+    // subset warned about flags the documented command line actually takes. The two entries share
+    // one set now; this pins that they cannot drift apart again.
+    val serve = CliFlagValidation.BY_COMMAND.getValue("serve")
+    val uiBuilder = CliFlagValidation.BY_COMMAND.getValue("ui-builder")
+    assertEquals(
+      emptySet(),
+      serve - uiBuilder,
+      "a serve flag missing from ui-builder would be reported as unrecognised by the launcher",
+    )
+  }
+
+  @Test
+  fun `the local MCP flags the server documents are known to the launcher`() {
+    // The exact flags from the friction report: documented by the 3.40.0 server, and previously
+    // reported as unrecognised (and mis-described as ignored) by the CLI.
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags(
+        "ui-builder",
+        listOf(
+          "--no-project",
+          "--catalog-mcp",
+          "--agent-grants",
+          "--agent-grant-capabilities",
+          "ui-builder-read,ui-builder-write,ui-builder-export",
+        ),
+      ),
+    )
+  }
+
+  @Test
+  fun `the design command knows its documented flags`() {
+    // `design --help` documents the local replay lane; the launcher's allowlist omitted it, so
+    // `design render --document doc.json --local` warned about the flags it was built around.
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags(
+        "design",
+        listOf(
+          "--local",
+          "--document",
+          "doc.json",
+          "--catalog",
+          "wear-m3.bundle",
+          "--assets",
+          "assets",
+          "--components",
+          "m3-catalog=components.json",
+        ),
+      ),
+    )
+  }
+
+  @Test
   fun `groups are disjoint and don't collide with core, meta, or group names`() {
     val grouped = CliRouter.GROUPS.values.flatten()
     assertEquals(grouped.size, grouped.toSet().size, "a command appears in two groups")

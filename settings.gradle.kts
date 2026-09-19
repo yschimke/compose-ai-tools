@@ -193,6 +193,15 @@ include(":common-web-escaping")
 
 project(":common-web-escaping").projectDir = file("common/web-escaping")
 
+// The Remote Compose JSON codec — authoring JSON to `.rc` bytes and back out as document JSON.
+// Layer 1 by `docs/design/REPOSITORY_LAYERS.md`'s test (behaviour, opens no socket), and its own
+// module rather than a package in `:render-host` so that an offline render does not link 1.6 MB of
+// Remote Compose runtime it never calls. See `remotecompose/json/build.gradle.kts` for why the
+// classpath is `-core` only, and `docs/design/REMOTE_COMPOSE_JSON.md` for the two dialects.
+include(":remotecompose-json")
+
+project(":remotecompose-json").projectDir = file("remotecompose/json")
+
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
 // external consumers (contrib scripting, third-party tooling) can render previews and read the
@@ -298,6 +307,9 @@ include(":samples:xr-glimmer")
 include(":samples:cmp")
 
 include(":samples:cmp-shared")
+// Previews declared once and rendered on BOTH lanes by the two samples above/below it, through
+// the `composePreviewSource` configuration. Applies no preview plugin itself.
+include(":samples:preview-source-shared")
 
 // In-browser CMP tier — a `wasmJs` Compose app rendering the M3 catalog in the
 // browser sandbox (a `wasmJs` Compose app). wasmJs-only, no
@@ -308,6 +320,7 @@ include(":samples:cmp-wasm-catalog")
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.
 include(":samples:cmp-android-only")
+include(":samples:cmp-android-robolectric")
 
 include(":samples:desktop-daemon-bench")
 
@@ -415,6 +428,33 @@ providers.gradleProperty("composeai.previewDaemonDir").orNull?.let { dir ->
     }
   }
 }
+
+include(":bom")
+
+// Project paths whose build script applies `composeai.maven-publishing`, handed to `:bom` through a
+// system property so its constraints are derived from the build rather than kept as a second list
+// that goes stale. Same closure-free channel, and the same Isolated Projects reason, as the ktfmt
+// paths below.
+//
+// Matched with its closing quote (`composeai.maven-publishing")`) rather than as a bare substring:
+// `composeai.maven-publishing-platform` starts with the same 26 characters, so a prefix match pulls
+// `:bom` into the list of things the BOM constrains and it ends up constraining itself.
+//
+// The root build script is deliberately not visited — it *mentions* the plugin id, in
+// `printPublishTasks`'s `hasPlugin(...)` filter, without applying it.
+val publishedProjectPaths = buildList {
+  fun visit(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+    if (
+      descriptor.buildFile.exists() &&
+        descriptor.buildFile.readText().contains("composeai.maven-publishing\")")
+    ) {
+      add(descriptor.path)
+    }
+    descriptor.children.forEach(::visit)
+  }
+  rootProject.children.forEach(::visit)
+}
+System.setProperty("composeai.publishedProjectPaths", publishedProjectPaths.joinToString(","))
 
 // Project paths carrying ktfmt, handed to the root build's `ktfmtCheckAll` / `ktfmtFormatAll`
 // aggregate tasks through a system property. The channel must stay closure-free under Isolated

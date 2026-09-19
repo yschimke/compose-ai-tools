@@ -33,6 +33,40 @@ name: Design Artifacts (reusable)
 # tier) are intentionally out of scope — a caller that needs them keeps its own
 # workflow. This covers single-module (± one extra module) catalogs and repository-wide static or
 # multi-live-bundle catalogs spanning every preview-enabled module.
+#
+# ## Scoping a multi-lane caller (issue #5438) — READ THIS IF YOU PUBLISH MORE THAN ONE LANE
+#
+# A caller that publishes several catalogs from one repository usually narrows a push run with its
+# own `Scope` job, diffing `github.event.before..$GITHUB_SHA` and lighting up only the lanes whose
+# inputs moved. That premise — "the diff of one push is the whole truth" — is false in one specific
+# way, and it drops a lane's republish permanently and silently when it fails:
+#
+#   concurrency:
+#     group: design-artifacts-${{ github.ref }}    # ← one bucket for EVERY lane
+#     cancel-in-progress: false
+#
+# `cancel-in-progress: false` protects the IN-PROGRESS run, not the PENDING one. GitHub keeps at
+# most one pending run per concurrency group, so a newly queued run cancels the one already waiting.
+# The cancelled run's lanes are then never re-rendered, because the run that replaced it scopes to
+# its own push — which touched something else. Every byte of the change is on `main`; the delivery
+# branch just never regenerates, until the weekly cron.
+#
+# Two things fix it, and the second is the one that matters:
+#
+#  1. **Split the concurrency group per lane** — `design-artifacts-${{ github.ref }}-<system>` on the
+#     JOB rather than the workflow, so the lanes queue independently instead of evicting one
+#     another. Worth doing regardless (a config-only push has no business queueing behind a 15–30
+#     minute render), but it is not sufficient: a genuine cancellation or a failed run still drops
+#     that lane silently.
+#  2. **Make the scope self-healing** — diff each lane from the commit it was last RENDERED FROM,
+#     not from `github.event.before`. This workflow records that commit for you, on every successful
+#     publish, as the ref `refs/design-artifacts/source/<system>` (see the catalog publish step).
+#     `scripts/design-artifacts/scope-step.sh` in this repository is the whole Scope job against
+#     that baseline, generic over the lane table: point `SCOPE_MAPPER` at your own path→lane mapping
+#     and it needs no other change. A dropped run is then picked up by the next push whatever that
+#     push touched, and the failure above cannot persist.
+#
+# `design-artifacts.yml` here is the reference caller for both.
 
 on:
   workflow_call:
@@ -45,6 +79,14 @@ on:
         description: 'Path to catalog.spec.json in the caller repo.'
         required: true
         type: string
+      design-pages-config:
+        description: >-
+          Path to the caller repository's committed design-page importer config. The config names
+          the page cache directory and its Figma file key. Defaults to design-pages.json; set this
+          per system when one repository publishes catalogs backed by different design kits.
+        required: false
+        type: string
+        default: 'design-pages.json'
       module:
         description: 'Gradle module path to render (e.g. ":app"). Omit to discover and publish every module with the preview plugin applied.'
         required: false
@@ -174,6 +216,11 @@ on:
         required: false
         type: boolean
         default: true
+      rc-document-json:
+        description: "Publish each ir/*.rc document's operation-level JSON projection alongside it, under documents/<id>.rc.json. What the delivery branch carries today for a Remote catalog is pixels and opaque bytes, so a review can see THAT a sticker changed and never what changed in it — and a picture diff cannot tell a moved padding from a different antialiasing pass. The projection is `compose-preview rc dump`, which reads the document through AndroidX's own operation model. Opt-in and FAIL-SOFT, like the embedded player lanes and for the same reason: a CLI too old to carry the `rc` verb, or a document a newer alpha wrote, drops the file rather than the publish. No-op for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       publish-live-bundle:
         description: 'Carry the executable primary render bundle onto the branch under bundle/ and record liveBundle:{path,file} in catalog.json, so a serve box that bakes the matching (Android/desktop) daemon re-renders the previews live instead of replaying baked PNGs.'
         required: false
@@ -230,7 +277,7 @@ on:
         type: boolean
         default: false
       rc-cmp-wasm-lane:
-        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw, or one that misses the first-frame budgets, fails the step and the catalog does not publish. Opt in per catalog once you know what its documents do in that player."
+        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw fails the step and the catalog does not publish. The first-frame budgets below are report-only. Opt in per catalog once you know what its documents do in that player."
         required: false
         type: boolean
         default: false
@@ -240,12 +287,12 @@ on:
         type: string
         default: ''
       rc-cmp-wasm-max-cold-first-frame-ms:
-        description: 'Maximum cold CMP/Wasm navigation-to-painted-ready time. The strict lane fails above it.'
+        description: 'Cold CMP/Wasm navigation-to-painted-ready time to report against. REPORT-ONLY: rows above it are named in the job summary and the lane still passes — the budget ran post-merge, so it could only strand a publish, never stop a slow player landing. A missing measurement is still a failure.'
         required: false
         type: number
         default: 10000
       rc-cmp-wasm-max-warm-first-frame-ms:
-        description: 'Maximum cached CMP/Wasm navigation-to-painted-ready time. The strict lane fails above it.'
+        description: 'Cached CMP/Wasm navigation-to-painted-ready time to report against. REPORT-ONLY, on the same terms as the cold budget above.'
         required: false
         type: number
         default: 5000
@@ -506,6 +553,7 @@ env:
   INPUT_EMBED_DEPS: ${{ inputs.embed-deps }}
   INPUT_RENDER_TIMEOUT: ${{ inputs.render-timeout }}
   INPUT_SPEC: ${{ inputs.spec }}
+  INPUT_DESIGN_PAGES_CONFIG: ${{ inputs.design-pages-config }}
   # Where the rendered Gradle BUILD sits in the checkout. The plugin records each project's
   # directory relative to its own `rootDir`, which for a separate-build monorepo is the sample's
   # root — so the catalog step lifts those to repository-relative paths with this.
@@ -781,7 +829,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=github-tags depName=yschimke/rc-players
-  RC_PLAYERS_PIN: v1.60.0
+  RC_PLAYERS_PIN: v1.67.0
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -1070,7 +1118,7 @@ jobs:
       # internal misconfiguration, not a consumer-facing pin.
       - name: Set up JDK 21
         if: ${{ inputs.cli-source == 'released' }}
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -1094,7 +1142,7 @@ jobs:
         # made a driver fix look like a five-line change; the driver revision is
         # now resolved separately (see DRIVER_PIN_* at the top of this file) and
         # this ref only needs to move when the install action itself changes.
-        uses: yschimke/compose-ai-tools/.github/actions/install@2f1e6a2c6826baf8619a18683bde5591e4ab79a8 # v1.74.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@53812ae65cf8b2d5cab88ff41d43ffeba4d43222 # v2.11.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -1730,7 +1778,7 @@ jobs:
 
 
       - name: Set up JDK 21
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -1738,7 +1786,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@2f1e6a2c6826baf8619a18683bde5591e4ab79a8 # v1.74.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@53812ae65cf8b2d5cab88ff41d43ffeba4d43222 # v2.11.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -1773,6 +1821,7 @@ jobs:
           MODULE: ${{ inputs.module }}
           WORKDIR: ${{ inputs.working-directory }}
           SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
+          CLI_SOURCE: ${{ inputs.cli-source }}
         run: |
           set -euo pipefail
           if ! grep -q '"themes"' "$SPEC"; then
@@ -1818,11 +1867,26 @@ jobs:
           if [ -n "$remapped" ]; then derived="$remapped"; fi
           module_dir="${root}${derived}"
           [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
-          # The generated providers reference @ThemeCatalog, so the module needs the annotation
-          # artifact. Pinned to the CLI actually installed rather than written here a second time:
-          # the two ship from one release, and a hardcoded version would rot at the next one.
-          version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-          [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
+          # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
+          # A released CLI embeds the exact daemon pin it was built against. The source-build path
+          # has not built that CLI yet, so read the same pin from the driver's version catalog.
+          if [ "$CLI_SOURCE" = "released" ]; then
+            cli_bin="$(command -v compose-preview)"
+            cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
+            version=""
+            for archive in "$cli_home"/lib/*.jar; do
+              version="$(unzip -p "$archive" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null |
+                sed -n 's/^previewDaemonVersion=//p' | head -1 || true)"
+              [ -z "$version" ] || break
+            done
+          else
+            version="$(sed -n 's/^composeai-preview-daemon[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+              "$GITHUB_WORKSPACE/compose-ai-tools/gradle/libs.versions.toml" | head -1)"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::could not resolve preview-annotations' daemon-line version"
+            exit 1
+          }
           node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       - name: Build compose-preview CLI from source
         if: ${{ inputs.cli-source == 'build' }}
@@ -2225,6 +2289,8 @@ jobs:
       # The commit the bundle was rendered from. Published here so the publish job does not have to
       # check the calling repository out merely to read one SHA — the only thing it wanted it for.
       source-sha: ${{ steps.source-sha.outputs.sha }}
+      # The same revision unabbreviated, for the source marker ref. See the step.
+      source-sha-full: ${{ steps.source-sha.outputs.full }}
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2803,7 +2869,7 @@ jobs:
       # resolution needs the other one, and it finds it through the path recorded below.
       - name: Set up the imported project's toolchain
         if: ${{ inputs.upstream-repository != '' && inputs.upstream-java-version != '' }}
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: ${{ inputs.upstream-java-version }}
@@ -2819,7 +2885,7 @@ jobs:
             >> "$GITHUB_ENV"
 
       - name: Set up JDK 21
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -2829,7 +2895,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@2f1e6a2c6826baf8619a18683bde5591e4ab79a8 # v1.74.0
+        uses: yschimke/compose-ai-tools/.github/actions/install@53812ae65cf8b2d5cab88ff41d43ffeba4d43222 # v2.11.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -2866,6 +2932,7 @@ jobs:
           MODULE: ${{ inputs.module }}
           WORKDIR: ${{ inputs.working-directory }}
           SOURCE_ROOT: ${{ inputs.upstream-repository != '' && 'upstream' || '' }}
+          CLI_SOURCE: ${{ inputs.cli-source }}
         run: |
           set -euo pipefail
           if ! grep -q '"themes"' "$SPEC"; then
@@ -2911,11 +2978,26 @@ jobs:
           if [ -n "$remapped" ]; then derived="$remapped"; fi
           module_dir="${root}${derived}"
           [ -d "$module_dir" ] || { echo "::error::module directory not found: $module_dir"; exit 1; }
-          # The generated providers reference @ThemeCatalog, so the module needs the annotation
-          # artifact. Pinned to the CLI actually installed rather than written here a second time:
-          # the two ship from one release, and a hardcoded version would rot at the next one.
-          version="$(compose-preview --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-          [ -n "$version" ] || { echo "::error::could not read a version from 'compose-preview --version'"; exit 1; }
+          # preview-annotations ships from compose-preview-daemon, not the CLI/plugin release line.
+          # A released CLI embeds the exact daemon pin it was built against. The source-build path
+          # has not built that CLI yet, so read the same pin from the driver's version catalog.
+          if [ "$CLI_SOURCE" = "released" ]; then
+            cli_bin="$(command -v compose-preview)"
+            cli_home="$(cd "$(dirname "$cli_bin")/.." && pwd -P)"
+            version=""
+            for archive in "$cli_home"/lib/*.jar; do
+              version="$(unzip -p "$archive" ee/schimke/composeai/cli/cli-version.properties 2>/dev/null |
+                sed -n 's/^previewDaemonVersion=//p' | head -1 || true)"
+              [ -z "$version" ] || break
+            done
+          else
+            version="$(sed -n 's/^composeai-preview-daemon[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+              "$GITHUB_WORKSPACE/compose-ai-tools/gradle/libs.versions.toml" | head -1)"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::could not resolve preview-annotations' daemon-line version"
+            exit 1
+          }
           node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
       # ---- The two embedded player lanes' harness, when a caller asked for them ----------------
       #
@@ -3017,14 +3099,14 @@ jobs:
       # JVM and the usual system locations and `setup-java` installs to neither.
       - name: Set up the rc-players toolchain
         if: ${{ steps.rc-players-pin.outputs.ok == 'true' }}
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up JDK 21 (restore JAVA_HOME)
         if: ${{ steps.rc-players-pin.outputs.ok == 'true' }}
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -4251,6 +4333,32 @@ jobs:
             echo "No design-map.json in this repo — no design references to publish."
             exit 0
           fi
+          # The scorer moved with the server repository (#4732). The export driver deliberately
+          # does not carry a copy, so materialise the asset from the NEWEST server release before
+          # asking it to score — there is no server pin in the version catalog any more, and the
+          # newest release is what an installed CLI runs, so it is the scorer contract to match. A
+          # failed fetch retains the reference lane's fail-soft behaviour (references publish
+          # unscored).
+          # `|| true` is load-bearing under `set -euo pipefail`. This step promises to publish
+          # references UNSCORED when the scorer cannot be fetched, and a rate-limited or unreachable
+          # API would otherwise take `-e` straight out of the step before the fail-soft branch below
+          # ever runs. The old shape read a local catalog file, which could not fail this way.
+          server_tag="$(curl -fsSL https://api.github.com/repos/yschimke/compose-preview-server/releases/latest 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)"
+          server_version="${server_tag#v}"
+          server_root="$RUNNER_TEMP/compose-preview-server"
+          server_asset="server/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js"
+          if [ -n "$server_version" ]; then
+            mkdir -p "$server_root/$(dirname "$server_asset")"
+            if curl -fsSL --retry 3 \
+                -o "$server_root/$server_asset" \
+                "https://raw.githubusercontent.com/yschimke/compose-preview-server/v${server_version}/${server_asset}"; then
+              export COMPOSE_PREVIEW_SERVER_ROOT="$server_root"
+            else
+              echo "::warning title=Preview scorer fetch failed::Design references will publish without a match score."
+            fi
+          else
+            echo "::warning title=Preview scorer version missing::Could not resolve the newest compose-preview-server release; design references will publish without a match score."
+          fi
           # Chromium rasterises committed HTML mocks AND scores every published reference against
           # its sticker — the driver drives the viewer's own `format-compare.js` in a headless page
           # rather than reimplementing it, so the baked verdict on the design-spec chip and the
@@ -4419,7 +4527,13 @@ jobs:
       # step carried when it computed this itself.
       - name: Record the rendered source revision
         id: source-sha
-        run: echo "sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          # The same revision, unabbreviated. The short form is for the commit subject a human
+          # reads; the source MARKER the next run's Scope job resolves is a git ref, and a ref can
+          # only point at a full object id (issue #5438).
+          echo "full=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # Reads the emitter's environment export and re-publishes it as a step output, because the
       # step that consumes it now lives in another job. Deliberately unconditional: when the emitter
@@ -4436,7 +4550,8 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/emit-design-pages.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
-            --spec "$INPUT_SPEC"
+            --spec "$INPUT_SPEC" \
+            --config "$INPUT_DESIGN_PAGES_CONFIG"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored
@@ -4698,6 +4813,165 @@ jobs:
             --title "$INPUT_SYSTEM" \
             ${EMBEDDED_ARGS[@]+"${EMBEDDED_ARGS[@]}"}
 
+      # THE DOCUMENTS THEMSELVES, as text, beside the pixels.
+      #
+      # A Remote catalog's delivery branch carries baked PNGs and — inside the bundle — the `.rc`
+      # documents that drew them. Both are opaque to a review: the PNG shows THAT a sticker moved
+      # and the bytes show nothing at all, so "did the padding change or did the render just
+      # antialias differently" is a question nobody can answer from the branch. `compose-preview rc
+      # dump` projects each document through AndroidX's own operation model, and a `documents/`
+      # tree of those projections is diffable by `git diff` on the delivery branch itself.
+      #
+      # It reads the documents OUT OF THE PACKED BUNDLE rather than out of `renders/`, because the
+      # bundle is what actually ships: a document that failed to pack is one this catalog does not
+      # publish, and projecting it here would put a file on the branch describing a sticker no
+      # visitor can reach.
+      #
+      # FAIL-SOFT throughout, matching the embedded player lanes. Two things it must not turn into
+      # a failed publish: a CLI predating the `rc` verb (every caller pinning `cli-version:
+      # catalog` is on a released CLI, and this input outlives the release that first carries it),
+      # and a document written by a newer Remote Compose alpha than the CLI's `remote-core` can
+      # inflate — the split-family case, which is a property of the pin rather than of this run.
+      # Either drops files and prints why; neither costs the catalog its delivery.
+      - name: Remote Compose documents as JSON
+        if: ${{ inputs.rc-document-json && (inputs.publish || inputs.upload-out) }}
+        run: |
+          set -euo pipefail
+          docs_dir="$GITHUB_WORKSPACE/out/documents"
+          staged="$RUNNER_TEMP/rc-documents"
+          rm -rf "$staged"
+          mkdir -p "$staged"
+
+          # EVERY bundle that feeds the generated catalog, not just the primary one. A catalog on
+          # `modules: all` renders each module into `module-bundles/<key>.png` and copies `0000.png`
+          # to `bundle.png`, and `extra-module` adds `extra-bundle.png`; reading only `bundle.png`
+          # would publish a `documents/` tree missing every secondary module's stickers while the
+          # catalog itself lists them. `0000.png` is skipped when the per-module tree exists,
+          # because it IS `bundle.png` — the same skip the generator's own join makes.
+          #
+          # Unpacked flat, keyed by the id the bundle stores (`ir/<preview id>.rc`), which is
+          # already namespaced per module. Through Python rather than `unzip -j` + a glob: the ids
+          # can carry an em-dash and the shell would mangle exactly the names `LANG: C.UTF-8` above
+          # exists to keep exact.
+          python3 - "$GITHUB_WORKSPACE" "$staged" <<'PY'
+          import os, sys, zipfile
+          workspace, out = sys.argv[1], sys.argv[2]
+
+          # (bundle path, id prefix). The prefix has to match what the CATALOG publishes, or the
+          # documents land under names no visitor can join to a sticker — and, worse, two modules
+          # holding the same raw preview id overwrite each other here, silently losing one.
+          #
+          # `namespaceModuleRecords` rewrites every ADDITIONAL module's preview ids with
+          # `moduleIdentityPrefix(module)` = `module_<hex of module path>__`, and the workflow
+          # already names that module's bundle `module-bundles/<module_<hex>>.png` — the same
+          # `moduleArtifactKey` — so the prefix is the bundle's own basename plus `__`. Reading it
+          # off the filename is what keeps the two in step without this step knowing the module
+          # path, exactly as the split step above already does.
+          #
+          # NOT prefixed: `0000.png` / `bundle.png`, which are the primary record, and
+          # `extra-bundle.png`, whose previews are handled by `--extra-renders` AFTER
+          # `namespaceModuleRecords` and split into the primary previews directory unrenamed.
+          bundles = []
+          module_bundles = os.path.join(workspace, "module-bundles")
+          if os.path.isdir(module_bundles):
+              for n in sorted(os.listdir(module_bundles)):
+                  if not n.endswith(".png") or n == "0000.png":
+                      continue
+                  key = n[: -len(".png")]
+                  prefix = f"{key}__" if key.startswith("module_") else ""
+                  bundles.append((os.path.join(module_bundles, n), prefix))
+          for extra in ("bundle.png", "extra-bundle.png"):
+              path = os.path.join(workspace, extra)
+              if os.path.isfile(path):
+                  bundles.append((path, ""))
+
+          n, clobbered, unreadable = 0, 0, 0
+          for bundle, prefix in bundles:
+              try:
+                  zf = zipfile.ZipFile(bundle)
+              except Exception as e:
+                  print(f"::notice title=Skipping unreadable bundle::{bundle}: {e}")
+                  continue
+              for name in zf.namelist():
+                  if name.startswith("ir/") and name.endswith(".rc"):
+                      leaf = os.path.basename(name)
+                      # `modulePreviewId` is idempotent — it leaves an id that already carries the
+                      # prefix alone — so this is too.
+                      if prefix and not leaf.startswith(prefix):
+                          leaf = prefix + leaf
+                      target = os.path.join(out, leaf)
+                      if os.path.exists(target):
+                          # Should be unreachable now that additional modules are namespaced. If it
+                          # ever fires, a document is being lost and the count alone would not say
+                          # so, so it is named rather than left to arithmetic.
+                          clobbered += 1
+                          print(f"::warning title=Duplicate document id::{leaf} appears in more than one bundle")
+                      # PER MEMBER, not per bundle. A zip whose central directory reads fine can
+                      # still hold one member that does not — corrupt, truncated, encrypted — and
+                      # `open`/`read` raises only then. Outside this try it would reach `set -e`
+                      # and fail the whole catalog publish, which is the opposite of what a lane
+                      # documented as fail-soft promises.
+                      try:
+                          with zf.open(name) as src, open(target, "wb") as dst:
+                              dst.write(src.read())
+                      except Exception as e:
+                          unreadable += 1
+                          print(f"::warning title=Unreadable document::{name} in {bundle}: {e}")
+                          continue
+                      n += 1
+          print(f"staged {n} document(s) from {len(bundles)} bundle(s)")
+          if unreadable:
+              print(f"::warning title=Documents not staged::{unreadable} document(s) could not be read out of their bundle")
+          if clobbered:
+              print(f"::warning title=Documents overwritten::{clobbered} duplicate id(s) collided while staging")
+          PY
+
+          # NOT filtered against the catalog, deliberately, and this is the second attempt at it.
+          #
+          # `--extra-renders` REPLACES a primary function's candidates rather than adding to them
+          # (generate-design-catalog.mjs, the splice around line 1104), so a sticker the catalog
+          # dropped can still have its document staged here, sitting beside the one that replaced
+          # it. That wart is real. The obvious fix — keep only the ids the catalog publishes — is
+          # not available, because the catalog records no such list: `previewId` is stamped by
+          # `bridgeLivePreviewIds` and is a LIVE-ROUTING id, deliberately absent from exactly the
+          # images an Android-only supplement overrode (lines 1965-1969 and 2225-2233 say so). A
+          # filter keyed on it deletes the OVERRIDE's document and keeps the superseded one, which
+          # is strictly worse than publishing both — a wrong document where the reader expects the
+          # authoritative one, rather than a spare beside it.
+          #
+          # Fixing it properly means the generator emitting the document ids it actually published,
+          # which is its change to make, not this step's. Until then an extra-module catalog can
+          # carry one stale document per overridden function; both are named by their preview id,
+          # and the catalog is the arbiter of which id it lists.
+          if [ -z "$(find "$staged" -maxdepth 1 -name '*.rc' -print -quit)" ]; then
+            echo "No ir/*.rc documents in the bundle — nothing to project."
+            exit 0
+          fi
+
+          if ! compose-preview rc --help >/dev/null 2>&1; then
+            echo "::notice title=Remote Compose document JSON skipped::This compose-preview CLI has no 'rc' verb; the projection needs a release carrying it. Catalog publishes without documents/."
+            exit 0
+          fi
+
+          # `rc dump <dir>` writes `<stem>.rc.json` beside each document and exits non-zero if ANY
+          # of them could not be projected, having still written the rest. `|| true` is therefore
+          # the fail-soft, not a swallowed error: the per-document reason is on stderr above, and
+          # the count below is what a reader checks.
+          compose-preview rc dump "$staged" || true
+
+          mkdir -p "$docs_dir"
+          projected=0
+          for json in "$staged"/*.rc.json; do
+            [ -e "$json" ] || continue
+            cp "$json" "$docs_dir/"
+            projected=$((projected + 1))
+          done
+          total="$(find "$staged" -maxdepth 1 -name '*.rc' | wc -l | tr -d ' ')"
+          echo "Projected $projected of $total document(s) into out/documents/."
+          if [ "$projected" -lt "$total" ]; then
+            echo "::warning title=Some Remote Compose documents were not projected::$((total - projected)) of $total. The per-document reason is in this step's log; a document a newer Remote Compose alpha wrote than this CLI links is the usual cause."
+          fi
+
       - name: Upload CMP/Wasm parity evidence
         if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -4811,6 +5085,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
           SOURCE_SHA: ${{ needs.generate.outputs.source-sha }}
+          SOURCE_SHA_FULL: ${{ needs.generate.outputs.source-sha-full }}
           PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
         run: |
           set -euo pipefail
@@ -4890,6 +5165,27 @@ jobs:
           GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
           GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
             bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"
+
+          # Record what this lane was rendered from, so the NEXT run's Scope job can diff from it
+          # rather than from the one push that started that run (issue #5438). A run cancelled while
+          # pending — which is what happens whenever a caller buckets every lane into one
+          # concurrency group — otherwise strands its catalogs until the weekly cron, because the
+          # run that replaced it scopes to its own push.
+          #
+          # Unconditional on what the push above did, deliberately: SKIP_IF_UNCHANGED commits
+          # nothing when the render is byte-identical, and that lane is still not stale.
+          #
+          # Guarded on the file existing for the same reason push-history.sh is below: these helpers
+          # come from the pinned export-driver checkout, which for an external caller is an immutable
+          # release commit that predates anything this workflow adds. A missing helper is a notice,
+          # not a failed publish — the scope degrades to the delivery branch subject, which
+          # over-renders rather than under-renders.
+          MARKER="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/mark-published-source.sh"
+          if [ -f "$MARKER" ]; then
+            bash "$MARKER" --system "$SYSTEM" --repo "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA_FULL"
+          else
+            echo "::notice::design-artifacts source marker: the pinned export driver has no mark-published-source.sh; skipping. It resumes once the driver pin advances."
+          fi
 
       - name: Publish render history to design-artifacts/${{ inputs.system }}
         if: ${{ inputs.publish }}

@@ -1,0 +1,13 @@
+{
+      "compilerProfile":"compose-preview-state-v1",
+      "header":{"width":360,"height":180},
+      "root":[
+        {"type":"mutableString","name":"first","value":"Ready"},
+        {"type":"mutableString","name":"second","value":"Ready"},
+        {"type":"column","modifiers":["fillMaxSize",{"background":"#FFFFFFFF"}],"children":[
+          {"type":"text","text":"@first","fontSize":24,"modifiers":["fillMaxWidth",{"height":60},{"onClick":[{"type":"valueStringChange","target":"@first","value":"Changed"}]}]},
+          {"type":"text","text":"@second","fontSize":24,"modifiers":["fillMaxWidth",{"height":60}]},
+          {"type":"text","text":"Ready","fontSize":24,"modifiers":["fillMaxWidth",{"height":60}]}
+        ]}
+      ]
+    }

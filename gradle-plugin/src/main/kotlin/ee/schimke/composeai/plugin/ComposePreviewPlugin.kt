@@ -9,6 +9,12 @@ import org.gradle.api.configuration.BuildFeatures
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
 import org.gradle.util.GradleVersion
 
+/**
+ * Name of the dependency configuration a module names its shared preview-source modules in. See the
+ * `configurations.create` call in [ComposePreviewPlugin.apply] for what it is for.
+ */
+const val PREVIEW_SOURCE_CONFIGURATION = "composePreviewSource"
+
 abstract class ComposePreviewPlugin
 @Inject
 constructor(
@@ -32,6 +38,41 @@ constructor(
     // `Property` objects. Convention wiring (`-PcomposePreview.variant=…` etc.) lives in
     // [ComposePreviewDsl.createOrFindExtension].
     val extension = ComposePreviewDsl.createOrFindExtension(project)
+
+    // `composePreviewSource` — the bucket a module names a SHARED SOURCE MODULE in, so that
+    // module's `@Preview`s are discovered here and rendered on this module's lane.
+    //
+    // The plugin registers exactly one render lane per module (Robolectric or CMP Desktop), and
+    // discovery method-walks only the module's OWN classes: a dependency JAR stays on the scan
+    // classpath so a multi-preview annotation still resolves, but its `@Preview` functions are
+    // never walked. Together those two rules mean a catalog that wants to render on more than one
+    // lane has to re-declare its previews once per lane. This configuration is the seam that
+    // removes the duplication: the previews live once, in a plain library module with no preview
+    // plugin, and each lane module points at it.
+    //
+    //     dependencies {
+    //       implementation(project(":catalog-shared"))        // the classes, at runtime
+    //       composePreviewSource(project(":catalog-shared"))  // + discover its @Previews
+    //     }
+    //
+    // Deliberately NOT extended from (or by) `implementation`. What a module renders is a narrower
+    // question than what it compiles against: a catalog depends on a dozen libraries whose
+    // `@Preview`s — the ones a library ships for its own sticker sheet — must not silently become
+    // this module's. Naming the source module is the opt-in.
+    // A plain BUCKET — neither resolvable nor consumable. It carries declarations only; the
+    // resolvable view is derived in [ComposePreviewTasks.registerDiscoverTask], which copies the
+    // attributes of the module's own runtime classpath onto it. That indirection is not optional:
+    // a KMP producer publishes several variants, and a configuration with no attributes cannot
+    // choose between them — it resolves to nothing, silently, and the shared previews simply never
+    // appear. Borrowing the lane's own attributes asks for exactly the variant this module already
+    // renders against (`androidJvm` on the Robolectric lane, `jvm` on Desktop).
+    project.configurations.create(PREVIEW_SOURCE_CONFIGURATION) {
+      isCanBeConsumed = false
+      isCanBeResolved = false
+      description =
+        "Modules whose @Preview functions are discovered and rendered by this module's " +
+          "compose-preview lane. See composePreview.previewSourceRoots for their sources."
+    }
 
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every
@@ -83,52 +124,123 @@ constructor(
     project.pluginManager.withPlugin("com.android.library") { androidHandler() }
 
     // `com.android.kotlin.multiplatform.library` (the AGP 9 replacement for
-    // nesting `com.android.library` inside KMP) ships a single `android`
-    // variant via `KotlinMultiplatformAndroidComponentsExtension` — there are
-    // no classic `debug`/`release` build types and no AGP unit-test pipeline
-    // unless the consumer opts in via `withHostTest { … }`. Wiring the
-    // Robolectric renderer through that path would mean replicating most of
-    // [AndroidPreviewSupport] for a different DSL surface (issue #248).
+    // nesting `com.android.library` inside KMP) ships a single variant, named
+    // after its main source set (`androidMain`) rather than a build type, via
+    // `KotlinMultiplatformAndroidComponentsExtension`.
     //
-    // The simpler answer for the canonical CMP-on-Android layout (UI under
-    // `:shared/src/androidMain/kotlin/...`) is to render through the Compose
-    // Multiplatform Desktop renderer instead: `androidMain` previews are
-    // pure-Compose composables that `ImageComposeScene` can capture once we
-    // point discovery at the KMP-Android compile output and runtime
-    // classpath. Done in [ComposePreviewTasks.registerDesktopTasks], gated on
-    // `org.jetbrains.compose` actually being applied (which the standard CMP
-    // sample plugin block — `composeMultiplatform` — applies).
+    // Its DEFAULT lane is the Compose Multiplatform Desktop renderer, which is
+    // what issue #248 settled on and what every such module has rendered
+    // through since: for the canonical CMP-on-Android layout (UI under
+    // `:shared/src/commonMain/kotlin/...`) the previews are pure-Compose
+    // composables that `ImageComposeScene` captures on the host JVM with no
+    // Android infrastructure at all. Done in
+    // [ComposePreviewTasks.registerDesktopTasks], gated on `org.jetbrains.compose`
+    // actually being applied (which the standard CMP sample plugin block —
+    // `composeMultiplatform` — applies).
     //
-    // We deliberately do NOT set `androidConfigured = true` here: that flag
-    // exists to suppress the desktop branch on classic Android modules where
-    // the AGP path owns task registration. KMP-Android wants the desktop
-    // branch.
+    // A module whose UI is Android-only can ask for the Robolectric lane
+    // instead with `composePreview { kmpAndroidRobolectric = true }`; see that
+    // property for why the choice is explicit. [AndroidPreviewSupport.configure]
+    // makes it, because only `onVariants` knows whether the consumer also
+    // declared the `withHostTest { }` compilation the lane needs — and hands
+    // back to `registerDesktop` when the answer is no, so the default path is
+    // reached by exactly the same code as before.
+    //
+    // Three flags. `androidConfigured` means "classic AGP owns task registration, the desktop
+    // branch must never run". `kmpAndroidRouting` means "the KMP-Android lane is deciding in
+    // `onVariants`, so the desktop branch must not run YET" — suppressed exactly until the
+    // fallback fires, which is the one caller allowed through the guard. `desktopDeferred` means
+    // "the desktop branch WOULD have run, but the KMP-Android plugin might still arrive".
+    var kmpAndroidRouting = false
     var desktopRegistered = false
-    val desktopHandler: () -> Unit = {
-      if (!androidConfigured && !desktopRegistered) {
+    var desktopDeferred = false
+    val registerDesktop: () -> Unit = {
+      if (!desktopRegistered) {
         desktopRegistered = true
         ComposePreviewTasks.registerDesktopTasks(project, extension)
       }
     }
-    // Apply order isn't guaranteed: a downstream `:shared` build may declare
-    // `androidKotlinMultiplatformLibrary` before `composeMultiplatform` or
-    // vice-versa. Both withPlugin hooks fire when their plugin lands, and
-    // the idempotent `desktopHandler` only runs once — whichever fires
-    // second is a no-op.
+    val desktopHandler: () -> Unit = {
+      if (!androidConfigured && !kmpAndroidRouting) registerDesktop()
+    }
+
+    // THE ORDERING PROBLEM, AND WHY THE DESKTOP BRANCH SOMETIMES WAITS
+    //
+    // Apply order is the consumer's, and a convention plugin can apply `org.jetbrains.compose`
+    // BEFORE `com.android.kotlin.multiplatform.library`. Committing to Desktop the moment compose
+    // lands then loses a module that was going to ask for the Robolectric lane: by the time the
+    // KMP-Android hook fires, `composePreviewDiscover` / `composePreviewRender` already exist, and
+    // registering them again fails configuration outright. Keeping Desktop instead is safe but
+    // wrong — an Android-only module whose previews cannot render there, which is the whole reason
+    // the lane exists (`:samples:cmp-android-robolectric` is pinned in that hostile order for
+    // exactly this reason, and rendered by CI).
+    //
+    // So when the KMP-Android plugin could still be coming, the compose hook records the intent
+    // and the commit happens in `afterEvaluate` instead — by which point every plugin in the
+    // `plugins { }` block has been applied and the answer is known. It is narrow on purpose:
+    // ONLY when `org.jetbrains.kotlin.multiplatform` is applied (the KMP-Android plugin requires
+    // it, so nothing else can grow one) and KMP-Android is not applied yet. A `kotlin("jvm")` +
+    // compose module, or one that already has KMP-Android when compose lands, registers
+    // immediately exactly as before — the overwhelming majority of consumers, and every shape
+    // where the plugin is applied last, see byte-identical behaviour.
+    fun kmpAndroidStillPossible(): Boolean =
+      project.pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform") &&
+        !project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")
+
     project.pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
-      desktopHandler()
+      // `desktopRegistered` stays in the guard as a backstop for the one order the deferral above
+      // cannot cover: `org.jetbrains.compose` applied before `org.jetbrains.kotlin.multiplatform`,
+      // where at compose time there is no KMP plugin to predict a KMP-Android one from. Rare, and
+      // it degrades to the previous behaviour — Desktop, plus the warning below — rather than to a
+      // duplicate-registration failure.
+      if (!androidConfigured && !kmpAndroidRouting && !desktopRegistered) {
+        kmpAndroidRouting = true
+        // `registerDesktop`, not `desktopHandler`: this IS the fallback, and it has to get past
+        // the `kmpAndroidRouting` guard it just set.
+        AndroidPreviewSupport.configure(project, extension, kmpAndroidFallback = registerDesktop)
+      } else if (desktopRegistered) {
+        // Silence is the worst outcome here: the consumer's `kmpAndroidRobolectric = true` is
+        // ignored and their Android-only previews fail to render with nothing pointing at why. The
+        // flag cannot be read at THIS moment — `withPlugin` callbacks run while the `plugins { }`
+        // block is still applying, so `composePreview { }` has not been evaluated — hence the
+        // deferred check. Warning only; it wires no tasks.
+        project.afterEvaluate {
+          if (extension.kmpAndroidRobolectric.getOrElse(false)) {
+            logger.warn(
+              "compose-preview: `composePreview { kmpAndroidRobolectric = true }` is set on " +
+                "'$path', but `org.jetbrains.compose` was applied before both " +
+                "`org.jetbrains.kotlin.multiplatform` and " +
+                "`com.android.kotlin.multiplatform.library`, so the Desktop renderer was already " +
+                "wired up by the time the Robolectric lane could claim it. The module is " +
+                "rendering on Desktop. Apply the Kotlin Multiplatform plugin before " +
+                "`org.jetbrains.compose` to get the Robolectric lane."
+            )
+          }
+        }
+      }
     }
 
     project.pluginManager.withPlugin("org.jetbrains.compose") {
-      if (androidConfigured) return@withPlugin
+      if (androidConfigured || kmpAndroidRouting) return@withPlugin
       if (
         project.plugins.hasPlugin("com.android.application") ||
           project.plugins.hasPlugin("com.android.library")
       ) {
         return@withPlugin
       }
+      if (kmpAndroidStillPossible()) {
+        desktopDeferred = true
+        return@withPlugin
+      }
       desktopHandler()
     }
+
+    // The deferred commit. Registered unconditionally so it exists whichever hook set the flag,
+    // and a no-op unless one did: `desktopDeferred` gates it, and the `desktopHandler` guards
+    // re-check the lane, so a KMP-Android module that claimed Robolectric in between is left
+    // alone. `afterEvaluate` is the last point before task realization at which
+    // `registerDesktopTasks` can still do its own `afterEvaluate` dependency wiring.
+    project.afterEvaluate { if (desktopDeferred) desktopHandler() }
   }
 
   /**

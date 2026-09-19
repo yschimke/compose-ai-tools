@@ -32,10 +32,27 @@ export const STRUCTURAL_ROLES = [
   "screen-root",
   "list",
   "list-item",
+  // Children in a fixed arrangement, writing no repetition — a box, a column, a row. The other
+  // six roles say how a node takes part in a SCREEN's decomposition; this one does not, and
+  // without it those three had to publish as `list`, whose template is handed a list state and an
+  // items hole. A box is not a scrolling list.
+  "container",
   "overlay",
   "controlled",
   "decoration",
 ];
+
+/**
+ * What a builtin may claim to BE on the shelf, as distinct from which template writes it.
+ *
+ * Mirrors `UI_BUILDER_SHELF_ROLES` in the same Kotlin file the role set above is pinned to. This is
+ * the UI builder's vocabulary rather than the template engine's, and the two are spelled `role` in
+ * the same declaration, which is exactly why a typo here is worth catching early.
+ */
+export const SHELF_ROLES = ["Scaffold", "Container", "Leaf"];
+
+/** What a builtin may claim about the canvas adapter, mirroring the consumer's wasm block. */
+export const WASM_ADAPTER_STATUSES = ["supported", "planned", "unsupported"];
 
 /**
  * The one directory a `templates` path may live under.
@@ -167,7 +184,7 @@ function validateTypedShapes(policy, errors) {
   if (isObject(policy.builtins)) {
     for (const [id, builtin] of Object.entries(policy.builtins)) {
       if (!isObject(builtin)) continue;
-      for (const field of ["displayName", "group", "canvas"]) {
+      for (const field of ["displayName", "group", "canvas", "implementation"]) {
         const value = builtin[field];
         if (value !== undefined && typeof value !== "string") {
           errors.push(
@@ -185,9 +202,66 @@ function validateTypedShapes(policy, errors) {
           `builtin ${JSON.stringify(id)} has a "properties" of ${JSON.stringify(builtin.properties)}; the reader decodes it as a list`,
         );
       }
+      validateBuiltinBlocks(id, builtin, errors);
+      validateBuiltinSlotShapes(id, builtin, errors);
     }
   }
   validateMenu(policy.menu, errors);
+}
+
+/**
+ * The typed shape of every field inside a builtin's `wasm`, `code` and `svg` blocks.
+ *
+ * Their children are TYPED in the reader — `UiBuilderBuiltinWasm`, `UiBuilderBuiltinCode`,
+ * `UiBuilderBuiltinSvg` — unlike `properties` and `slots`, whose elements are `JsonElement` and
+ * therefore the consumer's business rather than this validator's. A `code.imports` written as a
+ * bare string decodes into none of them, so the discovery task refuses the whole file and withdraws
+ * `ui-builder.json` — after a render, for a mistake a build-free pre-flight can see in a
+ * millisecond. That is exactly the failure this sweep exists to prevent, so the blocks are
+ * enumerated here rather than in the checks that read their MEANING.
+ */
+const BUILTIN_BLOCK_FIELDS = {
+  // `platformSupported` is absent on purpose: it is a `JsonElement` in the reader, so any JSON
+  // decodes and there is nothing to be wrong about.
+  wasm: { adapterStatus: "string", notes: "string" },
+  code: { symbol: "string", imports: "string[]" },
+  svg: { status: "string", fallback: "string", blocksExport: "boolean", notes: "string" },
+};
+
+const shapeOf = (value) =>
+  Array.isArray(value) ? (value.every((entry) => typeof entry === "string") ? "string[]" : "array") : typeof value;
+
+function validateBuiltinBlocks(id, builtin, errors) {
+  for (const [block, fields] of Object.entries(BUILTIN_BLOCK_FIELDS)) {
+    const value = builtin[block];
+    if (value === undefined) continue;
+    if (!isObject(value)) {
+      errors.push(
+        `builtin ${JSON.stringify(id)} has a "${block}" of ${JSON.stringify(value)}; the reader decodes it as an object`,
+      );
+      continue;
+    }
+    for (const [field, shape] of Object.entries(fields)) {
+      const child = value[field];
+      if (child === undefined || shapeOf(child) === shape) continue;
+      errors.push(
+        `builtin ${JSON.stringify(id)} has a "${block}.${field}" of ${JSON.stringify(child)}; the reader decodes it as ${shape === "string[]" ? "a list of strings" : `a ${shape}`}`,
+      );
+    }
+  }
+}
+
+/** The typed fields of a builtin's slot. The rest of a slot's shape belongs to the consumer. */
+function validateBuiltinSlotShapes(id, builtin, errors) {
+  if (!isObject(builtin.slots)) return;
+  for (const [slot, spec] of Object.entries(builtin.slots)) {
+    if (!isObject(spec)) continue;
+    if (spec.ordered !== undefined && typeof spec.ordered !== "boolean") {
+      errors.push(
+        `builtin ${JSON.stringify(id)} slot ${JSON.stringify(slot)} has an "ordered" of ${JSON.stringify(spec.ordered)}; the reader decodes it as a boolean`,
+      );
+    }
+  }
 }
 
 function validateMenu(menu, errors) {
@@ -272,6 +346,55 @@ function validateBuiltins(builtins, errors, warnings) {
       errors.push(
         `builtin ${JSON.stringify(id)} names role ${JSON.stringify(builtin.role)}; known roles are ${STRUCTURAL_ROLES.join(", ")}`,
       );
+    }
+    // The shelf role is the OTHER vocabulary in the same declaration: `role` says which template
+    // writes the component, `shelfRole` says what shape it is on the shelf. Absent is not an
+    // error — it asks the consumer to derive it — but a word outside the set names no shelf.
+    if (builtin.shelfRole !== undefined && !SHELF_ROLES.includes(builtin.shelfRole)) {
+      errors.push(
+        `builtin ${JSON.stringify(id)} names shelfRole ${JSON.stringify(builtin.shelfRole)}; it is one of ${SHELF_ROLES.join(", ")}, and it is not the structural "role" beside it`,
+      );
+    }
+    // The SHAPE of these three blocks is swept in validateTypedShapes; what is read here is what
+    // they MEAN — a word no consumer decodes, a block that answers half a question.
+    if (
+      isObject(builtin.wasm) &&
+      typeof builtin.wasm.adapterStatus === "string" &&
+      !WASM_ADAPTER_STATUSES.includes(builtin.wasm.adapterStatus)
+    ) {
+      errors.push(
+        `builtin ${JSON.stringify(id)} names wasm.adapterStatus ${JSON.stringify(builtin.wasm.adapterStatus)}; it is one of ${WASM_ADAPTER_STATUSES.join(", ")}`,
+      );
+    }
+    // A `code` block a consumer can see but not call is worse than no block: the block's presence
+    // is what stops it falling back to the placeholder it would otherwise draw.
+    if (isObject(builtin.code)) {
+      if (builtin.code.symbol === undefined) {
+        errors.push(
+          `builtin ${JSON.stringify(id)} declares a "code" block with no symbol, so an export through it writes a call to nothing`,
+        );
+      } else if (builtin.code.symbol === "") {
+        // A WARNING and not an error, measured rather than decided: the packaged builder
+        // vocabulary publishes `{"symbol": "", "imports": []}` for `layout/for-each`, which has no
+        // callable to name. A catalog republishing those declarations faithfully — the whole point
+        // of being able to state this block — would be refused by a rule that called it an error,
+        // and refusing a faithful copy is worse than reporting a block that says nothing.
+        warnings.push(
+          `builtin ${JSON.stringify(id)} declares a "code" block with an empty symbol, so an export through it writes a call to nothing. Omit the block and keep the placeholder.`,
+        );
+      }
+    }
+    // `status` and `fallback` are free words rather than a closed set — the recorder owns what
+    // they mean — so what is checked is that both are there. A block stating one of the two says
+    // less than no block, because a consumer reads its presence as an answer.
+    if (isObject(builtin.svg)) {
+      for (const field of ["status", "fallback"]) {
+        if (builtin.svg[field] === undefined || builtin.svg[field] === "") {
+          errors.push(
+            `builtin ${JSON.stringify(id)} declares an "svg" block with no ${field}; a block missing one of the two says less than no block at all`,
+          );
+        }
+      }
     }
     if (builtin.slots !== undefined && !isObject(builtin.slots)) {
       errors.push(`builtin ${JSON.stringify(id)} has a "slots" that is not an object`);

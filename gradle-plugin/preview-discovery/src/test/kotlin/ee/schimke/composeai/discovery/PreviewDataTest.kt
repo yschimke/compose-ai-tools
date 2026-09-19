@@ -190,6 +190,41 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `related round-trips, and is absent for a component that declares none`() {
+    // The links into OTHER catalogs (compose-ai-tools#5398). Carried VERBATIM: discovery never
+    // parses these, because the design-artifacts export's catalog inventory is the one parser and
+    // two parsers is how two spellings come to disagree.
+    val declared =
+      PreviewInfo(
+        id = "test.FilledButton_light",
+        functionName = "FilledButton",
+        className = "test.CatalogKt",
+        catalog =
+          CatalogEntry(
+            role = CatalogRole.COMPONENT,
+            componentId = "Button/Filled",
+            related = listOf("m3-samples==Samples"),
+          ),
+      )
+    val undeclared =
+      PreviewInfo(
+        id = "test.OutlinedButton_light",
+        functionName = "OutlinedButton",
+        className = "test.CatalogKt",
+        catalog = CatalogEntry(role = CatalogRole.COMPONENT, componentId = "Button/Outlined"),
+      )
+    val manifest =
+      PreviewManifest(module = "app", variant = "debug", previews = listOf(declared, undeclared))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews[0].catalog?.related).containsExactly("m3-samples==Samples")
+    // Empty rather than null, and the same thing an OLDER `preview-annotations` produces: the
+    // attribute simply is not on the class, so the reader records no entries.
+    assertThat(decoded.previews[1].catalog?.related).isEmpty()
+  }
+
+  @Test
   fun `a whole kit assignment round-trips through the preview manifest`() {
     // The coupled-axis case: the Wear kit's `Button` set has no
     // `Icon=Yes, Icon size=n/a, Alignment=Center` node, so the cell that lands on a real one turns

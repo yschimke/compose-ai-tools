@@ -59,19 +59,76 @@ class ServerDistributionProvisionTest {
   }
 
   @Test
-  fun `the environment overrides the pinned version`() {
-    assertEquals("9.9.9", ServerDistributionProvision.version { "9.9.9" })
-    assertEquals("9.9.9", ServerDistributionProvision.version { "  9.9.9 " })
+  fun `the environment names a release instead of the newest`() {
+    assertEquals("9.9.9", ServerDistributionProvision.requestedVersion { "9.9.9" })
+    assertEquals("9.9.9", ServerDistributionProvision.requestedVersion { "  9.9.9 " })
   }
 
   /**
    * A blank override is not a version. Left unguarded, `COMPOSE_PREVIEW_SERVER_VERSION=` — which is
    * what an unset shell variable expands to in a script — would build a URL ending in `v/` and 404.
+   *
+   * Null rather than a baked-in default now: nothing asked for a release, so the newest wins, and
+   * that is resolved rather than compiled in.
    */
   @Test
-  fun `a blank override falls back to the pin`() {
-    assertEquals(SERVE_VERSION, ServerDistributionProvision.version { "  " })
-    assertEquals(SERVE_VERSION, ServerDistributionProvision.version { null })
+  fun `a blank override asks for nothing`() {
+    assertNull(ServerDistributionProvision.requestedVersion { "  " })
+    assertNull(ServerDistributionProvision.requestedVersion { null })
+  }
+
+  @Test
+  fun `the newest release is read off the releases API`() {
+    val seen = mutableListOf<String>()
+    val body = """{"url":"https://api.github.com/x","tag_name":"v4.2.0","name":"4.2.0"}"""
+    val resolved =
+      ServerDistributionProvision.latestVersion(
+        fetcher = { url, dest ->
+          seen += url
+          dest.writeText(body)
+        }
+      )
+    assertEquals("4.2.0", resolved)
+    assertEquals(listOf(ServerDistributionProvision.LATEST_RELEASE_API), seen)
+  }
+
+  /**
+   * Every way of not getting an answer is the same answer, because [ServerDistributionProvision]
+   * has a cache to fall back on and a thrown exception out of `serve` would not reach it.
+   */
+  @Test
+  fun `an unresolvable latest is null rather than a throw`() {
+    assertNull(
+      ServerDistributionProvision.latestVersion(fetcher = { _, _ -> error("rate limited") })
+    )
+    assertNull(
+      ServerDistributionProvision.latestVersion(fetcher = { _, dest -> dest.writeText("{}") })
+    )
+    assertNull(
+      ServerDistributionProvision.latestVersion(fetcher = { _, dest -> dest.writeText("not json") })
+    )
+  }
+
+  /**
+   * Newest by VERSION, not by mtime: re-fetching an older release touches its directory, and the
+   * one written last is not the one a caller means by "the server I have".
+   */
+  @Test
+  fun `cached versions are ordered newest first`() {
+    val root = Files.createTempDirectory("cached-order").toFile().also { it.deleteOnExit() }
+    listOf("3.9.0", "3.24.0", "3.10.0", "not-a-version").forEach { version ->
+      val bin = File(File(root, version), "bin").also { it.mkdirs() }
+      File(bin, "compose-preview-server").writeText("#!/bin/sh\n")
+      File(File(root, version), "lib").mkdirs().also {
+        File(File(File(root, version), "lib"), "a.jar").writeText("jar")
+      }
+    }
+    // A directory with no lib/ is a half-unpack and is not a version this machine has.
+    File(File(root, "9.9.9"), "bin").mkdirs()
+    assertEquals(
+      listOf("3.24.0", "3.10.0", "3.9.0", "not-a-version"),
+      ServerDistributionProvision.cachedVersions(cacheRoot = root, osName = "Linux"),
+    )
   }
 
   @Test
@@ -80,7 +137,7 @@ class ServerDistributionProvisionTest {
 
     val binary =
       ServerDistributionProvision.ensure(
-        version = "3.0.0",
+        requested = "3.0.0",
         cacheRoot = cacheRoot,
         osName = "Linux",
         offline = false,
@@ -103,7 +160,7 @@ class ServerDistributionProvisionTest {
     val log = mutableListOf<String>()
 
     ServerDistributionProvision.ensure(
-      version = "3.0.0",
+      requested = "3.0.0",
       cacheRoot = cacheRoot,
       osName = "Linux",
       offline = false,
@@ -121,7 +178,7 @@ class ServerDistributionProvisionTest {
 
     val binary =
       ServerDistributionProvision.ensure(
-        version = "3.0.0",
+        requested = "3.0.0",
         cacheRoot = cacheRoot,
         osName = "Linux",
         offline = false,
@@ -148,7 +205,7 @@ class ServerDistributionProvisionTest {
 
     val binary =
       ServerDistributionProvision.ensure(
-        version = "3.0.0",
+        requested = "3.0.0",
         cacheRoot = cacheRoot,
         osName = "Linux",
         offline = false,
@@ -167,7 +224,7 @@ class ServerDistributionProvisionTest {
 
     val binary =
       ServerDistributionProvision.ensure(
-        version = "3.0.0",
+        requested = "3.0.0",
         cacheRoot = cacheRoot,
         osName = "Linux",
         offline = true,
@@ -187,7 +244,7 @@ class ServerDistributionProvisionTest {
 
     val binary =
       ServerDistributionProvision.ensure(
-        version = "3.0.0",
+        requested = "3.0.0",
         cacheRoot = cacheRoot,
         osName = "Linux",
         offline = false,
@@ -207,7 +264,7 @@ class ServerDistributionProvisionTest {
 
     val binary =
       ServerDistributionProvision.ensure(
-        version = "3.0.0",
+        requested = "3.0.0",
         cacheRoot = cacheRoot,
         osName = "Linux",
         offline = false,

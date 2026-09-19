@@ -75,6 +75,13 @@ export function applyCatalogPreviewAxes(candidates, previews, aliases, locales) 
         image.props = { ...(image.props ?? {}), locale };
         localesTagged += 1;
       }
+      // A repeatable @GlimmerEnvironmentPreview is one function with one capture per scene.
+      // Preserve that capture dimension as a catalog prop so the candidate join does not collapse
+      // the images as duplicates and the viewer exposes Environment as an ordinary axis.
+      const glimmerEnvironment = captures[index]?.glimmerEnvironment;
+      if (typeof glimmerEnvironment === "string" && glimmerEnvironment.trim() !== "") {
+        image.props = { ...(image.props ?? {}), environment: glimmerEnvironment };
+      }
       const fontScale = params.fontScale;
       if (typeof fontScale === "number" && Number.isFinite(fontScale) && fontScale !== 1) {
         image.props = { ...(image.props ?? {}), fontScale: formatFontScale(fontScale) };

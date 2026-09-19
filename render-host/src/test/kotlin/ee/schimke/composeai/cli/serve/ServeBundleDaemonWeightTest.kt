@@ -22,18 +22,19 @@ class ServeBundleDaemonWeightTest {
     jvmArgs: List<String> = emptyList(),
   ): File {
     val descriptor =
-      DaemonLaunchDescriptor(
-        schemaVersion = 2,
-        modulePath = ":catalog",
-        variant = "debug",
-        enabled = true,
-        mainClass = "ee.schimke.composeai.daemon.DaemonMain",
-        classpath = listOf("app.jar"),
-        jvmArgs = jvmArgs,
-        systemProperties = systemProperties,
-        workingDirectory = ".",
-        manifestPath = "previews.json",
-      )
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = 2,
+          modulePath = ":catalog",
+          variant = "debug",
+          enabled = true,
+          mainClass = "ee.schimke.composeai.daemon.DaemonMain",
+          classpath = listOf("app.jar"),
+          jvmArgs = jvmArgs,
+          systemProperties = systemProperties,
+          workingDirectory = ".",
+          manifestPath = "previews.json",
+        )
+        .build()
     return File.createTempFile("daemon-launch", ".json").apply {
       deleteOnExit()
       writeText(json.encodeToString(DaemonLaunchDescriptor.serializer(), descriptor))

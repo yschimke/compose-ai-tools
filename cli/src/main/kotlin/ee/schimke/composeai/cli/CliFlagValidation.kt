@@ -38,6 +38,111 @@ internal object CliFlagValidation {
 
   private val reportFlags = commandBase + setOf("--json", "--fail-on")
 
+  /**
+   * Every flag the server's `serve` command documents, shared by the commands that launch it.
+   *
+   * `ui-builder` launches the server's `ui` command, and that command accepts every `serve` flag as
+   * well — the server's own help says so. A launcher that listed a hand-picked subset warned about
+   * flags the documented command line actually takes, which reads as though the command were wrong
+   * rather than the list. One set, so the next serve flag is added in one place; a flag that
+   * arrives here first still gets the forwarded-note, which is accurate.
+   */
+  private val serveFlags =
+    setOf(
+      "--accept-bundles",
+      "--accept-bundles-from",
+      "--accept-docs",
+      "--accept-docs-from",
+      "--accept-images",
+      "--admin-token",
+      "--agent-grant-capabilities",
+      "--agent-grant-max-active",
+      "--agent-grant-max-ttl",
+      "--agent-grant-rate-limit",
+      "--agent-grant-scopes",
+      "--agent-grants",
+      "--allow-render-trusted",
+      "--background-renders",
+      "--bundle",
+      "--bundles",
+      "--catalog-branch-prefix",
+      "--catalog-cache-dir",
+      "--catalog-cache-max-bytes",
+      "--catalog-feed-cache",
+      "--catalog-feed-idle-timeout",
+      "--catalog-max-images",
+      "--catalog-refresh-interval",
+      "--catalog-repo",
+      "--catalog-source-root",
+      "--catalogs",
+      "--catalogs-file",
+      "--catalogs-unlisted",
+      "--component-browser",
+      "--discover",
+      "--doc-ttl",
+      "--engagement-file",
+      "--exit-when-idle",
+      "--export",
+      "--extra-maven-repos",
+      "--github-auth-callback-base-url",
+      "--github-auth-client-id",
+      "--github-auth-client-secret",
+      "--github-auth-cookie-domain",
+      "--github-auth-cookie-secret",
+      "--github-auth-repo",
+      "--github-auth-scope",
+      "--github-auth-users",
+      "--help",
+      "--history-branch",
+      "--host",
+      "--image-rate-limit",
+      "--image-ttl",
+      "--image-upload-repo",
+      "--inline",
+      "--lan",
+      "--live-seats",
+      "--no-history",
+      "--open-browser",
+      "--playground",
+      "--playground-android-bundle",
+      "--playground-bundle",
+      "--playground-caller-concurrency",
+      "--playground-catalog-limit",
+      "--playground-compile-slots",
+      "--playground-edit-lease-ttl",
+      "--playground-editing",
+      "--playground-rate-limit",
+      "--playground-sandbox",
+      "--playground-sandbox-cpus",
+      "--playground-sandbox-memory-mb",
+      "--playground-sandbox-pids",
+      "--playground-sandbox-ro",
+      "--playground-sandbox-ttl",
+      "--port",
+      "--public",
+      "--rc-player-wasm-dir",
+      "--revisions",
+      "--revisions-allow",
+      "--sites",
+      "--theme-cache-dir",
+      "--theme-cache-evict",
+      "--theme-cache-max-bytes",
+      "--theme-optimizer-coordination-dir",
+      "--token",
+      "--trust-forwarded-for",
+      "--trust-store",
+      "--wasm-dir",
+      "-h",
+      "--admin-read-token",
+      "--catalog-mcp",
+      "--onboard-cache",
+      "--spare-sandboxes",
+      "--ui-builder-comment-webhook",
+      "--ui-builder-comment-webhook-format",
+      "--ui-builder-packs",
+      "--wasm-ui-dir",
+    )
+
   val BY_COMMAND: Map<String, Set<String>> =
     mapOf(
       "show" to commandBase + setOf("--json", "--images"),
@@ -135,100 +240,15 @@ internal object CliFlagValidation {
             "--token",
             "--wasm-dir",
           ),
-      "serve" to
-        commandBase +
-          setOf(
-            "--accept-bundles",
-            "--accept-bundles-from",
-            "--accept-docs",
-            "--accept-docs-from",
-            "--accept-images",
-            "--agent-grants",
-            "--agent-grant-scopes",
-            "--agent-grant-capabilities",
-            "--agent-grant-max-ttl",
-            "--agent-grant-max-active",
-            "--agent-grant-rate-limit",
-            "--image-upload-repo",
-            "--image-ttl",
-            "--image-rate-limit",
-            "--admin-token",
-            "--allow-render-trusted",
-            "--bundle",
-            "--bundles",
-            "--catalog-branch-prefix",
-            "--catalog-feed-cache",
-            "--background-renders",
-            "--catalog-cache-dir",
-            "--catalog-cache-max-bytes",
-            "--theme-cache-dir",
-            "--theme-cache-evict",
-            "--theme-cache-max-bytes",
-            "--theme-optimizer-coordination-dir",
-            "--catalog-feed-idle-timeout",
-            "--catalog-max-images",
-            "--catalog-refresh-interval",
-            "--catalog-repo",
-            "--catalog-source-root",
-            "--catalogs",
-            "--catalogs-file",
-            "--catalogs-unlisted",
-            "--component-browser",
-            "--discover",
-            "--doc-ttl",
-            "--engagement-file",
-            "--exit-when-idle",
-            "--export",
-            "--extra-maven-repos",
-            "--github-auth-callback-base-url",
-            "--github-auth-cookie-domain",
-            "--github-auth-client-id",
-            "--github-auth-client-secret",
-            "--github-auth-cookie-secret",
-            "--github-auth-repo",
-            "--github-auth-scope",
-            "--github-auth-users",
-            "--help",
-            "-h",
-            "--history-branch",
-            "--host",
-            "--inline",
-            "--lan",
-            "--live-seats",
-            "--no-history",
-            "--open-browser",
-            "--playground",
-            "--playground-android-bundle",
-            "--playground-bundle",
-            "--playground-caller-concurrency",
-            "--playground-catalog-limit",
-            "--playground-compile-slots",
-            "--playground-editing",
-            "--playground-edit-lease-ttl",
-            "--playground-rate-limit",
-            "--playground-sandbox",
-            "--playground-sandbox-cpus",
-            "--playground-sandbox-memory-mb",
-            "--playground-sandbox-pids",
-            "--playground-sandbox-ro",
-            "--playground-sandbox-ttl",
-            "--port",
-            "--public",
-            "--rc-player-wasm-dir",
-            "--revisions",
-            "--revisions-allow",
-            "--sites",
-            "--token",
-            "--trust-forwarded-for",
-            "--trust-store",
-            "--wasm-dir",
-          ),
+      "serve" to commandBase + serveFlags,
       // A launcher for the server's `ui` command, so the flags are that command's: the selectors
       // a build needs, the network knobs any local server takes, and the builder's own options.
       // `--no-open` belongs to the lane rather than the server (it suppresses `--open-browser`),
-      // which is why it is listed here and not among serve's.
+      // which is why it is listed here and not among serve's. `--no-project` is the server's
+      // packaged-catalogs mode, named in the `ui-builder --help` the server answers with.
       "ui-builder" to
         commandBase +
+          serveFlags +
           setOf(
             "--build-host",
             "--discover",
@@ -237,6 +257,7 @@ internal object CliFlagValidation {
             "--host",
             "--lan",
             "--no-open",
+            "--no-project",
             "--open-path",
             "--port",
             "--public",
@@ -256,7 +277,12 @@ internal object CliFlagValidation {
       // that refusal is a better message than "unrecognised option".
       "design" to
         setOf(
+          "--assets",
+          "--catalog",
+          "--components",
+          "--document",
           "--format",
+          "--local",
           "--help",
           "-h",
           "--limit",
@@ -294,6 +320,13 @@ internal object CliFlagValidation {
           // a token may not be an argument, which "unrecognised option" does not.
           "--github-token",
         ),
+      // `rc` owns nested subcommands, so this is the union of what `compile` / `dump` / `header`
+      // read — and ONLY that. Deliberately not `commandBase`, unlike most entries here: `rc` drives
+      // no build and reads no project, so `--module`, `--filter`, `--timeout` and the rest have
+      // nothing to act on. Including them would have this validator call
+      // `rc --module :app dump doc.rc` well-formed while the module is silently discarded, which
+      // is the exact failure it exists to warn about. `devices` sets the precedent.
+      "rc" to setOf("--help", "-h", "--output", "-o", "--compact", "--json"),
       // `bundle` owns nested subcommands. Validate at the routed-command boundary while allowing
       // the union of their options; nested positional dispatch remains BundleCommand's concern.
       "bundle" to
@@ -377,6 +410,25 @@ internal object CliFlagValidation {
 
   /** Every distinct option registered for at least one command, for the source drift guard. */
   val ALL: Set<String> = BY_COMMAND.values.flatten().toSet()
+
+  /**
+   * Commands whose argv is forwarded to the compose-preview-server binary essentially untouched.
+   *
+   * For these, an option outside the allowlist is not "ignored" — the launcher passes it through
+   * and the server, which owns the flag surface, accepts or refuses it by name. The note that names
+   * an unknown option must say that, because "(ignored)" would be false: the option reaches the
+   * server and takes effect there.
+   */
+  internal val FORWARDED_TO_SERVER: Set<String> = setOf("serve", "browse", "ui-builder", "design")
+
+  /** The stderr line [Main] prints for one unknown option — accurate about where it lands. */
+  fun unknownFlagNote(command: String, flag: String): String =
+    if (command in FORWARDED_TO_SERVER) {
+      "compose-preview: note: option '$flag' is not one the '$command' launcher reads; it is " +
+        "forwarded to the compose-preview-server binary, which validates its own flags"
+    } else {
+      "compose-preview: warning: unrecognised option '$flag' for '$command' (ignored)"
+    }
 
   /** Unknown option spellings, de-duplicated in argv order. */
   fun unknownFlags(command: String, args: List<String>): List<String> {

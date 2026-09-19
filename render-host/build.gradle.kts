@@ -80,6 +80,7 @@ dependencies {
   implementation(libs.composeai.common.io)
   implementation(project(":common-image-crop"))
   implementation(libs.kotlinx.serialization.json)
+  implementation(libs.classgraph)
 
   testImplementation(kotlin("test"))
   // In-memory FileSystem for the store tests, which assert on-disk output without touching the real

@@ -419,6 +419,33 @@ export function specPreviewRefs(spec) {
   return refs;
 }
 
+/**
+ * The Figma file keys a spec names in `referenceKits` — the kit or kits this system is compared
+ * against.
+ *
+ * An entry is a Figma URL and this returns the keys, so a caller can ask "is this the kit that sheet
+ * reproduces?" without re-parsing URLs. A spec that names no kits returns an empty list, which is a
+ * meaningful answer rather than a missing one: it says this system reproduces nothing, and so has no
+ * design pages of its own.
+ *
+ * BOTH URL forms, because this repository's own specs use both. `/design/<key>/<slug>` is what a
+ * kit opened from the editor gives you; `/community/file/<key>/<slug>` is the Community channel
+ * Google publishes its kits through, and `samples/design-catalog-m3` and
+ * `samples/design-catalog-wear-m3` are written that way. Matching only the first silently returned
+ * an empty list for those, which — once a positive match gates publishing — reads as "this system
+ * reproduces no kit" and takes its pages away.
+ *
+ * A bare key passes through, and anything that is neither is dropped. Community keys are numeric
+ * and editor keys alphanumeric, so the filter admits both.
+ */
+export function referenceKitFileKeys(spec) {
+  const kits = Array.isArray(spec?.referenceKits) ? spec.referenceKits : [];
+  return kits
+    .filter((kit) => typeof kit === "string" && kit !== "")
+    .map((kit) => kit.match(/\/(?:design|community\/file)\/([A-Za-z0-9]+)/)?.[1] ?? kit)
+    .filter((key) => /^[A-Za-z0-9]+$/.test(key));
+}
+
 /** Levenshtein distance, for "did you mean" suggestions on a mismatched name. */
 export function editDistance(a, b) {
   const m = a.length;
@@ -620,6 +647,7 @@ export function validateSpec(spec, opts = {}) {
         }
       }
       errors.push(...priorityErrors(comp, cp));
+      errors.push(...relatedErrors(comp, cp));
       const variants = comp?.variants;
       if (variants !== undefined) {
         if (!Array.isArray(variants)) {
@@ -830,6 +858,57 @@ function priorityErrors(entry, path) {
     `${path}.priority must be one of ${PRIORITIES.map((p) => `"${p}"`).join(", ")} ` +
       `(got ${JSON.stringify(value)})`,
   ];
+}
+
+/**
+ * Reject a malformed `related` — a component's links into OTHER catalogs (issue #5398).
+ *
+ * Typed here rather than left to `catalog.spec.schema.json`, for the reason the variant key checks
+ * already state: the schema is a `$schema` hint for editors and no build step enforces it, so this
+ * function is the only gate a malformed spec actually meets.
+ *
+ * An ERROR rather than a lenient drop, on the same reasoning as `capture` and `priority`: a link
+ * whose `system` is misspelled or mistyped is silently unpublishable (`applyRelated` drops it), so
+ * a typo would present as the affordance simply never appearing, with nothing pointing back at the
+ * spec. That is exactly the failure this repository has already paid for once with `parallel`,
+ * where 51 components published zero pairings and nothing said so.
+ */
+function relatedErrors(entry, path) {
+  const value = entry?.related;
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    return [`${path}.related must be an array when present`];
+  }
+  const errors = [];
+  const allowedKeys = new Set(["system", "componentId", "label"]);
+  value.forEach((link, li) => {
+    const lp = `${path}.related[${li}]`;
+    if (typeof link !== "object" || link === null || Array.isArray(link)) {
+      errors.push(`${lp} must be an object`);
+      return;
+    }
+    for (const key of Object.keys(link)) {
+      if (!allowedKeys.has(key)) {
+        errors.push(
+          `${lp}.${key} is not supported; expected only ${[...allowedKeys]
+            .map((k) => `\`${k}\``)
+            .join(", ")}`,
+        );
+      }
+    }
+    if (typeof link.system !== "string" || link.system.trim().length === 0) {
+      errors.push(`${lp}.system is required (the other catalog's system slug)`);
+    }
+    // `componentId` and `label` are both optional, and both MEAN something by their absence —
+    // "same id as mine" and "use the other catalog's title". Present-but-empty says neither, so it
+    // is rejected rather than treated as absent.
+    for (const key of ["componentId", "label"]) {
+      if (link[key] !== undefined && (typeof link[key] !== "string" || link[key].trim() === "")) {
+        errors.push(`${lp}.${key} must be a non-empty string when present`);
+      }
+    }
+  });
+  return errors;
 }
 
 /**

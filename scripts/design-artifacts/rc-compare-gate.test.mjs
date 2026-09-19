@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  applyCmpWasmPerformanceBudgets,
+  summarizeCmpWasmFirstFrame,
   evaluateCmpWasmGate,
   formatCmpWasmGate,
   readCmpWasmAllowlist,
@@ -39,30 +39,39 @@ test("pixel parity is reported, never gated", () => {
   assert.match(formatCmpWasmGate(gate), /pixel parity \(report-only\): 2 of 3 row\(s\) above 1%/);
 });
 
-test("cold and warm first-frame budgets fail on the slowest measured render", () => {
+test("a first frame over budget is reported, and does not fail the lane", () => {
   const rows = [
     { id: "cold", cmpWasmRendered: true, cmpWasmStartup: "cold", cmpWasmFirstFrameMs: 9001 },
     { id: "warm-a", cmpWasmRendered: true, cmpWasmStartup: "warm", cmpWasmFirstFrameMs: 1200 },
     { id: "warm-b", cmpWasmRendered: true, cmpWasmStartup: "warm", cmpWasmFirstFrameMs: 5200 },
+    { id: "warm-c", cmpWasmRendered: true, cmpWasmStartup: "warm", cmpWasmFirstFrameMs: 10_023 },
   ];
-  const gate = applyCmpWasmPerformanceBudgets(
+  const gate = summarizeCmpWasmFirstFrame(
     evaluateCmpWasmGate(rows.map((row) => row.id), rows),
     rows,
     10_000,
     5_000,
   );
 
-  assert.equal(gate.passed, false);
-  assert.deepEqual(gate.failures, [
-    {
-      id: "performance-warm",
-      note: "warm first frame 5200 ms exceeds 5000 ms budget (warm-b)",
-    },
-  ]);
+  assert.equal(gate.passed, true);
+  assert.deepEqual(gate.failures, []);
+  assert.equal(gate.performance.cold.maxMs, 9001);
+  assert.deepEqual(gate.performance.cold.over, []);
+  assert.equal(gate.performance.warm.count, 3);
+  assert.equal(gate.performance.warm.maxMs, 10_023);
+  // Every row over the line, slowest first — not just the maximum, which is what the verdict used
+  // to name and is the least useful half of the report.
+  assert.deepEqual(
+    gate.performance.warm.over.map((row) => row.id),
+    ["warm-c", "warm-b"],
+  );
+  const formatted = formatCmpWasmGate(gate);
+  assert.match(formatted, /warm first frame \(report-only\): 10023 ms max \/ 5000 ms budget \(3 measured, 2 over\)/);
+  assert.match(formatted, /· warm-c: 10023 ms/);
 });
 
-test("an enabled first-frame budget requires a measurement", () => {
-  const gate = applyCmpWasmPerformanceBudgets(
+test("an enabled first-frame budget still requires a measurement", () => {
+  const gate = summarizeCmpWasmFirstFrame(
     evaluateCmpWasmGate([], []),
     [],
     10_000,

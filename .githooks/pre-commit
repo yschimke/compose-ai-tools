@@ -21,7 +21,11 @@ fi
 
 # `ktfmtCheck` is fast on the configuration cache once warm, but does a full
 # repo scan. For now that's the simplest correct option: same code path as CI.
-if [ ${#kt_staged[@]} -gt 0 ] && ! ./gradlew --quiet ktfmtCheckAll; then
+gradle_args=(--quiet)
+if [ -n "${COMPOSE_AI_LOCAL_DEPENDENCIES:-}" ]; then
+  gradle_args+=(--no-configuration-cache --init-script "$repo_root/scripts/local-dependencies.init.gradle")
+fi
+if [ ${#kt_staged[@]} -gt 0 ] && ! ./gradlew "${gradle_args[@]}" ktfmtCheckAll; then
   cat <<'MSG' >&2
 
 ktfmt found unformatted Kotlin code. Run:

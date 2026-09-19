@@ -283,6 +283,8 @@ object PreviewDiscovery {
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
   private const val GLIMMER_ENVIRONMENT_PREVIEW_FQN =
     "ee.schimke.composeai.preview.GlimmerEnvironmentPreview"
+  private const val GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN =
+    "ee.schimke.composeai.preview.GlimmerEnvironmentPreview.Container"
   // Capture-bounds gutter — a per-edge dp margin the RENDERER adds outside the composable so a
   // shadow / focus ring drawn past the component's own bounds isn't cropped at the image edge.
   // Same FQN-match policy as the sibling annotations. See `CaptureGutter.kt` and m3-catalog#179.
@@ -789,10 +791,13 @@ object PreviewDiscovery {
     // Lottie asset previews are appended after normalization with their render outputs already
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
     val normalized =
-      retargetWearStickers(
-        input.isWear,
-        pinWearCanvas = input.retargetWearPreviews,
-        normalizeRenderOutputs(deduped),
+      retargetGlimmerStickers(
+        isGlimmerModule(input),
+        retargetWearStickers(
+          input.isWear,
+          pinWearCanvas = input.retargetWearPreviews,
+          normalizeRenderOutputs(deduped),
+        ),
       ) +
         discoverLottieAssets(input) +
         discoverSvgAssets(input) +
@@ -1305,6 +1310,12 @@ object PreviewDiscovery {
       motionPreview = annStringOrNull(component, "motionPreview"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
       breakpointKit = annStringArray(component, "breakpointKit"),
+      // Read verbatim, exactly like `breakpointKit` above and for the same reason: the
+      // design-artifacts export's catalog inventory is the one parser of these entries, because
+      // two parsers is how two spellings come to disagree. An older `preview-annotations` on the
+      // consumer's classpath simply has no such attribute, and `annStringArray` records an empty
+      // list for it — the same thing declaring nothing produces.
+      related = annStringArray(component, "related"),
     )
   }
 
@@ -2202,7 +2213,7 @@ object PreviewDiscovery {
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
-    val glimmerEnvironmentSpec = extractGlimmerEnvironmentSpec(annotations)
+    val glimmerEnvironmentSpecs = extractGlimmerEnvironmentSpecs(annotations)
     // `@SettledPreview` and a motion capture on ONE function want opposite things from the shared
     // paused clock — the GIF records the timeline from its start, the settled still needs a
     // coordinate near the end, and virtual time does not rewind. That used to be resolved here, by
@@ -2408,7 +2419,7 @@ object PreviewDiscovery {
             focusSpecs,
             focusGifSpec,
             ambientSpec,
-            glimmerEnvironmentSpec,
+            glimmerEnvironmentSpecs,
             settleSpec,
             gestureHintSpec,
             permissionSpec,
@@ -2441,7 +2452,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
-          glimmerEnvironmentSpec,
+          glimmerEnvironmentSpecs,
           settleSpec,
           gestureHintSpec,
           permissionSpec,
@@ -2474,7 +2485,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
-          glimmerEnvironmentSpec,
+          glimmerEnvironmentSpecs,
           settleSpec,
           gestureHintSpec,
           permissionSpec,
@@ -3279,7 +3290,68 @@ object PreviewDiscovery {
     val dataProducts: List<PreviewDataProduct>,
   )
 
+  private fun glimmerEnvironmentOutput(
+    output: String,
+    environment: GlimmerEnvironmentCapture,
+  ): String {
+    val dot = output.lastIndexOf('.')
+    val suffix = "_GLIMMER_${environment.name.lowercase()}"
+    return if (dot < 0) "$output$suffix"
+    else output.substring(0, dot) + suffix + output.substring(dot)
+  }
+
   private fun buildOutputPlan(
+    kind: PreviewKind,
+    previewId: String,
+    scrolls: List<ScrollCapture>,
+    animation: AnimationCapture?,
+    interaction: InteractionCapture?,
+    focuses: List<FocusCapture>,
+    focusGif: FocusGifCapture?,
+    ambient: AmbientCapture?,
+    glimmerEnvironments: List<GlimmerEnvironmentCapture>,
+    settle: SettleCapture?,
+    gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
+    launcherWidget: LauncherWidgetCapture?,
+    launcherWidgetResize: LauncherWidgetResizeSpec?,
+    timings: List<Long>,
+  ): PreviewOutputPlan {
+    val environments: List<GlimmerEnvironmentCapture?> = glimmerEnvironments.ifEmpty {
+      listOf(null)
+    }
+    val plans = environments.map { environment ->
+      buildOutputPlanForEnvironment(
+        kind,
+        previewId,
+        scrolls,
+        animation,
+        interaction,
+        focuses,
+        focusGif,
+        ambient,
+        environment,
+        settle,
+        gestureHint,
+        permissions,
+        launcherWidget,
+        launcherWidgetResize,
+        timings,
+      )
+    }
+    if (plans.size == 1) return plans.single()
+    return PreviewOutputPlan(
+      captures =
+        plans.zip(glimmerEnvironments).flatMap { (plan, environment) ->
+          plan.captures.map { capture ->
+            capture.copy(renderOutput = glimmerEnvironmentOutput(capture.renderOutput, environment))
+          }
+        },
+      dataProducts = plans.first().dataProducts,
+    )
+  }
+
+  private fun buildOutputPlanForEnvironment(
     kind: PreviewKind,
     previewId: String,
     scrolls: List<ScrollCapture>,
@@ -3965,15 +4037,38 @@ object PreviewDiscovery {
     )
   }
 
-  /** Reads `@GlimmerEnvironmentPreview(environment)` into post-capture metadata. */
-  private fun extractGlimmerEnvironmentSpec(
+  /** Reads repeatable `@GlimmerEnvironmentPreview(environment)` post-capture metadata. */
+  private fun extractGlimmerEnvironmentSpecs(
     annotations: List<AnnotationInfo>
-  ): GlimmerEnvironmentCapture? {
-    val ann = annotations.firstOrNull { it.name == GLIMMER_ENVIRONMENT_PREVIEW_FQN } ?: return null
-    val environmentName =
-      (ann.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
-        ?: return null
-    return runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
+  ): List<GlimmerEnvironmentCapture> {
+    val infos = mutableListOf<AnnotationInfo>()
+    for (ann in annotations) {
+      when (ann.name) {
+        GLIMMER_ENVIRONMENT_PREVIEW_FQN -> infos += ann
+        GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN ->
+          when (val value = ann.parameterValues.getValue("value")) {
+            is Array<*> -> infos += value.filterIsInstance<AnnotationInfo>()
+            is AnnotationInfo -> infos += value
+            else -> {
+              val length = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
+              for (index in 0 until length) {
+                (java.lang.reflect.Array.get(value, index) as? AnnotationInfo)?.let(infos::add)
+              }
+            }
+          }
+      }
+    }
+    return infos
+      .mapNotNull { info ->
+        val environmentName =
+          (info.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
+            ?: return@mapNotNull null
+        runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
+      }
+      .distinct()
+      // JVM annotation-table order is not a source-order contract (ClassGraph can expose repeated
+      // entries in reverse). Keep capture names and manifests stable across compilers/scanners.
+      .sortedBy { it.ordinal }
   }
 
   /**
@@ -4413,6 +4508,8 @@ object PreviewDiscovery {
       ANIMATED_PREVIEW_FQN,
       FOCUSED_PREVIEW_FQN,
       AMBIENT_PREVIEW_FQN,
+      GLIMMER_ENVIRONMENT_PREVIEW_FQN,
+      GLIMMER_ENVIRONMENT_PREVIEW_CONTAINER_FQN,
       GESTURE_HINT_PREVIEW_FQN,
       PERMISSION_PREVIEW_FQN,
       LAUNCHER_WIDGET_PREVIEW_FQN,
@@ -4666,7 +4763,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
-    glimmerEnvironment: GlimmerEnvironmentCapture?,
+    glimmerEnvironments: List<GlimmerEnvironmentCapture>,
     settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
@@ -4690,7 +4787,7 @@ object PreviewDiscovery {
       focuses,
       focusGif,
       ambient,
-      glimmerEnvironment,
+      glimmerEnvironments,
       settle,
       gestureHint,
       permissions,
@@ -4722,7 +4819,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
-    glimmerEnvironment: GlimmerEnvironmentCapture?,
+    glimmerEnvironments: List<GlimmerEnvironmentCapture>,
     settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
@@ -4745,7 +4842,7 @@ object PreviewDiscovery {
         focuses,
         focusGif,
         ambient,
-        glimmerEnvironment,
+        glimmerEnvironments,
         settle,
         gestureHint,
         permissions,
@@ -4962,6 +5059,78 @@ object PreviewDiscovery {
           }
         }
       } else {
+        info
+      }
+    }
+  }
+
+  /**
+   * Maven group of the Glimmer UI toolkit, matched against [Input.dependencyJarCoordinates].
+   *
+   * Detection is by DEPENDENCY rather than by manifest, which is the difference from [Input.isWear]
+   * and not an inconsistency: a Wear module announces itself with `<uses-feature
+   * android:name="android.hardware.type.watch">`, and glasses have no such feature to declare. What
+   * makes a module a Glimmer module is that it draws with Glimmer, and the classpath is where that
+   * is written down.
+   *
+   * Group prefix rather than an exact artifact so `glimmer`, `glimmer-google-fonts` and whatever
+   * the line adds next all count, and so an alpha repackaging does not silently stop matching.
+   */
+  private const val GLIMMER_COORDINATE_PREFIX = "androidx.xr.glimmer:"
+
+  /**
+   * True when this module compiles against `androidx.xr.glimmer` — see [GLIMMER_COORDINATE_PREFIX].
+   */
+  internal fun isGlimmerModule(input: Input): Boolean =
+    input.dependencyJarCoordinates.values.any { it.startsWith(GLIMMER_COORDINATE_PREFIX) }
+
+  /**
+   * Measure a Glimmer module's device-less previews against the AI-glasses display
+   * ([DeviceDimensions.DEFAULT_GLASSES], 960x720 @ 1.0x) instead of the renderer's 400dp phone
+   * sandbox at 2.625x. A no-op off Glimmer, and on any preview that pins its own canvas.
+   *
+   * This is [retargetWearStickers]'s argument applied to a second form factor, and the reason is
+   * the same twice over: a module drawing for a screen that is not a phone should measure against
+   * that screen, and export at that screen's density. What is Glimmer-specific is how much the
+   * density matters — Glimmer sizes UI in visual angle, so density 1.0 is a calibration rather than
+   * a scale factor (see [DeviceDimensions.DEFAULT_GLASSES]).
+   *
+   * As with Wear, this sets [PreviewParams.wrapSandboxWidthDp] /
+   * [PreviewParams.wrapSandboxHeightDp] and NOT `widthDp` / `heightDp`. The distinction is the
+   * whole point, and both halves of it were observed in the field before this existed:
+   * - Pinning the axes is what #2373 did on Wear, and yschimke/m3-catalog#367 is the same fault
+   *   arrived at from the other direction: `glimmer-catalog` wrote `device =
+   *   "spec:width=960,height=720,dpi=160"` on all 19 stickers, and every one of them became a
+   *   component adrift in a 691,200-pixel frame — a 118x48 toggle button at 0.8% coverage, 4.1% on
+   *   average across the sheet.
+   * - Leaving the sandbox alone is what gives a fill-width `Card` a 400dp phone bound it has no
+   *   relationship to.
+   *
+   * Sandboxing gets both: `fillMaxWidth` resolves against 960dp so a Card sizes to the display, a
+   * Button still wraps tight, and the renderer crops every sticker to its measured bounds.
+   */
+  internal fun retargetGlimmerStickers(
+    isGlimmer: Boolean,
+    previews: List<PreviewInfo>,
+  ): List<PreviewInfo> {
+    if (!isGlimmer) return previews
+    val glasses = DeviceDimensions.DEFAULT_GLASSES
+    return previews.map { info ->
+      val p = info.params
+      if (
+        p.kind == PreviewKind.COMPOSE && p.device == null && p.widthDp == null && p.heightDp == null
+      ) {
+        info.copy(
+          params =
+            p.copy(
+              wrapSandboxWidthDp = glasses.widthDp,
+              wrapSandboxHeightDp = glasses.heightDp,
+              density = glasses.density,
+            )
+        )
+      } else {
+        // A preview that names its own device or size is asking for exactly that, and a specimen
+        // pinned to a measured width is the usual reason. Left untouched, same as on Wear.
         info
       }
     }

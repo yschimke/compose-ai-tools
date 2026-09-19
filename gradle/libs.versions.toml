@@ -3,7 +3,7 @@
 # `Kotlin version too new`, which fails the `Analyze (java-kotlin)` job as a configuration error
 # and leaves the repo's main language unscanned. Bump once the CodeQL bundle catches up (the
 # alternative, disabling Kotlin extraction, would trade away the scan itself).
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -18,7 +18,7 @@ kotlin = "2.4.10"
 # `configureKotlinCompatibility(...)`; remove the flag (and bump this to
 # `2.1.x`) when the removal lands and we're ready to drop 2.0.x consumers.
 kotlinCoreLibraries = "2.0.21"
-agp = "9.4.0"
+agp = "9.4.1"
 ktfmt = "0.27.0"
 tapmoc = "0.4.2"
 # Released versions only. Robolectric publishes `4.17-SNAPSHOT` to Sonatype, and Renovate ranks it
@@ -34,12 +34,12 @@ tapmoc = "0.4.2"
 # `:daemon:android` draws held frames with those timestamps untranslated, which restores beta-2
 # behaviour inside the daemon sandbox; those two tests are the acceptance check for any bump here,
 # not just a green build.
-robolectric = "4.17-beta-4"
+robolectric = "4.17"
 roborazzi = "1.74.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
-androidx-tracing = "2.0.1"
+androidx-tracing = "2.0.2"
 # androidx.tracing 2.x — the Kotlin Multiplatform rewrite, used by the CMP Remote Compose player
 # stack through `:rc-player-trace`. Pinned separately from `androidx-tracing` above rather than
 # bumping it: 2.x drags `kotlinx-coroutines-core` and `androidx.collection` in, which the daemon's
@@ -47,13 +47,13 @@ androidx-tracing = "2.0.1"
 # atrace-shaped `Trace.beginSection` that 1.3.0 already gives it. The two coordinates never meet on
 # one classpath. Note 2.x publishes only `androidJvm` + `jvm` variants — there is no wasmJs or Apple
 # klib, which is the whole reason `:rc-player-trace` is an `expect`/`actual` facade.
-androidx-tracing-kmp = "2.0.1"
+androidx-tracing-kmp = "2.0.2"
 classgraph = "4.8.195"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.08.00"
+compose-bom-stable = "2026.09.00"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -105,7 +105,7 @@ compose-multiplatform-forward = "1.12.0-rc01"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:remotecompose`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha27"
+compose-material3-catalog = "1.5.0-alpha28"
 # JetBrains Compose Multiplatform material3 tracks its own line, so the explicit coordinate must
 # use this version rather than `compose-multiplatform`. Matched to what `m3-catalog` pins on the
 # 1.11 line, so the largest live-rendered catalog and the host agree on the material3 ABI as well
@@ -123,12 +123,6 @@ compose-multiplatform-material3 = "1.11.0-alpha07"
 # would pass while covering nothing. `m3-catalog` pins this exact version.
 compose-multiplatform-material3-forward = "1.12.0-alpha03"
 graphics-shapes = "1.1.0"
-# Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Tracks the same Compose
-# minor as `compose-multiplatform`: 2.2.x is built against JetBrains Compose foundation 1.11.0, which
-# is what the 1.11 line above now ships. (On the old 1.10.3 floor this was held at 2.1.0 precisely so
-# it could not drag a *newer* Compose onto the renderer classpath — the failure direction
-# `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`.)
-compottie = "2.2.4"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's
@@ -136,14 +130,14 @@ activity-compose = "1.13.0"
 # `navigation.*` script-event surface end-to-end. Activity-compose 1.13's
 # transitive `androidx.navigationevent` floor (see CompatRules.kt) means
 # this stays compatible with the renderer's compileOnly stack.
-navigation-compose = "2.10.0"
+navigation-compose = "2.10.1"
 # `androidx.glance:glance-appwidget` — used only by `:samples:android`'s Glance widget
 # preview (`GlanceWidgetPreview` in `AppWidgetPreviews.kt`). Renders a `GlanceAppWidget` to
 # `RemoteViews` via `GlanceAppWidget.compose(...)` and inflates that into the preview surface.
 # 1.1.x is the current stable line; bump when the Glance team ships a 1.2.x with the planned
 # preview-DSL stabilisation.
 glance-appwidget = "1.2.0"
-wear-compose = "1.7.0-beta02"
+wear-compose = "1.7.0-rc01"
 wear-tiles = "1.6.2"
 wear-protolayout = "1.4.2"
 wear-tooling-preview = "1.0.0"
@@ -151,7 +145,7 @@ wear-tooling-preview = "1.0.0"
 # glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
-xr-glimmer = "1.0.0-alpha18"
+xr-glimmer = "1.0.0-alpha19"
 # Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
 # (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
 # AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
@@ -168,9 +162,9 @@ xr-compose = "1.0.0-alpha17"
 # `AndroidPreviewSupport.kt` can't drift from the catalog. The runtime/scenecore
 # alpha line runs one ahead of the compose/arcore line — bump together with
 # `xr-compose`.
-xr-runtime-testing = "1.0.0-beta02"
-xr-scenecore-testing = "1.0.0-beta02"
-xr-arcore-testing = "1.0.0-beta02"
+xr-runtime-testing = "1.0.0-rc01"
+xr-scenecore-testing = "1.0.0-rc01"
+xr-arcore-testing = "1.0.0-rc01"
 # The XR renderer moved to yschimke/compose-preview-xr and now releases on that repository's
 # cadence. Bump this only after the corresponding compose-preview-xr release is publicly available
 # from Maven Central.
@@ -234,6 +228,12 @@ horologist = "0.7.15"
 #    its trailing `Context` arg. Expect the same class of fix when these pins
 #    move — verify a render, not just a compile.
 compose-remote = "1.0.0-alpha18"
+# `org.json`. Not a choice so much as a consequence: `RemoteComposeJsonParser` is written against
+# `org.json.JSONObject`, which Android ships in the platform and a plain JVM does not, and
+# `remote-creation-core` neither shades nor declares it. `:remotecompose-json` therefore supplies
+# it — a `NoClassDefFoundError: org/json/JSONObject` at the first compile is what its absence looks
+# like, not a resolution failure.
+json-org = "20250517"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.6.0"
@@ -264,7 +264,7 @@ glance-wear = "1.0.0-alpha17"
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.12.0"
+compose-ui-prerelease = "1.12.1"
 kotlinx-coroutines = "1.11.0"
 kotlinx-datetime = "0.8.0"
 kotlinx-serialization = "1.11.0"
@@ -304,20 +304,6 @@ android-compose-screenshot = "0.0.1-alpha16"
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
 checker-qual = "4.2.3"
-# KMP port of Google's Material Color Utilities. Powers the wallpaper data
-# extension's seed → ColorScheme derivation (HCT tonal palettes, palette
-# styles, contrast level) so the result matches what Android's wallpaper-
-# derived dynamic theming actually produces.
-# Pinned to the 4.0.x line: `:data-wallpaper-connector` is a published
-# module and its consumers live on the renderer-android Compose floor
-# (`compose-bom-compat`, Compose 1.9.5). 4.1.0 rebuilt against Compose
-# Multiplatform 1.10.0 + Kotlin 2.3.0 and switched from an Android library
-# to a "Multiplatform Android library" — both move the transitive floor
-# above what our published surface targets. Renovate is constrained to
-# 4.0.x in `.github/renovate.json`; bumping the supported floor is a
-# manual decision (re-check `:data-wallpaper-connector:compileKotlin`
-# against `compose-bom-compat` when raising it).
-material-kolor = "4.0.5"
 # Metro — Zac Sweers' compile-time DI framework, used only by the JDK 21+
 # `:samples:sdk21:android-metro-viewmodel` module to demonstrate that
 # constructor-injected ViewModels render under the renderer's @Preview
@@ -329,7 +315,7 @@ material-kolor = "4.0.5"
 metro = "1.4.2"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
-ktor = "3.5.2"
+ktor = "3.6.0"
 okhttp = "5.5.0"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
@@ -356,7 +342,17 @@ coil3 = "3.5.0"
 # here. This repository consumes them; it no longer owns these coordinates. A change to a contract
 # reaches this build only through a release there — see that repository's docs/VERSIONING.md.
 # A point pin, deliberately: a range would let a contract change arrive without a pull request.
-composeai-contracts = "2.13.0"
+#
+# The BOM's version, and only the BOM's: the coordinates below name no version of their own. That
+# repository publishes only the modules a release changes, so the line's coordinates do not all sit
+# at the same version — 3.1.1 is layoutinspector-core while the other eleven are 3.1.0, and the
+# published BOM is the record of which versions actually belong together. Pinning the coordinates
+# to this one ref, which is what this catalog used to do, resolves until the first reduced release
+# and then fails on whichever module did not publish at the new version: Renovate's #5505 raised
+# the shared ref to 3.1.1 because layoutinspector-core had published one, and `:samples:android`
+# could not configure at all (`Could not find ee.schimke.composeai:screen-document:3.1.1`). The
+# daemon line below carries the same lesson and the same shape.
+composeai-contracts = "3.1.1"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -365,76 +361,35 @@ composeai-contracts = "2.13.0"
 # for the same reason as the contracts above. The Gradle plugin bakes this value in as
 # `PreviewDaemonVersion` and resolves `renderer-*` / `daemon-*` for external consumers at it, and
 # the CLI fetches that release's sidecar archives (`DaemonSidecarProvision`) at it.
-composeai-preview-daemon = "3.0.1"
+#
+# This value is not private to this build. Since #5480 every published POM here imports
+# `compose-preview-daemon-bom` at it and declares the daemon coordinates with no version of their
+# own, so what is written here is the daemon version every downstream consumer resolves. That is
+# the point: a consumer that names no daemon version cannot skew from the one this repository's
+# binaries were compiled against, which is what `NoSuchMethodError: DesignPage.copy$default(...)`
+# was (compose-preview-server#889). Treat a change to this line as a change to a published API.
+#
+# 3.6.1, not 3.6.0. 3.5.0 put `coerceInputValues` on `DesignPagesJson`, and that flag is Json-wide
+# rather than per-field, so it disabled the contract's unknown-enum rule for EVERY enum the design
+# pages document carries. compose-preview-daemon#128 reverted it and 3.6.1 is that revert. Pinning
+# 3.6.0 here would publish the leniency back out to every consumer of these POMs, including the
+# server that just restored the strict assertion (compose-preview-server#893).
+composeai-preview-daemon = "3.8.3"
 
-# The preview server, published from yschimke/compose-preview-server since its 2.0.0 — the
-# extraction #4732 planned. This repository no longer owns `cli/serve`: `compose-preview serve`,
-# `bundle render` and `history manifest` consume the published library, so a server change reaches
-# this build only through a release there. A point pin for the same reason as the contracts above:
-# a range would let the server move under the CLI without a pull request.
+# compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
-# Note the version lines are independent. `compose-preview-serve` went to 2.0.0 when it left; this
-# repository is still on 1.x. The server's own POM depends back on this repository's 1.53.0
-# contracts, which Gradle resolves to the workspace projects (same coordinates, project wins), so
-# the loop is closed at build time rather than by a version bump on either side.
+# `compose-preview serve`, `browse`, `ui-builder` and `mcp serve` launch distributions published
+# from yschimke/compose-preview-server, and `ServerDistributionProvision` resolves the NEWEST
+# release at run time rather than fetching a pin baked into the jar. An installed CLI therefore
+# tracks that repository without a pull request here, which is the point: `serve` is a launcher over
+# a process boundary, so what the two must agree on is the wire, and a pin only ever delayed a skew
+# rather than preventing one.
 #
-# 2.2.0 also brought `compose-preview-render-host` — the render host, the bundle daemon and the
-# git-backed preview history, split out of the server so a caller that only renders offline does not
-# link a web server (yschimke/compose-preview-server#38, this repository's #4832). That artifact is
-# GONE from this catalog: the module moved here in 1.77.0 (#5137), the server now consumes it from
-# this repository (compose-preview-server#289), and 3.0.0 retired the old coordinate at its final
-# 2.x. `:cli` depends on `project(":render-host")`; there is no version ref to share any more.
+# `COMPOSE_PREVIEW_SERVER_VERSION` is how a machine or a CI job pins itself.
 #
-# This pin names what this repository BUILDS AND TESTS AGAINST, and nothing else. Two consumers,
-# which must stay equal to each other:
-#
-#   * `testImplementation(libs.composeai.preview.serve)` in `:cli` — the published jar the
-#     wire-drift tests check this CLI's half against;
-#   * the `v<pin>` tag ci.yml's "Fetch the pinned preview-server mirror sources" step reads five
-#     source files from, so the mirror is compared against the same release as the artifact on the
-#     classpath. That step's own comment says why: checking head would fail a PR for drift that has
-#     not been released yet.
-#
-# What this pin no longer names is the server an INSTALLED CLI downloads. See
-# `composeai-preview-server-dist` below.
-#
-# 3.9.0 is the first release since 3.2.0 whose POM a consumer can actually resolve. 3.3.0 through
-# 3.8.0 each published a `compose-preview-ui-builder-runtime` POM naming
-# `compose-preview-ui-builder-render-bundle` at compile scope, an artifact that was never uploaded —
-# so `compose-preview-serve` was unresolvable for six consecutive releases and this pin could not
-# have moved off 3.2.0 even if something had wanted it to. compose-preview-server#449 made the
-# publish set derive from the modules that apply the publishing plugin, and #452's release published
-# the missing coordinate.
-composeai-preview-serve = "3.20.0"
-
-# The compose-preview-server RELEASE the installed CLI fetches at run time — a different question
-# from the one above, which is why it is a different pin.
-#
-# RUNTIME-load-bearing, for two commands since #5176. `compose-preview serve` is a launcher, and
-# since #5183 the CLI fetches the server itself on first use: this value is baked into the jar as
-# `SERVE_VERSION` and names the release whose `compose-preview-server-<pin>.tar.gz`
-# `ServerDistributionProvision` downloads. `compose-preview mcp serve` is a launcher over
-# `compose-preview-mcp-<pin>.tar.gz` from the SAME release, so one pin still governs that pair —
-# there is no cadence on which the two archives would skew usefully. A pin naming a release that
-# does not exist, or one carrying only one of the two archives, is a command that cannot start;
-# `check_preview_server_pin.py` fails the PR rather than letting that reach an install, and it
-# checks both archives. docs/VERSIONING.md § 8.1.
-#
-# Split from `composeai-preview-serve` because the two answer different questions and the server
-# now releases on lanes that can move one without the other. compose-preview-server can cut a
-# release carrying only the distributions and no Maven artifacts (its `release:no-maven` label), and
-# a single pin could not name such a release at all: pointing at it would break `:cli`'s
-# `testImplementation` even though the thing `serve` launches was exactly what changed.
-#
-# They may differ, and when they do this one is normally the newer. Moving either is a reviewed act;
-# moving this one changes which server every installed CLI downloads, so it is the one with user
-# impact even though the other is the one that shows up in a compile error.
-#
-# 3.2.0 was the first release carrying the MCP distribution (compose-preview-server#308 moved the
-# module there, #314 released it), which is why this pin sat there. Every release since has carried
-# both archives; 3.9.0 is verified to carry `compose-preview-server-3.9.0.tar.gz` and
-# `compose-preview-mcp-3.9.0.tar.gz`, which is the property `check_preview_server_pin.py` enforces.
-composeai-preview-server-dist = "3.9.0"
+# There is no `composeai-preview-serve` Maven pin either. That repository stopped publishing to
+# Maven Central; its two artifacts are the `.tar.gz` distributions on each GitHub release. `:cli`'s
+# wire-drift tests drive the distribution rather than compiling against a jar.
 
 # The Remote Compose players, published by yschimke/rc-players (the CMP player stack, the vendored
 # AndroidX embedded player, and the Wasm browser bundle). They were project deps here until the
@@ -455,50 +410,66 @@ composeai-preview-server-dist = "3.9.0"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "1.60.1"
+rcplayers = "1.66.0"
 
 [libraries]
 
 # Wire contracts consumed from compose-preview-contracts (see `composeai-contracts`).
-composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol", version.ref = "composeai-contracts" }
-composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices", version.ref = "composeai-contracts" }
-composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta", version.ref = "composeai-contracts" }
-composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol", version.ref = "composeai-contracts" }
-composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol", version.ref = "composeai-contracts" }
-composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core", version.ref = "composeai-contracts" }
-composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core", version.ref = "composeai-contracts" }
-composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core", version.ref = "composeai-contracts" }
-composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core", version.ref = "composeai-contracts" }
-composeai-common-io = { module = "ee.schimke.composeai:common-io", version.ref = "composeai-contracts" }
+#
+# The BOM is the one coordinate that carries a version for the whole contracts line; the entries
+# below name none, exactly like the daemon stack further down. A release there changes only the
+# modules it touches, so the coordinates do not all sit at one version, and the BOM is the
+# published record of which set does. `ComposeAiBaseConventionsPlugin` puts it on every module's
+# `api` and `implementation`, so a module only names the coordinate it uses.
+composeai-contracts-bom = { module = "ee.schimke.composeai:compose-preview-contracts-bom", version.ref = "composeai-contracts" }
+composeai-daemon-protocol = { module = "ee.schimke.composeai:daemon-protocol" }
+composeai-daemon-devices = { module = "ee.schimke.composeai:daemon-devices" }
+composeai-daemon-bta = { module = "ee.schimke.composeai:daemon-bta" }
+composeai-agent-grant-protocol = { module = "ee.schimke.composeai:agent-grant-protocol" }
+composeai-screen-document = { module = "ee.schimke.composeai:screen-document" }
+composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol" }
+composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core" }
+composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core" }
+composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core" }
+composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core" }
+composeai-common-io = { module = "ee.schimke.composeai:common-io" }
 # `ServeHost.parityIssues()` — the shape a catalog publishes for component-parity issues. Contracts
 # (layer 0) owns the wire shape; `:render-host` owns validation and storage over it.
-composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol", version.ref = "composeai-contracts" }
+composeai-parity-issues-protocol = { module = "ee.schimke.composeai:parity-issues-protocol" }
+
+# The daemon BOM. THE one coordinate carrying a version for the whole daemon stack: every
+# `ee.schimke.composeai` module published by yschimke/compose-preview-daemon takes its version from
+# this platform, which `ComposeAiBaseConventionsPlugin` puts on every module's `api` and
+# `implementation`.
+#
+# Why the entries below carry no version of their own: that repository publishes only the modules a
+# release changes (compose-preview-daemon#123), so its coordinates no longer all sit at the same
+# version. Pinning them to one shared ref -- which is what this catalog used to do -- resolves fine
+# until the first reduced release, and then fails on whichever module did not publish at the new
+# version. The BOM is the published record of which versions actually belong together, so it is the
+# only thing that should name one.
+composeai-daemon-bom = { module = "ee.schimke.composeai:compose-preview-daemon-bom", version.ref = "composeai-preview-daemon" }
 
 # The daemon line, consumed from compose-preview-daemon (see `composeai-preview-daemon`).
-composeai-daemon-core = { module = "ee.schimke.composeai:daemon-core", version.ref = "composeai-preview-daemon" }
-composeai-daemon-client = { module = "ee.schimke.composeai:daemon-client", version.ref = "composeai-preview-daemon" }
-composeai-daemon-android = { module = "ee.schimke.composeai:daemon-android", version.ref = "composeai-preview-daemon" }
-composeai-daemon-desktop = { module = "ee.schimke.composeai:daemon-desktop", version.ref = "composeai-preview-daemon" }
-composeai-renderer-desktop = { module = "ee.schimke.composeai:renderer-desktop", version.ref = "composeai-preview-daemon" }
-composeai-preview-data-api = { module = "ee.schimke.composeai:preview-data-api", version.ref = "composeai-preview-daemon" }
-composeai-preview-annotations = { module = "ee.schimke.composeai:preview-annotations", version.ref = "composeai-preview-daemon" }
-composeai-data-fonts-core = { module = "ee.schimke.composeai:data-fonts-core", version.ref = "composeai-preview-daemon" }
-composeai-data-pseudolocale-core = { module = "ee.schimke.composeai:data-pseudolocale-core", version.ref = "composeai-preview-daemon" }
-composeai-data-remotecompose-core = { module = "ee.schimke.composeai:data-remotecompose-core", version.ref = "composeai-preview-daemon" }
-composeai-data-remotecompose-connector = { module = "ee.schimke.composeai:data-remotecompose-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-keyboard-connector = { module = "ee.schimke.composeai:data-keyboard-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-ambient-connector = { module = "ee.schimke.composeai:data-ambient-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-glimmer-environment-connector = { module = "ee.schimke.composeai:data-glimmer-environment-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-launcher-widget-connector = { module = "ee.schimke.composeai:data-launcher-widget-connector", version.ref = "composeai-preview-daemon" }
-composeai-data-preview-overrides-runtime = { module = "ee.schimke.composeai:data-preview-overrides-runtime", version.ref = "composeai-preview-daemon" }
-composeai-slot-preview-runtime = { module = "ee.schimke.composeai:slot-preview-runtime", version.ref = "composeai-preview-daemon" }
-composeai-lottie-preview-runtime = { module = "ee.schimke.composeai:lottie-preview-runtime", version.ref = "composeai-preview-daemon" }
-composeai-svg-preview-runtime = { module = "ee.schimke.composeai:svg-preview-runtime", version.ref = "composeai-preview-daemon" }
-
-# The preview server (see `composeai-preview-serve`). `-test-fixtures` rides the same coordinates
-# as a Gradle feature variant, so `testFixtures(libs.composeai.preview.serve)` picks it up without
-# a second catalog entry.
-composeai-preview-serve = { module = "ee.schimke.composeai:compose-preview-serve", version.ref = "composeai-preview-serve" }
+composeai-daemon-core = { module = "ee.schimke.composeai:daemon-core" }
+composeai-daemon-client = { module = "ee.schimke.composeai:daemon-client" }
+composeai-daemon-android = { module = "ee.schimke.composeai:daemon-android" }
+composeai-daemon-desktop = { module = "ee.schimke.composeai:daemon-desktop" }
+composeai-renderer-desktop = { module = "ee.schimke.composeai:renderer-desktop" }
+composeai-preview-data-api = { module = "ee.schimke.composeai:preview-data-api" }
+composeai-preview-annotations = { module = "ee.schimke.composeai:preview-annotations" }
+composeai-data-fonts-core = { module = "ee.schimke.composeai:data-fonts-core" }
+composeai-data-pseudolocale-core = { module = "ee.schimke.composeai:data-pseudolocale-core" }
+composeai-data-remotecompose-core = { module = "ee.schimke.composeai:data-remotecompose-core" }
+composeai-data-remotecompose-connector = { module = "ee.schimke.composeai:data-remotecompose-connector" }
+composeai-data-keyboard-connector = { module = "ee.schimke.composeai:data-keyboard-connector" }
+composeai-data-ambient-connector = { module = "ee.schimke.composeai:data-ambient-connector" }
+composeai-data-glimmer-environment-connector = { module = "ee.schimke.composeai:data-glimmer-environment-connector" }
+composeai-data-launcher-widget-connector = { module = "ee.schimke.composeai:data-launcher-widget-connector" }
+composeai-data-preview-overrides-runtime = { module = "ee.schimke.composeai:data-preview-overrides-runtime" }
+composeai-slot-preview-runtime = { module = "ee.schimke.composeai:slot-preview-runtime" }
+composeai-lottie-preview-runtime = { module = "ee.schimke.composeai:lottie-preview-runtime" }
+composeai-svg-preview-runtime = { module = "ee.schimke.composeai:svg-preview-runtime" }
 
 # The Remote Compose players (see `rcplayers`).
 rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace", version.ref = "rcplayers" }
@@ -594,7 +565,6 @@ jetbrains-forward-compose-material3 = { module = "org.jetbrains.compose.material
 graphics-shapes = { module = "androidx.graphics:graphics-shapes", version.ref = "graphics-shapes" }
 jetbrains-compose-components-ui-tooling-preview = { module = "org.jetbrains.compose.components:components-ui-tooling-preview", version.ref = "compose-multiplatform" }
 jetbrains-compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
-compottie = { module = "io.github.alexzhirkevich:compottie", version.ref = "compottie" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance-appwidget" }
@@ -623,6 +593,7 @@ xr-scenecore-testing = { module = "androidx.xr.scenecore:scenecore-testing", ver
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }
+json-org = { module = "org.json:json", version.ref = "json-org" }
 compose-remote-tooling-preview = { module = "androidx.compose.remote:remote-tooling-preview", version.ref = "compose-remote" }
 compose-remote-creation = { module = "androidx.compose.remote:remote-creation", version.ref = "compose-remote" }
 compose-remote-creation-compose = { module = "androidx.compose.remote:remote-creation-compose", version.ref = "compose-remote" }
@@ -634,6 +605,11 @@ compose-remote-player-view = { module = "androidx.compose.remote:remote-player-v
 # vendored player reads `androidx.compose.remote.core.*` directly rather than only through the
 # Android-only `remote-player-core`.
 compose-remote-core = { module = "androidx.compose.remote:remote-core", version.ref = "compose-remote" }
+# The JSON authoring parser (`RemoteComposeJsonParser`) and the component/modifier registries it
+# dispatches through. Like `remote-core` above, upstream builds this as a plain `java-library`, so
+# `:remotecompose-json` compiles a RemoteCompose JSON document to `.rc` bytes on a bare JVM with no
+# Android runtime — see `docs/design/REMOTE_COMPOSE_JSON.md` for what that does and does not buy.
+compose-remote-creation-core = { module = "androidx.compose.remote:remote-creation-core", version.ref = "compose-remote" }
 # `ObjectIntMap` / `IntObjectMap` in the vendored embedded player's public signatures. Compose pulls
 # collection in transitively, but the player names the types directly so it declares them itself.
 androidx-collection = { module = "androidx.collection:collection", version.ref = "androidx-collection" }
@@ -684,7 +660,6 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # files the test can't differentiate "stale" from "fresh".
 asm = { module = "org.ow2.asm:asm", version = "9.10.1" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10.1" }
-material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
 metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }

@@ -6,6 +6,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.repositories.ArtifactRepository
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
@@ -109,6 +110,29 @@ internal object ComposePreviewTasks {
     configName != "androidRuntimeClasspath"
 
   /**
+   * Whether `composePreviewBundle` has something to pack, for the registration identified by
+   * [backendId].
+   *
+   * The renderability question is a DESKTOP question, and asking it on the Android registration is
+   * what broke wear-m3-catalog's catalog: [isDesktopRenderableConfig] rejects exactly the literal
+   * string `androidRuntimeClasspath`, and that is not only the desktop path's last-resort fallback
+   * — it is also the real, correct runtime configuration of every
+   * `com.android.kotlin.multiplatform.library` module (see [AndroidVariantNaming.kmpAndroid], which
+   * derives `<targetName>RuntimeClasspath` from the KMP target, named `android` unless the consumer
+   * renamed it). So a KMP-Android module on the Robolectric lane registered its bundle task with
+   * `backendId = "android"` and then skipped it forever, and `compose-preview bundle pack` failed
+   * with "Bundle task reported success but bundle.png is missing" after a render that had just
+   * succeeded — no error naming the task, because a skipped task is a successful build.
+   *
+   * On the Android registration the module's renderability is not in question: AGP handed us a
+   * variant and the Robolectric lane rendered against it. Only the desktop registration, which can
+   * fall through to `androidRuntimeClasspath` when a module has no JVM-flavoured runtime at all,
+   * needs the gate.
+   */
+  internal fun bundleRenderable(backendId: String, configName: String): Boolean =
+    backendId == "android" || isDesktopRenderableConfig(configName)
+
+  /**
    * The consumer runtime configuration the desktop pipeline resolves against, in preference order.
    * `androidRuntimeClasspath` is the LAST-RESORT KMP-Android fallback — it carries `*-android`
    * Compose AARs the JVM renderer can't load, so anything with a real JVM-flavoured runtime must
@@ -155,6 +179,43 @@ internal object ComposePreviewTasks {
    * ONLY for the `androidRuntimeClasspath` fallback (mirroring discovery) so a strict JVM classpath
    * still surfaces a genuinely missing dependency instead of silently dropping it.
    */
+  /**
+   * Resolvable view of the [PREVIEW_SOURCE_CONFIGURATION] bucket, wearing the attributes of the
+   * module's own runtime classpath ([runtimeConfigName]).
+   *
+   * The bucket itself carries declarations and nothing else. A shared preview-source module is
+   * normally Kotlin Multiplatform, so it publishes several variants; a configuration with no
+   * attributes cannot choose between them and resolves to nothing — no error, no previews, a green
+   * build with a silently shorter sticker sheet. Copying the lane's own attributes asks for exactly
+   * the variant this module already renders against: `androidJvm` on the Robolectric lane, `jvm` on
+   * Desktop. That is also what makes one shared module serve both lanes from one declaration.
+   *
+   * Returns null when nothing was declared, or when the runtime classpath is not resolvable yet —
+   * both meaning "no shared preview sources", which is every module that does not use the feature.
+   */
+  private fun previewSourceClasspath(project: Project, runtimeConfigName: String): Configuration? {
+    val bucket = project.configurations.findByName(PREVIEW_SOURCE_CONFIGURATION) ?: return null
+    if (bucket.dependencies.isEmpty()) return null
+    val runtime = project.configurations.findByName(runtimeConfigName) ?: return null
+    val name = "composePreviewSourceClasspath"
+    project.configurations.findByName(name)?.let {
+      return it
+    }
+    return project.configurations.create(name) {
+      isCanBeConsumed = false
+      isCanBeResolved = true
+      extendsFrom(bucket)
+      description =
+        "Resolvable view of $PREVIEW_SOURCE_CONFIGURATION, carrying the attributes of " +
+          "$runtimeConfigName so a multiplatform preview-source module selects the same variant " +
+          "this module renders against."
+      runtime.attributes.keySet().forEach { key ->
+        @Suppress("UNCHECKED_CAST") val typed = key as org.gradle.api.attributes.Attribute<Any>
+        runtime.attributes.getAttribute(typed)?.let { value -> attributes.attribute(typed, value) }
+      }
+    }
+  }
+
   private fun pinnedConsumerClasspath(
     project: Project,
     configName: String,
@@ -671,14 +732,11 @@ internal object ComposePreviewTasks {
       // though composePreviewRender itself no-ops (Codex review on #1863). Computed lazily at task
       // realization (so a cmp-shared module whose `jvm("desktop")` target configures after
       // registerDesktopTasks isn't mis-skipped) and captured as a Boolean so `onlyIf` doesn't pin
-      // `project` into the configuration cache. `isDesktopRenderableConfig` only trips on the
-      // literal
-      // `androidRuntimeClasspath` fallback, so this is a no-op on the Android bundle path and on
-      // real desktop modules.
+      // `project` into the configuration cache.
       // ONE lazy resolution feeds both the renderability gate and the classpath the bundle carries,
       // so the two can no longer disagree about which consumer runtime config this module has.
       val deps = depBinding()
-      val bundleRenderable = isDesktopRenderableConfig(deps.configName)
+      val bundleRenderable = bundleRenderable(backendId, deps.configName)
       onlyIf { extension.enabled.get() && bundleRenderable }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
@@ -1764,8 +1822,42 @@ internal object ComposePreviewTasks {
       this.catalogRenderSupported.set(catalogRenderSupported)
       classDirs.from(sourceClassDirs)
       activeClassDirs.from(activeSourceClassDirs)
+
+      // Shared preview-source modules (`composePreviewSource(project(":catalog-shared"))`).
+      // Their classes go on `classDirs`, NOT `dependencyJars`: that is the whole point of the
+      // configuration. Discovery keeps the two apart deliberately — a dependency JAR stays on the
+      // ClassGraph classpath so a multi-preview annotation resolves, but is never method-walked,
+      // so its `@Preview` functions are invisible. Putting these on `classDirs` walks them as
+      // project classes, which is what makes the previews this module's to render. The task sorts
+      // dirs from jars: a jar put on `classDirs` is dropped silently, since discovery filters that
+      // list to existing DIRECTORIES.
+      //
+      // Not added to `activeClassDirs`: that set exists for the empty-compile integrity check,
+      // which asks whether THIS module's compilation produced output. A shared module's classes
+      // are not evidence about that, and letting them in would mask exactly the broken cache
+      // restore the check is there to catch.
+      previewSourceClasspath(project, dependencyConfigName())?.let { config ->
+        previewSourceClasses.from(
+          config.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
+        )
+        previewSourceClasses.from(
+          config.incoming
+            .artifactView { attributes.attribute(artifactType, "android-classes") }
+            .files
+        )
+      }
+
       sourceFiles.from(
         project.fileTree("src") {
+          include("**/*.kt")
+          include("**/*.java")
+        }
+      )
+      // …and their sources, so a shared preview still resolves back to the file that declares it
+      // and its `@file:CatalogGroup` default still applies. Classes alone find the preview; only
+      // the source file places it. See `composePreview.previewSourceRoots`.
+      sourceFiles.from(
+        extension.previewSourceRoots.asFileTree.matching {
           include("**/*.kt")
           include("**/*.java")
         }

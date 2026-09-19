@@ -62,6 +62,17 @@ dependencies {
   implementation(libs.okhttp)
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 
+  // Test-only, deliberately: `AndroidPreviewLaunchParityTest` compares this plugin's Robolectric
+  // launch inputs against the renderer's own `RobolectricLaunch`. A `testImplementation` keeps the
+  // daemon client, its core and their transitives off every consumer's buildscript classpath, which
+  // is the reason this module still holds its own copy of those values at all.
+  // `gradle-plugin` is an included build with its own settings, so it never applies
+  // `composeai.base-conventions` and does not get the daemon BOM that plugin puts on every project
+  // in the main build. It does share the version catalog, where `daemon-client` deliberately
+  // carries no version -- so without this platform the coordinate resolves to nothing and
+  // `:gradle-plugin:testRuntimeClasspath` fails with `Could not find …:daemon-client:`.
+  testImplementation(platform(libs.composeai.daemon.bom))
+  testImplementation(libs.composeai.daemon.client)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(gradleTestKit())

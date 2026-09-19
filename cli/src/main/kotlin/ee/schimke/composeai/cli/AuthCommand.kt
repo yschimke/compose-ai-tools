@@ -258,9 +258,9 @@ internal class AuthCommand(
       // The capabilities belong in THIS line, not just in --json. It is the sentence an agent
       // relays into a chat window, and the approval page asks for them explicitly — so omitting
       // them made the relayed message understate the consent being sought, on the one feature whose
-      // entire premise is that the human sees what they are agreeing to. Printed as the server
-      // clamped them, so a capability this host does not offer is absent here too rather than
-      // promising a checkbox that will not appear.
+      // entire premise is that the human sees what they are agreeing to. Printed as ASKED, and the
+      // note below names any of them the server's ceiling will not offer — one sentence states the
+      // consent sought, the other states its limit, and neither silently drops a field.
       val requestedCapabilities =
         if (opened.requestedCapabilities.isEmpty()) ""
         else " + ${opened.requestedCapabilities.joinToString(", ")}"
@@ -270,6 +270,17 @@ internal class AuthCommand(
           (if (label.isNotEmpty()) " · \"$label\"" else "")
       )
       println("  The code above must match what they see on that page.")
+      // The server echoes both what was asked and what its ceiling permits; the difference is a
+      // capability the approval page will never offer and the grant can never carry. Silent, that
+      // narrowing surfaced only much later — every ui-builder call refusing with no mention that
+      // the operator could change it with one flag. Named here, while the human is still reading.
+      val notOffered = opened.requestedCapabilities.filterNot { it in opened.maxCapabilities }
+      if (notOffered.isNotEmpty()) {
+        println(
+          "  Note: this server will not offer ${notOffered.joinToString(", ")} — its " +
+            "--agent-grant-capabilities does not include them, so the grant cannot carry them."
+        )
+      }
       println()
       if ("--no-wait" in args) {
         println(

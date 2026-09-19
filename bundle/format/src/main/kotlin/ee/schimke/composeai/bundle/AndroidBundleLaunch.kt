@@ -1,5 +1,8 @@
 package ee.schimke.composeai.bundle
 
+import ee.schimke.composeai.daemon.client.AndroidSdk
+import ee.schimke.composeai.daemon.client.RobolectricConfig
+import ee.schimke.composeai.daemon.client.RobolectricLaunch
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
@@ -27,11 +30,24 @@ import okio.Path.Companion.toPath
  * resource APK + manifest + generated R classes, and [BundleDaemonCommand] rebuilds the Robolectric
  * `test_config.properties` from them so the tile renderer resolves its theme on a detached daemon.
  *
- * The constants below MUST stay in lockstep with the Gradle plugin's
- * [ee.schimke.composeai.plugin.AndroidPreviewClasspath] (`buildJvmArgs`, `buildSystemProperties`)
- * and `GenerateRobolectricPropertiesTask`, which the in-workspace Android render task uses. The CLI
- * links a different module graph, so we re-declare them here — same pattern as [BundleReader]
- * mirroring the on-disk bundle schema. Keep them in sync if the plugin side changes.
+ * ### Where these facts come from
+ *
+ * The `robolectric.properties` bodies, the packages they are written to and the SDK-level range are
+ * **not** facts about this repository: they are how the daemon's renderer expects Robolectric
+ * configured, and the packages are its packages — rename one there and nothing here fails to
+ * compile, the config simply stops being found and the renders change. They now come from
+ * `ee.schimke.composeai.daemon.client.RobolectricConfig` / `AndroidSdk`, published by
+ * compose-preview-daemon and pinned there by golden descriptors (its `docs/design/EMBEDDING.md`).
+ *
+ * The JVM args and the `robolectric.*` / font system properties below are the same facts and belong
+ * there too, but the daemon exposes them only through `DaemonBackend.Android`, which requires an
+ * `android.jar` this class does not have and does not need. Moving them waits on a jar-free seam on
+ * that side; until then they stay here, and this class's own tests pin them.
+ *
+ * The Gradle plugin's [ee.schimke.composeai.plugin.AndroidPreviewClasspath] still holds its own
+ * copy of all of it. That is the other half of the same problem: the plugin is a separate composite
+ * build with no daemon dependency, and adding one would put the daemon client, its core and their
+ * transitives on every consumer's buildscript classpath.
  */
 public class AndroidBundleLaunch(
   sdkLevel: Int = DEFAULT_SDK,
@@ -57,48 +73,34 @@ public class AndroidBundleLaunch(
   public val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
 
   /**
-   * JVM args the spawned Robolectric process needs on JDK 17+. Mirrors
-   * `AndroidPreviewClasspath.buildJvmArgs()` plus `--enable-native-access` (which the desktop spawn
-   * also passes). Without the `--add-opens` set Robolectric's reflective access into `java.base`
-   * internals fails with `IllegalAccessException` on SDK 36 sandboxes (issue #1328).
+   * JVM args the spawned Robolectric process needs on JDK 17+ — the daemon's, verbatim.
+   *
+   * Without the `--add-opens` set, Robolectric's reflective access into `java.base` internals fails
+   * with `IllegalAccessException` on SDK 36 sandboxes (#1328). Which opens are needed is a property
+   * of the renderer, not of this repository, so the list lives with the renderer.
    */
-  public fun jvmArgs(): List<String> =
-    listOf(
-      "--enable-native-access=ALL-UNNAMED",
-      "--add-opens=java.base/java.io=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
-    )
+  public fun jvmArgs(): List<String> = RobolectricLaunch.jvmArgs()
 
   /**
    * Robolectric render flags — plus the shared GoogleFont download cache dir — shared by the
-   * one-shot renderer ([BundleRenderer]), the detached daemon ([BundleDaemonCommand]), and the
-   * serve host ([ee.schimke.composeai.cli.serve.ServeBundleDaemon], which forwards this map as its
-   * backend `extraSystemProperties`). Mirrors the `robolectric.*` flags and
-   * `composeai.fonts.cacheDir` from `AndroidPreviewClasspath.buildSystemProperties(...)`, so a
-   * downloadable `Font(GoogleFont(...))` resolves the same on a detached/serve render as it does
-   * under Gradle — without it the shadow's cache is disabled and such text silently falls back to
-   * the platform default. The daemon uses just these — it routes previews via
-   * `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
+   * one-shot renderer ([BundleRenderer]), the detached daemon ([BundleDaemonCommand]) and the serve
+   * host ([ee.schimke.composeai.cli.serve.ServeBundleDaemon], which forwards this map as its
+   * backend `extraSystemProperties`).
+   *
+   * The set is the daemon's. That includes the four properties a `-D` on *this* process cannot
+   * deliver to a spawned one and so have to be named explicitly — `composeai.fonts.failOnFallback`,
+   * `composeai.fonts.offline`, `composeai.svg.embedFonts`, `composeai.svg.background`. Three of
+   * them were missing from this copy, which is how `-Dcomposeai.fonts.offline=true` reached the
+   * Gradle render task and the desktop serve daemon but no Android lane at all, and an air-gapped
+   * Android render still tried to fetch Google Fonts (#5371). Taking the set from the renderer that
+   * reads it is what stops that recurring.
+   *
+   * The one thing added here is [fontsCacheDir], which wins over the daemon's own resolution: a
+   * caller that names a cache directory means it. Unset, the two compute the same path, so a
+   * `bundle`/serve render reuses the faces a pack-time render already downloaded.
    */
-  public fun robolectricSystemProperties(): Map<String, String> = buildMap {
-    put("robolectric.graphicsMode", "NATIVE")
-    put("robolectric.looperMode", "PAUSED")
-    put("robolectric.conscryptMode", "OFF")
-    put("robolectric.pixelCopyRenderMode", "hardware")
-    put("roborazzi.test.record", "true")
-    put("composeai.fonts.cacheDir", fontsCacheDir)
-    // An unresolved downloadable font fails its preview by default (`FontResolutionDiagnostics`).
-    // Forward the opt-out when this process carries it, so a detached/serve operator can set
-    // `-Dcomposeai.fonts.failOnFallback=false` on the CLI JVM and the child daemon honours it —
-    // else a cold-cache render on the live server fails previews with no downgrade path. Unset ⇒
-    // absent ⇒ the renderer's own default (fatal) applies.
-    System.getProperty("composeai.fonts.failOnFallback")?.let {
-      put("composeai.fonts.failOnFallback", it)
-    }
-  }
+  public fun robolectricSystemProperties(): Map<String, String> =
+    RobolectricLaunch.systemProperties() + ("composeai.fonts.cacheDir" to fontsCacheDir)
 
   /**
    * [robolectricSystemProperties] plus the one-shot renderer's batch I/O props: the renderer reads
@@ -118,12 +120,7 @@ public class AndroidBundleLaunch(
    * `sdk` + `graphicsMode` + the GoogleFont shadow registration, and (unless
    * [useConsumerApplication]) the stub `application=`.
    */
-  public fun robolectricPropertiesBody(): String = buildString {
-    appendLine("sdk=$sdkLevel")
-    appendLine("graphicsMode=NATIVE")
-    if (!useConsumerApplication) appendLine("application=android.app.Application")
-    append("shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat")
-  }
+  public fun robolectricPropertiesBody(): String = robolectricConfig().composableLaneBody()
 
   /**
    * The app-tour lane's `robolectric.properties` body — [robolectricPropertiesBody] without the
@@ -151,11 +148,10 @@ public class AndroidBundleLaunch(
    * Unlike the Gradle path there is no `appTourUseConsumerApplication` to consult — a bundle
    * carries no extension — so this always tracks that flag's default.
    */
-  public fun appTourRobolectricPropertiesBody(): String = buildString {
-    appendLine("sdk=$sdkLevel")
-    appendLine("graphicsMode=NATIVE")
-    append("shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat")
-  }
+  public fun appTourRobolectricPropertiesBody(): String = robolectricConfig().appTourLaneBody()
+
+  private fun robolectricConfig(): RobolectricConfig =
+    RobolectricConfig(sdkLevel = sdkLevel, useConsumerApplication = useConsumerApplication)
 
   /**
    * Materialise [robolectricPropertiesBody] at the classpath path Robolectric looks it up by —
@@ -178,25 +174,26 @@ public class AndroidBundleLaunch(
   }
 
   public companion object {
-    /** Floor of Robolectric 4.16.x's `android-all-instrumented` range (API 21, LOLLIPOP). */
-    public const val MIN_SDK: Int = 21
+    /** Floor of the bundled Robolectric's `android-all-instrumented` range (API 21, LOLLIPOP). */
+    public const val MIN_SDK: Int = AndroidSdk.MIN_SDK
+
     /** Ceiling of the bundled Robolectric's supported range (API 36). */
-    public const val MAX_SDK: Int = 36
+    public const val MAX_SDK: Int = AndroidSdk.MAX_SDK
     /**
      * SDK level used when the bundle doesn't pin one. Bundles don't yet record the consumer's
      * `compileSdk` (Phase 2), so default to a recent, widely-available level; override with
      * `-Dcomposeai.bundle.androidSdk=<n>`.
      */
-    public const val DEFAULT_SDK: Int = 35
+    public const val DEFAULT_SDK: Int = AndroidSdk.DEFAULT_SDK
 
-    private const val RENDERER_PKG_PATH = "ee/schimke/composeai/renderer"
+    private val RENDERER_PKG_PATH = RobolectricConfig.RENDERER_PACKAGE.replace('.', '/')
 
     /**
      * The app-tour render lane's package. A SIBLING of [RENDERER_PKG_PATH], never a child:
      * Robolectric merges a parent package's `robolectric.properties` into a child's, so nesting it
      * would inherit the stub `application=` line the composable lane pins.
      */
-    private const val APP_TOUR_PKG_PATH = "ee/schimke/composeai/apptour"
+    private val APP_TOUR_PKG_PATH = RobolectricConfig.APP_TOUR_PACKAGE.replace('.', '/')
 
     /** `-Dcomposeai.bundle.androidSdk=<n>` override for [DEFAULT_SDK]. */
     public fun sdkLevelFromSystemProperty(

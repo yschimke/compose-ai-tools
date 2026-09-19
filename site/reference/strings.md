@@ -15,7 +15,7 @@ locale coverage from `values*/strings.xml` (`i18n/translations`).
 | | |
 |---|---|
 | Kinds | `text/strings`, `i18n/translations` |
-| Schema version | 1 |
+| Schema versions | `text/strings`: 3 · `i18n/translations`: 2 |
 | Modules | `:data-strings-core` (published) · `:data-strings-connector` |
 | Render mode | default |
 | Cost | low |
@@ -50,9 +50,10 @@ locale coverage from `values*/strings.xml` (`i18n/translations`).
 ```jsonc
 // text/strings
 {
-  "entries": [
-    { "text": "Submit", "locale": "en-US", "fontScale": 1.0,
-      "fontSize": 14, "color": "#FFFFFFFF",
+  "texts": [
+    { "text": "Submit", "nodeId": "2", "localeTag": "en-US", "fontScale": 1.0,
+      "fontSize": "14sp", "foregroundColor": "#FFFFFFFF",
+      "boundsInRoot": "48,200,144,232",
       "boundsInScreen": "48,200,144,232",
       "truncated": false, "didOverflowWidth": false, "didOverflowHeight": false,
       "lineCount": 1, "maxLines": 1 }
@@ -61,13 +62,21 @@ locale coverage from `values*/strings.xml` (`i18n/translations`).
 
 // i18n/translations
 {
+  "supportedLocales": ["en-US", "fr", "de", "es"],
+  "renderedLocale": "en-US",
+  "defaultLocale": "en-US",
   "strings": [
-    { "id": "submit", "default": "Submit",
-      "locales": { "en-US": "Submit", "fr": "Envoyer" },
-      "missing": ["de", "es"] }
+    { "nodeId": "2", "boundsInRoot": "48,200,144,232",
+      "boundsInScreen": "48,200,144,232", "rendered": "Submit",
+      "resourceName": "R.string.submit",
+      "translations": { "en-US": "Submit", "fr": "Envoyer" },
+      "untranslatedLocales": ["de", "es"] }
   ]
 }
 ```
+
+Both products retain `boundsInScreen` as a deprecated compatibility alias; those values were
+always root-relative. New consumers should read `boundsInRoot`.
 
 ## Enabling
 

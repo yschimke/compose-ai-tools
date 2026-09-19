@@ -114,6 +114,8 @@ data class UiBuilderStatusSemantics(
   val templates: List<String> = emptyList(),
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
+  /** Successor rules interpreted by a catalog-upgrade-aware builder. */
+  val supersedes: JsonElement? = null,
   val builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
   /** Per-component policy, keyed by builder id. The record beside this file is the inventory. */
   val components: Map<String, UiBuilderComponentPolicy> = emptyMap(),
@@ -241,6 +243,9 @@ object UiBuilderCatalogs {
     const val STATE_CALLBACK_ARITY = "component.stateCallback.arity"
     const val BUILTIN_SHADOWS_RECORD = "policy.builtin.shadowsRecord"
     const val BUILTIN_SLOT_ROLE_UNKNOWN = "policy.builtin.slot.role.unknown"
+    const val BUILTIN_SHELF_ROLE_UNKNOWN = "policy.builtin.shelfRole.unknown"
+    const val BUILTIN_WASM_STATUS_UNKNOWN = "policy.builtin.wasm.adapterStatus.unknown"
+    const val BUILTIN_CODE_EMPTY = "policy.builtin.code.symbol.empty"
     const val STRATEGY_UNKNOWN = "policy.code.strategy.unknown"
   }
 
@@ -336,6 +341,55 @@ object UiBuilderCatalogs {
 
     val components = linkedMapOf<String, UiBuilderComponentPolicy>()
     val menuEntries = linkedMapOf<String, UiBuilderMenuEntry>()
+    // `record` is the authoritative join for an authored component whose published builder id is
+    // not the one its symbol derives. This is how a catalog preserves an existing saved-design id
+    // across a source rename, and why the policy schema calls the field load-bearing. Resolve that
+    // join once and use the answer everywhere below: collision ownership, published policy and the
+    // menu must not each invent a different identity.
+    val authoredByRecord = linkedMapOf<String, Map.Entry<String, UiBuilderAuthoredComponent>>()
+    for (entry in policy.components.entries) {
+      val recordId = entry.value.record?.takeIf { it.isNotBlank() } ?: continue
+      val previous = authoredByRecord[recordId]
+      if (previous == null) {
+        authoredByRecord[recordId] = entry
+      } else {
+        diagnostics +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.POLICY_CONFLICT,
+            subject = recordId,
+            message =
+              "ui-builder.policy.json publishes both \"${previous.key}\" and " +
+                "\"${entry.key}\" for record $recordId. The first wins; one record is one " +
+                "saved-design component identity.",
+          )
+      }
+    }
+    val builderIdsByRecord =
+      record.components.associate { component ->
+        component.canonicalId to
+          (authoredByRecord[component.canonicalId]?.key
+            ?: builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy()))
+      }
+    val authoredPoliciesByRecord =
+      record.components.associate { component ->
+        val builderId = builderIdsByRecord.getValue(component.canonicalId)
+        val joined = authoredByRecord[component.canonicalId]
+        component.canonicalId to
+          (joined?.value
+            ?: policy.components[builderId]?.takeIf {
+              it.record.isNullOrBlank() || it.record == component.canonicalId
+            })
+      }
+    val consumedPolicyIds =
+      record.components
+        .mapNotNull { component ->
+          authoredByRecord[component.canonicalId]?.key
+            ?: builderIdsByRecord.getValue(component.canonicalId).takeIf { builderId ->
+              authoredPoliciesByRecord[component.canonicalId] != null &&
+                builderId in policy.components
+            }
+        }
+        .toSet()
     // Which record each derived id belongs to, over EVERY admitted component rather than only the
     // annotated ones. An unannotated component is still shelved by the consumer, which derives its
     // id from `componentIdPrefix` exactly as this does — so two of them colliding, or one colliding
@@ -344,7 +398,7 @@ object UiBuilderCatalogs {
     // is the same mistake the builtin check had and was fixed for one commit earlier.
     val idOwners = linkedMapOf<String, String>()
     for (component in record.components) {
-      val builderId = builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
+      val builderId = builderIdsByRecord.getValue(component.canonicalId)
       val owner = idOwners[builderId]
       if (owner == null) {
         idOwners[builderId] = component.canonicalId
@@ -362,7 +416,7 @@ object UiBuilderCatalogs {
     }
     for (component in record.components) {
       val builder = component.builder ?: BuilderPolicy()
-      val builderId = builderIdFor(idPrefix, component, builder)
+      val builderId = builderIdsByRecord.getValue(component.canonicalId)
       // The owner the SWEEP established, not "the first annotated component to reach this loop".
       // Keying off `components` alone consulted a map only annotated components ever enter, so an
       // unannotated first claimant left it empty and the later annotated component published its
@@ -388,14 +442,14 @@ object UiBuilderCatalogs {
       // collisions back on a file this generator had just reported zero for. m3-catalog, 108
       // unnamed, got 49 and was refused outright. Naming them all is what makes the file
       // self-describing, and it costs a `{record, displayName}` pair per component.
-      val authored = policy.components[builderId]
+      val authored = authoredPoliciesByRecord[component.canonicalId]
       val fromAnnotation =
         if (component.builder != null) policyFor(component, builder)
         else UiBuilderComponentPolicy(record = component.canonicalId)
       components[builderId] = fromAnnotation.mergedWith(authored)
     }
 
-    // An authored entry naming an id no component derives.
+    // An authored entry joining neither by `record` nor by a component's resolved id.
     //
     // Reported rather than dropped, for the same reason `POLICY_ORPHANED` reports an annotation
     // that bound to nothing: a policy naming a component that is not there is a rename that got
@@ -403,16 +457,15 @@ object UiBuilderCatalogs {
     // symptom at all. This is the shape a catalog authoring its vocabulary by hand will hit — a
     // typo in a builder id looks exactly like a component that is deliberately not stated.
     for ((builderId, _) in policy.components) {
-      if (builderId in idOwners) continue
+      if (builderId in consumedPolicyIds) continue
       diagnostics +=
         UiBuilderDiagnostic(
           code = Diagnostics.POLICY_ORPHANED,
           subject = builderId,
           message =
-            "ui-builder.policy.json states a policy for \"$builderId\", which no component in this " +
-              "record derives, so every field in it does nothing. The ids this catalog publishes " +
-              "are derived from componentIdPrefix \"$idPrefix\"; check the spelling against " +
-              "components.json.",
+            "ui-builder.policy.json states a policy for \"$builderId\", which joins no component " +
+              "in this record, so every field in it does nothing. Check its `record` canonicalId " +
+              "or its builder id against components.json.",
         )
     }
 
@@ -453,8 +506,19 @@ object UiBuilderCatalogs {
     //
     // The annotation is an override, which is what it was always documented as.
     for (component in record.components) {
-      val builderId = builderIdFor(idPrefix, component, component.builder ?: BuilderPolicy())
+      val builderId = builderIdsByRecord.getValue(component.canonicalId)
       if (idOwners[builderId] != component.canonicalId) continue
+      // An excluded component gets no shelf entry. The consumer refuses to serve it — that is
+      // what `excluded` means — so a menu naming it offers something no catalog will hand over:
+      // a shelf item that disappears between the palette and the design. m3-catalog excluding
+      // its own `Sticker` and `MaterialExpressiveTheme` published both under "Badges" anyway.
+      //
+      // The reason still ships, in `statusSemantics.components`, so a component missing from the
+      // shelf can say why rather than looking lost. Only the menu drops it.
+      val excluded =
+        authoredPoliciesByRecord[component.canonicalId]?.excluded?.takeIf { it.isNotBlank() }
+          ?: component.builder?.exclude?.takeIf { it.isNotBlank() }
+      if (excluded != null) continue
       // The DECLARING sticker's group, matching the id and `catalogId` derived from the same
       // sticker. One callable is routinely published under several — `Button/Filled` and
       // `Button/Tonal` — and taking the first binding's group shelved a component whose id says
@@ -471,7 +535,7 @@ object UiBuilderCatalogs {
         // The policy file first, then the annotation, then the catalog's own grouping. A catalog
         // stating its shelf in one reviewable file should not have to annotate a sticker to place
         // a component — that is the whole reason the authored block exists.
-        policy.components[builderId]?.group?.takeIf { it.isNotBlank() }
+        authoredPoliciesByRecord[component.canonicalId]?.group?.takeIf { it.isNotBlank() }
           ?: component.builder?.group?.takeIf { it.isNotBlank() }
           ?: component.bindings
             .firstOrNull { it.componentId == idAlias && !it.group.isNullOrBlank() }
@@ -516,6 +580,7 @@ object UiBuilderCatalogs {
           templates = policy.templates,
           colorTokens = policy.colorTokens,
           assetRegistry = policy.assetRegistry,
+          supersedes = policy.supersedes,
           builtins = policy.builtins,
           components = components,
         ),
@@ -525,7 +590,9 @@ object UiBuilderCatalogs {
 
   /**
    * The builder id for a record component: the annotation's, else [prefix] plus a slug of the
-   * component symbol's own name, else of the catalog identity's last segment.
+   * component symbol's own name, else of the catalog identity's last segment. An authored policy
+   * joined by record may replace that answer for the generated catalog; this function describes the
+   * annotation-and-convention side of the merge.
    *
    * Derived rather than required so the common case costs nothing, and overridable because a
    * published design stores this string: a component renamed in the catalog can keep the id designs
@@ -1110,6 +1177,52 @@ object UiBuilderCatalogs {
             message =
               "role '${builtin.role}' is not one the template engine knows. Known roles: " +
                 UI_BUILDER_STRUCTURAL_ROLES.sorted().joinToString(),
+          )
+      }
+      // The shelf role is the OTHER vocabulary — `Scaffold` / `Container` / `Leaf` — and a word
+      // outside it names no shelf at all, so the component is filed nowhere and the editor has no
+      // name for it. Null is not an error: it is how a catalog asks for the consumer's derivation.
+      if (builtin.shelfRole != null && builtin.shelfRole !in UI_BUILDER_SHELF_ROLES) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.BUILTIN_SHELF_ROLE_UNKNOWN,
+            subject = id,
+            message =
+              "shelfRole '${builtin.shelfRole}' is not a shelf role. It is one of " +
+                UI_BUILDER_SHELF_ROLES.sorted().joinToString() +
+                ", and it is not the structural `role` beside it — that one says which template " +
+                "writes this component.",
+          )
+      }
+      val adapterStatus = builtin.wasm?.adapterStatus
+      if (adapterStatus != null && adapterStatus !in UI_BUILDER_WASM_ADAPTER_STATUSES) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.BUILTIN_WASM_STATUS_UNKNOWN,
+            subject = id,
+            message =
+              "wasm.adapterStatus is '$adapterStatus', which no consumer decodes. It is " +
+                UI_BUILDER_WASM_ADAPTER_STATUSES.sorted().joinToString() +
+                ". A status the consumer cannot read fails the whole capability document, not " +
+                "one field.",
+          )
+      }
+      // A `code` block whose symbol is blank publishes an export that calls nothing, and a
+      // consumer reads the presence of the block as "this catalog knows the call" — so it stops
+      // falling back to the placeholder it would otherwise draw.
+      //
+      // Reported rather than refused, because the packaged builder vocabulary publishes exactly
+      // this for `layout/for-each`, which has no callable to name. A catalog republishing those
+      // declarations faithfully is doing the thing this field was added for; what it needs is to
+      // be told, not to be turned away.
+      if (builtin.code != null && builtin.code.symbol.isBlank()) {
+        into +=
+          UiBuilderDiagnostic(
+            code = Diagnostics.BUILTIN_CODE_EMPTY,
+            subject = id,
+            message =
+              "declares a `code` block with no symbol, so an export through it writes a call to " +
+                "nothing. State the callable, or omit the block and keep the placeholder.",
           )
       }
       // A slot's role selects a template exactly as the builtin's own role does, and it was checked

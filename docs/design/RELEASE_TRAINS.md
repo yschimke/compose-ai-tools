@@ -1,16 +1,27 @@
 # Release trains
 
-**Status: measurement + history.** The guard in § 4 is implemented and gates the publish. The
-dependency lock state in § 6 is implemented and the guard reads it. The two-train split in § 5 was
-built and then retired: the `data/*` modules it separated publish from
+**Status: history. Everything this document proposes has been retired.** Nothing in §§ 4-6 is
+implemented any more; the numbers are kept because they are the measured record of why the
+machinery existed and what it was worth, not because any of it still runs.
+
+What happened, in order. The two-train split in § 5 was built and then retired: the `data/*`
+modules it separated publish from
 [compose-preview-daemon](https://github.com/yschimke/compose-preview-daemon) since its 3.0.0
-(compose-ai-tools#5336), which took the second line — and the 58 modules — out of this repository
-altogether. One line remains, published whole when the guard says it changed. The `dataVersion`
-field of the readiness marker and the `--train` option of the guard script went with it. Issue
+(compose-ai-tools#5336), which took the second line — and 58 of the 94 modules — out of this
+repository altogether. That left ~27 publishing modules, and with them most of the problem: the
+guard in § 4 and the dependency lock state in § 6 that fed it were sized for a 94-module,
+two-line repository and no longer earned their complexity against a third of that. **Both are
+now removed. Every release publishes the whole project at the release's own version.** The
+guard scripts, the committed `gradle.lockfile`s, the locking in
+`ComposeAiMavenPublishingPlugin` and `dependency-locks.yml` are all gone; so are the
+`dataVersion` marker field and the guard's `--train` option, which went with the split. Issue
 [#4772](https://github.com/yschimke/compose-ai-tools/issues/4772).
 
-This repository publishes 94 Maven Central artifacts on a version line that cuts a release
-roughly six times a day. Maven Central has begun metering exactly that shape of publishing.
+**Read every "94 modules" and every present-tense claim below as of the measurement window
+(v1.57.0..v1.84.0), not as of today.**
+
+At the time this was measured, the repository published 94 Maven Central artifacts on a version
+line that cut a release roughly six times a day. Maven Central has begun metering exactly that shape of publishing.
 This document measures what we actually ship, what fraction of it carries a change, and what
 each available lever is worth — so the decision about which to pull is made against numbers
 rather than impressions.
@@ -89,9 +100,9 @@ Batching is by far the biggest lever and it is deliberately not taken: the relea
 a product decision, not an accident. Everything below therefore reduces *artifacts per release*
 rather than releases.
 
-## 4. The guard: publish only when something changed
+## 4. The guard: publish only when something changed *(retired — see Status)*
 
-[`.github/scripts/maven-publish-needed.sh`](../../.github/scripts/maven-publish-needed.sh)
+`.github/scripts/maven-publish-needed.sh` (removed)
 answers one question — *could any published artifact's bytes differ from the last
 Maven-published release?* — and the `maven-publish-guard` job in `release.yml` gates
 `publish-gradle-plugin` on the answer.
@@ -213,7 +224,7 @@ GitHub Release carries the mapping** — extend the existing
 and the installer already gates on. The CLI uses its own baked value on the fast path and reads
 the marker only when the pin names a different release.
 
-## 6. The shared-input rule is what limits this, and lockfiles are the fix
+## 6. The shared-input rule is what limits this, and lockfiles are the fix *(retired — see Status)*
 
 The guard is conservative about shared build inputs, and that conservatism is now essentially the
 whole of the remaining cost:
@@ -264,7 +275,7 @@ plus the `[versions]` entries those plugins reference. Over the same 38 windows 
 exactly once (AGP 9.3.2 → 9.4.0 at v1.62.2 → v1.63.0) against 13 windows that touched the catalog —
 so 12 of 13 catalog changes stop forcing a publish, and the one that must still force one, does.
 
-Keeping the files current is [`dependency-locks.yml`](../../.github/workflows/dependency-locks.yml).
+Keeping the files current is `dependency-locks.yml` (removed).
 Renovate cannot do it — `postUpgradeTasks` needs a self-hosted Renovate with the command
 allow-listed, and this repository uses the hosted Mend app — so a workflow regenerates and pushes
 into the pull request branch. That workflow's header documents the constraint it is built around:
@@ -357,7 +368,7 @@ module, exactly one always changed as a unit.
    **The baseline resolver had to become shared.** `maven-publish-guard` runs before the publish
    and the readiness gate after it, in separate workflow runs, and Central's `<latest>` means
    different things at those two moments. Both now call
-   [`maven-line-baseline.sh`](../../.github/scripts/maven-line-baseline.sh), which selects the
+   `maven-line-baseline.sh` (removed), which selects the
    greatest version **strictly below** the release under consideration — stable across the
    publish by construction. Pinned by `test-maven-line-baseline.sh` in CI.
 

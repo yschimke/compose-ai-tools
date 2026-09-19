@@ -29,28 +29,24 @@ ktfmt { googleStyle() }
 // through Maven Local on every dev iteration. The publish coordinate is set explicitly
 // below so the artifact lands in Maven Central under a clean module name.
 
-// The screen document, the component record and the generator that turns one into Compose source
-// are **shared source**, not a copy: they live in `screen/model/src/commonMain`, and this module
-// compiles them from there.
-//
-// They have to be in two places at once and cannot be. The browser UI builder needs to generate
-// code
-// with no server, which means a `wasmJs` target; this module is `kotlin("jvm")` inside a
-// `kotlin-dsl` plugin build pinned to Gradle's embedded Kotlin, where adding Kotlin Multiplatform
-// is
-// a fight over the toolchain rather than a configuration. And the dependency cannot run the other
-// way — an included build cannot depend on a project of the build that includes it.
-//
-// A shared source directory is the one arrangement with **no second copy to drift**. The published
-// `preview-discovery` jar is unchanged: it still carries these classes, compiled from the same
-// files the `:screen-model` KMP module compiles for `wasmJs`. The alternative was a mirror, and the
-// `serve-wasm` fork is this repository's own evidence for what mirrors cost.
+// Generator and discovery behaviour is shared with the JVM/WASM screen-model module.
+// ScreenDocument and its value/action DTOs come from the contracts artifact on both paths,
+// so neither publication defines a competing copy of those classes.
 sourceSets.named("main") {
   kotlin.srcDir(rootDir.resolve("../screen/generator/src/commonMain/kotlin"))
 }
 
 dependencies {
   api(libs.kotlinx.serialization.json)
+  // The contracts BOM supplies every version for the line (the coordinate below names none), and
+  // it is declared here rather than left to `composeai.base-conventions` because this module does
+  // not apply that plugin — it is a plain published library, not a module of this build's
+  // conventions. `api`, not `implementation`: this module's own consumers, including the sample
+  // buildscript classpath that resolves it as a Gradle plugin implementation, need the constraint
+  // too. A platform only constrains the configuration it is declared on, and `implementation`
+  // constraints are not exported.
+  api(platform(libs.composeai.contracts.bom))
+  api(libs.composeai.screen.document)
   // ClassGraph drives `PreviewDiscovery.discover(...)`: scans class dirs + dependency jars for
   // `@Preview`-annotated methods, fans out multi-preview meta-annotations via
   // `scanResult.getClassInfo(...)`. Same coord as :gradle-plugin (and matched at runtime so the
@@ -97,4 +93,25 @@ composeAiMavenPublishing {
 // contract.
 tasks.named<Jar>("jar").configure {
   manifest { attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli") }
+}
+
+// The published policy schema is a test INPUT, and Gradle cannot know that.
+//
+// `UiBuilderPolicySchemaTest` reads `scripts/design-artifacts/ui-builder.policy.schema.json` and
+// holds it to the serial names of `UiBuilderAuthoredComponent` and `UiBuilderBuiltin`. Without
+// this the test task is up to date after a schema edit — so the one change the test exists to
+// catch is the one change that would not re-run it, which is how a check stops checking.
+tasks.named<Test>("test").configure {
+  inputs
+    .file(
+      // `..` because `gradle-plugin` is an INCLUDED build: its `rootProject` is that directory,
+      // not the repository, and the schema lives beside the other design-artifact scripts at the
+      // top. Resolved wrongly this fails loudly at configuration time rather than silently
+      // skipping the input, which is the failure mode worth having.
+      rootProject.layout.projectDirectory.file(
+        "../scripts/design-artifacts/ui-builder.policy.schema.json"
+      )
+    )
+    .withPropertyName("uiBuilderPolicySchema")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
 }

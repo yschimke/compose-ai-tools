@@ -1,11 +1,13 @@
 package ee.schimke.composeai.plugin.tooling
 
 import ee.schimke.composeai.plugin.AndroidPreviewSupport
+import ee.schimke.composeai.plugin.AndroidVariantNaming
 import ee.schimke.composeai.plugin.PluginVersion
 import ee.schimke.composeai.plugin.PreviewExtension
 import java.io.Serializable
 import org.gradle.api.Project
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.plugins.ExtensionAware
 import org.gradle.api.tasks.testing.Test
 import org.gradle.tooling.provider.model.ToolingModelBuilder
 
@@ -34,8 +36,15 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
       return ComposePreviewModelData(PluginVersion.value, emptyMap())
     }
     val variant = resolveVariant(project)
-    val main = resolveConfiguration(project, "${variant}RuntimeClasspath")
-    val test = resolveConfiguration(project, "${variant}UnitTestRuntimeClasspath")
+    // NOT `"${'$'}{variant}RuntimeClasspath"`: on a `com.android.kotlin.multiplatform.library`
+    // module that took the Robolectric lane the variant is `androidMain` while the configurations
+    // are `androidRuntimeClasspath` and `androidHostTestRuntimeClasspath`, so deriving from the
+    // variant resolves nothing and `compose-preview doctor` reports empty dependency maps —
+    // silently, since an empty map is also what a genuine non-Android module returns.
+    val naming = resolveNaming(project, variant)
+    val main = resolveConfiguration(project, naming.runtimeClasspath)
+    val test =
+      naming.unitTestRuntimeClasspath?.let { resolveConfiguration(project, it) } ?: emptyMap()
     val gradleVersion = org.gradle.util.GradleVersion.current().version
     val (toolingDeclared, enforceTooling) = androidPreviewToolingSignals(project, variant)
     val findings: List<ModuleFinding> =
@@ -46,7 +55,9 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         previewToolingDeclared = toolingDeclared,
         enforcePreviewToolingDependency = enforceTooling,
         moduleMinSdk = resolveModuleMinSdk(project),
-        libraryMinSdks = resolveLibraryMinSdks(project, "${variant}UnitTestRuntimeClasspath"),
+        libraryMinSdks =
+          naming.unitTestRuntimeClasspath?.let { resolveLibraryMinSdks(project, it) }
+            ?: emptyList(),
       )
     val info: ModuleInfo =
       ModuleInfoData(
@@ -151,6 +162,30 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * Keeps the doctor's `${variant}RuntimeClasspath` / `${variant}UnitTestRuntimeClasspath` lookups
    * pointing at real configs when the model builder runs before / outside `onVariants`.
    */
+  /**
+   * The AGP name mapping for this project, keyed on the lane it actually renders through.
+   *
+   * The KMP-Android mapping is taken ONLY when the module opted into the Robolectric lane. A
+   * KMP-Android module on the default Desktop lane is not an Android module as far as this model is
+   * concerned — its renderer resolves `jvmRuntimeClasspath` / `desktopRuntimeClasspath`, and
+   * pointing the doctor at `androidRuntimeClasspath` would both snapshot the wrong backend's
+   * dependencies and switch on the Android-only compatibility checks in
+   * [androidPreviewToolingSignals], producing findings about a classpath the renders never touch.
+   * Plugin presence alone is the wrong question; the lane is the right one.
+   */
+  private fun resolveNaming(project: Project, variant: String): AndroidVariantNaming {
+    // The task, not the property. `kmpAndroidRobolectric = true` is a REQUEST, and the request is
+    // refused in two real cases — a module with no `withHostTest { }` compilation, and one where
+    // `org.jetbrains.compose` was applied first and Desktop had already committed. Both fall back
+    // to Desktop, and keying off the property would then describe a backend the renders never use.
+    // `composePreviewGenerateRobolectricProperties` is registered by `registerAndroidTasks` and
+    // nowhere else, so its presence is the lane that was actually taken.
+    val robolectricLane =
+      project.tasks.findByName("composePreviewGenerateRobolectricProperties") != null
+    return if (robolectricLane) AndroidVariantNaming.forProject(project, variant)
+    else AndroidVariantNaming.classic(variant)
+  }
+
   private fun resolveVariant(project: Project): String {
     val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return "debug"
     val target = ext.variant.getOrElse("debug")
@@ -175,7 +210,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     project: Project,
     variant: String,
   ): Pair<Boolean?, Boolean?> {
-    val isAndroid = project.configurations.findByName("${variant}RuntimeClasspath") != null
+    val isAndroid =
+      project.configurations.findByName(resolveNaming(project, variant).runtimeClasspath) != null
     if (!isAndroid) return null to null
     val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return null to null
     val declared =
@@ -191,9 +227,26 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * reflection failure — [CompatRules.checkLibraryMinSdk] treats `null` as "not checkable".
    */
   private fun resolveModuleMinSdk(project: Project): Int? = runCatching {
-    val android = project.extensions.findByName("android") ?: return null
+    val android = project.extensions.findByName("android") ?: return kmpAndroidMinSdk(project)
     val defaultConfig = android.javaClass.getMethod("getDefaultConfig").invoke(android)
     defaultConfig?.javaClass?.getMethod("getMinSdk")?.invoke(defaultConfig) as? Int
+  }
+    .getOrNull()
+
+  /**
+   * `minSdk` off a `com.android.kotlin.multiplatform.library` module.
+   *
+   * There is no project-level `android` extension to read: the block is `kotlin { android { … } }`,
+   * registered on the Kotlin extension's own container, and the target it yields carries `minSdk`
+   * directly rather than behind `defaultConfig` (the same shape `AndroidPreviewSupport`'s
+   * `finalizeDsl` branch reads). Without this the classic lookup returns null, the exception is
+   * swallowed, and `compose-preview doctor` silently skips every library-minSdk conflict its
+   * task-based counterpart still reports.
+   */
+  private fun kmpAndroidMinSdk(project: Project): Int? = runCatching {
+    val kotlin = project.extensions.findByName("kotlin") as? ExtensionAware ?: return null
+    val android = kotlin.extensions.findByName("android") ?: return null
+    android.javaClass.getMethod("getMinSdk").invoke(android) as? Int
   }
     .getOrNull()
 

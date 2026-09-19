@@ -23,6 +23,18 @@ on:
     # Mondays 06:00 UTC.
     - cron: '0 6 * * 1'
   workflow_dispatch:
+    inputs:
+      systems:
+        description: >-
+          Comma-separated delivery branches to regenerate (compose-m3, wear-m3).
+          Empty regenerates every system, which is what a dispatch has always done.
+          The selector exists because the manual remedy for ONE stale lane used to
+          cost a render of every catalog in the repository — three here, four in
+          m3-catalog — which is a poor escape hatch for a failure whose whole shape
+          is "one lane is stale" (issue #5438).
+        type: string
+        required: false
+        default: ''
   # Auto-regenerate on merge: a delivery branch goes stale the moment its catalog
   # changes on `main`, and until this trigger existed that staleness lasted until
   # someone remembered to dispatch (or until Monday) — the published stickers
@@ -69,9 +81,17 @@ permissions:
   # called workflow to elevate beyond this caller-level grant.
   contents: write # zizmor: ignore[excessive-permissions]
 
-concurrency:
-  group: design-artifacts-${{ github.ref }}
-  cancel-in-progress: false
+# NO workflow-level concurrency. One bucket for every lane in the repository is
+# what issue #5438 is about: `cancel-in-progress: false` protects the IN-PROGRESS
+# run, not the PENDING one — GitHub keeps at most one pending run per group, so a
+# newly queued run cancels the one already waiting, and the cancelled run's catalogs
+# are never re-rendered because its replacement scopes to its own push. Each render
+# job below takes its own per-lane group instead, so a `wear-m3` render and a
+# `compose-m3` render queue independently and neither can evict the other.
+#
+# That alone is not the fix — a genuine cancellation or a failed run still drops
+# that lane — which is why the Scope job is self-healing as well; see
+# scripts/design-artifacts/scope-step.sh.
 
 jobs:
   # Which delivery branches does this run need to regenerate?
@@ -120,72 +140,16 @@ jobs:
           # (the `inputs` context is only populated for workflow_call /
           # workflow_dispatch) and defaults to true for callers.
           FORCE_ALL: ${{ inputs.force-all }}
+          # The dispatch lane selector; empty for every other trigger.
+          ONLY: ${{ inputs.systems }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
           REPO: ${{ github.repository }}
+        # `pipefail`, so a scope that fails fails the job rather than being masked by
+        # `tee`'s exit code — the whole matrix downstream keys off these outputs.
         run: |
           set -euo pipefail
-
-          # Cron / dispatch / the release chain exist to refresh everything.
-          if [ "$FORCE_ALL" = "true" ] || [ "$EVENT" != "push" ]; then
-            # `if`, not `&&` — under `set -e` a failing AND-list exits the step.
-            if [ "$FORCE_ALL" = "true" ]; then
-              why="force-all (called workflow)"
-            else
-              why="event=$EVENT"
-            fi
-            echo "$why — regenerating every system" >> "$GITHUB_STEP_SUMMARY"
-            scripts/design-artifacts/scope-systems.sh --all | tee -a "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # All-zero `before` = branch creation; there's no range to diff. An empty
-          # file list makes the script fall back to every system.
-          #
-          # Single un-paginated call on purpose: the compare endpoint caps `files`
-          # at 300 and paginates COMMITS, not files, so `--paginate` would not fetch
-          # the rest — it would just hand us a silently partial list. A partial list
-          # is worse than none (a catalog past the cap reads as "unchanged" and its
-          # branch quietly rots), so a capped response is treated as unresolvable and
-          # falls through to regenerating everything.
-          files=''
-          case "$BEFORE" in
-            ''|0000000000000000000000000000000000000000) ;;
-            *)
-              compare="$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" 2>/dev/null || true)"
-              if [ -n "$compare" ]; then
-                count="$(jq -r '(.files // []) | length' <<<"$compare")"
-                if [ "$count" -ge 300 ]; then
-                  echo "compare returned $count files (API cap) — treating as truncated" >> "$GITHUB_STEP_SUMMARY"
-                else
-                  files="$(jq -r '(.files // [])[].filename' <<<"$compare")"
-                fi
-              fi
-              ;;
-          esac
-
-          if [ -n "$files" ]; then
-            file_count=$(printf '%s\n' "$files" | sed '/^$/d' | wc -l | xargs)
-            {
-              echo "Resolved ${file_count} changed file(s)."
-              echo
-              echo '<details><summary>Changed files (first 30)</summary>'
-              echo
-              echo '```'
-              printf '%s\n' "$files" | sed -n '1,30p'
-              if [ "$file_count" -gt 30 ]; then
-                echo "… $((file_count - 30)) more"
-              fi
-              echo '```'
-              echo '</details>'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'Could not resolve the changed files — regenerating every system.' >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          printf '%s\n' "$files" | scripts/design-artifacts/scope-systems.sh | tee -a "$GITHUB_OUTPUT" \
-            | sed 's/^/- `/; s/=true$/` → regenerate/; s/=false$/` → unchanged, skipped/' \
-            >> "$GITHUB_STEP_SUMMARY"
+          scripts/design-artifacts/scope-step.sh | tee -a "$GITHUB_OUTPUT"
 
   generate:
     name: ${{ matrix.system }}
@@ -193,6 +157,11 @@ jobs:
     needs: changes
     if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.compose-m3 == 'true' }}
     runs-on: ubuntu-latest
+    # Per LANE, so a queued compose-m3 render cannot evict a pending wear-m3 one
+    # (and vice versa) — see the note where the workflow-level group used to be.
+    concurrency:
+      group: design-artifacts-${{ github.ref }}-${{ matrix.system }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -539,6 +508,16 @@ jobs:
           GIT_COMMITTER_EMAIL='yuri@schimke.ee' \
             bash "$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
 
+          # Record what this lane was rendered from, for the next run's Scope job
+          # (issue #5438). Deliberately after the push and unconditional on what the
+          # push did: SKIP_IF_UNCHANGED commits nothing when the output is
+          # byte-identical, and the lane is still not stale. Never fails the job —
+          # see the script.
+          "$GITHUB_WORKSPACE/scripts/design-artifacts/mark-published-source.sh" \
+            --system "$SYSTEM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --sha "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+
   # ───────────────────────────────────────────────────────────────────────────
   # wear-m3 delegates to the shared reusable workflow (the same one external
   # consumers use), building the CLI from source (cli-source: build) so it still
@@ -558,6 +537,13 @@ jobs:
     if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.wear-m3 == 'true' }}
     permissions:
       contents: write
+    # Per lane, as above. A caller's own concurrency is the one thing the reusable
+    # workflow cannot fix for it — a called workflow's jobs inherit the CALLER's
+    # workflow-level group — which is why the reusable half carries the recipe in its
+    # header instead, and why the self-healing scope is the load-bearing half.
+    concurrency:
+      group: design-artifacts-${{ github.ref }}-wear-m3
+      cancel-in-progress: false
     uses: ./.github/workflows/design-artifacts-reusable.yml
     with:
       system: wear-m3

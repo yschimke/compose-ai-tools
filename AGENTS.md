@@ -165,6 +165,40 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
   once every required check of the `Protect Main` ruleset is green. Do not
   report that setting as a violation of this bullet.
 
+## Running Gradle
+
+Wrap Gradle in [`build-brief`](https://bb.staticvar.dev). It keeps the full log on disk and prints
+only the parts that decide what you do next — failed tasks, failed tests, warnings, build scan URLs,
+artifact paths — and it preserves Gradle's exit code exactly. This repository is one where that
+matters: nothing here is CI-only, so agents run `check` and the full `composePreviewRenderAll`
+render pipeline in-session, and those bury their one real line in thousands.
+
+Install it once (`brew install static-var/tap/build-brief`, or the script installer); the setup, the
+per-command detail and the cases where you still want the raw log are in
+[`docs/AGENT_GUIDE.md` → Common commands](docs/AGENT_GUIDE.md#common-commands).
+
+On a shared developer host, automated builds use [`scripts/agent-gradle.sh`](scripts/agent-gradle.sh)
+instead of invoking `build-brief` directly:
+
+```
+scripts/agent-gradle.sh :gradle-plugin:test --tests '*DeviceDimensionsTest*'
+scripts/agent-gradle.sh --exclusive check
+```
+
+The launcher keeps `build-brief` while limiting automation to four low-priority workers,
+non-interactive input and a ten-minute Gradle-daemon idle timeout. Use the normal profile for focused
+compilation, formatting, tests and renders. Use `--exclusive` for `check`, broad render pipelines and
+other heavyweight task graphs: it takes the same per-user machine lock as the Compose Preview daemon
+and server repositories, so automated builds cannot peak together. Direct Gradle and `build-brief`
+invocations remain unrestricted for interactive development, and hosted CI keeps its runner's full
+capacity. Do not copy these limits into `gradle.properties`.
+
+The per-command rules live in the managed `build-brief` block at the end of this file;
+`build-brief --install` regenerates it, so edit it there rather than by hand.
+
+Wrapping changes nothing about the invariants above — `./gradlew ktfmtFormat` is still what the
+formatter rule means, just run through `build-brief`.
+
 ## Where everything else lives
 
 | You need | Read |
@@ -174,6 +208,7 @@ examples are in [`docs/AGENT_GUIDE.md` → PR workflow](docs/AGENT_GUIDE.md#pr-w
 | Why `settings.gradle.kts` is shaped the way it is | [`docs/build-scripts/SETTINGS.md`](docs/build-scripts/SETTINGS.md) |
 | The contributor doc index | [`docs/README.md`](docs/README.md) |
 | Releasing, versioning | [`docs/RELEASING.md`](docs/RELEASING.md), [`docs/VERSIONING.md`](docs/VERSIONING.md) |
+| Releasing ACROSS the five repositories, in order | [`docs/design/CROSS_REPO_RELEASES.md`](docs/design/CROSS_REPO_RELEASES.md) |
 | Invoking an agent from an issue or PR | [`docs/AGENT_INVOCATION.md`](docs/AGENT_INVOCATION.md) |
 | Which agent reads which file, and what it costs | [`docs/AGENT_ENTRYPOINTS.md`](docs/AGENT_ENTRYPOINTS.md) |
 | Consumer docs for the published plugin and CLI | [`yschimke/skills`](https://github.com/yschimke/skills) |
@@ -184,3 +219,16 @@ Claude Code sessions additionally get on-demand procedures under
 `render-evidence` (capturing before/after renders), `flake-triage` (proving a
 preview is unstable rather than regressed). They carry harness mechanics only and
 cite this file for the rules.
+
+<!-- build-brief:instructions:start -->
+## build-brief
+
+- Prefer `build-brief gradle ...` for PATH Gradle and `build-brief ./gradlew ...` for the project wrapper.
+- For chained shell commands, rewrite each Gradle segment individually, for example `build-brief gradle test && build-brief gradle check`.
+- Use default `build-brief` output for routine Gradle work; it stays intentionally short on clean success cases.
+- Use default `build-brief` output for report-style commands like `tasks`, `help`, `projects`, `dependencies`, and `dependencyInsight`; their report bodies are preserved.
+- Use `build-brief gradle --stacktrace ...` or `build-brief ./gradlew --stacktrace ...` when you need Gradle stack traces.
+- `build-brief` normalizes output-shaping flags like `--quiet`, `--warn`, `--warning-mode ...`, and `--console ...` so its reducer keeps working reliably.
+- Let Gradle daemon reuse happen by default; `build-brief` strips explicit `--daemon` and `--no-daemon` overrides rather than forcing daemon-off behavior.
+- Preserve the raw log path from `build-brief` output when handing build failures to another tool or agent.
+<!-- build-brief:instructions:end -->

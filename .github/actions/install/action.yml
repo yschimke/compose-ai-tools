@@ -136,7 +136,16 @@ runs:
         # for `version: latest`). With a literal version we can still be
         # pointed at an in-progress release; without timeouts the curl can
         # hang for minutes per retry instead of failing fast.
-        curl -fL --retry 3 --retry-connrefused \
+        # `--retry-all-errors`, not `--retry-connrefused`: curl retries only its
+        # *transient* set by default — timeouts and 408/429/5xx — and
+        # `--retry-connrefused` widens that by exactly one errno. A connection
+        # reset during the TLS handshake is `curl: (35)`, which is in neither,
+        # so `--retry 3` sat here doing nothing while a single reset failed the
+        # whole job in under 400ms (wear-m3-catalog#474, #476; issue #5432).
+        # `--retry-all-errors` covers 35 and the rest of the non-transient
+        # family, and subsumes `--retry-connrefused`. `--max-time` still bounds
+        # each attempt, so the incomplete-release race above is unaffected.
+        curl -fL --retry 3 --retry-all-errors \
           --connect-timeout 30 --max-time 300 \
           -o "$tmp/$asset" "$url"
 

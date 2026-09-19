@@ -1104,6 +1104,22 @@ data class CatalogEntry(
    */
   val breakpointKit: List<String> = emptyList(),
   /**
+   * COMPONENT only: `@CatalogComponent.related` — this component's counterparts in OTHER catalogs,
+   * as `"<system>"` / `"<system>=<componentId>"` / `"<system>=<componentId>=<label>"` entries.
+   *
+   * NOT a second [parallel], and the difference is the whole point. [parallel] names the one
+   * counterpart this render is *diffed against*, in the single sibling system the catalog's
+   * `compareWith` setting names; this names catalogs merely worth looking at from here, and nothing
+   * scores, diffs or gates on it. A list because the case that needs it has three catalogs and not
+   * two: a samples catalog sits beside each kit catalog, and `remote-m3` has already spent its
+   * `compareWith` on the Wear kit catalog, so no pairwise handle could also reach the samples.
+   *
+   * Carried verbatim and never parsed here, for the reason [breakpointKit] states: the
+   * design-artifacts export's catalog inventory is the one reader. Empty ⇒ the component declared
+   * none, which is also what an older `preview-annotations` (with no such attribute) produces.
+   */
+  val related: List<String> = emptyList(),
+  /**
    * COMPONENT only: `@CatalogComponent.motionPreview` — the exact `@Preview` function name whose
    * animated/interaction captures publish on this component, when the recording lives on a function
    * of its own (an `@OverrideVariant` fan-out that would duplicate it, or a pinned motion canvas

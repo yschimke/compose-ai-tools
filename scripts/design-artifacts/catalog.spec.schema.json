@@ -50,6 +50,11 @@
             "type": "string",
             "description": "Default @ThemeCatalog group for every theme this entry expands to; themes sharing a group are catalogued together. Overridable per theme."
           },
+          "wear": {
+            "type": "boolean",
+            "default": false,
+            "description": "Emit @WearThemeCatalog instead of @ThemeCatalog for every provider this entry expands to. Required for a Wear theme: the annotation selects the Wear specimen and prevents a plausible-looking mobile Material 3 palette (or a missing androidx.compose.material3 class) from being rendered in its place."
+          },
           "composable": {
             "type": "string",
             "description": "FQN of the theme composable to call. Required by `enum`, `modes` and `arguments`. It may be `internal` to the module — the generated file compiles inside that same module, which is what makes an unexported theme (Twine's `AppTheme`) reachable at all."
@@ -172,6 +177,10 @@
         "hero": {
           "type": "string",
           "description": "The representative preview to feature as the system's hero — a componentId (e.g. \"Template/TimeText\") or a flattened preview id. Absent ⇒ the server picks one (prefer a screen, else a canonical component)."
+        },
+        "role": {
+          "type": "string",
+          "description": "What KIND of catalog this is, and through that what shape its component pages take. `samples` is a catalog of CALL SITES rather than of a design system's own components: the preview server drops every comparison lane (there is no reference a sample is meant to match, so a difference is not a defect) and stands the source beside the render instead of behind a chip. It also names the catalog in a reader's back-links — a component points at \"Samples\" rather than at a catalog title. Declared by the catalog because only it knows; a server that inferred this from a system name would be holding catalog knowledge it must not. Deliberately an open string rather than an enum: a consumer that does not recognise a role must degrade to the ordinary page, and an enum here would instead fail a newer producer's spec at validation."
         }
       }
     },
@@ -271,6 +280,32 @@
           "type": "string",
           "description": "Optional componentId of the counterpart in the `compareWith` sibling system, paired side-by-side on the cross-system compare page."
         },
+        "related": {
+          "type": "array",
+          "description": "Optional links to this component's counterparts in OTHER catalogs — a samples catalog demonstrating how it is called, a sibling platform's rendition. Unlike `parallel` this is a LIST and carries no parity semantics: `parallel` says two renders are pictures of one cell and should be diffed, `related` says only that another catalog is worth looking at from here. A list because a component can have more than one such neighbour and `compareWith` names exactly one sibling system — `remote-m3` spends its `compareWith` on the Wear kit catalog, so a second pairwise handle could never reach the samples. Presentation only: nothing scores, diffs or gates on it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["system"],
+            "properties": {
+              "system": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The other catalog's system slug, as it is served (e.g. \"m3-samples\"). Resolution is the consumer's: a preview server serving both catalogs already knows where it is, and one that does not serve it simply renders no link."
+              },
+              "componentId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The counterpart's componentId in that system. Omit when it is the same as this component's — the id-parity case, which is most of them."
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Display text for the link (e.g. \"Samples\"). Omit to let the consumer fall back to the other catalog's own title."
+              }
+            }
+          }
+        },
         "component": {
           "type": "string",
           "description": "Optional Code Connect override: the production composable name the sticker maps to (takes priority over the inferred target when building code-connect.json)."
@@ -282,6 +317,15 @@
         "source": {
           "type": "string",
           "description": "Optional Code Connect override: the source location (path or URL) for `component`."
+        },
+        "sourceFile": {
+          "type": "string",
+          "description": "Optional override for where a reader should be sent for this component's source, as a module-relative path. Takes precedence over the path discovery recorded for the `preview` function. For a catalog of call sites whose previews are generated wrappers, the wrapper is where the @Preview is and the thing it delegates to is what a reader came for — and only the catalog knows which. Leave it out on an ordinary catalog, where the two are the same file."
+        },
+        "bodyLine": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional line inside `sourceFile` to anchor the source panel on, meaningful only alongside `sourceFile`. Without it the whole file is shown, which is right for a file holding one declaration and poor for a file holding several."
         },
         "priority": { "$ref": "#/definitions/priority" },
         "variants": {

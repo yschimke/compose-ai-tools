@@ -6,6 +6,7 @@ import javax.inject.Inject
 import org.gradle.api.Action
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -341,6 +342,71 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * its render classpath.
    */
   val enableXrPreviews: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+
+  /**
+   * Render a `com.android.kotlin.multiplatform.library` module through the **Robolectric** renderer
+   * instead of the Compose Multiplatform Desktop one.
+   *
+   * Off by default, and deliberately explicit rather than inferred. Since issue #248 a KMP-Android
+   * module has rendered on Desktop: `commonMain` previews are pure-Compose composables that
+   * `ImageComposeScene` captures on the host JVM, which needs no Android infrastructure at all.
+   * That is the right lane for a `:shared` module whose UI is multiplatform, and it stays the
+   * default so no existing consumer changes behaviour.
+   *
+   * It is the wrong lane for a module whose UI is Android-only — a Wear Compose catalog, say, where
+   * `androidx.wear.compose:compose-material3` publishes for Android and nothing else. Those
+   * previews cannot be rendered off-device by Desktop at all; they need `android.jar`, a merged
+   * manifest and the AAR resource table, which is what Robolectric brings.
+   *
+   * Turning this on requires the consumer to have opted into AGP's host-test pipeline, since the
+   * plugin cannot do it for them — `withHostTest { }` both creates and configures the compilation,
+   * and AGP rejects a second call:
+   * ```
+   * kotlin {
+   *   android {
+   *     withHostTest { isIncludeAndroidResources = true }
+   *   }
+   * }
+   * ```
+   *
+   * Without `withHostTest` there is no Android test classpath to render on and the plugin falls
+   * back to Desktop with a warning. Without `isIncludeAndroidResources` the render still runs, but
+   * AGP generates no `test_config.properties`, so library resources resolve to 0 — the same
+   * degradation a classic module gets when it turns that flag off.
+   *
+   * No effect on any other module type: `com.android.application` and `com.android.library` already
+   * render through Robolectric, and a non-Android module has no lane to switch.
+   */
+  val kmpAndroidRobolectric: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
+
+  /**
+   * Source roots of the modules named by the `composePreviewSource` dependency configuration, so
+   * their `@Preview`s are attributed to the file that declares them.
+   *
+   * `composePreviewSource` alone gets the *classes* scanned — enough to find the previews. It is
+   * not enough to place them: a Kotlin file's `@file:` annotations reach the bytecode on the `…Kt`
+   * facade class, but resolving that class back to `sections/Buttons.kt` is done by matching its
+   * package-qualified source name against real files. Without the shared module's sources on that
+   * list every `@file:CatalogGroup` default silently stops applying — a catalog whose previews all
+   * land ungrouped, with a green build.
+   *
+   * Point it at the directory, not the files:
+   * ```
+   * dependencies { composePreviewSource(project(":catalog-shared")) }
+   * composePreview { previewSourceRoots.from(file("../catalog-shared/src")) }
+   * ```
+   *
+   * Paths are reported relative to the *consuming* module, so a sibling module's previews carry a
+   * `../catalog-shared/…` source path. That is the honest answer — the file genuinely is not in
+   * this module — and every consumer that resolves a preview back to its source (the CLI, the VS
+   * Code extension) follows it.
+   *
+   * Two declarations rather than one on purpose. Reading another project's source tree through the
+   * dependency graph would mean a cross-project model lookup, which isolated projects forbids; a
+   * path is just a path, and stays legal in every configuration mode.
+   */
+  val previewSourceRoots: ConfigurableFileCollection = objects.fileCollection()
 
   /** Generic selector for preview extensions that produce data alongside preview PNGs. */
   val previewExtensions: PreviewExtensionsExtension =

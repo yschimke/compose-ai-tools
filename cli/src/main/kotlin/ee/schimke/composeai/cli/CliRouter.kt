@@ -37,6 +37,12 @@ internal object CliRouter {
           // HistoryManifestCommand). Adjacency plus distinct names beats hiding it elsewhere.
           "history-manifest",
           "profile",
+          // `rc` sits under `inspect` because that is what two of its three subcommands do — a
+          // `.rc` document is opaque and `rc dump` / `rc header` are how you look inside one. That
+          // `rc compile` also *writes* a document is the odd one out, and splitting the three
+          // across two groups to fix that would be worse: they are one codec and a person reaching
+          // for one reaches for the others in the same session.
+          "rc",
         ),
       "capture" to listOf("render-matrix", "record", "bundle"),
       // `build-host` sits beside `serve` because it exists only to serve one: it is the Gradle

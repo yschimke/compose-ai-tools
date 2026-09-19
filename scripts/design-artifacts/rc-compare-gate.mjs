@@ -60,8 +60,35 @@ export function evaluateCmpWasmGate(expectedIds, rows, allowlist = new Map()) {
   };
 }
 
-/** Add cold/warm first-frame budget failures to an existing strict-lane verdict. */
-export function applyCmpWasmPerformanceBudgets(gate, rows, coldBudgetMs, warmBudgetMs) {
+/**
+ * Measure cold/warm first frames against their budgets — **without gating on them.**
+ *
+ * This used to fail the lane on the slowest single sample, and it is deliberately no longer a
+ * pass/fail signal. The argument is the one [summarizeCmpWasmPixelParity] makes one function down,
+ * and it applies here with less room for doubt.
+ *
+ * The lane runs in the publish job, on `main`, after the change has landed. It could never stop a
+ * slow player arriving — only strand `design-artifacts/<system>` on the last render that happened
+ * to come in under the line, which is the worst of both: the regression ships and the published
+ * catalog stops being refreshed. (Which is what happened: wear-m3-catalog `main` went red on
+ * 10 Sep 2026 for one warm frame at 10,023 ms, on a commit whose entire diff was shelf names in a
+ * JSON policy file, and the catalog bundle was not published.)
+ *
+ * And this measurement is *noisier* than the pixel one it sits beside. A mismatch percentage is a
+ * property of the two images; a first frame is a wall clock on a shared runner, one sample per
+ * document, competing with whatever else that machine is doing. Gating a build on the maximum of
+ * several hundred such samples fails when the runner hiccups and says nothing about the player.
+ *
+ * What stays is everything that is not the verdict. Every row's `cmpWasmFirstFrameMs` is in
+ * `rc-compare-summary.json`, the max and the count are reported here, and rows over budget are
+ * named in the job summary rather than left to be found. **A missing measurement is still a
+ * failure**, and that one is not about speed: it means the lane stopped recording the number, and
+ * a report nobody can read is the one way this check could quietly become nothing.
+ *
+ * A guard that should stop a performance regression has to run on the pull request, against the
+ * change proposing it, and compare like with like — a budget applied post-merge is not that.
+ */
+export function summarizeCmpWasmFirstFrame(gate, rows, coldBudgetMs, warmBudgetMs) {
   gate.performance = {};
   const budgets = [
     ["cold", coldBudgetMs],
@@ -69,35 +96,31 @@ export function applyCmpWasmPerformanceBudgets(gate, rows, coldBudgetMs, warmBud
   ];
   for (const [kind, budget] of budgets) {
     if (budget == null) continue;
-    const measured = rows.filter(
-      (row) => row.cmpWasmRendered && row.cmpWasmStartup === kind,
-    );
+    const measured = rows.filter((row) => row.cmpWasmRendered && row.cmpWasmStartup === kind);
     const slowest = measured.reduce(
       (current, row) =>
         current == null || row.cmpWasmFirstFrameMs > current.cmpWasmFirstFrameMs ? row : current,
       null,
     );
-    gate.performance[kind] =
-      slowest == null
-        ? null
-        : {
-            count: measured.length,
-            maxMs: slowest.cmpWasmFirstFrameMs,
-            budgetMs: budget,
-          };
     if (slowest == null) {
+      gate.performance[kind] = null;
+      // Not a speed judgement: nothing was measured, so there is no report. See above.
       gate.failures.push({
         id: `performance-${kind}`,
         note: `no ${kind} first-frame measurement was recorded`,
       });
-    } else if (slowest.cmpWasmFirstFrameMs > budget) {
-      gate.failures.push({
-        id: `performance-${kind}`,
-        note:
-          `${kind} first frame ${slowest.cmpWasmFirstFrameMs.toFixed(0)} ms exceeds ` +
-          `${budget.toFixed(0)} ms budget (${slowest.id})`,
-      });
+      continue;
     }
+    const over = measured
+      .filter((row) => row.cmpWasmFirstFrameMs > budget)
+      .map((row) => ({ id: row.id, firstFrameMs: row.cmpWasmFirstFrameMs }))
+      .sort((a, b) => b.firstFrameMs - a.firstFrameMs);
+    gate.performance[kind] = {
+      count: measured.length,
+      maxMs: slowest.cmpWasmFirstFrameMs,
+      budgetMs: budget,
+      over,
+    };
   }
   gate.passed = gate.failures.length === 0;
   return gate;
@@ -144,13 +167,18 @@ export function formatCmpWasmGate(gate) {
   for (const entry of gate.allowed) {
     lines.push(`- ${entry.id}: allowed until ${entry.expires} — ${entry.reason} (${entry.note})`);
   }
+  // Report-only, on the same terms as pixel parity below and for the same reason: this lane runs
+  // after the merge, so a budget here can strand a publish and cannot stop a regression.
   for (const kind of ["cold", "warm"]) {
     const performance = gate.performance?.[kind];
-    if (performance) {
-      lines.push(
-        `- ${kind} first frame: ${performance.maxMs.toFixed(0)} ms max / ` +
-          `${performance.budgetMs.toFixed(0)} ms budget (${performance.count} measured)`,
-      );
+    if (!performance) continue;
+    lines.push(
+      `- ${kind} first frame (report-only): ${performance.maxMs.toFixed(0)} ms max / ` +
+        `${performance.budgetMs.toFixed(0)} ms budget (${performance.count} measured, ` +
+        `${performance.over.length} over)`,
+    );
+    for (const row of performance.over) {
+      lines.push(`  · ${row.id}: ${row.firstFrameMs.toFixed(0)} ms`);
     }
   }
   // Report-only, and said out loud rather than left to be found on the page: these rows are how a

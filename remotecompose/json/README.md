@@ -1,0 +1,93 @@
+# Remote Compose JSON compiler
+
+`RemoteComposeJson.compile(source)` assembles authoring JSON into standard `.rc` bytes on a plain
+JVM. Without `compilerProfile`, it uses AndroidX's unextended authoring parser. `dump(bytes)` is
+operation-level inspection JSON, not an editable source round trip.
+
+## Named integer expressions
+
+Use the explicit top-level profile `compose-preview-integer-expressions-v1` when an integer state
+value needs a computed expression, for example to select a StateLayout branch. This profile is an
+extension provided by this compiler; it is not accepted by AndroidX's unextended JSON parser.
+An unknown profile fails compilation. The profile name describes the source compiler, separately
+from the Remote Compose API level and binary `profiles` feature mask in the document header.
+
+```json
+{
+  "compilerProfile": "compose-preview-integer-expressions-v1",
+  "header": { "width": 100, "height": 100 },
+  "root": [
+    { "type": "resources", "integers": { "page": { "value": 10, "export": true } } },
+    {
+      "type": "box",
+      "modifiers": ["fillMaxSize"],
+      "children": [
+        { "type": "integerExpression", "name": "index", "value": "clamp(@page / 10 - 1, 0, 1)" },
+        {
+          "type": "stateLayout",
+          "indexId": "@index",
+          "children": [
+            { "type": "box", "modifiers": ["fillMaxSize", { "background": "#FFFF0000" }] },
+            { "type": "box", "modifiers": ["fillMaxSize", { "background": "#FF00FF00" }] }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each `integerExpression` declares a document-wide integer name with a `value` expression. Names
+use letters, digits and underscores, starting with a letter or underscore. References use `@name`
+and must refer to previously declared integers. Forward references, duplicate names and float
+references fail compilation. Expressions support signed 32-bit literals, parentheses, `+ - * / %`,
+unary minus, `abs`, `min`, `max` and `clamp`, using AndroidX's integer expression compiler and normal
+32-bit arithmetic. They are not promoted to floats. Division by zero and integer overflow retain
+the runtime's arithmetic behavior; the compiler does not promise arbitrary-precision arithmetic.
+
+A declaration must fit the wire operation's 32 operand/operator slots. Split larger expressions
+into ordered named declarations. Declarations only accept `type`, `name` and `value`; they do not
+draw a component or accept modifiers. Put expressions inside a layout-bearing Box before the
+StateLayout or other content that reads them, so the player's normal paint path evaluates updates.
+Inactive-branch evaluation and transitions follow the player's behavior.
+
+The adapter registers a parser extension and emits ordinary `IntegerExpression` operations. It
+does not replace AndroidX parser classes, convert integer state to floats, or patch binary bytes.
+Its internal package placement allows access to the expression compiler and symbol tables exposed
+with package visibility in AndroidX alpha18/19. Dependency upgrades must run the profile tests.
+Player support remains a separate requirement: compiling successfully is not a rendering claim.
+
+Run `./gradlew :remotecompose-json:test :remotecompose-json:checkKotlinAbi`.
+
+## Independent text state
+
+The explicit `compose-preview-state-v1` profile includes integer expressions and adds
+`{"type":"mutableString","name":"label","value":"Ready"}`. Every declaration allocates a
+distinct named string ID through AndroidX's `addNamedString` writer API. Two variables initialized
+to the same text cannot alias each other or a text literal. Names follow the integer expression
+identifier rules and must not already be declared. Values must be non-null strings; only `type`,
+`name` and `value` are accepted.
+
+Use `@label` in text content and as the target of a `valueStringChange` action. The stock action
+parser interprets values beginning with `@` or `$` as references. To assign such text literally,
+declare an ordinary string variable containing it, then reference that immutable literal's ID.
+String equality and StateLayout selection are not added by this profile.
+
+The unextended parser and the existing integer-expression profile keep their behavior. In
+particular, stock `variable` declarations of `vtype:string` still intern equal text; use the new
+declaration when independent mutable identity is required. The profile emits ordinary
+`NamedVariable` and `TextData` operations, with no binary rewriting or custom player opcode.
+
+## Exact decimal comparisons
+
+The state profile also accepts `{"type":"floatEquals","name":"match","left":"@page","right":1.25}`.
+Each operand is a finite Float literal or a previously declared scalar Float reference; integer,
+text, collection, forward and expression-string operands are rejected. The output is an integer
+0/1 usable by subsequent `integerExpression` declarations and StateLayout index calculations.
+Only `type`, `name`, `left` and `right` are accepted, and output names must be unique identifiers.
+
+The compiler emits creation-compose's exact Float equality sequence followed by an integer
+expression reading its result. It does not use an epsilon or approximate equality, so adjacent
+finite Floats remain distinct. Literal values use Float precision. The player must publish the
+integer view of Float results as AndroidX does; older CMP player builds need rc-players#94.
+Host-supplied non-finite values are outside this finite-selector contract.
