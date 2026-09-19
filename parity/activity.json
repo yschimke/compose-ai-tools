@@ -1,11 +1,75 @@
 {
   "schema": "compose-preview-activity/v1",
-  "generatedAt": "2026-09-19T07:12:04.508Z",
+  "generatedAt": "2026-09-19T14:22:13.655Z",
   "windowDays": 30,
   "code": {
     "repo": "yschimke/compose-ai-tools",
     "ref": "main",
     "events": [
+      {
+        "sha": "1b9f3feb836a0c1ccdfbee29aa6470b73e109002",
+        "subject": "feat: carry a catalog's editing-canvas mock into ui-builder.json (#5514)",
+        "at": "2026-09-19T15:14:29+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "e0eb4a36d81d54ccbc8f71c19c8a45a3369b6e32",
+        "subject": "docs: refresh model board pull (2026-09-19) (#5513)",
+        "at": "2026-09-19T15:13:03+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "90da07f2168e4f75931b69c8b000be6d8b49b9e4",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:rc-player-compose to v1.67.0 (#5515)",
+        "at": "2026-09-19T13:57:08Z",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "3f7809e628e93d4c5fb0be3f1a1fae121c9ee4c6",
+        "subject": "fix: model-board bootstrap installs and requires opencode V2 (#5512)",
+        "at": "2026-09-19T12:43:34+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "8b76e0c3bc61b5c8162c0f2f2a330317e24bc69c",
+        "subject": "feat: house model lineup doc, leaderboard refresh and opencode bootstrap (#5511)",
+        "at": "2026-09-19T11:03:37+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "f1e5c3f109cdee3968d7dcaa7d66d1afb37d7679",
+        "subject": "fix(deps): consume the contracts line through its published BOM (#5509)",
+        "at": "2026-09-19T10:27:58+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "34e087f80af38c669e3bc65a620293f5a13a78f6",
+        "subject": "fix(cli): launcher allowlists cover the server's documented flags (#5508)",
+        "at": "2026-09-19T09:33:25+01:00",
+        "author": "Yuri Schimke",
+        "previewIds": [],
+        "components": []
+      },
+      {
+        "sha": "5d46535239d5a830adcb4226acd43eeeddd26777",
+        "subject": "fix(deps): update dependency ee.schimke.composeai:data-layoutinspector-core to v3.1.1 (#5505)",
+        "at": "2026-09-19T08:49:12+01:00",
+        "author": "renovate[bot]",
+        "previewIds": [],
+        "components": []
+      },
       {
         "sha": "0c35bbd8353a17cfa3ee5a407c0de32891595622",
         "subject": "chore(deps): update dependency yschimke/rc-players to v1.67.0 (#5506)",
@@ -418,70 +482,6 @@
         "sha": "495cbf62063c42ac04e1bf95a265dbacb22aa46b",
         "subject": "feat: expose Glimmer environments as a catalog axis (#5449)",
         "at": "2026-09-14T20:30:27+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "69de8718819fadc5df893caa6d9da6cda42d5c55",
-        "subject": "build: throttle automated Gradle runs (#5446)",
-        "at": "2026-09-14T20:12:24+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "02a976cf0876b6b87ffd6a85e35ece008aeb90ea",
-        "subject": "chore(deps): bump the actions-minor group with 4 updates (#5443)",
-        "at": "2026-09-14T19:35:11+01:00",
-        "author": "dependabot[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "bfa6ae0742ccd70b3cf50886cb5548c2e0e6718b",
-        "subject": "chore(deps): bump actions/setup-java from 5.7.0 to 6.0.1 (#5444)",
-        "at": "2026-09-14T19:29:38+01:00",
-        "author": "dependabot[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "6b73752799ef30b2810bc474ad3a004fbdaeeb83",
-        "subject": "chore(deps): bump yschimke/compose-ai-tools/.github/actions/install from 1.74.0 to 2.11.0 (#5445)",
-        "at": "2026-09-14T19:29:31+01:00",
-        "author": "dependabot[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "4e07c0752905aa479c3ed10c54f2ea894600e189",
-        "subject": "docs(agents): run Gradle through build-brief (#5442)",
-        "at": "2026-09-13T11:58:39+01:00",
-        "author": "Yuri Schimke",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "ce6f315a6d78ca5ba12a4321513c4d72ffe68dda",
-        "subject": "chore(ci): update the design-artifacts export driver to v2.13.1 (#5441)",
-        "at": "2026-09-13T10:37:23Z",
-        "author": "renovate[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "508d1dc6699d733e1068c81589c1d4fb73b35e24",
-        "subject": "chore(main): release 2.13.1 (#5440)",
-        "at": "2026-09-13T10:55:20+01:00",
-        "author": "github-actions[bot]",
-        "previewIds": [],
-        "components": []
-      },
-      {
-        "sha": "c34581b4dbe45abce63d9740130f9e7246a2841a",
-        "subject": "fix(design-artifacts): publish a system's design pages only for the kit it reproduces (#5439)",
-        "at": "2026-09-13T10:53:51+01:00",
         "author": "Yuri Schimke",
         "previewIds": [],
         "components": []
