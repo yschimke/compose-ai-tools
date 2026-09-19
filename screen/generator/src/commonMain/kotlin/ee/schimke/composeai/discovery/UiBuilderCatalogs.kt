@@ -146,6 +146,14 @@ data class UiBuilderComponentPolicy(
   val catalogId: String? = null,
   val displayName: String? = null,
   val canvas: String? = null,
+  /**
+   * The layout the editing canvas draws while an author is inside this component — see
+   * [UiBuilderUnrolledMock].
+   *
+   * Absent, which is every component today, keeps the component's own layout while editing. Carried
+   * onto the wire under the component's `wasm` block, which is where the builder reads it.
+   */
+  val unrolled: UiBuilderUnrolledMock? = null,
   val nativeOnly: Boolean = false,
   val traits: List<String> = emptyList(),
   val slots: Map<String, List<String>> = emptyMap(),
@@ -183,6 +191,7 @@ internal fun UiBuilderComponentPolicy.mergedWith(
     record = authored.record ?: record,
     displayName = authored.displayName ?: displayName,
     canvas = authored.canvas ?: canvas,
+    unrolled = authored.unrolled ?: unrolled,
     nativeOnly = authored.nativeOnly ?: nativeOnly,
     traits = authored.traits ?: traits,
     excluded = authored.excluded ?: excluded,

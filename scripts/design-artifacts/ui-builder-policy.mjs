@@ -204,21 +204,28 @@ function validateTypedShapes(policy, errors) {
       }
       validateBuiltinBlocks(id, builtin, errors);
       validateBuiltinSlotShapes(id, builtin, errors);
+      validateUnrolled("builtin", id, builtin.unrolled, errors);
+    }
+  }
+  if (isObject(policy.components)) {
+    for (const [id, component] of Object.entries(policy.components)) {
+      if (!isObject(component)) continue;
+      validateUnrolled("component", id, component.unrolled, errors);
     }
   }
   validateMenu(policy.menu, errors);
 }
 
 /**
- * The typed shape of every field inside a builtin's `wasm`, `code` and `svg` blocks.
+ * The typed shape of every field inside a builtin's `wasm`, `code`, `svg` and `unrolled` blocks.
  *
  * Their children are TYPED in the reader — `UiBuilderBuiltinWasm`, `UiBuilderBuiltinCode`,
- * `UiBuilderBuiltinSvg` — unlike `properties` and `slots`, whose elements are `JsonElement` and
- * therefore the consumer's business rather than this validator's. A `code.imports` written as a
- * bare string decodes into none of them, so the discovery task refuses the whole file and withdraws
- * `ui-builder.json` — after a render, for a mistake a build-free pre-flight can see in a
- * millisecond. That is exactly the failure this sweep exists to prevent, so the blocks are
- * enumerated here rather than in the checks that read their MEANING.
+ * `UiBuilderBuiltinSvg`, `UiBuilderUnrolledMock` — unlike `properties` and `slots`, whose elements
+ * are `JsonElement` and therefore the consumer's business rather than this validator's. A
+ * `code.imports` written as a bare string decodes into none of them, so the discovery task refuses
+ * the whole file and withdraws `ui-builder.json` — after a render, for a mistake a build-free
+ * pre-flight can see in a millisecond. That is exactly the failure this sweep exists to prevent, so
+ * the blocks are enumerated here rather than in the checks that read their MEANING.
  */
 const BUILTIN_BLOCK_FIELDS = {
   // `platformSupported` is absent on purpose: it is a `JsonElement` in the reader, so any JSON
@@ -227,6 +234,33 @@ const BUILTIN_BLOCK_FIELDS = {
   code: { symbol: "string", imports: "string[]" },
   svg: { status: "string", fallback: "string", blocksExport: "boolean", notes: "string" },
 };
+
+/**
+ * `unrolled`, on a record component and on a builtin alike.
+ *
+ * Both placements state the same declaration and both reach the same reader field, so both are
+ * swept here rather than in the builtin-only block loop — a `layout` written as a number takes the
+ * whole file down whichever map it was written in, and the map a catalog happens to choose is not
+ * a difference the pre-flight is allowed to care about.
+ *
+ * `cellWidthDp` and `spacingDp` are deliberately unchecked: they are `JsonElement`s in the reader,
+ * where a number and a lossless spelling are both carried, and only the builder that resolves them
+ * can object.
+ */
+function validateUnrolled(owner, id, value, errors) {
+  if (value === undefined) return;
+  if (!isObject(value)) {
+    errors.push(
+      `${owner} ${JSON.stringify(id)} has an "unrolled" of ${JSON.stringify(value)}; the reader decodes it as an object`,
+    );
+    return;
+  }
+  if (value.layout !== undefined && typeof value.layout !== "string") {
+    errors.push(
+      `${owner} ${JSON.stringify(id)} has an "unrolled.layout" of ${JSON.stringify(value.layout)}; the reader decodes it as a string`,
+    );
+  }
+}
 
 const shapeOf = (value) =>
   Array.isArray(value) ? (value.every((entry) => typeof entry === "string") ? "string[]" : "array") : typeof value;

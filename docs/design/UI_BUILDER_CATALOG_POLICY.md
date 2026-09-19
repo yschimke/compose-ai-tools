@@ -187,6 +187,30 @@ still exports as a known callable — `layout/box` writes `Box`, and nothing in 
 catalog's record can say so, because inference scopes library components to
 `material3`/`material`/`wear` ([`COMPONENT_RECORD.md`](COMPONENT_RECORD.md)).
 
+### The editing canvas's mock
+
+Every other field in this file describes what a consumer **serves**. `unrolled` describes what the
+editor **draws**, and those are not the same picture: a lazy column rendered as itself shows the
+rows that fit the frame, so the ninth row is not on the canvas and cannot be edited. The editor has
+always drawn that split — constrained in the preview pane and in every device frame, unrolled while
+an author is inside the container — but *which* container unrolls, and *how*, was hardcoded in the
+builder. A catalog knows its own components, so it states it, beside `canvas`, on a record component
+and on a builtin alike:
+
+```jsonc
+"m3/lazy-column": {
+  "record": "…LazyColumnKt.LazyColumn",
+  "canvas": "material3/LazyColumn",
+  "unrolled": { "layout": "stack" }        // every row, laid out as a column while editing
+}
+```
+
+`layout` is the builder's vocabulary, exactly as `canvas` is: `stack` (a `Column`), `row` (a `Row`),
+`wrap` (a `FlowRow`) or `panes` (every pane a pane scaffold declares), with `cellWidthDp` and
+`spacingDp` for the layouts that tile. A name the consuming build does not know is inert — the
+component draws as itself — so stating one does not pin the builder's vintage, and a catalog that
+states nothing keeps today's behaviour on every component.
+
 ## What a consumer may assume
 
 The file is published once and read by builders of several vintages that the publisher cannot
@@ -220,3 +244,8 @@ and the VS Code extension reading through one of those. So:
       fills holes; nothing yet decides what goes in them.
 - [ ] Typed fields on `CatalogCapabilityV1` in compose-preview-contracts (not on the critical path;
       `statusSemantics` carries them until then).
+- [x] The editing canvas's mock in the policy: stated beside `canvas`, carried into `ui-builder.json`
+      for a record component and a builtin, and covered by the schema, the pre-flight and the
+      generator's tests. The wire type (`WasmCapabilityV1.unrolled`) is
+      [compose-preview-contracts#84](https://github.com/yschimke/compose-preview-contracts/pull/84);
+      the builder's registry and its constrained/unrolled switch follow it.

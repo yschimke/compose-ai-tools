@@ -264,6 +264,7 @@ test("the blocks a builtin states about its lanes have to be readable", () => {
       wasm: { platformSupported: true, adapterStatus: "planned" },
       code: { symbol: "Box", imports: ["androidx.compose.foundation.layout.Box"] },
       svg: { status: "verified", fallback: "none", blocksExport: false },
+      unrolled: { layout: "wrap", cellWidthDp: 190, spacingDp: 4 },
       slots: { children: { ordered: true, acceptedTraits: ["AnyContent"] } },
     },
   };
@@ -283,11 +284,11 @@ test("a slot says whether its children's order means anything", () => {
 });
 
 test("every typed field inside a builtin's blocks is swept, not just the ones read for meaning", () => {
-  // The children of `wasm`, `code` and `svg` are TYPED in the reader, so a wrong type there does
-  // not decode — the discovery task refuses the whole file and withdraws `ui-builder.json`, after
-  // a ninety-minute render, for something a build-free pre-flight can see instantly. The checks
-  // that read these blocks for MEANING look at three fields; enumerating only those is the same
-  // "covers most of them" this sweep already exists to replace.
+  // The children of `wasm`, `code`, `svg` and `unrolled` are TYPED in the reader, so a wrong type
+  // there does not decode — the discovery task refuses the whole file and withdraws
+  // `ui-builder.json`, after a ninety-minute render, for something a build-free pre-flight can see
+  // instantly. The checks that read these blocks for MEANING look at three fields; enumerating only
+  // those is the same "covers most of them" this sweep already exists to replace.
   const cases = [
     [{ wasm: { notes: 7 } }, /"wasm.notes" of 7; the reader decodes it as a string/],
     [{ wasm: "supported" }, /"wasm" of "supported"; the reader decodes it as an object/],
@@ -301,6 +302,8 @@ test("every typed field inside a builtin's blocks is swept, not just the ones re
       { svg: { status: "verified", fallback: "none", blocksExport: "no" } },
       /"svg.blocksExport" of "no"; the reader decodes it as a boolean/,
     ],
+    [{ unrolled: "wrap" }, /"unrolled" of "wrap"; the reader decodes it as an object/],
+    [{ unrolled: { layout: 7 } }, /"unrolled.layout" of 7; the reader decodes it as a string/],
     [
       { slots: { children: { ordered: "yes" } } },
       /slot "children" has an "ordered" of "yes"; the reader decodes it as a boolean/,
@@ -325,6 +328,40 @@ test("every typed field inside a builtin's blocks is swept, not just the ones re
     };
     assert.deepEqual(codes(policy).errors, [], JSON.stringify(platformSupported));
   }
+
+  // The mock's dimensions are unchecked for the same reason: a `JsonElement` in the reader, where a
+  // number and a spelling are both carried, and only the builder that resolves them can object.
+  for (const cellWidthDp of [190, "190.dp", { dp: 190 }]) {
+    const policy = wellFormed();
+    policy.builtins = {
+      "compose-foundation/box": { role: "container", unrolled: { layout: "wrap", cellWidthDp } },
+    };
+    assert.deepEqual(codes(policy).errors, [], JSON.stringify(cellWidthDp));
+  }
+});
+
+test("the sweep covers a record component's unrolled mock too", () => {
+  // The same declaration reaches the same reader field from either map, so a `layout` written as a
+  // number costs the whole file whichever one a catalog chose — and `components` was the map the
+  // sweep was not looking at.
+  const bad = wellFormed();
+  bad.components = {
+    "m3/lazy-column": { record: ":catalog/LazyColumnKt.LazyColumn", unrolled: { layout: 7 } },
+  };
+  const only = codes(bad).errors;
+  assert.equal(only.length, 1, JSON.stringify(only));
+  assert.match(only[0], /component "m3\/lazy-column" has an "unrolled\.layout" of 7/);
+
+  // And a lossless dimension is legal, exactly as it is on a builtin: the schema allows the
+  // spelling and the reader carries it.
+  const ok = wellFormed();
+  ok.components = {
+    "m3/lazy-column": {
+      record: ":catalog/LazyColumnKt.LazyColumn",
+      unrolled: { layout: "stack", cellWidthDp: "190.dp" },
+    },
+  };
+  assert.deepEqual(codes(ok).errors, []);
 });
 
 test("a templates path outside ui-builder is an error, not a shrug", async () => {

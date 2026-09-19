@@ -208,6 +208,8 @@ data class UiBuilderAuthoredComponent(
   val group: String? = null,
   val displayName: String? = null,
   val canvas: String? = null,
+  /** The editing canvas's mock for this component — see [UiBuilderUnrolledMock]. */
+  val unrolled: UiBuilderUnrolledMock? = null,
   val nativeOnly: Boolean? = null,
   val traits: List<String>? = null,
   /** Kept off the shelf, with the stated reason. */
@@ -215,6 +217,35 @@ data class UiBuilderAuthoredComponent(
   val propertyCapabilities: List<JsonElement>? = null,
   val slotCapabilities: List<JsonElement>? = null,
   val modifierCapabilities: List<String>? = null,
+)
+
+/**
+ * The layout a catalog asks the editing canvas to draw for a component while it is being edited.
+ *
+ * A scrollable container drawn as itself cannot show a child past the frame's edge — the ninth row
+ * of a lazy column, the fifth tab of a scrollable row, the pane a phone frame hides — so a catalog
+ * says how its children should be laid out while an author is inside it. The **constrained**
+ * surfaces never see this: the preview pane, each device frame, the native lane and every export
+ * draw the component itself.
+ *
+ * [layout] is the builder's vocabulary, not this file's, exactly as
+ * [UiBuilderAuthoredComponent.canvas] is: the builder resolves the name against its own registry,
+ * and a name it does not know is inert — the component draws as itself rather than as a broken
+ * mock. The names in use are `stack` (a `Column`), `row` (a `Row`), `wrap` (a `FlowRow`) and
+ * `panes` (every pane a pane scaffold declares).
+ *
+ * The wire carries it nested under the component's `wasm` block — `WasmCapabilityV1.unrolled` —
+ * because that is the canvas-lane block there. Here it sits beside `canvas`, which is the
+ * declaration it belongs with: it is the same declaration for a record component and for a builtin,
+ * and those two do not share a `wasm` block.
+ */
+@Serializable
+data class UiBuilderUnrolledMock(
+  val layout: String,
+  /** The width `wrap` and `row` give one cell; absent leaves it to the layout. */
+  val cellWidthDp: JsonElement? = null,
+  /** The gap between cells; absent leaves it to the layout. */
+  val spacingDp: JsonElement? = null,
 )
 
 /**
@@ -231,6 +262,8 @@ data class UiBuilderBuiltin(
   val displayName: String? = null,
   val group: String? = null,
   val canvas: String? = null,
+  /** The editing canvas's mock for this builtin — see [UiBuilderUnrolledMock]. */
+  val unrolled: UiBuilderUnrolledMock? = null,
   /**
    * What this builtin IS, for the slot-acceptance rules — a component whose slot accepts
    * `AnyContent` cannot admit one that claims no traits at all.

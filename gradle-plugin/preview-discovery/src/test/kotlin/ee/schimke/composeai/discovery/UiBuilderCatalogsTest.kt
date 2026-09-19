@@ -551,6 +551,99 @@ class UiBuilderCatalogsTest {
       .isEqualTo("false")
   }
 
+  /**
+   * The editing canvas's mock, for the two kinds of component a policy can declare one on.
+   *
+   * A container drawn as itself shows only what fits the frame — the ninth row of a lazy column is
+   * not on the canvas and cannot be edited — so a catalog says how the canvas lays its children out
+   * while an author is inside it. The record component states it beside the canvas word and the
+   * builtin beside its own; both reach the published file, and the key the consumer reads is the
+   * serial name, asserted on the encoded form rather than assumed from the Kotlin property.
+   */
+  @Test
+  fun `an unrolled mock publishes for a component and a builtin, and stays absent when unstated`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(
+          component("LazyColumn", catalogId = "Layout/LazyColumn", group = "Layout"),
+          component("Card", catalogId = "Containment/Card", group = "Containment"),
+        ),
+        cover,
+        policy(
+          componentIdPrefix = "m3/",
+          builtins =
+            mapOf(
+              "compose-foundation/lazy-grid" to
+                UiBuilderBuiltin(
+                  role = "container",
+                  unrolled =
+                    UiBuilderUnrolledMock(
+                      layout = "wrap",
+                      cellWidthDp = JsonPrimitive(280),
+                      spacingDp = JsonPrimitive(4),
+                    ),
+                )
+            ),
+          components =
+            mapOf(
+              "m3/lazy-column" to
+                UiBuilderAuthoredComponent(
+                  displayName = "Lazy column",
+                  canvas = "material3/LazyColumn",
+                  unrolled = UiBuilderUnrolledMock(layout = "stack"),
+                ),
+              "m3/card" to
+                UiBuilderAuthoredComponent(displayName = "Card", canvas = "material3/Card"),
+            ),
+        ),
+      )!!
+
+    val component = generated.statusSemantics.components.getValue("m3/lazy-column")
+    assertThat(component.unrolled?.layout).isEqualTo("stack")
+    // Absent is the default and stays absent: a component that states no mock keeps its own layout
+    // while editing, which is what every component did before the field existed.
+    assertThat(generated.statusSemantics.components.getValue("m3/card").unrolled).isNull()
+
+    val builtin = generated.statusSemantics.builtins.getValue("compose-foundation/lazy-grid")
+    assertThat(builtin.unrolled?.layout).isEqualTo("wrap")
+    assertThat(builtin.unrolled?.cellWidthDp).isEqualTo(JsonPrimitive(280))
+    assertThat(builtin.unrolled?.spacingDp).isEqualTo(JsonPrimitive(4))
+
+    val encoded = Json {
+      ignoreUnknownKeys = true
+    }
+      .parseToJsonElement(Json.encodeToString(generated))
+      .jsonObject
+      .getValue("statusSemantics")
+      .jsonObject
+    assertThat(
+        encoded
+          .getValue("components")
+          .jsonObject
+          .getValue("m3/lazy-column")
+          .jsonObject
+          .getValue("unrolled")
+          .jsonObject
+          .getValue("layout")
+          .jsonPrimitive
+          .content
+      )
+      .isEqualTo("stack")
+    assertThat(
+        encoded
+          .getValue("builtins")
+          .jsonObject
+          .getValue("compose-foundation/lazy-grid")
+          .jsonObject
+          .getValue("unrolled")
+          .jsonObject
+          .getValue("cellWidthDp")
+          .jsonPrimitive
+          .content
+      )
+      .isEqualTo("280")
+  }
+
   @Test
   fun `the two role vocabularies in one declaration reject each other's words`() {
     // `role` says which template WRITES the component; `shelfRole` says what SHAPE it is. Both are
