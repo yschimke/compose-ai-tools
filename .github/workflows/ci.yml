@@ -937,6 +937,13 @@ jobs:
       # gates github.com per repository 403s that fetch — on a box that already had the JDK.
       - name: Run cloud JDK setup tests
         run: scripts/test-setup-cloud-jdk.sh
+      # The model-board refresh and opencode bootstrap only ever run on demand
+      # (a leaderboard pull or a new machine), where a quiet failure ships a
+      # stale lineup or a clobbered opencode.json with no signal.
+      - name: Run model-board refresh tests
+        run: scripts/test-model-board.sh
+      - name: Run model-board bootstrap tests
+        run: scripts/test-model-board-bootstrap.sh
 
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
