@@ -55,15 +55,31 @@ if [ -z "$CONFIG" ]; then
   CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json"
 fi
 
+# V2 only: the managed config uses V2 agent/command shapes, and the V1
+# installer at opencode.ai/install resolves to the 1.x line.
+V2_INSTALL="curl -fsSL https://opencode.ai/v2/install | bash"
+
 if ! command -v opencode >/dev/null 2>&1; then
   if [ "$INSTALL" -eq 1 ]; then
-    curl -fsSL https://opencode.ai/install | bash
+    sh -c "$V2_INSTALL"
   else
-    printf 'opencode CLI not found; install it:\n' >&2
-    printf '  curl -fsSL https://opencode.ai/install | bash\n' >&2
+    printf 'opencode CLI not found; install V2 first:\n' >&2
+    printf '  %s\n' "$V2_INSTALL" >&2
     printf 'or re-run with --install\n' >&2
     exit 2
   fi
+else
+  ver="$(opencode --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -1)"
+  case "$ver" in
+    2*|"")
+      # Empty means unparseable output: proceed, the merge itself is validated.
+      ;;
+    *)
+      printf 'opencode %s is V1; this setup needs V2 (config schema differs):\n' "${ver:-unknown}" >&2
+      printf '  %s\n' "$V2_INSTALL" >&2
+      exit 2
+      ;;
+  esac
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -78,7 +94,7 @@ else
 fi
 
 python3 - "$CONFIG" "$REPO" "$DRY" <<'PYEOF' || exit 1
-import json, sys
+import json, os, sys
 
 path, repo, dry = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
 
@@ -124,8 +140,13 @@ MANAGED_AGENTS = {
     },
 }
 
-with open(path) as f:
-    cfg = json.load(f)
+if dry and not os.path.exists(path):
+    cfg = {}
+else:
+    with open(path) as f:
+        cfg = json.load(f)
+if not cfg:
+    cfg = {"$schema": "https://opencode.ai"}
 
 cfg["model"] = "openrouter/z-ai/glm-5.3-flash"
 agents = cfg.setdefault("agents", {})

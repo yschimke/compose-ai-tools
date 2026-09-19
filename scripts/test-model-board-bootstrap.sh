@@ -44,6 +44,34 @@ chmod +x "$tmp/bin/opencode"
 PATH="$tmp/bin:$PATH"
 export PATH
 
+# The installer must be the V2 line: the bare opencode.ai/install URL
+# resolves to 1.x (seen live on a Mac mini). Every code mention must be v2.
+if grep -n "https://opencode\.ai/install" "$BOOT" | grep -v "v2/install" >/dev/null; then
+  printf 'FAIL: bare V1 installer URL present\n' >&2; fail=1
+else
+  printf 'ok: installer URL is V2-only\n'
+fi
+
+# A V1 CLI is refused: the managed config uses V2 agent/command shapes.
+mkdir -p "$tmp/v1bin"
+printf '#!/bin/sh\necho "opencode version 1.18.31"\n' > "$tmp/v1bin/opencode"
+chmod +x "$tmp/v1bin/opencode"
+if PATH="$tmp/v1bin:$PATH" "$BOOT" --config "$tmp/cfg.json" --repo "$tmp/repo" >/dev/null 2>&1; then
+  printf 'FAIL: V1 CLI accepted\n' >&2; fail=1
+else
+  printf 'ok: V1 CLI refused\n'
+fi
+
+# A V2 CLI proceeds.
+mkdir -p "$tmp/v2bin"
+printf '#!/bin/sh\necho "opencode v2.0.9"\n' > "$tmp/v2bin/opencode"
+chmod +x "$tmp/v2bin/opencode"
+if PATH="$tmp/v2bin:$PATH" "$BOOT" --dry-run --config "$tmp/cfg.json" --repo "$tmp/repo" >/dev/null 2>&1; then
+  printf 'ok: V2 CLI accepted\n'
+else
+  printf 'FAIL: V2 CLI refused\n' >&2; fail=1
+fi
+
 # Managed keys appear; unmanaged keys survive.
 cat > "$tmp/cfg.json" <<'EOF'
 {"$schema": "https://opencode.ai",
