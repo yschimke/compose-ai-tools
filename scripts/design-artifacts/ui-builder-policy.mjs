@@ -210,15 +210,15 @@ function validateTypedShapes(policy, errors) {
 }
 
 /**
- * The typed shape of every field inside a builtin's `wasm`, `code` and `svg` blocks.
+ * The typed shape of every field inside a builtin's `wasm`, `code`, `svg` and `unrolled` blocks.
  *
  * Their children are TYPED in the reader — `UiBuilderBuiltinWasm`, `UiBuilderBuiltinCode`,
- * `UiBuilderBuiltinSvg` — unlike `properties` and `slots`, whose elements are `JsonElement` and
- * therefore the consumer's business rather than this validator's. A `code.imports` written as a
- * bare string decodes into none of them, so the discovery task refuses the whole file and withdraws
- * `ui-builder.json` — after a render, for a mistake a build-free pre-flight can see in a
- * millisecond. That is exactly the failure this sweep exists to prevent, so the blocks are
- * enumerated here rather than in the checks that read their MEANING.
+ * `UiBuilderBuiltinSvg`, `UiBuilderUnrolledMock` — unlike `properties` and `slots`, whose elements
+ * are `JsonElement` and therefore the consumer's business rather than this validator's. A
+ * `code.imports` written as a bare string decodes into none of them, so the discovery task refuses
+ * the whole file and withdraws `ui-builder.json` — after a render, for a mistake a build-free
+ * pre-flight can see in a millisecond. That is exactly the failure this sweep exists to prevent, so
+ * the blocks are enumerated here rather than in the checks that read their MEANING.
  */
 const BUILTIN_BLOCK_FIELDS = {
   // `platformSupported` is absent on purpose: it is a `JsonElement` in the reader, so any JSON
@@ -226,6 +226,10 @@ const BUILTIN_BLOCK_FIELDS = {
   wasm: { adapterStatus: "string", notes: "string" },
   code: { symbol: "string", imports: "string[]" },
   svg: { status: "string", fallback: "string", blocksExport: "boolean", notes: "string" },
+  // `cellWidthDp` and `spacingDp` are absent for the reason `platformSupported` is — `JsonElement`s
+  // in the reader, where a number and a string are both carried. `layout` is a Kotlin `String`, so
+  // a layout written as anything else takes the whole file down.
+  unrolled: { layout: "string" },
 };
 
 const shapeOf = (value) =>

@@ -156,6 +156,27 @@
             "type": "string",
             "description": "Canvas adapter id, or `placeholder`. Same negotiation as `frame.adapter`: unknown to this build means placeholder plus a log line, never a refused catalog. Stating NOTHING is not neutral \u2014 the component composes to `platformSupported: false` and draws a named placeholder, which is how a whole shelf goes blank with every other field still correct."
           },
+          "unrolled": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The layout the editing canvas draws for this component while an author is inside it, instead of the component itself. A scrollable container drawn as itself cannot show a child past the frame's edge \u2014 the ninth row of a lazy column, the fifth tab of a scrollable row, the pane a phone frame hides \u2014 so a catalog says how its children should be laid out while editing. The CONSTRAINED surfaces \u2014 the preview pane, each device frame, the native lane and every export \u2014 never see this. `layout` is the builder's vocabulary, exactly as `canvas` is: a name this build does not know is inert, and the component draws as itself.",
+            "properties": {
+              "layout": {
+                "type": "string",
+                "minLength": 1,
+                "description": "`stack` (a Column), `row` (a Row), `wrap` (a FlowRow) or `panes` (every pane a pane scaffold declares)."
+              },
+              "cellWidthDp": {
+                "type": "number",
+                "description": "The width `wrap` and `row` give one cell; absent leaves it to the layout."
+              },
+              "spacingDp": {
+                "type": "number",
+                "description": "The gap between cells; absent leaves it to the layout."
+              }
+            },
+            "required": ["layout"]
+          },
           "nativeOnly": {
             "type": "boolean",
             "description": "Drawn by the native lane and a placeholder on the canvas, deliberately. The honest way to say a component has no browser adapter, as against omitting `canvas` and leaving it ambiguous."
@@ -233,6 +254,27 @@
           "canvas": {
             "type": "string",
             "description": "Canvas adapter id, or `placeholder`. Same negotiation as `frame.adapter`: unknown to this build means placeholder plus a log line, never a refused catalog."
+          },
+          "unrolled": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The layout the editing canvas draws for this builtin while an author is inside it, instead of the builtin itself \u2014 a lazy list that shows its rows, a scrollable tab row that shows its tabs. The CONSTRAINED surfaces \u2014 the preview pane, each device frame, the native lane and every export \u2014 never see this. `layout` is the builder's vocabulary, exactly as `canvas` is: a name this build does not know is inert, and the builtin draws as itself.",
+            "properties": {
+              "layout": {
+                "type": "string",
+                "minLength": 1,
+                "description": "`stack` (a Column), `row` (a Row), `wrap` (a FlowRow) or `panes` (every pane a pane scaffold declares)."
+              },
+              "cellWidthDp": {
+                "type": "number",
+                "description": "The width `wrap` and `row` give one cell; absent leaves it to the layout."
+              },
+              "spacingDp": {
+                "type": "number",
+                "description": "The gap between cells; absent leaves it to the layout."
+              }
+            },
+            "required": ["layout"]
           },
           "traits": {
             "type": "array",
