@@ -340,6 +340,30 @@ test("every typed field inside a builtin's blocks is swept, not just the ones re
   }
 });
 
+test("the sweep covers a record component's unrolled mock too", () => {
+  // The same declaration reaches the same reader field from either map, so a `layout` written as a
+  // number costs the whole file whichever one a catalog chose — and `components` was the map the
+  // sweep was not looking at.
+  const bad = wellFormed();
+  bad.components = {
+    "m3/lazy-column": { record: ":catalog/LazyColumnKt.LazyColumn", unrolled: { layout: 7 } },
+  };
+  const only = codes(bad).errors;
+  assert.equal(only.length, 1, JSON.stringify(only));
+  assert.match(only[0], /component "m3\/lazy-column" has an "unrolled\.layout" of 7/);
+
+  // And a lossless dimension is legal, exactly as it is on a builtin: the schema allows the
+  // spelling and the reader carries it.
+  const ok = wellFormed();
+  ok.components = {
+    "m3/lazy-column": {
+      record: ":catalog/LazyColumnKt.LazyColumn",
+      unrolled: { layout: "stack", cellWidthDp: "190.dp" },
+    },
+  };
+  assert.deepEqual(codes(ok).errors, []);
+});
+
 test("a templates path outside ui-builder is an error, not a shrug", async () => {
   // The pre-flight exists to catch a typo before a twenty-minute render. `UiBuilderTemplateLookup`
   // silently DROPS a path outside `ui-builder/` — that tree is what the publishing tasks declare as

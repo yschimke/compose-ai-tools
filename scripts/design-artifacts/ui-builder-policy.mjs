@@ -204,6 +204,13 @@ function validateTypedShapes(policy, errors) {
       }
       validateBuiltinBlocks(id, builtin, errors);
       validateBuiltinSlotShapes(id, builtin, errors);
+      validateUnrolled("builtin", id, builtin.unrolled, errors);
+    }
+  }
+  if (isObject(policy.components)) {
+    for (const [id, component] of Object.entries(policy.components)) {
+      if (!isObject(component)) continue;
+      validateUnrolled("component", id, component.unrolled, errors);
     }
   }
   validateMenu(policy.menu, errors);
@@ -226,11 +233,34 @@ const BUILTIN_BLOCK_FIELDS = {
   wasm: { adapterStatus: "string", notes: "string" },
   code: { symbol: "string", imports: "string[]" },
   svg: { status: "string", fallback: "string", blocksExport: "boolean", notes: "string" },
-  // `cellWidthDp` and `spacingDp` are absent for the reason `platformSupported` is — `JsonElement`s
-  // in the reader, where a number and a string are both carried. `layout` is a Kotlin `String`, so
-  // a layout written as anything else takes the whole file down.
-  unrolled: { layout: "string" },
 };
+
+/**
+ * `unrolled`, on a record component and on a builtin alike.
+ *
+ * Both placements state the same declaration and both reach the same reader field, so both are
+ * swept here rather than in the builtin-only block loop — a `layout` written as a number takes the
+ * whole file down whichever map it was written in, and the map a catalog happens to choose is not
+ * a difference the pre-flight is allowed to care about.
+ *
+ * `cellWidthDp` and `spacingDp` are deliberately unchecked: they are `JsonElement`s in the reader,
+ * where a number and a lossless spelling are both carried, and only the builder that resolves them
+ * can object.
+ */
+function validateUnrolled(owner, id, value, errors) {
+  if (value === undefined) return;
+  if (!isObject(value)) {
+    errors.push(
+      `${owner} ${JSON.stringify(id)} has an "unrolled" of ${JSON.stringify(value)}; the reader decodes it as an object`,
+    );
+    return;
+  }
+  if (value.layout !== undefined && typeof value.layout !== "string") {
+    errors.push(
+      `${owner} ${JSON.stringify(id)} has an "unrolled.layout" of ${JSON.stringify(value.layout)}; the reader decodes it as a string`,
+    );
+  }
+}
 
 const shapeOf = (value) =>
   Array.isArray(value) ? (value.every((entry) => typeof entry === "string") ? "string[]" : "array") : typeof value;

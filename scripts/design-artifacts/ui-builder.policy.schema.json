@@ -167,12 +167,12 @@
                 "description": "`stack` (a Column), `row` (a Row), `wrap` (a FlowRow) or `panes` (every pane a pane scaffold declares)."
               },
               "cellWidthDp": {
-                "type": "number",
-                "description": "The width `wrap` and `row` give one cell; absent leaves it to the layout."
+                "type": ["number", "string"],
+                "description": "The width `wrap` and `row` give one cell; absent leaves it to the layout. A lossless spelling like `\"190.dp\"` is carried as written, so a string is legal here as it is wherever the wire states a dimension."
               },
               "spacingDp": {
-                "type": "number",
-                "description": "The gap between cells; absent leaves it to the layout."
+                "type": ["number", "string"],
+                "description": "The gap between cells; absent leaves it to the layout. Carried as written, like `cellWidthDp`."
               }
             },
             "required": ["layout"]
@@ -266,12 +266,12 @@
                 "description": "`stack` (a Column), `row` (a Row), `wrap` (a FlowRow) or `panes` (every pane a pane scaffold declares)."
               },
               "cellWidthDp": {
-                "type": "number",
-                "description": "The width `wrap` and `row` give one cell; absent leaves it to the layout."
+                "type": ["number", "string"],
+                "description": "The width `wrap` and `row` give one cell; absent leaves it to the layout. A lossless spelling like `\"190.dp\"` is carried as written, so a string is legal here as it is wherever the wire states a dimension."
               },
               "spacingDp": {
-                "type": "number",
-                "description": "The gap between cells; absent leaves it to the layout."
+                "type": ["number", "string"],
+                "description": "The gap between cells; absent leaves it to the layout. Carried as written, like `cellWidthDp`."
               }
             },
             "required": ["layout"]
