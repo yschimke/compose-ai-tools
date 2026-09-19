@@ -143,3 +143,11 @@ previews.
   Anthropic billing on cached prefixes. With prompt caching the
   ~13 k MCP baseline is paid once per session and replayed from cache
   on later turns.
+
+## House model lineup
+
+Tokens × price is the bill. The house lineup, live per-model prices and the
+current coding leaderboards live in [MODEL_BOARD.md](MODEL_BOARD.md);
+[`scripts/model-board.sh`](../scripts/model-board.sh) re-pulls them and
+[`scripts/model-board-bootstrap.sh`](../scripts/model-board-bootstrap.sh)
+merges the lineup into an opencode setup.
