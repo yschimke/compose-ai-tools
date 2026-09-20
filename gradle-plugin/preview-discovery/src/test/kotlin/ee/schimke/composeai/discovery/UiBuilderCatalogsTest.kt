@@ -339,6 +339,23 @@ class UiBuilderCatalogsTest {
   }
 
   @Test
+  fun `an authored canvas adapter is claimed in the resolved diagnostics`() {
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Card", builder = BuilderPolicy())),
+        cover,
+        policy(
+          components = mapOf("wear-m3/card" to UiBuilderAuthoredComponent(canvas = "wear-m3/card"))
+        ),
+      )!!
+
+    assertThat(generated.statusSemantics.components.getValue("wear-m3/card").canvas)
+      .isEqualTo("wear-m3/card")
+    assertThat(generated.diagnostics.map { it.code })
+      .doesNotContain(UiBuilderCatalogs.Diagnostics.CANVAS_UNCLAIMED)
+  }
+
+  @Test
   fun `a state callback naming a parameter the component does not take is reported`() {
     val generated =
       UiBuilderCatalogs.generate(
@@ -475,6 +492,17 @@ class UiBuilderCatalogsTest {
     // The reason is still published, so the shelf's absence is explained rather than silent.
     assertThat(generated.statusSemantics.components.getValue("wear-m3/sticker").excluded)
       .isEqualTo("the catalog's own preview frame")
+    val excluded =
+      generated.diagnostics.single { it.code == UiBuilderCatalogs.Diagnostics.COMPONENT_EXCLUDED }
+    assertThat(excluded.subject).isEqualTo("wear-m3/sticker")
+    assertThat(excluded.message).contains("the catalog's own preview frame")
+    assertThat(
+        generated.diagnostics.any {
+          it.code == UiBuilderCatalogs.Diagnostics.CANVAS_UNCLAIMED &&
+            it.subject == "wear-m3/sticker"
+        }
+      )
+      .isFalse()
   }
 
   @Test
