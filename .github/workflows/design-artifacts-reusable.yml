@@ -242,6 +242,15 @@ on:
         required: false
         type: string
         default: ''
+      ui-builder-runtime-source-ref:
+        description: >-
+          Immutable compose-ui-builder release tag (vN.N.N) or full commit SHA to check out for a
+          catalog renderer's composite build. Empty means the renderer task has no UI-builder
+          source checkout. This supports the source-only renderer SDK and the temporary combined
+          build while the generic interpreter is extracted from :ui-builder.
+        required: false
+        type: string
+        default: ''
       defer-figma-svg:
         description: 'Generate pure editable compose/figma-svg vectors on demand through the trusted live daemon instead of publishing one static SVG per rendered variant. Hybrid vectors with raster crops remain static. The capture still produces transient vectors for catalog validation, then strips them from the executable delivery bundle. DEFAULTS ON: publishing one static SVG per variant is the second-largest thing a delivery branch carries, and every one of them is rewritten whenever an otherwise identical render packs in a different order. Meaningless without a daemon to regenerate them, so it is ignored (with a notice) when publish-live-bundle is false rather than failing the run — set it false to keep publishing static vectors from a live catalog.'
         required: false
@@ -789,6 +798,7 @@ env:
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
   INPUT_UI_BUILDER_RUNTIME_TASK: ${{ inputs.ui-builder-runtime-task }}
   INPUT_UI_BUILDER_RUNTIME_ARCHIVE: ${{ inputs.ui-builder-runtime-archive }}
+  INPUT_UI_BUILDER_RUNTIME_SOURCE_REF: ${{ inputs.ui-builder-runtime-source-ref }}
   INPUT_DEFER_FIGMA_SVG: ${{ inputs.defer-figma-svg }}
   INPUT_EXTRA_SPLIT_MODE: ${{ inputs.extra-split-mode }}
   INPUT_SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
@@ -4002,9 +4012,23 @@ jobs:
             echo "::error title=UI-builder renderer::ui-builder-runtime-archive must stay beneath the rendered Gradle build."
             exit 1
           fi
+          sdk_args=()
+          if [ -n "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" ]; then
+            if [[ ! "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+               [[ ! "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error title=UI-builder renderer::ui-builder-runtime-source-ref must be a release tag or full commit SHA."
+              exit 1
+            fi
+            sdk_dir="$RUNNER_TEMP/compose-ui-builder-renderer-sdk"
+            git init --quiet "$sdk_dir"
+            git -C "$sdk_dir" remote add origin https://github.com/yschimke/compose-ui-builder.git
+            git -C "$sdk_dir" fetch --quiet --depth=1 origin "$INPUT_UI_BUILDER_RUNTIME_SOURCE_REF"
+            git -C "$sdk_dir" checkout --quiet --detach FETCH_HEAD
+            sdk_args+=("-PcomposeUiBuilderDir=$sdk_dir")
+          fi
           (
             cd "$RENDER_DIR"
-            ./gradlew "$INPUT_UI_BUILDER_RUNTIME_TASK" --no-daemon
+            ./gradlew "$INPUT_UI_BUILDER_RUNTIME_TASK" "${sdk_args[@]}" --no-daemon
           )
           if [ ! -f "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
             echo "::error title=UI-builder renderer::task completed without writing $INPUT_UI_BUILDER_RUNTIME_ARCHIVE"
