@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.21.0](https://github.com/yschimke/compose-ai-tools/compare/v2.20.0...v2.21.0) (2026-09-20)
+
+
+### Features
+
+* **design-artifacts:** check out catalog renderer sources ([#5523](https://github.com/yschimke/compose-ai-tools/issues/5523)) ([5192358](https://github.com/yschimke/compose-ai-tools/commit/5192358c0781ce7877e2a5207cf69e60bab6b009))
+* **ui-builder:** publish catalog render contracts ([#5522](https://github.com/yschimke/compose-ai-tools/issues/5522)) ([475d2fe](https://github.com/yschimke/compose-ai-tools/commit/475d2fe976846fdb9f12c2d24ed57704fa3ed346))
+
+
+### Bug Fixes
+
+* **ui-builder:** diagnose resolved canvas policy ([#5525](https://github.com/yschimke/compose-ai-tools/issues/5525)) ([f33566d](https://github.com/yschimke/compose-ai-tools/commit/f33566d6d081881850a5b955f18310f6ff9b63fa))
+
 ## [2.20.0](https://github.com/yschimke/compose-ai-tools/compare/v2.19.0...v2.20.0) (2026-09-20)
 
 
