@@ -108,6 +108,7 @@ data class UiBuilderStatusSemantics(
    */
   val componentIdPrefix: String,
   val previewSurfaces: JsonElement? = null,
+  val browserPreview: JsonElement? = null,
   val componentMenu: UiBuilderComponentMenu,
   val frame: JsonElement? = null,
   val code: UiBuilderCode? = null,
@@ -146,6 +147,7 @@ data class UiBuilderComponentPolicy(
   val catalogId: String? = null,
   val displayName: String? = null,
   val canvas: String? = null,
+  val canvasMapping: JsonElement? = null,
   /**
    * The layout the editing canvas draws while an author is inside this component — see
    * [UiBuilderUnrolledMock].
@@ -191,6 +193,7 @@ internal fun UiBuilderComponentPolicy.mergedWith(
     record = authored.record ?: record,
     displayName = authored.displayName ?: displayName,
     canvas = authored.canvas ?: canvas,
+    canvasMapping = authored.canvasMapping ?: canvasMapping,
     unrolled = authored.unrolled ?: unrolled,
     nativeOnly = authored.nativeOnly ?: nativeOnly,
     traits = authored.traits ?: traits,
@@ -579,6 +582,7 @@ object UiBuilderCatalogs {
           platformLabel = platformLabel,
           componentIdPrefix = idPrefix,
           previewSurfaces = policy.previewSurfaces,
+          browserPreview = policy.browserPreview,
           componentMenu =
             UiBuilderComponentMenu(
               groupOrder = policy.menu?.groupOrder.orEmpty(),
@@ -740,6 +744,7 @@ object UiBuilderCatalogs {
       catalogId = builder.declaredForCatalogId ?: component.componentIds.firstOrNull(),
       displayName = builder.displayName,
       canvas = builder.canvas,
+      canvasMapping = null,
       nativeOnly = builder.nativeOnly,
       traits = builder.traits,
       slots =

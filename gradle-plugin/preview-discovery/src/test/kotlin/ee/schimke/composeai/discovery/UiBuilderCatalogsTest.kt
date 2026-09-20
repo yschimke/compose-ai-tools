@@ -25,6 +25,7 @@ class UiBuilderCatalogsTest {
     builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
     code: UiBuilderCode? = null,
     componentIdPrefix: String? = null,
+    browserPreview: kotlinx.serialization.json.JsonElement? = null,
     components: Map<String, UiBuilderAuthoredComponent> = emptyMap(),
   ) =
     UiBuilderPolicyFile(
@@ -34,6 +35,7 @@ class UiBuilderCatalogsTest {
       builtins = builtins,
       code = code,
       componentIdPrefix = componentIdPrefix,
+      browserPreview = browserPreview,
       components = components,
     )
 
@@ -642,6 +644,37 @@ class UiBuilderCatalogsTest {
           .content
       )
       .isEqualTo("280")
+  }
+
+  @Test
+  fun `browser preview and canvas vocabulary projections are carried without interpretation`() {
+    val browserPreview =
+      Json.parseToJsonElement("""{"renderer":"remote-compose-document","format":"rc"}""")
+    val canvasMapping =
+      Json.parseToJsonElement(
+        """{"properties":{"fontSizeSp":"fontSize"},"defaults":{"variant":{"type":"enum","value":"filled"}}}"""
+      )
+    val generated =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Buttons/Button", group = "Actions")),
+        cover,
+        policy(
+          componentIdPrefix = "remote-m3/",
+          browserPreview = browserPreview,
+          components =
+            mapOf(
+              "remote-m3/button" to
+                UiBuilderAuthoredComponent(
+                  canvas = "wear-m3/button",
+                  canvasMapping = canvasMapping,
+                )
+            ),
+        ),
+      )!!
+
+    assertThat(generated.statusSemantics.browserPreview).isEqualTo(browserPreview)
+    assertThat(generated.statusSemantics.components.getValue("remote-m3/button").canvasMapping)
+      .isEqualTo(canvasMapping)
   }
 
   @Test

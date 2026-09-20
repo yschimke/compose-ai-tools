@@ -67,6 +67,16 @@
         "then": { "required": ["fidelity", "reason"] }
       }
     },
+    "browserPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["renderer", "format"],
+      "description": "Typed CatalogCapabilityV1.browserPreview declaration carried to the consumer. Unknown renderer names are inert and fall back to the canvas.",
+      "properties": {
+        "renderer": { "type": "string", "minLength": 1 },
+        "format": { "enum": ["compose", "svg", "png", "bundle", "json", "rc"] }
+      }
+    },
     "frame": {
       "type": "object",
       "description": "The screen frame the canvas draws this catalog's designs inside.",
@@ -155,6 +165,16 @@
           "canvas": {
             "type": "string",
             "description": "Canvas adapter id, or `placeholder`. Same negotiation as `frame.adapter`: unknown to this build means placeholder plus a log line, never a refused catalog. Stating NOTHING is not neutral \u2014 the component composes to `platformSupported: false` and draws a named placeholder, which is how a whole shelf goes blank with every other field still correct."
+          },
+          "canvasMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "CanvasAdapterMappingV1: a read-only vocabulary projection applied only while drawing the named canvas adapter. It never changes the design or an export.",
+            "properties": {
+              "properties": { "type": "object", "additionalProperties": { "type": "string" } },
+              "slots": { "type": "object", "additionalProperties": { "type": "string" } },
+              "defaults": { "type": "object" }
+            }
           },
           "unrolled": {
             "type": "object",
