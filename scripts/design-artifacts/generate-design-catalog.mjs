@@ -65,6 +65,7 @@ import {
   publishComponentRecord,
 } from "./catalog-component-record.mjs";
 import { UI_BUILDER_FILE, publishUiBuilderCatalog } from "./catalog-ui-builder.mjs";
+import { publishUiBuilderRuntime } from "./catalog-ui-builder-runtime.mjs";
 import { checkMotionCarried } from "./motion-carried.mjs";
 import {
   unclaimedMotionPreviews,
@@ -942,6 +943,10 @@ const { values } = parseArgs({
     // descriptor is written into catalog.json — so the branch carries the live
     // renderer and `serve --catalogs` fetches it from the same trusted origin.
     "wasm-dist": { type: "string" },
+    // Optional self-contained renderer runtime built and owned by this catalog. It is verified,
+    // copied beside ui-builder.json, and declared on catalog.json; a catalog with no builder policy
+    // cannot publish one because there is no capability document to pair it with.
+    "ui-builder-runtime-archive": { type: "string" },
     // Optional supplementary render bundle whose previews OVERRIDE same-named
     // functions in --renders. Used to fold an Android-only render into an
     // otherwise-CMP catalog: e.g. `:samples:design-catalog-m3-android` renders the
@@ -1733,6 +1738,17 @@ const primaryBundleRecord = parseComponentRecord(primaryBundleEntries[COMPONENT_
 const uiBuilderCatalog = primaryBundleRecord
   ? await publishUiBuilderCatalog(primaryBundleEntries, outPath)
   : null;
+if (values["ui-builder-runtime-archive"] && !uiBuilderCatalog) {
+  throw new Error(
+    "--ui-builder-runtime-archive requires a generated ui-builder.json from the primary bundle",
+  );
+}
+const uiBuilderRuntime = values["ui-builder-runtime-archive"]
+  ? await publishUiBuilderRuntime(
+      resolve(values["ui-builder-runtime-archive"]),
+      outPath,
+    )
+  : null;
 if (!primaryBundleRecord && primaryBundleEntries[UI_BUILDER_FILE]) {
   console.warn(
     `[${spec.system}] the primary bundle carries a builder catalog but no readable component ` +
@@ -1901,6 +1917,7 @@ if (uiBuilderCatalog) {
   // `uiBuilderFile` knows this catalog does not describe itself to a UI builder, rather than having
   // to fetch a file to find out.
   if (uiBuilderCatalog) manifest.uiBuilderFile = uiBuilderCatalog.path;
+  if (uiBuilderRuntime) manifest.uiBuilderRuntime = uiBuilderRuntime;
   // Deferred (live-only) coverage, recorded alongside the baked components rather than inside
   // `components[].images` — an image with no `path` would reach every consumer that assumes
   // `images[]` is the baked sticker set (index.html, compare.html, matches.html, the per-variant
