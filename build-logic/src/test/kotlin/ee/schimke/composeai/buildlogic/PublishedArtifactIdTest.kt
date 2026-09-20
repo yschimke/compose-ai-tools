@@ -90,9 +90,8 @@ class PublishedArtifactIdTest {
     // trap one project along, and would have fired the moment the first was fixed by hand.
     //
     // Pinned as a fact rather than as a rule, so that anyone tempted to "unify" the two paths sees
-    // what the unification costs. The included build is safe to stamp with the tag for an
-    // independent reason: `maven-publish-plan.sh` marks all four of its ids dirty unconditionally,
-    // so they publish at every release.
+    // what the unification costs. The included build is safe to stamp with the tag because its
+    // root task only runs when the publish plan selected all four of its coordinates.
     val derivedFromRootPath = ":".removePrefix(":").replace(':', '-')
     assertEquals("", derivedFromRootPath, "an included build's root project has no derivable id")
 

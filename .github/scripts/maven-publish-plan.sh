@@ -24,9 +24,8 @@
 #
 # Its four coordinates are handled as one unit: if anything under `gradle-plugin/` changed, all
 # four publish. They are not `subprojects` of this build, so the settings walk below cannot see
-# their inter-module dependencies to propagate rule 2 across them — and they are four artifacts,
-# not sixty, so resolving that uncertainty by publishing the set costs almost nothing. The
-# alternative, parsing a second build's project graph, is more machinery than the saving is worth.
+# their inter-module dependencies. Publishing them together is cheap and avoids maintaining a
+# second project graph parser.
 #
 # Every uncertainty resolves to "publish". Central refuses a second upload of a version, so an
 # unnecessary publish costs quota while a wrongly-skipped one is unrepairable.
@@ -182,21 +181,6 @@ for aid, directory in modules.items():
         dirty.add(aid)
     elif changed_since(recorded[aid], directory):
         dirty.add(aid)
-
-# The included build's four always publish, and not only because they move together.
-#
-# `:cli` bakes a Gradle plugin coordinate into `cli-version.properties` — the version its
-# auto-inject, `init-script` and `doctor` hand to Gradle — and falls back to the CLI's own version
-# when `MAVEN_LINE_VERSION` is unset, which release.yml deliberately leaves unset. That fallback is
-# only safe while the plugin is published at every release: a CLI shipped at 2.18.0 telling Gradle
-# to resolve `compose-preview-plugin:2.18.0` when the plugin was skipped at 2.17.0 is a user-facing
-# break on the first command they run.
-#
-# Pinning them here rather than teaching the CLI to read the manifest keeps the coupling in one
-# place. It costs about three percentage points of the saving (they published in 4 of the 10
-# measured intervals; forcing all 10 is ~6 extra module-publishes out of 260) — cheap for removing
-# a whole class of release-day breakage.
-dirty.update(INCLUDED_BUILD_IDS)
 
 # Rule 2: anything depending on a dirty module is dirty too, transitively.
 rev = collections.defaultdict(set)

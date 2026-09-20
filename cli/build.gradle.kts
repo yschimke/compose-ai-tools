@@ -776,19 +776,13 @@ val generateCliVersionResource =
     // what it
     // RESOLVES stop being the same number the moment a release does not publish to Central.
     //
-    // Today they are identical, because every release publishes and nothing sets the override, so
-    // this is inert. It becomes load-bearing when `maven-publish-guard` is allowed to skip a
-    // publish: the release then sets MAVEN_LINE_VERSION to the last version that IS on Central, and
-    // a CLI built at 2.5.0 keeps injecting the plugin at 2.4.0 rather than a coordinate that 404s.
-    // See docs/design/RELEASE_TRAINS.md and `MAVEN_LINE_VERSION`.
+    // The release plan sets MAVEN_LINE_VERSION to the tag when it publishes the plugin, otherwise
+    // to the last version on Central. A CLI built at 2.5.0 can therefore keep injecting 2.4.0
+    // rather than a coordinate that 404s.
     //
-    // `takeIf { isNotBlank() }` is load-bearing, not defensive noise. release.yml passes this
-    // through as `env: MAVEN_LINE_VERSION: ${{ needs.maven-publish-guard.outputs.maven_line }}`,
-    // and an Actions expression that resolves to nothing sets the variable to the EMPTY STRING
-    // rather than leaving it unset — Gradle then reports it as present, and `orNull` alone would
-    // bake `mavenLineVersion=` into the properties file. Every consumer would ask Gradle for the
-    // plugin at version "". The guard is `continue-on-error`, so "no answer" is a path that can
-    // really happen, and it has to land on the CLI's own version.
+    // `takeIf { isNotBlank() }` is load-bearing: an Actions expression that resolves to nothing
+    // sets an empty variable rather than leaving it unset. Baking that value would make every
+    // consumer ask Gradle for the plugin at version "".
     val mavenLineVersion =
       project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull?.takeIf { it.isNotBlank() }
         ?: cliVersion

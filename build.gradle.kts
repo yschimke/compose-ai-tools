@@ -296,11 +296,12 @@ val printPublishTasks by
             it.plugins.hasPlugin("composeai.maven-publishing-platform")
         }
         .filter { p ->
-          // `:bom` is never filtered out. It is the index of the release: a consumer resolving the
-          // BOM at the tag must find it there whether or not any module changed.
+          // The BOM indexes a changed coordinate map, not every GitHub release. An empty set leaves
+          // every constraint on its already-published version, so a new byte-identical BOM would
+          // only consume Maven Central quota.
           publishSet == null ||
-            p.path == ":bom" ||
-            p.path.removePrefix(":").replace(':', '-') in publishSet
+            (p.path == ":bom" && publishSet.isNotEmpty()) ||
+            (p.path != ":bom" && p.path.removePrefix(":").replace(':', '-') in publishSet)
         }
         .map { p ->
           val dir = p.projectDir.relativeTo(rootDirPath).invariantSeparatorsPath
