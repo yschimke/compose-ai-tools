@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.0](https://github.com/yschimke/compose-ai-tools/compare/v2.19.0...v2.20.0) (2026-09-20)
+
+
+### Features
+
+* publish catalog-owned UI builder runtimes ([#5519](https://github.com/yschimke/compose-ai-tools/issues/5519)) ([4bf890f](https://github.com/yschimke/compose-ai-tools/commit/4bf890fa9c0982147e779c9e49ef79a2da4442f9))
+
 ## [2.19.0](https://github.com/yschimke/compose-ai-tools/compare/v2.18.1...v2.19.0) (2026-09-20)
 
 
