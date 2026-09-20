@@ -226,6 +226,22 @@ on:
         required: false
         type: boolean
         default: false
+      ui-builder-runtime-task:
+        description: >-
+          Optional single Gradle task that builds this catalog's self-contained UI-builder renderer
+          ZIP. Runs in the rendered Gradle build after preview rendering. Set together with
+          ui-builder-runtime-archive; empty means this catalog publishes no executable renderer.
+        required: false
+        type: string
+        default: ''
+      ui-builder-runtime-archive:
+        description: >-
+          Path, relative to the rendered Gradle build, of the ZIP produced by
+          ui-builder-runtime-task. The archive must carry a verified compose-ui-builder-runtime/v1
+          manifest. It is copied to the delivery branch and declared on catalog.json.
+        required: false
+        type: string
+        default: ''
       defer-figma-svg:
         description: 'Generate pure editable compose/figma-svg vectors on demand through the trusted live daemon instead of publishing one static SVG per rendered variant. Hybrid vectors with raster crops remain static. The capture still produces transient vectors for catalog validation, then strips them from the executable delivery bundle. DEFAULTS ON: publishing one static SVG per variant is the second-largest thing a delivery branch carries, and every one of them is rewritten whenever an otherwise identical render packs in a different order. Meaningless without a daemon to regenerate them, so it is ignored (with a notice) when publish-live-bundle is false rather than failing the run — set it false to keep publishing static vectors from a live catalog.'
         required: false
@@ -771,6 +787,8 @@ env:
   INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
   INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
   INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+  INPUT_UI_BUILDER_RUNTIME_TASK: ${{ inputs.ui-builder-runtime-task }}
+  INPUT_UI_BUILDER_RUNTIME_ARCHIVE: ${{ inputs.ui-builder-runtime-archive }}
   INPUT_DEFER_FIGMA_SVG: ${{ inputs.defer-figma-svg }}
   INPUT_EXTRA_SPLIT_MODE: ${{ inputs.extra-split-mode }}
   INPUT_SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
@@ -3968,6 +3986,31 @@ jobs:
             mv "$namespaced" "$bundle"
           done
 
+      - name: Build catalog-owned UI-builder renderer
+        if: ${{ inputs.ui-builder-runtime-task != '' || inputs.ui-builder-runtime-archive != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$INPUT_UI_BUILDER_RUNTIME_TASK" ] || [ -z "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
+            echo "::error title=UI-builder renderer::ui-builder-runtime-task and ui-builder-runtime-archive must be set together."
+            exit 1
+          fi
+          if [[ ! "$INPUT_UI_BUILDER_RUNTIME_TASK" =~ ^:[A-Za-z0-9:_-]+$ ]]; then
+            echo "::error title=UI-builder renderer::ui-builder-runtime-task must be one absolute Gradle task path."
+            exit 1
+          fi
+          if [[ "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" = /* ]] || [[ "/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE/" = *"/../"* ]]; then
+            echo "::error title=UI-builder renderer::ui-builder-runtime-archive must stay beneath the rendered Gradle build."
+            exit 1
+          fi
+          (
+            cd "$RENDER_DIR"
+            ./gradlew "$INPUT_UI_BUILDER_RUNTIME_TASK" --no-daemon
+          )
+          if [ ! -f "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
+            echo "::error title=UI-builder renderer::task completed without writing $INPUT_UI_BUILDER_RUNTIME_ARCHIVE"
+            exit 1
+          fi
+
       - name: Generate importable catalog
         env:
           # The ref actually rendered (see "Check out the calling repo"). Empty ⇒ the
@@ -4032,6 +4075,10 @@ jobs:
             fi
             live+=(--extra-live-bundle)
           fi
+          runtime=()
+          if [ -n "$INPUT_UI_BUILDER_RUNTIME_ARCHIVE" ]; then
+            runtime=(--ui-builder-runtime-archive "$RENDER_DIR/$INPUT_UI_BUILDER_RUNTIME_ARCHIVE")
+          fi
           node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
             --spec "$INPUT_SPEC" \
             --renders "$GITHUB_WORKSPACE/bundle.png" \
@@ -4043,6 +4090,7 @@ jobs:
             --build-root "$INPUT_WORKING_DIRECTORY" \
             "${source_args[@]}" \
             "${live[@]}" \
+            "${runtime[@]}" \
             "${incomplete[@]}"
 
       # Split the render into one addressable bundle per preview for the serve
