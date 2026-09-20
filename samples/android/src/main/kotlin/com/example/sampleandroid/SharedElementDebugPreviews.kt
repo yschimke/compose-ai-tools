@@ -1,3 +1,5 @@
+@file:Suppress("DisallowLookaheadAnimationVisualDebug") // This file contains only debug previews.
+
 package com.example.sampleandroid
 
 import androidx.compose.animation.AnimatedContent

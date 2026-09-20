@@ -43,6 +43,7 @@ android {
 }
 
 dependencies {
+  implementation(platform(libs.rcplayers.bom))
   // This module does NOT use the Compose BOM — wear-compose-remote-material3
   // alpha01's POM pulls in Compose 1.11.0-beta01 runtime for foundation /
   // runtime / ui, and `PreviewWrapper` only exists in ui-tooling-preview

@@ -85,14 +85,17 @@ val vendoredRcPlayerJs =
   configurations.create("vendoredRcPlayerJs") {
     isCanBeResolved = true
     isCanBeConsumed = false
-    isTransitive = false
   }
 
 dependencies {
-  // The `dist` classifier and `zip` extension as a
-  // notation string: `add(name, provider) { artifact { … } }` has no overload for a
-  // version-catalog provider. `map` keeps it lazy.
-  add("vendoredRcPlayerJs", libs.rcplayer.js.dist.map { "$it:dist@zip" })
+  add("vendoredRcPlayerJs", platform(libs.rcplayers.bom))
+  // The versionless catalog alias needs map notation for the classified zip. `map` keeps it lazy.
+  add(
+    "vendoredRcPlayerJs",
+    libs.rcplayer.js.dist.map {
+      mapOf("group" to it.module.group, "name" to it.module.name, "classifier" to "dist", "ext" to "zip")
+    },
+  )
 }
 
 // The CMP/Wasm player distribution, staged to a stable path — the same arrangement as the
@@ -110,14 +113,17 @@ val vendoredRcPlayerWasm =
   configurations.create("vendoredRcPlayerWasm") {
     isCanBeResolved = true
     isCanBeConsumed = false
-    isTransitive = false
   }
 
 dependencies {
-  // The `dist` classifier and `zip` extension as a
-  // notation string: `add(name, provider) { artifact { … } }` has no overload for a
-  // version-catalog provider. `map` keeps it lazy.
-  add("vendoredRcPlayerWasm", libs.rcplayer.wasm.dist.map { "$it:dist@zip" })
+  add("vendoredRcPlayerWasm", platform(libs.rcplayers.bom))
+  // The versionless catalog alias needs map notation for the classified zip. `map` keeps it lazy.
+  add(
+    "vendoredRcPlayerWasm",
+    libs.rcplayer.wasm.dist.map {
+      mapOf("group" to it.module.group, "name" to it.module.name, "classifier" to "dist", "ext" to "zip")
+    },
+  )
 }
 
 tasks.register<Sync>("stageVendoredRcPlayerWasm") {

@@ -352,7 +352,7 @@ coil3 = "3.5.0"
 # the shared ref to 3.1.1 because layoutinspector-core had published one, and `:samples:android`
 # could not configure at all (`Could not find ee.schimke.composeai:screen-document:3.1.1`). The
 # daemon line below carries the same lesson and the same shape.
-composeai-contracts = "3.1.1"
+composeai-contracts = "3.3.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -410,7 +410,7 @@ composeai-preview-daemon = "3.8.3"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "1.67.0"
+rcplayers = "1.68.0"
 
 [libraries]
 
@@ -471,25 +471,27 @@ composeai-slot-preview-runtime = { module = "ee.schimke.composeai:slot-preview-r
 composeai-lottie-preview-runtime = { module = "ee.schimke.composeai:lottie-preview-runtime" }
 composeai-svg-preview-runtime = { module = "ee.schimke.composeai:svg-preview-runtime" }
 
-# The Remote Compose players (see `rcplayers`).
-rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace", version.ref = "rcplayers" }
-rcplayer-protocol = { module = "ee.schimke.composeai:rc-player-protocol", version.ref = "rcplayers" }
-rcplayer-runtime = { module = "ee.schimke.composeai:rc-player-runtime", version.ref = "rcplayers" }
-rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose", version.ref = "rcplayers" }
+# The Remote Compose players resolve through `rcplayers-bom`; do not add versions to the individual
+# modules, because a release can selectively republish only part of the stack.
+rcplayers-bom = { module = "ee.schimke.composeai:rc-players-bom", version.ref = "rcplayers" }
+rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace" }
+rcplayer-protocol = { module = "ee.schimke.composeai:rc-player-protocol" }
+rcplayer-runtime = { module = "ee.schimke.composeai:rc-player-runtime" }
+rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose" }
 # The browser bundle `compose-preview serve` stages into `rc-player-wasm/`. A zip, not a jar — the
 # `dist` classifier is the distribution directory packaged for Maven; see that module's build file
 # in yschimke/rc-players for why it is a module of its own rather than a second publication on the
 # wasmJs one.
-rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist", version.ref = "rcplayers" }
+rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist" }
 # The vendored, locally patched AndroidX embedded player — the Android comparison lane. NOT a
 # supported API; pinned to one AndroidX alpha and versioned with the player stack rather than with
 # upstream.
-rcplayer-embedded-android = { module = "ee.schimke.composeai:third-party-rc-embedded-player", version.ref = "rcplayers" }
+rcplayer-embedded-android = { module = "ee.schimke.composeai:third-party-rc-embedded-player" }
 # The desktop-JVM cut of the same vendored player, staged into `lib-rcjvm/` for serve's cmp-jvm lane.
-rcplayer-embedded-jvm = { module = "ee.schimke.composeai:third-party-rc-embedded-player-jvm", version.ref = "rcplayers" }
+rcplayer-embedded-jvm = { module = "ee.schimke.composeai:third-party-rc-embedded-player-jvm" }
 # The vendored TypeScript player's browser bundle — the client-side render lane the `rc-*` browser
 # tests and the design-artifacts job drive with `--player <bundle.js>`. A zip, `dist` classifier.
-rcplayer-js-dist = { module = "ee.schimke.composeai:remote-compose-player-js-dist", version.ref = "rcplayers" }
+rcplayer-js-dist = { module = "ee.schimke.composeai:remote-compose-player-js-dist" }
 # `@com.android.tools.screenshot.PreviewTest` — the marker Google's screenshot plugin requires on a
 # `@Preview` before it will render it (alpha15+ discovers nothing without it). Only the Studio-parity
 # fixtures in `:samples:android-screenshot-test` need it, on the `screenshotTest` classpath; version
