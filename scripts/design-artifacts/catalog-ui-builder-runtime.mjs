@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 
 import { unzipSync } from "fflate";
 
+// Wire spellings are owned by compose-preview-contracts' RuntimeV1. This Node publisher cannot
+// link the KMP coordinate, so its conformance test consumes that contract's versioned vector.
 export const UI_BUILDER_RUNTIME_MANIFEST = "runtime-manifest.json";
 export const UI_BUILDER_RUNTIME_SCHEMA = "compose-ui-builder-runtime/v1";
 
@@ -132,7 +134,9 @@ export async function publishUiBuilderRuntime(archivePath, outPath) {
  */
 export function treeIntegrity(files) {
   const digest = createHash("sha256");
-  for (const [path, bytes] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [path, bytes] of [...files].sort(([a], [b]) =>
+    Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8")),
+  )) {
     if (normalizePath(path) !== path || path === UI_BUILDER_RUNTIME_MANIFEST)
       throw new Error(`Unsafe runtime asset path '${path}'`);
     digest.update(path, "utf8");

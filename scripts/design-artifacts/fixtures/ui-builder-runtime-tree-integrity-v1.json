@@ -1,0 +1,23 @@
+{
+  "source": "compose-preview-contracts@v3.4.0/docs/ui-builder/runtime-fixtures/v1/tree-integrity.json",
+  "algorithm": "SHA-256",
+  "assets": [
+    {
+      "path": "index.html",
+      "base64": "PCFkb2N0eXBlIGh0bWw+"
+    },
+    {
+      "path": "renderer.mjs",
+      "base64": "ZXhwb3J0IGNvbnN0IHJlbmRlcmVyID0gdHJ1ZQ=="
+    },
+    {
+      "path": "z.txt",
+      "base64": "eg=="
+    },
+    {
+      "path": "é.txt",
+      "base64": "YWNjZW50"
+    }
+  ],
+  "integritySha256": "717fa7ba410f2bc0e7e28b0f7184815a02373a5f4127e0308c4636f421f54590"
+}

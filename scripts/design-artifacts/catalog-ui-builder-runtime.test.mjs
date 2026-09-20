@@ -80,6 +80,21 @@ test("publishes one replace-in-place archive path across runtime upgrades", asyn
   );
 });
 
+test("tree integrity matches the compose-preview-contracts v1 vector", async () => {
+  const vector = JSON.parse(
+    await readFile(
+      new URL("./fixtures/ui-builder-runtime-tree-integrity-v1.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const assets = new Map(
+    vector.assets.map(({ path, base64 }) => [path, Buffer.from(base64, "base64")]),
+  );
+
+  assert.equal(vector.algorithm, "SHA-256");
+  assert.equal(treeIntegrity(assets), vector.integritySha256);
+});
+
 function runtimeArchive(runtimeId, assets) {
   return zipSync(archiveEntries(runtimeId, assets));
 }
