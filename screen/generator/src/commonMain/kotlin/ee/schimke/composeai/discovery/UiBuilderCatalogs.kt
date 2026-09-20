@@ -435,12 +435,6 @@ object UiBuilderCatalogs {
       // policy under the contested id — while the diagnostic said the first won and the menu, which
       // reads `idOwners`, agreed with the diagnostic. Three loops, two answers. They read one now.
       if (idOwners[builderId] != component.canonicalId) continue
-      // Every admitted component, not only the annotated ones. `component.canvas.unclaimed` says in
-      // its own message that it exists "so a shelf drawn entirely in placeholders is visible rather
-      // than mysterious" — and a shelf drawn entirely in placeholders is the all-unannotated
-      // catalog, which never reached this loop. The one diagnostic written for that case was the
-      // one case it could not fire in.
-      diagnose(component, builder, builderId, diagnostics)
       // EVERY admitted component gets an entry, annotated or not — the same argument as the
       // `diagnose` call above and the menu loop below, both of which already cover all of them.
       // The shelf was the odd one out, and the omission was not cosmetic: an entry is where the
@@ -458,7 +452,13 @@ object UiBuilderCatalogs {
       val fromAnnotation =
         if (component.builder != null) policyFor(component, builder)
         else UiBuilderComponentPolicy(record = component.canonicalId)
-      components[builderId] = fromAnnotation.mergedWith(authored)
+      val resolved = fromAnnotation.mergedWith(authored)
+      // Every admitted component, not only the annotated ones. Diagnose the RESOLVED policy rather
+      // than only the annotation: ui-builder.policy.json is allowed to claim a canvas adapter or
+      // exclude a component without any @BuilderComponent, and reporting the pre-merge value made
+      // the artifact contradict the component entry it published directly beside the diagnostic.
+      diagnose(component, builder, resolved, builderId, diagnostics)
+      components[builderId] = resolved
     }
 
     // An authored entry joining neither by `record` nor by a component's resolved id.
@@ -769,6 +769,7 @@ object UiBuilderCatalogs {
   private fun diagnose(
     component: ComponentRecord,
     builder: BuilderPolicy,
+    resolved: UiBuilderComponentPolicy,
     builderId: String,
     into: MutableList<UiBuilderDiagnostic>,
   ) {
@@ -805,7 +806,7 @@ object UiBuilderCatalogs {
               "dropped. The component keeps the default this entry meant to change.",
         )
     }
-    builder.exclude?.let { reason ->
+    resolved.excluded?.let { reason ->
       into +=
         UiBuilderDiagnostic(
           code = Diagnostics.COMPONENT_EXCLUDED,
@@ -813,7 +814,9 @@ object UiBuilderCatalogs {
           message = "kept off the builder's shelf: $reason",
         )
     }
-    if (builder.canvas.isNullOrBlank()) {
+    // An excluded component is not offered or drawn, so it needs no canvas adapter. Reporting that
+    // it "draws as a placeholder" beside the exclusion diagnostic contradicts the shelf contract.
+    if (resolved.excluded.isNullOrBlank() && resolved.canvas.isNullOrBlank()) {
       into +=
         UiBuilderDiagnostic(
           code = Diagnostics.CANVAS_UNCLAIMED,
