@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.21.1](https://github.com/yschimke/compose-ai-tools/compare/v2.21.0...v2.21.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **release:** skip unchanged Maven publications ([#5527](https://github.com/yschimke/compose-ai-tools/issues/5527)) ([6597c8d](https://github.com/yschimke/compose-ai-tools/commit/6597c8d1265e394f8a2e1bb260d3375e56d36fde))
+
 ## [2.21.0](https://github.com/yschimke/compose-ai-tools/compare/v2.20.0...v2.21.0) (2026-09-20)
 
 
