@@ -26,5 +26,7 @@ SKILLS_REF="${SKILLS_REF:-main}"
 URL="https://raw.githubusercontent.com/$SKILLS_REPO/$SKILLS_REF/scripts/install.sh"
 
 echo "==> stub: fetching canonical installer from $URL" >&2
-script="$(curl -fsSL "$URL")"
+# raw.githubusercontent.com applies an IP-wide throttle. curl retries 429 by default, which makes
+# a shared-network burst a wait rather than a failed install.
+script="$(curl --retry 8 --retry-max-time 300 -fsSL "$URL")"
 exec bash -c "$script" -- "$@"

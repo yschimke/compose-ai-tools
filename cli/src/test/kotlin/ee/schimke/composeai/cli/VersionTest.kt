@@ -91,7 +91,7 @@ class UpdateCommandPipelineTest {
   fun `no version pins to latest via plain pipe`() {
     val pipeline = UpdateCommand.buildPipeline(null)
     assertEquals(
-      "curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash",
+      "curl --retry 8 --retry-max-time 300 -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash",
       pipeline,
     )
   }

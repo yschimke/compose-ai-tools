@@ -46,7 +46,9 @@ class UpdateCommand(private val args: List<String>) {
     internal fun buildPipeline(targetVersion: String?): String {
       val installUrl = "https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh"
       return buildString {
-        append("curl -fsSL ")
+        // raw.githubusercontent.com applies an IP-wide throttle. Retry 429s rather than turning a
+        // transient shared-network limit into a failed CLI update; curl retries 429 by default.
+        append("curl --retry 8 --retry-max-time 300 -fsSL ")
         append(installUrl)
         append(" | bash")
         if (targetVersion != null) {
