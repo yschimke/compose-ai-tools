@@ -98,6 +98,7 @@ fun NowPlayingContainerTransformPreview() {
 }
 
 /** The identical scene, wrapped in the 1.11 lookahead debug overlay. */
+@Suppress("DisallowLookaheadAnimationVisualDebug") // This is an explicitly named debug preview.
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
 @Preview(name = "Now Playing (debug overlay)", widthDp = 320, heightDp = 560, showBackground = true)
 @AnimatedPreview(durationMs = 1300, frameIntervalMs = 55)

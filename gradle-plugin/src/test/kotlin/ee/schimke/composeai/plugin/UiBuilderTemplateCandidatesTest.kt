@@ -36,12 +36,14 @@ class UiBuilderTemplateCandidatesTest {
     val nestedBuild = File(root, "ui-builder/designs/build/generated.json").withText("{}")
 
     val discover = discoverTask(root)
-    val files = discover.uiBuilderTemplateCandidates.files
+    // Gradle normalizes input files through the real path; macOS exposes its temporary directory
+    // through both `/var` and `/private/var`.
+    val files = discover.uiBuilderTemplateCandidates.files.map(File::getCanonicalFile)
 
-    assertThat(files).contains(design)
-    assertThat(files).doesNotContain(wasmDist)
-    assertThat(files).doesNotContain(packageJson)
-    assertThat(files).doesNotContain(nestedBuild)
+    assertThat(files).contains(design.canonicalFile)
+    assertThat(files).doesNotContain(wasmDist.canonicalFile)
+    assertThat(files).doesNotContain(packageJson.canonicalFile)
+    assertThat(files).doesNotContain(nestedBuild.canonicalFile)
   }
 
   @Test
@@ -54,7 +56,8 @@ class UiBuilderTemplateCandidatesTest {
 
     val discover = discoverTask(root)
 
-    assertThat(discover.uiBuilderTemplateCandidates.files).containsExactly(top, nested)
+    assertThat(discover.uiBuilderTemplateCandidates.files.map(File::getCanonicalFile))
+      .containsExactly(top.canonicalFile, nested.canonicalFile)
   }
 
   private fun discoverTask(root: File): DiscoverPreviewsTask {

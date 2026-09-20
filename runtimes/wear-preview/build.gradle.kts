@@ -55,6 +55,7 @@ android {
 }
 
 dependencies {
+  compileOnly(platform(libs.rcplayers.bom))
   compileOnly(platform(libs.compose.bom.stable))
   compileOnly(libs.compose.ui)
   compileOnly(libs.compose.foundation)
@@ -107,6 +108,7 @@ dependencies {
   // no Compose runtime is on that classpath ("requires the Compose Runtime to be on the class
   // path"). Main gets its own through `compileOnly`; the test source set has to say so itself.
   testImplementation(platform(libs.compose.bom.stable))
+  testImplementation(platform(libs.rcplayers.bom))
   testImplementation(libs.compose.runtime)
   testImplementation(libs.junit)
   testImplementation(libs.truth)

@@ -56,6 +56,7 @@ android {
 }
 
 dependencies {
+  implementation(platform(libs.rcplayers.bom))
   // No Compose BOM — glance-wear / wear-compose-remote pull the Compose 1.11 line; pinning explicit
   // prerelease versions avoids fighting the 1.10.x BOM used elsewhere. Same as
   // `:samples:remotecompose`.

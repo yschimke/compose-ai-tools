@@ -4,6 +4,7 @@ import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.options.Option
 import org.gradle.api.tasks.testing.Test
+import org.gradle.work.DisableCachingByDefault
 
 /**
  * The Android `composePreviewRender` task — a Robolectric [Test] that renders `@Preview`s inside
@@ -20,6 +21,9 @@ import org.gradle.api.tasks.testing.Test
  * any non-empty filter (a filtered render writes a partial `renders/` set — see the desktop task's
  * identical `cacheIf` reasoning). Everything else about the task is stock `Test` behaviour.
  */
+@DisableCachingByDefault(
+  because = "Robolectric rendering runs a test JVM whose environment is not a declared input"
+)
 abstract class RobolectricRenderTask : Test() {
 
   /**

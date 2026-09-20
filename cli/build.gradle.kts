@@ -112,6 +112,7 @@ val composePreviewUsagePsi =
   }
 
 dependencies {
+  implementation(platform(libs.rcplayers.bom))
   // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
   // `composePreviewBta` configuration above). `kotlin-build-tools-impl` pulls
   // `kotlin-compiler-embeddable` and the rest of the frontend transitively.
@@ -343,6 +344,7 @@ dependencies {
   // for the cmp-jvm chip's one-shot render subprocess. Subprocess-only isolation; the Compose +
   // Skiko runtime is not bundled here (the subprocess joins `lib-rcjvm/*` +
   // `lib-daemon-desktop/*`, the latter provisioned from the compose-preview-daemon release).
+  add("composePreviewRcJvm", platform(libs.rcplayers.bom))
   add("composePreviewRcJvm", libs.rcplayer.embedded.jvm)
 
   // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
@@ -474,10 +476,22 @@ val composePreviewRcPlayerWasm =
   configurations.create("composePreviewRcPlayerWasm") {
     isCanBeResolved = true
     isCanBeConsumed = false
-    isTransitive = false
   }
 
-dependencies { add("composePreviewRcPlayerWasm", libs.rcplayer.wasm.dist.map { "$it:dist@zip" }) }
+dependencies {
+  add("composePreviewRcPlayerWasm", platform(libs.rcplayers.bom))
+  add(
+    "composePreviewRcPlayerWasm",
+    libs.rcplayer.wasm.dist.map {
+      mapOf(
+        "group" to it.module.group,
+        "name" to it.module.name,
+        "classifier" to "dist",
+        "ext" to "zip",
+      )
+    },
+  )
+}
 
 val rcPlayerWasmDist = provider { zipTree(composePreviewRcPlayerWasm.singleFile) }
 
