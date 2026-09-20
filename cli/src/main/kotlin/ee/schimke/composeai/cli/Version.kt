@@ -38,25 +38,16 @@ internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompos
  * release lines; this names *ours*, and it exists because what the CLI **is** and what the CLI
  * **resolves** stop being the same number the moment a release does not publish to Central.
  *
- * `maven-publish-guard` in release.yml measures that most releases change no published module —
- * across v1.57.0..v1.84.0, 117 module-changes against 3,572 module publications. Skipping those
- * publishes is the point of docs/design/RELEASE_TRAINS.md. But a skipped publish means the version
- * a CLI was built at has no artifacts at all, so injecting the plugin at [BUNDLE_VERSION] would
- * hand every consumer `Could not find ee.schimke.composeai:renderer-desktop:<version>` — and that
- * is the one failure Central cannot be asked to repair afterwards, since it refuses to accept a
- * version twice.
+ * A skipped publish means the version a CLI was built at has no plugin artifacts at all, so
+ * injecting the plugin at [BUNDLE_VERSION] would hand every consumer a coordinate Central cannot
+ * repair afterwards: it refuses to accept a version twice.
  *
  * So the CLI carries the last version that IS on Central, baked in by `generateCliVersionResource`
  * from the `MAVEN_LINE_VERSION` override the release sets.
  *
- * **Today this equals [BUNDLE_VERSION] and nothing sets that override**, because every release
- * still publishes and the guard only reports. The seam is landed while it is a no-op so that
- * letting the guard gate becomes a change to one workflow rather than a redesign of version
- * resolution.
- *
- * Not solved here, and not needed until the two versions actually diverge: a project pin
- * (`composePreview.version`) names a *CLI* release, and a CLI cannot know another release's Maven
- * line offline. That needs the release readiness marker to carry the mapping — RELEASE_TRAINS.md.
+ * The release planner sets this to the tag when it publishes the plugin, otherwise to the plugin's
+ * last Central version. A project pin (`composePreview.version`) is intentionally literal; the
+ * readiness marker records the Maven version a particular CLI release resolves.
  */
 internal val MAVEN_LINE_VERSION: String by lazy { cliVersionProperty("mavenLineVersion") }
 

@@ -212,25 +212,21 @@ republishing the release.
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
 
-   **Not every release publishes, and the publish is split in two.** There are two Maven version
-   lines — `data/*` and everything else — and `maven-publish-guard` decides each independently. It
-   diffs that line's modules applying `composeai.maven-publishing` — plus the shared inputs that
-   change every module's bytes on both lines — against the version that line is already at on
-   Central, and skips it when nothing differs. Measured over `v1.57.0..v1.84.0`: 117 module-changes against 3,572 module
-   publications, and six of those 38 releases changed no published module at all. Central meters
-   file count, release size and release count per organisation, which is what this is for
-   ([`docs/design/RELEASE_TRAINS.md`](design/RELEASE_TRAINS.md), issue #4772).
+    **Not every release publishes.** The release plan compares each module applying
+    `composeai.maven-publishing` with the version that module is already at on Central, then
+    propagates changes to published dependents. A changed module, its necessary dependents, and the
+    BOM publish at the tag; skipped modules retain their last Central version in the generated
+    manifest. An empty plan uploads nothing — not even a duplicate BOM. Central meters file count,
+    release size and release count per organisation, which is why this is intentionally precise.
 
-   Each line is **all-or-nothing** and the whole thing **fails open**: either every module on a
-   line publishes at that line's version or none does, and every uncertainty — an unresolvable baseline, a shallow clone, an empty
-   module enumeration, a guard job that crashed — publishes. The asymmetry is total because the
-   mistakes are: publishing needlessly costs quota, while *not* publishing when we should have
-   cannot be repaired, since Central refuses a version twice.
+    The plan **fails open**: every uncertainty — an unresolvable baseline, shallow history, or an
+    empty module enumeration — publishes the full set. The asymmetry is total because publishing
+    needlessly costs quota, while skipping a required version cannot be repaired: Central refuses a
+    second upload of the same GAV.
 
-   A release where no published module changed republishes none. (The `data/*` modules used to
-   version on a second line so a release could republish one line and not the other; they publish
-   from compose-preview-daemon since #5336, and the split went with them.) The job summary names
-   the verdict, the baseline and the version.
+    A release where no published module changed republishes none. Its CLI carries the last published
+    plugin coordinate, so auto-inject, `init-script`, and `doctor` never request a tag that Central
+    did not receive. (The `data/*` modules publish from compose-preview-daemon since #5336.)
 
    **A release that skips a publish is still fully usable.** The CLI it ships is baked to resolve
    the plugin at the last version of the **core** line that *is* on Central rather than at its own
