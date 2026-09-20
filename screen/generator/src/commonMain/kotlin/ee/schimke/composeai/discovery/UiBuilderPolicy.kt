@@ -122,11 +122,12 @@ val UI_BUILDER_TEMPLATE_HOLES: Map<String, Set<String>> =
  *
  * ### Why several fields are `JsonElement`
  *
- * [previewSurfaces], [frame] and [colorTokens] are carried through to the generated file
- * **verbatim** rather than parsed into Kotlin. They are read by the preview server, whose types own
- * their shape; re-declaring them here would put a second definition of somebody else's contract in
- * the middle of the pipeline, where it would be the thing that has to be updated for a field this
- * generator never looks at. What this generator validates about them, it validates structurally.
+ * [previewSurfaces], [browserPreview], [frame] and [colorTokens] are carried through to the
+ * generated file **verbatim** rather than parsed into Kotlin. They are read by the preview server,
+ * whose types own their shape; re-declaring them here would put a second definition of somebody
+ * else's contract in the middle of the pipeline, where it would be the thing that has to be updated
+ * for a field this generator never looks at. What this generator validates about them, it validates
+ * structurally.
  *
  * `frame.geometry` in particular is written by the catalog's own Robolectric probe and asserted
  * against the committed file by that same test. Parsing it here would add a second opinion about
@@ -156,6 +157,8 @@ data class UiBuilderPolicyFile(
   /** What the New design chooser prints over the group; defaults to [platform] title-cased. */
   val platformLabel: String? = null,
   val previewSurfaces: JsonElement? = null,
+  /** Typed by the consuming UI-builder protocol; carried without a duplicate definition here. */
+  val browserPreview: JsonElement? = null,
   val frame: JsonElement? = null,
   val builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
   val menu: UiBuilderMenu? = null,
@@ -208,6 +211,8 @@ data class UiBuilderAuthoredComponent(
   val group: String? = null,
   val displayName: String? = null,
   val canvas: String? = null,
+  /** Canvas-only property/slot projection, owned by the consuming UI-builder protocol. */
+  val canvasMapping: JsonElement? = null,
   /** The editing canvas's mock for this component — see [UiBuilderUnrolledMock]. */
   val unrolled: UiBuilderUnrolledMock? = null,
   val nativeOnly: Boolean? = null,
