@@ -37,6 +37,48 @@ test("publishes a verified runtime archive and descriptor", async () => {
   );
 });
 
+test("accepts exact Remote Compose writer and player implementation metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "catalog-runtime-remote-compose-"));
+  const archivePath = join(root, "runtime.zip");
+  const assets = new Map([["index.html", bytes("ok")]]);
+  const entries = archiveEntries("remote-m3-p3-abcd", assets);
+  const manifest = JSON.parse(Buffer.from(entries[UI_BUILDER_RUNTIME_MANIFEST]).toString("utf8"));
+  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
+    JSON.stringify({
+      ...manifest,
+      remoteComposeWriter: "4307936-ps17-cmp01",
+      rcPlayer: "1.69.0",
+    }),
+  );
+  await writeFile(archivePath, zipSync(entries));
+
+  const descriptor = await publishUiBuilderRuntime(archivePath, join(root, "out"));
+
+  assert.equal(descriptor.runtimeId, "remote-m3-p3-abcd");
+});
+
+test("rejects unknown or malformed implementation metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "catalog-runtime-metadata-"));
+  const assets = new Map([["index.html", bytes("ok")]]);
+  const entries = archiveEntries("remote-m3-p3-abcd", assets);
+  const manifest = JSON.parse(Buffer.from(entries[UI_BUILDER_RUNTIME_MANIFEST]).toString("utf8"));
+
+  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(JSON.stringify({ ...manifest, arbitrary: "value" }));
+  const unknown = join(root, "unknown.zip");
+  await writeFile(unknown, zipSync(entries));
+  await assert.rejects(publishUiBuilderRuntime(unknown, join(root, "out")), /fields do not match/);
+
+  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
+    JSON.stringify({ ...manifest, remoteComposeWriter: "" }),
+  );
+  const malformed = join(root, "malformed.zip");
+  await writeFile(malformed, zipSync(entries));
+  await assert.rejects(
+    publishUiBuilderRuntime(malformed, join(root, "out")),
+    /remoteComposeWriter must be a non-empty string/,
+  );
+});
+
 test("rejects a reused identity whose tree does not match its manifest", async () => {
   const root = await mkdtemp(join(tmpdir(), "catalog-runtime-bad-"));
   const archivePath = join(root, "runtime.zip");
