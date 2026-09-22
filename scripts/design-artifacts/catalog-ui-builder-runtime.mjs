@@ -7,7 +7,10 @@ import { unzipSync } from "fflate";
 // Wire spellings are owned by compose-preview-contracts' RuntimeV1. This Node publisher cannot
 // link the KMP coordinate, so its conformance test consumes that contract's versioned vector.
 export const UI_BUILDER_RUNTIME_MANIFEST = "runtime-manifest.json";
-export const UI_BUILDER_RUNTIME_SCHEMA = "compose-ui-builder-runtime/v1";
+export const UI_BUILDER_RUNTIME_SCHEMA_V1 = "compose-ui-builder-runtime/v1";
+export const UI_BUILDER_RUNTIME_SCHEMA_V2 = "compose-ui-builder-runtime/v2";
+// Kept as the v1 spelling for callers that assemble the original five-field manifest.
+export const UI_BUILDER_RUNTIME_SCHEMA = UI_BUILDER_RUNTIME_SCHEMA_V1;
 
 const SAFE_RUNTIME_ID = /^[A-Za-z0-9._-]+$/;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -16,18 +19,18 @@ const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 512 * 1024 * 1024;
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
 const MAX_FILES = 4096;
-const MANIFEST_FIELDS = [
+const MANIFEST_FIELDS_V1 = [
   "entrypoint",
   "integritySha256",
   "protocolVersion",
   "runtimeId",
   "schema",
 ];
-// Immutable implementation coordinates are diagnostic identity, not delivery identity. They let a
-// catalog prove which writer produced a document and which player interprets it without teaching
-// the generic runtime descriptor about Remote Compose. Older manifests omit both; unknown fields
-// still fail closed rather than turning this into an unvalidated metadata bag.
-const OPTIONAL_MANIFEST_FIELDS = ["rcPlayer", "remoteComposeWriter"];
+// v2 adds declared implementation provenance while leaving v1 strict. The schema is read before
+// choosing the allowed field set so a v1 manifest cannot smuggle v2-only metadata through an
+// optional-key escape hatch. Unknown fields fail closed in both versions.
+const PROVENANCE_FIELDS_V2 = ["rcPlayer", "remoteComposeWriter"];
+const MANIFEST_FIELDS_V2 = [...MANIFEST_FIELDS_V1, ...PROVENANCE_FIELDS_V2];
 
 /** Publish one verified, self-contained catalog renderer archive beside `ui-builder.json`. */
 export async function publishUiBuilderRuntime(archivePath, outPath) {
@@ -75,25 +78,22 @@ export async function publishUiBuilderRuntime(archivePath, outPath) {
       cause: error,
     });
   }
-  if (
-    !manifest ||
-    Array.isArray(manifest) ||
-    MANIFEST_FIELDS.some((field) => !(field in manifest)) ||
-    Object.keys(manifest).some(
-      (field) => !MANIFEST_FIELDS.includes(field) && !OPTIONAL_MANIFEST_FIELDS.includes(field),
-    )
-  ) {
+  if (!manifest || Array.isArray(manifest))
     throw new Error(
-      `UI-builder runtime manifest fields do not match ${UI_BUILDER_RUNTIME_SCHEMA}`,
+      `UI-builder runtime manifest fields do not match ${UI_BUILDER_RUNTIME_SCHEMA_V1}`,
     );
+  const manifestFields = manifestFieldsForSchema(manifest.schema);
+  if (
+    MANIFEST_FIELDS_V1.some((field) => !(field in manifest)) ||
+    Object.keys(manifest).some((field) => !manifestFields.includes(field))
+  ) {
+    throw new Error(`UI-builder runtime manifest fields do not match ${manifest.schema}`);
   }
-  for (const field of OPTIONAL_MANIFEST_FIELDS) {
+  for (const field of PROVENANCE_FIELDS_V2) {
     if (field in manifest && (typeof manifest[field] !== "string" || !manifest[field])) {
       throw new Error(`UI-builder runtime manifest ${field} must be a non-empty string`);
     }
   }
-  if (manifest.schema !== UI_BUILDER_RUNTIME_SCHEMA)
-    throw new Error("UI-builder runtime has an unsupported manifest schema");
   if (
     typeof manifest.runtimeId !== "string" ||
     !SAFE_RUNTIME_ID.test(manifest.runtimeId) ||
@@ -139,6 +139,12 @@ export async function publishUiBuilderRuntime(archivePath, outPath) {
     protocolVersion: manifest.protocolVersion,
     integritySha256: manifest.integritySha256,
   };
+}
+
+function manifestFieldsForSchema(schema) {
+  if (schema === UI_BUILDER_RUNTIME_SCHEMA_V1) return MANIFEST_FIELDS_V1;
+  if (schema === UI_BUILDER_RUNTIME_SCHEMA_V2) return MANIFEST_FIELDS_V2;
+  throw new Error("UI-builder runtime has an unsupported manifest schema");
 }
 
 /**
