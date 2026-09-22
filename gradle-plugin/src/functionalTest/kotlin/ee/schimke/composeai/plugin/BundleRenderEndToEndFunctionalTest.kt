@@ -20,9 +20,9 @@ import org.junit.rules.TemporaryFolder
  *    build's `functionalTestWithBundleRender` task flips this on.
  * 2. **CLI binary must exist.** `:cli:installDist` is a hard prerequisite of the wrapping task. A
  *    missing binary past the property gate is a setup error, not a dev-environment skip.
- * 3. **Renderer jars must be present in `<install>/lib-renderer/`.** Sanity check on the
- *    distribution layout — if the renderer config didn't get copied, every render will fail with
- *    `ClassNotFoundException: DesktopRendererMainKt`. Catch it upfront with a clearer message.
+ * 3. **The renderer sidecar must be provisionable.** The CLI no longer packages `lib-renderer/`;
+ *    the render command fetches the pinned compose-preview-daemon sidecar on first use. Driving the
+ *    command is the contract check for that provisioning path.
  *
  * No `withPluginClasspath()` for the pack step — the synthetic Compose Desktop project resolves our
  * plugin from `mavenLocal()`, the same shape `CliA11yEndToEndFunctionalTest` uses.
@@ -50,16 +50,6 @@ class BundleRenderEndToEndFunctionalTest {
       )
       .that(cli.isFile)
       .isTrue()
-    val libRenderer = cli.parentFile.parentFile.resolve("lib-renderer")
-    assertWithMessage(
-        "lib-renderer dir missing in CLI distribution at ${libRenderer.path} — the cli build " +
-          "didn't include `composePreviewRenderer` configuration outputs."
-      )
-      .that(libRenderer.isDirectory)
-      .isTrue()
-    assertWithMessage("lib-renderer is empty — renderer-desktop and its Compose deps not copied")
-      .that(libRenderer.listFiles { f -> f.name.endsWith(".jar") }.orEmpty().asList())
-      .isNotEmpty()
 
     val projectDir = createDesktopProject()
     val previewId = "test.PreviewsKt.SimpleBoxPreview"

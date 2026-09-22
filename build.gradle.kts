@@ -189,8 +189,8 @@ tasks.register("functionalTestWithBundleRender") {
   // Synthetic Compose Desktop project resolves the plugin from mavenLocal via the same
   // `id(...) version "<v>"` block the a11y e2e uses; pre-publish or `BUILD FAILED`.
   dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
-  // CLI binary at `cli/build/install/compose-preview/bin/compose-preview`, plus the
-  // `lib-renderer/` sibling dir the renderer subprocess loads.
+  // CLI binary at `cli/build/install/compose-preview/bin/compose-preview`. The renderer sidecar is
+  // deliberately absent: the E2E exercises first-use provisioning from compose-preview-daemon.
   dependsOn(":cli:installDist")
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
