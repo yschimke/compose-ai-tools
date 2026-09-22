@@ -554,6 +554,9 @@ jobs:
     uses: ./.github/workflows/design-artifacts-reusable.yml
     with:
       system: wear-m3
+      # Keep this generated branch out of the source repository alongside compose-m3.
+      # GITHUB_TOKEN is source-repository scoped, so the companion secret below is required.
+      artifact-repository: yschimke/compose-ai-tools-out
       spec: samples/design-catalog-wear-m3/catalog.spec.json
       module: 'samples:design-catalog-wear-m3'
       cli-source: build
@@ -573,3 +576,4 @@ jobs:
       split-per-preview: false
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      artifacts_token: ${{ secrets.WEAR_M3_ARTIFACTS_TOKEN }}
