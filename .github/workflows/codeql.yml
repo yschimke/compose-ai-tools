@@ -72,13 +72,10 @@ jobs:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     # The java-kotlin extractor lags the Kotlin release train: this repo builds
-    # with Kotlin 2.4.0, but CodeQL only supports versions below 2.3.30, so the
-    # compile step fails with "Kotlin version too new" (a CodeQL configuration
-    # error, not a code defect). Don't let that block CI. Scoped to java-kotlin
-    # only — JS/TS and Actions analysis still gate as normal, and once the
-    # extractor catches up to 2.4.0 the Kotlin job goes green again with no
-    # further change. Revisit / remove this once CodeQL supports Kotlin 2.4.0.
-    continue-on-error: ${{ matrix.language == 'java-kotlin' }}
+    # with Kotlin 2.4.20, which CodeQL does not yet support. The compile step below records that
+    # extractor failure without failing the whole job, and analysis runs only when extraction
+    # succeeds. JS/TS and Actions remain hard gates. Once CodeQL catches up, the same step succeeds
+    # and Kotlin analysis resumes without another workflow edit.
     permissions:
       # Required for all workflows
       security-events: write
@@ -127,7 +124,9 @@ jobs:
       # `compileKotlin` covers all Kotlin source sets across the multi-module
       # build via task-name matching in subprojects.
       - name: Compile Kotlin for CodeQL
+        id: kotlin-compile
         if: matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true'
+        continue-on-error: true
         run: |
           ./gradlew compileKotlin compileDebugKotlin compileReleaseKotlin \
             --no-configuration-cache \
@@ -137,7 +136,8 @@ jobs:
 
       - name: Perform CodeQL Analysis
         if: >-
-          ${{ (matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true')
+          ${{ (matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true'
+          && steps.kotlin-compile.outcome == 'success')
           || (matrix.language == 'javascript-typescript' && needs.changes.outputs.javascript_typescript == 'true')
           || (matrix.language == 'actions' && needs.changes.outputs.actions == 'true') }}
         uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
