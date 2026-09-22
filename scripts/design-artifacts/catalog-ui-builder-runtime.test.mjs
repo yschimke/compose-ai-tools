@@ -11,6 +11,7 @@ import {
   treeIntegrity,
   UI_BUILDER_RUNTIME_MANIFEST,
   UI_BUILDER_RUNTIME_SCHEMA,
+  UI_BUILDER_RUNTIME_SCHEMA_V2,
 } from "./catalog-ui-builder-runtime.mjs";
 
 test("publishes a verified runtime archive and descriptor", async () => {
@@ -37,7 +38,7 @@ test("publishes a verified runtime archive and descriptor", async () => {
   );
 });
 
-test("accepts exact Remote Compose writer and player implementation metadata", async () => {
+test("accepts exact v2 Remote Compose writer and player implementation metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "catalog-runtime-remote-compose-"));
   const archivePath = join(root, "runtime.zip");
   const assets = new Map([["index.html", bytes("ok")]]);
@@ -46,6 +47,7 @@ test("accepts exact Remote Compose writer and player implementation metadata", a
   entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
     JSON.stringify({
       ...manifest,
+      schema: UI_BUILDER_RUNTIME_SCHEMA_V2,
       remoteComposeWriter: "4307936-ps17-cmp01",
       rcPlayer: "1.69.0",
     }),
@@ -57,25 +59,65 @@ test("accepts exact Remote Compose writer and player implementation metadata", a
   assert.equal(descriptor.runtimeId, "remote-m3-p3-abcd");
 });
 
-test("rejects unknown or malformed implementation metadata", async () => {
+test("keeps v1 strict and rejects v2 provenance fields", async () => {
+  const root = await mkdtemp(join(tmpdir(), "catalog-runtime-v1-strict-"));
+  const assets = new Map([["index.html", bytes("ok")]]);
+  const entries = archiveEntries("remote-m3-p3-abcd", assets);
+  const manifest = JSON.parse(Buffer.from(entries[UI_BUILDER_RUNTIME_MANIFEST]).toString("utf8"));
+  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
+    JSON.stringify({ ...manifest, remoteComposeWriter: "4307936-ps17-cmp01" }),
+  );
+  const archive = join(root, "v1-with-v2-field.zip");
+  await writeFile(archive, zipSync(entries));
+
+  await assert.rejects(
+    publishUiBuilderRuntime(archive, join(root, "out")),
+    /fields do not match compose-ui-builder-runtime\/v1/,
+  );
+});
+
+test("rejects unknown or malformed v2 implementation metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "catalog-runtime-metadata-"));
   const assets = new Map([["index.html", bytes("ok")]]);
   const entries = archiveEntries("remote-m3-p3-abcd", assets);
   const manifest = JSON.parse(Buffer.from(entries[UI_BUILDER_RUNTIME_MANIFEST]).toString("utf8"));
 
-  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(JSON.stringify({ ...manifest, arbitrary: "value" }));
+  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
+    JSON.stringify({ ...manifest, schema: UI_BUILDER_RUNTIME_SCHEMA_V2, arbitrary: "value" }),
+  );
   const unknown = join(root, "unknown.zip");
   await writeFile(unknown, zipSync(entries));
   await assert.rejects(publishUiBuilderRuntime(unknown, join(root, "out")), /fields do not match/);
 
   entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
-    JSON.stringify({ ...manifest, remoteComposeWriter: "" }),
+    JSON.stringify({
+      ...manifest,
+      schema: UI_BUILDER_RUNTIME_SCHEMA_V2,
+      remoteComposeWriter: "",
+    }),
   );
   const malformed = join(root, "malformed.zip");
   await writeFile(malformed, zipSync(entries));
   await assert.rejects(
     publishUiBuilderRuntime(malformed, join(root, "out")),
     /remoteComposeWriter must be a non-empty string/,
+  );
+});
+
+test("rejects unsupported manifest schemas before considering their fields", async () => {
+  const root = await mkdtemp(join(tmpdir(), "catalog-runtime-schema-"));
+  const assets = new Map([["index.html", bytes("ok")]]);
+  const entries = archiveEntries("remote-m3-p3-abcd", assets);
+  const manifest = JSON.parse(Buffer.from(entries[UI_BUILDER_RUNTIME_MANIFEST]).toString("utf8"));
+  entries[UI_BUILDER_RUNTIME_MANIFEST] = bytes(
+    JSON.stringify({ ...manifest, schema: "compose-ui-builder-runtime/v3" }),
+  );
+  const archive = join(root, "unsupported.zip");
+  await writeFile(archive, zipSync(entries));
+
+  await assert.rejects(
+    publishUiBuilderRuntime(archive, join(root, "out")),
+    /unsupported manifest schema/,
   );
 });
 
