@@ -481,8 +481,14 @@ jobs:
 
       - name: Publish to design-artifacts/${{ matrix.system }}
         env:
+          # Pilot seam for moving this generated branch out of the source repository. The variable
+          # is deliberately system-specific: compose-m3 can move first without also moving the
+          # reusable wear-m3 lane. Cross-repository writes require the matching secret; with neither
+          # configured this is byte-for-byte the historical same-repository path.
+          ARTIFACT_REPOSITORY: ${{ vars.COMPOSE_M3_ARTIFACT_REPOSITORY || github.repository }}
+          ARTIFACT_TOKEN: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN || github.token }}
+          SOURCE_TOKEN: ${{ github.token }}
           SYSTEM: ${{ matrix.system }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           # Read the rendered-from SHA off the checkout itself rather than
@@ -497,8 +503,8 @@ jobs:
           # content, so an unchanged render costs nothing; SKIP_IF_UNCHANGED drops
           # the commit entirely when the whole tree is byte-identical.
           TARGET_BRANCH="design-artifacts/$SYSTEM" \
-          REPO="$GITHUB_REPOSITORY" \
-          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          REPO="$ARTIFACT_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$ARTIFACT_TOKEN" \
           MSG="chore(design-artifacts): regenerate $SYSTEM catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
           REVISION_PREVIEW_INDEX=1 \
@@ -513,7 +519,8 @@ jobs:
           # push did: SKIP_IF_UNCHANGED commits nothing when the output is
           # byte-identical, and the lane is still not stale. Never fails the job —
           # see the script.
-          "$GITHUB_WORKSPACE/scripts/design-artifacts/mark-published-source.sh" \
+          GH_TOKEN="$SOURCE_TOKEN" \
+            "$GITHUB_WORKSPACE/scripts/design-artifacts/mark-published-source.sh" \
             --system "$SYSTEM" \
             --repo "$GITHUB_REPOSITORY" \
             --sha "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
@@ -566,4 +573,3 @@ jobs:
       split-per-preview: false
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-

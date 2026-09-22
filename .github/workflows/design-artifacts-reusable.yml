@@ -15,7 +15,10 @@ name: Design Artifacts (reusable)
 #         system: your-system
 #         spec: catalog.spec.json
 #         module: ':app' # omit (or set modules: all) to publish every preview-enabled module
-#       secrets: inherit   # optional; only needed for buildfetch-ro-token
+#         # Optional: put generated branches in a public output repository.
+#         artifact-repository: you/your-repo-out
+#       secrets:
+#         artifacts_token: ${{ secrets.ARTIFACTS_TOKEN }} # required only for cross-repo publish
 #
 # The pipeline: install the released compose-preview CLI → validate the spec
 # (fast, build-free) → render the module(s) with `bundle pack --with-semantics` →
@@ -75,6 +78,16 @@ on:
         description: 'Catalog slug; the delivery branch is design-artifacts/<system>.'
         required: true
         type: string
+      artifact-repository:
+        description: >-
+          Repository that owns generated branches such as design-artifacts/<system> and
+          design-parity/<system>. Empty keeps the historical behaviour and publishes into the
+          calling repository. Set owner/name together with the artifacts_token secret to keep
+          generated objects out of the source repository. It must be publicly readable: render
+          jobs consume its reference/parity branches without receiving the write credential.
+        required: false
+        type: string
+        default: ''
       spec:
         description: 'Path to catalog.spec.json in the caller repo.'
         required: true
@@ -546,6 +559,12 @@ on:
         type: number
         default: 600
     secrets:
+      artifacts_token:
+        description: >-
+          Optional token with Contents write access to artifact-repository. The caller's
+          GITHUB_TOKEN is used when artifact-repository is empty; GitHub scopes that token to the
+          calling repository, so a cross-repository publisher must supply this secret.
+        required: false
       buildfetch_ro_token:
         description: 'Optional read-only BuildFetch Gradle remote-cache token, to pull cached task outputs instead of building cold.'
         required: false
@@ -565,6 +584,7 @@ permissions: {}
 # them through environment variables so expression expansion cannot alter shell
 # syntax; quoting in the scripts below then treats every value as data.
 env:
+  ARTIFACT_REPOSITORY: ${{ inputs.artifact-repository || github.repository }}
   INPUT_CATALOG_KEY: ${{ inputs.catalog-key }}
   INPUT_CATALOG_PATH: ${{ inputs.catalog-path }}
   INPUT_MODULE: ${{ inputs.module }}
@@ -4368,11 +4388,18 @@ jobs:
         id: refcache
         if: ${{ (inputs.publish || inputs.upload-out) && inputs.reference-cache-branch != '' }}
         env:
+          # The generate job's caller token is read-only. Retain private same-repo support, but do
+          # not substitute the cross-repo write secret here; external output repos are public.
+          ARTIFACT_READ_TOKEN: ${{ inputs.artifact-repository == '' && github.token || '' }}
           BRANCH: ${{ inputs.reference-cache-branch }}
           CACHE_DIR: ${{ runner.temp }}/design-reference-cache
         run: |
           set -euo pipefail
-          repo="https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git"
+          if [ -n "$ARTIFACT_READ_TOKEN" ]; then
+            repo="https://x-access-token:${ARTIFACT_READ_TOKEN}@github.com/${ARTIFACT_REPOSITORY}.git"
+          else
+            repo="https://github.com/${ARTIFACT_REPOSITORY}.git"
+          fi
           if git clone -q --depth 1 --branch "$BRANCH" "$repo" "$CACHE_DIR" 2>/dev/null; then
             rm -rf "$CACHE_DIR/.git"
             echo "dir=${CACHE_DIR}" >> "$GITHUB_OUTPUT"
@@ -4559,7 +4586,8 @@ jobs:
           # and that fetch fails outright on a PRIVATE caller — on a publishing run too, because
           # holding a token in the job is not the same as git having one. Hand it over explicitly,
           # under the name `push-branch.sh` already uses for the same job.
-          GITHUB_TOKEN_INLINE: ${{ github.token }}
+          PARITY_REPOSITORY: ${{ inputs.artifact-repository || github.repository }}
+          GITHUB_TOKEN_INLINE: ${{ inputs.artifact-repository == '' && github.token || '' }}
         run: |
           set -euo pipefail
           # The emitter comes from the export-driver checkout, which for an external caller is the
@@ -5154,7 +5182,8 @@ jobs:
       - name: Publish to design-artifacts/${{ inputs.system }}
         if: ${{ inputs.publish }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_TOKEN: ${{ secrets.artifacts_token || github.token }}
+          SOURCE_TOKEN: ${{ github.token }}
           SYSTEM: ${{ inputs.system }}
           SOURCE_SHA: ${{ needs.generate.outputs.source-sha }}
           SOURCE_SHA_FULL: ${{ needs.generate.outputs.source-sha-full }}
@@ -5226,8 +5255,8 @@ jobs:
           fi
 
           TARGET_BRANCH="design-artifacts/${SYSTEM}" \
-          REPO="$GITHUB_REPOSITORY" \
-          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          REPO="$ARTIFACT_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$ARTIFACT_TOKEN" \
           MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
           CARRY_FORWARD_PATHS="parity/issues.json history.json${carry_findings}" \
@@ -5254,7 +5283,8 @@ jobs:
           # over-renders rather than under-renders.
           MARKER="$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/mark-published-source.sh"
           if [ -f "$MARKER" ]; then
-            bash "$MARKER" --system "$SYSTEM" --repo "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA_FULL"
+            GH_TOKEN="$SOURCE_TOKEN" bash "$MARKER" \
+              --system "$SYSTEM" --repo "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA_FULL"
           else
             echo "::notice::design-artifacts source marker: the pinned export driver has no mark-published-source.sh; skipping. It resumes once the driver pin advances."
           fi
@@ -5262,7 +5292,7 @@ jobs:
       - name: Publish render history to design-artifacts/${{ inputs.system }}
         if: ${{ inputs.publish }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_TOKEN: ${{ secrets.artifacts_token || github.token }}
           SYSTEM: ${{ inputs.system }}
           SOURCE_SHA: ${{ needs.generate.outputs.source-sha }}
           PARITY_FINDINGS_UNREADABLE: ${{ needs.generate.outputs.parity-findings-unreadable }}
@@ -5301,8 +5331,8 @@ jobs:
           # whatever the helper's `git config` seeded — correct today, but only by way of an
           # indirection nothing states.
           TARGET_BRANCH="design-artifacts/${SYSTEM}" \
-          REPO="$GITHUB_REPOSITORY" \
-          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          REPO="$ARTIFACT_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$ARTIFACT_TOKEN" \
           OUTPUT="$GITHUB_WORKSPACE/history.json" \
           LAYOUT=images \
           MSG="chore(design-artifacts): update ${SYSTEM} render history ($(date -u +%F), ${SOURCE_SHA})" \
