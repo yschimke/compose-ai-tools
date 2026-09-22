@@ -168,7 +168,7 @@ import {
   resolveSemanticsIds,
 } from "./bridge-live-preview-ids.mjs";
 import { catalogTagIndex } from "./tag-index.mjs";
-import { perRenderAnnotations } from "./annotation-index.mjs";
+import { ANNOTATION_SCHEMA, perRenderAnnotations } from "./annotation-index.mjs";
 import {
   catalogImagePath,
   derivationMismatches,
@@ -2437,16 +2437,23 @@ if (values["defer-figma-svg"]) {
     },
     () => null,
   );
-  const layers = publishedAnnotations
-    ? perRenderAnnotations(
-        publishedAnnotations,
-        indexManifest,
-        allBundles,
-        resolveSemanticsIds(indexManifest, spec, allBundles),
-        treeAnnotations,
-      )
-    : null;
-  if (layers) {
+  // `writeCatalog` only creates this file when it receives an annotation layer. Some catalogs
+  // first acquire their layer later, when `emit-design-references` writes Figma annotations. Do
+  // not make that later ordering decide whether the candidate-side semantics already in this
+  // bundle are published: seed an empty manifest and retain it only when we actually measured a
+  // render. The reference emitter merges into the same file below.
+  const layers = perRenderAnnotations(
+    publishedAnnotations ?? {
+      schema: ANNOTATION_SCHEMA,
+      previews: {},
+      references: {},
+    },
+    indexManifest,
+    allBundles,
+    resolveSemanticsIds(indexManifest, spec, allBundles),
+    treeAnnotations,
+  );
+  if (publishedAnnotations || layers.measured > 0) {
     await writeFile(
       file,
       `${JSON.stringify(layers.manifest, null, 2)}\n`,

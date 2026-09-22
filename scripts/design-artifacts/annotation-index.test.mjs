@@ -183,6 +183,25 @@ test("the reference layer and schema are carried through untouched", () => {
   assert.equal(out.manifest.schema, "compose-preview-annotations/v1");
 });
 
+test("a semantics-only catalog can seed its first annotation manifest", () => {
+  const manifest = {
+    components: [
+      {
+        componentId: "Button",
+        images: [image("images/button/ideal__default__compact.png", "Fn_default")],
+      },
+    ],
+  };
+  const bundle = bundleOf({ Fn_default: { root: { label: "one label" } } });
+
+  const out = perRenderAnnotations(undefined, manifest, [bundle], undefined, annotate);
+
+  assert.equal(out.manifest.schema, "compose-preview-annotations/v1");
+  assert.deepEqual(out.manifest.references, {});
+  assert.equal(out.manifest.previews["button__ideal__default__compact"][0].label, "one label");
+  assert.equal(out.measured, 1);
+});
+
 // The export package writes nothing when a component annotates to nothing, and a tree that
 // annotates to nothing must not resurrect a key.
 test("a tree that annotates to nothing publishes no key", () => {
