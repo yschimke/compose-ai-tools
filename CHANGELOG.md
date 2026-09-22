@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.21.2](https://github.com/yschimke/compose-ai-tools/compare/v2.21.1...v2.21.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* accept Remote Compose runtime metadata ([#5534](https://github.com/yschimke/compose-ai-tools/issues/5534)) ([4671a53](https://github.com/yschimke/compose-ai-tools/commit/4671a5398876c69de0d7f58917dbfcb8be882b99))
+* discover components in remote material projects ([#5535](https://github.com/yschimke/compose-ai-tools/issues/5535)) ([353b5d5](https://github.com/yschimke/compose-ai-tools/commit/353b5d598bf28b0858e24591366242a3454a17e8))
+* **install:** retry bootstrap downloads ([#5529](https://github.com/yschimke/compose-ai-tools/issues/5529)) ([c51f9d9](https://github.com/yschimke/compose-ai-tools/commit/c51f9d97c6f5ab5430a2b64a66603c7125a979f0))
+
 ## [2.21.1](https://github.com/yschimke/compose-ai-tools/compare/v2.21.0...v2.21.1) (2026-09-20)
 
 
