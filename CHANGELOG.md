@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.2](https://github.com/yschimke/compose-ai-tools/compare/v2.22.1...v2.22.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* **catalog:** publish semantics-only annotation layers ([#5553](https://github.com/yschimke/compose-ai-tools/issues/5553)) ([e1279c5](https://github.com/yschimke/compose-ai-tools/commit/e1279c530dcaa4ff47500d4072676721800a3c8d))
+
 ## [2.22.1](https://github.com/yschimke/compose-ai-tools/compare/v2.22.0...v2.22.1) (2026-09-22)
 
 
