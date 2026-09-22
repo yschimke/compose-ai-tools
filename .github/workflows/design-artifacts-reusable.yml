@@ -80,11 +80,12 @@ on:
         type: string
       artifact-repository:
         description: >-
-          Repository that owns generated branches such as design-artifacts/<system> and
-          design-parity/<system>. Empty keeps the historical behaviour and publishes into the
-          calling repository. Set owner/name together with the artifacts_token secret to keep
-          generated objects out of the source repository. It must be publicly readable: render
-          jobs consume its reference/parity branches without receiving the write credential.
+          Advanced, optional storage isolation. Repository that owns generated branches such as
+          design-artifacts/<system> and design-parity/<system>. Leave empty for normal initial
+          adoption: all branches stay in the calling repository and its GITHUB_TOKEN is sufficient.
+          Set owner/name together with the artifacts_token secret only when generated history has
+          grown enough to justify a separate repository. That repository must be publicly readable:
+          render jobs consume its reference/parity branches without receiving the write credential.
         required: false
         type: string
         default: ''
@@ -561,9 +562,10 @@ on:
     secrets:
       artifacts_token:
         description: >-
-          Optional token with Contents write access to artifact-repository. The caller's
+          Advanced companion to artifact-repository: a token with Contents write access to that
+          output repository. Do not configure it for normal initial adoption. The caller's
           GITHUB_TOKEN is used when artifact-repository is empty; GitHub scopes that token to the
-          calling repository, so a cross-repository publisher must supply this secret.
+          calling repository, so only a cross-repository publisher must supply this secret.
         required: false
       buildfetch_ro_token:
         description: 'Optional read-only BuildFetch Gradle remote-cache token, to pull cached task outputs instead of building cold.'
