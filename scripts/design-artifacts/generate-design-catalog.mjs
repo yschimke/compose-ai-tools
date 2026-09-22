@@ -2454,6 +2454,7 @@ if (values["defer-figma-svg"]) {
     treeAnnotations,
   );
   if (publishedAnnotations || layers.measured > 0) {
+    await mkdir(dirname(file), { recursive: true });
     await writeFile(
       file,
       `${JSON.stringify(layers.manifest, null, 2)}\n`,
