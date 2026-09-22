@@ -1,0 +1,18 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Published design-kit and typography identifiers used as test fixtures"
+stopwords = [
+  "ocdacdEsnHipMJD3egzxKb",
+  "AbCdEf123456",
+  "M3/body/Large",
+]
+
+[[allowlists]]
+description = "Source that emits or parses PEM boundaries without containing private key material"
+paths = [
+  '''(^|/)bundle/format/src/main/kotlin/ee/schimke/composeai/bundle/BundleSigning\.kt$''',
+  '''(^|/)cli/src/main/kotlin/ee/schimke/composeai/cli/BundleSignCommand\.kt$''',
+  '''(^|/)cli/src/main/kotlin/ee/schimke/composeai/cli/BundleSigning\.kt$''',
+]
