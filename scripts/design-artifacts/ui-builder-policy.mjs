@@ -115,6 +115,7 @@ export function validatePolicy(policy) {
   validateBuiltins(policy.builtins, errors, warnings);
   validateCode(policy.code, errors, warnings);
   validateFrame(policy.frame, errors, warnings);
+  validateComposeSourceExport(policy.composeSourceExport, errors);
 
   if (policy.templates !== undefined) {
     if (!Array.isArray(policy.templates)) {
@@ -174,6 +175,7 @@ function validateTypedShapes(policy, errors) {
     ["$comment", policy["$comment"]],
     ["catalogId", policy.catalogId],
     ["platformLabel", policy.platformLabel],
+    ["composeSourceExport.adapter", isObject(policy.composeSourceExport) ? policy.composeSourceExport.adapter : undefined],
     ["code.language", isObject(policy.code) ? policy.code.language : undefined],
   ];
   for (const [path, value] of strings) {
@@ -214,6 +216,29 @@ function validateTypedShapes(policy, errors) {
     }
   }
   validateMenu(policy.menu, errors);
+}
+
+/** The declared adapter is data, so reject malformed data before a discovery render. */
+function validateComposeSourceExport(declaration, errors) {
+  if (declaration === undefined) return;
+  if (!isObject(declaration)) {
+    errors.push('"composeSourceExport" is an object with adapter and version');
+    return;
+  }
+  if (
+    typeof declaration.adapter !== "string" ||
+    declaration.adapter.length === 0 ||
+    !/^[a-z0-9][a-z0-9-]*$/.test(declaration.adapter)
+  ) {
+    errors.push(
+      `"composeSourceExport.adapter" is ${JSON.stringify(declaration.adapter)}; it is a lowercase adapter id`,
+    );
+  }
+  if (!Number.isInteger(declaration.version) || declaration.version < 1) {
+    errors.push(
+      `"composeSourceExport.version" is ${JSON.stringify(declaration.version)}; it is a positive integer`,
+    );
+  }
 }
 
 /**

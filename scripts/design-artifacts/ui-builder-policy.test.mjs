@@ -40,6 +40,18 @@ test("a well-formed policy has nothing to say about it", () => {
   assert.deepEqual(codes(wellFormed()), { errors: [], warnings: [] });
 });
 
+test("a Compose source adapter is a versioned, lowercase declaration", () => {
+  const policy = wellFormed();
+  policy.composeSourceExport = { adapter: "compose-material3", version: 1 };
+  assert.deepEqual(codes(policy), { errors: [], warnings: [] });
+
+  policy.composeSourceExport = { adapter: "Compose Material", version: 0 };
+  const { errors } = codes(policy);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /composeSourceExport\.adapter/);
+  assert.match(errors[1], /composeSourceExport\.version/);
+});
+
 test("the schema and the platform word are required, and the word is a word", () => {
   const { errors } = codes({ platform: "Wear OS" });
   assert.equal(errors.length, 2);

@@ -163,6 +163,13 @@ data class UiBuilderPolicyFile(
   val builtins: Map<String, UiBuilderBuiltin> = emptyMap(),
   val menu: UiBuilderMenu? = null,
   val code: UiBuilderCode? = null,
+  /**
+   * The safe, versioned Compose source adapter this catalog selects, if it exports Compose source.
+   *
+   * This is a declaration, not source code. The consumer resolves the id/version only against
+   * adapters it ships; an unknown declaration refuses export rather than executing catalog data.
+   */
+  val composeSourceExport: UiBuilderComposeSourceExport? = null,
   /** Branch-relative paths of the template designs offered in the New design chooser. */
   val templates: List<String> = emptyList(),
   val colorTokens: JsonElement? = null,
@@ -189,6 +196,9 @@ data class UiBuilderPolicyFile(
    */
   val components: Map<String, UiBuilderAuthoredComponent> = emptyMap(),
 )
+
+/** A catalog-owned selection of a shipped Compose source-export adapter. */
+@Serializable data class UiBuilderComposeSourceExport(val adapter: String, val version: Int)
 
 /**
  * One component's authored policy.
