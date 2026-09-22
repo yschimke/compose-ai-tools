@@ -23,6 +23,11 @@ const MANIFEST_FIELDS = [
   "runtimeId",
   "schema",
 ];
+// Immutable implementation coordinates are diagnostic identity, not delivery identity. They let a
+// catalog prove which writer produced a document and which player interprets it without teaching
+// the generic runtime descriptor about Remote Compose. Older manifests omit both; unknown fields
+// still fail closed rather than turning this into an unvalidated metadata bag.
+const OPTIONAL_MANIFEST_FIELDS = ["rcPlayer", "remoteComposeWriter"];
 
 /** Publish one verified, self-contained catalog renderer archive beside `ui-builder.json`. */
 export async function publishUiBuilderRuntime(archivePath, outPath) {
@@ -73,11 +78,19 @@ export async function publishUiBuilderRuntime(archivePath, outPath) {
   if (
     !manifest ||
     Array.isArray(manifest) ||
-    Object.keys(manifest).sort().join("\n") !== MANIFEST_FIELDS.join("\n")
+    MANIFEST_FIELDS.some((field) => !(field in manifest)) ||
+    Object.keys(manifest).some(
+      (field) => !MANIFEST_FIELDS.includes(field) && !OPTIONAL_MANIFEST_FIELDS.includes(field),
+    )
   ) {
     throw new Error(
       `UI-builder runtime manifest fields do not match ${UI_BUILDER_RUNTIME_SCHEMA}`,
     );
+  }
+  for (const field of OPTIONAL_MANIFEST_FIELDS) {
+    if (field in manifest && (typeof manifest[field] !== "string" || !manifest[field])) {
+      throw new Error(`UI-builder runtime manifest ${field} must be a non-empty string`);
+    }
   }
   if (manifest.schema !== UI_BUILDER_RUNTIME_SCHEMA)
     throw new Error("UI-builder runtime has an unsupported manifest schema");
