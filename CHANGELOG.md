@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.22.0](https://github.com/yschimke/compose-ai-tools/compare/v2.21.2...v2.22.0) (2026-09-22)
+
+
+### Features
+
+* publish catalog source export adapters ([#5537](https://github.com/yschimke/compose-ai-tools/issues/5537)) ([40a7a8c](https://github.com/yschimke/compose-ai-tools/commit/40a7a8c7224bfda17eb2af10d1bbc6e8e3132885))
+* support external artifact repositories ([#5541](https://github.com/yschimke/compose-ai-tools/issues/5541)) ([6461e1b](https://github.com/yschimke/compose-ai-tools/commit/6461e1bb26bfb38634ad425b6d004d7366d6c6af))
+
 ## [2.21.2](https://github.com/yschimke/compose-ai-tools/compare/v2.21.1...v2.21.2) (2026-09-22)
 
 
