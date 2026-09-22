@@ -146,6 +146,23 @@
         }
       }
     },
+    "composeSourceExport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "version"],
+      "description": "The safe, versioned Compose source adapter this catalog selects. This is a declaration only: the host resolves adapter/version against interpreters it ships and never executes catalog-provided Kotlin.",
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "components": {
       "type": "object",
       "description": "One entry per component the record already carries, joined to it by `record` and keyed by the builder component id the file publishes. This is where a catalog states the shelf decisions a signature cannot: which group the component sits on, what a design may set on it, what its slots accept, and what draws it on the canvas. It is NOT a second inventory \u2014 an entry naming no record component is reported rather than dropped \u2014 and it is not where a component with no call site goes, which is `builtins`.",

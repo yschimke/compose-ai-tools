@@ -118,6 +118,23 @@ class UiBuilderCatalogsTest {
     assertThat(policy.slotCapabilities).hasSize(1)
   }
 
+  @Test
+  fun `a catalog publishes its declared Compose source adapter`() {
+    val file =
+      UiBuilderCatalogs.generate(
+        record(component("Button", catalogId = "Controls/Button")),
+        cover,
+        UiBuilderPolicyFile(
+          schema = UI_BUILDER_POLICY_SCHEMA,
+          platform = "mobile",
+          composeSourceExport = UiBuilderComposeSourceExport("compose-material3", 1),
+        ),
+      )
+
+    assertThat(file!!.statusSemantics.composeSourceExport)
+      .isEqualTo(UiBuilderComposeSourceExport("compose-material3", 1))
+  }
+
   /**
    * A catalog's stable public noun need not be the current callable's noun.
    *

@@ -112,6 +112,10 @@ data class UiBuilderStatusSemantics(
   val componentMenu: UiBuilderComponentMenu,
   val frame: JsonElement? = null,
   val code: UiBuilderCode? = null,
+  /**
+   * Catalog-declared, versioned Compose source adapter; lifted to the wire capability by a host.
+   */
+  val composeSourceExport: UiBuilderComposeSourceExport? = null,
   val templates: List<String> = emptyList(),
   val colorTokens: JsonElement? = null,
   val assetRegistry: JsonElement? = null,
@@ -590,6 +594,7 @@ object UiBuilderCatalogs {
             ),
           frame = policy.frame,
           code = policy.code,
+          composeSourceExport = policy.composeSourceExport,
           templates = policy.templates,
           colorTokens = policy.colorTokens,
           assetRegistry = policy.assetRegistry,
