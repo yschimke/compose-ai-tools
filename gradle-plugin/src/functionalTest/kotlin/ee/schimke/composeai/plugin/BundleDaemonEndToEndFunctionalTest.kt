@@ -25,10 +25,8 @@ import org.junit.rules.TemporaryFolder
  * + `exit` handshake over stdio, and asserts the JVM exits cleanly. Catches the bugs the unit
  *   coverage can't:
  *
- * - `lib-daemon-desktop/` sidecar is populated by `:cli:installDist` (regression: ships empty,
- *   daemon spawn dies with `ClassNotFoundException`).
- * - `lib-renderer/` jars are reachable from the daemon classpath (Compose / Skiko not loaded →
- *   `ImageComposeScene` blows up at first render).
+ * - The pinned desktop sidecar can be provisioned on first use and supplies `lib-daemon-desktop/`
+ *   plus `lib-renderer/` (missing jars make the daemon spawn fail).
  * - `composeai.daemon.userClassDirs` / `composeai.daemon.previewsJsonPath` sysprop names match what
  *   `DaemonMain` reads on the JVM side.
  * - Daemon's stdio JSON-RPC speaks the same v1 framing the VS Code extension's `DaemonClient`
@@ -168,17 +166,6 @@ class BundleDaemonEndToEndFunctionalTest {
       )
       .that(cli.isFile)
       .isTrue()
-    val installRoot = cli.parentFile.parentFile
-    val libDaemonDesktop = installRoot.resolve("lib-daemon-desktop")
-    assertWithMessage(
-        "lib-daemon-desktop dir missing in CLI distribution at ${libDaemonDesktop.path} — the " +
-          "cli build didn't include the `composePreviewDaemonDesktop` configuration outputs."
-      )
-      .that(libDaemonDesktop.isDirectory)
-      .isTrue()
-    assertWithMessage("lib-daemon-desktop is empty — :daemon:desktop runtime jars not copied")
-      .that(libDaemonDesktop.listFiles { f -> f.name.endsWith(".jar") }.orEmpty().asList())
-      .isNotEmpty()
     return cli
   }
 

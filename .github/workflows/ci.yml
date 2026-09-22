@@ -724,7 +724,8 @@ jobs:
       # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
       # The aggregate task pre-publishes the plugin to mavenLocal (so the synthetic project's
       # `id("ee.schimke.composeai.preview") version "<v>"` resolves) and builds the CLI install
-      # dist (so the `bundle render` subprocess has its `lib-renderer/` companion). Opt-in via
+      # dist. The renderer and desktop daemon are deliberately not in that distribution: both E2Es
+      # exercise first-use provisioning of the pinned compose-preview-daemon sidecar. Opt-in via
       # `-Pbundle.render.e2e=true` because the test cold-starts Compose Desktop per preview.
       #
       # Split into two phases to dodge a parallel-execution race: the gradle-plugin functionalTest
