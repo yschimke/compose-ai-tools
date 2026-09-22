@@ -31,3 +31,4 @@ jobs:
       - uses: gacts/gitleaks@4fd785dcdaf557fda64e05b0ae033b8f7d82fb81 # v1.3.3
         with:
           version: 8.30.1
+          config-path: .gitleaks.toml
