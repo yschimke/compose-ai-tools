@@ -502,10 +502,11 @@ object PreviewDiscovery {
    * multi-preview definitions. Everything else stays off the ClassGraph classpath, which is what
    * keeps the scan proportional to the previews rather than to the app.
    */
-  private val PREVIEW_RELEVANT_TOKENS = listOf("preview", "tooling", "compose", "annotation")
+  private val PREVIEW_RELEVANT_TOKENS =
+    listOf("preview", "tooling", "compose", "remote-material", "annotation")
 
   /** Whether [subject] — a coordinate, or a path standing in for one — names such a dependency. */
-  private fun isPreviewRelevant(subject: String): Boolean {
+  internal fun isPreviewRelevant(subject: String): Boolean {
     val lowered = subject.lowercase()
     return PREVIEW_RELEVANT_TOKENS.any { it in lowered }
   }
