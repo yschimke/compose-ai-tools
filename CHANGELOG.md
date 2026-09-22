@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.1](https://github.com/yschimke/compose-ai-tools/compare/v2.22.0...v2.22.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* publish strict UI builder runtime v2 manifests ([#5549](https://github.com/yschimke/compose-ai-tools/issues/5549)) ([d6e36a9](https://github.com/yschimke/compose-ai-tools/commit/d6e36a9d24c9e12755ec2facf992fee0f14aa7fe))
+
 ## [2.22.0](https://github.com/yschimke/compose-ai-tools/compare/v2.21.2...v2.22.0) (2026-09-22)
 
 
