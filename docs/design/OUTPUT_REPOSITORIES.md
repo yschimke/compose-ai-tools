@@ -2,6 +2,11 @@
 
 Status: measured proposal; the publisher seam is implemented, repository cutover is not.
 
+This is an **optional scale-out**, not an onboarding requirement. A newly adopted catalog should
+omit `artifact-repository` and `artifacts_token`; it then publishes into its source repository with
+the ordinary caller `GITHUB_TOKEN`, exactly as before. Add an output repository only after measured
+generated history makes source development materially worse.
+
 ## Decision
 
 Generated delivery branches may live in a public repository separate from the source repository.
@@ -47,6 +52,9 @@ The caller's `GITHUB_TOKEN` is scoped to the caller and cannot push another repo
 cross-repository publish therefore passes `artifact-repository: owner/name` plus an
 `artifacts_token` with Contents write access to that output repository. A GitHub App installation
 token is preferred over a personal token.
+
+Neither input belongs in the minimal adoption recipe. Their empty defaults intentionally preserve
+the one-repository setup and require no extra credential, trust entry or server registration.
 
 Only the isolated publish job receives the write token. Render jobs execute source-project Gradle
 code, so they read public reference and parity branches anonymously. This is why output repositories
