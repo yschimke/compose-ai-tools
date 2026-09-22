@@ -133,17 +133,20 @@ function showFromBranch(ref, file) {
 /**
  * Where to fetch the parity branch from.
  *
- * `origin`, unless the workflow handed us a token. The calling repo is checked out with
- * `persist-credentials: false`, so its `origin` carries no credential and a fetch against a
- * PRIVATE repo fails — on a publishing run as much as any other, because the token this job holds
- * never reached git. Same inline-token URL `push-branch.sh` builds, for the same reason.
+ * The explicitly configured artifact repository when present, otherwise the calling repository.
+ * A public output repository needs no credential, which is important: this emitter runs in the
+ * render job and must never receive the write token reserved for the isolated publish job. Legacy
+ * private same-repository callers can still hand over a read-scoped token; absent any repository
+ * identity, use the checkout's origin exactly as before.
  *
- * Absent token, absent slug, or a public repo: plain `origin`, exactly as before.
+ * `PARITY_REPOSITORY` deliberately affects transport only. SOURCE_REPO above remains the code/issue
+ * repository recorded in findings and links.
  */
 function parityRemote() {
   const token = process.env.GITHUB_TOKEN_INLINE || "";
-  const slug = process.env.GITHUB_REPOSITORY || "";
-  if (!token || !slug) return "origin";
+  const slug = process.env.PARITY_REPOSITORY || process.env.GITHUB_REPOSITORY || "";
+  if (!slug) return "origin";
+  if (!token) return `https://github.com/${slug}.git`;
   return `https://x-access-token:${token}@github.com/${slug}.git`;
 }
 

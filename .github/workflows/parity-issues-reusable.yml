@@ -11,11 +11,18 @@ on:
         description: JSON array of owner/name repositories whose issues carry locator blocks.
         required: true
         type: string
+      artifact-repository:
+        description: Repository that owns design-artifacts/<system>. Empty means the caller repository.
+        default: ''
+        type: string
       driver-ref:
         description: compose-ai-tools ref providing the producer and push helper.
         default: main
         type: string
     secrets:
+      artifacts_token:
+        description: Optional Contents-write token for artifact-repository.
+        required: false
       ISSUES_TOKEN:
         description: Optional token with Issues read access to every configured repository.
         required: false
@@ -28,6 +35,10 @@ on:
         description: JSON array of owner/name repositories.
         required: true
         type: string
+      artifact-repository:
+        description: Repository that owns design-artifacts/<system>. Empty means the caller repository.
+        default: ''
+        type: string
       driver-ref:
         default: main
         type: string
@@ -37,7 +48,7 @@ permissions:
   issues: read
 
 concurrency:
-  group: ${{ github.repository }}-${{ inputs.system }}-parity-issues
+  group: ${{ inputs.artifact-repository || github.repository }}-${{ inputs.system }}-parity-issues
   cancel-in-progress: true
 
 jobs:
@@ -69,10 +80,11 @@ jobs:
       - name: Publish the one-path delta
         env:
           TARGET_BRANCH: design-artifacts/${{ inputs.system }}
-          REPO: ${{ github.repository }}
-          GITHUB_TOKEN_INLINE: ${{ github.token }}
+          REPO: ${{ inputs.artifact-repository || github.repository }}
+          GITHUB_TOKEN_INLINE: ${{ secrets.artifacts_token || github.token }}
           MSG: "chore(parity): refresh ${{ inputs.system }} issue index"
           DELTA_ON_TIP_PATHS: parity/issues.json
+          SKIP_IF_UNCHANGED: 1
         run: |
           set -euo pipefail
           cd out

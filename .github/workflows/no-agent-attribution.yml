@@ -110,6 +110,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # The scan reads commit objects and messages, not historical file contents. Without this
+          # filter, fetch-depth: 0 also downloads every generated PNG and bundle branch.
+          filter: blob:none
           persist-credentials: false
 
       # Read the PR's title and body from the API, NOT from this run's event
@@ -207,6 +210,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Keep the complete commit graph needed for force-push ranges without downloading the
+          # generated blobs on unrelated delivery branches.
+          filter: blob:none
           persist-credentials: false
 
       - name: Scan the commits this push added to main
