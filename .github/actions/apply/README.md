@@ -57,6 +57,23 @@ The `permissions` block is **not optional**: without `contents: write` the
 action can't push baselines and without `pull-requests: write` it can't post
 the comparison comment, so the run fails.
 
+## Publishing generated branches to an output repository
+
+Keep the workflow and its PR comments in the source repository, while moving
+generated `compose-preview/*` branches into a separate public output
+repository, by passing both inputs below. `artifacts-token` must have Contents
+write access to the output repository; it is used only for generated branches
+and their raw-image links.
+
+```yaml
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v2.22.2
+        with:
+          artifact-repository: yschimke/example-catalog-out
+          artifacts-token: ${{ secrets.ARTIFACTS_TOKEN }}
+```
+
+Omit both inputs to keep the historical single-repository behavior.
+
 `cli-version` defaults to **`auto`**, which pins the CLI to the plugin version
 you already pin in your checkout — so the version skew described below can't
 happen on the happy path, with no extra config. See
