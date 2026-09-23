@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.3](https://github.com/yschimke/compose-ai-tools/compare/v2.22.2...v2.22.3) (2026-09-23)
+
+
+### Bug Fixes
+
+* publish preview artifacts to output repositories ([#5556](https://github.com/yschimke/compose-ai-tools/issues/5556)) ([477ff93](https://github.com/yschimke/compose-ai-tools/commit/477ff93a507532621bda3be44b2d7e676d0a831e))
+
 ## [2.22.2](https://github.com/yschimke/compose-ai-tools/compare/v2.22.1...v2.22.2) (2026-09-22)
 
 
