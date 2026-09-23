@@ -56,6 +56,17 @@ inputs:
       while sitting on this branch does the same). PRs targeting it run in
       comment mode.
     default: 'main'
+  artifact-repository:
+    description: >
+      Optional owner/name repository that stores generated preview branches. Empty keeps the
+      historical behavior and uses the calling repository. When set, pass artifacts-token with
+      contents-write access to that repository.
+    default: ''
+  artifacts-token:
+    description: >
+      Optional token used to read and write artifact-repository. Empty uses the calling workflow
+      token, which is appropriate only when generated branches stay in the calling repository.
+    default: ''
   only:
     description: >
       Comma-separated subset of `compose,resources,a11y,notifications`. Empty
@@ -850,8 +861,8 @@ runs:
       # Templated values go through env (zizmor: template-injection).
       env:
         ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         MODE: ${{ steps.scope.outputs.mode }}
         RENDER_TIMEOUT: ${{ inputs.timeout }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
@@ -1223,8 +1234,8 @@ runs:
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.compose == '1')
       shell: bash
       env:
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         ACTION_PATH: ${{ github.action_path }}
         MODE: ${{ steps.scope.outputs.mode }}
       run: |
@@ -1258,8 +1269,8 @@ runs:
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'baseline' && steps.resolve.outputs.compose == '1')
       shell: bash
       env:
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         ACTION_PATH: ${{ github.action_path }}
         # Same literal the pipelines step uses; there is no resolved output to read it from.
         BASELINE_BRANCH: 'compose-preview/main'
@@ -1284,8 +1295,8 @@ runs:
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1')
       shell: bash
       env:
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         ACTION_PATH: ${{ github.action_path }}
         MODE: ${{ steps.scope.outputs.mode }}
       run: |
@@ -1315,7 +1326,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
         PR_HEAD_BRANCH: 'compose-preview/pr'
         RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
         AB_CONFIG: ${{ inputs.ab-config }}
@@ -1395,7 +1406,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
         BASELINE_BRANCH: 'compose-preview/main'
         RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
         SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
@@ -1510,8 +1521,8 @@ runs:
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1')
       shell: bash
       env:
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
@@ -1535,7 +1546,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
         A11Y_PR_BRANCH: 'compose-preview/a11y/pr'
         HEAD_SHA: ${{ steps.push-a11y.outputs.head_sha }}
       run: |
@@ -1570,8 +1581,8 @@ runs:
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1')
       shell: bash
       env:
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
@@ -1595,7 +1606,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
+        REPO: ${{ inputs.artifact-repository || github.repository }}
         NOTIFY_PR_BRANCH: 'compose-preview/notifications/pr'
         NOTIFY_BASELINE_BRANCH: 'compose-preview/notifications/main'
         HEAD_SHA: ${{ steps.push-notifications.outputs.head_sha }}

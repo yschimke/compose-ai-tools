@@ -3,7 +3,7 @@
 Status: measured proposal; the publisher seam is implemented, repository cutover is not.
 
 This is an **optional scale-out**, not an onboarding requirement. A newly adopted catalog should
-omit `artifact-repository` and `artifacts_token`; it then publishes into its source repository with
+omit `artifact-repository` and `artifacts-token`; it then publishes into its source repository with
 the ordinary caller `GITHUB_TOKEN`, exactly as before. Add an output repository only after measured
 generated history makes source development materially worse.
 
@@ -50,7 +50,7 @@ bound the output repository.
 
 The caller's `GITHUB_TOKEN` is scoped to the caller and cannot push another repository. A
 cross-repository publish therefore passes `artifact-repository: owner/name` plus an
-`artifacts_token` with Contents write access to that output repository. A GitHub App installation
+`artifacts-token` with Contents write access to that output repository. A GitHub App installation
 token is preferred over a personal token.
 
 Neither input belongs in the minimal adoption recipe. Their empty defaults intentionally preserve
