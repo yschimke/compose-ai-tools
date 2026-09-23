@@ -76,6 +76,9 @@ jobs:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Apply compose-preview
     runs-on: ubuntu-latest
+    permissions:
+      contents: ${{ github.event_name == 'pull_request' && 'read' || 'write' }}
+      pull-requests: ${{ github.event_name == 'pull_request' && 'read' || 'write' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,7 +95,9 @@ jobs:
       - uses: ./.github/actions/apply
         with:
           artifact-repository: yschimke/compose-ai-tools-out
-          artifacts-token: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN }}
+          artifacts-token: ${{ github.event_name != 'pull_request' && secrets.COMPOSE_M3_ARTIFACTS_TOKEN || '' }}
+          phase: ${{ github.event_name == 'pull_request' && 'render' || 'all' }}
+          handoff-dir: _compose_preview_handoff_compose
           # In-repo CI uses the CLI built from the current checkout so PRs
           # that change the previews.json schema don't render against a
           # stale released CLI. External consumers omit this input.
@@ -118,10 +123,21 @@ jobs:
           # the CLI, and the diff bot all honour — see #2159 for the history
           # of the `warn` override this replaces.
 
+      - uses: actions/upload-artifact@v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          name: compose-preview-handoff-compose
+          path: _compose_preview_handoff_compose/
+          if-no-files-found: error
+          retention-days: 1
+
   a11y:
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: A11y + notification previews
     runs-on: ubuntu-latest
+    permissions:
+      contents: ${{ github.event_name == 'pull_request' && 'read' || 'write' }}
+      pull-requests: ${{ github.event_name == 'pull_request' && 'read' || 'write' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,7 +152,9 @@ jobs:
       - uses: ./.github/actions/apply
         with:
           artifact-repository: yschimke/compose-ai-tools-out
-          artifacts-token: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN }}
+          artifacts-token: ${{ github.event_name != 'pull_request' && secrets.COMPOSE_M3_ARTIFACTS_TOKEN || '' }}
+          phase: ${{ github.event_name == 'pull_request' && 'render' || 'all' }}
+          handoff-dir: _compose_preview_handoff_a11y
           cli-version: source
           # Order matters: `apply` runs a11y before notifications, and the
           # notifications staging depends on the renders the a11y pass
@@ -154,3 +172,11 @@ jobs:
           a11y-skip-modules: ''
           notifications-module: 'samples:android'
           timeout: '1800'
+
+      - uses: actions/upload-artifact@v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          name: compose-preview-handoff-a11y
+          path: _compose_preview_handoff_a11y/
+          if-no-files-found: error
+          retention-days: 1
