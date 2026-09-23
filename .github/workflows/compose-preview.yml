@@ -91,6 +91,8 @@ jobs:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - uses: ./.github/actions/apply
         with:
+          artifact-repository: yschimke/compose-ai-tools-out
+          artifacts-token: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN }}
           # In-repo CI uses the CLI built from the current checkout so PRs
           # that change the previews.json schema don't render against a
           # stale released CLI. External consumers omit this input.
@@ -133,6 +135,8 @@ jobs:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - uses: ./.github/actions/apply
         with:
+          artifact-repository: yschimke/compose-ai-tools-out
+          artifacts-token: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN }}
           cli-version: source
           # Order matters: `apply` runs a11y before notifications, and the
           # notifications staging depends on the renders the a11y pass
