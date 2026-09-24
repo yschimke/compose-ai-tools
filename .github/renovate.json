@@ -39,9 +39,9 @@
       "groupName": "design-parity export toolchain"
     },
     {
-      "description": "Keep the released Remote Compose player coordinates and the trusted checkout pin together. The reusable design-artifacts workflow verifies they match before running either embedded player lane.",
-      "matchDepNames": [
-        "yschimke/rc-players"
+      "description": "Keep the released Remote Compose player coordinates and the trusted checkout pin together, in ONE PR. The reusable design-artifacts workflow verifies they match before running either embedded player lane, so two PRs at two versions skip both lanes until the second lands. Both are tracked as the one Maven package `ee.schimke.composeai:rc-players-bom`: `rcplayers` in `gradle/libs.versions.toml` through the gradle manager, and `RC_PLAYERS_PIN` in `design-artifacts-reusable.yml` through the regex manager below. One package on one datasource resolves to the same version under the same `minimumReleaseAge`. The pin used to be tracked as the `github-tags` of `yschimke/rc-players`, and tags carry no release timestamps, so the 7-day age gate held the tag and the BOM at different versions (dashboard, 24 Sep 2026: the tag at 1.74.0, the BOM at 1.70.0). Named here as well as in the shared preset because the preset's rc-players rule matches `rc-player-` and never catches `rc-players-bom`, which then falls through to its catch-all `ee.schimke.composeai` group and lands in a compose-ai-tools PR. Rules here are appended after the preset, so this one wins.",
+      "matchPackageNames": [
+        "ee.schimke.composeai:rc-players-bom"
       ],
       "groupName": "rc-players"
     },
@@ -203,12 +203,12 @@
     },
     {
       "customType": "regex",
-      "description": "The rc-players tag `design-artifacts-reusable.yml` checks out for the two embedded player lanes. It is a literal rather than a value the workflow computes, because a computed `ref:` on `actions/checkout` is a checkout of untrusted code in a privileged context — critical, and the code lands somewhere `./gradlew` runs moments later (#5006 review). That leaves a second place holding the player version, so this keeps it in step with `rcplayers` in `gradle/libs.versions.toml`: both resolve against the same tags, so a bump moves them in one Renovate run rather than leaving the lanes skipping themselves on drift. Not a substitute for the workflow's own drift check, which is what catches the window between the two PRs.",
+      "description": "The rc-players tag `design-artifacts-reusable.yml` checks out for the two embedded player lanes. It is a literal rather than a value the workflow computes, because a computed `ref:` on `actions/checkout` is a checkout of untrusted code in a privileged context — critical, and the code lands somewhere `./gradlew` runs moments later (#5006 review). That leaves a second place holding the player version, so this keeps it in step with `rcplayers` in `gradle/libs.versions.toml`. The pin's comment names the same Maven package the version catalog resolves (`ee.schimke.composeai:rc-players-bom`), and the `v` of the tag sits outside `currentValue`, so both resolve the same version under the same release-age gate and the `rc-players` group puts them in one PR. Not a substitute for the workflow's own drift check.",
       "managerFilePatterns": [
         "/^\\.github/workflows/design-artifacts-reusable\\.yml$/"
       ],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*RC_PLAYERS_PIN:\\s*(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*RC_PLAYERS_PIN:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
       "versioningTemplate": "semver"
     }
