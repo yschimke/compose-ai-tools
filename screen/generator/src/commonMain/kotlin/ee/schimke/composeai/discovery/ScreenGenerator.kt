@@ -231,20 +231,6 @@ object ScreenGenerator {
     packageName: String = "generated.screen",
     expressionPackages: Set<String> = emptySet(),
     preview: Preview? = null,
-  ): Result =
-    generateWith(document, components, packageName, expressionPackages, preview, emptyMap())
-
-  /**
-   * [generate], with [extensionAliases] naming the extension imports that are written `import … as
-   * Alias` — empty on the first pass, and filled only by the one retry [aliasesFor] allows.
-   */
-  private fun generateWith(
-    document: ScreenDocument,
-    components: ComponentRecordFile,
-    packageName: String,
-    expressionPackages: Set<String>,
-    preview: Preview?,
-    extensionAliases: Map<String, String>,
   ): Result {
     if (components.schemaVersion > COMPONENT_RECORD_SCHEMA_VERSION) {
       // A record from a newer producer may mean things by fields this build has never seen.
@@ -436,10 +422,7 @@ object ScreenGenerator {
               parameterNames)
             .toMutableSet(),
         functions = document.functions.associateBy { it.name },
-        extensionAliases = extensionAliases,
       )
-    // An alias is a name the file spends, so a local may not take it.
-    context.allocatedNames += extensionAliases.values
     // Everything a hoisted binding must not shadow: the declarations, the components this file
     // calls by simple name, and the screen's own function. A `val FooInitial` sitting above a
     // `FooInitial(...)` call captures it exactly the way a state name would.
@@ -547,19 +530,13 @@ object ScreenGenerator {
     // So `foundation.layout.padding` and `some.other.padding` in one screen, or two `Color`s from
     // two packages, have to be caught here. This is the check that makes importing references safe
     // enough to be worth the readability.
-    fun importedAs(import: String) = extensionAliases[import] ?: import.substringAfterLast('.')
     val conflicts =
-      imports.groupBy(::importedAs).filterValues { it.size > 1 }.toList().sortedBy { it.first }
+      imports
+        .groupBy { it.substringAfterLast('.') }
+        .filterValues { it.size > 1 && !resolvedByReceiver(it, context.extensionReceivers) }
+        .toList()
+        .sortedBy { it.first }
     if (conflicts.isNotEmpty()) {
-      // Two extensions of one name — `Icons.Filled.Star` and `Icons.Outlined.Star` — cannot be
-      // written qualified: an extension is only ever called through its import. Kotlin's answer is
-      // an import alias, so the file is written once more with each colliding extension imported
-      // under a name that says which package it came from. Once: a second conflict is refused.
-      if (extensionAliases.isEmpty()) {
-        aliasesFor(conflicts.map { it.second }, context.extensionImports, imports)?.let {
-          return generateWith(document, components, packageName, expressionPackages, preview, it)
-        }
-      }
       return Result.Refused(
         conflicts.map { (name, fqns) ->
           "`$name` would be imported from ${fqns.sorted().joinToString(" and ")}, which Kotlin " +
@@ -571,7 +548,7 @@ object ScreenGenerator {
     // a later node's component or extension — can take the same simple name, and the local would
     // then shadow it for the rest of its block. Refused rather than guessed around.
     val shadowedImports =
-      context.hoistedNames.filter { local -> imports.any { importedAs(it) == local } }
+      context.hoistedNames.filter { local -> imports.any { it.substringAfterLast('.') == local } }
     if (shadowedImports.isNotEmpty()) {
       return Result.Refused(
         shadowedImports.sorted().map {
@@ -582,9 +559,7 @@ object ScreenGenerator {
     val source = buildString {
       appendLine("package $packageName")
       appendLine()
-      imports.forEach { import ->
-        appendLine("import $import" + (extensionAliases[import]?.let { " as $it" } ?: ""))
-      }
+      imports.forEach { appendLine("import $it") }
       appendLine()
       if (optIns.isNotEmpty()) {
         appendLine(
@@ -648,33 +623,18 @@ object ScreenGenerator {
   }
 
   /**
-   * An alias for every import in [groups], or null when that is not the whole answer: a group holds
-   * something other than an extension (a component, a reference or a construct, which have other
-   * ways to be written), or the aliases would themselves collide with each other or with an import.
-   *
-   * The alias is the declaring package's last segment joined to the name, cased as the name is —
-   * `…icons.filled.Star` is `FilledStar`, `…foundation.layout.padding` is `layoutPadding` — so the
-   * call site still says which of the two it means.
+   * Whether a group of same-named imports is extensions that no one call could mean two of: each
+   * called only on receiver types the document states, and no receiver type shared. Anything else —
+   * a classifier in the group, or a link whose receiver type is not known — is the conflict it
+   * looks like.
    */
-  private fun aliasesFor(
-    groups: List<List<String>>,
-    extensions: Set<String>,
-    imports: List<String>,
-  ): Map<String, String>? {
-    val colliding = groups.flatten()
-    if (colliding.any { it !in extensions || '`' in it }) return null
-    val aliases = colliding.associateWith { fqn ->
-      val segments = fqn.split('.')
-      val qualifier = segments.getOrNull(segments.size - 2) ?: return null
-      val name = segments.last()
-      if (name.first().isUpperCase()) qualifier.replaceFirstChar { it.uppercaseChar() } + name
-      else qualifier + name.replaceFirstChar { it.uppercaseChar() }
-    }
-    val taken = (imports - colliding.toSet()).map { it.substringAfterLast('.') }.toSet()
-    val unusable =
-      aliases.values.any { !isUsableIdentifier(it) || it in taken } ||
-        aliases.values.toSet().size != aliases.size
-    return aliases.takeUnless { unusable }
+  private fun resolvedByReceiver(
+    group: List<String>,
+    receivers: Map<String, Set<String?>>,
+  ): Boolean {
+    val types = group.map { receivers[it] ?: return false }
+    if (types.any { null in it }) return false
+    return types.flatten().size == types.flatten().toSet().size
   }
 
   private fun validateFunctions(document: ScreenDocument, preview: Preview?): List<String> =
@@ -809,8 +769,6 @@ object ScreenGenerator {
     val foldsRepeatedSiblings: Boolean = true,
     val allocatedNames: MutableSet<String> = mutableSetOf(),
     val functions: Map<String, ScreenFunction> = emptyMap(),
-    /** Extension imports written under an alias — see [ScreenGenerator.aliasesFor]. */
-    val extensionAliases: Map<String, String> = emptyMap(),
   ) {
     val imports = mutableSetOf<String>()
     /**
@@ -818,6 +776,17 @@ object ScreenGenerator {
      * are unioned before anything is written.
      */
     val extensionImports = mutableSetOf<String>()
+
+    /**
+     * For each extension import, the receiver types it was called on — null where a link's receiver
+     * type is not known, which is any link after the first.
+     *
+     * Two extensions of one simple name are not a conflicting import: Kotlin reports that only for
+     * classifiers, and `import …icons.filled.Star` beside `import …icons.outlined.Star` is ordinary
+     * Compose, resolved per call by the receiver — `Icons.Filled` or `Icons.Outlined`. What does
+     * not compile is a call both apply to, so the check is on receivers, and see [generate].
+     */
+    val extensionReceivers = mutableMapOf<String, MutableSet<String?>>()
     val optIns = mutableSetOf<String>()
     val androidxOptIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
@@ -1931,8 +1900,11 @@ object ScreenGenerator {
                 return null
               }
               extensionImports += imported
+              extensionReceivers
+                .getOrPut(imported) { mutableSetOf() }
+                .add(value.receiver.typeFqn.takeIf { index == 0 })
               append(".")
-              append(extensionAliases[imported] ?: ComponentSnippets.escapeIfKeyword(simple))
+              append(ComponentSnippets.escapeIfKeyword(simple))
               if (link.property) {
                 if (link.positional.isNotEmpty() || link.named.isNotEmpty()) {
                   reasons += "$where reads `$simple` as a property and also passes it arguments"

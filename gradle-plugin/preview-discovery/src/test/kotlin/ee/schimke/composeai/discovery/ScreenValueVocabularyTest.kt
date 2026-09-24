@@ -422,34 +422,34 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
-  fun `two extensions claiming one simple name are imported under aliases`() {
-    // An extension can only be called through its import, so writing one of them qualified is not
-    // an option. `Icons.Filled.Star` beside `Icons.Outlined.Star` is the real case; an alias per
-    // package is Kotlin's own answer, and the call site still says which is meant.
-    val result =
-      emitted(
-        textNode(
-          "modifier" to
-            ScreenValue.Chain(
-              receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
-              links =
-                listOf(
-                  ChainLink("androidx.compose.foundation.layout.padding"),
-                  ChainLink("com.example.decor.padding"),
-                ),
-              typeFqn = modifier,
-            )
-        ),
-        catalog(text),
+  fun `two links claiming one simple name are refused rather than resolved`() {
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links =
+                  listOf(
+                    ChainLink("androidx.compose.foundation.layout.padding"),
+                    ChainLink("com.example.decor.padding"),
+                  ),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
       )
-    assertThat(result.source)
-      .contains("import androidx.compose.foundation.layout.padding as layoutPadding\n")
-    assertThat(result.source).contains("import com.example.decor.padding as decorPadding\n")
-    assertThat(result.source).contains("modifier = Modifier.layoutPadding().decorPadding()")
+      .containsExactly(
+        "`padding` would be imported from androidx.compose.foundation.layout.padding and " +
+          "com.example.decor.padding, which Kotlin rejects as a conflicting import"
+      )
   }
 
   @Test
-  fun `two icon packs' extensions of one name are aliased by pack`() {
+  fun `two extensions of one name on different receivers are both imported`() {
+    // Not a conflicting import: Kotlin reports that for classifiers only, and resolves each call by
+    // its receiver. Starred and unstarred rows in one screen are exactly this.
     fun icon(pack: String) =
       ScreenValue.Chain(
         receiver =
@@ -457,10 +457,11 @@ class ScreenValueVocabularyTest {
             "androidx.compose.material.icons.Icons",
             members = listOf(pack.replaceFirstChar { it.uppercaseChar() }),
             typeFqn =
-              "androidx.compose.material.icons.Icons\$${pack.replaceFirstChar { it.uppercaseChar() }}",
+              "androidx.compose.material.icons.Icons\$" +
+                pack.replaceFirstChar { it.uppercaseChar() },
           ),
         links = listOf(ChainLink("androidx.compose.material.icons.$pack.Star", property = true)),
-        typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+        typeFqn = VECTOR,
       )
     val result =
       emitted(
@@ -470,12 +471,10 @@ class ScreenValueVocabularyTest {
         ),
         catalog(iconPair),
       )
+    assertThat(result.source).contains("import androidx.compose.material.icons.filled.Star\n")
+    assertThat(result.source).contains("import androidx.compose.material.icons.outlined.Star\n")
     assertThat(result.source)
-      .contains("import androidx.compose.material.icons.filled.Star as FilledStar\n")
-    assertThat(result.source)
-      .contains("import androidx.compose.material.icons.outlined.Star as OutlinedStar\n")
-    assertThat(result.source)
-      .contains("IconPair(first = Icons.Filled.FilledStar, second = Icons.Outlined.OutlinedStar)")
+      .contains("IconPair(first = Icons.Filled.Star, second = Icons.Outlined.Star)")
   }
 
   private val iconPair =
@@ -483,16 +482,8 @@ class ScreenValueVocabularyTest {
       "IconPair",
       "com.example.IconPair",
       listOf(
-        TargetParameter(
-          "first",
-          "ImageVector",
-          typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
-        ),
-        TargetParameter(
-          "second",
-          "ImageVector",
-          typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
-        ),
+        TargetParameter("first", "ImageVector", typeFqn = VECTOR),
+        TargetParameter("second", "ImageVector", typeFqn = VECTOR),
       ),
       componentIds = listOf("m3/icon-pair"),
     )
@@ -2001,6 +1992,7 @@ class ScreenValueVocabularyTest {
   private companion object {
     const val COLUMN_SCOPE = "androidx.compose.foundation.layout.ColumnScope"
     const val ROW_SCOPE = "androidx.compose.foundation.layout.RowScope"
+    const val VECTOR = "androidx.compose.ui.graphics.vector.ImageVector"
     const val DIRECTIVE = "androidx.compose.material3.adaptive.layout.PaneScaffoldDirective"
   }
 
