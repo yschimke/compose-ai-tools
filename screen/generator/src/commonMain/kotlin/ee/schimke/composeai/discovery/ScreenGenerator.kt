@@ -1659,7 +1659,7 @@ object ScreenGenerator {
           val receiver = if (rendered.startsWith("-")) "($rendered)" else rendered
           buildString {
             append(receiver)
-            for (link in value.links) {
+            for ((index, link) in value.links.withIndex()) {
               // The **whole** callable, not just the simple name it ends in. Validating only the
               // last segment let `foo..padding` through: `padding` is a fine name, so the link
               // was accepted and imported as `foo.``.padding` — an empty backticked segment, in a
@@ -1667,12 +1667,13 @@ object ScreenGenerator {
               val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
               // A member of the receiver's own type — `directive.maxHorizontalPartitions`,
-              // `directive.copy(…)`. Never imported: the receiver supplies it. The package guard
-              // above has already held the declaring classifier to `expressionPackages`. See
-              // `ChainLink.member`.
+              // `directive.copy(…)`. The package guard above has held the declaring classifier to
+              // `expressionPackages`, and `memberLink` makes the compiler hold the receiver to that
+              // classifier. See `ChainLink.member`.
               if (link.member) {
-                memberLink(link, value.receiver, simple, where, depth)?.let { append(it) }
-                  ?: return null
+                memberLink(link, value.receiver.takeIf { index == 0 }, simple, where, depth)?.let {
+                  append(it)
+                } ?: return null
                 continue
               }
               // A member extension of the slot's receiver. Not imported — the receiver supplies it
@@ -1758,20 +1759,29 @@ object ScreenGenerator {
     }
 
     /**
-     * `.name` or `.name(args)` for a [ChainLink.member] link on [receiver], or null having said why
-     * it cannot be written.
+     * `.let<Owner, _> { it.name }` or `.let<Owner, _> { it.name(args) }` for a [ChainLink.member]
+     * link, or null having said why it cannot be written.
      *
-     * Three claims are checked rather than trusted. The link's qualifier has to name the classifier
-     * that declares the member — the evidence is the capitalised segment the non-member path
-     * refuses — because that is what the package guard was applied to. It cannot also claim a slot
-     * scope, which is the other way a link avoids its import. And the chain needs an **explicit**
-     * value receiver: a bare classifier reference such as the `Modifier` a modifier chain starts
-     * from is a type's companion, not an instance of it, so a member of the type does not resolve
-     * there.
+     * The claim that `Owner` declares the member is what the package guard was applied to, and a
+     * plain `.name` would not hold the document to it: this generator cannot type the receiver, so
+     * `androidx.compose.Fake.delete` on an expression that is really a `java.io.File` would pass
+     * the guard and emit a `.delete()` that resolves to `File.delete()`. The explicit type argument
+     * makes the **compiler** check it instead — the lambda only compiles when the receiver is an
+     * `Owner`, and then `it.name` can only resolve to `Owner`'s member (or an override of it). A
+     * generic `Owner` is written without its type arguments and so fails to compile: a refusal the
+     * compiler makes, which is the safe direction to be wrong in.
+     *
+     * Three more claims are checked here rather than trusted. The link's qualifier has to name a
+     * classifier — the capitalised segment the non-member path refuses — since that is what `Owner`
+     * is. It cannot also claim a slot scope, which is the other way a link avoids its import. And a
+     * first link needs an **explicit** value receiver: a bare classifier reference such as the
+     * `Modifier` a modifier chain starts from is a type's companion, not an instance of it. Only
+     * the first link is asked, because any later one's receiver is the value the links before it
+     * produced; [receiver] is null for those.
      */
     private fun memberLink(
       link: ChainLink,
-      receiver: ScreenValue,
+      receiver: ScreenValue?,
       simple: String,
       where: String,
       depth: Int,
@@ -1800,15 +1810,16 @@ object ScreenGenerator {
         return null
       }
       val name = ComponentSnippets.escapeIfKeyword(simple)
+      val owner = importedName(declaring, where) ?: return null
       if (link.property) {
         if (link.positional.isNotEmpty() || link.named.isNotEmpty()) {
           reasons += "$where reads `$simple` as a property and also passes it arguments"
           return null
         }
-        return ".$name"
+        return ".let<$owner, _> { it.$name }"
       }
       val arguments = arguments(link.positional, link.named, where, depth) ?: return null
-      return ".$name($arguments)"
+      return ".let<$owner, _> { it.$name($arguments) }"
     }
 
     /** `a, b, name = c` for a call, or null having said why one of them could not be written. */

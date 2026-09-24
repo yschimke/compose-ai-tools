@@ -1645,7 +1645,7 @@ class ScreenValueVocabularyTest {
     ScreenNode(componentId = "adaptive/pane-scaffold", arguments = mapOf(*arguments))
 
   @Test
-  fun `a member property is read on the explicit receiver and never imported`() {
+  fun `a member property is read through its declaring classifier and never imported`() {
     val result =
       emitted(
         paneNode(
@@ -1664,9 +1664,11 @@ class ScreenValueVocabularyTest {
     assertThat(result.source)
       .contains(
         "partitions = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
-          ".maxHorizontalPartitions"
+          ".let<PaneScaffoldDirective, _> { it.maxHorizontalPartitions }"
       )
-    assertThat(result.source).doesNotContain("import $DIRECTIVE")
+    // The classifier imports, for the type argument; the member never does.
+    assertThat(result.source).contains("import $DIRECTIVE\n")
+    assertThat(result.source).doesNotContain("import $DIRECTIVE.maxHorizontalPartitions")
     assertThat(result.source)
       .contains("import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective")
   }
@@ -1704,7 +1706,7 @@ class ScreenValueVocabularyTest {
     assertThat(result.source)
       .contains(
         "directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
-          ".copy(horizontalPartitionSpacerSize = 12.dp)"
+          ".let<PaneScaffoldDirective, _> { it.copy(horizontalPartitionSpacerSize = 12.dp) }"
       )
     assertThat(result.source).doesNotContain("import $DIRECTIVE.copy")
     assertThat(result.source).contains("import androidx.compose.ui.unit.dp")
@@ -1730,6 +1732,70 @@ class ScreenValueVocabularyTest {
         "`PaneScaffold`.`partitions` names `org.evil.Exfiltrate.secret`, which is outside the " +
           "packages this screen may call (androidx.compose, com.example)"
       )
+  }
+
+  @Test
+  fun `a member link makes the compiler hold the receiver to the declaring classifier`() {
+    // The generator cannot type `LocalContext.current.filesDir`, so an allowed qualifier on it
+    // proves nothing by itself: a bare `.delete()` would resolve to `java.io.File.delete`. Written
+    // as `let<Fake, _>`, the file only compiles if the receiver really is the classifier the
+    // package guard was applied to.
+    val result =
+      emitted(
+        paneNode(
+          "partitions" to
+            ScreenValue.Chain(
+              receiver =
+                ScreenValue.Reference(
+                  "androidx.compose.ui.platform.LocalContext",
+                  members = listOf("current", "filesDir"),
+                  typeFqn = "java.io.File",
+                ),
+              links = listOf(ChainLink("androidx.compose.Fake.delete", member = true)),
+              typeFqn = "kotlin.Int",
+            )
+        ),
+        catalog(paneScaffold),
+      )
+    assertThat(result.source).contains("LocalContext.current.filesDir.let<Fake, _> { it.delete() }")
+    assertThat(result.source).doesNotContain("filesDir.delete()")
+  }
+
+  @Test
+  fun `a member link after another link has that link's value as its receiver`() {
+    // `Modifier.padding(8.dp).then(…)`: the bare `Modifier` is the chain's receiver, but `then`'s
+    // is the value `padding` returned.
+    val eight =
+      ScreenValue.Chain(
+        receiver = ScreenValue.Whole(8),
+        links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+        typeFqn = "androidx.compose.ui.unit.Dp",
+      )
+    val result =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Chain(
+              receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+              links =
+                listOf(
+                  ChainLink(
+                    "androidx.compose.foundation.layout.padding",
+                    positional = listOf(eight),
+                  ),
+                  ChainLink(
+                    "$modifier.then",
+                    positional = listOf(ScreenValue.Reference(modifier, typeFqn = modifier)),
+                    member = true,
+                  ),
+                ),
+              typeFqn = modifier,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source)
+      .contains("Modifier.padding(8.dp).let<Modifier, _> { it.then(Modifier) }")
   }
 
   @Test
