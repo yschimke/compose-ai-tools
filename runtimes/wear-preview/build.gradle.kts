@@ -52,6 +52,9 @@ android {
   // IDE inspection, but AGP lint runs `RestrictedApi` separately — disable it here as AndroidX's
   // own samples (and `:samples:wear-widget` / `:data-remotecompose-connector`) do.
   lint { disable += "RestrictedApi" }
+
+  // Robolectric + a real Compose/Remote Compose graph (`CapturingWearWidgetPreviewTest`).
+  testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
 dependencies {
@@ -113,6 +116,23 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(libs.rcplayer.embedded.android)
+
+  // `CapturingWearWidgetPreviewTest` renders the wrapper under Robolectric on both replay lanes, so
+  // the Glance Wear / Remote Compose artifacts main compiles against `compileOnly` are real here —
+  // at the SAME pins, which is the point: the View lane executes this module's compiled call into
+  // upstream `WearWidgetPreview`, and a Glance Wear bump that moves that overload's JVM signature
+  // (issue #5420: alpha18 inserted `useSafeFallbackRendererVersion`) fails that test with
+  // `NoSuchMethodError` instead of failing consumers' renders.
+  testImplementation(libs.robolectric)
+  testImplementation(libs.glance.wear)
+  testImplementation(libs.glance.wear.core)
+  testImplementation(libs.glance.wear.tooling.preview)
+  testImplementation(libs.compose.remote.creation.compose)
+  testImplementation(libs.compose.remote.player.core)
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  // `debugImplementation`, not `testImplementation`: `createComposeRule` launches a
+  // `ComponentActivity` that must be declared in the debug manifest Robolectric resolves against.
+  debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 composeAiMavenPublishing {
