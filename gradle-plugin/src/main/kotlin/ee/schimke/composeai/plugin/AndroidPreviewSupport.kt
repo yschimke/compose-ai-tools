@@ -19,6 +19,7 @@ import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
+import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.compile.JavaCompile
@@ -2343,70 +2344,89 @@ internal object AndroidPreviewSupport {
     // and every preview ends up with no PNG. `android-classes` is AGP's
     // `ArtifactType.CLASSES_JAR` (a JAR), not the extracted directory
     // (that would be `android-classes-directory`).
-    val rendererClassDirs =
-      if (useLocalRenderer) {
+    //
+    // [rendererClasspathEntries] is the same classes as RUNTIME classpath entries. The two differ
+    // in external mode: a `zipTree` added to a `classpath` contributes its LEAF FILES, so every
+    // extracted `.class` became its own classpath element (298 of them, issue #5562). A bare
+    // `.class` file is not a valid classpath element; upstream OpenJDK ignores it, but some vendor
+    // JDK builds stop resolving from every entry after the first invalid one — hiding
+    // `android.jar` and failing every `@PreviewParameter` provider that touches `android.*`. The
+    // runtime classpath therefore gets the `classes.jar` itself; only test scanning sees the tree.
+    val rendererClassDirs: FileCollection
+    val rendererClasspathEntries: FileCollection
+    if (useLocalRenderer) {
+      rendererClassDirs =
         project.files(
           rendererProjectDir.resolve(
             "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
           ),
           rendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
         )
-      } else {
-        val rendererJars =
-          rendererConfig.incoming
-            .artifactView {
-              attributes.attribute(artifactType, "android-classes")
-              componentFilter { id ->
-                id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                  id.group == "ee.schimke.composeai" &&
-                  id.module == "renderer-android"
-              }
+      rendererClasspathEntries = rendererClassDirs
+    } else {
+      val rendererJars =
+        rendererConfig.incoming
+          .artifactView {
+            attributes.attribute(artifactType, "android-classes")
+            componentFilter { id ->
+              id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                id.group == "ee.schimke.composeai" &&
+                id.module == "renderer-android"
             }
-            .files
-        // Wire the zipTree expansion through `elements.map { ... }` so Gradle's
-        // task-graph walk sees a Provider (build-dependency-aware, value
-        // resolved lazily) instead of a Callable. A Callable here forces
-        // `rendererConfig` to resolve during task-graph construction —
-        // `DefaultConfigurableFileCollection.visitDependencies` unwraps Callables
-        // eagerly via `DeferredUtil.unpackNestableDeferred`, which calls into
-        // `rendererJars.getFiles()` and trips AGP's
-        // `DependencyResolutionChecks` "resolved during configuration time"
-        // warning (issue #1038). The Provider chain below participates in the
-        // build-dependency graph through `rendererJars.elements` without
-        // realising the configuration until task execution.
+          }
+          .files
+      // Wire the zipTree expansion through `elements.map { ... }` so Gradle's
+      // task-graph walk sees a Provider (build-dependency-aware, value
+      // resolved lazily) instead of a Callable. A Callable here forces
+      // `rendererConfig` to resolve during task-graph construction —
+      // `DefaultConfigurableFileCollection.visitDependencies` unwraps Callables
+      // eagerly via `DeferredUtil.unpackNestableDeferred`, which calls into
+      // `rendererJars.getFiles()` and trips AGP's
+      // `DependencyResolutionChecks` "resolved during configuration time"
+      // warning (issue #1038). The Provider chain below participates in the
+      // build-dependency graph through `rendererJars.elements` without
+      // realising the configuration until task execution.
+      rendererClassDirs =
         project.files(
           rendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
         )
-      }
+      rendererClasspathEntries = rendererJars
+    }
 
     // Class dirs for `:renderer-xr`'s `XrSubspaceRenderTest` entry — same local-vs-published shape
     // as
     // [rendererClassDirs] above (the lazy `elements.map { zipTree }` keeps the config off the
     // configuration-time resolution path). Only `composePreviewRenderXr` reads this.
-    val xrRendererClassDirs =
-      if (useLocalXrRenderer) {
+    // [xrRendererClasspathEntries] is the runtime-classpath counterpart, as for the renderer.
+    val xrRendererClassDirs: FileCollection
+    val xrRendererClasspathEntries: FileCollection
+    if (useLocalXrRenderer) {
+      xrRendererClassDirs =
         project.files(
           xrRendererProjectDir.resolve(
             "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
           ),
           xrRendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
         )
-      } else {
-        val xrRendererJars =
-          rendererConfig.incoming
-            .artifactView {
-              attributes.attribute(artifactType, "android-classes")
-              componentFilter { id ->
-                id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
-                  id.group == "ee.schimke.composeai" &&
-                  id.module == "renderer-xr"
-              }
+      xrRendererClasspathEntries = xrRendererClassDirs
+    } else {
+      val xrRendererJars =
+        rendererConfig.incoming
+          .artifactView {
+            attributes.attribute(artifactType, "android-classes")
+            componentFilter { id ->
+              id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                id.group == "ee.schimke.composeai" &&
+                id.module == "renderer-xr"
             }
-            .files
+          }
+          .files
+      xrRendererClassDirs =
         project.files(
           xrRendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
         )
-      }
+      xrRendererClasspathEntries = xrRendererJars
+    }
 
     // AGP's `generate${Variant}UnitTestConfig` task emits
     // `com/android/tools/test_config.properties` under
@@ -2546,7 +2566,7 @@ internal object AndroidPreviewSupport {
         bootClasspath = bootClasspath,
         bootClasspathFallback = bootClasspathFallback,
         rendererConfig = rendererConfig,
-        rendererClassDirs = rendererClassDirs,
+        rendererClasspathEntries = rendererClasspathEntries,
         sourceClassDirs = sourceClassDirs,
         testConfig = testConfig,
         screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
@@ -3155,7 +3175,7 @@ internal object AndroidPreviewSupport {
           )
         classpath =
           (resolvedClasspath +
-              xrRendererClassDirs +
+              xrRendererClasspathEntries +
               (agpTestTask?.testClassesDirs ?: project.files()) +
               agpTestClasspath +
               // Last here too, and inside the filter below — which only drops scenecore's spatial
@@ -3724,7 +3744,7 @@ internal object AndroidPreviewSupport {
           bootClasspath = bootClasspath,
           bootClasspathFallback = bootClasspathFallback,
           rendererConfig = daemonRendererConfig,
-          rendererClassDirs = rendererClassDirs,
+          rendererClasspathEntries = rendererClasspathEntries,
           sourceClassDirs = sourceClassDirs,
           testConfig = testConfig,
           screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
