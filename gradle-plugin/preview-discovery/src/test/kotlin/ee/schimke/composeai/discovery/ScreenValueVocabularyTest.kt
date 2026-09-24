@@ -1611,9 +1611,223 @@ class ScreenValueVocabularyTest {
     assertThat(reasons.single()).contains("has no `onLongPress`")
   }
 
+  private val paneScaffold =
+    component(
+      "PaneScaffold",
+      "androidx.compose.material3.adaptive.layout.PaneScaffold",
+      listOf(
+        TargetParameter(
+          "directive",
+          "PaneScaffoldDirective",
+          typeFqn = DIRECTIVE,
+          hasDefault = true,
+        ),
+        TargetParameter("partitions", "Int", typeFqn = "kotlin.Int", hasDefault = true),
+      ),
+      componentIds = listOf("adaptive/pane-scaffold"),
+    )
+
+  /** `calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())` — an explicit value receiver. */
+  private val directive =
+    ScreenValue.Construct(
+      "androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective",
+      positional =
+        listOf(
+          ScreenValue.Construct(
+            "androidx.compose.material3.adaptive.currentWindowAdaptiveInfo",
+            typeFqn = "androidx.compose.material3.adaptive.WindowAdaptiveInfo",
+          )
+        ),
+      typeFqn = DIRECTIVE,
+    )
+
+  private fun paneNode(vararg arguments: Pair<String, ScreenValue>) =
+    ScreenNode(componentId = "adaptive/pane-scaffold", arguments = mapOf(*arguments))
+
+  @Test
+  fun `a member property is read on the explicit receiver and never imported`() {
+    val result =
+      emitted(
+        paneNode(
+          "partitions" to
+            ScreenValue.Chain(
+              receiver = directive,
+              links =
+                listOf(
+                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true)
+                ),
+              typeFqn = "kotlin.Int",
+            )
+        ),
+        catalog(paneScaffold),
+      )
+    assertThat(result.source)
+      .contains(
+        "partitions = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
+          ".maxHorizontalPartitions"
+      )
+    assertThat(result.source).doesNotContain("import $DIRECTIVE")
+    assertThat(result.source)
+      .contains("import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective")
+  }
+
+  @Test
+  fun `a member call takes named and positional arguments like any link`() {
+    val result =
+      emitted(
+        paneNode(
+          "directive" to
+            ScreenValue.Chain(
+              receiver = directive,
+              links =
+                listOf(
+                  ChainLink(
+                    "$DIRECTIVE.copy",
+                    named =
+                      mapOf(
+                        "horizontalPartitionSpacerSize" to
+                          ScreenValue.Chain(
+                            receiver = ScreenValue.Whole(12),
+                            links =
+                              listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
+                            typeFqn = "androidx.compose.ui.unit.Dp",
+                          )
+                      ),
+                    member = true,
+                  )
+                ),
+              typeFqn = DIRECTIVE,
+            )
+        ),
+        catalog(paneScaffold),
+      )
+    assertThat(result.source)
+      .contains(
+        "directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
+          ".copy(horizontalPartitionSpacerSize = 12.dp)"
+      )
+    assertThat(result.source).doesNotContain("import $DIRECTIVE.copy")
+    assertThat(result.source).contains("import androidx.compose.ui.unit.dp")
+  }
+
+  @Test
+  fun `a member link is held to the expression packages like any callable`() {
+    assertThat(
+        refusal(
+          paneNode(
+            "partitions" to
+              ScreenValue.Chain(
+                receiver = directive,
+                links =
+                  listOf(ChainLink("org.evil.Exfiltrate.secret", property = true, member = true)),
+                typeFqn = "kotlin.Int",
+              )
+          ),
+          catalog(paneScaffold),
+        )
+      )
+      .containsExactly(
+        "`PaneScaffold`.`partitions` names `org.evil.Exfiltrate.secret`, which is outside the " +
+          "packages this screen may call (androidx.compose, com.example)"
+      )
+  }
+
+  @Test
+  fun `a member link without an explicit receiver is refused`() {
+    // `Modifier` in a modifier chain is the companion, not an instance: a member of the type does
+    // not resolve on it, so the claim is refused rather than emitted as `Modifier.then(…)`
+    // guesswork.
+    assertThat(
+        refusal(
+          textNode(
+            "modifier" to
+              ScreenValue.Chain(
+                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+                links =
+                  listOf(
+                    ChainLink(
+                      "$modifier.then",
+                      positional = listOf(ScreenValue.Reference(modifier, typeFqn = modifier)),
+                      member = true,
+                    )
+                  ),
+                typeFqn = modifier,
+              )
+          ),
+          catalog(text),
+        )
+      )
+      .containsExactly(
+        "`Text`.`modifier` links member `then` of `$modifier` on `$modifier`, which names a type " +
+          "rather than a value; a member needs an explicit receiver expression"
+      )
+  }
+
+  @Test
+  fun `a member link must name its declaring classifier and cannot also claim a scope`() {
+    fun reasons(link: ChainLink) =
+      refusal(
+        paneNode(
+          "partitions" to
+            ScreenValue.Chain(receiver = directive, links = listOf(link), typeFqn = "kotlin.Int")
+        ),
+        catalog(paneScaffold),
+      )
+    assertThat(
+        reasons(
+          ChainLink(
+            "androidx.compose.material3.adaptive.layout.maxHorizontalPartitions",
+            property = true,
+            member = true,
+          )
+        )
+      )
+      .containsExactly(
+        "`PaneScaffold`.`partitions` links member `maxHorizontalPartitions`, whose qualifier " +
+          "`androidx.compose.material3.adaptive.layout` does not name the classifier that declares it"
+      )
+    assertThat(
+        reasons(
+          ChainLink(
+            "$DIRECTIVE.maxHorizontalPartitions",
+            property = true,
+            receiverScopeFqn = COLUMN_SCOPE,
+            member = true,
+          )
+        )
+      )
+      .containsExactly(
+        "`PaneScaffold`.`partitions` links `maxHorizontalPartitions` as both a member of " +
+          "`$DIRECTIVE` and a member extension of `$COLUMN_SCOPE`"
+      )
+  }
+
+  @Test
+  fun `a classifier-qualified link on an explicit receiver is still refused unless it claims member`() {
+    assertThat(
+        refusal(
+          paneNode(
+            "partitions" to
+              ScreenValue.Chain(
+                receiver = directive,
+                links = listOf(ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true)),
+                typeFqn = "kotlin.Int",
+              )
+          ),
+          catalog(paneScaffold),
+        )
+      )
+      .containsExactly(
+        "`PaneScaffold`.`partitions` links `$DIRECTIVE.maxHorizontalPartitions`, whose qualifier " +
+          "names a classifier rather than a package — a member extension comes from an implicit " +
+          "receiver and cannot be imported"
+      )
+  }
+
   private companion object {
     const val COLUMN_SCOPE = "androidx.compose.foundation.layout.ColumnScope"
     const val ROW_SCOPE = "androidx.compose.foundation.layout.RowScope"
+    const val DIRECTIVE = "androidx.compose.material3.adaptive.layout.PaneScaffoldDirective"
   }
 
   private val progressParameter =

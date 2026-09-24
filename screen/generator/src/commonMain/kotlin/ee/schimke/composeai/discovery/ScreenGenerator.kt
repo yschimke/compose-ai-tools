@@ -1666,6 +1666,15 @@ object ScreenGenerator {
               // file this generator had already called compilable.
               val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
+              // A member of the receiver's own type — `directive.maxHorizontalPartitions`,
+              // `directive.copy(…)`. Never imported: the receiver supplies it. The package guard
+              // above has already held the declaring classifier to `expressionPackages`. See
+              // `ChainLink.member`.
+              if (link.member) {
+                memberLink(link, value.receiver, simple, where, depth)?.let { append(it) }
+                  ?: return null
+                continue
+              }
               // A member extension of the slot's receiver. Not imported — the receiver supplies it
               // — and legal only where that receiver is actually in scope, which is what makes
               // `Modifier.weight` expressible without guessing. See `ChainLink.receiverScopeFqn`.
@@ -1746,6 +1755,60 @@ object ScreenGenerator {
           }
         }
       }
+    }
+
+    /**
+     * `.name` or `.name(args)` for a [ChainLink.member] link on [receiver], or null having said why
+     * it cannot be written.
+     *
+     * Three claims are checked rather than trusted. The link's qualifier has to name the classifier
+     * that declares the member — the evidence is the capitalised segment the non-member path
+     * refuses — because that is what the package guard was applied to. It cannot also claim a slot
+     * scope, which is the other way a link avoids its import. And the chain needs an **explicit**
+     * value receiver: a bare classifier reference such as the `Modifier` a modifier chain starts
+     * from is a type's companion, not an instance of it, so a member of the type does not resolve
+     * there.
+     */
+    private fun memberLink(
+      link: ChainLink,
+      receiver: ScreenValue,
+      simple: String,
+      where: String,
+      depth: Int,
+    ): String? {
+      val declaring = link.callableFqn.substringBeforeLast('.', missingDelimiterValue = "")
+      if (declaring.substringAfterLast('.').firstOrNull()?.isUpperCase() != true) {
+        reasons +=
+          "$where links member `$simple`, whose qualifier `$declaring` does not name the " +
+            "classifier that declares it"
+        return null
+      }
+      if (link.receiverScopeFqn != null) {
+        reasons +=
+          "$where links `$simple` as both a member of `$declaring` and a member extension of " +
+            "`${link.receiverScopeFqn}`"
+        return null
+      }
+      if (
+        receiver is ScreenValue.Reference &&
+          receiver.members.isEmpty() &&
+          receiver.rootFqn.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
+      ) {
+        reasons +=
+          "$where links member `$simple` of `$declaring` on `${receiver.rootFqn}`, which names a " +
+            "type rather than a value; a member needs an explicit receiver expression"
+        return null
+      }
+      val name = ComponentSnippets.escapeIfKeyword(simple)
+      if (link.property) {
+        if (link.positional.isNotEmpty() || link.named.isNotEmpty()) {
+          reasons += "$where reads `$simple` as a property and also passes it arguments"
+          return null
+        }
+        return ".$name"
+      }
+      val arguments = arguments(link.positional, link.named, where, depth) ?: return null
+      return ".$name($arguments)"
     }
 
     /** `a, b, name = c` for a call, or null having said why one of them could not be written. */
