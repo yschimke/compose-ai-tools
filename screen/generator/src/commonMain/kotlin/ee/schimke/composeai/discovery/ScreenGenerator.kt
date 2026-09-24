@@ -533,7 +533,9 @@ object ScreenGenerator {
     val conflicts =
       imports
         .groupBy { it.substringAfterLast('.') }
-        .filterValues { it.size > 1 && !resolvedByReceiver(it, context.extensionReceivers) }
+        .filterValues {
+          it.size > 1 && !resolvedByReceiver(it, context.extensionReceivers, context.imports)
+        }
         .toList()
         .sortedBy { it.first }
     if (conflicts.isNotEmpty()) {
@@ -648,7 +650,12 @@ object ScreenGenerator {
   private fun resolvedByReceiver(
     group: List<String>,
     receivers: Map<String, Set<String?>>,
+    ordinary: Set<String>,
   ): Boolean {
+    // An import also used as an ordinary call or reference — a top-level `padding(…)` component
+    // beside `Modifier.padding` from the same package — is not only an extension, and a receiver
+    // says nothing about which one a bare call means.
+    if (group.any { it in ordinary }) return false
     val types = group.map { receivers[it] ?: return false }
     if (types.any { null in it }) return false
     return types.flatten().size == types.flatten().toSet().size
