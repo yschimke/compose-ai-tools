@@ -59,7 +59,7 @@ internal object AndroidPreviewClasspath {
     bootClasspath: Provider<List<RegularFile>>,
     bootClasspathFallback: Provider<List<File>>,
     rendererConfig: Configuration,
-    rendererClassDirs: FileCollection,
+    rendererClasspathEntries: FileCollection,
     sourceClassDirs: FileCollection,
     testConfig: Configuration?,
     screenshotTestRuntimeConfig: Configuration?,
@@ -89,7 +89,9 @@ internal object AndroidPreviewClasspath {
           .artifactView { attributes.attribute(artifactType, "android-classes") }
           .files
       )
-      from(rendererClassDirs)
+      // Directories or jars only, never a `zipTree`: a tree contributes its leaf `.class` files as
+      // separate (invalid) classpath elements — issue #5562.
+      from(rendererClasspathEntries)
       // `rendererConfig` already `extendsFrom(testConfig)` (see AndroidPreviewSupport), so it
       // resolves the renderer's dependencies and the consumer's test-runtime dependencies in ONE
       // graph — Gradle picks a single coherent version per module. Re-adding `testConfig`'s own
