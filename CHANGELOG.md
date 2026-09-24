@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.22.4](https://github.com/yschimke/compose-ai-tools/compare/v2.22.3...v2.22.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* isolate preview publishing credentials ([#5560](https://github.com/yschimke/compose-ai-tools/issues/5560)) ([9030f5a](https://github.com/yschimke/compose-ai-tools/commit/9030f5a1f1c34a2a1c239f2030f9c40bb0af7336))
+* keep extracted renderer .class files off the render classpath ([#5563](https://github.com/yschimke/compose-ai-tools/issues/5563)) ([093f731](https://github.com/yschimke/compose-ai-tools/commit/093f7315be0cd3f564915b302e6d9023879f816e))
+
 ## [2.22.3](https://github.com/yschimke/compose-ai-tools/compare/v2.22.2...v2.22.3) (2026-09-23)
 
 
