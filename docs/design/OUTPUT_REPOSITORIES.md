@@ -108,8 +108,8 @@ baselines or the VS Code preview branches.
 
 1. Create public `compose-ai-tools-out`, disable Actions there, and grant the publisher App Contents
    write access.
-2. Seed `design-artifacts/compose-m3` and configure the source repository variable
-   `COMPOSE_M3_ARTIFACT_REPOSITORY=yschimke/compose-ai-tools-out` plus secret
+2. Seed `design-artifacts/compose-m3`, point the publisher at
+   `yschimke/compose-ai-tools-out` (now hardcoded in `design-artifacts.yml`) plus secret
    `COMPOSE_M3_ARTIFACTS_TOKEN`.
 3. Verify a publish, then add the output repository to the server trust store and re-register the
    catalog there. The server's reconciliation already handles repository moves explicitly.

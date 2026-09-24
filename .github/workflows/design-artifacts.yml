@@ -481,12 +481,11 @@ jobs:
 
       - name: Publish to design-artifacts/${{ matrix.system }}
         env:
-          # Pilot seam for moving this generated branch out of the source repository. The variable
-          # is deliberately system-specific: compose-m3 can move first without also moving the
-          # reusable wear-m3 lane. Cross-repository writes require the matching secret; with neither
-          # configured this is byte-for-byte the historical same-repository path.
-          ARTIFACT_REPOSITORY: ${{ vars.COMPOSE_M3_ARTIFACT_REPOSITORY || github.repository }}
-          ARTIFACT_TOKEN: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN || github.token }}
+          # Generated branches live in the output repository, like wear-m3 below and the
+          # compose-preview/* branches. No fallback to this repository: a missing secret must fail
+          # the push rather than silently recreate design-artifacts/* here.
+          ARTIFACT_REPOSITORY: yschimke/compose-ai-tools-out
+          ARTIFACT_TOKEN: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN }}
           SOURCE_TOKEN: ${{ github.token }}
           SYSTEM: ${{ matrix.system }}
         run: |
