@@ -878,7 +878,7 @@ env:
   # if it drifts from `rcplayers` in `gradle/libs.versions.toml`, which is what this repo CONSUMES
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
-  # renovate: datasource=github-tags depName=yschimke/rc-players
+  # renovate: datasource=maven depName=ee.schimke.composeai:rc-players-bom
   RC_PLAYERS_PIN: v1.68.0
 
 jobs:
