@@ -1663,10 +1663,11 @@ class ScreenValueVocabularyTest {
       )
     assertThat(result.source)
       .contains(
-        "partitions = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
-          ".let<PaneScaffoldDirective, _> { it.maxHorizontalPartitions }"
+        "    val paneScaffoldDirective: PaneScaffoldDirective = " +
+          "calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())\n" +
+          "    PaneScaffold(partitions = paneScaffoldDirective.maxHorizontalPartitions)"
       )
-    // The classifier imports, for the type argument; the member never does.
+    // The classifier imports, for the local's type; the member never does.
     assertThat(result.source).contains("import $DIRECTIVE\n")
     assertThat(result.source).doesNotContain("import $DIRECTIVE.maxHorizontalPartitions")
     assertThat(result.source)
@@ -1704,10 +1705,7 @@ class ScreenValueVocabularyTest {
         catalog(paneScaffold),
       )
     assertThat(result.source)
-      .contains(
-        "directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
-          ".let<PaneScaffoldDirective, _> { it.copy(horizontalPartitionSpacerSize = 12.dp) }"
-      )
+      .contains("directive = paneScaffoldDirective.copy(horizontalPartitionSpacerSize = 12.dp)")
     assertThat(result.source).doesNotContain("import $DIRECTIVE.copy")
     assertThat(result.source).contains("import androidx.compose.ui.unit.dp")
   }
@@ -1737,8 +1735,8 @@ class ScreenValueVocabularyTest {
   @Test
   fun `a member link makes the compiler hold the receiver to the declaring classifier`() {
     // The generator cannot type `LocalContext.current.filesDir`, so an allowed qualifier on it
-    // proves nothing by itself: a bare `.delete()` would resolve to `java.io.File.delete`. Written
-    // as `let<Fake, _>`, the file only compiles if the receiver really is the classifier the
+    // proves nothing by itself: a bare `.delete()` would resolve to `java.io.File.delete`. Held in
+    // a local typed `Fake`, the file only compiles if the receiver really is the classifier the
     // package guard was applied to.
     val result =
       emitted(
@@ -1757,8 +1755,67 @@ class ScreenValueVocabularyTest {
         ),
         catalog(paneScaffold),
       )
-    assertThat(result.source).contains("LocalContext.current.filesDir.let<Fake, _> { it.delete() }")
+    assertThat(result.source).contains("val fake: Fake = LocalContext.current.filesDir\n")
+    assertThat(result.source).contains("partitions = fake.delete()")
     assertThat(result.source).doesNotContain("filesDir.delete()")
+  }
+
+  @Test
+  fun `an argument that is the receiver a member read holds is written as the same local`() {
+    // The Gmail and Calendar pane scaffold: the directive is passed, and read for its partitions.
+    // One local, typed once, computed once.
+    val result =
+      emitted(
+        paneNode(
+          "directive" to directive,
+          "partitions" to
+            ScreenValue.Chain(
+              receiver = directive,
+              links =
+                listOf(
+                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true)
+                ),
+              typeFqn = "kotlin.Int",
+            ),
+        ),
+        catalog(paneScaffold),
+      )
+    assertThat(result.source)
+      .contains(
+        "PaneScaffold(directive = paneScaffoldDirective, " +
+          "partitions = paneScaffoldDirective.maxHorizontalPartitions)"
+      )
+    assertThat(result.source.split("calculatePaneScaffoldDirective(").size - 1).isEqualTo(1)
+  }
+
+  @Test
+  fun `a member read with no block to declare a local in keeps the check inline`() {
+    // A state initializer is rendered into the preamble rather than above a node, so there is
+    // nowhere to put the local; the same type check is written as `let<Owner, _>` instead.
+    val result =
+      stateful(
+        listOf(
+          ScreenState(
+            "partitions",
+            "kotlin.Int",
+            ScreenValue.Chain(
+              receiver = directive,
+              links =
+                listOf(
+                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true)
+                ),
+              typeFqn = "kotlin.Int",
+            ),
+          )
+        )
+      )
+        as ScreenGenerator.Result.Emitted
+    assertThat(result.source)
+      .contains(
+        "calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
+          ".let<PaneScaffoldDirective, _> { it.maxHorizontalPartitions }"
+      )
+    assertThat(result.source).doesNotContain("val paneScaffoldDirective")
   }
 
   @Test
@@ -1794,8 +1851,8 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text),
       )
-    assertThat(result.source)
-      .contains("Modifier.padding(8.dp).let<Modifier, _> { it.then(Modifier) }")
+    assertThat(result.source).contains("val modifier: Modifier = Modifier.padding(8.dp)\n")
+    assertThat(result.source).contains("modifier = modifier.then(Modifier)")
   }
 
   @Test

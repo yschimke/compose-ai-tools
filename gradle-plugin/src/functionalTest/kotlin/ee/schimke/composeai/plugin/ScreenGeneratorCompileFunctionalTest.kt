@@ -248,7 +248,7 @@ class ScreenGeneratorCompileFunctionalTest {
                                   mapOf(
                                     "text" to ScreenValue.Text("Continue"),
                                     // A member of `Modifier` on the value `padding` returned,
-                                    // written through `let<Modifier, _>` so the compiler holds the
+                                    // held in a local typed `Modifier` so the compiler holds the
                                     // receiver to the classifier the package guard checked.
                                     "modifier" to
                                       ScreenValue.Chain(
@@ -328,8 +328,8 @@ class ScreenGeneratorCompileFunctionalTest {
     assertThat(emitted.source)
       .doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
     assertThat(emitted.source).contains("""Text(text = "Continue", """)
-    assertThat(emitted.source)
-      .contains("Modifier.padding(4.dp).let<Modifier, _> { it.then(Modifier) }")
+    assertThat(emitted.source).contains("val modifier: Modifier = Modifier.padding(4.dp)\n")
+    assertThat(emitted.source).contains("modifier = modifier.then(Modifier)")
     // And by their *simple* names, imported once. Both `Text`s sit inside a receiver slot —
     // `Card`'s `ColumnScope` and `Button`'s `RowScope` — which the generator used to qualify on
     // the premise that an import could not reach inside one. The `contains` assertions above pass
