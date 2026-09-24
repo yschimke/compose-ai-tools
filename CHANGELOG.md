@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.24.0](https://github.com/yschimke/compose-ai-tools/compare/v2.23.0...v2.24.0) (2026-09-24)
+
+
+### Features
+
+* generate member reads and calls on an explicit chain receiver ([#5569](https://github.com/yschimke/compose-ai-tools/issues/5569)) ([ed1b9fa](https://github.com/yschimke/compose-ai-tools/commit/ed1b9fafce5d1c663d3af257d53fb3098fc031b4))
+
 ## [2.23.0](https://github.com/yschimke/compose-ai-tools/compare/v2.22.4...v2.23.0) (2026-09-24)
 
 
