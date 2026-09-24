@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.23.0](https://github.com/yschimke/compose-ai-tools/compare/v2.22.4...v2.23.0) (2026-09-24)
+
+
+### Features
+
+* move CapturingWearWidgetPreview to Glance Wear alpha19's preview API ([#5566](https://github.com/yschimke/compose-ai-tools/issues/5566)) ([d76c128](https://github.com/yschimke/compose-ai-tools/commit/d76c1286a9c8291e401969fc3d93daf3544e5f6f))
+
 ## [2.22.4](https://github.com/yschimke/compose-ai-tools/compare/v2.22.3...v2.22.4) (2026-09-24)
 
 
