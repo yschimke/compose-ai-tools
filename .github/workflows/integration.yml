@@ -1238,7 +1238,9 @@ jobs:
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
-          REPO: ${{ github.repository }}
+          # Generated branches live in the output repository, never this one — the
+          # gallery's raw-image links must point where publish-previews pushes.
+          REPO: yschimke/compose-ai-tools-out
           PREVIEW_BRANCH: compose-preview/integration/${{ matrix.slug }}
           SLUG: ${{ matrix.slug }}
           MATRIX_NAME: ${{ matrix.name }}
@@ -1948,8 +1950,10 @@ jobs:
 
       - name: Push each integration preview branch
         env:
-          REPO: ${{ github.repository }}
-          GITHUB_TOKEN_INLINE: ${{ github.token }}
+          # Same output repository as the compose-preview/* PR and baseline branches;
+          # GITHUB_TOKEN is scoped to this repository, so the cross-repo secret is required.
+          REPO: yschimke/compose-ai-tools-out
+          GITHUB_TOKEN_INLINE: ${{ secrets.COMPOSE_M3_ARTIFACTS_TOKEN }}
         run: |
           set -euo pipefail
           push_helper="$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
