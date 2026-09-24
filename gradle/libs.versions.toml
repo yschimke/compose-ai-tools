@@ -211,9 +211,9 @@ horologist = "0.7.15"
 #    compile and the daemon-harness render; and #2823 once pinned a
 #    `wear-compose-remote` version that didn't exist yet (every artifact 404'd),
 #    making every Remote Compose module here unresolvable. Check the POMs
-#    before landing a bump: `remote-material3:1.0.0-alpha10` and
-#    `androidx.glance.wear:*:1.0.0-alpha17` both declare `remote-creation*`
-#    `1.0.0-alpha18`, which is what makes the current trio consistent.
+#    before landing a bump: `remote-material3:1.0.0-alpha12` and
+#    `androidx.glance.wear:*:1.0.0-alpha19` both declare `remote-creation*`
+#    `1.0.0-alpha20`, which is what makes the current trio consistent.
 #  * To try an API that has landed on androidx-main but is not released yet, run
 #    with `-Pcomposeai.remoteCompose=snapshot`: `settings.gradle.kts` then adds
 #    the build-id-pinned androidx.dev repository and rewrites all three refs to
@@ -227,7 +227,7 @@ horologist = "0.7.15"
 #    `RemotePreview` became `RemoteContentPreview`; `RemoteDensity.from` dropped
 #    its trailing `Context` arg. Expect the same class of fix when these pins
 #    move — verify a render, not just a compile.
-compose-remote = "1.0.0-alpha18"
+compose-remote = "1.0.0-alpha20"
 # `org.json`. Not a choice so much as a consequence: `RemoteComposeJsonParser` is written against
 # `org.json.JSONObject`, which Android ships in the platform and a plain JVM does not, and
 # `remote-creation-core` neither shades nor declares it. `:remotecompose-json` therefore supplies
@@ -245,20 +245,20 @@ androidx-core = "1.19.0"
 # and `:samples:wear-widget` (and, out of tree, by the `remote-m3` catalog in
 # yschimke/wear-m3-catalog, which resolves this same coordinate from Google Maven).
 # Its POM declares the `remote-creation*`
-# version it was compiled against (alpha10 → alpha18), so bump it together with
+# version it was compiled against (alpha12 → alpha20), so bump it together with
 # `compose-remote` above and `glance-wear` below. It also pulls
 # `androidx.compose.remote.foundation:foundation`, which used to exist only on the
 # androidx-main snapshot line and now publishes to Google Maven — that is what
 # unblocked the move back to released coordinates.
-wear-compose-remote = "1.0.0-alpha10"
+wear-compose-remote = "1.0.0-alpha12"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:wear-widget` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
 # `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. Declares
-# `remote-creation*` itself (alpha17 → alpha18), so a skewed pin risks exactly
+# `remote-creation*` itself (alpha19 → alpha20), so a skewed pin risks exactly
 # the creation/player drift the Remote Compose comment describes — bump it with
 # the two pins above.
-glance-wear = "1.0.0-alpha17"
+glance-wear = "1.0.0-alpha19"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
