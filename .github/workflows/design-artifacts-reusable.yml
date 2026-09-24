@@ -879,7 +879,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=maven depName=ee.schimke.composeai:rc-players-bom
-  RC_PLAYERS_PIN: v1.68.0
+  RC_PLAYERS_PIN: v1.75.0
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
