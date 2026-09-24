@@ -422,29 +422,80 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
-  fun `two links claiming one simple name are refused rather than resolved`() {
-    assertThat(
-        refusal(
-          textNode(
-            "modifier" to
-              ScreenValue.Chain(
-                receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
-                links =
-                  listOf(
-                    ChainLink("androidx.compose.foundation.layout.padding"),
-                    ChainLink("com.example.decor.padding"),
-                  ),
-                typeFqn = modifier,
-              )
-          ),
-          catalog(text),
-        )
+  fun `two extensions claiming one simple name are imported under aliases`() {
+    // An extension can only be called through its import, so writing one of them qualified is not
+    // an option. `Icons.Filled.Star` beside `Icons.Outlined.Star` is the real case; an alias per
+    // package is Kotlin's own answer, and the call site still says which is meant.
+    val result =
+      emitted(
+        textNode(
+          "modifier" to
+            ScreenValue.Chain(
+              receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
+              links =
+                listOf(
+                  ChainLink("androidx.compose.foundation.layout.padding"),
+                  ChainLink("com.example.decor.padding"),
+                ),
+              typeFqn = modifier,
+            )
+        ),
+        catalog(text),
       )
-      .containsExactly(
-        "`padding` would be imported from androidx.compose.foundation.layout.padding and " +
-          "com.example.decor.padding, which Kotlin rejects as a conflicting import"
-      )
+    assertThat(result.source)
+      .contains("import androidx.compose.foundation.layout.padding as layoutPadding\n")
+    assertThat(result.source).contains("import com.example.decor.padding as decorPadding\n")
+    assertThat(result.source).contains("modifier = Modifier.layoutPadding().decorPadding()")
   }
+
+  @Test
+  fun `two icon packs' extensions of one name are aliased by pack`() {
+    fun icon(pack: String) =
+      ScreenValue.Chain(
+        receiver =
+          ScreenValue.Reference(
+            "androidx.compose.material.icons.Icons",
+            members = listOf(pack.replaceFirstChar { it.uppercaseChar() }),
+            typeFqn =
+              "androidx.compose.material.icons.Icons\$${pack.replaceFirstChar { it.uppercaseChar() }}",
+          ),
+        links = listOf(ChainLink("androidx.compose.material.icons.$pack.Star", property = true)),
+        typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+      )
+    val result =
+      emitted(
+        ScreenNode(
+          componentId = "m3/icon-pair",
+          arguments = mapOf("first" to icon("filled"), "second" to icon("outlined")),
+        ),
+        catalog(iconPair),
+      )
+    assertThat(result.source)
+      .contains("import androidx.compose.material.icons.filled.Star as FilledStar\n")
+    assertThat(result.source)
+      .contains("import androidx.compose.material.icons.outlined.Star as OutlinedStar\n")
+    assertThat(result.source)
+      .contains("IconPair(first = Icons.Filled.FilledStar, second = Icons.Outlined.OutlinedStar)")
+  }
+
+  private val iconPair =
+    component(
+      "IconPair",
+      "com.example.IconPair",
+      listOf(
+        TargetParameter(
+          "first",
+          "ImageVector",
+          typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+        ),
+        TargetParameter(
+          "second",
+          "ImageVector",
+          typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
+        ),
+      ),
+      componentIds = listOf("m3/icon-pair"),
+    )
 
   @Test
   fun `an extension colliding with an imported component is refused too`() {
