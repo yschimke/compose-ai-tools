@@ -544,6 +544,18 @@ object ScreenGenerator {
         }
       )
     }
+    // A local is allocated while the body is still being written, so an import added after it —
+    // a later node's component or extension — can take the same simple name, and the local would
+    // then shadow it for the rest of its block. Refused rather than guessed around.
+    val shadowedImports =
+      context.hoistedNames.filter { local -> imports.any { it.substringAfterLast('.') == local } }
+    if (shadowedImports.isNotEmpty()) {
+      return Result.Refused(
+        shadowedImports.sorted().map {
+          "the local `$it` a member read is typed through would shadow an import of the same name"
+        }
+      )
+    }
     val source = buildString {
       appendLine("package $packageName")
       appendLine()
@@ -783,6 +795,87 @@ object ScreenGenerator {
 
     private val localNameCounters = mutableMapOf<String, Int>()
 
+    /**
+     * The block a node is being emitted into, and the typed locals its member links have asked to
+     * be declared there — see [memberLink].
+     *
+     * One per [node] call, pushed on entry and written above the node's own text on the way out, so
+     * a local lands immediately before the call that reads it, in the same block: a slot lambda, a
+     * repetition's `forEach`, a selection branch or a function body. That is what keeps it
+     * **exact** rather than merely equivalent. The value is computed in the same composable scope,
+     * under the same composition locals, as the argument it came out of — a receiver read from
+     * `LocalContentColor` inside a `Surface` would read something else at the top of the screen.
+     *
+     * [lambdaDepth] counts the value lambdas entered since this block opened. Inside one a receiver
+     * is evaluated when the lambda runs, not when the node composes, so nothing there is hoisted.
+     */
+    private class Block {
+      val locals = mutableListOf<String>()
+      /** Receiver text to the local already holding it, keyed by the classifier it is typed as. */
+      val receivers = mutableMapOf<Pair<String, String>, String>()
+      var lambdaDepth = 0
+    }
+
+    private val blocks = ArrayDeque<Block>()
+
+    /**
+     * Every name a hoisted local took, so [generate] can refuse one a later import collides with.
+     */
+    val hoistedNames = mutableSetOf<String>()
+
+    private inline fun <T> insideLambda(render: () -> T): T {
+      val block = blocks.lastOrNull()
+      block?.let { it.lambdaDepth++ }
+      try {
+        return render()
+      } finally {
+        block?.let { it.lambdaDepth-- }
+      }
+    }
+
+    /**
+     * The name of a `val name: Owner = receiver` declared above the current node, or null where
+     * there is no block to declare it in — a state initializer, or inside a value lambda — and the
+     * caller writes the `let<Owner, _>` form instead.
+     *
+     * A receiver already held under the same classifier in this block is reused rather than
+     * computed twice, unless it calls a `remember…`: each call site of one of those is its own slot
+     * in the composition, and folding two into one local would make two states one.
+     */
+    private fun hoistedReceiver(owner: String, ownerFqn: String, receiver: String): String? {
+      val block = blocks.lastOrNull()?.takeIf { it.lambdaDepth == 0 } ?: return null
+      val shareable = "remember" !in receiver
+      if (shareable)
+        block.receivers[ownerFqn to receiver]?.let {
+          return it
+        }
+      val simple = ownerFqn.substringAfterLast('.')
+      val decapitalised = simple.replaceFirstChar { it.lowercaseChar() }
+      val name =
+        allocateLocal(
+          if (isUsableIdentifier(decapitalised)) decapitalised else "${decapitalised}Value"
+        )
+      hoistedNames += name
+      block.locals += "val $name: $owner = $receiver"
+      if (shareable) block.receivers[ownerFqn to receiver] = name
+      return name
+    }
+
+    /**
+     * An argument whose whole text is a receiver this block already holds, written as that local.
+     * `directive = calculatePaneScaffoldDirective(…)` beside a member read of the same expression
+     * is the case: the local is typed as what both of them are, and the screen computes it once.
+     */
+    private fun sharedArgument(argument: String): String {
+      val block = blocks.lastOrNull() ?: return argument
+      val equals = argument.indexOf(" = ")
+      if (equals < 0) return argument
+      val value = argument.substring(equals + 3)
+      val local =
+        block.receivers.entries.singleOrNull { it.key.second == value }?.value ?: return argument
+      return argument.substring(0, equals + 3) + local
+    }
+
     private fun allocateLocal(base: String): String {
       var counter = localNameCounters[base] ?: 0
       var candidate: String
@@ -879,6 +972,20 @@ object ScreenGenerator {
     }
 
     fun node(node: ScreenNode, depth: Int): String {
+      val block = Block()
+      blocks.addLast(block)
+      val rendered =
+        try {
+          nodeCall(node, depth)
+        } finally {
+          blocks.removeLast()
+        }
+      if (block.locals.isEmpty()) return rendered
+      val pad = INDENT.repeat(depth)
+      return block.locals.joinToString("") { "$pad$it\n" } + rendered
+    }
+
+    private fun nodeCall(node: ScreenNode, depth: Int): String {
       if (depth > 128) {
         reasons += "screen nesting exceeds 128 levels"
         return ""
@@ -1075,7 +1182,7 @@ object ScreenGenerator {
         if (record.canonicalId in simplyImportable)
           ComponentSnippets.escapeIfKeyword(record.symbol.name)
         else qualified
-      return "$pad$name(${arguments.joinToString(", ")})"
+      return "$pad$name(${arguments.joinToString(", ") { sharedArgument(it) }})"
     }
 
     /**
@@ -1141,7 +1248,16 @@ object ScreenGenerator {
      * Unit` would need a parameter list this generator has no name for, and emitting `{ … }` there
      * compiles only by accident of the argument being ignored.
      */
-    fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? {
+    fun lambda(actions: List<ScreenAction>, parameter: TargetParameter, owner: String): String? =
+      insideLambda {
+        actionLambda(actions, parameter, owner)
+      }
+
+    private fun actionLambda(
+      actions: List<ScreenAction>,
+      parameter: TargetParameter,
+      owner: String,
+    ): String? {
       val where = "`$owner`.`${parameter.name}`"
       // A composable slot is not an event callback, however much its type looks like one. The
       // `@Composable` lives in `composableSlot` rather than in `type`, so `content: @Composable ()
@@ -1473,6 +1589,12 @@ object ScreenGenerator {
       value: ScreenValue.Lambda,
       parameter: TargetParameter,
       owner: String,
+    ): String? = insideLambda { valueLambda(value, parameter, owner) }
+
+    private fun valueLambda(
+      value: ScreenValue.Lambda,
+      parameter: TargetParameter,
+      owner: String,
     ): String? {
       val where = "`$owner`.`${parameter.name}`"
       val returns = parameter.lambdaReturnTypeFqn
@@ -1622,7 +1744,8 @@ object ScreenGenerator {
         // literal makes here — so the body takes the one fixed spelling its kind has. That is what
         // makes `rememberCarouselState { 5 }` writable: the count is an `Int` because a nested
         // whole number always is.
-        is ScreenValue.Lambda -> expression(value.result, where, depth + 1)?.let { "{ $it }" }
+        is ScreenValue.Lambda ->
+          insideLambda { expression(value.result, where, depth + 1) }?.let { "{ $it }" }
         // Like other nested expressions, the enclosing callable has no discovered signature
         // here. This validates the actions and emits a body without authored parameters; the
         // compiler still checks the enclosing factory/modifier overload.
@@ -1657,15 +1780,35 @@ object ScreenGenerator {
           // failure is worse than a compile error: it silently applies the extension to the
           // positive value and negates afterwards.
           val receiver = if (rendered.startsWith("-")) "($rendered)" else rendered
-          buildString {
-            append(receiver)
-            for (link in value.links) {
+          // A builder rather than `buildString`, because a member link may replace everything
+          // written so far with the local it was hoisted into.
+          val chain = StringBuilder(receiver)
+          with(chain) {
+            for ((index, link) in value.links.withIndex()) {
               // The **whole** callable, not just the simple name it ends in. Validating only the
               // last segment let `foo..padding` through: `padding` is a fine name, so the link
               // was accepted and imported as `foo.``.padding` — an empty backticked segment, in a
               // file this generator had already called compilable.
               val imported = qualifiedName(link.callableFqn, where) ?: return null
               val simple = link.callableFqn.substringAfterLast('.')
+              // A member of the receiver's own type — `directive.maxHorizontalPartitions`,
+              // `directive.copy(…)`. The package guard above has held the declaring classifier to
+              // `expressionPackages`, and `memberLink` makes the compiler hold the receiver to that
+              // classifier. See `ChainLink.member`.
+              if (link.member) {
+                val written =
+                  memberLink(
+                    link,
+                    value.receiver.takeIf { index == 0 },
+                    toString(),
+                    simple,
+                    where,
+                    depth,
+                  ) ?: return null
+                setLength(0)
+                append(written)
+                continue
+              }
               // A member extension of the slot's receiver. Not imported — the receiver supplies it
               // — and legal only where that receiver is actually in scope, which is what makes
               // `Modifier.weight` expressible without guessing. See `ChainLink.receiverScopeFqn`.
@@ -1744,8 +1887,82 @@ object ScreenGenerator {
               }
             }
           }
+          chain.toString()
         }
       }
+    }
+
+    /**
+     * The chain so far, [written], with a [ChainLink.member] link applied to it — or null having
+     * said why it cannot be.
+     *
+     * The claim that `Owner` declares the member is what the package guard was applied to, and a
+     * plain `written.name` would not hold the document to it: this generator cannot type the
+     * receiver, so `androidx.compose.Fake.delete` on an expression that is really a `java.io.File`
+     * would pass the guard and emit a `.delete()` that resolves to `File.delete()`. So the receiver
+     * is written where the **compiler** checks its type, the way a person would write it:
+     * ```
+     * val paneScaffoldDirective: PaneScaffoldDirective = calculatePaneScaffoldDirective(…)
+     * SupportingPaneScaffold(…, value = …(paneScaffoldDirective.maxHorizontalPartitions))
+     * ```
+     *
+     * declared immediately above the node, in its own block (see [Block]). Where there is no block
+     * to declare it in — a state initializer, or inside a value lambda, whose body runs later — the
+     * same check is written inline as `written.let<Owner, _> { it.name }`. Either way the file only
+     * compiles when the receiver is an `Owner`, and then the name can only resolve to `Owner`'s
+     * member (or an override of it). A generic `Owner` is written without its type arguments and so
+     * fails to compile: a refusal the compiler makes, which is the safe direction to be wrong in.
+     *
+     * Three more claims are checked here rather than trusted. The link's qualifier has to name a
+     * classifier — the capitalised segment the non-member path refuses — since that is what `Owner`
+     * is. It cannot also claim a slot scope, which is the other way a link avoids its import. And a
+     * first link needs an **explicit** value receiver: a bare classifier reference such as the
+     * `Modifier` a modifier chain starts from is a type's companion, not an instance of it. Only
+     * the first link is asked, because any later one's receiver is the value the links before it
+     * produced; [receiver] is null for those.
+     */
+    private fun memberLink(
+      link: ChainLink,
+      receiver: ScreenValue?,
+      written: String,
+      simple: String,
+      where: String,
+      depth: Int,
+    ): String? {
+      val declaring = link.callableFqn.substringBeforeLast('.', missingDelimiterValue = "")
+      if (declaring.substringAfterLast('.').firstOrNull()?.isUpperCase() != true) {
+        reasons +=
+          "$where links member `$simple`, whose qualifier `$declaring` does not name the " +
+            "classifier that declares it"
+        return null
+      }
+      if (link.receiverScopeFqn != null) {
+        reasons +=
+          "$where links `$simple` as both a member of `$declaring` and a member extension of " +
+            "`${link.receiverScopeFqn}`"
+        return null
+      }
+      if (
+        receiver is ScreenValue.Reference &&
+          receiver.members.isEmpty() &&
+          receiver.rootFqn.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
+      ) {
+        reasons +=
+          "$where links member `$simple` of `$declaring` on `${receiver.rootFqn}`, which names a " +
+            "type rather than a value; a member needs an explicit receiver expression"
+        return null
+      }
+      val name = ComponentSnippets.escapeIfKeyword(simple)
+      val owner = importedName(declaring, where) ?: return null
+      if (link.property && (link.positional.isNotEmpty() || link.named.isNotEmpty())) {
+        reasons += "$where reads `$simple` as a property and also passes it arguments"
+        return null
+      }
+      val local = hoistedReceiver(owner, declaring, written)
+      val member =
+        if (link.property) name
+        else "$name(${arguments(link.positional, link.named, where, depth) ?: return null})"
+      return if (local != null) "$local.$member" else "$written.let<$owner, _> { it.$member }"
     }
 
     /** `a, b, name = c` for a call, or null having said why one of them could not be written. */
