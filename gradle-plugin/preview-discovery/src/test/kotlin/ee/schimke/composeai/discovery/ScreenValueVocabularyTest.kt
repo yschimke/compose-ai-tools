@@ -329,7 +329,7 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text, column),
       )
-    assertThat(result.source).contains("modifier = Modifier.weight(1.0f)")
+    assertThat(result.source).contains("modifier = Modifier.weight(1f)")
     assertThat(result.source)
       .doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
   }
@@ -399,6 +399,23 @@ class ScreenValueVocabularyTest {
         "`Text`.`modifier` links `weight`, which is declared on `$COLUMN_SCOPE` and is in scope " +
           "only inside a slot with that receiver; this node sits at the root, which has no receiver"
       )
+  }
+
+  @Test
+  fun `a colour is written as ARGB hex`() {
+    val result =
+      emitted(
+        textNode(
+          "color" to
+            ScreenValue.Construct(
+              callableFqn = "androidx.compose.ui.graphics.Color",
+              positional = listOf(ScreenValue.Whole(0xFF1A73E8)),
+              typeFqn = color,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source).contains("color = Color(0xFF1A73E8)")
   }
 
   @Test
@@ -845,12 +862,9 @@ class ScreenValueVocabularyTest {
       )
     // The outer construct's marker uses the Kotlin mechanism and the nested reference's uses the
     // AndroidX one, so both annotations appear and neither marker lands under the wrong one.
-    assertThat(result.source).contains("@kotlin.OptIn(com.example.ExperimentalPalette::class)")
+    assertThat(result.source).contains("@kotlin.OptIn(ExperimentalPalette::class)")
     assertThat(result.source)
-      .contains(
-        "@androidx.annotation.OptIn(markerClass = " +
-          "[androidx.compose.material3.ExperimentalMaterial3Api::class])"
-      )
+      .contains("@androidx.annotation.OptIn(markerClass = [ExperimentalMaterial3Api::class])")
     assertThat(result.requiredOptIns)
       .containsExactly(
         "com.example.ExperimentalPalette",

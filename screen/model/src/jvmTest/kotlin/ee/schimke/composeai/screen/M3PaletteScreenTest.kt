@@ -233,7 +233,7 @@ class M3PaletteScreenTest {
     // markers, and the generator splits them by the mechanism the record names.
     assertTrue(
       source,
-      source.contains("@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)"),
+      source.contains("@kotlin.OptIn(ExperimentalMaterial3Api::class)"),
     )
   }
 }
