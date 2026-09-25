@@ -838,6 +838,15 @@ object ScreenGenerator {
 
     private data class RowScope(val variable: String, val fields: Map<String, String>)
 
+    /**
+     * A slot lambda's parameter, bound by [ScreenNode.slotParameters]: the local it is named and
+     * the type the record declares for it.
+     */
+    private data class SlotParameter(val variable: String, val type: String)
+
+    /** Every slot parameter visible at this point, by document key; innermost binding wins. */
+    private var slotParameterScope: Map<String, SlotParameter> = emptyMap()
+
     private var rowScope: RowScope? = null
     private var parameterScope: Map<String, ScreenParameter>? = null
     private val visibleState: Map<String, ScreenState>
@@ -1104,6 +1113,14 @@ object ScreenGenerator {
           children.forEach { node(it, depth + 1) }
         }
       }
+      // A slot parameter named for a slot with no children binds a name nothing can read, and says
+      // the document expected content there — stale, like the slot items below.
+      node.slotParameters.keys
+        .filterNot { it in node.slots }
+        .sorted()
+        .forEach {
+          reasons += "`${record.symbol.name}`.`$it` names its lambda parameter and has no children"
+        }
       // A wrapper for a slot the node does not fill names nothing. The emission below reads
       // `slotItems` only where there are children, so an unmatched key would be dropped in
       // silence — and a document that says `item` about the wrong slot is exactly the stale
@@ -1185,6 +1202,23 @@ object ScreenGenerator {
             // children sit under no scope and a scoped link there refuses by name — the honest
             // answer, and the one [SlotItem] documents.
             slotScope = if (wrapper == null) parameter.composableSlotReceiver else null
+            // The lambda's parameter, named when the document asks to read it: `{ padding -> … }`
+            // rather than a bare `{ … }` whose `it` nothing can reach. Only a lambda that takes
+            // exactly one parameter can be named, and only where the children are composed into
+            // it directly — a DSL wrapper's own lambda is a different one.
+            val key = node.slotParameters[parameter.name]
+            val bound = key?.let { k ->
+              val type = ComponentSnippets.singleLambdaParameterType(parameter.type)
+              if (type == null || wrapper != null) {
+                reasons +=
+                  "`${record.symbol.name}`.`${parameter.name}` is `${parameter.type}`, whose " +
+                    "lambda has no single parameter to name"
+                null
+              } else k to SlotParameter(allocateLocal(localNameFor(k)), type)
+            }
+            val outerParameters = slotParameterScope
+            if (bound != null) slotParameterScope = slotParameterScope + bound
+            val head = bound?.let { "{ ${it.second.variable} ->" } ?: "{"
             val inner = INDENT.repeat(depth + 1)
             val nested =
               try {
@@ -1198,6 +1232,7 @@ object ScreenGenerator {
                   }
               } finally {
                 slotScope = outer
+                slotParameterScope = outerParameters
               }
             // `content` goes after the parentheses, the way Compose is written: `Row(modifier = …)
             // { … }` rather than `content = { … }` inside them. A trailing lambda binds to the
@@ -1207,10 +1242,10 @@ object ScreenGenerator {
             // guidelines put `content` last precisely so it can trail, and every other slot
             // stays named.
             if (parameter.name == "content" && parameter === record.parameters.last())
-              trailing = "{\n$nested\n$pad}"
+              trailing = "$head\n$nested\n$pad}"
             else
               arguments +=
-                "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
+                "${ComponentSnippets.escapeIfKeyword(parameter.name)} = $head\n$nested\n$pad}"
           }
           // Untouched by the document. A default may be omitted; anything else still has to be
           // filled, and the placeholder table is the same one the call-site generator uses.
@@ -1493,6 +1528,32 @@ object ScreenGenerator {
         if (parameters.isEmpty()) "class $className"
         else "data class $className(${parameters.joinToString(", ")})"
       return "$pad$declaration\n${pad}kotlin.collections.listOf<$className>(${rows.joinToString(", ")}).forEach { $variable ->\n$body\n$pad}"
+    }
+
+    /**
+     * A read of a slot lambda's parameter. Checked against the binding's declared type by simple
+     * name, because a record spells parameter types as written (`PaddingValues`) while a value
+     * claims a qualified one.
+     */
+    private fun slotParameterRead(value: ScreenValue.SlotParameterRead, where: String): String? {
+      val binding = slotParameterScope[value.key]
+      if (
+        binding == null ||
+          binding.type.substringAfterLast('.') != value.typeFqn.substringAfterLast('.')
+      ) {
+        reasons +=
+          "$where reads slot parameter `${value.key}` as ${value.typeFqn}, but " +
+            (binding?.let { "that slot's lambda takes ${it.type}" } ?: "no enclosing slot binds it")
+        return null
+      }
+      return binding.variable
+    }
+
+    /** A document key as a Kotlin local: its identifier characters, never a keyword or empty. */
+    private fun localNameFor(key: String): String {
+      val cleaned = key.filter { it.isLetterOrDigit() || it == '_' }
+      val base = if (cleaned.isEmpty() || cleaned.first().isDigit()) "slot$cleaned" else cleaned
+      return if (ComponentSnippets.escapeIfKeyword(base) != base) "${base}Value" else base
     }
 
     private fun rowRead(value: ScreenValue.RowRead, where: String): String? {
@@ -1835,6 +1896,7 @@ object ScreenGenerator {
           )
         is ScreenValue.StateRead -> stateRead(value, where)
         is ScreenValue.RowRead -> rowRead(value, where)
+        is ScreenValue.SlotParameterRead -> slotParameterRead(value, where)
         is ScreenValue.ParameterRead -> parameterRead(value, where)
         is ScreenValue.Reference -> {
           val root = importedName(value.rootFqn, where) ?: return null
