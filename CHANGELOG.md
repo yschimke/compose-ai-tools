@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.26.0](https://github.com/yschimke/compose-ai-tools/compare/v2.25.0...v2.26.0) (2026-09-25)
+
+
+### Features
+
+* **screen-generator:** name a slot lambda's parameter and read it ([#5581](https://github.com/yschimke/compose-ai-tools/issues/5581)) ([eb18a9e](https://github.com/yschimke/compose-ai-tools/commit/eb18a9e27f9c53a41acd0c3f3401a2476b0cbe7b))
+
+
+### Bug Fixes
+
+* **bundle-coordinates:** retry a throttled download and name the cause when resolution fails ([#5580](https://github.com/yschimke/compose-ai-tools/issues/5580)) ([6b2fdad](https://github.com/yschimke/compose-ai-tools/commit/6b2fdad7cb3bc22143de8ed86b205acb047bc7ba))
+* **release:** narrow the publish plan's shared-input rule to catalog consumers ([#5577](https://github.com/yschimke/compose-ai-tools/issues/5577)) ([c37a0a7](https://github.com/yschimke/compose-ai-tools/commit/c37a0a72c4cf7e592abc1f79260c87aada26f4ea))
+
 ## [2.25.0](https://github.com/yschimke/compose-ai-tools/compare/v2.24.0...v2.25.0) (2026-09-25)
 
 
