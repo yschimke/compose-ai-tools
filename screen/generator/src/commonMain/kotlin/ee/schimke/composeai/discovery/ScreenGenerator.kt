@@ -1049,6 +1049,15 @@ object ScreenGenerator {
         reasons += "screen nesting exceeds 128 levels"
         return ""
       }
+      // Asked before the structural paths return: none of them calls a component, so none has a
+      // slot lambda whose parameter a binding could name, and each would drop one in silence.
+      if (
+        (node.repetition != null || node.selection != null || node.function != null) &&
+          node.slotParameters.isNotEmpty()
+      ) {
+        reasons +=
+          "a repetition, selection or function call has no slot lambda to name a parameter of"
+      }
       if (node.repetition != null) return repetition(node, depth)
       if (node.selection != null) return selection(node, depth)
       if (node.function != null) return functionCall(node, depth)
@@ -1531,16 +1540,24 @@ object ScreenGenerator {
     }
 
     /**
-     * A read of a slot lambda's parameter. Checked against the binding's declared type by simple
-     * name, because a record spells parameter types as written (`PaddingValues`) while a value
-     * claims a qualified one.
+     * A read of a slot lambda's parameter, checked against the type the record declares for it.
+     *
+     * A qualified or generic declaration must match the claimed type exactly. An unqualified one —
+     * a record spells slot lambda types as written, `PaddingValues` — can only be matched by simple
+     * name, and only when the claim is a plain class name too: comparing the text after the last
+     * dot of `Map<String, a.B>` would read the nested argument instead of the type.
      */
     private fun slotParameterRead(value: ScreenValue.SlotParameterRead, where: String): String? {
       val binding = slotParameterScope[value.key]
-      if (
-        binding == null ||
-          binding.type.substringAfterLast('.') != value.typeFqn.substringAfterLast('.')
-      ) {
+      fun plain(type: String) = type.none { it == '<' || it == '(' || it == '?' || it == ' ' }
+      val matches =
+        binding != null &&
+          when {
+            binding.type == value.typeFqn -> true
+            '.' in binding.type || !plain(binding.type) -> false
+            else -> plain(value.typeFqn) && value.typeFqn.substringAfterLast('.') == binding.type
+          }
+      if (binding == null || !matches) {
         reasons +=
           "$where reads slot parameter `${value.key}` as ${value.typeFqn}, but " +
             (binding?.let { "that slot's lambda takes ${it.type}" } ?: "no enclosing slot binds it")

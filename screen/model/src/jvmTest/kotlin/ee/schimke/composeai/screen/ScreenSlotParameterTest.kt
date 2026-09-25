@@ -115,4 +115,34 @@ class ScreenSlotParameterTest {
       "names its lambda parameter and has no children",
     )
   }
+
+  @Test
+  fun `a generic claim does not match a plain parameter by its last segment`() {
+    refused(
+      scaffold(
+        column(
+          padded(
+            ScreenValue.SlotParameterRead(
+              "contentPadding",
+              "kotlin.collections.List<androidx.compose.foundation.layout.PaddingValues>",
+            )
+          )
+        )
+      ),
+      "that slot's lambda takes PaddingValues",
+    )
+  }
+
+  @Test
+  fun `a structural node cannot name a slot parameter`() {
+    refused(
+      ScreenNode(
+        "",
+        slots = mapOf("body" to listOf(column(M3Palette.modifierReceiver))),
+        repetition = ScreenRepetition(emptyMap(), listOf(emptyMap())),
+        slotParameters = mapOf("body" to "row"),
+      ),
+      "has no slot lambda to name a parameter of",
+    )
+  }
 }
