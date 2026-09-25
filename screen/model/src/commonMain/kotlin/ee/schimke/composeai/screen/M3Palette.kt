@@ -236,10 +236,14 @@ object M3Palette {
         ),
     )
 
-  private fun slot(name: String, receiverScope: String? = null) =
+  private fun slot(
+    name: String,
+    receiverScope: String? = null,
+    type: String = "@Composable () -> Unit",
+  ) =
     TargetParameter(
       name = name,
-      type = "@Composable () -> Unit",
+      type = type,
       hasDefault = false,
       composableSlot = true,
       composableSlotReceiver = receiverScope,
@@ -258,13 +262,20 @@ object M3Palette {
       components =
         listOf(
           // `Scaffold.content` is `@Composable (PaddingValues) -> Unit` — the padding arrives as a
-          // parameter, not a receiver, so no receiver scope is recorded for it.
+          // parameter, not a receiver, so no receiver scope is recorded for it. Recorded as that
+          // type, so a document can name the parameter (`ScreenNode.slotParameters`) and pad its
+          // body by it instead of drawing under the bars.
           record(
             "scaffold",
             M3,
             "Scaffold",
             parameters =
-              listOf(modifier(), slot("topBar"), slot("floatingActionButton"), slot("content")),
+              listOf(
+                modifier(),
+                slot("topBar"),
+                slot("floatingActionButton"),
+                slot("content", type = "@Composable (PaddingValues) -> Unit"),
+              ),
             slots =
               listOf(
                 ComponentSlot("topBar", required = false),

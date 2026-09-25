@@ -412,6 +412,22 @@ object ComponentSnippets {
     // reaches `null` first and that is the better answer when there are no children to place.
     emptyLambda(unwrapNullable(type)) != null
 
+  /**
+   * The one parameter a `(T) -> Unit` slot's lambda takes, as the record spells it, or null when it
+   * takes none or several. `@Composable (PaddingValues) -> Unit` answers `PaddingValues`.
+   */
+  internal fun singleLambdaParameterType(type: String): String? {
+    val lambda =
+      unwrapNullable(type.removePrefix("@Composable ").trim()).removePrefix("@Composable ")
+    if (!lambda.endsWith(" -> Unit")) return null
+    val head = lambda.removeSuffix(" -> Unit").trim()
+    // A receiver (`RowScope.(T) -> Unit`) is not a parameter the lambda names.
+    if (!head.startsWith("(") || !head.endsWith(")")) return null
+    val parameters = head.substring(1, head.length - 1).trim()
+    if (parameters.isEmpty() || topLevelCommaCount(parameters) != 0) return null
+    return parameters
+  }
+
   /** `(() -> Unit)?` to `() -> Unit`; anything else unchanged. */
   private fun unwrapNullable(type: String): String {
     if (!type.startsWith("(") || !type.endsWith(")?")) return type
