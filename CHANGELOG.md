@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.25.0](https://github.com/yschimke/compose-ai-tools/compare/v2.24.0...v2.25.0) (2026-09-25)
+
+
+### Features
+
+* idiomatic imports and call spelling in generated screens ([#5575](https://github.com/yschimke/compose-ai-tools/issues/5575)) ([2369691](https://github.com/yschimke/compose-ai-tools/commit/236969177f71d24965df489e1d25160f2977ab36))
+
+
+### Bug Fixes
+
+* **deps:** update rc-players to 1.75.0 ([#5572](https://github.com/yschimke/compose-ai-tools/issues/5572)) ([da3c798](https://github.com/yschimke/compose-ai-tools/commit/da3c79876fd8bf47e7801ef763ac983ea437473c))
+
 ## [2.24.0](https://github.com/yschimke/compose-ai-tools/compare/v2.23.0...v2.24.0) (2026-09-24)
 
 
