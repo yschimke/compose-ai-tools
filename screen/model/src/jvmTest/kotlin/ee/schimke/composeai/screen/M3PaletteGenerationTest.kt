@@ -90,7 +90,7 @@ class M3PaletteGenerationTest {
     val source = (result as ScreenGenerator.Result.Emitted).source
     println(source)
     assertTrue(source, source.contains("Scaffold("))
-    assertTrue(source, source.contains("ElevatedCard("))
+    assertTrue(source, source.contains("ElevatedCard {"))
     assertTrue(source, source.contains("Button("))
     assertTrue(source, source.contains("\"Open\""))
 

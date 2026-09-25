@@ -329,7 +329,7 @@ class ScreenValueVocabularyTest {
         ),
         catalog(text, column),
       )
-    assertThat(result.source).contains("modifier = Modifier.weight(1.0f)")
+    assertThat(result.source).contains("modifier = Modifier.weight(1f)")
     assertThat(result.source)
       .doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
   }
@@ -402,6 +402,23 @@ class ScreenValueVocabularyTest {
   }
 
   @Test
+  fun `a colour is written as ARGB hex`() {
+    val result =
+      emitted(
+        textNode(
+          "color" to
+            ScreenValue.Construct(
+              callableFqn = "androidx.compose.ui.graphics.Color",
+              positional = listOf(ScreenValue.Whole(0xFF1A73E8)),
+              typeFqn = color,
+            )
+        ),
+        catalog(text),
+      )
+    assertThat(result.source).contains("color = Color(0xFF1A73E8)")
+  }
+
+  @Test
   fun `a float literal is the one nested fraction that is not a Double`() {
     // Nested, there is no declared type to render against, so each literal kind has one spelling
     // and a `Fractional` is always a `Double`. `Modifier.weight(1.0)` does not compile, which is
@@ -445,6 +462,48 @@ class ScreenValueVocabularyTest {
           "com.example.decor.padding, which Kotlin rejects as a conflicting import"
       )
   }
+
+  @Test
+  fun `two extensions of one name on different receivers are both imported`() {
+    // Not a conflicting import: Kotlin reports that for classifiers only, and resolves each call by
+    // its receiver. Starred and unstarred rows in one screen are exactly this.
+    fun icon(pack: String) =
+      ScreenValue.Chain(
+        receiver =
+          ScreenValue.Reference(
+            "androidx.compose.material.icons.Icons",
+            members = listOf(pack.replaceFirstChar { it.uppercaseChar() }),
+            typeFqn =
+              "androidx.compose.material.icons.Icons\$" +
+                pack.replaceFirstChar { it.uppercaseChar() },
+          ),
+        links = listOf(ChainLink("androidx.compose.material.icons.$pack.Star", property = true)),
+        typeFqn = VECTOR,
+      )
+    val result =
+      emitted(
+        ScreenNode(
+          componentId = "m3/icon-pair",
+          arguments = mapOf("first" to icon("filled"), "second" to icon("outlined")),
+        ),
+        catalog(iconPair),
+      )
+    assertThat(result.source).contains("import androidx.compose.material.icons.filled.Star\n")
+    assertThat(result.source).contains("import androidx.compose.material.icons.outlined.Star\n")
+    assertThat(result.source)
+      .contains("IconPair(first = Icons.Filled.Star, second = Icons.Outlined.Star)")
+  }
+
+  private val iconPair =
+    component(
+      "IconPair",
+      "com.example.IconPair",
+      listOf(
+        TargetParameter("first", "ImageVector", typeFqn = VECTOR),
+        TargetParameter("second", "ImageVector", typeFqn = VECTOR),
+      ),
+      componentIds = listOf("m3/icon-pair"),
+    )
 
   @Test
   fun `an extension colliding with an imported component is refused too`() {
@@ -803,12 +862,9 @@ class ScreenValueVocabularyTest {
       )
     // The outer construct's marker uses the Kotlin mechanism and the nested reference's uses the
     // AndroidX one, so both annotations appear and neither marker lands under the wrong one.
-    assertThat(result.source).contains("@kotlin.OptIn(com.example.ExperimentalPalette::class)")
+    assertThat(result.source).contains("@kotlin.OptIn(ExperimentalPalette::class)")
     assertThat(result.source)
-      .contains(
-        "@androidx.annotation.OptIn(markerClass = " +
-          "[androidx.compose.material3.ExperimentalMaterial3Api::class])"
-      )
+      .contains("@androidx.annotation.OptIn(markerClass = [ExperimentalMaterial3Api::class])")
     assertThat(result.requiredOptIns)
       .containsExactly(
         "com.example.ExperimentalPalette",
@@ -1950,6 +2006,7 @@ class ScreenValueVocabularyTest {
   private companion object {
     const val COLUMN_SCOPE = "androidx.compose.foundation.layout.ColumnScope"
     const val ROW_SCOPE = "androidx.compose.foundation.layout.RowScope"
+    const val VECTOR = "androidx.compose.ui.graphics.vector.ImageVector"
     const val DIRECTIVE = "androidx.compose.material3.adaptive.layout.PaneScaffoldDirective"
   }
 

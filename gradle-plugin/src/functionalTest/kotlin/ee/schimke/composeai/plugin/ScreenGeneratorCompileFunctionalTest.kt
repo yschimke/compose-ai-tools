@@ -324,7 +324,7 @@ class ScreenGeneratorCompileFunctionalTest {
     assertThat(emitted.source).contains("""Text(text = "Good morning""")
     // A scoped modifier, by simple name and imported nowhere: `weight` is a member of `ColumnScope`
     // and comes from the lambda's receiver, so an import of it would not resolve.
-    assertThat(emitted.source).contains("modifier = Modifier.weight(1.0f)")
+    assertThat(emitted.source).contains("modifier = Modifier.weight(1f)")
     assertThat(emitted.source)
       .doesNotContain("import androidx.compose.foundation.layout.ColumnScope")
     assertThat(emitted.source).contains("""Text(text = "Continue", """)

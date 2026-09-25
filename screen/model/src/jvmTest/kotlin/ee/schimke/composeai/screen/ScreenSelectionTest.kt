@@ -236,7 +236,7 @@ class ScreenSelectionTest {
     val selection = original.root.copy(slots = original.root.slots + ("first" to listOf(text)))
     val nested =
       original.copy(root = ScreenNode("column", slots = mapOf("content" to listOf(selection))))
-    assertTrue(emitted(nested).contains("Modifier.weight(1.0f)"))
+    assertTrue(emitted(nested).contains("Modifier.weight(1f)"))
     refused(original.copy(root = selection), "has no receiver")
   }
 

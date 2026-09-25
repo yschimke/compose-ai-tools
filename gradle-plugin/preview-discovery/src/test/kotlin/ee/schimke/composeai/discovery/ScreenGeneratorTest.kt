@@ -122,7 +122,7 @@ class ScreenGeneratorTest {
 
     // The user's value, not the placeholder `Text(text = "")` the call-site generator prints.
     assertThat(source).contains("""Text(text = "Hello")""")
-    assertThat(source).contains("Card(content = {")
+    assertThat(source).contains("Card {")
     assertThat(source).contains("fun HomeScreen()")
     assertThat(source).contains("import androidx.compose.material3.Card")
     // `Text` is nested inside `Card`'s `ColumnScope` slot and is still imported by simple name:
@@ -495,6 +495,73 @@ class ScreenGeneratorTest {
   }
 
   @Test
+  fun `content trails the call, and any other slot stays named`() {
+    // A record may list only some of a composable's parameters, so being last in the record does
+    // not make a slot last in the signature. `content` is last by the Compose API guidelines, and
+    // is the one slot written as a trailing lambda.
+    val item =
+      component(
+        "ListItem",
+        "androidx.compose.material3.ListItem",
+        listOf(
+          TargetParameter("headlineContent", "() -> Unit", composableSlot = true),
+          TargetParameter("supportingContent", "() -> Unit", composableSlot = true),
+        ),
+      )
+    val source =
+      emitted(
+          ScreenDocument(
+            "Screen",
+            ScreenNode(
+              card.canonicalId,
+              slots =
+                mapOf(
+                  "content" to
+                    listOf(
+                      ScreenNode(
+                        item.canonicalId,
+                        slots =
+                          mapOf(
+                            "headlineContent" to listOf(textNode("Alex")),
+                            "supportingContent" to listOf(textNode("Lunch?")),
+                          ),
+                      )
+                    )
+                ),
+            ),
+          ),
+          catalog(card, item, text),
+        )
+        .source
+    assertThat(source).contains("    Card {\n")
+    assertThat(source).contains("ListItem(headlineContent = {")
+    assertThat(source).contains("}, supportingContent = {")
+  }
+
+  @Test
+  fun `a member of an object is called through the object`() {
+    val field =
+      component(
+        "InputField",
+        "androidx.compose.material3.SearchBarDefaults.InputField",
+        listOf(TargetParameter("query", "String", typeFqn = "kotlin.String")),
+      )
+    val source =
+      emitted(
+          ScreenDocument(
+            "Screen",
+            ScreenNode(field.canonicalId, arguments = mapOf("query" to ScreenValue.Text(""))),
+          ),
+          catalog(field),
+        )
+        .source
+    assertThat(source).contains("import androidx.compose.material3.SearchBarDefaults\n")
+    assertThat(source).contains("SearchBarDefaults.InputField(query = \"\")")
+    assertThat(source)
+      .doesNotContain("import androidx.compose.material3.SearchBarDefaults.InputField")
+  }
+
+  @Test
   fun `required opt-ins are applied to the generated file, not left to the caller`() {
     val experimental =
       component(
@@ -507,12 +574,12 @@ class ScreenGeneratorTest {
 
     val emitted = emitted(screen, catalog(experimental))
 
-    // Qualified, not imported: two markers can share a simple name across packages, so the
-    // shortened form is ambiguous rather than merely ugly.
+    // Imported, the way an opt-in is written by hand. Two markers sharing a simple name across
+    // packages stay qualified instead — see the `com.a` / `com.b` case — so the short form is only
+    // ever used where it is unambiguous.
+    assertThat(emitted.source).contains("@kotlin.OptIn(ExperimentalMaterial3Api::class)")
     assertThat(emitted.source)
-      .contains("@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)")
-    assertThat(emitted.source)
-      .doesNotContain("import androidx.compose.material3.ExperimentalMaterial3Api")
+      .contains("import androidx.compose.material3.ExperimentalMaterial3Api\n")
     assertThat(emitted.requiredOptIns)
       .containsExactly("androidx.compose.material3.ExperimentalMaterial3Api")
   }
@@ -798,7 +865,8 @@ class ScreenGeneratorTest {
     val source =
       emitted(ScreenDocument("Screen", ScreenNode(fancy.canonicalId)), catalog(fancy)).source
 
-    assertThat(source).contains("@kotlin.OptIn(com.`when`.Api::class)")
+    assertThat(source).contains("import com.`when`.Api\n")
+    assertThat(source).contains("@kotlin.OptIn(Api::class)")
   }
 
   @Test
@@ -901,7 +969,7 @@ class ScreenGeneratorTest {
     assertThat(source).doesNotContain("androidx.compose.material3.Text(text = ")
     assertThat(source).contains("import androidx.compose.material3.Text")
     // The container it nests inside is spelled the same way, as it always was.
-    assertThat(source).contains("    Card(")
+    assertThat(source).contains("    Card {")
     assertThat(source).contains("import androidx.compose.material3.Card")
   }
 
@@ -935,7 +1003,7 @@ class ScreenGeneratorTest {
 
     val source = emitted(screen, catalog(optional, text)).source
 
-    assertThat(source).contains("content = {")
+    assertThat(source).contains("Optional {")
     assertThat(source).contains("Text(text = \"Hi\")")
   }
 
@@ -962,9 +1030,9 @@ class ScreenGeneratorTest {
       )
 
     assertThat(emitted(ScreenDocument("A", ScreenNode(nested.canonicalId)), catalog(nested)).source)
-      .contains("@kotlin.OptIn(com.example.Api.Experimental::class)")
+      .contains("@kotlin.OptIn(Experimental::class)")
     assertThat(emitted(ScreenDocument("B", ScreenNode(dollar.canonicalId)), catalog(dollar)).source)
-      .contains("@kotlin.OptIn(com.example.`Api${'$'}Experimental`::class)")
+      .contains("@kotlin.OptIn(`Api${'$'}Experimental`::class)")
   }
 
   @Test
@@ -1143,11 +1211,9 @@ class ScreenGeneratorTest {
     val emitted =
       emitted(ScreenDocument("Screen", ScreenNode(guarded.canonicalId)), catalog(guarded))
 
-    assertThat(emitted.source).contains("@kotlin.OptIn(com.example.KotlinApi::class)")
+    assertThat(emitted.source).contains("@kotlin.OptIn(KotlinApi::class)")
     assertThat(emitted.source)
-      .contains(
-        "@androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalLens::class])"
-      )
+      .contains("@androidx.annotation.OptIn(markerClass = [ExperimentalLens::class])")
     // The AndroidX marker is not also written under `kotlin.OptIn`, which would reject it.
     assertThat(emitted.source).doesNotContain("@kotlin.OptIn(androidx.camera")
     assertThat(emitted.source).doesNotContain("ExperimentalLens::class, ")
@@ -1275,7 +1341,7 @@ class ScreenGeneratorTest {
         )
         .source
 
-    assertThat(source).contains("content = {")
+    assertThat(source).contains("LazyColumn {")
     // One wrapper per child, not one around the lot: `item { a; b }` is a single list entry
     // holding two composables, which is a different screen from the two-row list designed.
     assertThat(source.split("item {")).hasSize(3)

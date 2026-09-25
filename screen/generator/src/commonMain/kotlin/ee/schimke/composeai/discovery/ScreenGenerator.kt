@@ -533,7 +533,9 @@ object ScreenGenerator {
     val conflicts =
       imports
         .groupBy { it.substringAfterLast('.') }
-        .filterValues { it.size > 1 }
+        .filterValues {
+          it.size > 1 && !resolvedByReceiver(it, context.extensionReceivers, context.imports)
+        }
         .toList()
         .sortedBy { it.first }
     if (conflicts.isNotEmpty()) {
@@ -556,10 +558,29 @@ object ScreenGenerator {
         }
       )
     }
+    // A marker is imported when its simple name is free — no other import, no marker from another
+    // package, nothing the file declares — and written qualified otherwise. Deciding it here, after
+    // the conflict check, means an opt-in can never be what makes a screen refuse.
+    val markerNames = (optIns + androidxOptIns).groupBy { it.substringAfterLast('.') }
+    val importedMarkers =
+      (optIns + androidxOptIns)
+        .filter { marker ->
+          val simple = marker.substringAfterLast('.')
+          markerNames.getValue(simple).size == 1 &&
+            imports.none { it.substringAfterLast('.') == simple } &&
+            simple !in context.allocatedNames &&
+            simple !in RESERVED_BY_THE_WRAPPER
+        }
+        .toSet()
+    fun marker(name: String) =
+      if (name in importedMarkers) markerReference(name).substringAfterLast('.')
+      else markerReference(name)
     val source = buildString {
       appendLine("package $packageName")
       appendLine()
-      imports.forEach { appendLine("import $it") }
+      (imports + importedMarkers.map(::markerReference)).distinct().sorted().forEach {
+        appendLine("import $it")
+      }
       appendLine()
       if (optIns.isNotEmpty()) {
         appendLine(
@@ -568,7 +589,7 @@ object ScreenGenerator {
           // rather than merely ugly; the annotation itself because the generated file sits in a
           // package the caller chose, and a package declaring its own `OptIn` would capture the
           // bare name — the AndroidX branch below was already written qualified.
-          optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${markerReference(it)}::class" }
+          optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${marker(it)}::class" }
         )
       }
       if (androidxOptIns.isNotEmpty()) {
@@ -581,7 +602,7 @@ object ScreenGenerator {
             "@androidx.annotation.OptIn(markerClass = [",
             "])",
           ) {
-            "${markerReference(it)}::class"
+            "${marker(it)}::class"
           }
         )
       }
@@ -593,13 +614,11 @@ object ScreenGenerator {
       functionBodies.forEach { function ->
         appendLine()
         if (optIns.isNotEmpty())
-          appendLine(
-            optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${markerReference(it)}::class" }
-          )
+          appendLine(optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${marker(it)}::class" })
         if (androidxOptIns.isNotEmpty())
           appendLine(
             androidxOptIns.joinToString(", ", "@androidx.annotation.OptIn(markerClass = [", "])") {
-              "${markerReference(it)}::class"
+              "${marker(it)}::class"
             }
           )
         appendLine("@Composable")
@@ -620,6 +639,26 @@ object ScreenGenerator {
       }
     }
     return Result.Emitted(source = source, requiredOptIns = optIns + androidxOptIns)
+  }
+
+  /**
+   * Whether a group of same-named imports is extensions that no one call could mean two of: each
+   * called only on receiver types the document states, and no receiver type shared. Anything else —
+   * a classifier in the group, or a link whose receiver type is not known — is the conflict it
+   * looks like.
+   */
+  private fun resolvedByReceiver(
+    group: List<String>,
+    receivers: Map<String, Set<String?>>,
+    ordinary: Set<String>,
+  ): Boolean {
+    // An import also used as an ordinary call or reference — a top-level `padding(…)` component
+    // beside `Modifier.padding` from the same package — is not only an extension, and a receiver
+    // says nothing about which one a bare call means.
+    if (group.any { it in ordinary }) return false
+    val types = group.map { receivers[it] ?: return false }
+    if (types.any { null in it }) return false
+    return types.flatten().size == types.flatten().toSet().size
   }
 
   private fun validateFunctions(document: ScreenDocument, preview: Preview?): List<String> =
@@ -761,6 +800,17 @@ object ScreenGenerator {
      * are unioned before anything is written.
      */
     val extensionImports = mutableSetOf<String>()
+
+    /**
+     * For each extension import, the receiver types it was called on — null where a link's receiver
+     * type is not known, which is any link after the first.
+     *
+     * Two extensions of one simple name are not a conflicting import: Kotlin reports that only for
+     * classifiers, and `import …icons.filled.Star` beside `import …icons.outlined.Star` is ordinary
+     * Compose, resolved per call by the receiver — `Icons.Filled` or `Icons.Outlined`. What does
+     * not compile is a call both apply to, so the check is on receivers, and see [generate].
+     */
+    val extensionReceivers = mutableMapOf<String, MutableSet<String?>>()
     val optIns = mutableSetOf<String>()
     val androidxOptIns = mutableSetOf<String>()
     val reasons = mutableListOf<String>()
@@ -1023,7 +1073,12 @@ object ScreenGenerator {
         return "$pad// unusable: ${node.componentId}"
       }
       val qualified = ComponentSnippets.escapeCallableIfKeyword(record.symbol.callable)
-      if (record.canonicalId in simplyImportable) imports += qualified
+      // A member of an object — `SearchBarDefaults.InputField` — is written through its object, as
+      // it is documented and as a person calls it, and the object is what imports.
+      val owner = record.symbol.callable.substringBeforeLast('.', "")
+      val objectMember = owner.substringAfterLast('.').firstOrNull()?.isUpperCase() == true
+      if (record.canonicalId in simplyImportable)
+        imports += if (objectMember) ComponentSnippets.escapeCallableIfKeyword(owner) else qualified
       markers(code.requiredOptIns, optIns, "`${record.symbol.name}`")
       markers(code.androidxOptIns, androidxOptIns, "`${record.symbol.name}`")
 
@@ -1062,6 +1117,7 @@ object ScreenGenerator {
         }
 
       val arguments = mutableListOf<String>()
+      var trailing: String? = null
       // A handler naming a parameter the component does not declare is refused here rather than
       // silently dropped, exactly as an unknown argument is: a screen whose button does nothing is
       // not the screen that was designed, and it compiles perfectly.
@@ -1143,7 +1199,18 @@ object ScreenGenerator {
               } finally {
                 slotScope = outer
               }
-            arguments += "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
+            // `content` goes after the parentheses, the way Compose is written: `Row(modifier = …)
+            // { … }` rather than `content = { … }` inside them. A trailing lambda binds to the
+            // signature's final parameter, and a record may list only some of a composable's
+            // parameters — the palette's `ListItem` stops at `supportingContent`, which is not
+            // last — so position in the record is not evidence. The name is: the Compose API
+            // guidelines put `content` last precisely so it can trail, and every other slot
+            // stays named.
+            if (parameter.name == "content" && parameter === record.parameters.last())
+              trailing = "{\n$nested\n$pad}"
+            else
+              arguments +=
+                "${ComponentSnippets.escapeIfKeyword(parameter.name)} = {\n$nested\n$pad}"
           }
           // Untouched by the document. A default may be omitted; anything else still has to be
           // filled, and the placeholder table is the same one the call-site generator uses.
@@ -1179,10 +1246,20 @@ object ScreenGenerator {
         }
       }
       val name =
-        if (record.canonicalId in simplyImportable)
-          ComponentSnippets.escapeIfKeyword(record.symbol.name)
-        else qualified
-      return "$pad$name(${arguments.joinToString(", ") { sharedArgument(it) }})"
+        when {
+          record.canonicalId !in simplyImportable -> qualified
+          objectMember ->
+            ComponentSnippets.escapeIfKeyword(owner.substringAfterLast('.')) +
+              "." +
+              ComponentSnippets.escapeIfKeyword(record.symbol.name)
+          else -> ComponentSnippets.escapeIfKeyword(record.symbol.name)
+        }
+      val rendered = arguments.joinToString(", ") { sharedArgument(it) }
+      return when {
+        trailing == null -> "$pad$name($rendered)"
+        rendered.isEmpty() -> "$pad$name $trailing"
+        else -> "$pad$name($rendered) $trailing"
+      }
     }
 
     /**
@@ -1664,7 +1741,8 @@ object ScreenGenerator {
             // Its own spelling, so it fits `Float` and nothing else — a `Double` parameter handed
             // one would compile as `1f` only by widening, which is the coercion this vocabulary
             // exists to avoid.
-            if (type == "kotlin.Float" && value.value.isFinite()) "${value.value}f" else null
+            if (type == "kotlin.Float" && value.value.isFinite()) floatLiteral(value.value)
+            else null
           is ScreenValue.Fractional ->
             when {
               // Neither `NaN` nor `Infinity` is a Kotlin literal, so both would emit source the
@@ -1735,7 +1813,7 @@ object ScreenGenerator {
         // The one nested fraction that is not a `Double`, which is the whole reason this kind
         // exists — see `ScreenValue.Fractional32`.
         is ScreenValue.Fractional32 ->
-          if (value.value.isFinite()) "${value.value}f"
+          if (value.value.isFinite()) floatLiteral(value.value)
           else {
             reasons += "$where is ${value.value}, which is not a Kotlin literal"
             null
@@ -1765,6 +1843,17 @@ object ScreenGenerator {
         }
         is ScreenValue.Construct -> {
           val callable = importedName(value.callableFqn, where) ?: return null
+          val argb = (value.positional.singleOrNull() as? ScreenValue.Whole)?.value
+          // `Color(0xFF1A73E8)`, the ARGB spelling colours are read in, rather than the decimal
+          // `Color(4279923688L)` that means the same bits.
+          if (
+            value.callableFqn == COLOR &&
+              value.named.isEmpty() &&
+              argb != null &&
+              argb in 0..0xFFFFFFFFL
+          ) {
+            return "$callable(0x${argb.toString(16).uppercase().padStart(8, '0')})"
+          }
           val arguments = arguments(value.positional, value.named, where, depth) ?: return null
           "$callable($arguments)"
         }
@@ -1874,6 +1963,9 @@ object ScreenGenerator {
                 return null
               }
               extensionImports += imported
+              extensionReceivers
+                .getOrPut(imported) { mutableSetOf() }
+                .add(value.receiver.typeFqn.takeIf { index == 0 })
               append(".")
               append(ComponentSnippets.escapeIfKeyword(simple))
               if (link.property) {
@@ -2485,6 +2577,20 @@ object ScreenGenerator {
    */
   private fun markerReference(marker: String): String =
     ComponentSnippets.escapeCallableIfKeyword(marker)
+
+  private const val COLOR = "androidx.compose.ui.graphics.Color"
+
+  /** `1f` for a whole float and `0.5f` otherwise, the spelling `weight(1f)` is written in. */
+  private fun floatLiteral(value: Float): String =
+    if (
+      value == value.toInt().toFloat() &&
+        kotlin.math.abs(value) < 1_000_000f &&
+        !value.isNegativeZero()
+    )
+      "${value.toInt()}f"
+    else "${value}f"
+
+  private fun Float.isNegativeZero(): Boolean = this == 0f && 1f / this < 0f
 
   /**
    * The bytes [value] occupies as a JVM constant-pool string.
