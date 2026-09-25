@@ -50,7 +50,9 @@ import okio.openZip
  *
  * The resolver never throws on a missing artifact or a failed download — it returns null and warns,
  * so the caller proceeds with a partial classpath (the bundled renderer's Compose stack covers the
- * common surface).
+ * common surface). A throttled or failing repository (429, 5xx, a dropped connection) is retried
+ * with backoff first, and the warning names what the network last answered, so a rate limit is not
+ * reported in the same words as a coordinate that does not exist.
  */
 public class CoordinateResolver(
   private val repositoryRoots: List<File> = defaultRepositoryRoots(),
@@ -60,6 +62,12 @@ public class CoordinateResolver(
   private val downloadCacheDir: File = defaultDownloadCacheDir(),
   private val fileSystem: FileSystem = SystemFileSystem,
 ) {
+
+  /**
+   * How a retry waits. Replaced in tests so a backoff is asserted rather than slept through;
+   * internal so the public surface stays the constructor it was.
+   */
+  internal var sleeper: (Long) -> Unit = { Thread.sleep(it) }
 
   /** Outcome of resolving one coordinate. [file] is null when nothing was found or downloaded. */
   public data class Resolution(
@@ -101,8 +109,9 @@ public class CoordinateResolver(
     // the
     // network before settling — the whole point of carrying a coordinate is that the bytes can be
     // re-fetched from any source.
+    val fetchFailures = mutableListOf<FetchFailure>()
     if (networkEnabled) {
-      val fetched = download(coord)
+      val fetched = download(coord, fetchFailures)
       if (fetched != null) {
         if (expected == null || sha256Hex(fetched).equals(expected, ignoreCase = true)) {
           return Resolution(
@@ -142,8 +151,10 @@ public class CoordinateResolver(
     }
     warn(
       "could not resolve ${coord.group}:${coord.artifact}:${coord.version} from any local " +
-        "repository${if (networkEnabled) " or remote repository" else ""}; the preview may fail to " +
-        "render if it needs this dependency. Re-pack with --embed-deps for an offline bundle."
+        "repository${if (networkEnabled) " or remote repository" else ""}" +
+        describeFetchFailures(fetchFailures) +
+        "; the preview may fail to render if it needs this dependency. Re-pack with " +
+        "--embed-deps for an offline bundle."
     )
     return Resolution(coord, file = null, verified = false, mismatch = false)
   }
@@ -221,7 +232,10 @@ public class CoordinateResolver(
    * own per-hash bucket, so they replace only an earlier fetch made for the same expected content —
    * never another catalog's copy of the same `-SNAPSHOT` path.
    */
-  private fun download(coord: BundleReader.ClasspathEntry.Maven): File? {
+  private fun download(
+    coord: BundleReader.ClasspathEntry.Maven,
+    failures: MutableList<FetchFailure>,
+  ): File? {
     val versionDir = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}"
     // A coordinate carrying a hash is cached one level deeper, in a bucket named for the sha256 it
     // was fetched to satisfy. `<artifact>-1.0.0-SNAPSHOT.<ext>` is the same literal path for every
@@ -241,7 +255,8 @@ public class CoordinateResolver(
       for (base in remoteRepositories) {
         val remoteName = remoteFileName(base, coord, versionDir, fileName)
         val url = base.trimEnd('/') + "/" + versionDir + "/" + remoteName
-        if (fetchTo(url, dest)) return materialize(dest)
+        val failure = fetchTo(url, dest) ?: return materialize(dest)
+        failures += failure
       }
     }
     return null
@@ -330,12 +345,43 @@ public class CoordinateResolver(
     }
   }
 
-  /** GET [url] → [dest] (parent dirs created); true only on a 2xx with a non-empty body. */
-  private fun fetchTo(url: String, dest: File): Boolean {
+  /**
+   * Why one URL gave no bytes: the status or exception, how many attempts it had, and whether the
+   * cause was the kind that passes (a rate limit, a 5xx, a dropped connection).
+   */
+  internal data class FetchFailure(
+    val url: String,
+    val reason: String,
+    val transient: Boolean,
+    val notFound: Boolean = false,
+    val retryAfterMs: Long? = null,
+    val attempts: Int = 1,
+  )
+
+  /**
+   * GET [url] → [dest] (parent dirs created): null on a 2xx with a non-empty body, else why not.
+   *
+   * A transient failure is retried with backoff, up to [MAX_ATTEMPTS] in all. Maven Central answers
+   * a burst of requests with 429, and a cold classpath of a few dozen jars is such a burst: taken
+   * as final, one throttled jar made a whole catalog's render lane unavailable, and the warning
+   * said only "could not resolve" — the same words as a coordinate that does not exist. A 404 is
+   * not retried; it is an answer.
+   */
+  private fun fetchTo(url: String, dest: File): FetchFailure? {
+    var attempt = 0
+    while (true) {
+      attempt++
+      val failure = fetchOnce(url, dest) ?: return null
+      if (!failure.transient || attempt >= MAX_ATTEMPTS) return failure.copy(attempts = attempt)
+      sleeper(backoffMs(attempt, failure.retryAfterMs))
+    }
+  }
+
+  private fun fetchOnce(url: String, dest: File): FetchFailure? {
     val destPath = dest.path.toPath()
     return try {
       dest.parentFile?.mkdirs()
-      val ok =
+      val failure =
         HttpClient(OkHttp).use { client ->
           runBlocking {
             client.prepareGet(url).execute { response ->
@@ -343,22 +389,36 @@ public class CoordinateResolver(
                 fileSystem.sink(destPath).buffer().use { sink ->
                   response.bodyAsChannel().copyTo(sink.outputStream())
                 }
-                true
+                null
               } else {
-                false
+                val code = response.status.value
+                FetchFailure(
+                  url = url,
+                  reason = "HTTP $code ${response.status.description}".trim(),
+                  transient = code == 429 || code >= 500,
+                  notFound = code == 404 || code == 410,
+                  retryAfterMs = response.headers["Retry-After"]?.let(::retryAfterMs),
+                )
               }
             }
           }
         }
-      if (ok && (fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) {
-        true
-      } else {
-        fileSystem.delete(destPath, mustExist = false)
-        false
+      when {
+        failure != null -> {
+          fileSystem.delete(destPath, mustExist = false)
+          failure
+        }
+        (fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L -> null
+        else -> {
+          fileSystem.delete(destPath, mustExist = false)
+          FetchFailure(url, "an empty body", transient = false)
+        }
       }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
       fileSystem.delete(destPath, mustExist = false)
-      false
+      // Transport errors — a reset, a timeout, a proxy that dropped the tunnel — are the transient
+      // kind by nature.
+      FetchFailure(url, "${e.javaClass.simpleName}: ${e.message ?: "no message"}", transient = true)
     }
   }
 
@@ -381,6 +441,39 @@ public class CoordinateResolver(
      * (AndroidX libs ship `.aar`). De-duplicated, so a `jar`/`aar` coordinate yields one or two
      * names.
      */
+    /** Attempts per URL, the first included. */
+    internal const val MAX_ATTEMPTS: Int = 3
+
+    /** The longest a server's `Retry-After` is honoured for; past it, the retry is not worth it. */
+    internal const val MAX_RETRY_AFTER_MS: Long = 10_000L
+
+    /** 1s, then 2s: short enough that a coordinate which really is gone costs little. */
+    internal fun backoffMs(attempt: Int, retryAfterMs: Long?): Long =
+      retryAfterMs?.coerceIn(0L, MAX_RETRY_AFTER_MS) ?: (1_000L shl (attempt - 1))
+
+    /** `Retry-After` in its delta-seconds form; the HTTP-date form falls back to the backoff. */
+    internal fun retryAfterMs(header: String): Long? =
+      header.trim().toLongOrNull()?.takeIf { it >= 0 }?.times(1_000L)
+
+    /**
+     * The clause the "could not resolve" warning ends with: what the network actually said.
+     *
+     * One failure worth naming — the first that is not a 404, since a throttled or failing mirror
+     * is the one an operator can act on while a 404 from a repository that never carried the
+     * artifact is expected — or, when every repository answered 404, that none of them has it.
+     */
+    internal fun describeFetchFailures(failures: List<FetchFailure>): String {
+      if (failures.isEmpty()) return ""
+      val telling = failures.firstOrNull { !it.notFound }
+      if (telling == null)
+        return " (not found in any of ${failures.map { host(it.url) }.distinct().size} remote repositories)"
+      val tries = if (telling.attempts > 1) " after ${telling.attempts} attempts" else ""
+      return " (${host(telling.url)} answered ${telling.reason}$tries)"
+    }
+
+    private fun host(url: String): String =
+      url.substringAfter("://").substringBefore('/').ifEmpty { url }
+
     private fun candidateFileNames(coord: BundleReader.ClasspathEntry.Maven): List<String> =
       listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
         "${coord.artifact}-${coord.version}.$it"
