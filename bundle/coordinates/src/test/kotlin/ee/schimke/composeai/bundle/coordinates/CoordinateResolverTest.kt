@@ -301,6 +301,97 @@ class CoordinateResolverTest {
     assertTrue(warnings.any { it.contains("could not resolve") && it.contains("remote") })
   }
 
+  /**
+   * A loopback repo that answers the `.jar` path with each of [statuses] in turn (the last one
+   * repeating), serving [body] on a 2xx, and 404s everything else — so a retry is counted on the
+   * one path it is about. Returns the base URL and the per-path request counts.
+   */
+  private fun startScriptedRepo(
+    statuses: List<Int>,
+    body: ByteArray,
+    retryAfter: String? = null,
+  ): Pair<String, MutableMap<String, Int>> {
+    val hits = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    val s = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    s.createContext("/") { exchange ->
+      val path = exchange.requestURI.path
+      val n = hits.merge(path, 1, Int::plus)!!
+      val status = if (path.endsWith(".jar")) statuses[minOf(n, statuses.size) - 1] else 404
+      if (status == 429 && retryAfter != null)
+        exchange.responseHeaders.add("Retry-After", retryAfter)
+      val ok = status in 200..299
+      exchange.sendResponseHeaders(status, if (ok) body.size.toLong() else -1L)
+      exchange.responseBody.use { if (ok) it.write(body) }
+    }
+    s.start()
+    server = s
+    return "http://127.0.0.1:${s.address.port}" to hits
+  }
+
+  private fun jarHits(hits: Map<String, Int>) = hits.filterKeys { it.endsWith(".jar") }.values.sum()
+
+  @Test
+  fun `a throttled download is retried with backoff and then resolves`() {
+    val bytes = byteArrayOf(4, 2, 4, 2)
+    val (base, hits) = startScriptedRepo(listOf(429, 503, 200), bytes)
+    val slept = mutableListOf<Long>()
+    val resolver = networkResolver(base).apply { sleeper = { slept += it } }
+
+    val r = resolver.resolve(maven(sha = sha256(bytes)))
+
+    assertNotNullFile(r.file)
+    assertTrue(r.verified)
+    assertEquals(3, jarHits(hits), "two transient answers, then the jar")
+    assertEquals(listOf(1_000L, 2_000L), slept, "backs off between attempts")
+    assertTrue(warnings.isEmpty(), "a throttle that passed is not worth a warning: $warnings")
+  }
+
+  @Test
+  fun `a server's Retry-After is honoured, within a cap`() {
+    val bytes = byteArrayOf(1, 1)
+    val (base, _) = startScriptedRepo(listOf(429, 200), bytes, retryAfter = "3")
+    val slept = mutableListOf<Long>()
+    networkResolver(base).apply { sleeper = { slept += it } }.resolve(maven(sha = sha256(bytes)))
+    assertEquals(listOf(3_000L), slept)
+
+    assertEquals(CoordinateResolver.MAX_RETRY_AFTER_MS, CoordinateResolver.backoffMs(1, 3_600_000L))
+    assertNull(CoordinateResolver.retryAfterMs("Wed, 21 Oct 2015 07:28:00 GMT"))
+  }
+
+  @Test
+  fun `a throttle that never lifts is named in the warning, with its attempts`() {
+    val (base, hits) = startScriptedRepo(listOf(429), byteArrayOf(1))
+    val resolver = networkResolver(base).apply { sleeper = {} }
+
+    val r = resolver.resolve(maven(sha = "a".repeat(64)))
+
+    assertNull(r.file)
+    assertEquals(CoordinateResolver.MAX_ATTEMPTS, jarHits(hits))
+    val warning = warnings.single { it.contains("could not resolve") }
+    assertTrue(
+      warning.contains("127.0.0.1") &&
+        warning.contains("HTTP 429") &&
+        warning.contains("after ${CoordinateResolver.MAX_ATTEMPTS} attempts"),
+      "the cause an operator can act on, not just 'could not resolve': $warning",
+    )
+  }
+
+  @Test
+  fun `a 404 is an answer, not retried, and says the artifact is nowhere`() {
+    val (base, hits) = startScriptedRepo(listOf(404), byteArrayOf(1))
+    val slept = mutableListOf<Long>()
+    val resolver = networkResolver(base).apply { sleeper = { slept += it } }
+
+    assertNull(resolver.resolve(maven(sha = "a".repeat(64))).file)
+
+    assertEquals(1, jarHits(hits))
+    assertTrue(slept.isEmpty())
+    assertTrue(
+      warnings.single { it.contains("could not resolve") }.contains("not found in any of 1"),
+      "$warnings",
+    )
+  }
+
   @Test
   fun `local hash-match wins without any network call`() {
     // A local match exists; the server would 404 if the resolver wrongly reached for the network.
