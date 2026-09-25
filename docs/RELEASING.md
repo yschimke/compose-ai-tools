@@ -224,6 +224,30 @@ republishing the release.
     needlessly costs quota, while skipping a required version cannot be repaired: Central refuses a
     second upload of the same GAV.
 
+    A shared build input — anything under `build-logic/`, `gradle/`, the wrapper,
+    `settings.gradle.kts` or the root `build.gradle.kts` — can move every artifact, so a change
+    there publishes all of them, with three narrowings (#5576):
+
+    - `build-logic/src/{test,testFixtures,functionalTest,integrationTest}/**` is not a shared input.
+    - An edit to a shared Kotlin file (`build-logic/**/*.kt(s)`, `settings.gradle.kts`, the root
+      `build.gradle.kts`) that only adds, removes or re-indents whole-line `//` comments or blank
+      lines publishes nothing. A trailing comment after code, a block comment, or any file
+      containing a raw `"""` string counts as a real change.
+    - A change to `gradle/libs.versions.toml` publishes only the modules whose build scripts use a
+      changed entry, then their dependents. The plan diffs the catalog at each baseline tag: a
+      changed version ref moves every library and plugin that uses it, and a changed library moves
+      every bundle that contains it. A module uses an entry if its `*.gradle.kts` names the accessor
+      (`libs.foo.bar`, `libs.plugins.…`, `libs.bundles.…`, `libs.versions.…`) or the alias as a
+      string (`findLibrary("foo-bar")`). If a changed entry is used by `build-logic/`, `settings`
+      or the root build — where it can reach every module, as the contracts and daemon BOMs do —
+      or the catalog cannot be parsed, or it has a section the plan does not model, everything
+      publishes.
+
+    The wrapper, `gradle/` files other than the catalog, and code changes under
+    `build-logic/src/main` still publish everything. The root build's release-only tooling
+    (`printPublishTasks`) and its CI-only `rcplayers` vendoring are not exempted yet, so an edit to
+    either, or an `rcplayers` bump, still publishes the full set.
+
     A release where no published module changed republishes none. Its CLI carries the last published
     plugin coordinate, so auto-inject, `init-script`, and `doctor` never request a tag that Central
     did not receive. (The `data/*` modules publish from compose-preview-daemon since #5336.)

@@ -1057,11 +1057,13 @@ jobs:
       # stays stuck. Both directions are pinned against a stubbed GitHub.
       - name: Run stranded release sweeper tests
         run: ./.github/scripts/test-sweep-stranded-releases.sh
-      # The Maven publish guard decides whether a release publishes to Central at all. A wrong
-      # `false` is unrepairable — Central will not accept a version twice, so the version simply
-      # never exists and the plugin coordinate consumers resolve 404s. Every fail-open path is
-      # pinned here, along with the module enumeration: if that ever stops matching, the guard
-      # narrows to the shared build inputs and starts answering `false` for real changes.
+      # The Maven publish plan decides which modules a release uploads to Central. A wrongly
+      # skipped module is unrepairable — Central will not accept a version twice, so its POM
+      # change simply never ships — and a needlessly full plan burns quota. The narrowed
+      # shared-input rules (catalog consumers, build-logic tests, comment-only edits) and every
+      # fail-open path are pinned against a fixture repository (#5576).
+      - name: Run Maven publish plan tests
+        run: ./.github/scripts/test-maven-publish-plan.sh
       # Workflow YAML that PyYAML accepts and GitHub Actions rejects. `safe_load` silently keeps
       # the last of a duplicated key; Actions refuses the file — and the refusal surfaces as a run
       # with ZERO jobs and no logs, on the calling workflow, which is close to undiagnosable from
