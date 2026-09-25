@@ -172,6 +172,11 @@ check build_logic_test_only ""
 change_build_logic_main() { echo 'val x = 1' >> build-logic/src/main/kotlin/Conventions.kt; }
 check build_logic_main "${ALL}"
 
+# A build-logic main source moved into a test directory is still a main-source change: rename
+# detection would report only the (test-only) destination and exempt it.
+change_build_logic_main_moved_to_test() { git mv build-logic/src/main/kotlin/Conventions.kt build-logic/src/test/kotlin/Conventions.kt; }
+check build_logic_main_moved_to_test "${ALL}"
+
 # A comment edit in build-logic main is comment-only.
 change_build_logic_comment() { sed -i 's|// Reads the Kotlin version off the catalog.|// Reads it.|' build-logic/src/main/kotlin/Conventions.kt; }
 check build_logic_comment ""

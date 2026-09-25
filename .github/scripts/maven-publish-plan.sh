@@ -332,7 +332,7 @@ def changed_since(version, directory):
                       capture_output=True).returncode != 0:
         print(f"  {directory}: no tag {tag}; publishing", file=sys.stderr)
         return True
-    out = git("diff", "--name-only", f"{tag}..{head}", "--", directory)
+    out = git("diff", "--no-renames", "--name-only", f"{tag}..{head}", "--", directory)
     return bool(out.strip())
 
 shared_changed = False
@@ -343,7 +343,7 @@ for version in sorted(set(recorded.values())):
                       capture_output=True).returncode != 0:
         shared_changed = True
         break
-    files = [f for f in git("diff", "--name-only", f"{tag}..{head}").split("\n") if f]
+    files = [f for f in git("diff", "--no-renames", "--name-only", f"{tag}..{head}").split("\n") if f]
     shared_changed, pats = shared_verdict(tag, files)
     if shared_changed:
         break
