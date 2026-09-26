@@ -79,6 +79,9 @@ object PreviewTargetInference {
       "androidx.wear.compose.material3.",
       "androidx.wear.compose.material.",
       "androidx.wear.compose.remote.material3.",
+      // Glimmer is AndroidX's glasses design system. Its catalog stickers are the same shape as
+      // the Material and Wear catalogs above: project wrapper -> real library component.
+      "androidx.xr.glimmer.",
     )
 
   // Theme entry points inside the component libraries. They pass every other test here — real
@@ -103,6 +106,7 @@ object PreviewTargetInference {
       // line the same way the four above did: 60 of remote-catalog's previews reported
       // `RemoteMaterialTheme` as their component before it was listed.
       "androidx.wear.compose.remote.material3.RemoteMaterialThemeKt.RemoteMaterialTheme",
+      "androidx.xr.glimmer.GlimmerThemeKt.GlimmerTheme",
     )
 
   // Stdlib / JVM / Kotlin-runtime owners. Filtered explicitly so we never attempt to look

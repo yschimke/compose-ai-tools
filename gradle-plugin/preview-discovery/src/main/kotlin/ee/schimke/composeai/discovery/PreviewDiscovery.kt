@@ -503,7 +503,7 @@ object PreviewDiscovery {
    * keeps the scan proportional to the previews rather than to the app.
    */
   private val PREVIEW_RELEVANT_TOKENS =
-    listOf("preview", "tooling", "compose", "remote-material", "annotation")
+    listOf("preview", "tooling", "compose", "remote-material", "glimmer", "annotation")
 
   /** Whether [subject] — a coordinate, or a path standing in for one — names such a dependency. */
   internal fun isPreviewRelevant(subject: String): Boolean {
