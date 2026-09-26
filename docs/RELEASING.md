@@ -485,8 +485,9 @@ tar xzf compose-preview.tar.gz
 
 ### MCP server (standalone)
 
-The CLI command `compose-preview mcp serve` downloads the newest compatible MCP
-distribution on first use. The archive is published by
+The CLI command `compose-preview mcp serve` downloads the newest published MCP
+distribution on first use. Set `COMPOSE_PREVIEW_SERVER_VERSION` to pin a
+specific release when needed. The archive is published by
 [`yschimke/compose-preview-server`](https://github.com/yschimke/compose-preview-server/releases),
 not by this repository. Consumers that need the standalone binary can download
 `compose-preview-mcp-<server-version>.tar.gz` from that releases page. The server

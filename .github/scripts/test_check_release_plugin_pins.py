@@ -114,6 +114,21 @@ class ReleasePluginPinsTest(unittest.TestCase):
             )
             self.assertEqual([], MODULE.validate(root))
 
+    def test_rejects_mcp_compatibility_filter_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.write_fixture(root)
+            path = root / "docs/RELEASING.md"
+            path.write_text(
+                path.read_text() + "Downloads the newest compatible MCP distribution.\n",
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "docs/RELEASING.md: the MCP launcher selects the newest published release, "
+                "not the newest compatible release",
+                MODULE.validate(root),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

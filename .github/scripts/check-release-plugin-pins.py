@@ -25,6 +25,7 @@ PIN_SITES = {
 MOVED_MCP_ASSET_URL = re.compile(
     r"https://github\.com/yschimke/compose-ai-tools/releases/[^\s)]*compose-preview-mcp-"
 )
+MISLEADING_MCP_COMPATIBILITY = re.compile(r"newest\s+compatible\s+MCP", re.IGNORECASE)
 
 
 def inside_release_please_marker(text: str, offset: int) -> bool:
@@ -74,6 +75,11 @@ def validate(root: pathlib.Path) -> list[str]:
         errors.append(
             "docs/RELEASING.md: standalone MCP archives are published by "
             "compose-preview-server, not compose-ai-tools"
+        )
+    if MISLEADING_MCP_COMPATIBILITY.search(release_text):
+        errors.append(
+            "docs/RELEASING.md: the MCP launcher selects the newest published release, "
+            "not the newest compatible release"
         )
     return errors
 
