@@ -239,6 +239,26 @@ class AgentMcpConfigTest {
   }
 
   @Test
+  fun `opencode config resolution is lazy when installation is disabled`() {
+    var defaultResolved = false
+    assertNull(
+      McpCommand.selectOpenCodeConfig(null, installOpenCode = false) {
+        defaultResolved = true
+        error("no absolute OpenCode config home")
+      }
+    )
+    assertFalse(defaultResolved, "disabled OpenCode must not require a default config home")
+
+    val explicit = File("/explicit/opencode.json")
+    assertEquals(
+      explicit,
+      McpCommand.selectOpenCodeConfig(explicit, installOpenCode = false) {
+        error("explicit config should win")
+      },
+    )
+  }
+
+  @Test
   fun `plugin hints are selected by detected host and can be disabled`() {
     val hints = AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = true)
     assertEquals(listOf("claude", "claude", "codex", "codex"), hints.map { it.host })

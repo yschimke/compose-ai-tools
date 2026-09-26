@@ -331,8 +331,12 @@ internal class McpCommand(
         args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
       val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
       val openCodeConfig =
-        args.flagValue("--opencode-config")?.let(::File)
-          ?: defaultOpenCodeConfig(projectDir, openCodeScope)
+        selectOpenCodeConfig(
+          explicitConfig = args.flagValue("--opencode-config")?.let(::File),
+          installOpenCode = installOpenCode,
+        ) {
+          defaultOpenCodeConfig(projectDir, openCodeScope)
+        }
       val pluginHints =
         AgentMcpConfig.pluginInstallHints(
           buildSet {
@@ -364,14 +368,13 @@ internal class McpCommand(
             .getOrElse { e -> HostResult("codex", false, codexConfig.absolutePath, e.message) }
       }
       if (installOpenCode) {
+        val config = checkNotNull(openCodeConfig)
         results +=
           runCatching {
-            writeOpenCodeConfig(openCodeConfig, launcher, projectDir)
-            HostResult("opencode", true, openCodeConfig.absolutePath, null)
+            writeOpenCodeConfig(config, launcher, projectDir)
+            HostResult("opencode", true, config.absolutePath, null)
           }
-            .getOrElse { e ->
-              HostResult("opencode", false, openCodeConfig.absolutePath, e.message)
-            }
+            .getOrElse { e -> HostResult("opencode", false, config.absolutePath, e.message) }
       }
       if (installClaude) {
         val claudeOnPath = locateOnPath("claude") != null
@@ -398,7 +401,7 @@ internal class McpCommand(
           put("antigravityInstalled", JsonPrimitive(installAntigravity))
           put("codexConfig", JsonPrimitive(codexConfig.absolutePath))
           put("codexInstalled", JsonPrimitive(installCodex))
-          put("opencodeConfig", JsonPrimitive(openCodeConfig.absolutePath))
+          openCodeConfig?.let { put("opencodeConfig", JsonPrimitive(it.absolutePath)) }
           put("opencodeInstalled", JsonPrimitive(installOpenCode))
           put("claudeInstalled", JsonPrimitive(installClaude))
           put(
@@ -835,6 +838,12 @@ internal class McpCommand(
       val jsonc = File(directory, "opencode.jsonc")
       return if (jsonc.isFile) jsonc else File(directory, "opencode.json")
     }
+
+    internal fun selectOpenCodeConfig(
+      explicitConfig: File?,
+      installOpenCode: Boolean,
+      defaultConfig: () -> File,
+    ): File? = explicitConfig ?: if (installOpenCode) defaultConfig() else null
 
     private val VALUE_FLAGS =
       setOf(
