@@ -640,8 +640,12 @@ internal class McpCommand(
     File(System.getProperty("user.home"), ".codex/config.toml")
 
   private fun defaultOpenCodeConfig(projectDir: File, scope: String): File =
-    if (scope == "project") File(projectDir, "opencode.json")
-    else File(System.getProperty("user.home"), ".config/opencode/opencode.json")
+    openCodeConfigFile(
+      userHome = File(System.getProperty("user.home")),
+      xdgConfigHome = System.getenv("XDG_CONFIG_HOME"),
+      projectDir = projectDir,
+      scope = scope,
+    )
 
   private fun isAntigravityEnvironment(): Boolean =
     System.getenv("__CFBundleIdentifier") == "com.google.antigravity" ||
@@ -657,7 +661,12 @@ internal class McpCommand(
   private fun isOpenCodeEnvironment(): Boolean =
     isOpenCodeDetected(
       executableOnPath = locateOnPath("opencode") != null,
-      configDirectoryExists = File(System.getProperty("user.home"), ".config/opencode").isDirectory,
+      configDirectoryExists =
+        openCodeConfigDirectory(
+            File(System.getProperty("user.home")),
+            System.getenv("XDG_CONFIG_HOME"),
+          )
+          .isDirectory,
       environmentValue = System.getenv("OPENCODE"),
     )
 
@@ -791,6 +800,24 @@ internal class McpCommand(
       configDirectoryExists: Boolean,
       environmentValue: String?,
     ): Boolean = executableOnPath || configDirectoryExists || environmentValue == "1"
+
+    internal fun openCodeConfigDirectory(userHome: File, xdgConfigHome: String?): File {
+      val configHome =
+        xdgConfigHome?.takeIf { it.isNotBlank() }?.let(::File) ?: File(userHome, ".config")
+      return File(configHome, "opencode")
+    }
+
+    internal fun openCodeConfigFile(
+      userHome: File,
+      xdgConfigHome: String?,
+      projectDir: File,
+      scope: String,
+    ): File {
+      val directory =
+        if (scope == "project") projectDir else openCodeConfigDirectory(userHome, xdgConfigHome)
+      val jsonc = File(directory, "opencode.jsonc")
+      return if (jsonc.isFile) jsonc else File(directory, "opencode.json")
+    }
 
     private val VALUE_FLAGS =
       setOf(

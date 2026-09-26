@@ -71,7 +71,8 @@ For the full tool surface, URI scheme, and wire protocol see
 ### Register the local server with OpenCode
 
 OpenCode v2 stores local MCP servers under `mcp.servers`. Register the current
-project in the user config (`~/.config/opencode/opencode.json`):
+project in the user config (`$XDG_CONFIG_HOME/opencode/opencode.json` when set,
+otherwise `~/.config/opencode/opencode.json`):
 
 ```sh
 compose-preview mcp install --opencode
@@ -105,6 +106,10 @@ upserting this current-v2 shape:
   }
 }
 ```
+
+If `opencode.jsonc` already exists at the selected user or project scope, the
+CLI selects that existing file and takes the manual-merge path rather than
+creating a competing `opencode.json`.
 
 The older direct `mcp.compose-preview-mcp` shape and `enabled: true` are not
 OpenCode v2 configuration. If the target is `.jsonc` or contains comments,

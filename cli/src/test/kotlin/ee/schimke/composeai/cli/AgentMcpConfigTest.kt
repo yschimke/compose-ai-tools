@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import java.io.File
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -182,6 +184,45 @@ class AgentMcpConfigTest {
     assertTrue(McpCommand.isOpenCodeDetected(false, false, "1"))
     assertFalse(McpCommand.isOpenCodeDetected(false, false, "true"))
     assertFalse(McpCommand.isOpenCodeDetected(false, false, null))
+  }
+
+  @Test
+  fun `opencode config directory honors XDG config home`() {
+    assertEquals(
+      File("/custom/config/opencode"),
+      McpCommand.openCodeConfigDirectory(File("/home/test"), "/custom/config"),
+    )
+    assertEquals(
+      File("/home/test/.config/opencode"),
+      McpCommand.openCodeConfigDirectory(File("/home/test"), null),
+    )
+  }
+
+  @Test
+  fun `opencode config target reuses existing jsonc at either scope`() {
+    val root = Files.createTempDirectory("opencode-config-test").toFile()
+    try {
+      val userHome = File(root, "home")
+      val xdgHome = File(root, "xdg")
+      val globalJsonc = File(xdgHome, "opencode/opencode.jsonc")
+      globalJsonc.parentFile.mkdirs()
+      globalJsonc.writeText("{}")
+      val project = File(root, "project")
+      project.mkdirs()
+      val projectJsonc = File(project, "opencode.jsonc")
+      projectJsonc.writeText("{}")
+
+      assertEquals(
+        globalJsonc,
+        McpCommand.openCodeConfigFile(userHome, xdgHome.path, project, "user"),
+      )
+      assertEquals(
+        projectJsonc,
+        McpCommand.openCodeConfigFile(userHome, xdgHome.path, project, "project"),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
   }
 
   @Test
