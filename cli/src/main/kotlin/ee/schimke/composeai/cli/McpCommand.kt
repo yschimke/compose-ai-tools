@@ -808,9 +808,12 @@ internal class McpCommand(
       homeEnvironment: String?,
       xdgConfigHome: String?,
     ): File {
-      val home = homeEnvironment?.takeIf { it.isNotBlank() }?.let(::File) ?: userHome
+      val home =
+        homeEnvironment?.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isAbsolute }
+          ?: userHome
       val configHome =
-        xdgConfigHome?.takeIf { it.isNotBlank() }?.let(::File) ?: File(home, ".config")
+        xdgConfigHome?.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isAbsolute }
+          ?: File(home, ".config")
       return File(configHome, "opencode")
     }
 

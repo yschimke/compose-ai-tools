@@ -200,6 +200,14 @@ class AgentMcpConfigTest {
       File("/home/test/.config/opencode"),
       McpCommand.openCodeConfigDirectory(File("/home/test"), null, null),
     )
+    assertEquals(
+      File("/runtime/home/.config/opencode"),
+      McpCommand.openCodeConfigDirectory(File("/account/home"), "/runtime/home", "."),
+    )
+    assertEquals(
+      File("/account/home/.config/opencode"),
+      McpCommand.openCodeConfigDirectory(File("/account/home"), "relative-home", null),
+    )
   }
 
   @Test
