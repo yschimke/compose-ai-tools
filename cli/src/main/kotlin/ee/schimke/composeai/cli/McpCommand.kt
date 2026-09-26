@@ -127,12 +127,21 @@ internal class McpCommand(
                              exists.
         --codex-config <path>
                              Override the Codex config path (default ~/.codex/config.toml).
+        --opencode / --no-opencode
+                             Merge a local server into OpenCode v2's mcp.servers config.
+                             Detected when `opencode` is on PATH, ~/.config/opencode/ exists,
+                             or OPENCODE=1.
+        --opencode-config <path>
+                             Override the OpenCode config path.
+        --scope <user|project>
+                             OpenCode config scope (default user). Project writes ./opencode.json.
         --antigravity / --no-antigravity
                              Merge into Antigravity's mcp_config.json. Detected via
                              __CFBundleIdentifier=com.google.antigravity, ANTIGRAVITY_CLI_ALIAS,
                              or ~/.gemini/antigravity/.
         --antigravity-config <path>
                              Override the Antigravity config path.
+        --no-plugin-hint     Do not print plugin installation commands for detected harnesses.
 
       See https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/mcp.md for the full agent flow.
       """
@@ -201,14 +210,21 @@ internal class McpCommand(
     val antigravityDetected = isAntigravityEnvironment()
     val claudeDetected = isClaudeEnvironment()
     val codexDetected = isCodexEnvironment()
+    val openCodeDetected = isOpenCodeEnvironment()
 
     // Per-host: default to "on if detected", opt-in via --<host>, opt-out via --no-<host>.
     val installAntigravity =
       "--no-antigravity" !in args && ("--antigravity" in args || antigravityDetected)
     val installClaude = "--no-claude" !in args && ("--claude" in args || claudeDetected)
     val installCodex = "--no-codex" !in args && ("--codex" in args || codexDetected)
+    val installOpenCode = "--no-opencode" !in args && ("--opencode" in args || openCodeDetected)
 
     val projectDir = resolveProjectDir(args)
+    val openCodeScope = args.flagValue("--scope") ?: "user"
+    if (openCodeScope !in setOf("user", "project")) {
+      System.err.println("compose-preview mcp install: --scope must be user or project")
+      exitProcess(2)
+    }
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
@@ -293,7 +309,8 @@ internal class McpCommand(
 
       // CLAUDE_CLOUD users need an absolute path because `~/.claude/skills/.../bin/compose-preview`
       // is the canonical launcher; we don't know how `compose-preview` is on the consumer's PATH.
-      val needAbsoluteLauncher = installAntigravity || installCodex || installClaude
+      val needAbsoluteLauncher =
+        installAntigravity || installCodex || installClaude || installOpenCode
       val launcher =
         locateHostLauncher()
           ?: if (needAbsoluteLauncher) {
@@ -313,6 +330,18 @@ internal class McpCommand(
       val antigravityConfig =
         args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
       val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
+      val openCodeConfig =
+        args.flagValue("--opencode-config")?.let(::File)
+          ?: defaultOpenCodeConfig(projectDir, openCodeScope)
+      val pluginHints =
+        AgentMcpConfig.pluginInstallHints(
+          buildSet {
+            if (antigravityDetected) add("antigravity")
+            if (claudeDetected) add("claude")
+            if (codexDetected) add("codex")
+          },
+          enabled = "--no-plugin-hint" !in args,
+        )
 
       val results = mutableListOf<HostResult>()
 
@@ -333,6 +362,16 @@ internal class McpCommand(
             HostResult("codex", true, codexConfig.absolutePath, null)
           }
             .getOrElse { e -> HostResult("codex", false, codexConfig.absolutePath, e.message) }
+      }
+      if (installOpenCode) {
+        results +=
+          runCatching {
+            writeOpenCodeConfig(openCodeConfig, launcher, projectDir)
+            HostResult("opencode", true, openCodeConfig.absolutePath, null)
+          }
+            .getOrElse { e ->
+              HostResult("opencode", false, openCodeConfig.absolutePath, e.message)
+            }
       }
       if (installClaude) {
         val claudeOnPath = locateOnPath("claude") != null
@@ -359,7 +398,20 @@ internal class McpCommand(
           put("antigravityInstalled", JsonPrimitive(installAntigravity))
           put("codexConfig", JsonPrimitive(codexConfig.absolutePath))
           put("codexInstalled", JsonPrimitive(installCodex))
+          put("opencodeConfig", JsonPrimitive(openCodeConfig.absolutePath))
+          put("opencodeInstalled", JsonPrimitive(installOpenCode))
           put("claudeInstalled", JsonPrimitive(installClaude))
+          put(
+            "pluginHints",
+            kotlinx.serialization.json.JsonArray(
+              pluginHints.map {
+                buildJsonObject {
+                  put("host", JsonPrimitive(it.host))
+                  put("command", JsonPrimitive(it.command))
+                }
+              }
+            ),
+          )
           put(
             "hosts",
             kotlinx.serialization.json.JsonArray(
@@ -409,6 +461,16 @@ internal class McpCommand(
             System.err.println()
             System.err.println("To attach Claude Code manually, run:")
             println(claudeMcpAdd)
+          }
+        }
+        if (pluginHints.isNotEmpty()) {
+          System.err.println()
+          System.err.println(
+            "Detected harness plugins also provide skills and hooks. Install the wiring plugin:"
+          )
+          pluginHints.forEach { hint ->
+            System.err.println("    ${hint.host}:")
+            println(hint.command)
           }
         }
       }
@@ -575,6 +637,10 @@ internal class McpCommand(
   private fun defaultCodexConfig(): File =
     File(System.getProperty("user.home"), ".codex/config.toml")
 
+  private fun defaultOpenCodeConfig(projectDir: File, scope: String): File =
+    if (scope == "project") File(projectDir, "opencode.json")
+    else File(System.getProperty("user.home"), ".config/opencode/opencode.json")
+
   private fun isAntigravityEnvironment(): Boolean =
     System.getenv("__CFBundleIdentifier") == "com.google.antigravity" ||
       !System.getenv("ANTIGRAVITY_CLI_ALIAS").isNullOrBlank() ||
@@ -585,6 +651,13 @@ internal class McpCommand(
 
   private fun isCodexEnvironment(): Boolean =
     locateOnPath("codex") != null || File(System.getProperty("user.home"), ".codex").isDirectory
+
+  private fun isOpenCodeEnvironment(): Boolean =
+    isOpenCodeDetected(
+      executableOnPath = locateOnPath("opencode") != null,
+      configDirectoryExists = File(System.getProperty("user.home"), ".config/opencode").isDirectory,
+      environmentValue = System.getenv("OPENCODE"),
+    )
 
   private fun writeAntigravityConfig(file: File, launcher: String, projectDir: File) {
     val existing =
@@ -619,6 +692,35 @@ internal class McpCommand(
         }
       } else null
     val merged = AgentMcpConfig.mergeCodexConfig(existing, launcher, projectDir.absolutePath)
+    file.parentFile?.mkdirs()
+    fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
+  }
+
+  private fun writeOpenCodeConfig(file: File, launcher: String, projectDir: File) {
+    val existing =
+      if (file.isFile) {
+        try {
+          fileSystem.read(file.path.toPath()) { readUtf8() }
+        } catch (e: Exception) {
+          throw IllegalStateException(
+            "OpenCode config unreadable: ${file.absolutePath}: ${e.message}"
+          )
+        }
+      } else null
+    AgentMcpConfig.openCodeRewriteRefusal(file.name, existing)?.let { reason ->
+      val snippet = AgentMcpConfig.openCodeConfigSnippet(launcher, projectDir.absolutePath)
+      throw IllegalStateException(
+        "$reason; refusing to rewrite ${file.absolutePath}. Merge this snippet manually:\n$snippet"
+      )
+    }
+    val merged =
+      try {
+        AgentMcpConfig.mergeOpenCodeConfig(existing, launcher, projectDir.absolutePath)
+      } catch (e: Exception) {
+        throw IllegalStateException(
+          "OpenCode config is not valid JSON: ${file.absolutePath}: ${e.message}"
+        )
+      }
     file.parentFile?.mkdirs()
     fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
   }
@@ -682,6 +784,12 @@ internal class McpCommand(
       }
     }
 
+    internal fun isOpenCodeDetected(
+      executableOnPath: Boolean,
+      configDirectoryExists: Boolean,
+      environmentValue: String?,
+    ): Boolean = executableOnPath || configDirectoryExists || environmentValue == "1"
+
     private val VALUE_FLAGS =
       setOf(
         "--project",
@@ -691,6 +799,8 @@ internal class McpCommand(
         "--ui-builder-actor",
         "--antigravity-config",
         "--codex-config",
+        "--opencode-config",
+        "--scope",
       )
 
     private fun parseSubcommand(args: List<String>): Pair<String, List<String>> {

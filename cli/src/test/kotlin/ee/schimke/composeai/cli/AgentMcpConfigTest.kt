@@ -3,7 +3,13 @@ package ee.schimke.composeai.cli
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The Codex writer hand-rolls a section-level TOML edit (no TOML library on the classpath), so
@@ -99,6 +105,89 @@ class AgentMcpConfigTest {
     assertTrue(out.contains("\"other-mcp\""), "sibling preserved:\n$out")
     assertTrue(out.contains("\"compose-preview-mcp\""), "ours added:\n$out")
     assertTrue(out.contains("\"theme\""), "top-level keys preserved:\n$out")
+  }
+
+  @Test
+  fun `opencode empty file uses the v2 servers shape`() {
+    val root = Json.parseToJsonElement(AgentMcpConfig.mergeOpenCodeConfig(null, launcher, project))
+    val server =
+      root.jsonObject["mcp"]!!
+        .jsonObject["servers"]!!
+        .jsonObject["compose-preview-mcp"]!!
+        .jsonObject
+    assertEquals("local", server["type"]!!.jsonPrimitive.content)
+    assertEquals(
+      listOf(launcher, "mcp", "serve", "--project=$project"),
+      server["command"]!!.jsonArray.map { it.jsonPrimitive.content },
+    )
+    assertFalse(server["codemode"]!!.jsonPrimitive.boolean)
+    assertFalse("enabled" in server, "OpenCode v2 uses disabled/codemode rather than enabled")
+  }
+
+  @Test
+  fun `opencode preserves top level mcp and sibling server keys`() {
+    val existing =
+      """{"theme":"dark","mcp":{"timeout":9000,"servers":{"other":{"type":"remote","url":"https://example.test/mcp"}}}}"""
+    val root =
+      Json.parseToJsonElement(AgentMcpConfig.mergeOpenCodeConfig(existing, launcher, project))
+        .jsonObject
+    assertEquals("dark", root["theme"]!!.jsonPrimitive.content)
+    assertEquals(9000, root["mcp"]!!.jsonObject["timeout"]!!.jsonPrimitive.content.toInt())
+    assertTrue("other" in root["mcp"]!!.jsonObject["servers"]!!.jsonObject)
+    assertTrue("compose-preview-mcp" in root["mcp"]!!.jsonObject["servers"]!!.jsonObject)
+  }
+
+  @Test
+  fun `opencode upserts an existing server`() {
+    val existing =
+      """{"mcp":{"servers":{"compose-preview-mcp":{"type":"local","command":["old"]}}}}"""
+    val out = AgentMcpConfig.mergeOpenCodeConfig(existing, launcher, project)
+    val servers =
+      Json.parseToJsonElement(out).jsonObject["mcp"]!!.jsonObject["servers"]!!.jsonObject
+    assertEquals(setOf("compose-preview-mcp"), servers.keys)
+    assertFalse(out.contains("old"), "old entry replaced:\n$out")
+    assertTrue(out.contains(launcher), "new launcher present:\n$out")
+  }
+
+  @Test
+  fun `opencode refuses jsonc and commented json without mistaking strings for comments`() {
+    assertEquals(
+      "OpenCode config uses JSONC",
+      AgentMcpConfig.openCodeRewriteRefusal("opencode.jsonc", "{}"),
+    )
+    assertEquals(
+      "OpenCode config contains comments",
+      AgentMcpConfig.openCodeRewriteRefusal("opencode.json", "{\n// keep this\n}"),
+    )
+    assertEquals(
+      "OpenCode config contains comments",
+      AgentMcpConfig.openCodeRewriteRefusal("opencode.json", "{/* keep this */}"),
+    )
+    assertNull(
+      AgentMcpConfig.openCodeRewriteRefusal(
+        "opencode.json",
+        """{"url":"https://example.test/mcp","note":"not /* a comment */"}""",
+      )
+    )
+  }
+
+  @Test
+  fun `opencode detection accepts each documented signal`() {
+    assertTrue(McpCommand.isOpenCodeDetected(true, false, null))
+    assertTrue(McpCommand.isOpenCodeDetected(false, true, null))
+    assertTrue(McpCommand.isOpenCodeDetected(false, false, "1"))
+    assertFalse(McpCommand.isOpenCodeDetected(false, false, "true"))
+    assertFalse(McpCommand.isOpenCodeDetected(false, false, null))
+  }
+
+  @Test
+  fun `plugin hints are selected by detected host and can be disabled`() {
+    val hints = AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = true)
+    assertEquals(listOf("claude", "claude", "codex"), hints.map { it.host })
+    assertTrue(hints.all { "compose-ag-plugin" in it.command })
+    assertTrue(
+      AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = false).isEmpty()
+    )
   }
 
   @Test

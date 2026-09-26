@@ -68,6 +68,52 @@ long-running calls. Data products are read via `list_data_products`,
 For the full tool surface, URI scheme, and wire protocol see
 [`docs/daemon/MCP.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md).
 
+### Register the local server with OpenCode
+
+OpenCode v2 stores local MCP servers under `mcp.servers`. Register the current
+project in the user config (`~/.config/opencode/opencode.json`):
+
+```sh
+compose-preview mcp install --opencode
+```
+
+Use a project-local `opencode.json` instead, or name an explicit config file:
+
+```sh
+compose-preview mcp install --opencode --scope project
+compose-preview mcp install --opencode --opencode-config /path/to/opencode.json
+```
+
+The command preserves existing top-level, `mcp`, and sibling server keys while
+upserting this current-v2 shape:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "compose-preview-mcp": {
+        "type": "local",
+        "command": [
+          "/absolute/path/to/compose-preview",
+          "mcp",
+          "serve",
+          "--project=/absolute/path/to/project"
+        ],
+        "codemode": false
+      }
+    }
+  }
+}
+```
+
+The older direct `mcp.compose-preview-mcp` shape and `enabled: true` are not
+OpenCode v2 configuration. If the target is `.jsonc` or contains comments,
+the CLI does not rewrite it because that would discard comments; it prints the
+v2 snippet and the exact file to merge manually. Restart OpenCode and run
+`opencode mcp list` to verify the connection. OpenCode skill installation is
+covered in the
+[cross-harness guide](https://github.com/yschimke/compose-ag-plugin/blob/main/docs/opencode.md).
+
 ### Connect a remote UI-builder session
 
 The native MCP profile can expose eight additional tools backed by the same
