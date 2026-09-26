@@ -435,7 +435,11 @@ version you pin in your checkout (version-catalog `[plugins]` entry or a literal
 version, so the CLI and plugin can't skew — declare the plugin version once and
 the CLI follows it for free:
 
-<!-- x-release-please-start-version -->
+<!--
+  This pin follows the last compose-preview-plugin version actually published to Maven Central.
+  Keep it outside release-please's version markers: CLI-only releases intentionally retain the
+  preceding plugin line.
+-->
 ```toml
 # gradle/libs.versions.toml
 [versions]
@@ -444,7 +448,6 @@ composePreviewPlugin = "2.27.0"
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }
 ```
-<!-- x-release-please-end -->
 
 > The `version.ref` is the plugin's own version key; `auto` reads it directly
 > off the `[plugins]` entry — no `catalog-key` needed.
