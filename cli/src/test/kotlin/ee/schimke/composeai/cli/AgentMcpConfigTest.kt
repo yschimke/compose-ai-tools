@@ -190,11 +190,15 @@ class AgentMcpConfigTest {
   fun `opencode config directory honors XDG config home`() {
     assertEquals(
       File("/custom/config/opencode"),
-      McpCommand.openCodeConfigDirectory(File("/home/test"), "/custom/config"),
+      McpCommand.openCodeConfigDirectory(File("/account/home"), "/runtime/home", "/custom/config"),
+    )
+    assertEquals(
+      File("/runtime/home/.config/opencode"),
+      McpCommand.openCodeConfigDirectory(File("/account/home"), "/runtime/home", null),
     )
     assertEquals(
       File("/home/test/.config/opencode"),
-      McpCommand.openCodeConfigDirectory(File("/home/test"), null),
+      McpCommand.openCodeConfigDirectory(File("/home/test"), null, null),
     )
   }
 
@@ -214,11 +218,11 @@ class AgentMcpConfigTest {
 
       assertEquals(
         globalJsonc,
-        McpCommand.openCodeConfigFile(userHome, xdgHome.path, project, "user"),
+        McpCommand.openCodeConfigFile(userHome, null, xdgHome.path, project, "user"),
       )
       assertEquals(
         projectJsonc,
-        McpCommand.openCodeConfigFile(userHome, xdgHome.path, project, "project"),
+        McpCommand.openCodeConfigFile(userHome, null, xdgHome.path, project, "project"),
       )
     } finally {
       root.deleteRecursively()

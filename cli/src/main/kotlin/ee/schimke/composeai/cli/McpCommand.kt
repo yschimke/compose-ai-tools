@@ -642,6 +642,7 @@ internal class McpCommand(
   private fun defaultOpenCodeConfig(projectDir: File, scope: String): File =
     openCodeConfigFile(
       userHome = File(System.getProperty("user.home")),
+      homeEnvironment = System.getenv("HOME"),
       xdgConfigHome = System.getenv("XDG_CONFIG_HOME"),
       projectDir = projectDir,
       scope = scope,
@@ -664,6 +665,7 @@ internal class McpCommand(
       configDirectoryExists =
         openCodeConfigDirectory(
             File(System.getProperty("user.home")),
+            System.getenv("HOME"),
             System.getenv("XDG_CONFIG_HOME"),
           )
           .isDirectory,
@@ -801,20 +803,27 @@ internal class McpCommand(
       environmentValue: String?,
     ): Boolean = executableOnPath || configDirectoryExists || environmentValue == "1"
 
-    internal fun openCodeConfigDirectory(userHome: File, xdgConfigHome: String?): File {
+    internal fun openCodeConfigDirectory(
+      userHome: File,
+      homeEnvironment: String?,
+      xdgConfigHome: String?,
+    ): File {
+      val home = homeEnvironment?.takeIf { it.isNotBlank() }?.let(::File) ?: userHome
       val configHome =
-        xdgConfigHome?.takeIf { it.isNotBlank() }?.let(::File) ?: File(userHome, ".config")
+        xdgConfigHome?.takeIf { it.isNotBlank() }?.let(::File) ?: File(home, ".config")
       return File(configHome, "opencode")
     }
 
     internal fun openCodeConfigFile(
       userHome: File,
+      homeEnvironment: String?,
       xdgConfigHome: String?,
       projectDir: File,
       scope: String,
     ): File {
       val directory =
-        if (scope == "project") projectDir else openCodeConfigDirectory(userHome, xdgConfigHome)
+        if (scope == "project") projectDir
+        else openCodeConfigDirectory(userHome, homeEnvironment, xdgConfigHome)
       val jsonc = File(directory, "opencode.jsonc")
       return if (jsonc.isFile) jsonc else File(directory, "opencode.json")
     }
