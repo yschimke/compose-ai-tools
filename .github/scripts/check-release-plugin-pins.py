@@ -22,6 +22,9 @@ PIN_SITES = {
         r'^composePreviewPlugin = "([^"]+)"$', re.MULTILINE
     ),
 }
+MOVED_MCP_ASSET_URL = re.compile(
+    r"https://github\.com/yschimke/compose-ai-tools/releases/[^\s)]*compose-preview-mcp-"
+)
 
 
 def inside_release_please_marker(text: str, offset: int) -> bool:
@@ -60,6 +63,18 @@ def validate(root: pathlib.Path) -> list[str]:
                 f"{relative}: plugin pin is inside a release-please version marker; "
                 "CLI-only releases must not rewrite it"
             )
+
+    release_docs = root / "docs/RELEASING.md"
+    try:
+        release_text = release_docs.read_text(encoding="utf-8")
+    except OSError:
+        # The pin-site loop above already reports the read failure.
+        release_text = ""
+    if MOVED_MCP_ASSET_URL.search(release_text):
+        errors.append(
+            "docs/RELEASING.md: standalone MCP archives are published by "
+            "compose-preview-server, not compose-ai-tools"
+        )
     return errors
 
 
@@ -71,9 +86,12 @@ def main() -> int:
     errors = validate(args.root)
     if errors:
         for error in errors:
-            print(f"release plugin pin: {error}", file=sys.stderr)
+            print(f"release example: {error}", file=sys.stderr)
         return 1
-    print("Release plugin examples use the Maven Central placeholder outside version markers.")
+    print(
+        "Release examples keep plugin pins stable and point standalone MCP assets at "
+        "compose-preview-server."
+    )
     return 0
 
 
