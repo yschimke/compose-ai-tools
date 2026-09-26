@@ -92,21 +92,12 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
           python3 .github/ci/path-scope.py \
             --config .github/ci/ci-paths.json >> "$GITHUB_OUTPUT"
-
-  # release-please advances the repository/CLI version even when the selective Maven plan skips
-  # compose-preview-plugin. Its ordinary generic markers therefore cannot own explicit plugin
-  # coordinates: a CLI-only release would advertise a version Central never receives. Recovery
-  # runs and Central propagation also make a second pre-release plan unsuitable as a doc source.
-  # Keep the examples on an explicit Maven Central placeholder and gate that invariant instead.
-  release-plugin-pins:
-    name: Release plugin pins
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Test plugin pin checker
+      # release-please advances the repository/CLI version even when the selective Maven plan skips
+      # compose-preview-plugin. Explicit plugin coordinates therefore use a Maven Central
+      # placeholder outside generic version markers. Keep this in the existing required check:
+      # release PRs deliberately skip heavy jobs, and a new standalone check name would not block
+      # their merge until someone also changed the Protect Main ruleset.
+      - name: Test release-safe plugin examples
         run: python3 .github/scripts/test_check_release_plugin_pins.py -v
       - name: Validate plugin version examples
         run: python3 .github/scripts/check-release-plugin-pins.py
