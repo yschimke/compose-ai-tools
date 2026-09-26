@@ -88,14 +88,17 @@ If you'd rather wire it into your build explicitly, the plugin is on
 [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
 — no auth, no token:
 
-<!-- x-release-please-start-version -->
+Replace `<published-version>` with the version currently shown on the linked Maven Central page.
+The placeholder deliberately stays outside release-please's version markers because CLI-only
+releases do not publish a matching plugin coordinate.
+
+<!-- published-plugin-version-example -->
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "2.27.0"
+    id("ee.schimke.composeai.preview") version "<published-version>"
 }
 ```
-<!-- x-release-please-end -->
 
 ```sh
 ./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
