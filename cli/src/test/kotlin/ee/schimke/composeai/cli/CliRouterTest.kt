@@ -74,7 +74,8 @@ class CliRouterTest {
       CliFlagValidation.unknownFlags("ui-builder", listOf("--no-project", "--no-open")),
     )
     assertTrue(
-      CliFlagValidation.FORWARDED_TO_SERVER == setOf("serve", "browse", "ui-builder", "design")
+      CliFlagValidation.FORWARDED_TO_SERVER ==
+        setOf("serve", "browse", "ui-builder", "design", "a2ui")
     )
   }
 
@@ -106,6 +107,30 @@ class CliRouterTest {
           "--agent-grants",
           "--agent-grant-capabilities",
           "ui-builder-read,ui-builder-write,ui-builder-export",
+        ),
+      ),
+    )
+  }
+
+  @Test
+  fun `the a2ui command is a share launcher that knows its documented flags`() {
+    assertTrue("a2ui" in CliRouter.subcommandsOf("share"))
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags(
+        "a2ui",
+        listOf(
+          "render",
+          "--server",
+          "https://preview.coo.ee",
+          "--catalog",
+          "a2ui-catalog",
+          "--document",
+          "doc.jsonl",
+          "-o",
+          "out.png",
+          "--timeout",
+          "60",
         ),
       ),
     )

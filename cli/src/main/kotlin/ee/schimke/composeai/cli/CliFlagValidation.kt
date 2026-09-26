@@ -295,6 +295,24 @@ internal object CliFlagValidation {
           "--timeout",
           "--token",
         ),
+      // A launcher for the server's `a2ui` command: a document in, a PNG out, against a server
+      // that is already up. `--token` is listed for the reason `design` lists it: the server
+      // refuses a credential on the command line by name.
+      "a2ui" to
+        setOf(
+          "--catalog",
+          "--document",
+          "--help",
+          "-h",
+          "--no-authorize",
+          "--out",
+          "-o",
+          "--preview",
+          "--server",
+          "--server-binary",
+          "--timeout",
+          "--token",
+        ),
       // The flags a preview server passes when it spawns the Gradle half of `serve`. Deliberately
       // narrow: this command is machine-facing, and every flag here is one the server has to know
       // to send. `--stdio` selects the transport; `--module` and `--variant` are the two selectors
@@ -419,7 +437,8 @@ internal object CliFlagValidation {
    * an unknown option must say that, because "(ignored)" would be false: the option reaches the
    * server and takes effect there.
    */
-  internal val FORWARDED_TO_SERVER: Set<String> = setOf("serve", "browse", "ui-builder", "design")
+  internal val FORWARDED_TO_SERVER: Set<String> =
+    setOf("serve", "browse", "ui-builder", "design", "a2ui")
 
   /** The stderr line [Main] prints for one unknown option — accurate about where it lands. */
   fun unknownFlagNote(command: String, flag: String): String =
