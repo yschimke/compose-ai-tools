@@ -163,6 +163,10 @@ class AgentMcpConfigTest {
       "OpenCode config contains comments",
       AgentMcpConfig.openCodeRewriteRefusal("opencode.json", "{/* keep this */}"),
     )
+    assertEquals(
+      "OpenCode config is not strict JSON (it may use JSONC syntax)",
+      AgentMcpConfig.openCodeRewriteRefusal("opencode.json", "{\"theme\": \"dark\",}"),
+    )
     assertNull(
       AgentMcpConfig.openCodeRewriteRefusal(
         "opencode.json",
@@ -183,10 +187,29 @@ class AgentMcpConfigTest {
   @Test
   fun `plugin hints are selected by detected host and can be disabled`() {
     val hints = AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = true)
-    assertEquals(listOf("claude", "claude", "codex"), hints.map { it.host })
-    assertTrue(hints.all { "compose-ag-plugin" in it.command })
+    assertEquals(listOf("claude", "claude", "codex", "codex"), hints.map { it.host })
+    assertTrue(
+      hints.any {
+        it.command == "/plugins" && it.note == "Enable compose-preview in the plugin manager."
+      }
+    )
     assertTrue(
       AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = false).isEmpty()
+    )
+  }
+
+  @Test
+  fun `antigravity plugin hint is a complete install and enable sequence`() {
+    val commands =
+      AgentMcpConfig.pluginInstallHints(setOf("antigravity"), enabled = true).map { it.command }
+    assertEquals(
+      listOf(
+        "git clone https://github.com/yschimke/compose-ag-plugin.git",
+        "cd compose-ag-plugin",
+        "agy plugin install ./plugins/compose-preview",
+        "agy plugin enable compose-preview",
+      ),
+      commands,
     )
   }
 

@@ -408,6 +408,7 @@ internal class McpCommand(
                 buildJsonObject {
                   put("host", JsonPrimitive(it.host))
                   put("command", JsonPrimitive(it.command))
+                  it.note?.let { note -> put("note", JsonPrimitive(note)) }
                 }
               }
             ),
@@ -471,6 +472,7 @@ internal class McpCommand(
           pluginHints.forEach { hint ->
             System.err.println("    ${hint.host}:")
             println(hint.command)
+            hint.note?.let { System.err.println("        $it") }
           }
         }
       }

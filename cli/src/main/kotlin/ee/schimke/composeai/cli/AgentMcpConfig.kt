@@ -95,6 +95,8 @@ internal object AgentMcpConfig {
       fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase() == "jsonc" ->
         "OpenCode config uses JSONC"
       existing != null && containsJsonComment(existing) -> "OpenCode config contains comments"
+      !existing.isNullOrBlank() && runCatching { Json.parseToJsonElement(existing) }.isFailure ->
+        "OpenCode config is not strict JSON (it may use JSONC syntax)"
       else -> null
     }
 
@@ -231,11 +233,22 @@ internal object AgentMcpConfig {
 
   private val PLUGIN_INSTALL_HINTS =
     listOf(
+      PluginInstallHint(
+        "antigravity",
+        "git clone https://github.com/yschimke/compose-ag-plugin.git",
+      ),
+      PluginInstallHint("antigravity", "cd compose-ag-plugin"),
       PluginInstallHint("antigravity", "agy plugin install ./plugins/compose-preview"),
+      PluginInstallHint("antigravity", "agy plugin enable compose-preview"),
       PluginInstallHint("claude", "/plugin marketplace add yschimke/compose-ag-plugin"),
       PluginInstallHint("claude", "/plugin install compose-preview@compose-ag-plugin"),
       PluginInstallHint("codex", "codex plugin marketplace add yschimke/compose-ag-plugin"),
+      PluginInstallHint("codex", "/plugins", "Enable compose-preview in the plugin manager."),
     )
 }
 
-internal data class PluginInstallHint(val host: String, val command: String)
+internal data class PluginInstallHint(
+  val host: String,
+  val command: String,
+  val note: String? = null,
+)
