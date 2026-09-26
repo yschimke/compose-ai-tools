@@ -435,15 +435,16 @@ version you pin in your checkout (version-catalog `[plugins]` entry or a literal
 version, so the CLI and plugin can't skew — declare the plugin version once and
 the CLI follows it for free:
 
-<!--
-  This pin follows the last compose-preview-plugin version actually published to Maven Central.
-  Keep it outside release-please's version markers: CLI-only releases intentionally retain the
-  preceding plugin line.
--->
+Replace `<published-version>` with the current
+[`compose-preview-plugin` version on Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin).
+The placeholder deliberately stays outside release-please's version markers because CLI-only
+releases do not publish a matching plugin coordinate.
+
+<!-- published-plugin-version-example -->
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewPlugin = "2.27.0"
+composePreviewPlugin = "<published-version>"
 
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }

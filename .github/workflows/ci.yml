@@ -94,11 +94,10 @@ jobs:
             --config .github/ci/ci-paths.json >> "$GITHUB_OUTPUT"
 
   # release-please advances the repository/CLI version even when the selective Maven plan skips
-  # compose-preview-plugin. Its ordinary generic markers therefore cannot own the three explicit
-  # Gradle plugin examples: a CLI-only release would advertise a coordinate Central never receives.
-  # This job always self-tests the checker, and on the bot's release PR computes the same publish
-  # plan as release.yml. A real plugin release then fails until the three manual pins advance;
-  # a CLI-only release requires them to stay on the published Maven line.
+  # compose-preview-plugin. Its ordinary generic markers therefore cannot own explicit plugin
+  # coordinates: a CLI-only release would advertise a version Central never receives. Recovery
+  # runs and Central propagation also make a second pre-release plan unsuitable as a doc source.
+  # Keep the examples on an explicit Maven Central placeholder and gate that invariant instead.
   release-plugin-pins:
     name: Release plugin pins
     runs-on: ubuntu-latest
@@ -109,23 +108,8 @@ jobs:
           persist-credentials: false
       - name: Test plugin pin checker
         run: python3 .github/scripts/test_check_release_plugin_pins.py -v
-      - name: Validate release PR plugin pins
-        if: ${{ startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          manifest=$(mktemp)
-          mapfile -t publish_set < <(
-            .github/scripts/maven-publish-plan.sh \
-              --head HEAD \
-              --write-manifest "$manifest"
-          )
-          release_version=$(python3 -c 'import json; print(json.load(open(".release-please-manifest.json"))["."])')
-          expected=$release_version
-          if ! printf '%s\n' "${publish_set[@]}" | grep -qx compose-preview-plugin; then
-            expected=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["modules"]["compose-preview-plugin"])' "$manifest")
-          fi
-          python3 .github/scripts/check-release-plugin-pins.py --expected "$expected"
+      - name: Validate plugin version examples
+        run: python3 .github/scripts/check-release-plugin-pins.py
 
   # Split out of `changes` so its ~4 min of Gradle model resolution stops
   # sitting on the critical path of every other job (see the note on `changes`).

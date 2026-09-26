@@ -410,15 +410,16 @@ already includes `mavenCentral()` in `pluginManagement.repositories` (the
 typical Android/KMP setup does — AGP and the Kotlin Gradle Plugin both
 live there), just apply the plugin:
 
-<!--
-  This pin follows the last compose-preview-plugin version actually published to Maven Central.
-  Keep it outside release-please's version markers: CLI-only releases intentionally retain the
-  preceding plugin line.
--->
+Replace `<published-version>` with the current version shown on
+[Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin).
+The placeholder deliberately stays outside release-please's version markers because CLI-only
+releases do not publish a matching plugin coordinate.
+
+<!-- published-plugin-version-example -->
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "2.27.0"
+    id("ee.schimke.composeai.preview") version "<published-version>"
 }
 ```
 

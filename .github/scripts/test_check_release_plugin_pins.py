@@ -14,15 +14,18 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ReleasePluginPinsTest(unittest.TestCase):
-    def write_fixture(self, root: pathlib.Path, version: str = "2.27.0") -> None:
+    def write_fixture(self, root: pathlib.Path, version: str = "<published-version>") -> None:
         snippets = {
             pathlib.Path("docs/RELEASING.md"): (
+                "<!-- published-plugin-version-example -->\n"
                 f'id("ee.schimke.composeai.preview") version "{version}"\n'
             ),
             pathlib.Path("site/index.md"): (
+                "<!-- published-plugin-version-example -->\n"
                 f'id("ee.schimke.composeai.preview") version "{version}"\n'
             ),
             pathlib.Path(".github/actions/apply/README.md"): (
+                "<!-- published-plugin-version-example -->\n"
                 f'composePreviewPlugin = "{version}"\n'
             ),
         }
@@ -35,17 +38,19 @@ class ReleasePluginPinsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             self.write_fixture(root)
-            self.assertEqual([], MODULE.validate(root, "2.27.0"))
+            self.assertEqual([], MODULE.validate(root))
 
     def test_rejects_a_stale_pin(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             self.write_fixture(root)
             path = root / "site/index.md"
-            path.write_text(path.read_text().replace("2.27.0", "2.26.1"), encoding="utf-8")
+            path.write_text(
+                path.read_text().replace("<published-version>", "2.26.1"), encoding="utf-8"
+            )
             self.assertIn(
-                "site/index.md: plugin pin is 2.26.1, expected 2.27.0",
-                MODULE.validate(root, "2.27.0"),
+                "site/index.md: plugin example is 2.26.1, expected <published-version>",
+                MODULE.validate(root),
             )
 
     def test_rejects_a_pin_inside_release_please_markers(self) -> None:
@@ -61,10 +66,13 @@ class ReleasePluginPinsTest(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertTrue(
-                any("inside a release-please version marker" in error for error in MODULE.validate(root, "2.27.0"))
+                any(
+                    "inside a release-please version marker" in error
+                    for error in MODULE.validate(root)
+                )
             )
 
-    def test_rejects_missing_or_duplicate_pins(self) -> None:
+    def test_rejects_missing_or_duplicate_markers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             self.write_fixture(root)
@@ -72,8 +80,8 @@ class ReleasePluginPinsTest(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             path.write_text(text + text, encoding="utf-8")
             self.assertIn(
-                ".github/actions/apply/README.md: expected exactly one plugin pin, found 2",
-                MODULE.validate(root, "2.27.0"),
+                ".github/actions/apply/README.md: expected exactly one example marker, found 2",
+                MODULE.validate(root),
             )
 
 
