@@ -255,6 +255,9 @@ codex plugin marketplace add yschimke/compose-ag-plugin
 The plugins register the same MCP server that `compose-preview mcp install`
 does, so choose one route or the other. For OpenCode, see
 [compose-ag-plugin's OpenCode guide](https://github.com/yschimke/compose-ag-plugin/blob/main/docs/opencode.md).
+When Antigravity, Claude Code, or Codex is detected, `mcp install` prints the
+matching wiring-plugin commands as a reminder; pass `--no-plugin-hint` for
+config-only automation.
 
 ## CI / GitHub Actions
 

@@ -157,6 +157,7 @@ internal object CliFlags {
       "--baseline-dir",
       "--baselines",
       "--codex-config",
+      "--opencode-config",
       "--commit",
       "--cursor",
       "--history-dir",
