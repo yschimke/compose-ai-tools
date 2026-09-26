@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.26.1](https://github.com/yschimke/compose-ai-tools/compare/v2.26.0...v2.26.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **render-host:** start playground snippet JVMs with a minimal environment ([#5585](https://github.com/yschimke/compose-ai-tools/issues/5585)) ([4b20a19](https://github.com/yschimke/compose-ai-tools/commit/4b20a19913c2c945973aa611b0ad49a5bf32e844))
+
 ## [2.26.0](https://github.com/yschimke/compose-ai-tools/compare/v2.25.0...v2.26.0) (2026-09-25)
 
 
