@@ -163,8 +163,23 @@ internal object ServeDistributionHarness {
       return false
     }
 
-    /** The operator credential as the approval pages take it — in the query, as `serve` does. */
+    /** The operator credential as form submissions take it. */
     private fun tokenQuery() = "?token=" + URLEncoder.encode(token, Charsets.UTF_8)
+
+    /**
+     * Fetch an operator page as a machine client.
+     *
+     * A browser navigation carrying `?token=` now exchanges that token for an HttpOnly browse
+     * cookie and redirects to the token-free URL. [HttpURLConnection] follows redirects without a
+     * cookie jar, so using the query here would discard the credential before the approval page is
+     * reached. The token header is the server's non-browser path and deliberately bypasses that
+     * exchange.
+     */
+    private fun operatorGet(path: String): Pair<Int, String> {
+      val connection = URI(origin + path).toURL().openConnection() as HttpURLConnection
+      connection.setRequestProperty("X-Compose-Preview-Token", token)
+      return connection.use { it.responseCode to it.bodyText() }
+    }
 
     fun get(path: String, follow: Boolean = true): Pair<Int, String> {
       val connection = URI(origin + path).toURL().openConnection() as HttpURLConnection
@@ -194,7 +209,7 @@ internal object ServeDistributionHarness {
      * point of it. So the human half of the flow is genuinely exercised here rather than bypassed.
      */
     fun approvalPage(requestId: String): String {
-      val (code, body) = get("/agent-access/$requestId" + tokenQuery())
+      val (code, body) = operatorGet("/agent-access/$requestId")
       check(code == 200) { "approval page for $requestId answered $code:\n$body" }
       return body
     }
