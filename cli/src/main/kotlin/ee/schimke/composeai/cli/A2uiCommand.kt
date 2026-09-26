@@ -18,11 +18,15 @@ class A2uiCommand(private val args: List<String>) {
         args,
         serverCommand = SERVER_COMMAND,
         childEnvironment = DesignCommand(args).storedGrantEnv(),
+        minimumServerVersion = MINIMUM_SERVER_VERSION,
       )
       .run()
   }
 
   internal companion object {
     const val SERVER_COMMAND: String = "a2ui"
+
+    /** The server release that added the `a2ui` command (compose-preview-server#1095). */
+    const val MINIMUM_SERVER_VERSION: String = "3.72.0"
   }
 }

@@ -38,15 +38,33 @@ class ServeCommand(
   /**
    * Extra environment for the server process, applied on top of what this process inherited.
    *
-   * Empty by default — a launcher adds nothing the caller did not ask for. [DesignCommand] is the
-   * one consumer: it bridges a grant this CLI holds in its own store to the server-side verb
-   * runner, which can only see environment variables.
+   * Empty by default — a launcher adds nothing the caller did not ask for. [DesignCommand] and
+   * [A2uiCommand] use it: they bridge a grant this CLI holds in its own store to the server-side
+   * verb runner, which can only see environment variables.
    */
   private val childEnvironment: Map<String, String> = emptyMap(),
+  /**
+   * The oldest server release that has [serverCommand], or null when every release does.
+   *
+   * A cached copy is reused without asking what is newest, so a machine that fetched a server
+   * before a command existed keeps launching that one and hears "unknown command". A launcher for a
+   * newer command names the release that added it, and a cached copy below that is replaced by the
+   * newest before the exec — see [ServerBinaryDiscovery.meetsMinimum].
+   */
+  private val minimumServerVersion: String? = null,
 ) {
 
   fun run() {
-    val choice = ServerBinaryDiscovery.choose(args) ?: provision()
+    val choice =
+      ServerBinaryDiscovery.choose(args)?.let {
+        ServerBinaryDiscovery.meetsMinimum(
+          it,
+          minimumServerVersion,
+          serverCommand,
+          requested = ServerDistributionProvision.requestedVersion(),
+          provision = ::provision,
+        )
+      } ?: provision()
     if (choice == null) {
       System.err.println(ServerBinaryDiscovery.installationHint())
       exitProcess(1)
