@@ -59,6 +59,43 @@ internal object ServerBinaryDiscovery {
     return cacheLookup()?.let { Choice(it.path, CACHE) }
   }
 
+  /**
+   * [choice], unless it is a cached copy older than [minimum], in which case the newest release is
+   * fetched in its place.
+   *
+   * Only the cache is second-guessed. A binary named by the flag, the environment or `PATH` was
+   * chosen by someone, and so was a release pinned with `COMPOSE_PREVIEW_SERVER_VERSION`
+   * ([requested]); those are launched as they are, and a server that lacks the command says so
+   * itself. The cache is different because nobody chose it: it is whatever was newest the last time
+   * this machine fetched, and without this a command added since then would never reach a server
+   * that has it. If the fetch fails the old copy is still launched, with a note, rather than
+   * nothing.
+   */
+  fun meetsMinimum(
+    choice: Choice,
+    minimum: String?,
+    command: String,
+    requested: String?,
+    provision: () -> Choice?,
+    log: (String) -> Unit = { System.err.println(it) },
+  ): Choice {
+    if (minimum == null || choice.source != CACHE || requested != null) return choice
+    val version = cachedVersionOf(choice.binary) ?: return choice
+    if (compareSemver(version, minimum) >= 0) return choice
+    log(
+      "compose-preview: the cached server $version predates `$command` (added in $minimum); " +
+        "fetching the newest"
+    )
+    return provision()?.takeIf { it.binary != choice.binary }
+      ?: choice.also {
+        log("compose-preview: could not fetch a newer server; launching the cached $version")
+      }
+  }
+
+  /** The release a cached launcher belongs to: `<cache>/<version>/bin/<binary>`. */
+  internal fun cachedVersionOf(binary: String): String? =
+    File(binary).parentFile?.parentFile?.name?.takeIf { it.isNotBlank() }
+
   private fun flagValue(args: List<String>, flag: String): String? {
     val index = args.indexOf(flag)
     if (index < 0 || index + 1 >= args.size) return null

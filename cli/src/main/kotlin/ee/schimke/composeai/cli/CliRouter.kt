@@ -54,7 +54,9 @@ internal object CliRouter {
       // `design` is the fourth face of that binary and the only one that does not serve: it talks
       // to a server that is already up and writes a design's pixels or source to a file
       // (yschimke/compose-preview-server#529).
-      "share" to listOf("serve", "ui-builder", "design", "build-host", "share-preview"),
+      // `a2ui` is the same binary's A2UI playground client: it sends a document to a server that
+      // is already up and writes the PNG it draws (yschimke/compose-preview-server#1095).
+      "share" to listOf("serve", "ui-builder", "design", "a2ui", "build-host", "share-preview"),
       "setup" to listOf("update", "init-script", "pin", "auth"),
     )
 

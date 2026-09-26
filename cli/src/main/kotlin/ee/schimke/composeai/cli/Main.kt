@@ -28,6 +28,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "serve" to { a -> ServeCommand(a).run() },
     "ui-builder" to { a -> UiBuilderCommand(a).run() },
     "design" to { a -> DesignCommand(a).run() },
+    "a2ui" to { a -> A2uiCommand(a).run() },
     "build-host" to { a -> BuildHostCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -231,6 +232,10 @@ private fun printFullUsage() {
                        server's `design` command, which is a client rather than a server: it needs
                        a `--server` that is already up, and exits non-zero when an export is
                        refused, so it composes in CI. See `design --help`.
+      a2ui             Render an A2UI document through a running server's playground:
+                       `a2ui render --document doc.jsonl -o out.png` draws it with the real
+                       Material A2UI catalog. Launches the preview server's `a2ui` command, a
+                       client like `design` that needs a `--server` already up. See `a2ui --help`.
       share-preview    Share rendered previews (a markdown report + images, or a directory of
                        PNGs) somewhere openable. Picks the mechanism by what's available: a gist
                        when the GitHub CLI is installed + authenticated, otherwise a push to a
