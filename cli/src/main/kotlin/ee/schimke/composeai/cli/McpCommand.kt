@@ -647,6 +647,9 @@ internal class McpCommand(
       projectDir = projectDir,
       scope = scope,
     )
+      ?: throw IllegalStateException(
+        "compose-preview mcp install: cannot determine an absolute OpenCode config home"
+      )
 
   private fun isAntigravityEnvironment(): Boolean =
     System.getenv("__CFBundleIdentifier") == "com.google.antigravity" ||
@@ -668,7 +671,7 @@ internal class McpCommand(
             System.getenv("HOME"),
             System.getenv("XDG_CONFIG_HOME"),
           )
-          .isDirectory,
+          ?.isDirectory == true,
       environmentValue = System.getenv("OPENCODE"),
     )
 
@@ -807,13 +810,15 @@ internal class McpCommand(
       userHome: File,
       homeEnvironment: String?,
       xdgConfigHome: String?,
-    ): File {
+    ): File? {
+      val fallbackHome = userHome.takeIf { it.isAbsolute }
       val home =
         homeEnvironment?.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isAbsolute }
-          ?: userHome
+          ?: fallbackHome
       val configHome =
         xdgConfigHome?.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isAbsolute }
-          ?: File(home, ".config")
+          ?: home?.let { File(it, ".config") }
+      if (configHome == null) return null
       return File(configHome, "opencode")
     }
 
@@ -823,10 +828,10 @@ internal class McpCommand(
       xdgConfigHome: String?,
       projectDir: File,
       scope: String,
-    ): File {
+    ): File? {
       val directory =
         if (scope == "project") projectDir
-        else openCodeConfigDirectory(userHome, homeEnvironment, xdgConfigHome)
+        else openCodeConfigDirectory(userHome, homeEnvironment, xdgConfigHome) ?: return null
       val jsonc = File(directory, "opencode.jsonc")
       return if (jsonc.isFile) jsonc else File(directory, "opencode.json")
     }

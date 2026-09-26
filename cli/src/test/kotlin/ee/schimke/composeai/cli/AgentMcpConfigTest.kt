@@ -208,6 +208,7 @@ class AgentMcpConfigTest {
       File("/account/home/.config/opencode"),
       McpCommand.openCodeConfigDirectory(File("/account/home"), "relative-home", null),
     )
+    assertNull(McpCommand.openCodeConfigDirectory(File("relative-jvm-home"), ".", "?"))
   }
 
   @Test
