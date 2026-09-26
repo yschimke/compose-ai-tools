@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.27.0](https://github.com/yschimke/compose-ai-tools/compare/v2.26.1...v2.27.0) (2026-09-26)
+
+
+### Features
+
+* **cli:** launch the preview server's `a2ui` command ([#5587](https://github.com/yschimke/compose-ai-tools/issues/5587)) ([58ffe4f](https://github.com/yschimke/compose-ai-tools/commit/58ffe4f5534dbc4bf89fc7e2995cbdf162f1c2d3))
+* **discovery:** infer Glimmer component callsites ([#5590](https://github.com/yschimke/compose-ai-tools/issues/5590)) ([6544552](https://github.com/yschimke/compose-ai-tools/commit/6544552b7e90ab7dee3bd9abe2838eacaa610878))
+
 ## [2.26.1](https://github.com/yschimke/compose-ai-tools/compare/v2.26.0...v2.26.1) (2026-09-26)
 
 
