@@ -104,6 +104,14 @@ class PreviewTargetInferenceTest {
         )
       )
       .isTrue()
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.xr.glimmer.ButtonKt",
+          "Button",
+          returnsUnit = true,
+        )
+      )
+      .isTrue()
   }
 
   @Test
@@ -128,6 +136,14 @@ class PreviewTargetInferenceTest {
         PreviewTargetInference.isComponentLibraryTarget(
           "androidx.compose.material3.MaterialThemeKt",
           "MaterialTheme",
+          returnsUnit = true,
+        )
+      )
+      .isFalse()
+    assertThat(
+        PreviewTargetInference.isComponentLibraryTarget(
+          "androidx.xr.glimmer.GlimmerThemeKt",
+          "GlimmerTheme",
           returnsUnit = true,
         )
       )

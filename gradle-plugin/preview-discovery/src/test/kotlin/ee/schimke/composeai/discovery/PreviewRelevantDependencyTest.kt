@@ -16,6 +16,12 @@ class PreviewRelevantDependencyTest {
   }
 
   @Test
+  fun `glimmer AAR classes stay on the component inference classpath`() {
+    assertThat(PreviewDiscovery.isPreviewRelevant("androidx.xr.glimmer:glimmer:1.0.0-alpha19"))
+      .isTrue()
+  }
+
+  @Test
   fun `unrelated project jars remain outside the scan`() {
     assertThat(PreviewDiscovery.isPreviewRelevant("/checkout/feature/build/libs/feature.jar"))
       .isFalse()
