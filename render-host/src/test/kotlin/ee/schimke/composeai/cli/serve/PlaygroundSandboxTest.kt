@@ -21,12 +21,136 @@ class PlaygroundSandboxTest {
       javaHome = File("/opt/jdk17"),
     )
 
+  /** A serve host's environment: what a snippet may keep, and what it must not see. */
+  private val hostEnvironment =
+    mapOf(
+      "PATH" to "/usr/bin:/bin",
+      "HOME" to "/home/serve",
+      "LANG" to "C.UTF-8",
+      "LC_CTYPE" to "C.UTF-8",
+      "SERVE_TOKEN" to "t0ken",
+      "SERVE_ADMIN_TOKEN" to "adm1n",
+      "SERVE_GITHUB_AUTH_CLIENT_SECRET" to "gh",
+      "AWS_SECRET_ACCESS_KEY" to "aws",
+      "JAVA_TOOL_OPTIONS" to "-javaagent:/x.jar",
+    )
+
+  private val envReset = PlaygroundSandbox.environmentCommand(hostEnvironment)
+
   @Test
-  fun `none is inert`() {
+  fun `none carries no jail, only the environment reset`() {
     val sandbox = PlaygroundSandbox.NONE
     assertFalse(sandbox.isActive)
-    assertEquals(emptyList(), sandbox.command(paths))
+    assertEquals(envReset, sandbox.command(paths, hostEnvironment))
     assertEquals(emptyList(), sandbox.jvmArgs(paths.workDir))
+  }
+
+  @Test
+  fun `the environment reset keeps only the allowlist, in a stable order`() {
+    assertEquals(
+      listOf(
+        "env",
+        "-i",
+        "HOME=/home/serve",
+        "LANG=C.UTF-8",
+        "LC_CTYPE=C.UTF-8",
+        "PATH=/usr/bin:/bin",
+      ),
+      PlaygroundSandbox.environmentCommand(hostEnvironment, unix = true),
+    )
+    assertEquals(
+      emptyList(),
+      PlaygroundSandbox.environmentCommand(hostEnvironment, unix = false),
+      "no env(1) to call on a non-Unix host",
+    )
+  }
+
+  @Test
+  fun `retainChildEnvironment narrows a process builder's environment to the allowlist`() {
+    val builder = ProcessBuilder("true")
+    val environment = builder.environment()
+    environment.putAll(hostEnvironment)
+    environment["TZ"] = "UTC"
+    environment["TMPDIR"] = "/tmp"
+    environment["JAVA_HOME"] = "/opt/jdk17"
+
+    PlaygroundSandbox.retainChildEnvironment(environment)
+
+    assertTrue(
+      builder
+        .environment()
+        .keys
+        .containsAll(setOf("PATH", "HOME", "LANG", "LC_CTYPE", "TZ", "TMPDIR", "JAVA_HOME")),
+      builder.environment().keys.toString(),
+    )
+    assertTrue(
+      builder.environment().keys.all {
+        it in PlaygroundSandbox.CHILD_ENVIRONMENT || it.startsWith("LC_")
+      },
+      builder.environment().keys.toString(),
+    )
+    assertFalse("SERVE_TOKEN" in builder.environment())
+    assertFalse("JAVA_TOOL_OPTIONS" in builder.environment())
+  }
+
+  @Test
+  fun `every profile starts the jvm with a minimal environment`() {
+    for (profile in PlaygroundSandbox.Profile.entries) {
+      val sandbox =
+        if (profile == PlaygroundSandbox.Profile.CUSTOM)
+          PlaygroundSandbox.parseProfile("custom:firejail --net=none").getOrThrow()
+        else PlaygroundSandbox(profile = profile)
+      for (candidate in listOf(sandbox, sandbox.droppingJail())) {
+        val argv = candidate.command(paths, hostEnvironment)
+        val clearedByJail = "--clearenv" in argv
+        assertTrue(
+          clearedByJail || argv.takeLast(envReset.size) == envReset,
+          "$profile (dropped=${candidate.jailDropped}) must end in the reset: $argv",
+        )
+        assertTrue(
+          argv.none { it.startsWith("SERVE_") || it.startsWith("AWS_") || "t0ken" in it },
+          "no host-only value may reach the argv: $argv",
+        )
+      }
+    }
+    // bwrap already clears the environment and points HOME at the work dir; a trailing reset would
+    // undo that, so it has none.
+    val bwrap =
+      PlaygroundSandbox(profile = PlaygroundSandbox.Profile.BWRAP).command(paths, hostEnvironment)
+    assertEquals("--", bwrap.last())
+    assertFalse("env" in bwrap, bwrap.toString())
+  }
+
+  @Test
+  fun `a snippet jvm launched behind the argv does not see the host environment`() {
+    if (File.separatorChar != '/') return // env(1) is a Unix tool
+    val workDir = kotlin.io.path.createTempDirectory("pg-env").toFile()
+    try {
+      val builder = ProcessBuilder()
+      builder.environment().putAll(hostEnvironment - "PATH")
+      val parent = builder.environment().toMap()
+      // `env` in place of `java`: the child prints the environment it was actually started with.
+      builder.command(
+        PlaygroundSandbox.NONE.command(paths.copy(workDir = workDir), parent) + listOf("env")
+      )
+      builder.directory(workDir).redirectErrorStream(true)
+      val process = builder.start()
+      val output = process.inputStream.bufferedReader().readText()
+      assertEquals(0, process.waitFor(), output)
+      val names = output.lines().filter { "=" in it }.map { it.substringBefore('=') }.toSet()
+
+      assertTrue("HOME" in names, output)
+      assertFalse("SERVE_TOKEN" in names, output)
+      assertFalse("SERVE_ADMIN_TOKEN" in names, output)
+      assertFalse("AWS_SECRET_ACCESS_KEY" in names, output)
+      assertFalse("JAVA_TOOL_OPTIONS" in names, output)
+      assertTrue(
+        names.all { it in PlaygroundSandbox.CHILD_ENVIRONMENT || it.startsWith("LC_") },
+        names.toString(),
+      )
+    } finally {
+      workDir.deleteRecursively()
+    }
   }
 
   @Test
@@ -160,7 +284,10 @@ class PlaygroundSandboxTest {
     val sandbox = PlaygroundSandbox.parseProfile("custom:firejail --net=none").getOrThrow()
 
     assertEquals(PlaygroundSandbox.Profile.CUSTOM, sandbox.profile)
-    assertEquals(listOf("firejail", "--net=none"), sandbox.command(paths))
+    assertEquals(
+      listOf("firejail", "--net=none") + envReset,
+      sandbox.command(paths, hostEnvironment),
+    )
     assertFalse(PlaygroundSandbox.Profile.CUSTOM.declaresEgressBlocked)
   }
 
@@ -198,7 +325,11 @@ class PlaygroundSandboxTest {
     // it is the only thing that goes; the caps are the half that actually protects the box.
     val dropped = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.UNSHARE).droppingJail()
 
-    assertEquals(emptyList(), dropped.command(paths), "no jail argv survives the drop")
+    assertEquals(
+      envReset,
+      dropped.command(paths, hostEnvironment),
+      "no jail argv survives the drop — only the environment reset",
+    )
     assertTrue(dropped.isActive, "still active — otherwise the caps would go too")
     assertTrue("-Xmx1152m" in dropped.jvmArgs(paths.workDir))
     assertTrue(dropped.jvmArgs(paths.workDir).any { it.startsWith("-XX:ActiveProcessorCount=") })
@@ -244,7 +375,7 @@ class PlaygroundSandboxTest {
   @Test
   fun `dropping is inert for every profile that had no argv anyway`() {
     val none = PlaygroundSandbox.NONE.droppingJail()
-    assertEquals(emptyList(), none.command(paths))
+    assertEquals(envReset, none.command(paths, hostEnvironment))
     assertFalse(none.isActive, "none stays none — there was nothing to drop")
   }
 }

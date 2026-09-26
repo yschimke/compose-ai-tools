@@ -2169,6 +2169,7 @@ public final class ee/schimke/composeai/cli/serve/PlaygroundSandbox {
 public final class ee/schimke/composeai/cli/serve/PlaygroundSandbox$Companion {
 	public final fun getNONE ()Lee/schimke/composeai/cli/serve/PlaygroundSandbox;
 	public final fun parseProfile-IoAF18A (Ljava/lang/String;)Ljava/lang/Object;
+	public final fun retainChildEnvironment (Ljava/util/Map;)V
 	public final fun validate-IoAF18A (Lee/schimke/composeai/cli/serve/PlaygroundSandbox;)Ljava/lang/Object;
 }
 

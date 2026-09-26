@@ -14,7 +14,7 @@ import kotlin.math.roundToInt
  * over that snippet's classes — never a hot-swap into a shared, long-lived daemon). What this type
  * adds is the containment around that child:
  * - **an argv prefix** ([command]) that launches the JVM inside an OS jail — no network namespace,
- *   a read-only view of the host, a scrubbed environment;
+ *   a read-only view of the host — and, on every profile, with a minimal environment;
  * - **JVM-level caps** ([jvmArgs]) that bound heap, CPU parallelism and temp files even on a
  *   profile whose jail carries no cgroup;
  * - **a hard wall-clock TTL** ([ttlSeconds]) the spawner arms as a `destroyForcibly` watchdog, so a
@@ -150,21 +150,38 @@ public data class PlaygroundSandbox(
   public fun droppingJail(): PlaygroundSandbox = copy(jailDropped = true)
 
   /**
-   * The argv prefix the snippet JVM launches behind — empty for [Profile.NONE], and empty when
-   * [jailDropped]. Paths are bound with the `-try` variants where a host may legitimately lack
-   * them, so one missing `/lib64` can't turn a containment profile into a failed spawn.
+   * The argv prefix the snippet JVM launches behind. Paths are bound with the `-try` variants where
+   * a host may legitimately lack them, so one missing `/lib64` can't turn a containment profile
+   * into a failed spawn.
+   *
+   * Every prefix ends by starting the JVM with a minimal environment. `bwrap` (and so `strict`)
+   * does that itself with `--clearenv`; every other case — [Profile.NONE], `unshare`, `systemd`,
+   * `custom`, and any profile once [jailDropped] — ends in an `env -i` that keeps only
+   * [retainChildEnvironment]'s allowlist. The spawner (`daemon-client`) starts the process with the
+   * serve JVM's full environment, which holds the host's own tokens and API keys, so the narrowing
+   * has to live in the argv. Non-Unix hosts have no `env(1)` and get the jail argv alone.
    */
-  public fun command(paths: Paths): List<String> =
-    if (jailDropped) emptyList()
-    else
-      when (profile) {
-        Profile.NONE -> emptyList()
-        Profile.UNSHARE -> unshareCommand()
-        Profile.BWRAP -> bwrapCommand(paths)
-        Profile.SYSTEMD -> systemdCommand()
-        Profile.STRICT -> systemdCommand() + bwrapCommand(paths)
-        Profile.CUSTOM -> customCommand
-      }
+  public fun command(paths: Paths): List<String> = command(paths, System.getenv())
+
+  /** [command] with the parent environment injected, so a test can pin the `env -i` suffix. */
+  internal fun command(paths: Paths, parentEnvironment: Map<String, String>): List<String> {
+    val jail =
+      if (jailDropped) emptyList()
+      else
+        when (profile) {
+          Profile.NONE -> emptyList()
+          Profile.UNSHARE -> unshareCommand()
+          Profile.BWRAP -> bwrapCommand(paths)
+          Profile.SYSTEMD -> systemdCommand()
+          Profile.STRICT -> systemdCommand() + bwrapCommand(paths)
+          Profile.CUSTOM -> customCommand
+        }
+    return if (jailClearsEnvironment()) jail else jail + environmentCommand(parentEnvironment)
+  }
+
+  /** True when the jail argv itself clears the environment (`bwrap --clearenv`). */
+  private fun jailClearsEnvironment(): Boolean =
+    !jailDropped && (profile == Profile.BWRAP || profile == Profile.STRICT)
 
   /**
    * JVM-level caps applied to **every** active profile, so heap and CPU are bounded even where the
@@ -349,6 +366,38 @@ public data class PlaygroundSandbox(
       )
 
     public val NONE: PlaygroundSandbox = PlaygroundSandbox(profile = Profile.NONE)
+
+    /**
+     * Environment variables a snippet JVM keeps from the serve host, plus every `LC_*` locale
+     * variable. Nothing else is needed to render: `java` is an absolute path, and the classpath,
+     * system properties and work dir all arrive through argv.
+     */
+    internal val CHILD_ENVIRONMENT: Set<String> =
+      setOf("PATH", "HOME", "LANG", "TZ", "TMPDIR", "JAVA_HOME")
+
+    private fun isChildEnvironmentName(name: String): Boolean =
+      name in CHILD_ENVIRONMENT || name.startsWith("LC_")
+
+    /**
+     * Narrow [environment] — typically a `ProcessBuilder.environment()` — to the variables a
+     * snippet JVM (or its compile step) is allowed to see.
+     */
+    public fun retainChildEnvironment(environment: MutableMap<String, String>) {
+      environment.keys.retainAll(::isChildEnvironmentName)
+    }
+
+    /**
+     * `env -i NAME=value… ` for the allowlisted subset of [parentEnvironment], in a stable order;
+     * empty on hosts without `env(1)`.
+     */
+    internal fun environmentCommand(
+      parentEnvironment: Map<String, String>,
+      unix: Boolean = File.separatorChar == '/',
+    ): List<String> {
+      if (!unix) return emptyList()
+      val kept = parentEnvironment.toMutableMap().also(::retainChildEnvironment).toSortedMap()
+      return listOf("env", "-i") + kept.map { (name, value) -> "$name=$value" }
+    }
 
     /**
      * Parse a `--playground-sandbox` value: a profile id (`none`, `unshare`, `bwrap`, `systemd`,
