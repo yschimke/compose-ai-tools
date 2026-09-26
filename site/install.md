@@ -220,6 +220,42 @@ is present and bootstraps it (via the installer above) if not, so "point the
 agent at the skill" and "run the installer" converge on the same place. See
 [Agents & MCP](../mcp/) for the agent loop the skill drives.
 
+### Per-harness plugins
+
+Antigravity, Claude Code and Codex can install the skills and the MCP wiring as
+plugins. The skills come from [`yschimke/skills`](https://github.com/yschimke/skills),
+and the wiring from [`yschimke/compose-ag-plugin`](https://github.com/yschimke/compose-ag-plugin):
+- `compose-preview` connects to the local `compose-preview mcp serve`;
+- `compose-catalogs` connects to the hosted catalog and UI Builder.
+
+```sh
+# Antigravity
+# Install the canonical skills. Harness discovery is still being verified in
+# yschimke/compose-ag-plugin#6.
+npx skills add yschimke/skills --skill compose-preview \
+  --skill compose-ui-builder --agent antigravity --global --yes
+# Clone yschimke/compose-ag-plugin, then install either local plugin directory.
+agy plugin install ./plugins/compose-catalogs
+agy plugin install ./plugins/compose-preview
+agy plugin enable compose-preview
+
+# Claude Code
+/plugin marketplace add yschimke/skills
+/plugin install yschimke-skills@yschimke-skills
+/plugin marketplace add yschimke/compose-ag-plugin
+/plugin install compose-catalogs@compose-ag-plugin
+/plugin install compose-preview@compose-ag-plugin
+
+# Codex
+codex plugin marketplace add yschimke/skills
+codex plugin marketplace add yschimke/compose-ag-plugin
+# Then enable yschimke-skills, compose-catalogs, and compose-preview from /plugins.
+```
+
+The plugins register the same MCP server that `compose-preview mcp install`
+does, so choose one route or the other. For OpenCode, see
+[compose-ag-plugin's OpenCode guide](https://github.com/yschimke/compose-ag-plugin/blob/main/docs/opencode.md).
+
 ## CI / GitHub Actions
 
 Composite actions for pipelines:
