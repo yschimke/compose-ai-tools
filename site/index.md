@@ -25,12 +25,21 @@ That's the whole idea. Everything else is optional.
 
 ## Get started
 
-Pick the one that fits you. Each is a single step.
+Pick the one that fits you.
 
 ### 🤖 With an AI coding agent
 
-Run the one-line installer once. It drops the `compose-preview` CLI **and**
-the agent skill into place (Claude Code, Codex, Gemini):
+Install the agent skills with the [skills CLI](https://skills.sh), then run
+the bundled stub once to install the `compose-preview` CLI:
+
+```sh
+npx skills add yschimke/skills --global --yes
+~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
+```
+
+Open a new terminal afterwards; `compose-preview update` keeps it current.
+No Node? Use the one-line installer instead, which drops the CLI **and** every
+skill into place:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
