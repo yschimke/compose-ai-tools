@@ -22,7 +22,7 @@ The default route installs the agent skills with the
 `compose-preview` skill once:
 
 ```sh
-npx skills add yschimke/skills --global --yes
+npx skills add yschimke/skills --global --yes --skill compose-preview --skill compose-ui-builder
 ~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
 ```
 
@@ -33,8 +33,14 @@ per-agent links. The stub's first run executes the canonical installer with
 terminal afterwards. To update: `compose-preview update` updates the CLI (and
 PATH), `npx skills update` updates the skills.
 
+That installs `compose-preview` and `compose-ui-builder`. The other skills
+(`compose-preview-review`, `compose-preview-ci`, `compose-preview-design-board`,
+`compose-design-catalog`, `figma-catalog-import`, `design-parity-review`) are
+opt-in: add another `--skill <name>`; the curl installer takes `--skills a,b`
+or `--all-skills`.
+
 **Fallback: the installer.** When there's no Node, or you want the CLI and
-every skill in one step:
+skills in one step:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
@@ -47,6 +53,9 @@ directories. Useful flags (pass them as `… | bash -s -- <flags>`):
 | Flag | Effect |
 |------|--------|
 | `--cli-only` | Install the CLI only, skip the skill bundles. |
+| `--skills a,b` | Install these skills in addition to the default two. |
+| `--all-skills` | Install every skill in the repo. |
+| `--with-skills` | Refresh skill content even when npx or a plugin installed it. |
 | `--no-modify-path` | Don't add `~/.local/bin` to shell startup files. |
 | `--android-sdk` | Also install the Android `cmdline-tools` + platform + build-tools. |
 | `--jdk 17,21` | Install the listed JDK majors. |
