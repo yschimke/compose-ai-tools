@@ -83,6 +83,20 @@ internal data class AndroidVariantNaming(
 ) {
   val capVariant: String = variantName.replaceFirstChar { it.uppercase() }
 
+  /**
+   * Where an in-process (BTA) compile of this variant writes its classes, relative to the build
+   * directory: the same directory Gradle's own Kotlin compile writes, because that is the directory
+   * the daemon's child classloader loads (`composeai.daemon.userClassDirs` is built from the render
+   * classpath's class dirs). A BTA compile anywhere else writes classes the daemon never reads.
+   *
+   * AGP 9 built-in Kotlin writes `intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/
+   * classes`; the standalone `org.jetbrains.kotlin.android` plugin writes `tmp/kotlin-classes/
+   * <variant>`. KMP modules never reach here — stage 2 declares them ineligible.
+   */
+  fun btaOutputDir(kotlinAndroidPluginApplied: Boolean): String =
+    if (kotlinAndroidPluginApplied) "tmp/kotlin-classes/$variantName"
+    else "intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
+
   companion object {
     /**
      * The naming for [variantName] on [project], picking the KMP-Android mapping when that plugin

@@ -3680,10 +3680,10 @@ internal object AndroidPreviewSupport {
       // Stage-2 BTA wiring. The AGP unit-test task's `classpath` carries every input
       // `compileDebugKotlin` would see — Compose runtime, kotlin-stdlib, AGP-generated
       // R.jar / BuildConfig outputs, the consumer's transitive dependencies. Feed that
-      // straight into BTA's compileClasspath; the daemon's child classloader watches the
-      // matching output dir under `build/intermediates/built_in_kotlinc/<variant>/classes`
-      // (see CLASSLOADER.md), so a successful BTA compile drops .class files in the same
-      // place Gradle's `compileVariantKotlin` would have. MODULE_NAME mirrors KGP's
+      // straight into BTA's compileClasspath. The output dir is the one Gradle's own
+      // `compile<Variant>Kotlin` writes — and so the one `composeai.daemon.userClassDirs` names
+      // (see [AndroidVariantNaming.btaOutputDir]) — so a successful BTA compile drops .class
+      // files where the daemon's child classloader actually loads them. MODULE_NAME mirrors KGP's
       // default for AGP variants — the variant-specific kotlinc compile uses
       // `project.name` (no variant suffix), confirmed against `samples-android`'s
       // kotlin.Metadata.d2[] entries.
@@ -3695,7 +3695,12 @@ internal object AndroidPreviewSupport {
         moduleName = project.name,
         outputDirProvider =
           project.layout.buildDirectory
-            .dir("intermediates/built_in_kotlinc/$variantName/classes")
+            .dir(
+              naming.btaOutputDir(
+                kotlinAndroidPluginApplied =
+                  project.pluginManager.hasPlugin("org.jetbrains.kotlin.android")
+              )
+            )
             .map { it.asFile.absolutePath },
         icWorkingDirProvider =
           project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {

@@ -119,8 +119,8 @@ public data class BtaCompileConfig(
   public val compilerPlugins: List<String>,
   /**
    * Where BTA writes `.class` files. Same directory the daemon's child classloader watches —
-   * `build/intermediates/built_in_kotlinc/<variant>/classes/` (Android) or
-   * `build/classes/kotlin/<variant>/main/` (JVM/CMP).
+   * `build/intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/classes/`
+   * (Android) or `build/classes/kotlin/<variant>/main/` (JVM/CMP).
    */
   public val outputDir: String,
   /**
