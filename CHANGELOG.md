@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.28.3](https://github.com/yschimke/compose-ai-tools/compare/v2.28.2...v2.28.3) (2026-09-27)
+
+
+### Bug Fixes
+
+* **deps:** update the preview daemon to 3.9.1 ([#5611](https://github.com/yschimke/compose-ai-tools/issues/5611)) ([6fa9454](https://github.com/yschimke/compose-ai-tools/commit/6fa945491d40b3d2f076c0f85c5ce4452a823c8c))
+* point the in-process compile at the classes dir the daemon loads ([#5607](https://github.com/yschimke/compose-ai-tools/issues/5607)) ([367287c](https://github.com/yschimke/compose-ai-tools/commit/367287c480e063337705714b64912600d6bf6241))
+
 ## [2.28.2](https://github.com/yschimke/compose-ai-tools/compare/v2.28.1...v2.28.2) (2026-09-27)
 
 
