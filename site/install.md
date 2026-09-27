@@ -17,17 +17,37 @@ The `compose-preview` binary works against any Compose project with **no
 build edits** — it injects the preview plugin at runtime via a bundled
 Gradle init script.
 
+The default route installs the agent skills with the
+[skills CLI](https://skills.sh), then runs the stub bundled with the
+`compose-preview` skill once:
+
+```sh
+npx skills add yschimke/skills --global --yes
+~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
+```
+
+`npx skills add` installs the skill content only, into `~/.agents/skills/` with
+per-agent links. The stub's first run executes the canonical installer with
+`--cli-only`: it downloads the CLI, links `~/.local/bin/compose-preview`, adds
+`~/.local/bin` to your bash/zsh/fish startup files, and re-execs. Open a new
+terminal afterwards. To update: `compose-preview update` updates the CLI (and
+PATH), `npx skills update` updates the skills.
+
+**Fallback: the installer.** When there's no Node, or you want the CLI and
+every skill in one step:
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
 
 The installer drops the CLI on your `$PATH` and (unless you pass
-`--cli-only`) the `compose-preview` / `compose-preview-review` agent skills
-into the Claude / Codex / Gemini skill directories. Useful flags:
+`--cli-only`) the agent skills into the Claude / Codex / Gemini skill
+directories. Useful flags (pass them as `… | bash -s -- <flags>`):
 
 | Flag | Effect |
 |------|--------|
 | `--cli-only` | Install the CLI only, skip the skill bundles. |
+| `--no-modify-path` | Don't add `~/.local/bin` to shell startup files. |
 | `--android-sdk` | Also install the Android `cmdline-tools` + platform + build-tools. |
 | `--jdk 17,21` | Install the listed JDK majors. |
 | `VERSION` | Install a specific release instead of latest. |
@@ -216,7 +236,7 @@ on every Gradle invocation it makes — no project changes needed.
 Point any agent that can fetch a URL at the
 [`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
 — a complete install-and-iterate playbook. The skill checks whether the CLI
-is present and bootstraps it (via the installer above) if not, so "point the
+is present and bootstraps it (via its bundled stub and the installer above) if not, so "point the
 agent at the skill" and "run the installer" converge on the same place. See
 [Agents & MCP](../mcp/) for the agent loop the skill drives.
 
@@ -229,11 +249,10 @@ and the wiring from [`yschimke/compose-ag-plugin`](https://github.com/yschimke/c
 - `compose-catalogs` connects to the hosted catalog and UI Builder.
 
 ```sh
-# Antigravity
-# Install the canonical skills. Harness discovery is still being verified in
-# yschimke/compose-ag-plugin#6.
-npx skills add yschimke/skills --skill compose-preview \
-  --skill compose-ui-builder --agent antigravity --global --yes
+# Antigravity (does not load ~/.agents/skills, so use the plugin route).
+# To be verified: yschimke/compose-ag-plugin#6.
+git clone https://github.com/yschimke/skills
+agy plugin install ./skills
 # Clone yschimke/compose-ag-plugin, then install either local plugin directory.
 agy plugin install ./plugins/compose-catalogs
 agy plugin install ./plugins/compose-preview

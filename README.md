@@ -15,12 +15,23 @@ That's the whole idea. Everything else on this page is optional.
 
 ## Get started
 
-Pick the one that fits you. Each is a single step.
+Pick the one that fits you.
 
 ### 🤖 With an AI coding agent
 
-Run the one-line installer once. It drops the `compose-preview` CLI **and**
-the agent skill into place (Claude Code, Codex, Gemini):
+Install the agent skills with the [skills CLI](https://skills.sh), then run
+the bundled stub once to install the `compose-preview` CLI:
+
+```sh
+npx skills add yschimke/skills --global --yes
+~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
+```
+
+Open a new terminal afterwards. To update: `compose-preview update` (CLI) and
+`npx skills update` (skills).
+
+No Node, or want the CLI and every skill in one step? Use the installer
+instead (add `-s -- --no-modify-path` to leave your shell startup files alone):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
@@ -30,7 +41,7 @@ Then just ask your agent to preview a composable. The
 [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview)
 is the playbook — it tells the agent how to render, iterate, and check its own
 work. You don't have to learn the commands; the agent reads the skill. (If
-your agent can fetch URLs but not run the installer, point it straight at the
+your agent can fetch URLs but not run commands, point it straight at the
 [SKILL.md](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
 — it bootstraps the CLI itself.)
 
@@ -42,11 +53,10 @@ the MCP wiring as plugins. The skills come from
 - `compose-catalogs` connects to the hosted catalog and UI Builder.
 
 ```sh
-# Antigravity
-# Install the canonical skills. Harness discovery is still being verified in
-# yschimke/compose-ag-plugin#6.
-npx skills add yschimke/skills --skill compose-preview \
-  --skill compose-ui-builder --agent antigravity --global --yes
+# Antigravity (does not load ~/.agents/skills, so use the plugin route).
+# To be verified: yschimke/compose-ag-plugin#6.
+git clone https://github.com/yschimke/skills
+agy plugin install ./skills
 # Clone yschimke/compose-ag-plugin, then install either local plugin directory.
 agy plugin install ./plugins/compose-catalogs
 agy plugin install ./plugins/compose-preview
