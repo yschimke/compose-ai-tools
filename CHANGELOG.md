@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.28.2](https://github.com/yschimke/compose-ai-tools/compare/v2.28.1...v2.28.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* **mcp:** register a stable launcher and repair versioned MCP entries ([#5606](https://github.com/yschimke/compose-ai-tools/issues/5606)) ([abc994b](https://github.com/yschimke/compose-ai-tools/commit/abc994bba6f675bcb0913e843e4676fa7238ae8e))
+
 ## [2.28.1](https://github.com/yschimke/compose-ai-tools/compare/v2.28.0...v2.28.1) (2026-09-27)
 
 
