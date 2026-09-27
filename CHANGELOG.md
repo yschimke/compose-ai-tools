@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.28.1](https://github.com/yschimke/compose-ai-tools/compare/v2.28.0...v2.28.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **cli:** refresh the cached MCP server when a newer release exists ([#5603](https://github.com/yschimke/compose-ai-tools/issues/5603)) ([7d24017](https://github.com/yschimke/compose-ai-tools/commit/7d24017d14b2b57a4ebccaeb5bfec609f0827156)), closes [#5602](https://github.com/yschimke/compose-ai-tools/issues/5602)
+
 ## [2.28.0](https://github.com/yschimke/compose-ai-tools/compare/v2.27.0...v2.28.0) (2026-09-27)
 
 
