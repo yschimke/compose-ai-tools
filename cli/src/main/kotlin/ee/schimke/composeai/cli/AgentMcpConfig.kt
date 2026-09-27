@@ -29,7 +29,7 @@ internal object AgentMcpConfig {
   private val JSON: Json = Json { prettyPrint = true }
 
   /** Merge a `compose-preview-mcp` entry into Antigravity's `mcpServers` map. */
-  fun mergeAntigravityConfig(existing: String?, launcher: String, projectAbsPath: String): String {
+  fun mergeAntigravityConfig(existing: String?, launcher: String, projectAbsPath: String?): String {
     val parsed: JsonObject =
       if (existing.isNullOrBlank()) JsonObject(emptyMap())
       else Json.parseToJsonElement(existing).jsonObject
@@ -37,16 +37,7 @@ internal object AgentMcpConfig {
     val existingServers = parsed["mcpServers"]?.jsonObject ?: JsonObject(emptyMap())
     val server = buildJsonObject {
       put("command", JsonPrimitive(launcher))
-      put(
-        "args",
-        JsonArray(
-          listOf(
-            JsonPrimitive("mcp"),
-            JsonPrimitive("serve"),
-            JsonPrimitive("--project=$projectAbsPath"),
-          )
-        ),
-      )
+      put("args", JsonArray(serveArgs(projectAbsPath).map(::JsonPrimitive)))
     }
     val mergedServers = JsonObject(existingServers + (SERVER_NAME to server))
     val merged = JsonObject(parsed + ("mcpServers" to mergedServers))
@@ -54,7 +45,7 @@ internal object AgentMcpConfig {
   }
 
   /** Merge a local server into OpenCode v2's `mcp.servers` map without dropping sibling keys. */
-  fun mergeOpenCodeConfig(existing: String?, launcher: String, projectAbsPath: String): String {
+  fun mergeOpenCodeConfig(existing: String?, launcher: String, projectAbsPath: String?): String {
     val parsed: JsonObject =
       if (existing.isNullOrBlank()) JsonObject(emptyMap())
       else Json.parseToJsonElement(existing).jsonObject
@@ -65,14 +56,7 @@ internal object AgentMcpConfig {
       put("type", JsonPrimitive("local"))
       put(
         "command",
-        JsonArray(
-          listOf(
-            JsonPrimitive(launcher),
-            JsonPrimitive("mcp"),
-            JsonPrimitive("serve"),
-            JsonPrimitive("--project=$projectAbsPath"),
-          )
-        ),
+        JsonArray((listOf(launcher) + serveArgs(projectAbsPath)).map(::JsonPrimitive)),
       )
       put("codemode", JsonPrimitive(false))
     }
@@ -83,7 +67,7 @@ internal object AgentMcpConfig {
   }
 
   /** A complete v2 fragment users can paste when their OpenCode config cannot be rewritten. */
-  fun openCodeConfigSnippet(launcher: String, projectAbsPath: String): String =
+  fun openCodeConfigSnippet(launcher: String, projectAbsPath: String?): String =
     mergeOpenCodeConfig(null, launcher, projectAbsPath).trimEnd()
 
   /**
@@ -106,17 +90,30 @@ internal object AgentMcpConfig {
     return PLUGIN_INSTALL_HINTS.filter { it.host in detectedHosts }
   }
 
+  /** One heading per host, with that host's commands indented beneath it. */
+  fun renderPluginHints(hints: List<PluginInstallHint>): String = buildString {
+    hints
+      .groupBy { it.host }
+      .forEach { (host, group) ->
+        appendLine("  ${PLUGIN_HOST_LABELS[host] ?: host}:")
+        group.forEach { hint ->
+          appendLine("      ${hint.command}")
+          hint.note?.let { appendLine("        ($it)") }
+        }
+      }
+  }
+
   /**
    * Replace (or append) the `[mcp_servers.compose-preview-mcp]` table in a Codex `config.toml`,
    * preserving every other line verbatim. Idempotent: a second call with the same inputs yields the
    * same file contents (modulo a trailing newline). When `existing` is null/empty, returns a file
    * containing only our table.
    */
-  fun mergeCodexConfig(existing: String?, launcher: String, projectAbsPath: String): String {
+  fun mergeCodexConfig(existing: String?, launcher: String, projectAbsPath: String?): String {
     val block = buildString {
       appendLine("[mcp_servers.$SERVER_NAME]")
       appendLine("command = ${tomlString(launcher)}")
-      appendLine("args = [\"mcp\", \"serve\", ${tomlString("--project=$projectAbsPath")}]")
+      appendLine("args = [${serveArgs(projectAbsPath).joinToString(", ") { tomlString(it) }}]")
     }
 
     if (existing.isNullOrBlank()) return block
@@ -164,22 +161,16 @@ internal object AgentMcpConfig {
   }
 
   /**
-   * Argv for `claude mcp add --scope user compose-preview-mcp -- <launcher> mcp serve --project=…`.
+   * `mcp serve`, plus `--project=<dir>` only for a project-scoped entry. A user-scope (global)
+   * entry must never carry `--project`: it would pin every session, in every project, to one
+   * checkout. The server finds the project from the client's roots or its working directory.
    */
-  fun claudeMcpAddCommand(launcher: String, projectAbsPath: String): List<String> =
-    listOf(
-      "claude",
-      "mcp",
-      "add",
-      "--scope",
-      "user",
-      SERVER_NAME,
-      "--",
-      launcher,
-      "mcp",
-      "serve",
-      "--project=$projectAbsPath",
-    )
+  fun serveArgs(projectAbsPath: String?): List<String> =
+    listOfNotNull("mcp", "serve", projectAbsPath?.let { "--project=$it" })
+
+  /** Argv for `claude mcp add --scope user compose-preview-mcp -- <launcher> mcp serve`. */
+  fun claudeMcpAddCommand(launcher: String): List<String> =
+    listOf("claude", "mcp", "add", "--scope", "user", SERVER_NAME, "--", launcher) + serveArgs(null)
 
   /** Argv for `claude mcp remove --scope user compose-preview-mcp` (used to upsert). */
   fun claudeMcpRemoveCommand(): List<String> =
@@ -231,19 +222,23 @@ internal object AgentMcpConfig {
     return escaped
   }
 
+  private val PLUGIN_HOST_LABELS =
+    mapOf("claude" to "claude (in Claude Code)", "codex" to "codex (in a shell, then in Codex)")
+
   private val PLUGIN_INSTALL_HINTS =
     listOf(
       PluginInstallHint(
         "antigravity",
-        "git clone https://github.com/yschimke/compose-ag-plugin.git",
+        "git clone https://github.com/yschimke/compose-ag-plugin.git && cd compose-ag-plugin",
       ),
-      PluginInstallHint("antigravity", "cd compose-ag-plugin"),
-      PluginInstallHint("antigravity", "agy plugin install ./plugins/compose-preview"),
-      PluginInstallHint("antigravity", "agy plugin enable compose-preview"),
+      PluginInstallHint(
+        "antigravity",
+        "agy plugin install ./plugins/compose-preview && agy plugin enable compose-preview",
+      ),
       PluginInstallHint("claude", "/plugin marketplace add yschimke/compose-ag-plugin"),
       PluginInstallHint("claude", "/plugin install compose-preview@compose-ag-plugin"),
       PluginInstallHint("codex", "codex plugin marketplace add yschimke/compose-ag-plugin"),
-      PluginInstallHint("codex", "/plugins", "Enable compose-preview in the plugin manager."),
+      PluginInstallHint("codex", "/plugins", "enable compose-preview in the plugin manager"),
     )
 }
 
