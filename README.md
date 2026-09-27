@@ -23,14 +23,20 @@ Install the agent skills with the [skills CLI](https://skills.sh), then run
 the bundled stub once to install the `compose-preview` CLI:
 
 ```sh
-npx skills add yschimke/skills --global --yes
+npx skills add yschimke/skills --global --yes --skill compose-preview --skill compose-ui-builder
 ~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
 ```
 
 Open a new terminal afterwards. To update: `compose-preview update` (CLI) and
 `npx skills update` (skills).
 
-No Node, or want the CLI and every skill in one step? Use the installer
+That installs `compose-preview` and `compose-ui-builder`. The other skills
+(`compose-preview-review`, `compose-preview-ci`, `compose-preview-design-board`,
+`compose-design-catalog`, `figma-catalog-import`, `design-parity-review`) are
+opt-in: add another `--skill <name>`; the curl installer takes `--skills a,b`
+or `--all-skills`.
+
+No Node, or want the CLI and skills in one step? Use the installer
 instead (add `-s -- --no-modify-path` to leave your shell startup files alone):
 
 ```sh
