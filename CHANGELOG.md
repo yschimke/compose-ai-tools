@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.28.0](https://github.com/yschimke/compose-ai-tools/compare/v2.27.0...v2.28.0) (2026-09-27)
+
+
+### Features
+
+* **cli:** install OpenCode MCP configuration ([#5593](https://github.com/yschimke/compose-ai-tools/issues/5593)) ([02985b7](https://github.com/yschimke/compose-ai-tools/commit/02985b74bc6c2cfef298b8abf3463c811f37fefd))
+
+
+### Bug Fixes
+
+* **ci:** restore Compose Preview workflow permissions ([#5598](https://github.com/yschimke/compose-ai-tools/issues/5598)) ([4525b47](https://github.com/yschimke/compose-ai-tools/commit/4525b47892833aa2c68be9d7fc6e9a6e390ea031))
+* **docs:** point MCP downloads to server releases ([#5596](https://github.com/yschimke/compose-ai-tools/issues/5596)) ([f6b54f7](https://github.com/yschimke/compose-ai-tools/commit/f6b54f7d55aa49a5caa6b63cb65418e563186fb4))
+* **release:** keep plugin examples on published line ([#5595](https://github.com/yschimke/compose-ai-tools/issues/5595)) ([62de536](https://github.com/yschimke/compose-ai-tools/commit/62de53626d5337475788d719ba123f50ff0254ca))
+
 ## [2.27.0](https://github.com/yschimke/compose-ai-tools/compare/v2.26.1...v2.27.0) (2026-09-26)
 
 
