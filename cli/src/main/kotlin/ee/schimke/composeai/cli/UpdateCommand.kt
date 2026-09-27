@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import java.io.File
 import kotlin.system.exitProcess
 
 /**
@@ -36,9 +37,32 @@ class UpdateCommand(private val args: List<String>) {
       System.err.println("error: install script exited with code $exit")
       exitProcess(exit)
     }
+    pruneStaleMcp()?.let { System.err.println(it) }
   }
 
   companion object {
+    /**
+     * Drop cached MCP servers older than the newest release, so the next `mcp serve` fetches the
+     * new one instead of relaunching the old (#5602). Returns the line to print, or null when there
+     * was nothing to say. A release pinned with `COMPOSE_PREVIEW_SERVER_VERSION` is left alone, and
+     * so is everything when the newest cannot be resolved.
+     */
+    internal fun pruneStaleMcp(
+      requested: String? = ServerDistributionProvision.requestedVersion(),
+      offline: Boolean = ServerDistributionProvision.defaultOffline(),
+      latest: () -> String? = { ServerDistributionProvision.latestVersion() },
+      cacheRoot: File = ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.MCP),
+    ): String? {
+      if (requested != null || offline || !cacheRoot.isDirectory) return null
+      val newest =
+        latest() ?: return "==> could not resolve the newest MCP server; its cache is unchanged"
+      val removed =
+        ServerDistributionProvision.pruneOlderThan(newest, ReleasedDistribution.MCP, cacheRoot)
+      if (removed.isEmpty()) return null
+      return "==> removed cached MCP server ${removed.joinToString()}; " +
+        "the next `mcp serve` uses $newest"
+    }
+
     /**
      * Builds the curl-pipe-bash invocation that re-bootstraps the skill bundle. Pure function so
      * tests can exercise the version-arg quoting without spawning a subprocess.

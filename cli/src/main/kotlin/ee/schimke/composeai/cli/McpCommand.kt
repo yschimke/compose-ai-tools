@@ -159,13 +159,24 @@ internal class McpCommand(
     // `inheritIO`, not piped streams: the agent host's stdin and stdout are handed to the MCP
     // server directly, so this process copies nothing, cannot reframe a message, and adds no
     // buffering to a protocol that is sensitive to both.
+    //
+    // A cached copy is compared against the newest release once a day and replaced when older
+    // (#5602); without that, whoever ran this once stays on that server for good.
+    val found = ServerBinaryDiscovery.choose(args, ReleasedDistribution.MCP)
     val choice =
-      ServerBinaryDiscovery.choose(args, ReleasedDistribution.MCP)
+      found?.let(::refreshedMcp)
         ?: provisionMcp()
         ?: run {
           System.err.println(ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP))
           exitProcess(1)
         }
+    System.err.println(
+      ServerBinaryDiscovery.describeLaunch(
+        choice,
+        downloaded = choice != found,
+        label = ReleasedDistribution.MCP.label,
+      )
+    )
     // The same preflight `serve` runs, and it matters more here: an MCP host shows the user no
     // stderr at all, so an `UnsupportedClassVersionError` inside the start script surfaces only as
     // a server that will not connect. See `ServerJavaPreflight`.
@@ -197,6 +208,24 @@ internal class McpCommand(
    * every user of `render`, `show`, `bundle` and `history` for a command they may never run. The
    * tarball rides the same release as the preview server, so one pin covers both.
    */
+  private fun refreshedMcp(found: ServerBinaryDiscovery.Choice): ServerBinaryDiscovery.Choice =
+    ServerBinaryDiscovery.refreshed(
+      found,
+      requested = ServerDistributionProvision.requestedVersion(),
+      offline = ServerDistributionProvision.defaultOffline(),
+      stamp =
+        File(
+          ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.MCP),
+          ServerBinaryDiscovery.REFRESH_STAMP,
+        ),
+      latest = { ServerDistributionProvision.latestVersion() },
+      provision = { version ->
+        ServerDistributionProvision.ensure(ReleasedDistribution.MCP, requested = version)?.let {
+          ServerBinaryDiscovery.Choice(it.path, ServerBinaryDiscovery.CACHE)
+        }
+      },
+    )
+
   private fun provisionMcp(): ServerBinaryDiscovery.Choice? =
     ServerDistributionProvision.ensure(ReleasedDistribution.MCP)?.let {
       ServerBinaryDiscovery.Choice(it.path, ServerBinaryDiscovery.CACHE)

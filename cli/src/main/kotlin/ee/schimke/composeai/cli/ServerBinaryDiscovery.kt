@@ -79,7 +79,7 @@ internal object ServerBinaryDiscovery {
     provision: () -> Choice?,
     log: (String) -> Unit = { System.err.println(it) },
   ): Choice {
-    if (minimum == null || choice.source != CACHE || requested != null) return choice
+    if (minimum == null || !isUnchosenCache(choice, requested)) return choice
     val version = cachedVersionOf(choice.binary) ?: return choice
     if (compareSemver(version, minimum) >= 0) return choice
     log(
@@ -91,6 +91,82 @@ internal object ServerBinaryDiscovery {
         log("compose-preview: could not fetch a newer server; launching the cached $version")
       }
   }
+
+  /** How often [refreshed] may ask for the newest release: once a day. */
+  const val REFRESH_INTERVAL_MS: Long = 24L * 60 * 60 * 1000
+
+  /** The file under a distribution's cache root whose mtime records the last [refreshed] check. */
+  const val REFRESH_STAMP: String = ".latest-check"
+
+  /**
+   * [choice], unless it is a cached copy older than the newest release, in which case that release
+   * is fetched and launched instead (#5602).
+   *
+   * [meetsMinimum]'s rule about *which* choices may be second-guessed applies unchanged — only an
+   * unpinned cache — but the trigger is time rather than a command: at most once per
+   * [REFRESH_INTERVAL_MS], recorded in [stamp], the newest release is resolved and compared. The
+   * stamp is written before asking, so a machine that cannot reach GitHub pays for one failed
+   * lookup a day rather than one per launch. Offline mode never asks. Any failure launches the
+   * cached copy with one line of explanation.
+   */
+  fun refreshed(
+    choice: Choice,
+    requested: String?,
+    offline: Boolean,
+    stamp: File,
+    latest: () -> String?,
+    provision: (String) -> Choice?,
+    now: Long = System.currentTimeMillis(),
+    log: (String) -> Unit = { System.err.println(it) },
+  ): Choice {
+    if (offline || !isUnchosenCache(choice, requested)) return choice
+    val version = cachedVersionOf(choice.binary) ?: return choice
+    val last = stamp.lastModified()
+    if (last > 0 && now - last in 0 until REFRESH_INTERVAL_MS) return choice
+    try {
+      stamp.parentFile?.mkdirs()
+      if (!stamp.exists()) stamp.createNewFile()
+      stamp.setLastModified(now)
+    } catch (_: Exception) {
+      // An unwritable stamp only means the check repeats next launch.
+    }
+    val newest =
+      latest()
+        ?: return choice.also {
+          log("compose-preview: could not check for a newer server; launching the cached $version")
+        }
+    if (compareSemver(newest, version) <= 0) return choice
+    log(
+      "compose-preview: the cached server $version is older than the newest, $newest; fetching it"
+    )
+    return provision(newest)?.takeIf { it.binary != choice.binary }
+      ?: choice.also {
+        log("compose-preview: could not fetch server $newest; launching the cached $version")
+      }
+  }
+
+  /**
+   * One stderr line naming what is about to be launched: the version when it is a cached release,
+   * and where it came from — the cache, a fresh download, or an override (flag, environment,
+   * `PATH`).
+   */
+  fun describeLaunch(choice: Choice, downloaded: Boolean, label: String): String {
+    val origin =
+      when {
+        choice.source != CACHE -> "override: ${choice.source}"
+        downloaded -> "downloaded"
+        else -> "cache"
+      }
+    val version = if (choice.source == CACHE) cachedVersionOf(choice.binary) else null
+    return "compose-preview: launching $label ${version ?: choice.binary} ($origin)"
+  }
+
+  /**
+   * Nobody chose it: a cached copy, with no release pinned by `COMPOSE_PREVIEW_SERVER_VERSION`. The
+   * only kind of choice [meetsMinimum] and [refreshed] replace.
+   */
+  private fun isUnchosenCache(choice: Choice, requested: String?): Boolean =
+    choice.source == CACHE && requested == null
 
   /** The release a cached launcher belongs to: `<cache>/<version>/bin/<binary>`. */
   internal fun cachedVersionOf(binary: String): String? =

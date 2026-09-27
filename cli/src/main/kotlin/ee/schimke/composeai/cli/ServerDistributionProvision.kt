@@ -256,6 +256,29 @@ internal object ServerDistributionProvision {
   }
 
   /**
+   * Delete every cached version older than [latest], so the next launch fetches [latest] rather
+   * than reusing a stale copy (#5602). Returns the versions removed. [latest] itself, and anything
+   * newer or unparseable-as-older, is kept. The refresh stamp goes too, so the next launch checks
+   * again.
+   */
+  fun pruneOlderThan(
+    latest: String,
+    distribution: ReleasedDistribution = ReleasedDistribution.SERVER,
+    cacheRoot: File = defaultCacheRoot(distribution),
+  ): List<String> {
+    val removed =
+      cacheRoot
+        .listFiles()
+        .orEmpty()
+        .filter { it.isDirectory && !it.name.startsWith(".") }
+        .filter { VERSION_ORDER.compare(it.name, latest) < 0 }
+        .filter { it.deleteRecursively() }
+        .map { it.name }
+    File(cacheRoot, ServerBinaryDiscovery.REFRESH_STAMP).delete()
+    return removed.sortedWith(VERSION_ORDER)
+  }
+
+  /**
    * Whether [binary] is a launcher from a *complete* distribution — the script itself, plus a
    * non-empty sibling `lib/`.
    *
@@ -405,7 +428,7 @@ internal object ServerDistributionProvision {
   fun defaultCacheRoot(distribution: ReleasedDistribution = ReleasedDistribution.SERVER): File =
     composeAiCacheDir(distribution.cacheDirName)
 
-  private fun defaultOffline(): Boolean =
+  internal fun defaultOffline(): Boolean =
     System.getProperty("composeai.bundle.offline").toBoolean() ||
       System.getenv("COMPOSE_PREVIEW_OFFLINE") == "1"
 }
