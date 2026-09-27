@@ -84,6 +84,51 @@ class ReleasePluginPinsTest(unittest.TestCase):
                 MODULE.validate(root),
             )
 
+    def test_rejects_mcp_asset_from_compose_ai_tools_release(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.write_fixture(root)
+            path = root / "docs/RELEASING.md"
+            path.write_text(
+                path.read_text()
+                + "https://github.com/yschimke/compose-ai-tools/releases/latest/download/"
+                "compose-preview-mcp-2.28.0.tar.gz\n",
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "docs/RELEASING.md: standalone MCP archives are published by "
+                "compose-preview-server, not compose-ai-tools",
+                MODULE.validate(root),
+            )
+
+    def test_accepts_mcp_asset_from_server_release(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.write_fixture(root)
+            path = root / "docs/RELEASING.md"
+            path.write_text(
+                path.read_text()
+                + "https://github.com/yschimke/compose-preview-server/releases/latest/download/"
+                "compose-preview-mcp-3.75.0.tar.gz\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([], MODULE.validate(root))
+
+    def test_rejects_mcp_compatibility_filter_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.write_fixture(root)
+            path = root / "docs/RELEASING.md"
+            path.write_text(
+                path.read_text() + "Downloads the newest compatible MCP distribution.\n",
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "docs/RELEASING.md: the MCP launcher selects the newest published release, "
+                "not the newest compatible release",
+                MODULE.validate(root),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
