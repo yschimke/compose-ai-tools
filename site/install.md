@@ -30,7 +30,8 @@ npx skills add yschimke/skills --global --yes
 per-agent links. The stub's first run executes the canonical installer with
 `--cli-only`: it downloads the CLI, links `~/.local/bin/compose-preview`, adds
 `~/.local/bin` to your bash/zsh/fish startup files, and re-execs. Open a new
-terminal afterwards; `compose-preview update` keeps the CLI current.
+terminal afterwards. To update: `compose-preview update` updates the CLI (and
+PATH), `npx skills update` updates the skills.
 
 **Fallback: the installer.** When there's no Node, or you want the CLI and
 every skill in one step:

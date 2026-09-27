@@ -27,7 +27,9 @@ npx skills add yschimke/skills --global --yes
 ~/.agents/skills/compose-preview/scripts/compose-preview --version   # first run installs the CLI and puts it on PATH
 ```
 
-Open a new terminal afterwards; `compose-preview update` keeps the CLI current.
+Open a new terminal afterwards. To update: `compose-preview update` (CLI) and
+`npx skills update` (skills).
+
 No Node, or want the CLI and every skill in one step? Use the installer
 instead (add `-s -- --no-modify-path` to leave your shell startup files alone):
 
