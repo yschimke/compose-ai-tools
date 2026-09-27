@@ -211,4 +211,19 @@ class AndroidVariantNamingTest {
     assertThat(naming.runtimeClasspath).isEqualTo("debugRuntimeClasspath")
     assertThat(naming.unitTestRuntimeClasspath).isEqualTo("debugUnitTestRuntimeClasspath")
   }
+
+  /**
+   * compose-preview-server#1174: the BTA output dir must be a directory the daemon loads classes
+   * from. The daemon's `userClassDirs` comes from the render classpath, which lists these exact
+   * compile outputs; the old `built_in_kotlinc/<variant>/classes` was never on it.
+   */
+  @Test
+  fun `bta output dir is the Kotlin compile output the daemon loads`() {
+    val naming = AndroidVariantNaming.classic("debug")
+
+    assertThat(naming.btaOutputDir(kotlinAndroidPluginApplied = false))
+      .isEqualTo("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")
+    assertThat(naming.btaOutputDir(kotlinAndroidPluginApplied = true))
+      .isEqualTo("tmp/kotlin-classes/debug")
+  }
 }

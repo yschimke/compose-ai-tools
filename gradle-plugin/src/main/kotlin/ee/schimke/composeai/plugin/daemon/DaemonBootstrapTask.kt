@@ -216,8 +216,8 @@ abstract class DaemonBootstrapTask : DefaultTask() {
 
   /**
    * Where BTA writes `.class` files. Same directory the daemon's child classloader watches —
-   * typically `build/intermediates/built_in_kotlinc/<variant>/classes/` (Android) or
-   * `build/classes/kotlin/<variant>/main/` (JVM/CMP).
+   * typically `build/intermediates/built_in_kotlinc/<variant>/compile<Variant>Kotlin/classes/`
+   * (Android) or `build/classes/kotlin/<variant>/main/` (JVM/CMP).
    */
   @get:Input @get:Optional abstract val btaOutputDir: Property<String>
 
