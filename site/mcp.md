@@ -70,8 +70,8 @@ For the full tool surface, URI scheme, and wire protocol see
 
 ### Register the local server with OpenCode
 
-OpenCode v2 stores local MCP servers under `mcp.servers`. Register the current
-project in the user config (`$XDG_CONFIG_HOME/opencode/opencode.json` when set,
+OpenCode v2 stores local MCP servers under `mcp.servers`. Register the server
+globally in the user config (`$XDG_CONFIG_HOME/opencode/opencode.json` when set,
 otherwise `~/.config/opencode/opencode.json`):
 
 ```sh
@@ -86,7 +86,12 @@ compose-preview mcp install --opencode --opencode-config /path/to/opencode.json
 ```
 
 The command preserves existing top-level, `mcp`, and sibling server keys while
-upserting this current-v2 shape:
+adding this current-v2 shape when it is missing or broken (a healthy entry is
+left as it is). The launcher is the stable one (for example
+`~/.local/bin/compose-preview`), never a versioned
+`compose-preview-<version>/bin/` path that the next upgrade deletes. A user-scope
+entry has no `--project`: the server finds the project from the client's roots
+or working directory. Only `--scope project` adds `--project=<dir>`:
 
 ```json
 {
@@ -95,10 +100,9 @@ upserting this current-v2 shape:
       "compose-preview-mcp": {
         "type": "local",
         "command": [
-          "/absolute/path/to/compose-preview",
+          "/home/you/.local/bin/compose-preview",
           "mcp",
-          "serve",
-          "--project=/absolute/path/to/project"
+          "serve"
         ],
         "codemode": false
       }

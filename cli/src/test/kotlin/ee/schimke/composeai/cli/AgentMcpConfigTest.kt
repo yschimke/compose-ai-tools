@@ -25,12 +25,12 @@ class AgentMcpConfigTest {
 
   @Test
   fun `codex empty file produces only our table`() {
-    val out = AgentMcpConfig.mergeCodexConfig(null, launcher, project)
+    val out = AgentMcpConfig.mergeCodexConfig(null, launcher, null)
     assertEquals(
       """
       [mcp_servers.compose-preview-mcp]
       command = "/abs/bin/compose-preview"
-      args = ["mcp", "serve", "--project=/abs/repo"]
+      args = ["mcp", "serve"]
 
       """
         .trimIndent(),
@@ -49,11 +49,11 @@ class AgentMcpConfigTest {
       base_url = "https://api.openai.com/v1"
       """
         .trimIndent()
-    val out = AgentMcpConfig.mergeCodexConfig(existing, launcher, project)
+    val out = AgentMcpConfig.mergeCodexConfig(existing, launcher, null)
     assertTrue(out.startsWith(existing), "prior content preserved verbatim:\n$out")
     assertTrue(out.contains("[mcp_servers.compose-preview-mcp]"), "appended our table:\n$out")
     assertTrue(
-      out.contains("args = [\"mcp\", \"serve\", \"--project=/abs/repo\"]"),
+      out.contains("args = [\"mcp\", \"serve\"]"),
       "appended args line:\n$out",
     )
   }
@@ -73,7 +73,7 @@ class AgentMcpConfigTest {
       command = "/usr/bin/other"
       """
         .trimIndent()
-    val out = AgentMcpConfig.mergeCodexConfig(existing, launcher, project)
+    val out = AgentMcpConfig.mergeCodexConfig(existing, launcher, null)
     assertFalse(out.contains("/old/path/compose-preview"), "old path replaced:\n$out")
     assertFalse(out.contains("/old/repo"), "old project replaced:\n$out")
     assertTrue(out.contains(launcher), "new launcher present:\n$out")
@@ -87,15 +87,15 @@ class AgentMcpConfigTest {
 
   @Test
   fun `codex is idempotent`() {
-    val first = AgentMcpConfig.mergeCodexConfig(null, launcher, project)
-    val second = AgentMcpConfig.mergeCodexConfig(first, launcher, project)
+    val first = AgentMcpConfig.mergeCodexConfig(null, launcher, null)
+    val second = AgentMcpConfig.mergeCodexConfig(first, launcher, null)
     assertEquals(first, second)
   }
 
   @Test
   fun `codex escapes special characters in launcher path`() {
     val odd = "/abs/with \"quote\"/compose-preview"
-    val out = AgentMcpConfig.mergeCodexConfig(null, odd, project)
+    val out = AgentMcpConfig.mergeCodexConfig(null, odd, null)
     // The escaped form `\"quote\"` must appear; the raw `"quote"` must not break the TOML string.
     assertTrue(out.contains("\\\"quote\\\""), "quote escaped:\n$out")
   }
@@ -103,8 +103,9 @@ class AgentMcpConfigTest {
   @Test
   fun `antigravity merges into mcpServers without dropping siblings`() {
     val existing = """{"mcpServers":{"other-mcp":{"command":"/usr/bin/other"}},"theme":"dark"}"""
-    val out = AgentMcpConfig.mergeAntigravityConfig(existing, launcher, project)
+    val out = AgentMcpConfig.mergeAntigravityConfig(existing, launcher, null)
     assertTrue(out.contains("\"other-mcp\""), "sibling preserved:\n$out")
+    assertFalse(out.contains("--project"), "global entry never pins a project:\n$out")
     assertTrue(out.contains("\"compose-preview-mcp\""), "ours added:\n$out")
     assertTrue(out.contains("\"theme\""), "top-level keys preserved:\n$out")
   }
@@ -264,7 +265,7 @@ class AgentMcpConfigTest {
     assertEquals(listOf("claude", "claude", "codex", "codex"), hints.map { it.host })
     assertTrue(
       hints.any {
-        it.command == "/plugins" && it.note == "Enable compose-preview in the plugin manager."
+        it.command == "/plugins" && it.note == "enable compose-preview in the plugin manager"
       }
     )
     assertTrue(
@@ -273,23 +274,31 @@ class AgentMcpConfigTest {
   }
 
   @Test
-  fun `antigravity plugin hint is a complete install and enable sequence`() {
-    val commands =
-      AgentMcpConfig.pluginInstallHints(setOf("antigravity"), enabled = true).map { it.command }
+  fun `plugin hints render one heading per host with its commands indented beneath`() {
+    val text =
+      AgentMcpConfig.renderPluginHints(
+        AgentMcpConfig.pluginInstallHints(setOf("antigravity", "claude", "codex"), enabled = true)
+      )
     assertEquals(
-      listOf(
-        "git clone https://github.com/yschimke/compose-ag-plugin.git",
-        "cd compose-ag-plugin",
-        "agy plugin install ./plugins/compose-preview",
-        "agy plugin enable compose-preview",
-      ),
-      commands,
+      """
+      |  antigravity:
+      |      git clone https://github.com/yschimke/compose-ag-plugin.git && cd compose-ag-plugin
+      |      agy plugin install ./plugins/compose-preview && agy plugin enable compose-preview
+      |  claude (in Claude Code):
+      |      /plugin marketplace add yschimke/compose-ag-plugin
+      |      /plugin install compose-preview@compose-ag-plugin
+      |  codex (in a shell, then in Codex):
+      |      codex plugin marketplace add yschimke/compose-ag-plugin
+      |      /plugins
+      |        (enable compose-preview in the plugin manager)
+      |"""
+        .trimMargin(),
+      text,
     )
   }
 
   @Test
-  fun `claude mcp add argv is the documented shape`() {
-    val argv = AgentMcpConfig.claudeMcpAddCommand(launcher, project)
+  fun `claude mcp add argv is global and never pins a project`() {
     assertEquals(
       listOf(
         "claude",
@@ -302,9 +311,8 @@ class AgentMcpConfigTest {
         "/abs/bin/compose-preview",
         "mcp",
         "serve",
-        "--project=/abs/repo",
       ),
-      argv,
+      AgentMcpConfig.claudeMcpAddCommand(launcher),
     )
   }
 

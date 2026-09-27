@@ -57,6 +57,8 @@ internal class McpCommand(
     when (sub) {
       "serve" -> serve(rest)
       "install" -> install(rest)
+      "register" -> register(rest)
+      "repair" -> repair(rest)
       "doctor" -> doctor(rest)
       "help",
       "--help",
@@ -82,9 +84,16 @@ internal class McpCommand(
                  later with the register_project MCP tool). The server ships from
                  compose-preview-server and is fetched on first use; --mcp-binary <path>
                  or COMPOSE_PREVIEW_MCP names one you already have.
-        install  Bootstrap daemon descriptors for every module with the plugin applied,
-                 flip each descriptor's enabled flag, print a `claude mcp add` line,
-                 and optionally write Antigravity's MCP config.
+        install  Per-project bootstrap: daemon descriptors for every module with the
+                 plugin applied (enabled) and composePreviewDiscover. Then registers
+                 compose-preview-mcp with detected hosts only where the entry is missing
+                 or broken; a healthy global entry is never rewritten.
+        register One-time host registration only (no Gradle): writes
+                 `<launcher> mcp serve` to each detected host where missing or broken.
+        repair   Fix existing compose-preview-mcp entries in ~/.claude.json, Antigravity,
+                 Codex and OpenCode configs: a missing or versioned launcher path
+                 (…/compose-preview-<version>/bin/) becomes the stable one, and a global
+                 entry's --project is dropped. Never adds entries. `update` runs it.
         doctor   Report per-module descriptor state (no mutations).
 
       Common options (install/doctor):
@@ -115,11 +124,13 @@ internal class McpCommand(
         --http-allowed-origin <host>
                              Accepted browser Origin hostname; repeat to narrow independently.
 
-      install: agent host registration (each defaults to "on" when the host is detected
-      locally; opt out with --no-<host>):
+      install/register: agent host registration (each defaults to "on" when the host is
+      detected locally; opt out with --no-<host>). Global entries run the stable launcher
+      (e.g. ~/.local/bin/compose-preview) as `mcp serve` with no --project; the server
+      finds the project from the client's roots or working directory:
         --claude / --no-claude
                              Run `claude mcp add --scope user` for compose-preview-mcp
-                             (idempotent: re-runs `mcp remove` first). Detected when
+                             when absent (repaired in place when broken). Detected when
                              `claude` is on PATH or ~/.claude/ exists.
         --codex / --no-codex
                              Merge a [mcp_servers.compose-preview-mcp] table into Codex's
@@ -236,21 +247,8 @@ internal class McpCommand(
   private fun install(args: List<String>) {
     val emitJson = "--json" in args
 
-    val antigravityDetected = isAntigravityEnvironment()
-    val claudeDetected = isClaudeEnvironment()
-    val codexDetected = isCodexEnvironment()
-    val openCodeDetected = isOpenCodeEnvironment()
-
-    // Per-host: default to "on if detected", opt-in via --<host>, opt-out via --no-<host>.
-    val installAntigravity =
-      "--no-antigravity" !in args && ("--antigravity" in args || antigravityDetected)
-    val installClaude = "--no-claude" !in args && ("--claude" in args || claudeDetected)
-    val installCodex = "--no-codex" !in args && ("--codex" in args || codexDetected)
-    val installOpenCode = "--no-opencode" !in args && ("--opencode" in args || openCodeDetected)
-
     val projectDir = resolveProjectDir(args)
-    val openCodeScope = args.flagValue("--scope") ?: "user"
-    if (openCodeScope !in setOf("user", "project")) {
+    if ((args.flagValue("--scope") ?: "user") !in setOf("user", "project")) {
       System.err.println("compose-preview mcp install: --scope must be user or project")
       exitProcess(2)
     }
@@ -336,128 +334,12 @@ internal class McpCommand(
         exitProcess(1)
       }
 
-      // CLAUDE_CLOUD users need an absolute path because `~/.claude/skills/.../bin/compose-preview`
-      // is the canonical launcher; we don't know how `compose-preview` is on the consumer's PATH.
-      val needAbsoluteLauncher =
-        installAntigravity || installCodex || installClaude || installOpenCode
-      val launcher =
-        locateHostLauncher()
-          ?: if (needAbsoluteLauncher) {
-            System.err.println(
-              "compose-preview mcp install: cannot locate an absolute compose-preview launcher " +
-                "for agent host config"
-            )
-            exitProcess(1)
-          } else {
-            "compose-preview"
-          }
-      val projectAbs = projectDir.absolutePath
-      val claudeMcpAdd =
-        "claude mcp add --scope user ${AgentMcpConfig.SERVER_NAME} -- " +
-          "$launcher mcp serve --project=$projectAbs"
-
-      val antigravityConfig =
-        args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
-      val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
-      val openCodeConfig =
-        selectOpenCodeConfig(
-          explicitConfig = args.flagValue("--opencode-config")?.let(::File),
-          installOpenCode = installOpenCode,
-        ) {
-          defaultOpenCodeConfig(projectDir, openCodeScope)
-        }
-      val pluginHints =
-        AgentMcpConfig.pluginInstallHints(
-          buildSet {
-            if (antigravityDetected) add("antigravity")
-            if (claudeDetected) add("claude")
-            if (codexDetected) add("codex")
-          },
-          enabled = "--no-plugin-hint" !in args,
-        )
-
-      val results = mutableListOf<HostResult>()
-
-      if (installAntigravity) {
-        results +=
-          runCatching {
-            writeAntigravityConfig(antigravityConfig, launcher, projectDir)
-            HostResult("antigravity", true, antigravityConfig.absolutePath, null)
-          }
-            .getOrElse { e ->
-              HostResult("antigravity", false, antigravityConfig.absolutePath, e.message)
-            }
-      }
-      if (installCodex) {
-        results +=
-          runCatching {
-            writeCodexConfig(codexConfig, launcher, projectDir)
-            HostResult("codex", true, codexConfig.absolutePath, null)
-          }
-            .getOrElse { e -> HostResult("codex", false, codexConfig.absolutePath, e.message) }
-      }
-      if (installOpenCode) {
-        val config = checkNotNull(openCodeConfig)
-        results +=
-          runCatching {
-            writeOpenCodeConfig(config, launcher, projectDir)
-            HostResult("opencode", true, config.absolutePath, null)
-          }
-            .getOrElse { e -> HostResult("opencode", false, config.absolutePath, e.message) }
-      }
-      if (installClaude) {
-        val claudeOnPath = locateOnPath("claude") != null
-        if (!claudeOnPath) {
-          results +=
-            HostResult(
-              "claude",
-              false,
-              null,
-              "`claude` not on PATH; copy/paste the printed command instead",
-            )
-        } else {
-          results += runClaudeMcpAdd(launcher, projectDir)
-        }
-      }
-
+      val registration = registerHosts(args, projectDir)
       if (emitJson) {
         val payload = buildJsonObject {
           put("schema", JsonPrimitive("compose-preview-mcp-install/v1"))
-          put("projectRoot", JsonPrimitive(projectAbs))
-          put("launcher", JsonPrimitive(launcher))
-          put("claudeMcpAdd", JsonPrimitive(claudeMcpAdd))
-          put("antigravityConfig", JsonPrimitive(antigravityConfig.absolutePath))
-          put("antigravityInstalled", JsonPrimitive(installAntigravity))
-          put("codexConfig", JsonPrimitive(codexConfig.absolutePath))
-          put("codexInstalled", JsonPrimitive(installCodex))
-          openCodeConfig?.let { put("opencodeConfig", JsonPrimitive(it.absolutePath)) }
-          put("opencodeInstalled", JsonPrimitive(installOpenCode))
-          put("claudeInstalled", JsonPrimitive(installClaude))
-          put(
-            "pluginHints",
-            kotlinx.serialization.json.JsonArray(
-              pluginHints.map {
-                buildJsonObject {
-                  put("host", JsonPrimitive(it.host))
-                  put("command", JsonPrimitive(it.command))
-                  it.note?.let { note -> put("note", JsonPrimitive(note)) }
-                }
-              }
-            ),
-          )
-          put(
-            "hosts",
-            kotlinx.serialization.json.JsonArray(
-              results.map {
-                buildJsonObject {
-                  put("name", JsonPrimitive(it.name))
-                  put("ok", JsonPrimitive(it.ok))
-                  it.path?.let { p -> put("path", JsonPrimitive(p)) }
-                  it.error?.let { e -> put("error", JsonPrimitive(e)) }
-                }
-              }
-            ),
-          )
+          put("projectRoot", JsonPrimitive(projectDir.absolutePath))
+          registration.toJson().forEach { (k, v) -> put(k, v) }
           put(
             "modules",
             kotlinx.serialization.json.JsonArray(
@@ -479,62 +361,326 @@ internal class McpCommand(
           System.err.println("    :${d.gradlePath}  ${d.descriptor}  (enabled=true)")
         }
         System.err.println()
-        if (results.isEmpty()) {
-          System.err.println("No agent host detected. To attach one manually, copy/paste:")
-          println(claudeMcpAdd)
-        } else {
-          System.err.println("Agent hosts configured:")
-          results.forEach { r ->
-            val tag = if (r.ok) "ok" else "failed"
-            val where = r.path?.let { "  (${it})" } ?: ""
-            System.err.println("    [$tag] ${r.name}$where")
-            if (!r.ok && r.error != null) System.err.println("           ${r.error}")
-          }
-          if (results.none { it.name == "claude" && it.ok }) {
-            System.err.println()
-            System.err.println("To attach Claude Code manually, run:")
-            println(claudeMcpAdd)
-          }
-        }
-        if (pluginHints.isNotEmpty()) {
-          System.err.println()
-          System.err.println(
-            "Detected harness plugins also provide skills and hooks. Install the wiring plugin:"
-          )
-          pluginHints.forEach { hint ->
-            System.err.println("    ${hint.host}:")
-            println(hint.command)
-            hint.note?.let { System.err.println("        $it") }
-          }
-        }
+        registration.print()
       }
     }
   }
+
+  // -- register / repair -------------------------------------------------------------------------
+
+  /** `mcp register`: the one-time host registration, without touching any Gradle project. */
+  private fun register(args: List<String>) {
+    val registration = registerHosts(args, resolveProjectDir(args))
+    if ("--json" in args) {
+      val payload = buildJsonObject {
+        put("schema", JsonPrimitive("compose-preview-mcp-register/v1"))
+        registration.toJson().forEach { (k, v) -> put(k, v) }
+      }
+      println(JSON.encodeToString(JsonObject.serializer(), payload))
+    } else {
+      registration.print()
+    }
+  }
+
+  /** `mcp repair`: fix existing entries in every known host config; never adds one. */
+  private fun repair(@Suppress("UNUSED_PARAMETER") args: List<String>) {
+    val changes = repairHostConfigs()
+    if (changes == null) {
+      System.err.println("compose-preview mcp repair: cannot locate a compose-preview launcher")
+      exitProcess(1)
+    }
+    if (changes.isEmpty()) System.err.println("compose-preview-mcp host entries are up to date")
+    changes.forEach { System.err.println("==> repaired $it") }
+  }
+
+  private class Registration(
+    val launcher: String,
+    val claudeMcpAdd: String,
+    val results: List<HostResult>,
+    val pluginHints: List<PluginInstallHint>,
+    val antigravityConfig: File,
+    val codexConfig: File,
+    val openCodeConfig: File?,
+    val installed: Map<String, Boolean>,
+  ) {
+    fun toJson(): Map<String, kotlinx.serialization.json.JsonElement> = buildMap {
+      put("launcher", JsonPrimitive(launcher))
+      put("claudeMcpAdd", JsonPrimitive(claudeMcpAdd))
+      put("antigravityConfig", JsonPrimitive(antigravityConfig.absolutePath))
+      put("antigravityInstalled", JsonPrimitive(installed.getValue("antigravity")))
+      put("codexConfig", JsonPrimitive(codexConfig.absolutePath))
+      put("codexInstalled", JsonPrimitive(installed.getValue("codex")))
+      openCodeConfig?.let { put("opencodeConfig", JsonPrimitive(it.absolutePath)) }
+      put("opencodeInstalled", JsonPrimitive(installed.getValue("opencode")))
+      put("claudeInstalled", JsonPrimitive(installed.getValue("claude")))
+      put(
+        "pluginHints",
+        kotlinx.serialization.json.JsonArray(
+          pluginHints.map {
+            buildJsonObject {
+              put("host", JsonPrimitive(it.host))
+              put("command", JsonPrimitive(it.command))
+              it.note?.let { note -> put("note", JsonPrimitive(note)) }
+            }
+          }
+        ),
+      )
+      put(
+        "hosts",
+        kotlinx.serialization.json.JsonArray(
+          results.map {
+            buildJsonObject {
+              put("name", JsonPrimitive(it.name))
+              put("ok", JsonPrimitive(it.ok))
+              it.action?.let { a -> put("action", JsonPrimitive(a)) }
+              it.path?.let { p -> put("path", JsonPrimitive(p)) }
+              it.error?.let { e -> put("error", JsonPrimitive(e)) }
+            }
+          }
+        ),
+      )
+    }
+
+    fun print() {
+      if (results.isEmpty()) {
+        System.err.println("No agent host detected. To attach one manually, copy/paste:")
+        println(claudeMcpAdd)
+      } else {
+        System.err.println("Agent hosts:")
+        results.forEach { r ->
+          val tag = if (r.ok) "ok" else "failed"
+          val where = r.path?.let { "  (${it})" } ?: ""
+          val action = r.action?.let { " $it" } ?: ""
+          System.err.println("    [$tag] ${r.name}$where$action")
+          r.changes.forEach { System.err.println("           $it") }
+          if (!r.ok && r.error != null) System.err.println("           ${r.error}")
+        }
+        if (results.none { it.name == "claude" && it.ok }) {
+          System.err.println()
+          System.err.println("To attach Claude Code manually, run:")
+          println(claudeMcpAdd)
+        }
+      }
+      if (pluginHints.isNotEmpty()) {
+        System.err.println()
+        System.err.println(
+          "Detected harness plugins also provide skills and hooks. Install the wiring plugin:"
+        )
+        System.err.print(AgentMcpConfig.renderPluginHints(pluginHints))
+      }
+    }
+  }
+
+  /**
+   * Register `compose-preview-mcp` with each selected host, only where the entry is missing or
+   * broken: a healthy existing entry is left exactly as it is, so running `mcp install` in a
+   * project never rewrites global host config. Global entries are `<stable launcher> mcp serve`
+   * with no `--project`; only a project-scoped OpenCode config (`--scope project`) names one.
+   */
+  private fun registerHosts(args: List<String>, projectDir: File): Registration {
+    val antigravityDetected = isAntigravityEnvironment()
+    val claudeDetected = isClaudeEnvironment()
+    val codexDetected = isCodexEnvironment()
+    val openCodeDetected = isOpenCodeEnvironment()
+
+    // Per-host: default to "on if detected", opt-in via --<host>, opt-out via --no-<host>.
+    val installAntigravity =
+      "--no-antigravity" !in args && ("--antigravity" in args || antigravityDetected)
+    val installClaude = "--no-claude" !in args && ("--claude" in args || claudeDetected)
+    val installCodex = "--no-codex" !in args && ("--codex" in args || codexDetected)
+    val installOpenCode = "--no-opencode" !in args && ("--opencode" in args || openCodeDetected)
+    val openCodeScope = args.flagValue("--scope") ?: "user"
+    if (openCodeScope !in setOf("user", "project")) {
+      System.err.println("compose-preview mcp: --scope must be user or project")
+      exitProcess(2)
+    }
+
+    val choice = locateHostLauncher()
+    choice?.warning?.let { System.err.println(it) }
+    val anyHost = installAntigravity || installCodex || installClaude || installOpenCode
+    val launcher =
+      choice?.path
+        ?: if (anyHost) {
+          System.err.println(
+            "compose-preview mcp: cannot locate an absolute compose-preview launcher " +
+              "for agent host config"
+          )
+          exitProcess(1)
+        } else {
+          "compose-preview"
+        }
+    val claudeMcpAdd = AgentMcpConfig.claudeMcpAddCommand(launcher).joinToString(" ")
+    val exists: (String) -> Boolean = { File(it).exists() }
+
+    val antigravityConfig =
+      args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
+    val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
+    val openCodeConfig =
+      selectOpenCodeConfig(
+        explicitConfig = args.flagValue("--opencode-config")?.let(::File),
+        installOpenCode = installOpenCode,
+      ) {
+        defaultOpenCodeConfig(projectDir, openCodeScope)
+      }
+    val openCodeProject = projectDir.absolutePath.takeIf { openCodeScope == "project" }
+    val pluginHints =
+      AgentMcpConfig.pluginInstallHints(
+        buildSet {
+          if (antigravityDetected) add("antigravity")
+          if (claudeDetected) add("claude")
+          if (codexDetected) add("codex")
+        },
+        enabled = "--no-plugin-hint" !in args,
+      )
+
+    val results = mutableListOf<HostResult>()
+    if (installAntigravity) {
+      results +=
+        upsertFile(
+          "antigravity",
+          antigravityConfig,
+          has = McpHostRepair::hasAntigravityEntry,
+          repair = { McpHostRepair.repairAntigravity(it, launcher, exists) },
+          merge = { AgentMcpConfig.mergeAntigravityConfig(it, launcher, null) },
+        )
+    }
+    if (installCodex) {
+      results +=
+        upsertFile(
+          "codex",
+          codexConfig,
+          has = McpHostRepair::hasCodexEntry,
+          repair = { McpHostRepair.repairCodex(it, launcher, exists) },
+          merge = { AgentMcpConfig.mergeCodexConfig(it, launcher, null) },
+        )
+    }
+    if (installOpenCode) {
+      val config = checkNotNull(openCodeConfig)
+      results +=
+        upsertFile(
+          "opencode",
+          config,
+          has = McpHostRepair::hasOpenCodeEntry,
+          repair = {
+            McpHostRepair.repairOpenCode(it, launcher, userScope = openCodeProject == null, exists)
+          },
+          merge = { existing ->
+            AgentMcpConfig.openCodeRewriteRefusal(config.name, existing)?.let { reason ->
+              val snippet = AgentMcpConfig.openCodeConfigSnippet(launcher, openCodeProject)
+              throw IllegalStateException(
+                "$reason; refusing to rewrite ${config.absolutePath}. " +
+                  "Merge this snippet manually:\n$snippet"
+              )
+            }
+            AgentMcpConfig.mergeOpenCodeConfig(existing, launcher, openCodeProject)
+          },
+        )
+    }
+    if (installClaude) {
+      results +=
+        if (locateOnPath("claude") == null) {
+          HostResult(
+            "claude",
+            false,
+            null,
+            "`claude` not on PATH; copy/paste the printed command instead",
+          )
+        } else {
+          registerClaude(launcher, exists)
+        }
+    }
+    return Registration(
+      launcher = launcher,
+      claudeMcpAdd = claudeMcpAdd,
+      results = results,
+      pluginHints = pluginHints,
+      antigravityConfig = antigravityConfig,
+      codexConfig = codexConfig,
+      openCodeConfig = openCodeConfig,
+      installed =
+        mapOf(
+          "antigravity" to installAntigravity,
+          "codex" to installCodex,
+          "opencode" to installOpenCode,
+          "claude" to installClaude,
+        ),
+    )
+  }
+
+  private fun upsertFile(
+    name: String,
+    file: File,
+    has: (String?) -> Boolean,
+    repair: (String) -> McpRepair?,
+    merge: (String?) -> String,
+  ): HostResult = runCatching {
+    val existing =
+      if (file.isFile) {
+        try {
+          file.readText()
+        } catch (e: Exception) {
+          throw IllegalStateException("config unreadable: ${file.absolutePath}: ${e.message}")
+        }
+      } else null
+    if (existing == null || !has(existing)) {
+      val merged =
+        try {
+          merge(existing)
+        } catch (e: IllegalStateException) {
+          throw e
+        } catch (e: Exception) {
+          throw IllegalStateException("config is not valid: ${file.absolutePath}: ${e.message}")
+        }
+      file.parentFile?.mkdirs()
+      file.writeText(merged)
+      HostResult(name, true, file.absolutePath, null, "registered")
+    } else {
+      val fixed = repair(existing)
+      if (fixed == null) {
+        HostResult(name, true, file.absolutePath, null, "already registered")
+      } else {
+        file.writeText(fixed.updated)
+        HostResult(name, true, file.absolutePath, null, "repaired", fixed.changes)
+      }
+    }
+  }
+    .getOrElse { e -> HostResult(name, false, file.absolutePath, e.message) }
+
+  private fun registerClaude(launcher: String, exists: (String) -> Boolean): HostResult {
+    val claudeJson = File(System.getProperty("user.home"), ".claude.json")
+    val text = claudeJson.takeIf { it.isFile }?.readText()
+    if (!McpHostRepair.hasClaudeUserEntry(text)) {
+      val exit = runProcess(AgentMcpConfig.claudeMcpAddCommand(launcher))
+      return if (exit == 0) HostResult("claude", true, claudeJson.path, null, "registered")
+      else HostResult("claude", false, null, "claude mcp add exited with status $exit")
+    }
+    val repair =
+      McpHostRepair.claudeRepairs(text!!, launcher, exists).firstOrNull { it.scope == "user" }
+        ?: return HostResult("claude", true, claudeJson.path, null, "already registered")
+    val (remove, add) = McpHostRepair.claudeRepairCommands(repair)
+    runProcess(remove)
+    val exit = runProcess(add)
+    return if (exit == 0) {
+      HostResult("claude", true, claudeJson.path, null, "repaired", repair.changes)
+    } else {
+      HostResult("claude", false, null, "claude mcp add-json exited with status $exit")
+    }
+  }
+
+  private fun repairHostConfigs(): List<String>? = repairInstalledHostConfigs()
 
   private data class HostResult(
     val name: String,
     val ok: Boolean,
     val path: String?,
     val error: String?,
+    val action: String? = null,
+    val changes: List<String> = emptyList(),
   )
 
-  private fun runClaudeMcpAdd(launcher: String, projectDir: File): HostResult {
-    // Upsert: `claude mcp add` errors if the name already exists, so remove first (suppressing
-    // failure when it's not present) and add fresh. Both invocations stream to stderr so the
-    // user sees Claude's own messaging.
-    runProcess(AgentMcpConfig.claudeMcpRemoveCommand())
-    val add = AgentMcpConfig.claudeMcpAddCommand(launcher, projectDir.absolutePath)
-    val exit = runProcess(add)
-    return if (exit == 0) {
-      HostResult("claude", true, "${System.getProperty("user.home")}/.claude.json", null)
-    } else {
-      HostResult("claude", false, null, "claude mcp add exited with status $exit")
-    }
-  }
-
-  private fun runProcess(argv: List<String>): Int =
+  private fun runProcess(argv: List<String>, dir: File? = null): Int =
     try {
-      ProcessBuilder(argv).inheritIO().start().waitFor()
+      ProcessBuilder(argv).inheritIO().apply { dir?.let(::directory) }.start().waitFor()
     } catch (e: Exception) {
       System.err.println("compose-preview mcp install: ${argv.first()} failed: ${e.message}")
       127
@@ -707,95 +853,15 @@ internal class McpCommand(
       environmentValue = System.getenv("OPENCODE"),
     )
 
-  private fun writeAntigravityConfig(file: File, launcher: String, projectDir: File) {
-    val existing =
-      if (file.isFile) {
-        try {
-          fileSystem.read(file.path.toPath()) { readUtf8() }
-        } catch (e: Exception) {
-          throw IllegalStateException(
-            "Antigravity MCP config unreadable: ${file.absolutePath}: ${e.message}"
-          )
-        }
-      } else null
-    val merged =
-      try {
-        AgentMcpConfig.mergeAntigravityConfig(existing, launcher, projectDir.absolutePath)
-      } catch (e: Exception) {
-        throw IllegalStateException(
-          "Antigravity MCP config is not valid JSON: ${file.absolutePath}: ${e.message}"
-        )
-      }
-    file.parentFile?.mkdirs()
-    fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
-  }
+  /** The stable launcher to register; see [StableLauncher]. */
+  private fun locateHostLauncher(): LauncherChoice? =
+    StableLauncher.select(
+      System.getenv("PATH"),
+      File(System.getProperty("user.home")),
+      System.getenv("APP_HOME"),
+    )
 
-  private fun writeCodexConfig(file: File, launcher: String, projectDir: File) {
-    val existing =
-      if (file.isFile) {
-        try {
-          fileSystem.read(file.path.toPath()) { readUtf8() }
-        } catch (e: Exception) {
-          throw IllegalStateException("Codex config unreadable: ${file.absolutePath}: ${e.message}")
-        }
-      } else null
-    val merged = AgentMcpConfig.mergeCodexConfig(existing, launcher, projectDir.absolutePath)
-    file.parentFile?.mkdirs()
-    fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
-  }
-
-  private fun writeOpenCodeConfig(file: File, launcher: String, projectDir: File) {
-    val existing =
-      if (file.isFile) {
-        try {
-          fileSystem.read(file.path.toPath()) { readUtf8() }
-        } catch (e: Exception) {
-          throw IllegalStateException(
-            "OpenCode config unreadable: ${file.absolutePath}: ${e.message}"
-          )
-        }
-      } else null
-    AgentMcpConfig.openCodeRewriteRefusal(file.name, existing)?.let { reason ->
-      val snippet = AgentMcpConfig.openCodeConfigSnippet(launcher, projectDir.absolutePath)
-      throw IllegalStateException(
-        "$reason; refusing to rewrite ${file.absolutePath}. Merge this snippet manually:\n$snippet"
-      )
-    }
-    val merged =
-      try {
-        AgentMcpConfig.mergeOpenCodeConfig(existing, launcher, projectDir.absolutePath)
-      } catch (e: Exception) {
-        throw IllegalStateException(
-          "OpenCode config is not valid JSON: ${file.absolutePath}: ${e.message}"
-        )
-      }
-    file.parentFile?.mkdirs()
-    fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
-  }
-
-  /**
-   * Locate the `compose-preview` launcher from `app_home` exported by the Gradle distribution
-   * `application` plugin. Falls back to the `compose-preview` PATH entry when the env var isn't set
-   * (e.g. running directly via `java -jar`).
-   */
-  private fun locateHostLauncher(): String? = locateOwnLauncher() ?: locateOnPath("compose-preview")
-
-  private fun locateOwnLauncher(): String? {
-    val appHome = System.getenv("APP_HOME") ?: return null
-    val candidate = File(appHome, "bin/compose-preview")
-    return if (candidate.isFile) candidate.absolutePath else null
-  }
-
-  private fun locateOnPath(command: String): String? {
-    val path = System.getenv("PATH") ?: return null
-    return path
-      .split(File.pathSeparator)
-      .asSequence()
-      .map { File(it, command) }
-      .firstOrNull { it.isFile && it.canExecute() }
-      ?.canonicalFile
-      ?.absolutePath
-  }
+  private fun locateOnPath(command: String): String? = findOnPath(command)
 
   private data class DescriptorState(
     val gradlePath: String,
@@ -805,6 +871,55 @@ internal class McpCommand(
 
   internal companion object {
     val JSON: Json = Json { prettyPrint = true }
+
+    /** First executable [command] on PATH, as found: symlinks are deliberately not resolved. */
+    internal fun findOnPath(command: String): String? =
+      System.getenv("PATH")
+        ?.split(File.pathSeparator)
+        ?.asSequence()
+        ?.map { File(it, command) }
+        ?.firstOrNull { it.isFile && it.canExecute() }
+        ?.absolutePath
+
+    /**
+     * Repair every existing `compose-preview-mcp` entry in the global host configs (Claude Code,
+     * Antigravity, Codex, OpenCode), for `mcp repair` and `compose-preview update`. Returns one
+     * line per change, or null when no launcher can be found.
+     */
+    internal fun repairInstalledHostConfigs(): List<String>? {
+      val home = File(System.getProperty("user.home"))
+      val choice =
+        StableLauncher.select(System.getenv("PATH"), home, System.getenv("APP_HOME")) ?: return null
+      choice.warning?.let { System.err.println(it) }
+      val openCode =
+        openCodeConfigFile(
+          userHome = home,
+          homeEnvironment = System.getenv("HOME"),
+          xdgConfigHome = System.getenv("XDG_CONFIG_HOME"),
+          projectDir = home,
+          scope = "user",
+        )
+      val claude: ((List<String>, File?) -> Int)? =
+        if (findOnPath("claude") == null) null
+        else
+          { argv, dir ->
+            try {
+              ProcessBuilder(argv)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.INHERIT)
+                .apply { dir?.let(::directory) }
+                .start()
+                .waitFor()
+            } catch (e: Exception) {
+              127
+            }
+          }
+      return McpHostRepair.repairAll(
+        McpHostRepair.defaultHostFiles(home, openCode),
+        choice.path,
+        claude = claude,
+      )
+    }
 
     /**
      * The argv handed to the MCP server.

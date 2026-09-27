@@ -287,6 +287,14 @@ When Antigravity, Claude Code, or Codex is detected, `mcp install` prints the
 matching wiring-plugin commands as a reminder; pass `--no-plugin-hint` for
 config-only automation.
 
+Host registration is global and one-time: each entry is `<stable launcher> mcp
+serve`, with no `--project`. `mcp install` in a project only adds a missing
+entry or repairs a broken one. `compose-preview mcp register` does the
+registration without touching Gradle, and `compose-preview mcp repair` (run by
+`compose-preview update`) points existing entries at the stable launcher and
+drops a global `--project`, for example after an upgrade removed an old
+`compose-preview-<version>` directory.
+
 ## CI / GitHub Actions
 
 Composite actions for pipelines:
