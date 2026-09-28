@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.28.4](https://github.com/yschimke/compose-ai-tools/compare/v2.28.3...v2.28.4) (2026-09-28)
+
+
+### Bug Fixes
+
+* **deps:** update metro to v1.4.4 ([#5613](https://github.com/yschimke/compose-ai-tools/issues/5613)) ([e43cd03](https://github.com/yschimke/compose-ai-tools/commit/e43cd0377ecebf98bed8a19a0dc453e88d0396cc))
+
 ## [2.28.3](https://github.com/yschimke/compose-ai-tools/compare/v2.28.2...v2.28.3) (2026-09-27)
 
 
