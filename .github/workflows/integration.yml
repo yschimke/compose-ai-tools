@@ -1027,7 +1027,7 @@ jobs:
             echo "::error::bundle/ci/preview-daemon-version is missing — the build-plugin bundle step must write it."
             exit 1
           fi
-          echo "Using ee.schimke.composeai:preview-annotations:$version"
+          echo "Using ee.schimke.composeai:preview-annotations via compose-preview-daemon-bom:$version"
           ANN_VERSION="$version" python3 - <<'PY'
           import os
           from pathlib import Path
@@ -1046,11 +1046,15 @@ jobs:
                   "// auto-enables the XR render path from the module's androidx.xr.compose\n"
                   "// dependency, so no composePreview { } configuration is needed here.\n"
                   "dependencies {\n"
-                  f'  implementation("ee.schimke.composeai:preview-annotations:{version}")\n'
+                  # The pin is the daemon line's release, not preview-annotations' own
+                  # version: the library is only republished when it changes (the
+                  # 3.9.1 line still maps it to 3.8.4), so resolve it through the BOM.
+                  f'  implementation(platform("ee.schimke.composeai:compose-preview-daemon-bom:{version}"))\n'
+                  '  implementation("ee.schimke.composeai:preview-annotations")\n'
                   "}\n"
               )
               build.write_text(text + block)
-              print(f"appended preview-annotations:{version} dependency to {build}")
+              print(f"appended preview-annotations (BOM {version}) dependency to {build}")
           PY
 
       - name: Repo-specific pre-Gradle patches
@@ -1811,7 +1815,7 @@ jobs:
           # resolution from the mavenLocal snapshot seeded earlier. This is
           # the "oldest AGP × Kotlin together" floor-coverage cell (Gradle
           # 8.13 + AGP 8.13.0 + Kotlin 2.0.21 + JDK 17 + compose-bom 2026.05.00).
-          "$GITHUB_WORKSPACE/tools/.github/scripts/retry-gradle-repository.sh" \
+          "$GITHUB_WORKSPACE/.github/scripts/retry-gradle-repository.sh" \
             ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
             --no-configuration-cache --stacktrace
 
