@@ -362,6 +362,23 @@ class ServeDesignAnnotationsTest {
   }
 
   @Test
+  fun `a variable face is labelled with its wght axis, not the declared font weight`() {
+    // Glimmer's Google Sans Flex keeps every Font at W400 and carries 520/650/750 on `wght`.
+    val type =
+      ComposeSemanticsTypography(
+        fontSize = "20.0sp",
+        fontFamily = "Google Sans Flex",
+        fontWeight = 400,
+        fontVariationSettings = "wght 520.0",
+      )
+    val label =
+      annotationsOf(node(typography = type)).single { it.kind == AnnotationKind.TYPOGRAPHY }.label
+
+    assertEquals(true, label?.contains("520"))
+    assertEquals(false, label?.contains("400"))
+  }
+
+  @Test
   fun `an unplaced semantics subtree describes nowhere on the frame`() {
     // Wear's `AlertDialogContent` subcomposes a full trial copy of the dialog to decide whether
     // its content has to scroll. That copy is measured and never placed, so every node in it
