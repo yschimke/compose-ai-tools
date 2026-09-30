@@ -123,6 +123,21 @@ v2 snippet and the exact file to merge manually. Restart OpenCode and run
 covered in the
 [cross-harness guide](https://github.com/yschimke/compose-ag-plugin/blob/main/docs/opencode.md).
 
+### Register the local server with Antigravity
+
+Prefer the `compose-preview` plugin from
+[`yschimke/compose-ag-plugin`](https://github.com/yschimke/compose-ag-plugin): it
+registers the server and also carries the skill and hooks. When it is installed
+(`~/.gemini/config/plugins/compose-preview`), `mcp install` writes no global
+entry, because that would duplicate the plugin's server.
+
+Without the plugin, `mcp install --antigravity` merges `compose-preview-mcp`
+into `mcpServers` of whichever Antigravity config already exists:
+`~/.gemini/antigravity/mcp_config.json` first, then
+`~/.gemini/config/mcp_config.json`. `--antigravity-config <path>` names the file
+explicitly. `compose-preview mcp doctor` lists both paths, whether each holds an
+entry, whether the plugin is installed, and any global entry that duplicates it.
+
 ### Connect a remote UI-builder session
 
 The native MCP profile can expose eight additional tools backed by the same
