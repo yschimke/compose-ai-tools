@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.29.0](https://github.com/yschimke/compose-ai-tools/compare/v2.28.4...v2.29.0) (2026-09-30)
+
+
+### Features
+
+* **design-artifacts:** run render assertions in the export workflow ([#5643](https://github.com/yschimke/compose-ai-tools/issues/5643)) ([2cb4656](https://github.com/yschimke/compose-ai-tools/commit/2cb465616abebf99f27a194a0db188bc5fe97ed0))
+* **rc-render-jvm:** render the cmp-jvm lane through the CMP player ([#5636](https://github.com/yschimke/compose-ai-tools/issues/5636)) ([b7fde99](https://github.com/yschimke/compose-ai-tools/commit/b7fde993df5ce55a8cebdd394bd20a08cb636e51))
+* show non-default variable axes, font features and RTL in the typography label ([#5639](https://github.com/yschimke/compose-ai-tools/issues/5639)) ([ee244cb](https://github.com/yschimke/compose-ai-tools/commit/ee244cb1c5d107f012486a68ee34fed1077f6477))
+* show the ROND axis in the typography inspect label ([#5637](https://github.com/yschimke/compose-ai-tools/issues/5637)) ([57842a3](https://github.com/yschimke/compose-ai-tools/commit/57842a3475cba9d0d911b3048e21d5bd02679bdd))
+
+
+### Bug Fixes
+
+* **ci:** never root a delivery branch from a delta-only publish ([#5642](https://github.com/yschimke/compose-ai-tools/issues/5642)) ([7acb7cd](https://github.com/yschimke/compose-ai-tools/commit/7acb7cdd4d24009a7d441b09a2d5e8c0802ceb67))
+* **ci:** pin the AdaptiveJetStream consumer patch's xr to 1.0.0-beta01 ([#5640](https://github.com/yschimke/compose-ai-tools/issues/5640)) ([3307649](https://github.com/yschimke/compose-ai-tools/commit/33076499ffc5019fcc16c2ec4e0a7402b2150207))
+* **ci:** repair agp8-min script path and resolve preview-annotations via the daemon BOM ([#5622](https://github.com/yschimke/compose-ai-tools/issues/5622)) ([11cebe4](https://github.com/yschimke/compose-ai-tools/commit/11cebe4afdfc8b7c43cf4dc0c5f47fdca9a314b0))
+* **cli:** accept and forward update --no-modify-path to install.sh ([#5623](https://github.com/yschimke/compose-ai-tools/issues/5623)) ([179d6c3](https://github.com/yschimke/compose-ai-tools/commit/179d6c3b9da7688ae4a70b2206f94ad28c7ca8bf))
+* **cli:** find both Antigravity MCP configs and skip the global entry when the plugin provides it ([#5641](https://github.com/yschimke/compose-ai-tools/issues/5641)) ([820e812](https://github.com/yschimke/compose-ai-tools/commit/820e812a6aab4c070b64051cb8ee6ddac71712e3))
+* **cli:** stop the server child when the launcher is killed ([#5644](https://github.com/yschimke/compose-ai-tools/issues/5644)) ([e5f70dc](https://github.com/yschimke/compose-ai-tools/commit/e5f70dc5f941121701805d343db21332f2c3c923))
+* **deps:** update androidx ([#5624](https://github.com/yschimke/compose-ai-tools/issues/5624)) ([fd98ac8](https://github.com/yschimke/compose-ai-tools/commit/fd98ac8d36eb9abe796385aff0dcdf8f1246cf9a))
+* **deps:** update androidx-wear to v1.7.0 ([#5625](https://github.com/yschimke/compose-ai-tools/issues/5625)) ([14e222f](https://github.com/yschimke/compose-ai-tools/commit/14e222fe80fb579213814c6051d9a5eb9db6ea9e))
+* **deps:** update dependency androidx.compose.material3:material3 to v1.5.0-alpha29 ([#5626](https://github.com/yschimke/compose-ai-tools/issues/5626)) ([b6e0280](https://github.com/yschimke/compose-ai-tools/commit/b6e02803bcd8cd9fdf3bff63ef46a3c6ea08ebd7))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.9.2 ([#5627](https://github.com/yschimke/compose-ai-tools/issues/5627)) ([474a878](https://github.com/yschimke/compose-ai-tools/commit/474a87810d8c3068d4e7cd45c0ccc0ab318534ce))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.196 ([#5628](https://github.com/yschimke/compose-ai-tools/issues/5628)) ([2c23c70](https://github.com/yschimke/compose-ai-tools/commit/2c23c70ea40c0ecc42b2c37c4fcd8bbd2067fb3f))
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.8.0 ([#5630](https://github.com/yschimke/compose-ai-tools/issues/5630)) ([fab1303](https://github.com/yschimke/compose-ai-tools/commit/fab130386e9018a2bdb536ad42174cd4b01b403c))
+* **deps:** update design-parity export toolchain to v1.2.0 ([#5631](https://github.com/yschimke/compose-ai-tools/issues/5631)) ([cdb7871](https://github.com/yschimke/compose-ai-tools/commit/cdb78714aa266317a19c09bd913b10aed3cf3542))
+* **deps:** update metro to v1.4.5 ([#5629](https://github.com/yschimke/compose-ai-tools/issues/5629)) ([0b85e44](https://github.com/yschimke/compose-ai-tools/commit/0b85e44faceb130d00e3edc6fb8011d25e95726c))
+* **deps:** update rc-players to v2.0.2 ([#5645](https://github.com/yschimke/compose-ai-tools/issues/5645)) ([6fbdcc7](https://github.com/yschimke/compose-ai-tools/commit/6fbdcc77a23e0ef3397966092af8e9f16ff531e2))
+* **deps:** update roborazzi to v1.75.0 ([#5615](https://github.com/yschimke/compose-ai-tools/issues/5615)) ([4e4f7fb](https://github.com/yschimke/compose-ai-tools/commit/4e4f7fb00737e83e3028a307ba31e6aefa7b0764))
+* **deps:** update roborazzi to v1.76.0 ([#5632](https://github.com/yschimke/compose-ai-tools/issues/5632)) ([1c9560e](https://github.com/yschimke/compose-ai-tools/commit/1c9560ec7dfcd5aa88ed62c481d71cfe1de294d2))
+* label typography inspect with the wght axis, not the declared font weight ([#5635](https://github.com/yschimke/compose-ai-tools/issues/5635)) ([d8d6970](https://github.com/yschimke/compose-ai-tools/commit/d8d6970ea95978a632e54cbbea7e759075a9b2a9))
+* **rc-compare:** name the three RC lanes after the player that draws them ([#5634](https://github.com/yschimke/compose-ai-tools/issues/5634)) ([bebd644](https://github.com/yschimke/compose-ai-tools/commit/bebd6448aa37448090f069433ba4bca7d809d1ef))
+
 ## [2.28.4](https://github.com/yschimke/compose-ai-tools/compare/v2.28.3...v2.28.4) (2026-09-28)
 
 
