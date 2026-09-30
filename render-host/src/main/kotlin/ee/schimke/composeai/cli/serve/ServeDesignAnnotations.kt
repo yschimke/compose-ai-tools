@@ -49,6 +49,9 @@ import ee.schimke.composeai.data.theme.ThemePayload
  * resolved no typography (or no container tokens) simply contributes no annotation to that layer.
  */
 public object ServeDesignAnnotations {
+  /** The OpenType registered axes whose default is the same in every face. */
+  private val AXIS_DEFAULTS =
+    mapOf("wdth" to 100f, "slnt" to 0f, "ital" to 0f, "GRAD" to 0f, "ROND" to 0f)
 
   /**
    * The typography, theme and layout annotations for one render, in depth-first order (the order
@@ -153,19 +156,21 @@ public object ServeDesignAnnotations {
         else -> null
       }
     val face = type.fontFamily?.let(::shortFace)
-    val parts =
-      listOfNotNull(
-        materialThemeTokens
-          .takeIf { it.isNotEmpty() }
-          ?.joinToString(" / ") { "MaterialTheme.typography.$it" },
-        size,
-        face,
-        effectiveWeight(type),
-        axisValue(type, "ROND")?.let { "ROND $it" },
-        type.fontStyle?.takeIf { it != "normal" },
-        type.letterSpacing?.let { "tracking $it" },
-        type.textAlign?.takeIf { it != "start" },
-      )
+    val parts = buildList {
+      materialThemeTokens
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(" / ") { "MaterialTheme.typography.$it" }
+        ?.let { add(it) }
+      size?.let { add(it) }
+      face?.let { add(it) }
+      effectiveWeight(type)?.let { add(it) }
+      addAll(nonDefaultAxes(type))
+      type.fontFeatureSettings?.takeIf { it.isNotBlank() }?.let { add("features $it") }
+      type.fontStyle?.takeIf { it != "normal" }?.let { add(it) }
+      type.letterSpacing?.let { add("tracking $it") }
+      type.textAlign?.takeIf { it != "start" }?.let { add(it) }
+      type.layoutDirection?.takeIf { it != "ltr" }?.let { add(it) }
+    }
     if (parts.isEmpty()) return null
     return DesignAnnotation(
       kind = AnnotationKind.TYPOGRAPHY,
@@ -188,17 +193,30 @@ public object ServeDesignAnnotations {
   /**
    * The value of one variable-font axis, read from
    * [ComposeSemanticsTypography.fontVariationSettings] (`"ROND 100.0, wght 520.0"`), or null when
-   * the face declares no such axis. Surfaced for `ROND` because Glimmer's Google Sans Flex roles
-   * all set it to 100 and nothing else in the label showed whether it reached the render.
+   * the face declares no such axis.
    */
   private fun axisValue(type: ComposeSemanticsTypography, tag: String): String? =
-    type.fontVariationSettings
-      ?.split(',')
-      ?.map { it.trim() }
-      ?.firstOrNull { it.startsWith("$tag ") }
-      ?.removePrefix("$tag ")
-      ?.toFloatOrNull()
-      ?.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }
+    variationAxes(type).firstOrNull { it.first == tag }?.second
+
+  /** The `tag to value` pairs of [ComposeSemanticsTypography.fontVariationSettings], in order. */
+  private fun variationAxes(type: ComposeSemanticsTypography): List<Pair<String, String>> =
+    type.fontVariationSettings.orEmpty().split(',').mapNotNull { entry ->
+      val fields = entry.trim().split(Regex("\\s+"), limit = 2)
+      val number = fields.getOrNull(1)?.toFloatOrNull() ?: return@mapNotNull null
+      fields[0] to (if (number % 1f == 0f) number.toInt().toString() else number.toString())
+    }
+
+  /**
+   * The variable-font axes worth a mention: every axis the face was asked for except `wght` (which
+   * the label already shows as the weight) and except an axis sitting at its registered default,
+   * where saying so adds nothing. `opsz` and any custom axis have no universal default, so an
+   * explicit setting is always shown. That is what surfaces Glimmer's `ROND 100` without also
+   * printing `GRAD 0` / `slnt 0` / `wdth 100` on every label.
+   */
+  private fun nonDefaultAxes(type: ComposeSemanticsTypography): List<String> =
+    variationAxes(type)
+      .filter { (tag, value) -> tag != "wght" && AXIS_DEFAULTS[tag] != value.toFloat() }
+      .map { (tag, value) -> "$tag $value" }
 
   private fun typographyDetail(
     type: ComposeSemanticsTypography,
@@ -213,6 +231,7 @@ public object ServeDesignAnnotations {
     type.fontWeight?.let { put("fontWeight", it.toString()) }
     type.fontStyle?.let { put("fontStyle", it) }
     type.fontVariationSettings?.let { put("fontVariationSettings", it) }
+    type.fontFeatureSettings?.let { put("fontFeatureSettings", it) }
     type.textAlign?.let { put("textAlign", it) }
     node.textColor?.foreground?.let { put("color", it) }
     node.textOverflow?.lineCount?.let { put("lines", it.toString()) }

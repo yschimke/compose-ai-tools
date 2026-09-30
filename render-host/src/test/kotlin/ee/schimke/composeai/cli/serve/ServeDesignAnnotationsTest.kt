@@ -380,6 +380,38 @@ class ServeDesignAnnotationsTest {
   }
 
   @Test
+  fun `the label shows only the settings that are not at their default`() {
+    val type =
+      ComposeSemanticsTypography(
+        fontSize = "20.0sp",
+        fontFamily = "Google Sans Flex",
+        fontWeight = 400,
+        fontVariationSettings = "GRAD 0.0, ROND 100.0, opsz 9.0, slnt 0.0, wdth 100.0, wght 520.0",
+        fontFeatureSettings = "tnum",
+        layoutDirection = "rtl",
+      )
+    val label =
+      annotationsOf(node(typography = type)).single { it.kind == AnnotationKind.TYPOGRAPHY }.label
+
+    assertEquals("20.0sp · Google Sans Flex · 520 · ROND 100 · opsz 9 · features tnum · rtl", label)
+  }
+
+  @Test
+  fun `a face at every default adds nothing to the label`() {
+    val type =
+      ComposeSemanticsTypography(
+        fontSize = "16.0sp",
+        fontFamily = "Roboto",
+        fontVariationSettings = "GRAD 0.0, ROND 0.0, slnt 0.0, wdth 100.0, wght 400.0",
+        layoutDirection = "ltr",
+      )
+    val label =
+      annotationsOf(node(typography = type)).single { it.kind == AnnotationKind.TYPOGRAPHY }.label
+
+    assertEquals("16.0sp · Roboto · 400", label)
+  }
+
+  @Test
   fun `an unplaced semantics subtree describes nowhere on the frame`() {
     // Wear's `AlertDialogContent` subcomposes a full trial copy of the dialog to decide whether
     // its content has to scroll. That copy is measured and never placed, so every node in it
