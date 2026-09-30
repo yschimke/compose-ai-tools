@@ -19,30 +19,30 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
-import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
  * Renders a captured Remote Compose document to PNG or layered SVG for the serve viewer's
- * **cmp-jvm** chip, by spawning the embedded desktop player ([ee.schimke.composeai.rcembedded.jvm]
- * `RcJvmRenderMain`) as a one-shot subprocess off an isolated classpath — the same subprocess
- * isolation `BundleRenderer` uses for the desktop `@Preview` renderer, and for the same reason:
- * Compose Desktop + Skiko's per-OS natives are kept off the CLI's own classpath so a cross-platform
- * release doesn't bake in one host's natives.
+ * **cmp-jvm** chip, by spawning the CMP render worker (`:rc-render-jvm`, which draws through
+ * `rc-player-compose`; `ee.schimke.composeai.rcjvm.RcJvmRenderMain`) as a one-shot subprocess, or
+ * its pooled counterpart, off an isolated classpath — the same subprocess isolation
+ * `BundleRenderer` uses for the desktop `@Preview` renderer, and for the same reason: Compose
+ * Desktop + Skiko's per-OS natives are kept off the CLI's own classpath so a cross-platform release
+ * doesn't bake in one host's natives.
  *
- * The classpath joins the CLI install's `lib-rcjvm/` (the embedded jvm player + its Compose API
- * deps, staged by the CLI build) with `lib-daemon-desktop/` (the Compose Desktop runtime + Skiko
- * natives the desktop daemon already carries), so the natives are shared rather than bundled twice.
- * When either sidecar is absent (a build that didn't stage them, or a headless host that dropped
- * the desktop lane) [isAvailable] is false and the viewer never lights the chip.
+ * The classpath joins the CLI install's `lib-rcjvm/` (the render worker + `rc-player-compose` and
+ * its Compose API deps, staged by the CLI build) with `lib-daemon-desktop/` (the Compose Desktop
+ * runtime + Skiko natives the desktop daemon already carries), so the natives are shared rather
+ * than bundled twice. When either sidecar is absent (a build that didn't stage them, or a headless
+ * host that dropped the desktop lane) [isAvailable] is false and the viewer never lights the chip.
  */
 // Public rather than `internal` since the move to `:render-host`: `internal` is module-scoped,
 // and the `:server` call sites are in a different module now. Not a widened API by intent.
 public object RcJvmServerRenderer {
 
-  private const val MAIN_CLASS = "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderMainKt"
+  private const val MAIN_CLASS = "ee.schimke.composeai.rcjvm.RcJvmRenderMainKt"
   private const val RENDER_TIMEOUT_SECONDS = 120L
 
   /**
@@ -54,8 +54,8 @@ public object RcJvmServerRenderer {
   private const val DRAIN_FLUSH_MILLIS = 1000L
 
   /**
-   * The subprocess classpath: the embedded jvm player (`lib-rcjvm`) plus the desktop Compose +
-   * Skiko runtime (`lib-daemon-desktop`). Empty when either sidecar dir is missing.
+   * The subprocess classpath: the CMP render worker (`lib-rcjvm`) plus the desktop Compose + Skiko
+   * runtime (`lib-daemon-desktop`). Empty when either sidecar dir is missing.
    */
   private fun classpath(): List<File> {
     val rcjvm = locateBundleSidecarJars("lib-rcjvm")
@@ -78,19 +78,10 @@ public object RcJvmServerRenderer {
    * serve `rc.<name>=…` knob edits) on top of the document's authored defaults. Reports whether the
    * subprocess is unavailable, timed out, or could not draw the document.
    *
-   * **[RcJvmRenderSpec.fontScale] does not move pixels yet, and the gap is in the sidecar.** This
-   * function spells the axis on the wire — `--fontScale` below — but `lib-rcjvm` 1.59.3 cannot read
-   * it: `renderRemoteDocumentToPng(bytes, w, h, density, seeds, theme, …)` takes no font-scale
-   * parameter and builds its `ImageComposeScene` with `Density(density)`, whose `fontScale`
-   * defaults to `1f`. The player underneath is willing — `initDrawContext` writes `ID_FONT_SIZE =
-   * 14 × fontScale × density` from whatever `Density` it is handed, and the *Android* cut of the
-   * same player reads `LocalDensity.current` and therefore already scales — so what is missing is
-   * only the headless entry point's parameter. Tracked upstream in `yschimke/rc-players`; when it
-   * lands, this call site needs no change and the pooled frame gains the field at
-   * `RcJvmWorkerPool.PROTOCOL_VERSION` 3.
-   *
-   * Until then a `?fontScale=` request routed to **this** lane comes back unscaled. It is honoured
-   * end-to-end on the Android replay lane, whose player reads the render spec's own density.
+   * [RcJvmRenderSpec.fontScale] reaches the player as the scene's `Density(density, fontScale)`, so
+   * a `RemoteDensity.Host` capture (text sized from `ID_FONT_SIZE`) scales with it. The pooled
+   * frame carries no font-scale field, so a request that scales text takes the one-shot path, which
+   * spells `--fontScale`; an unscaled request stays pooled.
    */
   public fun render(
     docBytes: ByteArray,
@@ -196,10 +187,6 @@ public object RcJvmServerRenderer {
         add(spec.heightPx.toString())
         add("--density")
         add(spec.density.toString())
-        // Forward-compatible: `RcJvmRenderMain.parseArgs` collects `--flag value` pairs into a map
-        // and ignores keys it does not know, so a sidecar predating this flag drops it rather than
-        // failing. Sent unconditionally so the day `lib-rcjvm` reads it, every already-deployed
-        // caller starts scaling without a second change here.
         add("--fontScale")
         add(spec.fontScale.toString())
         add("--format")
@@ -270,14 +257,36 @@ public object RcJvmServerRenderer {
     // Skiko draws offscreen; keep the JVM out of the macOS Dock / app-switcher when spawned
     // on a developer's Mac, matching BundleRenderer's desktop renderer launch.
     add("-Dapple.awt.UIElement=true")
-    // The player's `GoogleFontTypefaceResolver` downloads a `google:`-named family into the
-    // shared font cache — the same directory the Android and desktop daemons are pointed at,
-    // so a family already fetched for another lane is reused rather than re-downloaded. With
-    // no cache directory the resolver stays off and the lane substitutes a local face, so this
-    // is what makes the cmp-jvm chip show a branded typeface at all. The offline switch is
-    // forwarded when this process carries one.
-    add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
-    System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
+    // The host typefaces: the vendored faces the Wasm player ships, so this lane shapes text with
+    // the same set the browser lane and the offline parity run use. Without a manifest the player
+    // falls back to Compose's built-in face, which draws good-looking text at a different width.
+    rcFontsDir()?.let { add("-Dcomposeai.rcjvm.fontsDir=${it.absolutePath}") }
+  }
+
+  /**
+   * The directory holding the player's `fonts.json` manifest and faces:
+   * `-Dcomposeai.rcjvm.fontsDir` when set, else the `fonts/` of the CLI install's `rc-player-wasm/`
+   * sidecar. Null when neither exists, in which case the worker renders in the player's default
+   * face rather than failing.
+   */
+  private fun rcFontsDir(): File? {
+    System.getProperty("composeai.rcjvm.fontsDir")
+      ?.let(::File)
+      ?.takeIf { it.isDirectory }
+      ?.let {
+        return it
+      }
+    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
+    val fromHome = appHome?.let { File(it, "rc-player-wasm/fonts") }
+    if (fromHome?.isDirectory == true) return fromHome
+    val firstJar =
+      System.getProperty("java.class.path")?.split(File.pathSeparator)?.firstOrNull {
+        it.endsWith(".jar")
+      }
+    return firstJar
+      ?.let { File(it).parentFile?.parentFile }
+      ?.let { File(it, "rc-player-wasm/fonts") }
+      ?.takeIf { it.isDirectory }
   }
 
   /**

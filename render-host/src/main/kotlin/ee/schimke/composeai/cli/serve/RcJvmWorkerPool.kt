@@ -468,9 +468,10 @@ public class RcJvmWorkerPool(
   // and the `:server` call sites are in a different module now. Not a widened API by intent.
   public companion object {
     public const val WORKER_MAIN_CLASS: String =
-      "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderWorkerMainKt"
+      "ee.schimke.composeai.rcjvm.RcJvmRenderWorkerMainKt"
 
-    // Mirrors `RcJvmRenderWorkerMain.kt`. The cli cannot depend on the player module (its Skiko
+    // Mirrors `RcJvmRenderWorkerMain.kt` in `:rc-render-jvm`. The cli cannot depend on that module
+    // (its Skiko
     // natives are deliberately kept off the cli classpath — that is why the render is a subprocess
     // at all), so the wire constants are duplicated here on purpose. The version check in
     // [Worker.handshake] is what keeps the duplication honest: a sidecar that disagrees is refused

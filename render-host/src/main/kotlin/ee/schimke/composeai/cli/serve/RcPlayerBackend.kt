@@ -25,10 +25,10 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  *   which interprets the document's operation tree into Compose layout/draw nodes directly, driven
  *   server-side via [RemoteComposePlayerKind.EMBEDDED]. The default: it is what a capture bakes
  *   through, what an unqualified replay uses, and what the viewer opens on.
- * * [CMP_JVM] — the same embedded player over Skiko/Desktop
- *   (`:third-party-rc-embedded-player-jvm`), rendered **server-side** by [RcJvmServerRenderer]: it
- *   spawns the module's `RcJvmRenderMain` as a one-shot subprocess off the CLI install's
- *   `lib-rcjvm`
+ * * [CMP_JVM] — the CMP player (`rc-player-compose`, the same codebase as [CMP_WASM]) over
+ *   Skiko/Desktop, rendered **server-side** by [RcJvmServerRenderer]: it spawns the
+ *   `:rc-render-jvm` module's `RcJvmRenderMain` as a one-shot subprocess (or its pooled worker) off
+ *   the CLI install's `lib-rcjvm`
  *     + `lib-daemon-desktop` sidecars (Compose Desktop + Skiko kept out of the CLI's own
  *       classpath). Unlike [JAVA] / [CMP_ANDROID] it does **not** ride the daemon
  *       `remoteCompose.player` override — [playerKind] stays null and [ServeHttpServer] renders it
@@ -50,11 +50,12 @@ public enum class RcPlayerBackend(
    *
    * The wire ids grew a `cmp-` prefix that spans two unrelated implementations, so reading one and
    * inferring what drew the pixels is a trap:
-   * * `cmp-android` and `cmp-jvm` are the vendored **AndroidX embedded** player
-   *   (`third-party-rc-embedded-player`, upstream's `player-compose-embedded`), Android and
-   *   desktop-JVM cuts of one codebase. Neither is "the CMP player on Android/JVM".
-   * * `cmp-wasm` **is** the CMP player — `rc-player-compose`, a different codebase with its own
-   *   runtime — running in the browser. It is the only `cmp-` lane the prefix is true of.
+   * * `cmp-android` is the vendored **AndroidX embedded** player (`third-party-rc-embedded-player`,
+   *   upstream's `player-compose-embedded`). It is not "the CMP player on Android".
+   * * `cmp-jvm` and `cmp-wasm` **are** the CMP player — `rc-player-compose`, a different codebase
+   *   with its own runtime — on the desktop JVM and in the browser. (`cmp-jvm` used to be a desktop
+   *   cut of the AndroidX embedded player, until yschimke/rc-players 2.0.0 stopped publishing it;
+   *   the id kept its name and now the name is true.)
    * * `js` is the vendored TypeScript player from `camaelon/remotecompose-experiments`, which the
    *   name says nothing about.
    * * `java` is the `AndroidView`-hosted `RemoteComposePlayer` from `remote-player-view`.
@@ -120,7 +121,7 @@ public enum class RcPlayerBackend(
   ),
   CMP_JVM(
     "cmp-jvm",
-    "AndroidX Embedded (JVM)",
+    "rc-player JVM",
     playerKind = null,
     clientSide = false,
     rcCompareLane = "cmp-jvm",
