@@ -160,7 +160,7 @@ public object ServeDesignAnnotations {
           ?.joinToString(" / ") { "MaterialTheme.typography.$it" },
         size,
         face,
-        type.fontWeight?.toString(),
+        effectiveWeight(type),
         type.fontStyle?.takeIf { it != "normal" },
         type.letterSpacing?.let { "tracking $it" },
         type.textAlign?.takeIf { it != "start" },
@@ -173,6 +173,24 @@ public object ServeDesignAnnotations {
       role = node.textSnippet(),
       detail = typographyDetail(type, node, materialThemeTokens),
     )
+  }
+
+  /**
+   * The weight actually drawn. A variable face carries its real weight on the `wght` axis of
+   * [ComposeSemanticsTypography.fontVariationSettings] while its `Font` stays at the declared
+   * `W400`, so reading [ComposeSemanticsTypography.fontWeight] alone labelled Glimmer's 520/650/750
+   * roles as 400.
+   */
+  private fun effectiveWeight(type: ComposeSemanticsTypography): String? {
+    val wght =
+      type.fontVariationSettings
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.firstOrNull { it.startsWith("wght ") }
+        ?.removePrefix("wght ")
+        ?.toFloatOrNull()
+    return wght?.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }
+      ?: type.fontWeight?.toString()
   }
 
   private fun typographyDetail(
