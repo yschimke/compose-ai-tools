@@ -11,8 +11,8 @@
  * the toolbar and every other column grows a pixel diff beneath its render plus a
  * mismatch chip in the row's meta cell. Picking the baked lane reuses the diffs the
  * driver already computed at build time (exact `pixelmatch` numbers, no work in
- * the browser); picking any *player* as the reference — e.g. "how far is cmp-wasm
- * from cmp-jvm?", a question the build-time lane-vs-baked diffs cannot answer —
+ * the browser); picking any *player* as the reference — e.g. "how far is rc-player Wasm
+ * from AndroidX Embedded · JVM?", a question the build-time lane-vs-baked diffs cannot answer —
  * diffs client-side on a `<canvas>` with pixelmatch's YIQ metric at the same
  * threshold.
  *
@@ -135,7 +135,7 @@ const LANES = [
   },
   {
     id: "js",
-    label: "RC · JS player",
+    label: "Camaelon JS",
     short: "js",
     present: () => true,
     src: (r) => r.rc,
@@ -174,8 +174,8 @@ const LANES = [
   },
   {
     id: "cmp-jvm",
-    label: "RC · cmp-jvm player",
-    short: "cmp-jvm",
+    label: "AndroidX Embedded · JVM",
+    short: "jvm",
     present: hasEmbeddedJvmLane,
     src: (r) => r.embeddedJvm,
     diff: (r) => r.embeddedJvmDiff,
@@ -186,8 +186,8 @@ const LANES = [
   },
   {
     id: "cmp-wasm",
-    label: "RC · cmp-wasm player",
-    short: "cmp-wasm",
+    label: "rc-player Wasm",
+    short: "wasm",
     present: hasCmpWasmLane,
     src: (r) => r.cmpWasm,
     diff: (r) => r.cmpWasmDiff,
@@ -700,13 +700,13 @@ export function renderRcCompareHtml(model, opts = {}) {
           .map((lane) => `<strong>${esc(lane.label)}</strong>`)
           .join(", ")}. A player earns a column only where the run recorded a verdict for it, so ` +
         `these are absent rather than empty — the publishing workflow opts each lane in per catalog.</p>`;
-  // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually shows.
+  // "Camaelon JS", "Camaelon JS + embedded", … — the players this page actually shows.
   const laneNames = [
-    "JS",
+    "Camaelon JS",
     withEmbedded && "embedded",
     withAndroidxEmbedded && "androidx.dev embedded",
-    withEmbeddedJvm && "cmp-jvm",
-    withCmpWasm && "cmp-wasm",
+    withEmbeddedJvm && "embedded JVM",
+    withCmpWasm && "rc-player Wasm",
   ].filter(Boolean);
   const laneLabel = `${laneNames.join(" + ")} player${laneNames.length > 1 ? "s" : ""}`;
   const embMeanTxt =
@@ -727,7 +727,7 @@ export function renderRcCompareHtml(model, opts = {}) {
     : "";
 
   const summary =
-    `<strong>JS player:</strong> ${stats.scored} scored · mean mismatch <strong>${meanTxt}</strong>` +
+    `<strong>Camaelon JS:</strong> ${stats.scored} scored · mean mismatch <strong>${meanTxt}</strong>` +
     (stats.unsupported ? ` · ${stats.unsupported} not decodable` : "") +
     blankTxt +
     (withEmbedded
@@ -743,12 +743,12 @@ export function renderRcCompareHtml(model, opts = {}) {
         blankTxt
       : "") +
     (withEmbeddedJvm
-      ? `<br><strong>cmp-jvm player:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
+      ? `<br><strong>AndroidX Embedded · JVM:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
         (stats.embeddedJvmUnsupported ? ` · ${stats.embeddedJvmUnsupported} not rendered` : "") +
         blankTxt
       : "") +
     (withCmpWasm
-      ? `<br><strong>cmp-wasm player:</strong> ${stats.cmpWasmScored} scored · mean mismatch <strong>${wasmMeanTxt}</strong>` +
+      ? `<br><strong>rc-player Wasm:</strong> ${stats.cmpWasmScored} scored · mean mismatch <strong>${wasmMeanTxt}</strong>` +
         (stats.cmpWasmUnsupported ? ` · ${stats.cmpWasmUnsupported} not rendered` : "") +
         blankTxt
       : "");
@@ -859,15 +859,15 @@ own offline Robolectric/Skiko render, through AndroidX's embedded <code>RcPlayer
 preview pins the view-backed lane) next to the same
 <code>ir/*.rc</code> document as each player renders it.
 ${[
-  `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
+  `<strong>Camaelon JS</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
   withEmbedded &&
     `<strong>AndroidX Embedded · vendored Android</strong> is this repo's pinned and locally patched <code>RcPlayer</code>, rasterized by Robolectric`,
   withAndroidxEmbedded &&
     `<strong>AndroidX Embedded · androidx.dev</strong> is the independently compiled player published by the pinned AndroidX snapshot`,
   withEmbeddedJvm &&
-    `the <strong>cmp-jvm player</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen`,
+    `<strong>AndroidX Embedded · JVM</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen (not the rc-player Compose player, despite the wire id <code>cmp-jvm</code>)`,
   withCmpWasm &&
-    `the <strong>cmp-wasm player</strong> runs the new Compose Multiplatform / Skiko player in browser Wasm`,
+    `<strong>rc-player Wasm</strong> is <code>rc-player-compose</code>, this stack's own Compose Multiplatform player, running through Skiko in browser Wasm (wire id <code>cmp-wasm</code>)`,
 ]
   .filter(Boolean)
   .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}

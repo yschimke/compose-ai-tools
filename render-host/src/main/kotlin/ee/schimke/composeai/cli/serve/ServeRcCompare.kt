@@ -174,7 +174,7 @@ public object ServeRcCompare {
       ),
       RcLaneSource(
         id = "js",
-        label = "RC · JS player",
+        label = "Camaelon JS",
         short = "js",
         renderDir = "rc",
         diffDir = "rc-diff",
@@ -207,8 +207,8 @@ public object ServeRcCompare {
       ),
       RcLaneSource(
         id = "cmp-jvm",
-        label = "RC · cmp-jvm player",
-        short = "cmp-jvm",
+        label = "AndroidX Embedded · JVM",
+        short = "jvm",
         renderDir = "rc-embedded-jvm",
         diffDir = "rc-embedded-jvm-diff",
         rendered = { it.embeddedJvmRendered },
@@ -218,8 +218,8 @@ public object ServeRcCompare {
       ),
       RcLaneSource(
         id = "cmp-wasm",
-        label = "RC · cmp-wasm player",
-        short = "cmp-wasm",
+        label = "rc-player Wasm",
+        short = "wasm",
         renderDir = "rc-cmp-wasm",
         diffDir = "rc-cmp-wasm-diff",
         rendered = { it.cmpWasmRendered },
