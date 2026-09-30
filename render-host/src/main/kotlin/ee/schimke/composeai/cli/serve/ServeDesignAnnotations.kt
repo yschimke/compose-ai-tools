@@ -53,7 +53,6 @@ public object ServeDesignAnnotations {
   private val AXIS_DEFAULTS =
     mapOf("wdth" to 100f, "slnt" to 0f, "ital" to 0f, "GRAD" to 0f, "ROND" to 0f)
 
-
   /**
    * The typography, theme and layout annotations for one render, in depth-first order (the order
    * the legend numbers them in).
