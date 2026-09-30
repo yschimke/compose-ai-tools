@@ -101,6 +101,15 @@ on:
         required: false
         type: string
         default: 'design-pages.json'
+      render-assertions:
+        description: >-
+          Path, in the caller repository, to a render-assertions document (`.json`) or module
+          (`.mjs` exporting `assertions`) stating properties every render must hold — checked
+          against the rendered bundle's data products before anything publishes. A failing
+          assertion fails the job. Empty skips the check. See docs/RENDER_ASSERTIONS.md.
+        required: false
+        type: string
+        default: ''
       module:
         description: 'Gradle module path to render (e.g. ":app"). Omit to discover and publish every module with the preview plugin applied.'
         required: false
@@ -879,7 +888,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=maven depName=ee.schimke.composeai:rc-players-bom
-  RC_PLAYERS_PIN: v2.0.1
+  RC_PLAYERS_PIN: v2.0.2
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -4018,6 +4027,48 @@ jobs:
               --input "$bundle" --output "$namespaced" --module "${modules[$index]}"
             mv "$namespaced" "$bundle"
           done
+
+      # Render assertions (issue #5467): properties the caller declared every render must hold,
+      # evaluated against the data products the bundle already carries (`previews/<id>.fonts.json`,
+      # `previews/<id>.semantics.json`). The visual diff answers "did this change?"; this answers
+      # "is it still true?" — the question nothing asked while Glimmer rendered at weight 400.
+      #
+      # Placed after the live-bundle namespacing so a multi-module catalog's ids are the ones it
+      # publishes, and before anything is generated or pushed, so a violation never reaches the
+      # served catalog. Every module's bundle is read in one invocation: an `appliesTo` naming a
+      # preview from another module must see it, and a duplicate id across modules is a named
+      # failure rather than a silent overwrite. `bundle.png` is skipped when module bundles exist,
+      # because it is a copy of the primary's and would collide with it.
+      - name: Check render assertions
+        if: ${{ inputs.render-assertions != '' }}
+        env:
+          ASSERTIONS: ${{ inputs.render-assertions }}
+        run: |
+          set -euo pipefail
+          if [[ "$ASSERTIONS" = /* ]] || [[ "/$ASSERTIONS/" = *"/../"* ]]; then
+            echo "::error title=Render assertions::render-assertions must be a path inside the calling repository."
+            exit 1
+          fi
+          if [ ! -f "$GITHUB_WORKSPACE/$ASSERTIONS" ]; then
+            echo "::error title=Render assertions::render-assertions names $ASSERTIONS, which does not exist in the calling repository."
+            exit 1
+          fi
+          checker=compose-ai-tools/scripts/design-artifacts/check-render-assertions.mjs
+          if [ ! -f "$checker" ]; then
+            echo "::error title=Driver too old for render assertions::This run's export driver predates check-render-assertions.mjs, so the declared render assertions cannot be checked. Failing rather than skipping: an assertion that silently does not run reads as coverage that is not there."
+            exit 1
+          fi
+          bundles=()
+          if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
+            mapfile -t found < <(find "$GITHUB_WORKSPACE/module-bundles" -maxdepth 1 -name '*.png' | sort)
+            for b in "${found[@]}"; do bundles+=(--bundle "$b"); done
+          else
+            bundles+=(--bundle "$GITHUB_WORKSPACE/bundle.png")
+          fi
+          if [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
+            bundles+=(--bundle "$GITHUB_WORKSPACE/extra-bundle.png")
+          fi
+          node "$checker" --assertions "$GITHUB_WORKSPACE/$ASSERTIONS" "${bundles[@]}"
 
       - name: Build catalog-owned UI-builder renderer
         if: ${{ inputs.ui-builder-runtime-task != '' || inputs.ui-builder-runtime-archive != '' }}

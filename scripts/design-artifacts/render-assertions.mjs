@@ -111,6 +111,52 @@ export function previewMatches(pattern, preview) {
   return new RegExp(`^${escaped}$`).test(preview);
 }
 
+/**
+ * Whether a semantics node is a laid-out text layer.
+ *
+ * `text` alone is not enough. A node that merges its descendants' semantics (a DatePicker day cell
+ * is a `Button` whose label is "Friday, August 1, 2025") carries `text` with no `typography`: it
+ * is an accessibility label, not a run the renderer laid out, and there is no family or axis on it
+ * to assert. Reading it as a text node would report `null` for every property and fail a catalog
+ * whose every laid-out run is correct — 188 such nodes in m3-catalog's published render alone.
+ */
+export function isTextLayer(node) {
+  return node?.text != null && node.typography != null && typeof node.typography === "object";
+}
+
+/**
+ * Whether a preview's semantics shows it lays out no text at all.
+ *
+ * Judged from evidence, never assumed: an empty or missing semantics tree is NOT "draws no text",
+ * it is no data, and stays a failure. Only a tree that was captured and holds no text layer counts.
+ */
+export function drawsNoText(semanticsData) {
+  if (productIsEmpty("compose-semantics", semanticsData)) return false;
+  let found = false;
+  const walk = (node) => {
+    if (found || !node || typeof node !== "object") return;
+    if (isTextLayer(node)) found = true;
+    for (const child of node.children ?? []) walk(child);
+  };
+  walk(semanticsData.root ?? semanticsData);
+  return !found;
+}
+
+/**
+ * Whether an assertion is about TEXT, so a preview that draws none has nothing for it to check.
+ *
+ * `fonts-used` is written per laid-out run, so a glyph-only sticker writes an empty one; and an
+ * `everyTextNode.*` path selects nothing on it. Without this every catalog with an icon button had
+ * to enumerate its text-bearing previews by glob — and a glob list silently leaves the next new
+ * file unchecked, which is the coverage hole this module exists to close. A code `check` is not
+ * covered: it sees the semantics tree itself and can decide.
+ */
+export function isTextAssertion(assertion) {
+  if (assertion.product === "fonts-used") return true;
+  if (assertion.require === undefined || assertion.require === null) return false;
+  return Object.keys(assertion.require)[0]?.startsWith("everyTextNode.") === true;
+}
+
 /** The values a named path selects from one preview's product, as `{value, where}` observations. */
 export function observe(product, path, data) {
   const out = [];
@@ -139,9 +185,9 @@ export function observe(product, path, data) {
     const walk = (node) => {
       if (!node || typeof node !== "object") return;
       const id = node.nodeId ?? node.text ?? "node";
-      if (path === "everyTextNode.typography.fontFamily" && node.text != null)
+      if (path === "everyTextNode.typography.fontFamily" && isTextLayer(node))
         out.push({ value: node.typography?.fontFamily ?? null, where: id });
-      if (path === "everyTextNode.typography.fontVariationSettings" && node.text != null)
+      if (path === "everyTextNode.typography.fontVariationSettings" && isTextLayer(node))
         out.push({ value: node.typography?.fontVariationSettings ?? null, where: id });
       if (path === "anyNode.role") out.push({ value: node.role ?? null, where: id });
       for (const child of node.children ?? []) walk(child);
@@ -243,9 +289,16 @@ export function checkFor(assertion) {
  * a `check` that THROWS fails rather than being skipped. Fail-closed has to cover the escape hatch,
  * or the escape hatch is the hole.
  */
-export function evaluate(assertion, byPreview) {
+export function evaluate(assertion, byPreview, semanticsByPreview = {}) {
   const { product, exceptions = [], appliesTo } = assertion;
   const check = checkFor(assertion);
+  // A text assertion has nothing to check on a preview whose captured semantics lays out no text.
+  // For `fonts-used` that only applies while the product is ALSO empty: a glyph-only preview that
+  // still recorded a face is checked like any other, because the record is real evidence.
+  const textless = (preview, data) =>
+    isTextAssertion(assertion) &&
+    drawsNoText(semanticsByPreview[preview]) &&
+    (product !== "fonts-used" || productIsEmpty(product, data));
   const patterns = appliesTo?.previews ?? ["*"];
   const excused = new Set(exceptions.map((e) => e.preview));
 
@@ -261,11 +314,16 @@ export function evaluate(assertion, byPreview) {
 
   const failures = [];
   const noData = [];
+  const noText = [];
   let checked = 0;
 
   for (const [preview, data] of Object.entries(byPreview)) {
     if (!patterns.some((p) => previewMatches(p, preview))) continue;
     if (excused.has(preview)) continue;
+    if (textless(preview, data)) {
+      noText.push(preview);
+      continue;
+    }
     checked++;
 
     if (productIsEmpty(product, data)) {
@@ -278,17 +336,19 @@ export function evaluate(assertion, byPreview) {
 
   // An exception naming a preview that now passes, or that no longer exists, is a lie about the
   // codebase — so it fails too, rather than accumulating quietly. A preview whose product is empty
-  // is not evidence either way, so it does not make the exception stale.
+  // is not evidence either way, so it does not make the exception stale. One for a preview that
+  // draws no text excuses nothing the framework does not already skip, so that is stale as well.
   const stale = exceptions
     .filter((e) => {
       const data = byPreview[e.preview];
       if (data === undefined) return true;
+      if (textless(e.preview, data)) return true;
       if (productIsEmpty(product, data)) return false;
       return verdict(data) === null;
     })
     .map((e) => e.preview);
 
-  return { id: assertion.id, checked, failures, noData, staleExceptions: stale };
+  return { id: assertion.id, checked, failures, noData, noText, staleExceptions: stale };
 }
 
 /** A human-readable report. A failure that does not name the observed value is half a failure. */
@@ -316,7 +376,10 @@ export function formatResult(assertion, result) {
   // that reads as coverage while asserting nothing, which is the same hole as a stale exception.
   if (result.checked === 0 && result.staleExceptions.length === 0)
     lines.push(
-      `FAIL ${result.id}: matched no preview — an assertion that checks nothing is not a pass`,
+      (result.noText?.length ?? 0) > 0
+        ? `FAIL ${result.id}: every matched preview draws no text — an assertion that checks ` +
+            `nothing is not a pass`
+        : `FAIL ${result.id}: matched no preview — an assertion that checks nothing is not a pass`,
     );
   if (result.noData.length > 0)
     lines.push(
@@ -325,7 +388,14 @@ export function formatResult(assertion, result) {
     );
   for (const p of result.staleExceptions)
     lines.push(`FAIL ${result.id}: exception for "${p}" is stale — it passes now, or it is gone`);
-  if (lines.length === 0) lines.push(`ok   ${result.id} (${result.checked} previews)`);
+  if (lines.length === 0) {
+    const skipped = result.noText?.length ?? 0;
+    lines.push(
+      `ok   ${result.id} (${result.checked} previews` +
+        (skipped > 0 ? `; ${skipped} draw no text` : "") +
+        ")",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -376,7 +446,8 @@ export function runAssertions(doc, products) {
       report: errors.map((e) => `FAIL invalid render-assertions document — ${e}`).join("\n"),
     };
 
-  const results = doc.assertions.map((a) => evaluate(a, products[a.product] ?? {}));
+  const semantics = products["compose-semantics"] ?? {};
+  const results = doc.assertions.map((a) => evaluate(a, products[a.product] ?? {}, semantics));
   const ok = results.every(
     (r) =>
       r.failures.length === 0 &&

@@ -25,9 +25,9 @@ Design, open questions and the roadmap beyond this first slice:
   "assertions": [
     {
       "id": "glimmer-types-in-google-sans-flex",
-      "product": "fonts-used",
+      "product": "compose-semantics",
       "because": "a sticker sheet that silently types in Roboto is not the design system it claims",
-      "require": { "everyFont.resolvedFamily": "Google Sans Flex" }
+      "require": { "everyTextNode.typography.fontFamily": "Google Sans Flex" }
     },
     {
       "id": "scrolling-wear-screens-show-a-position-indicator",
@@ -72,6 +72,36 @@ applied, and failing it would buy nothing.
 `every*` and `noFont.*` are universal (one bad observation fails the preview); `anyNode.*` is
 existential (one match satisfies it). An unknown product or path is a hard error, never a
 silently-skipped assertion.
+
+**Assert the family on the text node, not on `fonts-used`, for an Android render.** On the
+Robolectric lane a `fonts-used` record's `resolvedFamily` is an `android.graphics.Typeface@…`
+identity and `requestedFamily` is the whole `Font(…)` description, so neither equals a family name;
+`everyTextNode.typography.fontFamily` carries it on both lanes. The desktop (Skiko) lane writes no
+`fonts-used` at all and names the face file it resolved (`Roboto-Medium`), which is what
+`"contains Roboto"` is for. What `fonts-used` alone carries is `droppedVariationSettings`.
+
+`everyTextNode.*` selects **laid-out runs** — nodes carrying `typography`. A node that merges its
+descendants' semantics (a DatePicker day cell is a `Button` labelled "Friday, August 1, 2025")
+carries `text` with no `typography`: it is an accessibility label, not something the renderer laid
+out, and has no family to be wrong about.
+
+### Previews that draw no text
+
+A glyph-only preview — an icon button, a voice-input indicator — writes an empty `fonts-used` and
+has no laid-out run for an `everyTextNode.*` path to select. Text assertions (every `fonts-used`
+assertion, and every `everyTextNode.*` path) **skip** such a preview rather than failing it as
+`no-data`, and the report counts them: `ok glimmer-variation-axes-are-applied (50 previews; 15 draw
+no text)`.
+
+"Draws no text" is judged from evidence, never assumed: the preview's `compose-semantics` tree must
+have been captured and hold no laid-out run. No semantics at all is still `no-data`, text on screen
+with an empty `fonts-used` is still `no-data`, a glyph-only preview that *did* record a face is
+checked on that record, and an assertion whose every match draws no text still fails. An exception
+naming a preview that draws no text is stale — the framework already skips it.
+
+Without this, every catalog with an icon button had to enumerate its text-bearing previews in
+`appliesTo`, and a glob list silently leaves the next new file unchecked. A code `check` on
+`compose-semantics` is not covered by the rule: it sees the tree and decides for itself.
 
 ## Assertions as code
 
@@ -127,6 +157,28 @@ node scripts/design-artifacts/check-render-assertions.mjs \
 Both flags are repeatable and merge into one render set, so a multi-module catalog asserts across
 its whole render rather than once per bundle. `--json` emits the structured result. Exit 0 when
 every assertion holds.
+
+### In CI
+
+`design-artifacts-reusable.yml` runs the check when the caller names its file:
+
+```yaml
+    uses: yschimke/compose-ai-tools/.github/workflows/design-artifacts-reusable.yml@main
+    with:
+      spec: catalog.spec.json
+      render-assertions: render-assertions.json   # or .mjs
+```
+
+It runs once per catalog job, after the render (and after sharded renders merge and live-bundle
+module ids are namespaced), over every module bundle of the job in one invocation, and **before**
+anything is generated or pushed — a violation fails the job and never reaches the served catalog.
+The path is caller-relative, like `spec`; a missing file, or a driver predating the checker, fails
+rather than skipping. That settles two of #5467's open questions for now: it runs where the plugin
+already owns the render lifecycle (the export job), and a declared assertion is a hard gate — opting
+in is the severity decision.
+
+External callers execute the export driver at `.github/design-artifacts-driver-pin.txt`, so an
+engine change reaches them when that pin moves after a release, not when it merges.
 
 ## What counts as a failure
 
