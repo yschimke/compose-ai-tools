@@ -14,6 +14,9 @@ import {
   asAssertionsDocument,
   checkFor,
   compileRequire,
+  drawsNoText,
+  isTextAssertion,
+  isTextLayer,
   productIsEmpty,
   evaluate,
   formatResult,
@@ -723,4 +726,134 @@ test("an empty string is treated as no dropped axes", () => {
     ],
   };
   assert.deepEqual(evaluate(assertNoDroppedAxes, { Sheet: empty }).failures, []);
+});
+
+// ---------------------------------------------------------------- previews that draw no text
+
+/** A glyph-only sticker: captured semantics, an image, and not one laid-out run. */
+const semanticsGlyphOnly = semantics([{ nodeId: "icon", role: "Image", label: "Send" }]);
+
+const assertTextFamily = {
+  id: "types-in-google-sans-flex",
+  product: "compose-semantics",
+  because: "every text layer in the kit is Google Sans Flex",
+  require: { "everyTextNode.typography.fontFamily": "Google Sans Flex" },
+};
+
+test("a merged accessibility label is not a text layer", () => {
+  // m3-catalog's DatePicker day cells: a Button that merges its descendants carries `text` but no
+  // `typography`. There is no run there to have a family; reading one as null failed 188 nodes of
+  // a render whose every laid-out run was correct.
+  const label = { nodeId: "day", role: "Button", text: "Friday, August 1, 2025" };
+  assert.equal(isTextLayer(label), false);
+  assert.equal(isTextLayer(textNode("Title", "Google Sans Flex", "wght 750")), true);
+  const tree = semantics([label, textNode("Title", "Google Sans Flex", "wght 750")]);
+  assert.deepEqual(evaluate(assertTextFamily, { Sheet: tree }).failures, []);
+});
+
+test("drawsNoText needs a captured tree — missing semantics is no data, not no text", () => {
+  assert.equal(drawsNoText(semanticsGlyphOnly), true);
+  assert.equal(drawsNoText(semantics([textNode("Title", "Google Sans Flex")])), false);
+  assert.equal(drawsNoText(undefined), false);
+});
+
+test("isTextAssertion covers fonts-used and everyTextNode paths, never a code check", () => {
+  assert.equal(isTextAssertion(assertNoDroppedAxes), true);
+  assert.equal(isTextAssertion(assertTextFamily), true);
+  const role = { product: "compose-semantics", require: { "anyNode.role": "Button" } };
+  assert.equal(isTextAssertion(role), false);
+  assert.equal(isTextAssertion({ product: "compose-semantics", check: () => null }), false);
+});
+
+test("an empty fonts-used on a preview that draws no text is skipped, not no-data", () => {
+  // Glimmer's IconButton stickers write an empty fonts-used because they lay out no run. Failing
+  // them forced a glob list of text-bearing files, and the next new file would go unchecked.
+  const result = evaluate(
+    assertNoDroppedAxes,
+    { Icon: { fonts: [] }, Card: fontsGood },
+    { Icon: semanticsGlyphOnly, Card: semantics([textNode("Title", "Google Sans Flex")]) },
+  );
+  assert.deepEqual(result.noData, []);
+  assert.deepEqual(result.noText, ["Icon"]);
+  assert.equal(result.checked, 1);
+  assert.match(formatResult(assertNoDroppedAxes, result), /ok .*1 previews; 1 draw no text/);
+});
+
+test("an empty fonts-used on a preview that DOES draw text is still no-data", () => {
+  // The capture gap this module fails on: text on screen, no font record. Stays a failure.
+  const result = evaluate(
+    assertNoDroppedAxes,
+    { Card: { fonts: [] } },
+    { Card: semantics([textNode("Title", "Google Sans Flex")]) },
+  );
+  assert.deepEqual(result.noData, ["Card"]);
+});
+
+test("an empty fonts-used with no semantics at all is still no-data", () => {
+  const result = evaluate(assertNoDroppedAxes, { Icon: { fonts: [] } }, {});
+  assert.deepEqual(result.noData, ["Icon"]);
+  assert.deepEqual(result.noText, []);
+});
+
+test("a glyph-only preview that still recorded a face is checked on that record", () => {
+  // A record is evidence. Wear has fifty previews like this; skipping them would drop real faces.
+  const result = evaluate(
+    assertNoDroppedAxes,
+    { Icon: fontsAxesDropped },
+    { Icon: semanticsGlyphOnly },
+  );
+  assert.equal(result.failures.length, 1);
+});
+
+test("an everyTextNode path skips a preview that lays out no text", () => {
+  const result = evaluate(
+    assertTextFamily,
+    { Icon: semanticsGlyphOnly, Card: semantics([textNode("Title", "Roboto")]) },
+    { Icon: semanticsGlyphOnly, Card: semantics([textNode("Title", "Roboto")]) },
+  );
+  assert.deepEqual(result.noText, ["Icon"]);
+  assert.deepEqual(
+    result.failures.map((f) => f.preview),
+    ["Card"],
+  );
+});
+
+test("runAssertions supplies the semantics that decide which previews draw no text", () => {
+  const { ok, results } = runAssertions(
+    { assertions: [assertNoDroppedAxes, assertTextFamily] },
+    {
+      "fonts-used": { Icon: { fonts: [] }, Card: fontsGood },
+      "compose-semantics": {
+        Icon: semanticsGlyphOnly,
+        Card: semantics([textNode("Title", "Google Sans Flex")]),
+      },
+    },
+  );
+  assert.equal(ok, true);
+  assert.deepEqual(
+    results.map((r) => r.noText),
+    [["Icon"], ["Icon"]],
+  );
+});
+
+test("an assertion whose every match draws no text still fails", () => {
+  const { ok, report } = runAssertions(
+    { assertions: [assertNoDroppedAxes] },
+    { "fonts-used": { Icon: { fonts: [] } }, "compose-semantics": { Icon: semanticsGlyphOnly } },
+  );
+  assert.equal(ok, false);
+  assert.match(report, /every matched preview draws no text/);
+});
+
+test("an exception for a preview that draws no text is stale — it excuses nothing", () => {
+  const excused = {
+    ...assertNoDroppedAxes,
+    exceptions: [{ preview: "Icon", reason: "draws no text" }],
+  };
+  const result = evaluate(
+    excused,
+    { Icon: { fonts: [] }, Card: fontsGood },
+    { Icon: semanticsGlyphOnly, Card: semantics([textNode("Title", "Google Sans Flex")]) },
+  );
+  assert.deepEqual(result.staleExceptions, ["Icon"]);
 });
