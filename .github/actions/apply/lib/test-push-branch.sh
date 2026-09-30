@@ -17,11 +17,22 @@ publish() {
   )
 }
 
+# A delta publisher never roots the branch: before any render has published there is no tip to
+# apply the delta on, and rooting one would leave a branch carrying only parity/issues.json.
+orphan="$ROOT/orphan"
+mkdir -p "$orphan/parity"
+printf 'issues-orphan\n' > "$orphan/parity/issues.json"
+publish "$orphan" DELTA_ON_TIP_PATHS
+if git --git-dir="$REMOTE" rev-parse --verify -q refs/heads/design-artifacts/m3 >/dev/null; then
+  echo "FAIL: a delta publish rooted design-artifacts/m3" >&2; exit 1
+fi
+
+# The render lane roots it.
 seed="$ROOT/seed"
 mkdir -p "$seed/parity"
 printf 'render-v1\n' > "$seed/render.txt"
 printf 'issues-old\n' > "$seed/parity/issues.json"
-publish "$seed" DELTA_ON_TIP_PATHS
+publish "$seed" CARRY_FORWARD_PATHS
 
 assert_tip() {
   expected_render="$1"

@@ -287,6 +287,14 @@ When Antigravity, Claude Code, or Codex is detected, `mcp install` prints the
 matching wiring-plugin commands as a reminder; pass `--no-plugin-hint` for
 config-only automation.
 
+Once the Antigravity `compose-preview` plugin is installed
+(`~/.gemini/config/plugins/compose-preview`), `mcp install` and `mcp register`
+leave Antigravity's global config alone: the plugin already provides the server,
+and a global entry would be a second copy of every tool. If an older global
+`compose-preview-mcp` entry exists in `~/.gemini/antigravity/mcp_config.json` or
+`~/.gemini/config/mcp_config.json`, both commands and `mcp doctor` name the file
+to remove it from. Pass `--antigravity` to write the global entry anyway.
+
 Host registration is global and one-time: each entry is `<stable launcher> mcp
 serve`, with no `--project`. `mcp install` in a project only adds a missing
 entry or repairs a broken one. `compose-preview mcp register` does the

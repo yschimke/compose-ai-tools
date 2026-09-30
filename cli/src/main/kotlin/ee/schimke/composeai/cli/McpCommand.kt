@@ -147,9 +147,13 @@ internal class McpCommand(
         --scope <user|project>
                              OpenCode config scope (default user). Project writes ./opencode.json.
         --antigravity / --no-antigravity
-                             Merge into Antigravity's mcp_config.json. Detected via
+                             Merge into Antigravity's mcp_config.json: whichever of
+                             ~/.gemini/antigravity/ and ~/.gemini/config/ already has one
+                             (legacy first). Detected via
                              __CFBundleIdentifier=com.google.antigravity, ANTIGRAVITY_CLI_ALIAS,
-                             or ~/.gemini/antigravity/.
+                             ~/.gemini/antigravity/ or ~/.gemini/config/. Skipped when the
+                             compose-preview Antigravity plugin is installed, since it already
+                             provides the server; --antigravity forces the global entry.
         --antigravity-config <path>
                              Override the Antigravity config path.
         --no-plugin-hint     Do not print plugin installation commands for detected harnesses.
@@ -512,8 +516,15 @@ internal class McpCommand(
     val claudeMcpAdd = AgentMcpConfig.claudeMcpAddCommand(launcher).joinToString(" ")
     val exists: (String) -> Boolean = { File(it).exists() }
 
+    val antigravity = AntigravityConfig(File(System.getProperty("user.home")))
     val antigravityConfig =
-      args.flagValue("--antigravity-config")?.let(::File) ?: defaultAntigravityConfig()
+      args.flagValue("--antigravity-config")?.let(::File) ?: antigravity.target()
+    // The plugin registers the same server under its own name; a global entry would be a second
+    // copy of every tool. Only an explicit --antigravity / --antigravity-config overrides that.
+    val antigravityViaPlugin =
+      antigravity.pluginInstalled &&
+        "--antigravity" !in args &&
+        args.flagValue("--antigravity-config") == null
     val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
     val openCodeConfig =
       selectOpenCodeConfig(
@@ -526,7 +537,7 @@ internal class McpCommand(
     val pluginHints =
       AgentMcpConfig.pluginInstallHints(
         buildSet {
-          if (antigravityDetected) add("antigravity")
+          if (antigravityDetected && !antigravity.pluginInstalled) add("antigravity")
           if (claudeDetected) add("claude")
           if (codexDetected) add("codex")
         },
@@ -534,7 +545,9 @@ internal class McpCommand(
       )
 
     val results = mutableListOf<HostResult>()
-    if (installAntigravity) {
+    if (installAntigravity && antigravityViaPlugin) {
+      results += antigravityPluginResult(antigravity)
+    } else if (installAntigravity) {
       results +=
         upsertFile(
           "antigravity",
@@ -606,6 +619,20 @@ internal class McpCommand(
         ),
     )
   }
+
+  /**
+   * The plugin already provides the server. Leave global config alone, but name any global entry
+   * that duplicates it: removing it is the fix, and it is the user's file to edit.
+   */
+  private fun antigravityPluginResult(antigravity: AntigravityConfig): HostResult =
+    HostResult(
+      "antigravity",
+      true,
+      antigravity.pluginDir.absolutePath,
+      null,
+      "provided by the compose-preview plugin; no global entry written",
+      antigravity.found().filter { it.hasEntry }.map { duplicateAntigravityEntry(it.file) },
+    )
 
   private fun upsertFile(
     name: String,
@@ -715,12 +742,26 @@ internal class McpCommand(
         val descriptor = File(module.projectDir, "build/compose-previews/daemon-launch.json")
         inspectDescriptor(module.gradlePath, descriptor)
       }
+      val antigravityFindings =
+        inspectAntigravity(AntigravityConfig(File(System.getProperty("user.home"))))
 
       if (emitJson) {
         val payload = buildJsonObject {
           put("schema", JsonPrimitive("compose-preview-mcp-doctor/v1"))
           put("projectRoot", JsonPrimitive(projectDir.absolutePath))
           put("verdict", JsonPrimitive(aggregateVerdict(states)))
+          put(
+            "antigravity",
+            kotlinx.serialization.json.JsonArray(
+              antigravityFindings.map { f ->
+                buildJsonObject {
+                  put("id", JsonPrimitive(f.id))
+                  put("level", JsonPrimitive(f.level))
+                  put("message", JsonPrimitive(f.message))
+                }
+              }
+            ),
+          )
           put(
             "modules",
             kotlinx.serialization.json.JsonArray(
@@ -757,6 +798,13 @@ internal class McpCommand(
             .filter { it.level != "ok" }
             .forEach { println("    [${it.level}] ${it.id}: ${it.message}") }
           println("    descriptor: ${s.descriptor}")
+        }
+        if (antigravityFindings.isNotEmpty()) {
+          println("antigravity:")
+          antigravityFindings.forEach { f ->
+            val tag = if (f.level == "info") "" else "[${f.level}] "
+            println("    $tag${f.message}")
+          }
         }
         val verdict = aggregateVerdict(states)
         if (verdict == "ok") {
@@ -811,9 +859,6 @@ internal class McpCommand(
     if (updated != text) fileSystem.write(path) { writeUtf8(updated) }
   }
 
-  private fun defaultAntigravityConfig(): File =
-    File(System.getProperty("user.home"), ".gemini/antigravity/mcp_config.json")
-
   private fun defaultCodexConfig(): File =
     File(System.getProperty("user.home"), ".codex/config.toml")
 
@@ -832,7 +877,7 @@ internal class McpCommand(
   private fun isAntigravityEnvironment(): Boolean =
     System.getenv("__CFBundleIdentifier") == "com.google.antigravity" ||
       !System.getenv("ANTIGRAVITY_CLI_ALIAS").isNullOrBlank() ||
-      File(System.getProperty("user.home"), ".gemini/antigravity").isDirectory
+      AntigravityConfig(File(System.getProperty("user.home"))).present()
 
   private fun isClaudeEnvironment(): Boolean =
     locateOnPath("claude") != null || File(System.getProperty("user.home"), ".claude").isDirectory

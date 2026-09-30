@@ -271,7 +271,7 @@ class McpHostRepairTest {
     val files =
       McpHostRepair.HostFiles(
         claudeJson = File(tmp, ".claude.json"),
-        antigravity = File(tmp, "mcp_config.json"),
+        antigravity = listOf(File(tmp, "mcp_config.json")),
         codex = File(tmp, "config.toml"),
         openCode = File(tmp, "opencode.json"),
       )
@@ -280,7 +280,7 @@ class McpHostRepairTest {
     )
     val healthyAntigravity =
       """{"mcpServers":{"compose-preview-mcp":{"command":"$stable","args":["mcp","serve"]}}}"""
-    files.antigravity.writeText(healthyAntigravity)
+    files.antigravity.single().writeText(healthyAntigravity)
     val codexWithoutEntry = "model = \"gpt-5\"\n"
     files.codex.writeText(codexWithoutEntry)
     // opencode.json absent: must stay absent.
@@ -294,7 +294,7 @@ class McpHostRepairTest {
       }
     assertEquals(1, changes.size, changes.toString())
     assertEquals(listOf("remove", "add-json"), calls.map { it[2] })
-    assertEquals(healthyAntigravity, files.antigravity.readText())
+    assertEquals(healthyAntigravity, files.antigravity.single().readText())
     assertEquals(codexWithoutEntry, files.codex.readText())
     assertFalse(files.openCode!!.exists())
 

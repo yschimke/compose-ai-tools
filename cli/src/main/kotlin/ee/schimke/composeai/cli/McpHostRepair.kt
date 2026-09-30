@@ -349,7 +349,7 @@ internal object McpHostRepair {
   /** The global host config files `compose-preview mcp repair` scans. */
   data class HostFiles(
     val claudeJson: File,
-    val antigravity: File,
+    val antigravity: List<File>,
     val codex: File,
     val openCode: File?,
   )
@@ -357,7 +357,7 @@ internal object McpHostRepair {
   fun defaultHostFiles(home: File, openCode: File?) =
     HostFiles(
       claudeJson = File(home, ".claude.json"),
-      antigravity = File(home, ".gemini/antigravity/mcp_config.json"),
+      antigravity = AntigravityConfig(home).candidates,
       codex = File(home, ".codex/config.toml"),
       openCode = openCode,
     )
@@ -400,7 +400,7 @@ internal object McpHostRepair {
         }
       }
     }
-    rewrite(files.antigravity) { repairAntigravity(it, launcher, exists) }
+    files.antigravity.forEach { file -> rewrite(file) { repairAntigravity(it, launcher, exists) } }
     rewrite(files.codex) { repairCodex(it, launcher, exists) }
     files.openCode?.let { file ->
       rewrite(file) { text ->
