@@ -44,3 +44,26 @@ along with the prose on each that named the lane inline.
 node --test scripts/design-artifacts/render-rc-compare-html.test.mjs   # 26 pass
 cd cli/serve-web && npm run verify                                     # 301 passing
 ```
+
+## Second rename: the three `RC · …` lanes
+
+The note above left `RC · JS player`, `RC · cmp-jvm player` and `RC · cmp-wasm player` as a separate
+call. They are renamed now, to the vocabulary the selector chips already use
+(`RcPlayerBackend.label`), because two of them named the wrong thing:
+
+| lane id (frozen) | was | now |
+| --- | --- | --- |
+| `js` | `RC · JS player` | `Camaelon JS` |
+| `cmp-jvm` | `RC · cmp-jvm player` | `AndroidX Embedded · JVM` |
+| `cmp-wasm` | `RC · cmp-wasm player` | `rc-player Wasm` |
+
+`cmp-jvm` was the misleading one. The `cmp-` prefix reads as "the Compose Multiplatform player", but
+that column is the AndroidX **embedded** `RcPlayer` over Skiko/Desktop
+(`:third-party-rc-embedded-player-jvm`), a cut of the same code as the Android embedded lane.
+`cmp-wasm` is the only lane the prefix is true of (`rc-player-compose`). The two are unrelated code
+bases, so a reader comparing "cmp-jvm vs cmp-wasm" was comparing an AndroidX port against a different
+player without being told. The short chip names follow (`jvm`, `wasm`).
+
+Ids are untouched for the same reason as before: they key the staged `rc-compare/<lane>/` assets and
+the `?ref=` parameter. Both tables (`ServeRcCompare.LANES`, `render-rc-compare-html.mjs`) and the
+prose that named the lanes moved together.
