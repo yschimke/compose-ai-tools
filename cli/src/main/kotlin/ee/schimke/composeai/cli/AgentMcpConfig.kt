@@ -11,7 +11,8 @@ import kotlinx.serialization.json.jsonObject
  * Pure helpers that produce the on-disk representation each agent host expects for the
  * `compose-preview-mcp` MCP server entry, given the absolute launcher path and project dir.
  *
- * - Antigravity: JSON file at `~/.gemini/antigravity/mcp_config.json`, merged into `mcpServers`.
+ * - Antigravity: JSON `mcp_config.json` under `~/.gemini/antigravity/` or `~/.gemini/config/` (see
+ *   [AntigravityConfig]), merged into `mcpServers`.
  * - Codex: TOML file at `~/.codex/config.toml`, with a `[mcp_servers.compose-preview-mcp]` table
  *   replaced in place (or appended when absent). Hand-rolled because the rest of the codebase
  *   doesn't pull in a TOML library, and our table is a fixed, small shape so a section-level edit
