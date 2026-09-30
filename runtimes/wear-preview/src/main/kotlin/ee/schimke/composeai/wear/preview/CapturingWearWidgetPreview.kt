@@ -18,7 +18,7 @@ import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.tooling.preview.WearWidgetPreview
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.rcembedded.player.ExperimentalRemoteDocumentPlayer
-import ee.schimke.composeai.rcembedded.player.enableEncodedImageReferences
+import ee.schimke.composeai.rcembedded.player.RemoteImageSupport
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -193,7 +193,7 @@ private fun CmpWearWidgetPlayer(bytes: ByteArray, params: WearWidgetParams) {
       // `BitmapData` carrying an encoded reference throws from `inflateFromBuffer` while the
       // remote-core globals are off — failing the *whole* document, not just the image. A widget
       // that draws artwork (the shape issue #5259 quotes) is exactly that document.
-      enableEncodedImageReferences()
+      RemoteImageSupport.enableEncodedImageReferences()
       RemoteDocument(bytes)
     }
   ExperimentalRemoteDocumentPlayer(
