@@ -410,7 +410,7 @@ composeai-preview-daemon = "3.9.2"
 #
 # During the move these were briefly split across two refs, so that three unpublished coordinates
 # could not pin the five that were already on Central. That is over: one ref again.
-rcplayers = "1.75.0"
+rcplayers = "2.0.1"
 
 [libraries]
 
@@ -430,6 +430,7 @@ composeai-screen-document = { module = "ee.schimke.composeai:screen-document" }
 composeai-ui-builder-protocol = { module = "ee.schimke.composeai:ui-builder-protocol" }
 composeai-data-render-core = { module = "ee.schimke.composeai:data-render-core" }
 composeai-data-layoutinspector-core = { module = "ee.schimke.composeai:data-layoutinspector-core" }
+composeai-data-layoutinspector-connector = { module = "ee.schimke.composeai:data-layoutinspector-connector" }
 composeai-data-theme-core = { module = "ee.schimke.composeai:data-theme-core" }
 composeai-data-preview-overrides-core = { module = "ee.schimke.composeai:data-preview-overrides-core" }
 composeai-common-io = { module = "ee.schimke.composeai:common-io" }
@@ -487,8 +488,6 @@ rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist" }
 # supported API; pinned to one AndroidX alpha and versioned with the player stack rather than with
 # upstream.
 rcplayer-embedded-android = { module = "ee.schimke.composeai:third-party-rc-embedded-player" }
-# The desktop-JVM cut of the same vendored player, staged into `lib-rcjvm/` for serve's cmp-jvm lane.
-rcplayer-embedded-jvm = { module = "ee.schimke.composeai:third-party-rc-embedded-player-jvm" }
 # The vendored TypeScript player's browser bundle — the client-side render lane the `rc-*` browser
 # tests and the design-artifacts job drive with `--player <bundle.js>`. A zip, `dist` classifier.
 rcplayer-js-dist = { module = "ee.schimke.composeai:remote-compose-player-js-dist" }

@@ -356,6 +356,12 @@ include(":render-matrix")
 // yschimke/compose-preview-server. docs/build-scripts/SETTINGS.md#render-host
 include(":render-host")
 
+// The `compose-preview serve` cmp-jvm render worker: draws a captured `.rc` document to PNG or layered
+// SVG through the CMP player (`rc-player-compose`). Staged into the CLI install as `lib-rcjvm/` and
+// spawned as a subprocess by `:render-host`; not published. Replaces the desktop-JVM cut of the
+// AndroidX embedded player that yschimke/rc-players stopped publishing in 2.0.0.
+include(":rc-render-jvm")
+
 // Public render-session library. `:render-session-api` is the pure-interface surface every
 // consumer (CLI, MCP server, third-party tooling) compiles against; `:render-session-subprocess`
 // is the daemon-subprocess-backed implementation.
