@@ -412,7 +412,7 @@ internal object CliFlagValidation {
           "--verbose",
           "-v",
         ),
-      "update" to setOf("--dry-run"),
+      "update" to setOf("--dry-run", "--no-modify-path"),
       "init-script" to setOf("--path", "--print"),
       "pin" to setOf("--cli", "--json", "--remove", "--unset"),
       "auth" to
