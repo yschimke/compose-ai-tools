@@ -161,6 +161,7 @@ public object ServeDesignAnnotations {
         size,
         face,
         effectiveWeight(type),
+        axisValue(type, "ROND")?.let { "ROND $it" },
         type.fontStyle?.takeIf { it != "normal" },
         type.letterSpacing?.let { "tracking $it" },
         type.textAlign?.takeIf { it != "start" },
@@ -181,17 +182,23 @@ public object ServeDesignAnnotations {
    * `W400`, so reading [ComposeSemanticsTypography.fontWeight] alone labelled Glimmer's 520/650/750
    * roles as 400.
    */
-  private fun effectiveWeight(type: ComposeSemanticsTypography): String? {
-    val wght =
-      type.fontVariationSettings
-        ?.split(',')
-        ?.map { it.trim() }
-        ?.firstOrNull { it.startsWith("wght ") }
-        ?.removePrefix("wght ")
-        ?.toFloatOrNull()
-    return wght?.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }
-      ?: type.fontWeight?.toString()
-  }
+  private fun effectiveWeight(type: ComposeSemanticsTypography): String? =
+    axisValue(type, "wght") ?: type.fontWeight?.toString()
+
+  /**
+   * The value of one variable-font axis, read from
+   * [ComposeSemanticsTypography.fontVariationSettings] (`"ROND 100.0, wght 520.0"`), or null when
+   * the face declares no such axis. Surfaced for `ROND` because Glimmer's Google Sans Flex roles
+   * all set it to 100 and nothing else in the label showed whether it reached the render.
+   */
+  private fun axisValue(type: ComposeSemanticsTypography, tag: String): String? =
+    type.fontVariationSettings
+      ?.split(',')
+      ?.map { it.trim() }
+      ?.firstOrNull { it.startsWith("$tag ") }
+      ?.removePrefix("$tag ")
+      ?.toFloatOrNull()
+      ?.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }
 
   private fun typographyDetail(
     type: ComposeSemanticsTypography,

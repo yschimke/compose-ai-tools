@@ -369,12 +369,13 @@ class ServeDesignAnnotationsTest {
         fontSize = "20.0sp",
         fontFamily = "Google Sans Flex",
         fontWeight = 400,
-        fontVariationSettings = "wght 520.0",
+        fontVariationSettings = "ROND 100.0, wght 520.0",
       )
     val label =
       annotationsOf(node(typography = type)).single { it.kind == AnnotationKind.TYPOGRAPHY }.label
 
     assertEquals(true, label?.contains("520"))
+    assertEquals(true, label?.contains("ROND 100"))
     assertEquals(false, label?.contains("400"))
   }
 
