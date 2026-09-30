@@ -68,10 +68,12 @@ tasks.named<Tar>("distTar") {
 // provisioning the CLI already does for the preview server and the XR compositor. The pin is
 // `composeai-preview-daemon` in the catalog, baked in below as `previewDaemonVersion`.
 
-// Sidecar configuration carrying the desktop/JVM embedded Remote Compose player
-// (`:third-party-rc-embedded-player-jvm`). `compose-preview serve` spawns its `RcJvmRenderMain` as
-// a one-shot subprocess to render a captured `ir/<id>.rc` to PNG for the viewer's cmp-jvm chip —
-// the same subprocess-only isolation as the desktop daemon. Deliberately does NOT bundle Compose
+// Sidecar configuration carrying the CMP Remote Compose render worker (`:rc-render-jvm`, which
+// wraps
+// `rc-player-compose`). `compose-preview serve` spawns its `RcJvmRenderMain` as a one-shot
+// subprocess, or its pooled `RcJvmRenderWorkerMain`, to render a captured `ir/<id>.rc` to PNG or
+// layered SVG for the viewer's cmp-jvm chip — the same subprocess-only isolation as the desktop
+// daemon. Deliberately does NOT bundle Compose
 // Multiplatform / Skiko: the subprocess classpath joins `lib-rcjvm/*` + `lib-daemon-desktop/*` at
 // launch, and the daemon sidecar already carries the per-OS Compose + Skiko stack. Resolved into
 // `cli/build/install/compose-preview/lib-rcjvm/`, located at runtime via `APP_HOME/lib-rcjvm/` (or
@@ -340,12 +342,12 @@ dependencies {
   implementation(project(":render-session-api"))
   implementation(project(":render-session-subprocess"))
 
-  // `compose-preview serve` ships the desktop/JVM embedded Remote Compose player in `lib-rcjvm/`
-  // for the cmp-jvm chip's one-shot render subprocess. Subprocess-only isolation; the Compose +
-  // Skiko runtime is not bundled here (the subprocess joins `lib-rcjvm/*` +
-  // `lib-daemon-desktop/*`, the latter provisioned from the compose-preview-daemon release).
-  add("composePreviewRcJvm", platform(libs.rcplayers.bom))
-  add("composePreviewRcJvm", libs.rcplayer.embedded.jvm)
+  // `compose-preview serve` ships the CMP Remote Compose render worker in `lib-rcjvm/` for the
+  // cmp-jvm chip's render subprocesses. Subprocess-only isolation; Skiko's per-OS natives are not
+  // bundled here (the subprocess joins `lib-rcjvm/*` + `lib-daemon-desktop/*`, the latter
+  // provisioned from the compose-preview-daemon release, and `SkikoNativeProvision` fetches the
+  // host's native at run time).
+  add("composePreviewRcJvm", project(":rc-render-jvm"))
 
   // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
   // *strictly* requires `slf4j-api:2.0.17`. Ktor 3.5.0 (and friends) pull `slf4j-api:2.0.18`
@@ -396,14 +398,14 @@ dependencies {
   testImplementation(gradleTestKit())
 }
 
-// Stage the JVM embedded player's runtime artifacts for `lib-rcjvm/`, disambiguating any colliding
+// Stage the CMP render worker's runtime artifacts for `lib-rcjvm/`, disambiguating any colliding
 // `library-desktop-<version>.jar` filenames by Maven `module-version.jar`: multiple JetBrains
 // Compose Multiplatform `components-*-desktop` artifacts ship as `library-desktop-<version>.jar`.
 // Host-specific Skiko natives are filtered out so a macOS-built release does not embed a macOS
 // native in the portable archive; [SkikoNativeProvision] fetches the current host's at run time.
 val stageRcJvmLibs =
   tasks.register<Sync>("stageRcJvmLibs") {
-    description = "Stages the vendored JVM player's runtime artifacts for lib-rcjvm/."
+    description = "Stages the CMP render worker's runtime artifacts for lib-rcjvm/."
     destinationDir = layout.buildDirectory.dir("staged-rcjvm-libs").get().asFile
     val artifactsProvider = composePreviewRcJvm.incoming.artifacts.resolvedArtifacts
     from(

@@ -12,7 +12,7 @@
  * mismatch chip in the row's meta cell. Picking the baked lane reuses the diffs the
  * driver already computed at build time (exact `pixelmatch` numbers, no work in
  * the browser); picking any *player* as the reference — e.g. "how far is rc-player Wasm
- * from AndroidX Embedded · JVM?", a question the build-time lane-vs-baked diffs cannot answer —
+ * from rc-player JVM?", a question the build-time lane-vs-baked diffs cannot answer —
  * diffs client-side on a `<canvas>` with pixelmatch's YIQ metric at the same
  * threshold.
  *
@@ -174,7 +174,7 @@ const LANES = [
   },
   {
     id: "cmp-jvm",
-    label: "AndroidX Embedded · JVM",
+    label: "rc-player JVM",
     short: "jvm",
     present: hasEmbeddedJvmLane,
     src: (r) => r.embeddedJvm,
@@ -705,7 +705,7 @@ export function renderRcCompareHtml(model, opts = {}) {
     "Camaelon JS",
     withEmbedded && "embedded",
     withAndroidxEmbedded && "androidx.dev embedded",
-    withEmbeddedJvm && "embedded JVM",
+    withEmbeddedJvm && "rc-player JVM",
     withCmpWasm && "rc-player Wasm",
   ].filter(Boolean);
   const laneLabel = `${laneNames.join(" + ")} player${laneNames.length > 1 ? "s" : ""}`;
@@ -743,7 +743,7 @@ export function renderRcCompareHtml(model, opts = {}) {
         blankTxt
       : "") +
     (withEmbeddedJvm
-      ? `<br><strong>AndroidX Embedded · JVM:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
+      ? `<br><strong>rc-player JVM:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
         (stats.embeddedJvmUnsupported ? ` · ${stats.embeddedJvmUnsupported} not rendered` : "") +
         blankTxt
       : "") +
@@ -865,9 +865,9 @@ ${[
   withAndroidxEmbedded &&
     `<strong>AndroidX Embedded · androidx.dev</strong> is the independently compiled player published by the pinned AndroidX snapshot`,
   withEmbeddedJvm &&
-    `<strong>AndroidX Embedded · JVM</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen (not the rc-player Compose player, despite the wire id <code>cmp-jvm</code>)`,
+    `<strong>rc-player JVM</strong> is <code>rc-player-compose</code> on Compose Desktop / Skiko, rasterizing offscreen — the same player as the Wasm lane, on the JVM (wire id <code>cmp-jvm</code>)`,
   withCmpWasm &&
-    `<strong>rc-player Wasm</strong> is <code>rc-player-compose</code>, this stack's own Compose Multiplatform player, running through Skiko in browser Wasm (wire id <code>cmp-wasm</code>)`,
+    `<strong>rc-player Wasm</strong> is <code>rc-player-compose</code> running through Skiko in browser Wasm (wire id <code>cmp-wasm</code>)`,
 ]
   .filter(Boolean)
   .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}

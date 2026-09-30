@@ -207,8 +207,10 @@ public object ServeRcCompare {
       ),
       RcLaneSource(
         id = "cmp-jvm",
-        label = "AndroidX Embedded · JVM",
+        label = "rc-player JVM",
         short = "jvm",
+        // Directory names are frozen: they key assets already staged in published catalogs, and
+        // the column was `rc-embedded-jvm` when it drew the AndroidX embedded player's desktop cut.
         renderDir = "rc-embedded-jvm",
         diffDir = "rc-embedded-jvm-diff",
         rendered = { it.embeddedJvmRendered },

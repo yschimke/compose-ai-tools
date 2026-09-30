@@ -605,7 +605,7 @@ public interface ServeHost : AutoCloseable {
 
   /**
    * Whether the server-side **cmp-jvm** lane can render [previewId]: the host carries the captured
-   * document and a render spec, and the isolated desktop-player subprocess is installed
+   * document and a render spec, and the isolated CMP render subprocess is installed
    * ([RcJvmServerRenderer.isAvailable]). Hosts fold this into [enabledRcPlayersFor].
    */
   public fun supportsCmpJvm(previewId: String): Boolean =

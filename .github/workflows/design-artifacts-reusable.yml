@@ -311,7 +311,7 @@ on:
         type: boolean
         default: false
       rc-embedded-jvm-lane:
-        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through the vendored JVM player (Compose Desktop / Skiko, offscreen). Its harness is a test task in yschimke/rc-players, checked out and pinned exactly as rc-embedded-lane describes; the step installs libGL + xvfb for it. Opt-in and fail-soft for the same reasons. Entirely skipped for a catalog that ships no ir/*.rc."
+        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through the CMP player, rc-player-compose, on the desktop JVM (Compose Desktop / Skiko, offscreen). Its harness (RcCmpRenderHarness) is a test in yschimke/rc-players, checked out and pinned exactly as rc-embedded-lane describes; the step installs libGL + xvfb for it. Opt-in and fail-soft for the same reasons. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
         default: false
@@ -879,7 +879,7 @@ env:
   # the same players at. Renovate keeps the two in step (`.github/renovate.json`).
   RC_PLAYERS_REPO: yschimke/rc-players
   # renovate: datasource=maven depName=ee.schimke.composeai:rc-players-bom
-  RC_PLAYERS_PIN: v1.75.0
+  RC_PLAYERS_PIN: v2.0.1
 
 jobs:
   # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
@@ -3049,11 +3049,12 @@ jobs:
             exit 1
           }
           node "$generator" --spec "$SPEC" --module-dir "$module_dir" --annotations-version "$version"
-      # ---- The two embedded player lanes' harness, when a caller asked for them ----------------
+      # ---- The embedded player lanes' harness, when a caller asked for them ---------------------
       #
-      # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and
-      # `:third-party-rc-embedded-player-jvm` (Compose Desktop / Skiko) live in yschimke/rc-players
-      # since the player stack was extracted. The rc-compare step below used to run them out of the
+      # `:third-party-rc-embedded-player` (Robolectric, both Android columns) and the CMP player's
+      # `RcCmpRenderHarness` in `:rc-player-compose` (Compose Desktop / Skiko, the cmp-jvm column)
+      # live in yschimke/rc-players since the player stack was extracted. (The cmp-jvm column ran
+      # `:third-party-rc-embedded-player-jvm` until rc-players 2.0.0 stopped publishing it.) The rc-compare step below used to run them out of the
       # compose-ai-tools checkout, where they have not existed for some time — so both lanes could
       # only ever log a warning and drop their column, which is what left a catalog's wall three
       # columns wide with nothing saying why (#4998).
@@ -4897,9 +4898,9 @@ jobs:
             RC_JVM_LOG="$RUNNER_TEMP/rc-embedded-jvm.log"
             if (cd "$RC_PLAYERS" && \
                 xvfb-run -a -s "-screen 0 2000x1400x24" \
-                  ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun --quiet \
-                    -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT" \
-                    -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") >"$RC_JVM_LOG" 2>&1 \
+                  ./gradlew :rc-player-compose:jvmTest --tests '*RcCmpRenderHarness*' \
+                    --no-daemon --rerun --quiet \
+                    -Prc.cmp.input="$RC_IN" -Prc.cmp.output="$RC_JVM_OUT") >"$RC_JVM_LOG" 2>&1 \
                && [ -n "$(find "$RC_JVM_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded-jvm "$RC_JVM_OUT")
             else
