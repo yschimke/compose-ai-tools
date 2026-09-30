@@ -202,7 +202,7 @@ internal class McpCommand(
     val command = mcpLaunchCommand(choice.binary, args)
     val exit =
       try {
-        ProcessBuilder(command).inheritIO().start().waitFor()
+        ProcessBuilder(command).inheritIO().runTiedToLauncher()
       } catch (t: Throwable) {
         System.err.println(
           "could not start ${choice.binary} (from ${choice.source}): " +
