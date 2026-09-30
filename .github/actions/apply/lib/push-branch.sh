@@ -18,6 +18,8 @@
 #                          tip versions replace the working tree versions (render publisher mode).
 #   DELTA_ON_TIP_PATHS   — whitespace-separated paths this invocation owns. On every retry start
 #                          from the fetched tip and replace only these paths (index publisher mode).
+#                          Never roots the branch: with no tip there is nothing to be a delta on,
+#                          so an absent branch is a skip and an unfetchable one is a failure.
 #   REMOTE_URL           — test seam; defaults to the authenticated GitHub repository URL.
 #   REVISION_PREVIEW_INDEX — "1" to roll preview-index.json forward from catalog.json at the
 #                            fetched parent. Intended for design-artifact catalog branches.
@@ -135,6 +137,21 @@ while :; do
   if git fetch --depth=1 --quiet origin "$TARGET_BRANCH" 2>/dev/null; then
     PARENT=$(git rev-parse FETCH_HEAD)
     PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
+  elif [ -n "$DELTA_ON_TIP_PATHS" ]; then
+    # A delta publisher rooting the branch would leave a tip carrying only its own paths, with the
+    # render publisher's bundle gone and its source marker still claiming it was published
+    # (yschimke/m3-catalog#495). Only the render lane roots a delivery branch.
+    ls_status=0
+    git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1 || ls_status=$?
+    if [ "$ls_status" = "2" ]; then
+      echo "${TARGET_BRANCH} does not exist; a delta publish never roots it. Skipping."
+      if [ -n "$SHA_OUTPUT_FILE" ]; then
+        : > "$SHA_OUTPUT_FILE"
+      fi
+      exit 0
+    fi
+    echo "Could not fetch ${TARGET_BRANCH} to apply the delta on; refusing to root it." >&2
+    exit 1
   fi
   CANDIDATE_TREE=$(tree_for_parent "$PARENT")
   PREVIEW_INDEX_CARRIED=0
