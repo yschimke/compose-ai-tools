@@ -105,7 +105,7 @@ compose-multiplatform-forward = "1.12.0-rc01"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:remotecompose`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha28"
+compose-material3-catalog = "1.5.0-alpha29"
 # JetBrains Compose Multiplatform material3 tracks its own line, so the explicit coordinate must
 # use this version rather than `compose-multiplatform`. Matched to what `m3-catalog` pins on the
 # 1.11 line, so the largest live-rendered catalog and the host agree on the material3 ABI as well
