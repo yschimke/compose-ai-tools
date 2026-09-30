@@ -48,7 +48,7 @@ androidx-tracing = "2.0.3"
 # one classpath. Note 2.x publishes only `androidJvm` + `jvm` variants — there is no wasmJs or Apple
 # klib, which is the whole reason `:rc-player-trace` is an `expect`/`actual` facade.
 androidx-tracing-kmp = "2.0.3"
-classgraph = "4.8.195"
+classgraph = "4.8.196"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
