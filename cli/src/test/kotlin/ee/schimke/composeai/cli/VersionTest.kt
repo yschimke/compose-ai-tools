@@ -112,6 +112,18 @@ class UpdateCommandPipelineTest {
   }
 
   @Test
+  fun `no-modify-path is forwarded to install sh`() {
+    val pipeline = UpdateCommand.buildPipeline(null, noModifyPath = true)
+    assertTrue(pipeline.endsWith(" | bash -s -- --no-modify-path"), pipeline)
+  }
+
+  @Test
+  fun `no-modify-path follows the version arg`() {
+    val pipeline = UpdateCommand.buildPipeline("0.8.10", noModifyPath = true)
+    assertTrue(pipeline.endsWith(" | bash -s -- 0.8.10 --no-modify-path"), pipeline)
+  }
+
+  @Test
   fun `embedded single quotes are escaped inside single-quoted form`() {
     val quoted = UpdateCommand.shellQuote("a'b")
     assertEquals("'a'\\''b'", quoted)

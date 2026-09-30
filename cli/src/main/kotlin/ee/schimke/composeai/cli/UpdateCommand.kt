@@ -4,7 +4,7 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * `compose-preview update [VERSION] [--dry-run]`
+ * `compose-preview update [VERSION] [--dry-run] [--no-modify-path]`
  *
  * Re-runs `scripts/install.sh` from `main`, which is idempotent and resolves the latest release (or
  * the version pinned via the positional arg) and refreshes both the skill bundle and the CLI
@@ -14,13 +14,16 @@ import kotlin.system.exitProcess
  * `--dry-run` prints the curl-pipe-bash command without executing it; useful for users who'd rather
  * inspect the installer before running it, or for environments where curl-pipe-bash is
  * policy-blocked.
+ *
+ * `--no-modify-path` is forwarded to `install.sh`, which then leaves shell startup files alone
+ * instead of adding `~/.local/bin` to PATH in them.
  */
 class UpdateCommand(private val args: List<String>) {
   fun run() {
     val dryRun = "--dry-run" in args
     // Positional version arg, if present (anything not starting with `--`).
     val targetVersion = args.firstOrNull { !it.startsWith("--") }
-    val pipeline = buildPipeline(targetVersion)
+    val pipeline = buildPipeline(targetVersion, noModifyPath = "--no-modify-path" in args)
 
     if (dryRun) {
       println(pipeline)
@@ -74,7 +77,12 @@ class UpdateCommand(private val args: List<String>) {
      * Builds the curl-pipe-bash invocation that re-bootstraps the skill bundle. Pure function so
      * tests can exercise the version-arg quoting without spawning a subprocess.
      */
-    internal fun buildPipeline(targetVersion: String?): String {
+    internal fun buildPipeline(targetVersion: String?, noModifyPath: Boolean = false): String {
+      val installArgs =
+        listOfNotNull(
+          targetVersion?.let(::shellQuote),
+          "--no-modify-path".takeIf { noModifyPath },
+        )
       val installUrl = "https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh"
       return buildString {
         // raw.githubusercontent.com applies an IP-wide throttle. Retry 429s rather than turning a
@@ -82,9 +90,9 @@ class UpdateCommand(private val args: List<String>) {
         append("curl --retry 8 --retry-max-time 300 -fsSL ")
         append(installUrl)
         append(" | bash")
-        if (targetVersion != null) {
+        if (installArgs.isNotEmpty()) {
           append(" -s -- ")
-          append(shellQuote(targetVersion))
+          append(installArgs.joinToString(" "))
         }
       }
     }

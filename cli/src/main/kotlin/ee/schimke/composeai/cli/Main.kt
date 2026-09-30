@@ -244,6 +244,7 @@ private fun printFullUsage() {
       bundle           Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
+                       (--no-modify-path leaves shell startup files alone)
       init-script      Materialise the bundled auto-inject init script and print the path
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses
