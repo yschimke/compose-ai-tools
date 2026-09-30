@@ -82,8 +82,7 @@ class ServeCommand(
         ProcessBuilder(command)
           .apply { environment().putAll(childEnvironment) }
           .inheritIO()
-          .start()
-          .waitFor()
+          .runTiedToLauncher()
       } catch (t: Throwable) {
         System.err.println(
           "could not start ${choice.binary} (from ${choice.source}): " +
