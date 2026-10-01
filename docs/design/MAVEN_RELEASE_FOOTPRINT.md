@@ -20,8 +20,8 @@ on every release, 96.7% of them unchanged rebuilds. Here is what the plan-based 
   version numbers, so the time window is what keeps them apart. For compose-preview-daemon the
   count is also limited to the coordinates in `compose-preview-daemon-bom` plus their platform
   variants, which keeps compose-preview-contracts releases at the same versions out.
-  compose-preview-contracts is limited the same way to `compose-preview-contracts-bom`, and compose-ui-builder to the
-  `compose-preview-ui-builder-*` coordinates.
+  compose-preview-contracts is limited the same way to `compose-preview-contracts-bom`, and
+  compose-ui-builder to the `compose-preview-ui-builder-*` coordinates.
 - **Catalogs** do not publish to Central. Each commit on a `*-cmp-maven` branch of
   `wear-m3-catalog-out`, `a2ui-catalog-out` or `glimmer-catalog-out` is one publish, and its
   count is the POMs that commit adds.
