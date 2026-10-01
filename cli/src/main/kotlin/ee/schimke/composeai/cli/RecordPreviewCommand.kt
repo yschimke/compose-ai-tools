@@ -104,7 +104,8 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     }
 
     val format = resolveFormat(formatFlag, outPath)
-    val overrides = parseOverrides(overridePairs)
+    // `--overrides` beats the shared settings file, key by key (the MCP server's precedence).
+    val overrides = previewSettings.fillOverrides(parseOverrides(overridePairs))
 
     // Phase 1: discover the module + its preview spec and refresh the daemon descriptor. Runs
     // inside

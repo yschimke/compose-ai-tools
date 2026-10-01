@@ -59,6 +59,9 @@ internal object CliFlags {
       "--permutations",
       "--missing-renders",
       "--variant",
+      // `show --link`'s plugin coordinates (the link flag itself is attached/optional, below).
+      "--openai-plugin-id",
+      "--openai-marketplace",
       // Preview *reference* selector. Read by `record` and `history` from the start, and since
       // #3744 by every command that selects previews (render / show / list / show-resources /
       // a11y / render-matrix / serve) — see `previewMatchesReference`.
@@ -200,7 +203,7 @@ internal object CliFlags {
    * [VALUE_FLAGS] entry — they are intentionally excluded from command-detection skipping.
    */
   val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> =
-    setOf("--images", "--exit-when-idle", "--contact-sheet", "--cells-dir")
+    setOf("--images", "--exit-when-idle", "--contact-sheet", "--cells-dir", "--link")
 
   /**
    * The first positional token in [args] — the bare token that isn't the value of a value-consuming

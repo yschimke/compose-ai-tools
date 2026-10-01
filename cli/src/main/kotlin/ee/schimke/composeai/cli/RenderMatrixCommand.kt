@@ -58,15 +58,19 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       return
     }
 
-    val devices = axisValues("--device")
-    val locales = axisValues("--locale")
-    val uiModes = axisValues("--ui-mode")
+    // A flag beats the shared settings file, which beats "axis not varied" — the MCP server's
+    // precedence. A setting fills only an axis no flag named, as a single value.
+    val settings = previewSettings
+    val devices = settings.matrixAxis(CliPreviewSettings.DEVICE, axisValues("--device"))
+    val locales = settings.matrixAxis(CliPreviewSettings.LOCALE, axisValues("--locale"))
+    val uiModes = settings.matrixAxis(CliPreviewSettings.DARK_THEME, axisValues("--ui-mode"))
     val badUiMode = uiModes?.firstOrNull { it.lowercase() !in setOf("light", "dark") }
     if (badUiMode != null) {
       System.err.println("render-matrix: --ui-mode must be 'light' or 'dark', got '$badUiMode'")
       exitProcess(64)
     }
-    val fontScaleRaw = axisValues("--font-scale")
+    val fontScaleRaw =
+      settings.matrixAxis(CliPreviewSettings.FONT_SCALE, axisValues("--font-scale"))
     val fontScales = fontScaleRaw?.map { it.toFloatOrNull() }
     if (fontScales?.any { it == null } == true) {
       System.err.println(
@@ -78,7 +82,8 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
 
     if (devices == null && locales == null && uiModes == null && fontScaleValues == null) {
       System.err.println(
-        "render-matrix: set at least one axis: --device, --locale, --ui-mode, --font-scale"
+        "render-matrix: set at least one axis: --device, --locale, --ui-mode, --font-scale " +
+          "(or a default in ${CliPreviewSettingsFile.defaultFile().path})"
       )
       printUsage()
       exitProcess(64)
@@ -375,7 +380,11 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
         --ui-mode <modes>    light,dark
         --font-scale <nums>  font-scale multipliers, e.g. 1.0,2.0
 
-      Each axis is comma-separated and repeatable. Other options:
+      Each axis is comma-separated and repeatable. An axis no flag names takes its single
+      value from ~/.compose-preview/settings.json (device, darkTheme, fontScale, locale — the
+      file the MCP server's settings_update writes), when set; a flag always wins.
+
+      Other options:
 
         --contact-sheet[=path]  Also write a stitched grid PNG of every cell (default path:
                                 <module>/build/compose-previews/<id>-matrix.png).
