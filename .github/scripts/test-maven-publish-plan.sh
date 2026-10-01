@@ -28,7 +28,7 @@ git init -q -b main
 git config user.email test@example.com
 git config user.name test
 
-mkdir -p alpha beta lib/gamma build-logic/src/main/kotlin build-logic/src/test/kotlin gradle
+mkdir -p alpha beta lib/gamma gradle-plugin build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic build-logic/src/test/kotlin gradle
 cat > settings.gradle.kts <<'EOF'
 include(":alpha")
 include(":beta")
@@ -85,6 +85,24 @@ val banner = """
 // not a comment: this is inside a raw string
 """
 EOF
+# As `ComposeAiBaseConventionsPlugin` does: the sibling BOMs go on every module, found by name.
+cat > build-logic/src/main/kotlin/BomConventions.kt <<'EOF'
+package conventions
+
+fun boms(libs: Any) = listOf(find(libs, "composeai-daemon-bom"), find(libs, "composeai-contracts-bom"))
+EOF
+cat > build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic/CheckLayerBoundary.kt <<'EOF'
+package ee.schimke.composeai.buildlogic
+
+class CheckLayerBoundary
+EOF
+# As the real `gradle-plugin/build.gradle.kts` does: the daemon version is baked into the plugin.
+cat > gradle-plugin/build.gradle.kts <<'EOF'
+val previewDaemon = libs.versions.composeai.preview.daemon.get()
+EOF
+cat > root-tasks.gradle.kts <<'EOF'
+tasks.register("printPublishTasks") { doLast { println(":alpha:publish") } }
+EOF
 cat > build-logic/src/test/kotlin/ConventionsTest.kt <<'EOF'
 package conventions
 
@@ -100,8 +118,12 @@ okhttp = "4.12.0"
 androidx-core = "1.13.0"
 wire = "5.0.0"
 unused = "1.0"
+composeai-preview-daemon = "3.0.0"
+composeai-contracts = "3.0.0"
 
 [libraries]
+composeai-daemon-bom = { module = "ee.schimke.composeai:compose-preview-daemon-bom", version.ref = "composeai-preview-daemon" }
+composeai-contracts-bom = { module = "ee.schimke.composeai:compose-preview-contracts-bom", version.ref = "composeai-contracts" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-logging = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
@@ -236,6 +258,14 @@ change_catalog_and_module() {
   echo '// touched' >> alpha/build.gradle.kts
 }
 check catalog_and_module "alpha beta gamma"
+
+# Verification-only build logic is not a shared input.
+change_verification_only() { echo 'val gate = 1' >> build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic/CheckLayerBoundary.kt; }
+check verification_only ""
+
+# v2.21.1: release wiring lives in root-tasks.gradle.kts, outside the shared set.
+change_root_tasks() { sed -i 's/:alpha:publish/:alpha:publishAndReleaseToMavenCentral/' root-tasks.gradle.kts; }
+check root_tasks ""
 
 if [ "${failures}" -gt 0 ]; then
   echo "${failures} failure(s)" >&2
