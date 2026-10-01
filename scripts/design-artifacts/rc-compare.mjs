@@ -37,6 +37,7 @@
  */
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { PNG } from "pngjs";
@@ -78,6 +79,20 @@ const THRESHOLD = Number(arg("threshold", "0.1"));
 const THEME = arg("theme", "light");
 const EXEC = arg("chromium", process.env.RC_COMPARE_CHROMIUM || undefined);
 const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
+// How many documents render at once. Each worker owns its own TypeScript-player page and its own
+// CMP/Wasm contexts, so nothing a document leaves behind in a page can reach another worker's.
+// Documents are dealt round-robin by index (worker k takes k, k+N, k+2N, …) rather than pulled from
+// a shared queue: a page carries state from one document to the next — #4177 was exactly that, a
+// font axis decided by document *order* — so which page sees which documents, in which order, has
+// to be a function of the catalog and N, never of timing. Rows and log lines still come out in
+// catalog order. `--concurrency 1` is the old serial loop.
+const CONCURRENCY = positiveInt(
+  "concurrency",
+  arg(
+    "concurrency",
+    process.env.RC_COMPARE_CONCURRENCY ?? String(Math.min(4, os.availableParallelism?.() ?? 2)),
+  ),
+);
 // Embedded-player lane (`:third-party-rc-embedded-player`). Two halves, because the render itself
 // is a Gradle/Robolectric step that has no business living inside a Playwright driver:
 //
@@ -113,6 +128,15 @@ const CMP_WASM_MAX_COLD_FIRST_FRAME_MS = optionalNumber(
 const CMP_WASM_MAX_WARM_FIRST_FRAME_MS = optionalNumber(
   "cmp-wasm-max-warm-first-frame-ms",
 );
+
+function positiveInt(name, value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    console.error(`rc-compare: --${name} must be a positive integer`);
+    process.exit(2);
+  }
+  return parsed;
+}
 
 function optionalNumber(name) {
   const value = arg(name);
@@ -456,16 +480,24 @@ function contentType(file) {
   return "application/octet-stream";
 }
 
-/** Serve the assembled Wasm player plus the currently-selected RC document on loopback only. */
+/**
+ * Serve the assembled Wasm player plus the RC documents in flight, on loopback only.
+ *
+ * Each render registers its own document under its own path, so concurrent workers never read each
+ * other's bytes; a single "current document" slot would let one worker's navigation fetch another's.
+ */
 async function startCmpWasmServer(dir) {
   const root = path.resolve(dir);
   if (!fs.existsSync(path.join(root, "index.html"))) {
     throw new Error(`rc-compare: --cmp-wasm ${dir} has no index.html`);
   }
-  let document = Buffer.alloc(0);
+  const documents = new Map();
+  let nextToken = 0;
   const server = http.createServer((request, response) => {
     const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-    if (pathname === "/document.rc") {
+    const match = /^\/documents\/(\d+)\.rc$/.exec(pathname);
+    const document = match ? documents.get(match[1]) : undefined;
+    if (document) {
       response.writeHead(200, {
         "Content-Type": "application/octet-stream",
         "Cache-Control": "no-store",
@@ -492,20 +524,27 @@ async function startCmpWasmServer(dir) {
   });
   return {
     origin: `http://127.0.0.1:${server.address().port}`,
-    setDocument(bytes) {
-      document = bytes;
+    /** Serve [bytes] until [release]; returns the path to load it from. */
+    register(bytes) {
+      const token = String(nextToken++);
+      documents.set(token, bytes);
+      return { token, path: `/documents/${token}.rc` };
+    },
+    release(token) {
+      documents.delete(token);
     },
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
 
-async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, referenceBlank, previewParams) {
+async function cmpWasmFor(worker, id, bytes, baked, bakedUnflattened, width, height, referenceBlank, previewParams) {
   if (!CMP_WASM) return {};
+  let served = null;
   try {
     const density = previewParams?.density ?? 1;
     const viewportWidth = previewParams?.widthDp ?? Math.round(width / density);
     const viewportHeight = previewParams?.heightDp ?? Math.round(height / density);
-    const pageState = await cmpWasmPageFor(density);
+    const pageState = await cmpWasmPageFor(worker, density);
     const { page: cmpWasmPage, consoleErrors: cmpWasmConsoleErrors } = pageState;
     // `cold`/`warm` describes *this browser context*, and contexts are keyed by density (see
     // `cmpWasmPageFor`) — so a catalog whose previews span two densities legitimately reports two
@@ -516,7 +555,7 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     const contextRender = pageState.renders++;
     const startup = contextRender === 0 ? "cold" : "warm";
     cmpWasmConsoleErrors.length = 0;
-    cmpWasmServer.setDocument(bytes);
+    served = cmpWasmServer.register(bytes);
     await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
     const startedAt = performance.now();
     // **Every document navigates.** #3445 replaced the navigation with `window.rcPlayerLoad` — an
@@ -541,7 +580,7 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     // the document is more useful than allowlisting the whole row, and the missing pixels remain in
     // the parity score rather than being mistaken for a successful image fetch.
     await cmpWasmPage.goto(
-      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0&allowExternalImagePlaceholders=1`,
+      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent(served.path)}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0&allowExternalImagePlaceholders=1`,
     );
     await cmpWasmPage.waitForFunction(
       () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
@@ -623,6 +662,8 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
       cmpWasm: "",
       cmpWasmDiff: "",
     };
+  } finally {
+    if (served) cmpWasmServer.release(served.token);
   }
 }
 
@@ -633,23 +674,17 @@ const browser = await chromium.launch({
   ...(EXEC ? { executablePath: EXEC } : {}),
   args: [...CHROMIUM_LAUNCH_ARGS],
 });
-const page = await browser
-  .newContext({ deviceScaleFactor: 1, timezoneId: PARITY_CLOCK_TIMEZONE })
-  .then((c) => c.newPage());
-// The TypeScript player reads the same clock the Wasm one does, so the JS lane is pinned to the
-// same instant rather than left to drift on its own (#4431).
-await pinWallClock(page);
 const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
-const cmpWasmPages = new Map();
 /**
- * One browser context per preview density, because Playwright binds `deviceScaleFactor` at context
- * creation — there is no per-render way to change it, and the player takes its density from the
- * page's `devicePixelRatio`. Contexts do not share a cache, so the first render in each pays a
- * fresh player load; that render is the one labelled `cold` (measured at ~0.3 s over a warm one
- * here, small next to the ~2 s every render costs). Everything after it in that context is `warm`.
+ * One browser context per preview density *per worker*, because Playwright binds
+ * `deviceScaleFactor` at context creation — there is no per-render way to change it, and the player
+ * takes its density from the page's `devicePixelRatio`. Contexts do not share a cache, so the first
+ * render in each pays a fresh player load; that render is the one labelled `cold` (measured at
+ * ~0.3 s over a warm one here, small next to the ~2 s every render costs). Everything after it in
+ * that context is `warm`. With N workers a density therefore reports up to N cold rows.
  */
-async function cmpWasmPageFor(density) {
-  if (cmpWasmPages.has(density)) return cmpWasmPages.get(density);
+async function cmpWasmPageFor(worker, density) {
+  if (worker.cmpWasmPages.has(density)) return worker.cmpWasmPages.get(density);
   const context = await browser.newContext({
     deviceScaleFactor: density,
     // The zone belongs with the instant: an epoch alone leaves a document that paints an hour, a
@@ -668,24 +703,47 @@ async function cmpWasmPageFor(density) {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
   const value = { page, consoleErrors, renders: 0 };
-  cmpWasmPages.set(density, value);
+  worker.cmpWasmPages.set(density, value);
   return value;
 }
-const pageWarnings = [];
-page.on("console", (m) => {
-  if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
-});
-const fontCss = fontFaceCss(FONTS);
-await page.setContent(`<!doctype html><html><head>${fontCss}</head><body></body></html>`);
-if (fontCss) await loadAndVerifyFonts(page);
-await page.addScriptTag({ content: bundleJs });
 
-const rows = [];
-for (const id of rcIds) {
+const fontCss = fontFaceCss(FONTS);
+/** A TypeScript-player page with the fonts verified and the player loaded, plus its Wasm contexts. */
+async function newWorker() {
+  const page = await browser
+    .newContext({ deviceScaleFactor: 1, timezoneId: PARITY_CLOCK_TIMEZONE })
+    .then((c) => c.newPage());
+  // The TypeScript player reads the same clock the Wasm one does, so the JS lane is pinned to the
+  // same instant rather than left to drift on its own (#4431).
+  await pinWallClock(page);
+  const pageWarnings = [];
+  page.on("console", (m) => {
+    if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
+  });
+  await page.setContent(`<!doctype html><html><head>${fontCss}</head><body></body></html>`);
+  if (fontCss) await loadAndVerifyFonts(page);
+  await page.addScriptTag({ content: bundleJs });
+  return { page, pageWarnings, cmpWasmPages: new Map() };
+}
+// Created one after another so their font-verification lines do not interleave.
+const workers = [];
+for (let k = 0; k < Math.max(1, Math.min(CONCURRENCY, rcIds.length)); k++) {
+  workers.push(await newWorker());
+}
+console.log(`rc-compare: ${rcIds.length} document(s) across ${workers.length} page(s)`);
+
+/**
+ * Compare one document on [worker]'s pages. Returns its row (none when there is no baked PNG) and
+ * the log lines for it, which the driver prints in catalog order rather than completion order.
+ */
+async function compareOne(id, worker) {
+  const { page, pageWarnings } = worker;
+  const log = [];
+  let row = null;
   const pngName = `previews/${id}.png`;
   if (!entries.has(pngName)) {
-    console.log(`rc-compare: no baked PNG for ${id}, skipping`);
-    continue;
+    log.push(`rc-compare: no baked PNG for ${id}, skipping`);
+    return { row, log };
   }
   const bakedBytes = entries.get(pngName)();
   const bakedRaw = PNG.sync.read(bakedBytes);
@@ -698,37 +756,59 @@ for (const id of rcIds) {
   const rcB64 = entries.get(`ir/${id}.rc`)().toString("base64");
   const { width, height } = baked;
 
-  pageWarnings.length = 0;
-  const result = await page.evaluate(
-    async ({ b64, w, h, theme }) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      document.body.appendChild(canvas);
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      try {
-        const player = new window.RcdPlayer(canvas);
-        player.setTheme(theme);
-        await player.loadFromArrayBuffer(bytes.buffer);
-        await new Promise((r) => setTimeout(r, 250));
-        // The first paint is what *discovers* which named font families the document asks for —
-        // resolution happens mid-paint, per TYPEFACE op — so the wait has to come after it. A
-        // single-shot render has no later frame in which a face could appear, so without this the
-        // branded text would screenshot in the fallback typeface.
-        player.repaint();
-        await player.fontsReady();
-        player.repaint();
-        return { dataUrl: canvas.toDataURL("image/png") };
-      } catch (e) {
-        return { error: String((e && e.stack) || e) };
-      } finally {
-        canvas.remove();
-      }
-    },
-    { b64: rcB64, w: width, h: height, theme: THEME },
-  );
+  const renderOnce = () =>
+    page.evaluate(
+      async ({ b64, w, h, theme }) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        document.body.appendChild(canvas);
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        try {
+          const player = new window.RcdPlayer(canvas);
+          player.setTheme(theme);
+          await player.loadFromArrayBuffer(bytes.buffer);
+          await new Promise((r) => setTimeout(r, 250));
+          // The first paint is what *discovers* which named font families the document asks for —
+          // resolution happens mid-paint, per TYPEFACE op — so the wait has to come after it. A
+          // single-shot render has no later frame in which a face could appear, so without this the
+          // branded text would screenshot in the fallback typeface.
+          player.repaint();
+          await player.fontsReady();
+          player.repaint();
+          return { dataUrl: canvas.toDataURL("image/png") };
+        } catch (e) {
+          return { error: String((e && e.stack) || e) };
+        } finally {
+          canvas.remove();
+        }
+      },
+      { b64: rcB64, w: width, h: height, theme: THEME },
+    );
+  // A render that made the page load font faces it did not have is rendered again. The first render
+  // that needs a downloadable face measures its text before that face arrives (#4177's second
+  // defect, still reproducible on CI for the variable-axis specimens), so it scores differently from
+  // the same document rendered on a page that already has the face. Which document that hits used to
+  // depend on catalog order; with several workers it would also depend on how the catalog is split.
+  // Re-rendering until the page's faces stop changing scores every document against the faces it
+  // asked for — the result a later document always got — whatever ran before it on this page.
+  const fontState = () =>
+    page.evaluate(() => {
+      let loaded = 0;
+      document.fonts.forEach((face) => {
+        if (face.status === "loaded") loaded++;
+      });
+      return `${document.fonts.size}:${loaded}`;
+    });
+  let result;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    pageWarnings.length = 0;
+    const before = await fontState();
+    result = await renderOnce();
+    if ((await fontState()) === before) break;
+  }
 
   const name = id.split(".").pop();
   const truncated = pageWarnings.some((t) => /Unknown operation opcode/.test(t));
@@ -746,6 +826,7 @@ for (const id of rcIds) {
   );
   const embeddedJvm = embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBlank);
   const cmpWasm = await cmpWasmFor(
+    worker,
     id,
     entries.get(`ir/${id}.rc`)(),
     baked,
@@ -757,7 +838,7 @@ for (const id of rcIds) {
   );
 
   if (result.error || truncated) {
-    rows.push({
+    row = ({
       id,
       name,
       group: "",
@@ -777,8 +858,8 @@ for (const id of rcIds) {
       ...cmpWasm,
     });
     fs.writeFileSync(path.join(dirs.baked, `${id}.png`), bakedBytes);
-    console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
-    continue;
+    log.push(`  ${name}: NOT RENDERED (${row.note})`);
+    return { row, log };
   }
 
   const rcBytes = Buffer.from(result.dataUrl.split(",")[1], "base64");
@@ -798,7 +879,7 @@ for (const id of rcIds) {
   fs.writeFileSync(path.join(dirs.rc, `${id}.png`), rcBytes);
   fs.writeFileSync(path.join(dirs.diff, `${id}.png`), PNG.sync.write(diff));
 
-  rows.push({
+  row = ({
     id,
     name,
     group: "",
@@ -824,8 +905,8 @@ for (const id of rcIds) {
   if (referenceBlank) {
     // Worth a line of its own: a blank baked capture is a catalog bug, and it is exactly the case
     // that used to disappear into a green 0.00%.
-    console.log(`  ${name}: UNSCORED — baked PNG is fully transparent (${width}×${height})`);
-    continue;
+    log.push(`  ${name}: UNSCORED — baked PNG is fully transparent (${width}×${height})`);
+    return { row, log };
   }
   const embNote =
     embedded.embeddedRendered === undefined
@@ -853,10 +934,32 @@ for (const id of rcIds) {
           `(${cmpWasm.cmpWasmStartup} ${cmpWasm.cmpWasmFirstFrameMs.toFixed(0)} ms, ` +
           `${cmpWasm.cmpWasmViewport}@${cmpWasm.cmpWasmDensity})`
         : `  |  cmp-wasm NOT RENDERED`;
-  console.log(
+  log.push(
     `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${androidxEmbNote}${embJvmNote}${cmpWasmNote}`,
   );
+  return { row, log };
 }
+
+// Each worker walks its own fixed slice of the catalog; results land by index and are flushed — rows
+// appended, lines printed — strictly in catalog order as soon as every earlier document is done.
+const rows = [];
+const results = new Array(rcIds.length);
+let flushed = 0;
+function flush() {
+  while (flushed < results.length && results[flushed] !== undefined) {
+    const { row, log } = results[flushed++];
+    for (const line of log) console.log(line);
+    if (row) rows.push(row);
+  }
+}
+await Promise.all(
+  workers.map(async (worker, k) => {
+    for (let i = k; i < rcIds.length; i += workers.length) {
+      results[i] = await compareOne(rcIds[i], worker);
+      flush();
+    }
+  }),
+);
 
 if (cmpWasmServer) await cmpWasmServer.close();
 await browser.close();
