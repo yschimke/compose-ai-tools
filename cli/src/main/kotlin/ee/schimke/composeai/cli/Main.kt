@@ -326,6 +326,13 @@ private fun printFullUsage() {
                            inter-frame gaps come from `advanceTimeMillis` deltas so playback
                            matches the simulated clock. Always off when stdout is piped or
                            `--json` is set so escape sequences don't pollute captured output.
+      --link[=<surface>]   show: print a deep link per preview that opens it in the ChatGPT /
+                           Codex sidebar library app (previews_library). Surfaces: desktop
+                           (default, codex://), mobile (chatgpt://), web (https://chatgpt.com).
+                           Needs the plugin id: --openai-plugin-id <id> [--openai-marketplace
+                           <name>], or COMPOSE_PREVIEW_OPENAI_PLUGIN_ID [/ _MARKETPLACE]; without
+                           one it says so and prints no link. Text output adds `link:` lines;
+                           --json adds a `link` field to each preview.
       --progress           Print per-task milestone/heartbeat lines to stderr
       --verbose, -v        Show full Gradle build output (implies --progress)
       --timeout <seconds>  Gradle build timeout (default: 600)
@@ -371,6 +378,13 @@ private fun printFullUsage() {
                            already wired manually and you don't want the bundled
                            classpath dependency added. `COMPOSE_PREVIEW_NO_AUTO_INJECT=1`
                            is an equivalent environment-variable escape hatch.
+
+    Settings: ~/.compose-preview/settings.json (or COMPOSE_PREVIEW_SETTINGS_FILE) is
+    the file the MCP server's settings_update writes; the CLI reads it and never writes
+    it. device, darkTheme, fontScale and locale fill whatever render-matrix's axes and
+    record's --overrides leave unset (an explicit flag always wins). show and render
+    draw each preview as declared and say so when those settings are set. Other keys
+    are ignored; a malformed file warns and the defaults apply.
 
     OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
     default in a TTY and auto-disables when stdout is piped or redirected.

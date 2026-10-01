@@ -145,7 +145,9 @@ internal object CliFlagValidation {
 
   val BY_COMMAND: Map<String, Set<String>> =
     mapOf(
-      "show" to commandBase + setOf("--json", "--images"),
+      "show" to
+        commandBase +
+          setOf("--json", "--images", "--link", "--openai-plugin-id", "--openai-marketplace"),
       "show-resources" to commandBase + setOf("--json"),
       "list" to commandBase + setOf("--json"),
       "render" to commandBase + setOf("--output", "--bundle", "--embed-deps", "--format"),

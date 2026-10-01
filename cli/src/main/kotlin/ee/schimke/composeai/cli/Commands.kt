@@ -28,6 +28,11 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -1069,6 +1074,22 @@ abstract class Command(
   protected fun findProjectRoot(): File? = findGradleProjectRoot()
 
   /**
+   * The shared `~/.compose-preview/settings.json` defaults (see [CliPreviewSettings]), read once
+   * per command. A malformed file has already warned on stderr and reads as the defaults.
+   */
+  protected val previewSettings: CliPreviewSettings by lazy { CliPreviewSettingsFile.read() }
+
+  /**
+   * `show` / `render` drive the Gradle render, which draws each preview exactly as its `@Preview`
+   * declares — there is no per-run device / dark / font-scale / locale override on that path, so
+   * the display settings cannot be applied there. Say so once rather than leave a person who set
+   * `darkTheme` wondering why the PNGs are light; `render-matrix` and `record` do apply them.
+   */
+  protected fun noteUnappliedSettings(command: String) {
+    unappliedSettingsNote(command, previewSettings)?.let { System.err.println(it) }
+  }
+
+  /**
    * The version pin in force for this run, resolved once. Read for two things that both need to
    * name a version the user never typed: the auto-inject diagnosis in [buildFailureAdvice]
    * (issue #5034) and the attribution in its message.
@@ -1812,7 +1833,23 @@ class ShowCommand(args: List<String>) : Command(args) {
         isTty = System.console() != null,
       )
 
+  /** `--link[=desktop|mobile|web]`: a ChatGPT / Codex sidebar deep link per shown preview. */
+  private val linkRequest: ShowLinkRequest = ShowLinkRequest.parse(args)
+
+  /** The project root the links' workspace id is derived from; resolved once, on first link. */
+  private val linkProjectRoot: File by lazy { findProjectRoot() ?: File(".").absoluteFile }
+
+  /** The deep link for [r], or null when `--link` is off / unavailable or the id has no URI. */
+  private fun linkFor(r: PreviewResult): String? {
+    val ready = linkRequest as? ShowLinkRequest.Ready ?: return null
+    val uri = composePreviewUri(linkProjectRoot, r.module, r.id) ?: return null
+    return OpenAiDeepLinks.previewLink(ready.plugin, uri, ready.surface)
+  }
+
   override fun run() {
+    // Say up front, before the build, why `--link` will print nothing — not after a long render.
+    (linkRequest as? ShowLinkRequest.Unavailable)?.let { System.err.println(it.message) }
+    noteUnappliedSettings("show")
     val outcome =
       renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
     if (!outcome.buildOk) {
@@ -1873,7 +1910,12 @@ class ShowCommand(args: List<String>) : Command(args) {
     }
 
     if (jsonOutput) {
-      println(encodeResponse(filtered, countsScope = countsScope))
+      val encoded = encodeResponse(filtered, countsScope = countsScope)
+      println(
+        if (linkRequest is ShowLinkRequest.Ready) {
+          injectPreviewLinks(encoded, filtered.map(::linkFor), pretty = !brief)
+        } else encoded
+      )
     } else {
       var lastModule: String? = null
       for (r in filtered) {
@@ -1892,6 +1934,7 @@ class ShowCommand(args: List<String>) : Command(args) {
             println("  [${captureCoordLabel(c)}]$tag ${c.pngPath ?: ""}")
           }
         }
+        linkFor(r)?.let { println("  link: $it") }
         emitInlineImage(r)
       }
     }
@@ -2043,6 +2086,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     args.flagValue("--format")?.trim()?.lowercase()?.ifEmpty { null }
 
   override fun run() {
+    noteUnappliedSettings("render")
     val svg =
       when (formatFlag) {
         null,
@@ -2842,3 +2886,38 @@ private fun applyImageSizeOverride(file: File, override: ImageSizeOverride): Fil
 // `previewSha256`, `gifBookendFrameSha256`, `framesToBytes`, `sha256` carved out to
 // `:gradle-preview-driver/PreviewSha256.kt`. Same package, same callers, just lives in the
 // driver module now so contrib consumers get the same change-detection hash.
+
+/**
+ * `show --json --link`: [encoded] (a `compose-preview-show` envelope, full or `--brief`) with
+ * `"link"` added to each `previews[i]` from [links] — by position, since the envelope's rows are
+ * the results in order. A null link adds nothing to that row.
+ */
+internal fun injectPreviewLinks(encoded: String, links: List<String?>, pretty: Boolean): String {
+  val codec = if (pretty) json else briefJson
+  val root = codec.parseToJsonElement(encoded).jsonObject
+  val previews = root["previews"]?.jsonArray ?: return encoded
+  val linked =
+    JsonArray(
+      previews.mapIndexed { i, row ->
+        val link = links.getOrNull(i)
+        if (link == null || row !is JsonObject) row
+        else JsonObject(row + ("link" to JsonPrimitive(link)))
+      }
+    )
+  return codec.encodeToString(JsonObject.serializer(), JsonObject(root + ("previews" to linked)))
+}
+
+/**
+ * The stderr note for a Gradle-render command ([command] is `show` / `render`) whose display
+ * settings cannot apply; null when none are set.
+ */
+internal fun unappliedSettingsNote(command: String, settings: CliPreviewSettings): String? {
+  val set =
+    settings.setKeys().ifEmpty {
+      return null
+    }
+  return "compose-preview: note: ${CliPreviewSettingsFile.defaultFile().path} sets " +
+    "${set.joinToString(", ")}, which '$command' does not apply: it renders each preview as its " +
+    "@Preview declares. `render-matrix` and `record` apply these settings (an explicit flag still " +
+    "wins), as does the MCP server's render_preview."
+}

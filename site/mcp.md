@@ -154,6 +154,70 @@ Grants keep `ui-builder-read`, `ui-builder-write`, and `ui-builder-export`
 independent. The adapter is a remote protocol client only: it does not copy the
 server's reducer, catalog, renderer, or persistence into this repository.
 
+## Shared settings
+
+The MCP server's `settings_read` / `settings_update` tools (the native
+settings page in ChatGPT and Codex) persist their defaults to one file,
+`~/.compose-preview/settings.json` — or wherever `COMPOSE_PREVIEW_SETTINGS_FILE`
+points:
+
+```json
+{ "schema": "compose-preview-settings/v1", "values": { "darkTheme": true, "locale": "fr" } }
+```
+
+The `compose-preview` CLI reads the same file (it never writes it) with the
+server's precedence: **an explicit flag beats a setting, which beats the
+built-in default.**
+
+| Setting | Where the CLI applies it | The flag that wins over it |
+|---|---|---|
+| `device` (`id:<device>`, or `preview` for none) | `render-matrix` device axis, `record` overrides | `--device`, `--overrides device=…` |
+| `darkTheme` | `render-matrix` ui-mode axis, `record` overrides | `--ui-mode`, — |
+| `fontScale` (`0` for none) | `render-matrix` font-scale axis, `record` overrides | `--font-scale`, `--overrides fontScale=…` |
+| `locale` (BCP-47, empty for none) | `render-matrix` locale axis, `record` overrides | `--locale`, `--overrides localeTag=…` |
+
+A setting fills only what the command line leaves unset: `render-matrix
+--locale en,ar` with `darkTheme` on renders both locales dark. `show` and
+`render` drive the Gradle render, which draws each preview exactly as its
+`@Preview` declares, so they cannot apply these four; when any is set they
+say so on stderr rather than ignore it quietly. The server-only keys
+(`renderResult`, `imageToModel`, `replicasPerDaemon`, `uiBuilderMcpAppLayout`)
+and any key the CLI does not know are ignored. A bad value falls back to its
+default with a warning and keeps the other keys; a file that is not valid JSON
+warns once and every default applies.
+
+## Deep links into the ChatGPT / Codex sidebar
+
+The local server's `previews_library` tool is a sidebar app, and
+`compose-preview show --link` prints a link per preview that opens it there,
+rendered on open:
+
+```
+compose-preview show --id com.example.HomeKt.HomePreview --link \
+  --openai-plugin-id <plugin id> --openai-marketplace <marketplace>
+```
+
+| Flag | Opens in | Link |
+|---|---|---|
+| `--link` (or `--link=desktop`) | ChatGPT / Codex desktop | `codex://plugins/<id>@<marketplace>/app/previews_library?path=…` |
+| `--link=mobile` | ChatGPT mobile | `chatgpt://plugins/<id>@<marketplace>/app/previews_library?path=…` |
+| `--link=web` | chatgpt.com | `https://chatgpt.com/plugins/<id>/app/previews_library?path=…` |
+
+The `path` is the library route `/preview/<compose-preview URI>`,
+percent-encoded (RFC 3986: a space is `%20`, and `/ ? & = : @` inside a value
+are escaped). The plugin id and marketplace depend on how the plugin was
+published, so they are never guessed: pass the flags, or set
+`COMPOSE_PREVIEW_OPENAI_PLUGIN_ID` (and `COMPOSE_PREVIEW_OPENAI_MARKETPLACE`
+for a plugin installed from a custom marketplace; a flag beats the variable).
+Without a plugin id, `show --link` prints that guidance instead of a link and
+still shows the previews. Text output adds a `link:` line under each preview;
+`--json` adds a `link` field to each one.
+
+The link's workspace segment is derived the way the server derives it for a
+project registered by path, from the project directory's name and canonical
+path — a project registered under a custom `rootProjectName` has a different
+id, and its links will not resolve.
+
 ## What we tell agents
 
 Point the agent at the
