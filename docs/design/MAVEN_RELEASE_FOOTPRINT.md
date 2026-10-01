@@ -1,8 +1,9 @@
 # Maven release footprint
 
 **Status: measurement, as of 2026-10-01.** How many Maven coordinates each release publishes, in
-the five repositories that ship under `ee.schimke.composeai`, counted only from the change that
-made each one publish what a release changes rather than everything.
+six of the repositories that ship under `ee.schimke.composeai` and in the catalogs' own Maven
+branches, counted only from the change that made each one publish what a release changes rather
+than everything.
 
 This follows [`RELEASE_TRAINS.md`](RELEASE_TRAINS.md), which measured the old shape: 94 modules
 on every release, 96.7% of them unchanged rebuilds. Here is what the plan-based publishing
@@ -10,22 +11,26 @@ on every release, 96.7% of them unchanged rebuilds. Here is what the plan-based 
 
 ## How it was counted
 
-- **Maven Central repositories** (compose-ai-tools, compose-preview-daemon, rc-players,
-  compose-preview-server): every artifact directory under
+- **Maven Central repositories** (compose-ai-tools, compose-preview-daemon,
+  compose-preview-contracts, compose-ui-builder, rc-players, compose-preview-server): every
+  artifact directory under
   `https://repo1.maven.org/maven2/ee/schimke/composeai/`, with each version's upload time. A
   release's count is the set of coordinates at the tag's version uploaded between 3 hours before
   the tag and the next tag (capped at 48 hours). The repositories share one group and overlapping
   version numbers, so the time window is what keeps them apart. For compose-preview-daemon the
   count is also limited to the coordinates in `compose-preview-daemon-bom` plus their platform
   variants, which keeps compose-preview-contracts releases at the same versions out.
+  compose-preview-contracts is limited the same way to `compose-preview-contracts-bom`, and compose-ui-builder to the
+  `compose-preview-ui-builder-*` coordinates.
 - **Catalogs** do not publish to Central. Each commit on a `*-cmp-maven` branch of
   `wear-m3-catalog-out`, `a2ui-catalog-out` or `glimmer-catalog-out` is one publish, and its
   count is the POMs that commit adds.
 - **A coordinate is one artifact ID.** Each platform variant of a multiplatform module
   (`-jvm`, `-android`, `-iosarm64`, ...) counts separately, because each is uploaded separately.
 - **Weekly rates** divide totals by the days from each cutover to 2026-10-01 09:00 UTC: about
-  15 days for the three Central repositories that switched on 16 Sep, 6.8 for the catalogs. That
-  is a short window; treat the rates as indicative.
+  15 days for the four Central repositories that switched on 16 Sep, 6.8 for the catalogs, and
+  only 1.1 for compose-ui-builder, whose weekly figures are an extrapolation from two releases.
+  That is a short window; treat the rates as indicative.
 - **Two releases are excluded** as broken rather than empty: compose-ai-tools v2.18.0 (the
   publish plan itself failed; fixed by #5487 and #5490) and rc-players v1.64.0 (nothing reached
   Central). Including them gives compose-ai-tools 24 releases at an average of 15.4, and
@@ -37,6 +42,8 @@ on every release, 96.7% of them unchanged rebuilds. Here is what the plan-based 
 |---|---|--:|--:|--:|--:|--:|--:|--:|
 | compose-ai-tools | #5485 (2026-09-16) | 23 | 0 | 29 | 16.1 | 29 | 11.1 | 179 |
 | compose-preview-daemon | compose-preview-daemon#123 (2026-09-16) | 14 | 2 | 75 | 59.9 | 75 | 6.5 | 392 |
+| compose-preview-contracts | compose-preview-contracts#80 (2026-09-16) | 16 | 2 | 17 | 7.5 | 4 | 7.7 | 58 |
+| compose-ui-builder | compose-ui-builder#349 (2026-09-30) | 2 | 6 | 6 | 6.0 | 6 | (12.3) | (74) |
 | rc-players | rc-players#196 (2026-09-16) | 15 | 2 | 33 | 24.6 | 29 | 7.3 | 179 |
 | Catalogs (wear-m3, a2ui, glimmer) | wear-m3-catalog#607 (2026-09-24) | 8 | 3 | 18 | 13.0 | 16 | 8.3 | 107 |
 | compose-preview-server | compose-preview-server#794 (2026-09-12) | 64 | 0 | 0 | 0 | 0 | 24.0 | 0 |
@@ -50,6 +57,8 @@ are partial.
 |---|--:|--:|--:|--:|
 | compose-ai-tools | – | 5 / 121 | 16 / 220 | 2 / 29 |
 | compose-preview-daemon | – | 7 / 455 | 4 / 159 | 3 / 225 |
+| compose-preview-contracts | – | 7 / 52 | 6 / 37 | 3 / 31 |
+| compose-ui-builder | – | – | – | 2 / 12 |
 | rc-players | – | 5 / 129 | 7 / 152 | 3 / 88 |
 | Catalogs | – | – | 6 / 72 | 2 / 32 |
 | compose-preview-server | 6 / 0 | 11 / 0 | 41 / 0 | 6 / 0 |
@@ -87,6 +96,29 @@ xychart-beta
     y-axis "Coordinates" 0 --> 80
     bar [75, 75, 75, 75, 75, 5, 75, 75, 2, 41, 41, 75, 75, 75]
 ```
+
+### compose-preview-contracts
+
+Full set: 17 coordinates. Only 4 of 16 releases shipped all 17. Ten shipped 4: the BOM plus one
+multiplatform module and its two platform variants, usually `ui-builder-protocol` and twice
+`screen-document`. One shipped 10 and one shipped 2. This is the repository where publishing only
+changed modules saves the most: 120 coordinates over 16 releases instead of 272.
+
+```mermaid
+xychart-beta
+    title "compose-preview-contracts: coordinates per release"
+    x-axis ["3.1.0", "3.1.1", "3.2.0", "3.3.0", "3.4.0", "3.5.0", "3.6.0", "3.7.0", "3.8.0", "3.9.0", "3.10.0", "3.11.0", "3.12.0", "3.13.0", "3.13.1", "3.14.0"]
+    y-axis "Coordinates" 0 --> 20
+    bar [17, 2, 4, 4, 4, 17, 4, 17, 4, 4, 4, 4, 4, 17, 4, 10]
+```
+
+### compose-ui-builder
+
+Full set: 6 coordinates (the BOM, `export` with its JVM and wasm variants, `render-bundle` and
+`runtime`). Its publish plan landed in compose-ui-builder#349 on 30 Sep, so only v3.69.0 and
+v3.70.0 count, and both shipped all 6, as every release before them did. Two releases are too
+few to show what the plan saves; the bracketed weekly rates in the summary are extrapolated from
+1.1 days.
 
 ### rc-players
 
@@ -169,6 +201,24 @@ compose-preview-server is left out: all 64 of its releases published 0 coordinat
 | compose-preview-daemon | `3.10.0` | 2026-09-30 21:33 | 75 |
 | compose-preview-daemon | `3.10.1` | 2026-10-01 04:56 | 75 |
 | compose-preview-daemon | `3.11.0` | 2026-10-01 06:55 | 75 |
+| compose-preview-contracts | `3.1.0` | 2026-09-17 05:37 | 17 |
+| compose-preview-contracts | `3.1.1` | 2026-09-17 12:35 | 2 |
+| compose-preview-contracts | `3.2.0` | 2026-09-19 12:30 | 4 |
+| compose-preview-contracts | `3.3.0` | 2026-09-19 22:34 | 4 |
+| compose-preview-contracts | `3.4.0` | 2026-09-20 10:56 | 4 |
+| compose-preview-contracts | `3.5.0` | 2026-09-20 12:51 | 17 |
+| compose-preview-contracts | `3.6.0` | 2026-09-20 14:48 | 4 |
+| compose-preview-contracts | `3.7.0` | 2026-09-22 09:13 | 17 |
+| compose-preview-contracts | `3.8.0` | 2026-09-22 12:46 | 4 |
+| compose-preview-contracts | `3.9.0` | 2026-09-22 20:02 | 4 |
+| compose-preview-contracts | `3.10.0` | 2026-09-24 20:51 | 4 |
+| compose-preview-contracts | `3.11.0` | 2026-09-25 20:21 | 4 |
+| compose-preview-contracts | `3.12.0` | 2026-09-26 20:57 | 4 |
+| compose-preview-contracts | `3.13.0` | 2026-09-30 18:46 | 17 |
+| compose-preview-contracts | `3.13.1` | 2026-09-30 20:45 | 4 |
+| compose-preview-contracts | `3.14.0` | 2026-10-01 05:51 | 10 |
+| compose-ui-builder | `3.69.0` | 2026-09-30 07:50 | 6 |
+| compose-ui-builder | `3.70.0` | 2026-10-01 07:55 | 6 |
 | rc-players | `1.64.0` | 2026-09-17 05:37 | 0 (excluded, broken) |
 | rc-players | `1.65.0` | 2026-09-17 06:37 | 29 |
 | rc-players | `1.66.0` | 2026-09-17 18:10 | 29 |
