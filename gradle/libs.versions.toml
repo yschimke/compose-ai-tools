@@ -354,7 +354,9 @@ coil3 = "3.5.0"
 # daemon line below carries the same lesson and the same shape.
 # 3.14.0 adds `RenderFinishedParams.workTrace` (compose-preview-contracts#128), which daemon
 # 3.11.0 below builds `renderFinished` through; its BOM keeps `common-io` at 3.13.0.
-composeai-contracts = "3.14.0"
+# 3.15.0 adds `RemoteComposeOverride.playerId` (compose-preview-contracts#129), which
+# `ServeOverrides` sends for an `rcPlayer=` naming a player registered with the daemon.
+composeai-contracts = "3.15.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this

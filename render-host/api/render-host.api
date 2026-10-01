@@ -2966,6 +2966,8 @@ public final class ee/schimke/composeai/cli/serve/RcPlayerBackend : java/lang/En
 public final class ee/schimke/composeai/cli/serve/RcPlayerBackend$Companion {
 	public final fun fromWire (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public final fun getUNIVERSE ()Ljava/util/List;
+	public final fun isNonDaemonLane (Ljava/lang/String;)Z
+	public final fun isPlayerIdShaped (Ljava/lang/String;)Z
 	public final fun serverSideFromParam (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 }
 
