@@ -202,7 +202,14 @@ internal class McpCommand(
     val command = mcpLaunchCommand(choice.binary, args)
     val exit =
       try {
-        ProcessBuilder(command).inheritIO().runTiedToLauncher()
+        ProcessBuilder(command)
+          .inheritIO()
+          .also { builder ->
+            cliEnvironment(locateHostLauncher()?.path, builder.environment())?.let {
+              builder.environment()[CLI_ENV] = it
+            }
+          }
+          .runTiedToLauncher()
       } catch (t: Throwable) {
         System.err.println(
           "could not start ${choice.binary} (from ${choice.source}): " +
@@ -937,6 +944,19 @@ internal class McpCommand(
   )
 
   internal companion object {
+    /**
+     * Names this CLI's launcher to the MCP server it starts, so the server can run `compose-preview
+     * init-script --path` itself on a machine where `mcp install` never ran, instead of failing the
+     * first render with "run `compose-preview mcp install` once" (yschimke/compose-ag-plugin#87).
+     */
+    const val CLI_ENV = "COMPOSE_PREVIEW_CLI"
+
+    /** The launcher to export as [CLI_ENV], or null to leave [current] as it is. */
+    fun cliEnvironment(launcher: String?, current: Map<String, String>): String? =
+      launcher?.takeIf {
+        it.isNotBlank() && current[CLI_ENV].isNullOrBlank()
+      }
+
     val JSON: Json = Json { prettyPrint = true }
 
     /** First executable [command] on PATH, as found: symlinks are deliberately not resolved. */
