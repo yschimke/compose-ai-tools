@@ -259,6 +259,16 @@ change_catalog_and_module() {
 }
 check catalog_and_module "alpha beta gamma"
 
+# v2.20.0 / v2.24.0 / v2.26.0: a contracts bump. Its BOM is on every module through build-logic,
+# which used to publish everything; a sibling coordinate is a floor, so nothing publishes.
+change_catalog_sibling_bom() { sed -i 's/composeai-contracts = "3.0.0"/composeai-contracts = "3.1.0"/' gradle/libs.versions.toml; }
+check catalog_sibling_bom ""
+
+# v2.28.3: a daemon bump. Its BOM is a floor too, but `gradle-plugin` reads the version as a value
+# and bakes it in, so the four plugin coordinates still publish.
+change_catalog_sibling_baked() { sed -i 's/composeai-preview-daemon = "3.0.0"/composeai-preview-daemon = "3.1.0"/' gradle/libs.versions.toml; }
+check catalog_sibling_baked "compose-preview-config compose-preview-plugin daemon-launch-builder preview-discovery"
+
 # Verification-only build logic is not a shared input.
 change_verification_only() { echo 'val gate = 1' >> build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic/CheckLayerBoundary.kt; }
 check verification_only ""
