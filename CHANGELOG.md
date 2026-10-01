@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.31.0](https://github.com/yschimke/compose-ai-tools/compare/v2.30.0...v2.31.0) (2026-10-01)
+
+
+### Features
+
+* **release:** only count build inputs that can change an artifact as shared ([#5657](https://github.com/yschimke/compose-ai-tools/issues/5657)) ([2c2db04](https://github.com/yschimke/compose-ai-tools/commit/2c2db04e3181408f69aa6bbc369d982ba3edf317))
+* **release:** treat sibling coordinates as floors in the publish plan ([#5658](https://github.com/yschimke/compose-ai-tools/issues/5658)) ([0437a25](https://github.com/yschimke/compose-ai-tools/commit/0437a25a95fca0aa1b0e73514132b81eccbdba2a))
+* **serve:** forward an rcPlayer naming a registered player as playerId ([#5661](https://github.com/yschimke/compose-ai-tools/issues/5661)) ([e4ea59f](https://github.com/yschimke/compose-ai-tools/commit/e4ea59f456084c731d9a3cfd061fb1ec65b14f93))
+
+
+### Performance Improvements
+
+* **rc-compare:** render the parity documents concurrently ([#5656](https://github.com/yschimke/compose-ai-tools/issues/5656)) ([3653485](https://github.com/yschimke/compose-ai-tools/commit/3653485940e6df0f03b875473b6c2796f2e93f61))
+
 ## [2.30.0](https://github.com/yschimke/compose-ai-tools/compare/v2.29.0...v2.30.0) (2026-10-01)
 
 
