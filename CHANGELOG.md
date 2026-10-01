@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.30.0](https://github.com/yschimke/compose-ai-tools/compare/v2.29.0...v2.30.0) (2026-10-01)
+
+
+### Features
+
+* **cli:** name the launcher to the MCP server in COMPOSE_PREVIEW_CLI ([#5653](https://github.com/yschimke/compose-ai-tools/issues/5653)) ([fb2e3c0](https://github.com/yschimke/compose-ai-tools/commit/fb2e3c09a5b6ff3b2ee5053930d5c86f42d1709a))
+
+
+### Bug Fixes
+
+* **ci:** pin download-artifact correctly and pass the token for run-id ([#5649](https://github.com/yschimke/compose-ai-tools/issues/5649)) ([25f1226](https://github.com/yschimke/compose-ai-tools/commit/25f12262e3577e2fba49b26533a63e6bbc2eeab3))
+* **cli:** don't register a duplicate Claude Code server when the plugin is installed ([#5652](https://github.com/yschimke/compose-ai-tools/issues/5652)) ([2b9e3ed](https://github.com/yschimke/compose-ai-tools/commit/2b9e3ed6fbf2513fcc09e907dfcf8607cd921eeb))
+* **deps:** update compose-preview-daemon to 3.11.0 and contracts to 3.14.0 ([#5651](https://github.com/yschimke/compose-ai-tools/issues/5651)) ([6e19aed](https://github.com/yschimke/compose-ai-tools/commit/6e19aedfccbe3956fc65bf8bd32e89138c574500))
+
 ## [2.29.0](https://github.com/yschimke/compose-ai-tools/compare/v2.28.4...v2.29.0) (2026-09-30)
 
 
