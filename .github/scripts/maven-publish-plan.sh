@@ -17,7 +17,13 @@
 #      entry that a shared build file uses is rule 3 instead, and publishes everything).
 #
 # Rules 3 and 4 skip `build-logic/src/test/**` and whole-line comment/whitespace edits to shared
-# Kotlin files (#5576). Tested by `test-maven-publish-plan.sh`.
+# Kotlin files (#5576), and verification-only build logic, measured against v2.18.0..v2.29.0:
+#
+#   - VERIFICATION-ONLY BUILD LOGIC IS NOT SHARED. The files in VERIFICATION_ONLY register checks
+#     (`checkHttpServerFloor`, `checkLayerBoundary`) and reach no artifact.
+#
+# Release wiring lives in `root-tasks.gradle.kts`, outside the shared set: it decides which tasks
+# run, not what they build. Tested by `test-maven-publish-plan.sh`.
 #
 # Rule 2 is what keeps the POMs honest, and it is deliberately coarser than it needs to be. A
 # published POM names its project dependencies at *their* `project.version`, so a module may only
@@ -156,6 +162,11 @@ if write_manifest_path:
 #      blank lines leaves every artifact byte-identical;
 #   c. a version-catalog change publishes the modules whose build scripts use a changed entry,
 #      rather than all of them — POMs name catalog versions, so those consumers must still publish.
+# Verification-only build logic: these files register checks and change no artifact.
+VERIFICATION_ONLY = {
+    "build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic/CheckHttpServerFloor.kt",
+    "build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic/CheckLayerBoundary.kt",
+}
 SHARED = re.compile(r"^(build-logic/|gradle/|gradlew|settings\.gradle\.kts$|build\.gradle\.kts$)")
 NOT_SHARED = re.compile(r"^build-logic/src/(test|testFixtures|functionalTest|integrationTest)/")
 SHARED_KOTLIN = re.compile(r"^(build-logic/.*\.kts?|settings\.gradle\.kts|build\.gradle\.kts)$")
@@ -303,6 +314,9 @@ def shared_verdict(tag, files):
             continue
         if NOT_SHARED.match(f):
             print(f"  {tag}: {f} is test-only; not a shared input", file=sys.stderr)
+            continue
+        if f in VERIFICATION_ONLY:
+            print(f"  {tag}: {f} is verification-only; not a shared input", file=sys.stderr)
             continue
         if f == CATALOG:
             changes = catalog_changes(tag)
