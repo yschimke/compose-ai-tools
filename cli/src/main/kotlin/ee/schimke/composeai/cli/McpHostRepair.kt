@@ -354,9 +354,9 @@ internal object McpHostRepair {
     val openCode: File?,
   )
 
-  fun defaultHostFiles(home: File, openCode: File?) =
+  fun defaultHostFiles(home: File, openCode: File?, claude: ClaudeConfig = ClaudeConfig(home)) =
     HostFiles(
-      claudeJson = File(home, ".claude.json"),
+      claudeJson = claude.claudeJson,
       antigravity = AntigravityConfig(home).candidates,
       codex = File(home, ".codex/config.toml"),
       openCode = openCode,

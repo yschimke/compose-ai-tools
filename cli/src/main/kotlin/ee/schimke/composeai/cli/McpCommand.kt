@@ -525,6 +525,10 @@ internal class McpCommand(
       antigravity.pluginInstalled &&
         "--antigravity" !in args &&
         args.flagValue("--antigravity-config") == null
+    val claude = ClaudeConfig(File(System.getProperty("user.home")))
+    // Same as Antigravity: the Claude Code plugin registers the server itself, so a user-scope
+    // entry would duplicate every tool. Only an explicit --claude overrides that.
+    val claudeViaPlugin = claude.pluginInstalled && "--claude" !in args
     val codexConfig = args.flagValue("--codex-config")?.let(::File) ?: defaultCodexConfig()
     val openCodeConfig =
       selectOpenCodeConfig(
@@ -538,7 +542,7 @@ internal class McpCommand(
       AgentMcpConfig.pluginInstallHints(
         buildSet {
           if (antigravityDetected && !antigravity.pluginInstalled) add("antigravity")
-          if (claudeDetected) add("claude")
+          if (claudeDetected && !claude.pluginInstalled) add("claude")
           if (codexDetected) add("codex")
         },
         enabled = "--no-plugin-hint" !in args,
@@ -589,7 +593,9 @@ internal class McpCommand(
           },
         )
     }
-    if (installClaude) {
+    if (installClaude && claudeViaPlugin) {
+      results += claudePluginResult(claude)
+    } else if (installClaude) {
       results +=
         if (locateOnPath("claude") == null) {
           HostResult(
@@ -599,7 +605,7 @@ internal class McpCommand(
             "`claude` not on PATH; copy/paste the printed command instead",
           )
         } else {
-          registerClaude(launcher, exists)
+          registerClaude(claude, launcher, exists)
         }
     }
     return Registration(
@@ -632,6 +638,17 @@ internal class McpCommand(
       null,
       "provided by the compose-preview plugin; no global entry written",
       antigravity.found().filter { it.hasEntry }.map { duplicateAntigravityEntry(it.file) },
+    )
+
+  /** The Claude Code counterpart of [antigravityPluginResult]. */
+  private fun claudePluginResult(claude: ClaudeConfig): HostResult =
+    HostResult(
+      "claude",
+      true,
+      claude.installedPlugins.absolutePath,
+      null,
+      "provided by the compose-preview plugin; no global entry written",
+      if (claude.hasUserEntry()) listOf(duplicateClaudeEntry(claude.claudeJson)) else emptyList(),
     )
 
   private fun upsertFile(
@@ -673,8 +690,12 @@ internal class McpCommand(
   }
     .getOrElse { e -> HostResult(name, false, file.absolutePath, e.message) }
 
-  private fun registerClaude(launcher: String, exists: (String) -> Boolean): HostResult {
-    val claudeJson = File(System.getProperty("user.home"), ".claude.json")
+  private fun registerClaude(
+    claude: ClaudeConfig,
+    launcher: String,
+    exists: (String) -> Boolean,
+  ): HostResult {
+    val claudeJson = claude.claudeJson
     val text = claudeJson.takeIf { it.isFile }?.readText()
     if (!McpHostRepair.hasClaudeUserEntry(text)) {
       val exit = runProcess(AgentMcpConfig.claudeMcpAddCommand(launcher))
@@ -880,7 +901,8 @@ internal class McpCommand(
       AntigravityConfig(File(System.getProperty("user.home"))).present()
 
   private fun isClaudeEnvironment(): Boolean =
-    locateOnPath("claude") != null || File(System.getProperty("user.home"), ".claude").isDirectory
+    locateOnPath("claude") != null ||
+      ClaudeConfig(File(System.getProperty("user.home"))).configDir.isDirectory
 
   private fun isCodexEnvironment(): Boolean =
     locateOnPath("codex") != null || File(System.getProperty("user.home"), ".codex").isDirectory
