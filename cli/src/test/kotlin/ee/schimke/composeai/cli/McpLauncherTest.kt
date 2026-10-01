@@ -122,4 +122,20 @@ class McpLauncherTest {
     // difference between "MCP is broken" and "one subcommand needs a download".
     assertTrue(hint.contains("mcp install"), hint)
   }
+
+  @Test
+  fun `serve names the CLI launcher to the server unless the environment already does`() {
+    assertEquals(
+      "/home/u/.local/bin/compose-preview",
+      McpCommand.cliEnvironment("/home/u/.local/bin/compose-preview", emptyMap()),
+    )
+    assertNull(
+      McpCommand.cliEnvironment(
+        "/home/u/.local/bin/compose-preview",
+        mapOf(McpCommand.CLI_ENV to "/opt/compose-preview"),
+      )
+    )
+    assertNull(McpCommand.cliEnvironment(null, emptyMap()))
+    assertNull(McpCommand.cliEnvironment(" ", emptyMap()))
+  }
 }
