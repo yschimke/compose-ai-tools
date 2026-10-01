@@ -144,12 +144,39 @@ public enum class RcPlayerBackend(
      * neither rides the daemon override this maps.
      */
     public fun serverSideFromParam(raw: String): RcPlayerBackend? =
-      when (raw.lowercase()) {
+      when (raw.trim().lowercase()) {
         "java",
-        "view" -> JAVA
+        "view",
+        "androidx-view" -> JAVA
         "cmp-android",
-        "embedded" -> CMP_ANDROID
+        "embedded",
+        "androidx-embedded" -> CMP_ANDROID
         else -> null
       }
+
+    /**
+     * True when [raw] names one of the lanes that never ride the daemon's player override — the
+     * in-browser [JS] / [CMP_WASM] players and the [CMP_JVM] subprocess — by its wire id or by the
+     * implementation name the daemon's player selection documents for it. Such a value is neither a
+     * built-in daemon player nor a registered one, so `rcPlayer=` must not forward it as a
+     * `playerId`: the daemon would only refuse it, after a render round trip.
+     */
+    public fun isNonDaemonLane(raw: String): Boolean {
+      val name = raw.trim().lowercase()
+      val lane = fromWire(name)
+      return (lane != null && lane.playerKind == null) || name in NON_DAEMON_LANE_NAMES
+    }
+
+    private val NON_DAEMON_LANE_NAMES =
+      setOf("rcplayer-wasm", "camaelon-js", "rcplayer-jvm", "androidx-embedded-jvm")
+
+    /**
+     * Whether [raw] is spelled like a player id a daemon could have registered: lower-case letters,
+     * digits, `.`, `_` and `-`, starting with a letter or digit, at most 64 characters. Shape only
+     * — whether a player answers to it is the daemon's to say.
+     */
+    public fun isPlayerIdShaped(raw: String): Boolean = PLAYER_ID.matches(raw.trim().lowercase())
+
+    private val PLAYER_ID = Regex("[a-z0-9][a-z0-9._-]{0,63}")
   }
 }

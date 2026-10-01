@@ -781,10 +781,49 @@ class ServeOverridesTest {
   }
 
   @Test
-  fun `a client-side or unavailable rcPlayer value is rejected, not silently defaulted`() {
-    // `js` replays the doc in the browser and `cmp-jvm` has no draw path, so neither is a valid
-    // server-side render backend — and any unknown value is a hard Invalid.
-    for (bad in listOf("js", "cmp-jvm", "wasm", "nonsense")) {
+  fun `the canonical implementation names select the built-in players too`() {
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.VIEW,
+      ok(mapOf("rcPlayer" to "androidx-view")).remoteCompose?.player,
+    )
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
+      ok(mapOf("rcPlayer" to "Androidx-Embedded")).remoteCompose?.player,
+    )
+    // A built-in never also rides playerId: the enum is what every daemon understands.
+    assertNull(ok(mapOf("rcPlayer" to "androidx-view")).remoteCompose?.playerId)
+  }
+
+  @Test
+  fun `any other id-shaped rcPlayer rides playerId for the daemon to resolve`() {
+    // A player registered with the daemon's connector answers to a name this server cannot
+    // enumerate, so it is forwarded rather than rejected; the daemon refuses an unknown one by
+    // name.
+    for ((raw, id) in
+      listOf("rcplayer-cmp-android" to "rcplayer-cmp-android", " My.Player_2 " to "my.player_2")) {
+      val rc = ok(mapOf("rcPlayer" to raw)).remoteCompose
+      assertEquals(id, rc?.playerId, "playerId for '$raw'")
+      assertNull(rc?.player, "player for '$raw'")
+    }
+  }
+
+  @Test
+  fun `a lane the daemon never draws, or a value not shaped like an id, is rejected`() {
+    // `js` / `cmp-wasm` replay the doc in the browser and `cmp-jvm` renders in its own subprocess,
+    // so none rides the daemon override — under their wire ids or their implementation names.
+    for (bad in
+      listOf(
+        "js",
+        "cmp-wasm",
+        "cmp-jvm",
+        "rcplayer-wasm",
+        "camaelon-js",
+        "androidx-embedded-jvm",
+        "not an id",
+        "../etc",
+        "-leading-dash",
+        "x".repeat(65),
+      )) {
       val parsed = ServeOverrides.parse(mapOf("rcPlayer" to bad))
       assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for '$bad', got $parsed")
     }
@@ -812,6 +851,10 @@ class ServeOverridesTest {
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "java"))),
       ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "player-a"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "player-b"))),
     )
   }
 }
