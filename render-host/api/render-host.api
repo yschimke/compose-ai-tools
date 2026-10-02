@@ -2947,23 +2947,27 @@ public final class ee/schimke/composeai/cli/serve/RcLaneSource {
 }
 
 public final class ee/schimke/composeai/cli/serve/RcPlayerBackend : java/lang/Enum {
+	public static final field ANDROIDX_EMBEDDED Lee/schimke/composeai/cli/serve/RcPlayerBackend;
+	public static final field ANDROIDX_VIEW Lee/schimke/composeai/cli/serve/RcPlayerBackend;
+	public static final field CAMAELON_JS Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static final field CMP_ANDROID Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static final field CMP_JVM Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static final field CMP_WASM Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static final field Companion Lee/schimke/composeai/cli/serve/RcPlayerBackend$Companion;
-	public static final field JAVA Lee/schimke/composeai/cli/serve/RcPlayerBackend;
-	public static final field JS Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public final fun getClientSide ()Z
+	public final fun getDaemonPlayerId ()Ljava/lang/String;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getLabel ()Ljava/lang/String;
 	public final fun getPlayerKind ()Lee/schimke/composeai/daemon/protocol/RemoteComposePlayerKind;
 	public final fun getRcCompareLane ()Ljava/lang/String;
+	public final fun getRidesDaemon ()Z
 	public final fun getWire ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public static fun values ()[Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 }
 
 public final class ee/schimke/composeai/cli/serve/RcPlayerBackend$Companion {
+	public final fun fromCapturePlayer (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public final fun fromWire (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/RcPlayerBackend;
 	public final fun getUNIVERSE ()Ljava/util/List;
 	public final fun isNonDaemonLane (Ljava/lang/String;)Z
